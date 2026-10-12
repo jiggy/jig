@@ -232,6 +232,13 @@ function admissionScript(root: string): string {
       defaultProviders: { ${JSON.stringify(contractId)}: 'flow:flows/provider' },
     });
     mock.module(${module('../src/project/author-evaluator.js')}, () => ({
+      evaluateAuthorClosureBatch: async (_options, _captured, entries) => entries.map(({ entryProjectPath, expected }) => ({
+        expected,
+        source: { entryProjectPath },
+        profile: { fixture: 'inert-feature-admission-unit' },
+        outputDigest: d('a'),
+        value: definition,
+      })),
       evaluateAuthorClosure: async (_options, _captured, entryProjectPath, expected) => ({
         expected,
         source: { entryProjectPath },

@@ -1,5 +1,5 @@
 import { realpath } from 'node:fs/promises'
-import { dirname } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import {
@@ -8,6 +8,7 @@ import {
   privateCliCommandLifetimeMs,
   privateCliPrepareArguments,
   privateCliRequiresHost,
+  privateCliSavedResultInspection,
   privateCliVerification,
   publicTerminal,
 } from './cli.js'
@@ -30,9 +31,16 @@ import {
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
 import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
 import {
+  privateProfileActivate,
+  privateProfileFinish,
+  privateProfileOperatorEnvironment,
+  privateProfileSpan,
+} from './internal/private-profile.js'
+import {
   openPrivateProjectSession,
   recoverPrivateCheckpointRun,
 } from './internal/project-session-controller.js'
+import { privatePresentationDeadline } from './internal/root-run-timeout-policy.js'
 import { canonicalJson } from './json.js'
 
 interface InstalledCliOutcome {
@@ -48,10 +56,12 @@ try {
   installedCliPath = await realpath(fileURLToPath(import.meta.url))
   releaseRoot = dirname(dirname(installedCliPath))
   executablePath = await realpath(process.execPath)
+  const runningExecutablePath =
+    process.platform === 'linux' ? await realpath('/proc/self/exe') : executablePath
   if (
     process.argv[0] !== executablePath ||
     process.argv[1] !== installedCliPath ||
-    (await realpath('/proc/self/exe')) !== executablePath ||
+    runningExecutablePath !== executablePath ||
     process.execArgv.length !== BUN_POLICY.length ||
     process.execArgv.some((value, index) => value !== BUN_POLICY[index])
   ) {
@@ -72,20 +82,39 @@ async function runPrivateInstalledCli(
   arguments_: readonly string[] = process.argv.slice(2),
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
-  const prepared = await privateCliPrepareArguments(
-    arguments_,
-    signal === undefined ? {} : { signal },
-  )
+  const preparedMarker = process.env.JIG_PRIVATE_RUN_PREPARED
+  const selectedAdmission = process.env.JIG_PRIVATE_RUN_ADMISSION
+  if (
+    (preparedMarker !== undefined && preparedMarker !== '1') ||
+    (selectedAdmission !== undefined && !/^sha256:[a-f0-9]{64}$/.test(selectedAdmission))
+  ) {
+    process.stderr.write(
+      privateCliStderrDiagnostic(
+        'JIG_COMMAND_UNAVAILABLE',
+        'The retained Run selection is invalid. No Flow was started. Start a fresh jig run command.',
+      ),
+    )
+    return exit(2)
+  }
+  const prepared = await privateCliPrepareArguments(arguments_, {
+    runArgumentsPrepared: preparedMarker === '1',
+    ...(selectedAdmission === undefined ? {} : { expectedAdmissionDigest: selectedAdmission }),
+    ...(signal === undefined ? {} : { signal }),
+  })
   if ('exitCode' in prepared) return exit(prepared.exitCode)
   arguments_ = prepared.arguments
+  if (privateCliSavedResultInspection(arguments_)) return runWithEnvironment(arguments_, {}, signal)
+  if (arguments_[0] === 'run') process.env.JIG_PRIVATE_RUN_PREPARED = '1'
+  if (selectedAdmission === undefined && prepared.admissionDigest !== undefined)
+    process.env.JIG_PRIVATE_RUN_ADMISSION = prepared.admissionDigest
   let verification: string | undefined
   try {
     verification = privateCliVerification(arguments_)
   } catch {
     // Let the ordinary command parser explain invalid syntax before host work.
-    return runWithEnvironment(arguments_, Object.freeze({ ...process.env }), signal)
+    return runWithEnvironment(arguments_, privateProfileOperatorEnvironment(process.env), signal)
   }
-  const operatorEnvironment = Object.freeze({
+  const operatorEnvironment = privateProfileOperatorEnvironment({
     ...process.env,
     ...(verification === undefined ? {} : { JIG_VERIFICATION: verification }),
   })
@@ -116,9 +145,36 @@ async function runWithEnvironment(
   operatorEnvironment: Readonly<Record<string, string | undefined>>,
   signal?: AbortSignal,
 ): Promise<InstalledCliOutcome> {
+  if (privateCliSavedResultInspection(arguments_)) {
+    const outputStop = new AbortController()
+    const stdout = new PrivateCliOutput(process.stdout, outputStop)
+    const stderr = new PrivateCliOutput(process.stderr, outputStop)
+    try {
+      const code = await main(arguments_, {
+        presentationDeadline: privatePresentationDeadline(process.env),
+        ...(signal === undefined ? {} : { signal }),
+        writeOutput: (text) => {
+          void stdout.write(text).catch(() => undefined)
+        },
+        writeRecord: async (text) => {
+          await stderr.flush()
+          await stdout.write(text)
+        },
+        writeError: (text) => {
+          void stderr.write(text).catch(() => undefined)
+        },
+        writeStderr: (text) => stderr.write(text),
+      })
+      await Promise.all([stdout.flush(), stderr.flush()])
+      return exit(signal?.aborted ? 2 : outputStop.signal.aborted ? 1 : code)
+    } catch {
+      return exit(signal?.aborted ? 2 : 1)
+    }
+  }
   if (!privateCliRequiresHost(arguments_)) {
     return exit(
       await main(arguments_, {
+        standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
         ...(signal === undefined ? {} : { signal }),
         ...(arguments_[0] !== 'inspect'
           ? {}
@@ -135,18 +191,33 @@ async function runWithEnvironment(
 
   try {
     const recovery = privateFileRecovery()
+    const commandLifetimeMs = privateCliCommandLifetimeMs(
+      arguments_,
+      process.stdin.isTTY === true &&
+        process.stderr.isTTY === true &&
+        typeof process.stdin.setRawMode === 'function' &&
+        process.env.TERM !== 'dumb',
+      process.stderr.isTTY === true,
+      process.stdout.isTTY === true,
+    )
     if (recovery === undefined && privateNeedsFileOwner(arguments_)) {
       return await privateOwnFileCommand(
         [executablePath, ...BUN_POLICY, installedCliPath],
         arguments_,
         signal,
-        privateCliCommandLifetimeMs(arguments_),
+        commandLifetimeMs,
       )
     }
-    const delegation = await acquireOrReexecutePrivateRootlessLinux({
-      commandLifetimeMs: privateCliCommandLifetimeMs(arguments_),
-    })
-    if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
+    if (process.platform === 'linux') {
+      const delegation = await acquireOrReexecutePrivateRootlessLinux({
+        commandLifetimeMs,
+        commandArguments: arguments_,
+        ...(signal === undefined ? {} : { signal }),
+      })
+      if (delegation.kind === 'private-rootless-linux-reexecuted/1') return delegation
+    }
+
+    privateProfileActivate()
 
     const delivery = await privateConnectFileOwner()
     try {
@@ -158,10 +229,8 @@ async function runWithEnvironment(
 
       if (recovery !== undefined) {
         delete process.env.JIG_PRIVATE_FILE_RECOVERY
-        const installedHost = await openPrivateInstalledBunHost(
-          location,
-          operatorEnvironment,
-          recovery.project,
+        const installedHost = await privateProfileSpan('installed-host-opening', () =>
+          openPrivateInstalledBunHost(location, operatorEnvironment, recovery.project),
         )
         const terminal = await recoverPrivateCheckpointRun(recovery, installedHost)
         process.stdout.write(`${Buffer.from(canonicalJson(publicTerminal(terminal))).toString()}\n`)
@@ -174,38 +243,46 @@ async function runWithEnvironment(
           project: string,
           options?: Parameters<PrivateCliCommandHost['acquire']>[1],
         ) => {
-          const installedHost = await openPrivateInstalledBunHost(
-            location,
-            operatorEnvironment,
-            project,
-            options?.onStage,
+          const installedHost = await privateProfileSpan('installed-host-opening', () =>
+            openPrivateInstalledBunHost(location, operatorEnvironment, project, options?.onStage),
           )
 
           options?.onStage?.('Opening project state and checking recovery')
-          return openPrivateProjectSession({
-            directory: project,
-            host: Object.freeze({
-              ...installedHost,
-              ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
-              ...(options?.generateContracts ? { generateContracts: true } : {}),
-              ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
-              ...(options?.runTimeoutMs === undefined
-                ? {}
-                : { runTimeoutMs: options.runTimeoutMs }),
-              ...(options?.files === undefined ? {} : { files: options.files }),
-              ...(options?.channelOutput === undefined
-                ? {}
-                : { channelOutput: options.channelOutput }),
-              ...(options?.allowResolutionNetwork !== true
-                ? {}
-                : {
-                    allowResolutionNetwork: true,
-                    ...(options.onResolution === undefined
-                      ? {}
-                      : { onResolution: options.onResolution }),
-                  }),
+          return privateProfileSpan('project-session-opening', () =>
+            openPrivateProjectSession({
+              directory: project,
+              host: Object.freeze({
+                ...installedHost,
+                ...(options?.expectedAdmissionDigest === undefined
+                  ? {}
+                  : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
+                ...(options?.onStage === undefined ? {} : { onStage: options.onStage }),
+                ...(options?.onAgentReadiness === undefined
+                  ? {}
+                  : { onAgentReadiness: options.onAgentReadiness }),
+                ...(options?.agentOverride === undefined
+                  ? {}
+                  : { agentOverride: options.agentOverride }),
+                ...(options?.generateContracts ? { generateContracts: true } : {}),
+                ...(options?.onGeneration ? { onGeneration: options.onGeneration } : {}),
+                ...(options?.runTimeoutMs === undefined
+                  ? {}
+                  : { runTimeoutMs: options.runTimeoutMs }),
+                ...(options?.files === undefined ? {} : { files: options.files }),
+                ...(options?.channelOutput === undefined
+                  ? {}
+                  : { channelOutput: options.channelOutput }),
+                ...(options?.allowResolutionNetwork !== true
+                  ? {}
+                  : {
+                      allowResolutionNetwork: true,
+                      ...(options.onResolution === undefined
+                        ? {}
+                        : { onResolution: options.onResolution }),
+                    }),
+              }),
             }),
-          })
+          )
         },
       })
       const outputStop = new AbortController()
@@ -215,6 +292,11 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            runArgumentsPrepared: process.env.JIG_PRIVATE_RUN_PREPARED === '1',
+            presentationDeadline: privatePresentationDeadline(process.env),
+            ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
+              ? {}
+              : { expectedAdmissionDigest: process.env.JIG_PRIVATE_RUN_ADMISSION }),
             writeOutput: (text) => {
               void stdout.write(text).catch(() => undefined)
             },
@@ -225,6 +307,7 @@ async function runWithEnvironment(
             writeError: (text) => {
               void stderr.write(text).catch(() => undefined)
             },
+            writeStderr: (text) => stderr.write(text),
             signal: AbortSignal.any([
               outputStop.signal,
               ...(signal === undefined ? [] : [signal]),
@@ -281,6 +364,7 @@ if (import.meta.main) {
   try {
     outcome = await runPrivateInstalledCli(process.argv.slice(2), controller.signal)
   } finally {
+    privateProfileFinish()
     process.removeListener('SIGINT', interrupt)
     process.removeListener('SIGTERM', interrupt)
   }

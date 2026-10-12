@@ -9,36 +9,65 @@ stays unchanged.
 
 Install Jig on a [supported host](https://jig.md/guide/).
 
-The application declares pinned ordinary FLOW and ACP Agent packages. Download
-this directory, install its dependencies with lifecycle scripts disabled, and
-keep the resulting lock so review uses the same resolved packages:
-
-```sh
-bun install --ignore-scripts
-```
-
-Select your native client in `bindings/agent.ts`; it shows Pi as an example,
-with Codex and Claude supported by the same interface. Follow
+The application declares pinned ordinary FLOW and ACP Agent packages; review
+prepares their execution dependencies. Download this directory and follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
-Then inspect `issue.json`,
+The inline native policy in `bindings/agent.ts` selects Pi as an example.
+Edit that Binding and review again for a lasting client preference. Inspect `issue.json`,
 `bindings/specialist.ts`, and `flows/project/logs-cases.json`.
 From this directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
+jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
+
+The reviewed entrypoint supplies the issue, read-only fixture and five-minute deadline.
+Jig chooses a fresh packet directory in operating-system temporary storage for
+its writable deliverables and reports it on stderr. Repeating `jig run` leaves
+earlier packets intact, but the operating system may clear temporary storage.
+Use `jig run --out ./repair-result` to choose a retained location that does not
+already exist; Jig never overwrites a packet. Explicit targets bypass the
+entrypoint defaults.
 
 Add `--receive progress` to see the repair specialist's phase and attempt
 while the Run is active. Redirected stdout then uses NDJSON records; only the
 terminal record establishes the outcome. Phase records do not include Agent
 text or guarantee that a candidate passed its checks.
 
+The `updates` channel carries the optional semantic dashboards; `progress` retains the
+specialist’s separate closed phase records for explicit channel consumers. Neither
+establishes acceptance.
+
 The synthetic fixture is an HTTP log reporter with defects in parsing and
-aggregation. Open `repair-result/files/summary.txt`. A passing repair produces
+aggregation. Open `files/summary.txt` inside the reported destination. A passing repair produces
 `review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
 `result.json` records candidate identities, command output and termination,
 and independent acceptance results. Review the patch before applying it.
+
+## Follow the work
+
+**Repair** retains the requested goal and editable scope. **Checks** separates the
+original failure from each proposal's repository and independent acceptance checks.
+Worker reports stay provisional until the project caller validates identities and
+recomputes the verdicts. **Evidence** links to the complete `goal.txt`, summaries and
+retained proposals; only an accepted candidate earns `review.patch`. Selecting a
+delivered file shows its content. The reusable specialist offers Repair and Checks
+without claiming that its caller has accepted a patch.
+
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 ## Follow the evidence
 
@@ -58,7 +87,7 @@ The method accepts 16 UTF-8 files totaling 64 KiB and eight editable source path
 Its leaf receives JSON and uses Agent and Project Command capabilities, with no
 attachments or child Flows. Source selection and delivery belong to the root.
 
-The output destination must be new. Ctrl-C cancels owned work. This example
+An explicit `--out` destination must be new. Ctrl-C cancels owned work. This example
 publishes patches only at completion; an interrupted Run does not preserve
 partial patches. Optional progress is transient.
 Selected source reaches the configured provider.

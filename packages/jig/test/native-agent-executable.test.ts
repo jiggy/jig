@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -11,7 +11,7 @@ afterEach(async () => {
 })
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), 'jig-agent-discovery-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-agent-discovery-')))
   temporary.push(root)
   const project = join(root, 'workspace', 'project')
   const first = join(root, 'operator', 'bin')
@@ -47,6 +47,24 @@ describe('operator native Agent executable discovery', () => {
   )
 
   for (const client of ['codex', 'claude', 'pi'] as const) {
+    test(`${client}: an unsupported Volta installation is refused without selecting another installation`, async () => {
+      const { root, project, first, second } = await fixture()
+      const shim = join(root, 'volta-shim')
+      await writeFile(shim, 'operator tool dispatcher', { mode: 0o700 })
+      await rm(join(first, client))
+      await symlink(shim, join(first, client))
+      for (const environment of [
+        { PATH: `${first}:${second}` },
+        { PATH: second, [`${client.toUpperCase()}_PATH`]: join(first, client) },
+      ])
+        await expect(discover(client, environment, project)).rejects.toMatchObject({
+          stage: 'wrapper',
+        })
+      expect(
+        await discover(client, { [`${client.toUpperCase()}_PATH`]: join(second, client) }, project),
+      ).toBe(join(second, client))
+    })
+
     test(`${client}: invalid overrides never fall back to an available client`, async () => {
       const { project, first } = await fixture()
       for (const selected of [

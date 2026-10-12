@@ -1,3 +1,4 @@
+import { constants } from 'node:fs'
 import { lstat, open, realpath } from 'node:fs/promises'
 import { dirname, isAbsolute, join, normalize } from 'node:path'
 
@@ -6,8 +7,9 @@ import {
   type PrivateAcpReadOnlyMount,
   verifyPrivateAcpAgentFileDigests,
 } from './acp-agent-provider.js'
-import { privateInstallationFileDigest } from './installation-verification.js'
 import { PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { privateInstallationFileDigest } from './installation-verification.js'
+import { inspectPrivateMacosAgentRuntime } from './macos-agent-runtime.js'
 import { privateNativeAgentSupportResolver } from './native-agent-executable.js'
 
 interface Elf {
@@ -29,6 +31,8 @@ export async function inspectPrivateNativeAgentRuntime(
   readonly mounts: readonly PrivateAcpReadOnlyMount[]
   readonly verifyProvider: (provider: PrivateAcpAgentProvider) => void
 }> {
+  if (process.platform === 'darwin')
+    return inspectPrivateMacosAgentRuntime(executable, projectDirectory)
   const outsideProject = await privateNativeAgentSupportResolver(projectDirectory)
   const mounts = new Map<string, PrivateAcpReadOnlyMount>()
   const inspected = new Set<string>()
@@ -57,8 +61,10 @@ export async function inspectPrivateNativeAgentRuntime(
     if (inspected.has(source)) return
     inspected.add(source)
     digests.set(source, await privateInstallationFileDigest(source))
-    const elf = await readElf(source)
-    if (elf === undefined) throw new Error('native Agent runtime is not ELF')
+    const elf = await readPrivateNativeAgentElfMetadata(source)
+    if (elf === undefined) {
+      throw new Error('native Agent runtime is not a qualified executable')
+    }
     const search = elf.search.map((path) => {
       const expanded = path.replace(/\$\{ORIGIN\}|\$ORIGIN/g, dirname(destination))
       requirePath(expanded)
@@ -127,10 +133,12 @@ export async function inspectPrivateNativeAgentRuntime(
   })
 }
 
-async function readElf(path: string): Promise<Elf | undefined> {
-  const file = await open(path, 'r')
+export async function readPrivateNativeAgentElfMetadata(path: string): Promise<Elf | undefined> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK)
   try {
-    const size = (await file.stat()).size
+    const information = await file.stat()
+    if (!information.isFile()) throw new Error('native Agent runtime is not a regular file')
+    const size = information.size
     async function read(offset: number, length: number): Promise<Buffer> {
       if (
         !Number.isSafeInteger(offset) ||

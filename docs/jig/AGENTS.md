@@ -20,14 +20,25 @@ use-case and orchestration hypotheses.
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
 - `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
-  resource configuration, and current adapter limitations.
+  resource configuration, host-specific installation/helper recovery, and
+  current adapter limitations. Setup guidance distinguishes review-only
+  prerequisite checks, CLI refusal of any observed selected ACP prerequisite,
+  SDK per-target readiness, manual recovery and explicit review-only client
+  selection from uncertain native Run failures. Simple native policies are
+  inline; named policies earn their separate file through reuse or management.
+  Codex installation guidance covers static npm/Volta native selection and
+  defers its exact metadata bounds and exclusions to `spec/finite-acp.md`.
+  Keep installed-client session qualification limits distinct from successful
+  launcher discovery and review; neither proves model execution.
   `guide/conversations.md` owns bounded same-session follow-up and interruption,
   including the distinction between control replies and final settlement, and
   explicit native retention and restoration under a separately reviewed grant.
-  It distinguishes final retention receipts from turn answers and installed
-  qualification from the source candidate, and routes to the application-owned
+  It distinguishes final retention receipts from turn answers and published
+  interface availability from installed-client qualification, and routes to the application-owned
   summary handoff example.
   `guide/dependencies.md` owns package dependency preparation guidance.
+  Keep its workspace examples aligned with `spec/project-policy.md`'s root
+  selection, direct membership and supported lock-format rules.
 - `guide/configuration.md` owns the settings reference, including terminal
   appearance, operator configuration, and links to authored project settings.
   Its startup verification section teaches operator-selected cached,
@@ -35,10 +46,15 @@ use-case and orchestration hypotheses.
   with execution policy and `SECURITY.md`; never imply fast skips Flow approval
   or sandbox enforcement.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
-  their shared read attachment interface, retention and root-only limits.
+  their shared read attachment interface, automatic temporary packets for
+  writable targets, stdout-only result targets, explicit retained destinations,
+  actionable admitted file mappings, retention and root-only limits.
 - `guide/agent-method.md` explains the reusable method's pure library and
   published ordinary Agent Run artifact, reviewed-source adoption, explicit
-  caller context and independent consumer result validation.
+  caller context, local private response-schema placement and independent
+  consumer result validation. Small one-call schemas stay beside their calls;
+  larger or reused schemas use ordinary descriptive files. Managed TypeSpec
+  projection ownership remains explicit.
 - `guide/contracts.md` teaches optional managed TypeSpec authoring and generated
   file ownership, including named optional feature catalogs;
   `spec/contract-authoring.md` owns its exact host boundaries.
@@ -53,22 +69,25 @@ use-case and orchestration hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
 - `guide/results.md` owns result interpretation, scripting failures, and
-  retained-state recovery; the quickstart links to it after the first outcome.
+  retained-state recovery, including recorded packet inspection without starting
+  execution; the quickstart links to it after the first outcome.
 - `index.md` and `guide/understand.md` introduce Agent work inside applications
   through the common Flow boundary and Jig's microkernel-inspired responsibilities.
   The landing page follows a suggestion into application checks, reveals Jig's
   execution boundary, and ends at a first run with visible prerequisites.
 - `guide/request-triage.md` owns the one-caller, three-implementation walkthrough:
   code, Agent, and mixed classifiers share a result contract; changed targets
-  need review, and suggestions never authorize business actions.
+  need review, and suggestions never authorize business actions. Its result-only
+  targets return stdout; optional `--out` saves their record without overwrite.
 
 - `guide/support-case.md` follows request triage with a useful policy decision:
   an Agent proposes a disputed charge, code checks supplied account records,
-  and the caller receives eligibility rather than a payment authorization.
+  and the caller receives eligibility rather than a payment authorization. Its
+  result-only target returns stdout unless the operator chooses `--out`.
 - `guide/tested-patch.md` teaches reproduced failure, proposal, independent
   checks, and final patch evidence for one issue and one specialist.
-- `guide/software-factory.md` teaches direct selection between reviewed repair
-  configurations, optional bounded semantic routing, retained healthy-peer
+- `guide/software-factory.md` teaches exact selection between reviewed
+  repair configurations by default, optional semantic routing, retained healthy-peer
   evidence, and the human merge gate.
 
 - `guide/overview.md` owns task-based discovery; `guide/for-agents.md` owns
@@ -137,6 +156,10 @@ use-case and orchestration hypotheses.
 - Keep introductory guides focused on the first useful result. Put optional
   tuning, environment variables, cache internals, and configuration tradeoffs
   in `guide/configuration.md`, reachable through Reference navigation and links.
+- First-run file guidance explains that operating-system cleanup may remove
+  automatic temporary packets. `--out` chooses a new retained location without
+  overwriting an earlier result; result-only examples do not promise a packet
+  when output is omitted.
 
 - Use `sh` fences for shell commands; reserve `console` for transcripts with
   prompts and output, so command examples receive syntax highlighting.

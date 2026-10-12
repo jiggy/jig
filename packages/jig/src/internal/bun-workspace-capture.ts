@@ -1,5 +1,5 @@
 import { constants } from 'node:fs'
-import { type FileHandle, open, opendir } from 'node:fs/promises'
+import { type FileHandle, lstat, open } from 'node:fs/promises'
 import { dirname, relative, resolve } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import {
@@ -16,6 +16,7 @@ import {
   requirePrivateBunResolutionManifest,
 } from './bun-native-lock-policy.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
+import { openPrivateChild, privateDirectoryEntries } from './descriptor-files.js'
 
 const MANIFEST_BYTES = 1024 * 1024
 const MAX_MEMBERS = 256
@@ -61,7 +62,25 @@ export async function capturePrivateBunWorkspace(input: {
     )
   if (!requiresWorkspace && Object.keys(dependencies).length === 0) return undefined
   const physical = resolve(input.projectRoot.requestedPath, input.packagePath)
-  for (let path = physical, depth = 0; depth < MAX_DEPTH; depth++, path = dirname(path)) {
+  const roots: string[] = []
+  for (let path = physical; roots.length < MAX_DEPTH; path = dirname(path)) {
+    input.signal.throwIfAborted()
+    // A parent alias is not a declared workspace route. Do not follow it or
+    // let unrelated discovery beyond it invalidate a workspace below it.
+    if (path !== physical && (await lstat(path)).isSymbolicLink()) break
+    roots.push(path)
+    if (dirname(path) === path) break
+  }
+  const projectDepth = roots.indexOf(resolve(input.projectRoot.requestedPath))
+  // Review runs from the Jig application. An enclosing declared workspace
+  // owns its members even when the application has standalone workspaces of
+  // its own. Keep the same bounded ancestry and require direct membership of
+  // the selected package; unrelated ancestor workspaces grant no capture.
+  const paths =
+    projectDepth === -1
+      ? roots
+      : [...roots.slice(projectDepth + 1), ...roots.slice(1, projectDepth + 1), physical]
+  for (const path of paths) {
     input.signal.throwIfAborted()
     const root = await openPrivateProjectRoot(path)
     try {
@@ -101,7 +120,6 @@ export async function capturePrivateBunWorkspace(input: {
     } finally {
       await root.dispose()
     }
-    if (dirname(path) === path) break
   }
   if (requiresWorkspace)
     fail(
@@ -432,7 +450,7 @@ async function discover(
     signal.throwIfAborted()
     if (depth >= MAX_DEPTH)
       fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace discovery exceeded its depth bound')
-    for await (const entry of await opendir(`/proc/self/fd/${directory.fd}`)) {
+    for await (const entry of privateDirectoryEntries(directory)) {
       if (++count > MAX_ENTRIES)
         fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace discovery exceeded its entry bound')
       if (entry.name === 'node_modules' || entry.name === '.git') continue
@@ -464,8 +482,9 @@ async function openBeneath(root: FileHandle, path: string): Promise<FileHandle> 
   let current = root
   try {
     for (const part of path.split('/')) {
-      const next = await open(
-        `/proc/self/fd/${current.fd}/${part}`,
+      const next = await openPrivateChild(
+        current,
+        part,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
       )
       if (current !== root) await current.close()
@@ -485,8 +504,9 @@ async function readOptional(
 ): Promise<Uint8Array | undefined> {
   let handle: FileHandle
   try {
-    handle = await open(
-      `/proc/self/fd/${directory.fd}/${name}`,
+    handle = await openPrivateChild(
+      directory,
+      name,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
     )
   } catch (error) {

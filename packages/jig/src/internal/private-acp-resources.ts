@@ -6,7 +6,11 @@ import {
   privateAcpAgentRuntime,
   requirePrivateAcpAgentProvider,
 } from './acp-agent-provider.js'
-import { acpSetupCode, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import {
+  acpSetupCode,
+  isExpectedAcpRefusal,
+  PrivateAcpSetupError,
+} from './acp-setup-diagnostics.js'
 import { openPrivateClaudeAgentProvider } from './claude-agent-provider.js'
 import {
   openPrivateCodexAgentProvider,
@@ -39,7 +43,13 @@ export type PrivateAcpClientOpener = (
 
 export class PrivateAcpResourceUnavailableError extends Error {
   readonly code: string
-  constructor(slot: string, client: AcpGrant['client'], error?: unknown) {
+  readonly expected: boolean
+  readonly overrideRejected: boolean
+  constructor(
+    readonly slot: string,
+    client: AcpGrant['client'],
+    error?: unknown,
+  ) {
     super(`ACP slot ${JSON.stringify(slot)} could not open its selected ${client} runtime`)
     this.name = 'PrivateAcpResourceUnavailableError'
     const stage =
@@ -55,6 +65,13 @@ export class PrivateAcpResourceUnavailableError extends Error {
               : error instanceof PrivateCodexRuntimeUnavailableError
                 ? 'installation'
                 : undefined
+    this.expected = isExpectedAcpRefusal(error)
+    this.overrideRejected =
+      this.expected &&
+      stage === 'executable' &&
+      (error instanceof PrivateNativeAgentExecutableUnavailableError ||
+        error instanceof PrivateCodexExecutableUnavailableError) &&
+      error.overrideRejected
     this.code = stage === undefined ? 'PROJECT_ACP_UNAVAILABLE' : acpSetupCode(client, stage)
   }
 }

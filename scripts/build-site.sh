@@ -87,7 +87,7 @@ actual=$(
   find \
     "$repository/docs/flow/spec/machine" \
     "$repository/docs/jig/spec/machine" \
-    -maxdepth 1 -type f -name '*.json' -printf '%p\n' |
+    -maxdepth 1 -type f -name '*.json' -print |
     sed "s|^$repository/||" |
     LC_ALL=C sort
 )
@@ -116,10 +116,12 @@ fi
 
 case $site_name in
   flow)
-    if [ ! -s "$staging/guide/python.html" ]; then
-      echo "the Python SDK guide is missing" >&2
-      exit 1
-    fi
+    for guide in python typescript markdown skills platforms runtimes; do
+      if [ ! -s "$staging/guide/$guide.html" ]; then
+        echo "the FLOW $guide guide is missing" >&2
+        exit 1
+      fi
+    done
     schema_map='docs/flow/spec/machine/invocation-contract-0.schema.json|invocation-contract-0.schema.json|https://flow.jig.md/schemas/invocation-contract-0.schema.json
 docs/flow/spec/machine/channel-contract-0.schema.json|channel-contract-0.schema.json|https://flow.jig.md/schemas/channel-contract-0.schema.json
 docs/flow/spec/machine/run-0-errors.json|run-0-errors.json|-
@@ -165,6 +167,12 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
     test -s "$staging/contracts/acp-public-updates.html"
     cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
+    test -s "$staging/contracts/reporting.html"
+    cp -- "$repository/packages/reporting/src/reporting.json" "$staging/contracts/reporting.json"
+    cmp -- "$repository/packages/reporting/src/reporting.json" "$staging/contracts/reporting.json"
+    mkdir -p -- "$staging/contracts/reporting"
+    cp -- "$repository/packages/reporting/LICENSE" "$staging/contracts/reporting/LICENSE"
+    cmp -- "$repository/packages/reporting/LICENSE" "$staging/contracts/reporting/LICENSE"
     ;;
 esac
 
@@ -192,11 +200,7 @@ if [ -e "$staging/$forbidden_page" ]; then
   exit 1
 fi
 
-mv -T --no-clobber -- "$staging" "$output"
-if [ -e "$staging" ]; then
-  echo "the site output appeared while it was being built: $output" >&2
-  exit 1
-fi
+"$javascript" "$repository/scripts/promote-directory.mjs" "$staging" "$output"
 staging=
 
 printf '%s\n' "$output"

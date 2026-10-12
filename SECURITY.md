@@ -1,24 +1,35 @@
 # Security
 
 Jig's direct-run alpha treats admitted project and FLOW package code as
-untrusted. Its supported Linux host runs project evaluation, dependency
-preparation, and Flow execution inside one rootless cgroup-v2 and Bubblewrap
-boundary. There is no privileged or weaker fallback.
+untrusted. Its Linux host uses rootless cgroup-v2 and Bubblewrap containment;
+qualified native Macs use an unprivileged sandbox, owned process coalition,
+and private bounded storage. Neither path requires an installed privileged
+helper or weakens containment when its mechanism is unavailable.
 
 ## What the boundary protects
 
 An admitted Flow receives only its exact execution package, fixed runtime
-support, explicitly supplied root attachments, private scratch space, private process and network namespaces, and
-the Run/0 channel. It does not receive the project tree, host environment,
-ambient `PATH`, host process tree, host network, writable cgroup controls,
-general host devices, inherited descriptors, or Jig's control channel.
+support, explicitly supplied root attachments, private scratch space, and the
+Run/0 channel. Linux uses private process and network namespaces; Mac uses a
+restrictive native sandbox and selected network policy. The Flow does not
+receive the project tree, host environment, ambient `PATH`, unrestricted host
+process or network access, general host devices, inherited descriptors, or
+Jig's control channel.
 Trusted launchers exclude unselected descriptors before entering the sandbox
 and before launching package code, including access through visible parent
 processes. Missing enforcement refuses execution.
 
-Jig applies aggregate CPU, memory, and process limits before package code can
-execute. Every terminal path fences the complete process tree and removes its
-rootless owner state before reporting completion.
+Linux applies aggregate CPU, memory, and process limits before package code can
+execute. Mac establishes an exclusive process coalition before admission and
+supervises its resource use; samples and termination are not hard kernel quotas
+and can overshoot. Both paths fence owned descendants and confirm cleanup
+before reporting completion.
+
+The independent supervisor observes kernel core-dump state within its owned
+cgroup and fences a detected crash without waiting for the Run deadline.
+It preserves the actual termination signal rather than inferring the original
+fault from stderr. This does not disable the host's core collector or promise
+that no core data reaches it. Unconfirmed fencing or cleanup remains a failure.
 
 Project evaluation, the fixed dependency installer, HTTP request worker, and Agent
 provider worker use the same containment mechanism in separate scopes. The
@@ -48,9 +59,18 @@ arrive through the ordinary Agent Flow's admitted resource call. A
 native ACP client starts with an empty work directory. Jig provides it no
 filesystem, terminal, or MCP client capability, no MCP servers, and no
 persistent permission. Claude and Pi profiles disable their tools; Codex uses
-its qualified constrained workspace mode, with managed restrictions protecting
-projected authentication. This is not a universal claim that native tools are
-disabled. Profiles also restrict extensions, plugins and native Skills as
+its pinned constrained workspace mode with permission requests refused. Linux
+additionally supplies managed restrictions; subscription authentication stays
+in memory with ephemeral storage, rather than in a tool-readable file.
+On qualified Intel build 23E224, Codex alone may read system preference change
+counters and contact exact preference services, without permission to read or
+write preference values. A fresh trusted observation refuses configured managed
+policy or unavailable synchronization before selection and each native launch.
+It does not continuously monitor later policy changes; other OS profiles require
+separate qualification. This is not a universal claim that native tools are
+disabled. Rosetta and Apple Silicon are refused for this Codex path. The trusted
+observer refuses inherited sandbox uncertainty and retains its deadline after
+parent loss. Profiles also restrict extensions, plugins and native Skills as
 specified in [Finite ACP](docs/jig/spec/finite-acp.md). Secrets never enter Flow environments, launch
 arguments, Plans, locks, or retained Run state. Instructions and selected Skills
 are explicit caller data, not secret authority or host-attested provenance.
@@ -94,6 +114,44 @@ must inspect captured behavior without importing candidate code.
 
 ## Supported trust boundary
 
+### Local browser inspection
+
+Operator-selected `--display web` runs a command-owned read-only HTTP display on
+numeric IPv4 loopback, after execution admission or valid saved-packet capture.
+It is separate from the outbound HTTP Request grant and gives Flows no network
+or browser authority. Fixed bundled assets render validated semantic declarations
+and host observations as inert text. They do not execute artifact HTML, SVG,
+scripts or Markdown HTML. Browser controls can close presentation, not approve,
+retry, cancel or apply work.
+
+A random session capability in the initial URL fragment authorizes observation,
+artifact and close requests. The browser removes the fragment and keeps the
+capability in memory, without cookies or storage; reloading requires the original
+terminal link. Possession delegates access to this command's observations and
+presentation closure. Never include that link in result packets, diagnostics,
+model journals or request logs. Exact parser-visible Host/Origin checks, present
+fetch-site checks, no permissive CORS and restrictive CSP supplement authorization;
+loopback binding alone is not access control. Native request parsing can normalize
+the original request target before the handler observes it.
+
+Artifact endpoints resolve only opaque identities in verified immutable captures,
+never arbitrary paths, project roots or mutable output destinations. Live
+inspection transfers bounded excerpts and retires delivery/checkpoint/native
+authority under one finite completion allowance before waiting indefinitely.
+Lost retirement acknowledgment or uncertain cleanup closes inspection and retains
+known execution/delivery facts with a separate command-cleanup failure. Saved
+inspection checks file consistency without authenticating recorded report claims.
+
+Application limits bound snapshots, client counts, stream queues and preview
+suppliers after native parsing. They do not enforce a hard process memory/socket
+quota on headers, ingress buffers or native copies before the handler. Local
+traffic can exhaust availability or lose the CLI coordinator; normal independent
+execution fencing and cleanup remain necessary. This boundary does not defend
+against a compromised operator account, browser or trusted runtime. See the
+[complete local display contract](docs/jig/spec/web-display.md).
+
+### Installation verification
+
 The operator controls installation change detection with
 `--verification cached|strict|fast` on review, Run and inspection. The argument
 overrides the `JIG_VERIFICATION` environment preference. The default, `cached`,
@@ -116,27 +174,33 @@ for the exact contract.
 
 The alpha does not defend against:
 
-- compromise of the Linux kernel, systemd, Bubblewrap, cgroup v2, or Jig's
-  fixed Bun runtime and trusted support files;
+- compromise of the host kernel, Linux systemd/Bubblewrap/cgroup v2, Mac
+  sandbox/launchd/disk-image facilities, or Jig's fixed Bun runtime and trusted
+  support files;
 - the host administrator or another malicious process running as the same
   operating-system user;
 - physical access or compromise outside the supported host; or
 - denial of service within the documented resource ceilings or through
   bounded content-addressed storage retained while a project is reviewed.
 
-An unsupported host or missing containment capability fails closed. Do not
-replace cgroup-v2 ownership with `ulimit`, per-process accounting,
-process-group killing, or `/proc` polling; those mechanisms do not enforce the
-same descendant and cleanup boundary.
+An unsupported host or missing containment capability fails closed. Linux
+does not replace cgroup-v2 ownership with `ulimit`, per-process accounting,
+process-group killing, or `/proc` polling. Mac's coalition ownership and
+supervised limits have a distinct, explicit overshoot tradeoff.
 
 ## Alpha ceilings
+
+The table gives hard aggregate CPU, memory, and process ceilings on Linux.
+Mac applies the same requested values through supervised sampling and
+termination; short overshoot is possible. Wall-clock deadlines and confirmed
+descendant fencing still apply on both hosts.
 
 | Operation | Wall clock | Aggregate memory | Aggregate PIDs | CPU quota |
 | --- | ---: | ---: | ---: | ---: |
 | Each Flow execution scope | root deadline, at most 24 hours | 256 MiB | 64 | 50% of one CPU |
 | Each Agent provider scope | parent's remaining root deadline | 256 MiB | 128 | 50% of one CPU |
 | Each project-command scope | 10 seconds, within its parent deadline | 256 MiB | 64 | 50% of one CPU |
-| Project evaluation | 3 seconds | 256 MiB | 64 | 50% of one CPU |
+| Project evaluation | Linux: 3 seconds; Mac: 10 seconds | 256 MiB | 64 | 50% of one CPU |
 | One dependency resolution and preparation | 60 seconds | 512 MiB | 64 | one CPU |
 
 Root Runs default to 30 seconds. The trusted CLI caller may select a positive
@@ -157,8 +221,9 @@ through confirmed fencing and cleanup, even after execution fails.
 At most seven payload/provider envelopes fit the fixed root aggregate ceiling:
 the root, four child Flows, and two effects. The budget is 1,792 MiB memory,
 576 tasks, and 3.5 CPU cores (100 ms quota period). The table's
-individual kernel ceilings stay unchanged and their reserved sum cannot exceed
-that budget. Unused reservations are not borrowed. Trusted coordinators and
+individual Linux kernel ceilings stay unchanged and their reserved sum cannot exceed
+that budget. On Mac, the same reservations bound admission but actual use can
+overshoot before termination. Unused reservations are not borrowed. Trusted coordinators and
 supervisors are outside this budget; this is not combined utilization accounting
 or fair-share scheduling. Every child's deadline is capped by the root deadline.
 The fixed reservation policy is part of the admitted launch identity; changing
@@ -248,7 +313,10 @@ destination nor the delivery socket. On cancellation, the owner sends SIGTERM
 to its exact trusted child and allows at most 60 seconds for cooperative Run
 settlement and delivery before SIGKILL and reaping. The existing absolute
 command expiry can shorten that wait and retains a 250 ms escalation grace;
-later signals cannot extend either bound. This changes no payload deadline
+later signals cannot extend either bound. Eligible interactive dashboards omit
+the default outer command expiry so settled read-only inspection can wait for
+the operator; explicit enclosing limits and bounded setup, Run execution and
+cleanup remain enforced. This changes no payload deadline
 or cancellation authority. The independent cgroup owner still fences the complete payload tree;
 the child signal is not a substitute for that boundary. Atomic no-replace publication creates
 private files and directories; it promises complete visibility, not power-loss

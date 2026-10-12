@@ -56,7 +56,8 @@ export async function agentFlow(run: RunContext): Promise<RunResult> {
     const resultValue = finishAgent(prepared, parseApiResult(result, api))
     return { outcome: resultValue.outcome, output: { ...resultValue.output } }
   } catch (error) {
-    if (error instanceof AgentMethodError) throw new OperationError(error.code, error.message)
+    if (error instanceof AgentMethodError)
+      throw new OperationError(error.code, error.message, error.details)
     throw error
   }
 }

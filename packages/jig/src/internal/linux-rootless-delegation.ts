@@ -4,14 +4,14 @@ import { constants, realpathSync } from 'node:fs'
 import {
   access,
   mkdir,
-  readFile,
   readdir,
+  readFile,
   realpath,
   stat,
   statfs,
   writeFile,
 } from 'node:fs/promises'
-import { createServer, connect, type Server, type Socket } from 'node:net'
+import { connect, createServer, type Server, type Socket } from 'node:net'
 import { isAbsolute, posix } from 'node:path'
 import { privateLinuxHostToolCandidates } from './linux-host-paths.js'
 
@@ -22,7 +22,10 @@ import {
 } from './linux-rootless-acquisition.js'
 import {
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
+  PRIVATE_PRESENTATION_DEADLINE_ENV,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+  privateConstrainPresentationDeadline,
+  privatePresentationDeadline,
 } from './root-run-timeout-policy.js'
 
 const CGROUP_ROOT = '/sys/fs/cgroup'
@@ -78,7 +81,7 @@ export interface PrivateRootlessLinuxScopeDependencies {
 export interface PrivateRootlessLinuxDelegationDependencies {
   readonly acquire: () => Promise<PrivateRootlessLinuxAcquisitionObservation>
   readonly environment: () => NodeJS.ProcessEnv
-  readonly currentCommand: () => readonly [string, ...string[]]
+  readonly currentCommand: (arguments_: readonly string[]) => readonly [string, ...string[]]
   readonly currentDirectory: () => string
   readonly nonce: (bytes: number) => string
   readonly resolveManager: () => Promise<string>
@@ -90,7 +93,8 @@ export interface PrivateRootlessLinuxDelegationDependencies {
     command: readonly [string, ...string[]],
     directory: string,
     environment: NodeJS.ProcessEnv,
-    commandLifetimeMs: number,
+    commandLifetimeMs: number | null,
+    signal?: AbortSignal,
   ) => Promise<PrivateRootlessLinuxReexecution>
 }
 
@@ -110,7 +114,7 @@ export type PrivateRootlessLinuxDelegation =
   | PrivateRootlessLinuxReexecution
 
 /**
- * Continue inside an exact inherited delegation or run this exact command once
+ * Continue inside an exact inherited delegation or run the prepared command once
  * in one transient delegated user scope.
  *
  * A caller which receives `reexecuted` must terminate with that child outcome;
@@ -118,16 +122,20 @@ export type PrivateRootlessLinuxDelegation =
  */
 export async function acquireOrReexecutePrivateRootlessLinux(
   input: {
-    readonly commandLifetimeMs?: number
+    readonly commandLifetimeMs?: number | null
+    readonly commandArguments?: readonly string[]
+    readonly signal?: AbortSignal
     readonly dependencies?: PrivateRootlessLinuxDelegationDependencies
   } = {},
 ): Promise<PrivateRootlessLinuxDelegation> {
   const dependencies = input.dependencies ?? systemDependencies
-  const commandLifetimeMs = input.commandLifetimeMs ?? COMMAND_LIFETIME_MS
+  const commandLifetimeMs =
+    input.commandLifetimeMs === null ? null : (input.commandLifetimeMs ?? COMMAND_LIFETIME_MS)
   if (
-    !Number.isSafeInteger(commandLifetimeMs) ||
-    commandLifetimeMs < 100 ||
-    commandLifetimeMs > MAX_COMMAND_LIFETIME_MS
+    commandLifetimeMs !== null &&
+    (!Number.isSafeInteger(commandLifetimeMs) ||
+      commandLifetimeMs < 100 ||
+      commandLifetimeMs > MAX_COMMAND_LIFETIME_MS)
   ) {
     throw new PrivateRootlessLinuxAcquisitionError()
   }
@@ -155,7 +163,9 @@ export async function acquireOrReexecutePrivateRootlessLinux(
     const managerPath = await dependencies.resolveManager()
     const unit = `jig-${dependencies.nonce(12)}.scope`
     if (!UNIT.test(unit)) throw new Error('invalid transient scope identity')
-    const command = requireCommand(dependencies.currentCommand())
+    const command = requireCommand(
+      dependencies.currentCommand(input.commandArguments ?? process.argv.slice(2)),
+    )
     const directory = dependencies.currentDirectory()
     if (!isAbsolute(directory) || directory.includes('\0')) {
       throw new Error('invalid current directory')
@@ -167,6 +177,7 @@ export async function acquireOrReexecutePrivateRootlessLinux(
       directory,
       environment,
       commandLifetimeMs,
+      input.signal,
     )
   } catch {
     throw new PrivateRootlessLinuxAcquisitionError()
@@ -372,23 +383,29 @@ export async function reexecutePrivateRootlessLinuxCommand(
   directory: string,
   environment: NodeJS.ProcessEnv,
   startupTimeoutMs = STARTUP_TIMEOUT_MS,
-  commandLifetimeMs = COMMAND_LIFETIME_MS,
+  commandLifetimeMs: number | null = COMMAND_LIFETIME_MS,
+  signal?: AbortSignal,
 ): Promise<PrivateRootlessLinuxReexecution> {
   if (
     !UNIT.test(unit) ||
     !Number.isSafeInteger(startupTimeoutMs) ||
     startupTimeoutMs < 100 ||
     startupTimeoutMs > 60_000 ||
-    !Number.isSafeInteger(commandLifetimeMs) ||
-    commandLifetimeMs < 100 ||
-    commandLifetimeMs > MAX_COMMAND_LIFETIME_MS
+    (commandLifetimeMs !== null &&
+      (!Number.isSafeInteger(commandLifetimeMs) ||
+        commandLifetimeMs < 100 ||
+        commandLifetimeMs > MAX_COMMAND_LIFETIME_MS))
   ) {
     throw new Error('invalid transient scope timing policy')
   }
+  signal?.throwIfAborted()
   const controlPath = await resolveControl()
   const socketPath = `jig-rootless-acquisition-${randomBytes(16).toString('hex')}`
   const token = randomBytes(32).toString('hex')
   const ready = readinessServer(socketPath, token)
+  const interrupt = () => ready.requestInterrupt()
+  signal?.addEventListener('abort', interrupt, { once: true })
+  if (signal?.aborted) interrupt()
   const lifetimeTimer = `${unit.slice(0, -'.scope'.length)}-lifetime`
   const controlEnvironment = { ...environment }
   let child: ReturnType<typeof spawn> | undefined
@@ -399,15 +416,21 @@ export async function reexecutePrivateRootlessLinuxCommand(
   let scopeSettled = false
   try {
     await ready.listening
-    lifetimeTimerStarted = true
-    await startLifetimeTimer(
-      managerPath,
-      controlPath,
-      lifetimeTimer,
-      unit,
-      commandLifetimeMs,
-      controlEnvironment,
-    )
+    const presentationDeadline =
+      commandLifetimeMs === null
+        ? privatePresentationDeadline(controlEnvironment)
+        : privateConstrainPresentationDeadline(controlEnvironment, commandLifetimeMs)
+    if (commandLifetimeMs !== null) {
+      lifetimeTimerStarted = true
+      await startLifetimeTimer(
+        managerPath,
+        controlPath,
+        lifetimeTimer,
+        unit,
+        commandLifetimeMs,
+        controlEnvironment,
+      )
+    }
     const launched = spawn(
       managerPath,
       [
@@ -429,6 +452,9 @@ export async function reexecutePrivateRootlessLinuxCommand(
           [SCOPE_VARIABLE]: unit,
           [SOCKET_VARIABLE]: socketPath,
           [TOKEN_VARIABLE]: token,
+          ...(presentationDeadline === undefined
+            ? {}
+            : { [PRIVATE_PRESENTATION_DEADLINE_ENV]: String(presentationDeadline) }),
         },
         stdio: 'inherit',
         windowsHide: true,
@@ -459,14 +485,17 @@ export async function reexecutePrivateRootlessLinuxCommand(
     }
     scopeSettled = true
     await ready.close()
-    await stopLifetimeTimer(controlPath, lifetimeTimer, controlEnvironment)
-    lifetimeTimerStarted = false
+    if (lifetimeTimerStarted) {
+      await stopLifetimeTimer(controlPath, lifetimeTimer, controlEnvironment)
+      lifetimeTimerStarted = false
+    }
     return Object.freeze({
       kind: 'private-rootless-linux-reexecuted/1' as const,
       exitCode: outcome.exitCode,
       signal: outcome.signal,
     })
   } finally {
+    signal?.removeEventListener('abort', interrupt)
     try {
       await ready.close()
     } finally {
@@ -780,6 +809,7 @@ function readinessServer(
   readonly listening: Promise<Server>
   readonly acknowledged: Promise<boolean>
   readonly lifetimeEnded: Promise<void>
+  readonly requestInterrupt: () => void
   readonly close: () => Promise<void>
 } {
   let resolveAcknowledged!: (value: boolean) => void
@@ -787,6 +817,7 @@ function readinessServer(
   let settled = false
   let lifetimeSettled = false
   let lifetimeSocket: Socket | undefined
+  let interruptionRequested = false
   const acknowledged = new Promise<boolean>((resolve) => {
     resolveAcknowledged = resolve
   })
@@ -807,6 +838,7 @@ function readinessServer(
         lifetimeSocket = socket
         resolveAcknowledged(true)
         socket.write('ready\n')
+        if (interruptionRequested) socket.write('interrupt\n')
       } else if (Buffer.byteLength(input) >= 65) {
         socket.destroy()
       }
@@ -829,6 +861,11 @@ function readinessServer(
     listening,
     acknowledged,
     lifetimeEnded,
+    requestInterrupt: () => {
+      if (interruptionRequested) return
+      interruptionRequested = true
+      lifetimeSocket?.write('interrupt\n')
+    },
     close: async () => {
       if (!settled) {
         settled = true
@@ -859,14 +896,27 @@ async function acknowledgeReady(marker: DelegationMarker, delegatedCgroup: strin
     socket.once('connect', () => socket.write(`${marker.token}\n`))
     socket.on('data', (chunk) => {
       input += chunk
-      if (input === 'ready\n' && !acknowledged) {
-        acknowledged = true
-        clearTimeout(timeout)
-        retainedLifetimeSockets.add(socket)
-        socket.unref()
-        resolve()
-      } else if (Buffer.byteLength(input) >= 7) {
+      if (Buffer.byteLength(input) > 32) {
         socket.destroy(new Error('invalid rootless acquisition acknowledgement'))
+        return
+      }
+      for (let end = input.indexOf('\n'); end !== -1; end = input.indexOf('\n')) {
+        const frame = input.slice(0, end)
+        input = input.slice(end + 1)
+        if (!acknowledged && frame === 'ready') {
+          acknowledged = true
+          clearTimeout(timeout)
+          retainedLifetimeSockets.add(socket)
+          socket.unref()
+          resolve()
+        } else if (acknowledged && frame === 'interrupt') {
+          // The authenticated outer command requests cooperative Jig cleanup.
+          // Closing this channel would instead trigger the emergency scope kill.
+          process.kill(process.pid, 'SIGTERM')
+        } else {
+          socket.destroy(new Error('invalid rootless acquisition acknowledgement'))
+          return
+        }
       }
     })
     socket.once('error', (error) => {
@@ -932,7 +982,8 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
     command: readonly [string, ...string[]],
     directory: string,
     environment: NodeJS.ProcessEnv,
-    commandLifetimeMs: number,
+    commandLifetimeMs: number | null,
+    signal?: AbortSignal,
   ) =>
     reexecutePrivateRootlessLinuxCommand(
       managerPath,
@@ -942,10 +993,11 @@ const systemDependencies: PrivateRootlessLinuxDelegationDependencies = Object.fr
       environment,
       STARTUP_TIMEOUT_MS,
       commandLifetimeMs,
+      signal,
     ),
 })
 
-function currentCommand(): [string, ...string[]] {
+function currentCommand(arguments_: readonly string[]): [string, ...string[]] {
   if (
     process.argv[0] === process.execPath &&
     process.argv[1]?.endsWith('/libexec/installed-cli.js') &&
@@ -955,7 +1007,7 @@ function currentCommand(): [string, ...string[]] {
     process.execArgv.length === BUN_POLICY.length &&
     process.execArgv.every((value, index) => value === BUN_POLICY[index])
   ) {
-    return [process.execPath, ...BUN_POLICY, ...process.argv.slice(1)]
+    return [process.execPath, ...BUN_POLICY, process.argv[1], ...arguments_]
   }
   throw new Error('the installed Jig command cannot be reexecuted exactly')
 }

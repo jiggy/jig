@@ -2,14 +2,41 @@ import { describe, expect, test } from 'bun:test'
 import { parse as parseYaml } from 'yaml'
 
 import type { PrivateActivationReviewPlan } from '../src/internal/activation-admission-store.js'
+import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from './fixtures/agent-contract.js'
-import { renderPrivateProjectPlanReview } from '../src/internal/project-plan-review.js'
 
 describe('private project Plan review', () => {
+  test('shows added, changed and removed project entrypoints in review', () => {
+    const base = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
+    for (const [before, after] of [
+      [undefined, 'flow:flows/run'],
+      ['flow:flows/run', 'flow:flows/run --timeout 8m'],
+      ['flow:flows/run', undefined],
+    ]) {
+      const result = renderPrivateProjectPlanReview({
+        baseCandidate: {
+          lock: { ...base.proposed.lock, ...(before === undefined ? {} : { entrypoint: before }) },
+          candidate: { targets: base.proposed.targets },
+        },
+        plan: {
+          ...base,
+          proposed: {
+            ...base.proposed,
+            lock: { ...base.proposed.lock, ...(after === undefined ? {} : { entrypoint: after }) },
+          },
+        },
+      } as unknown as PrivateActivationReviewPlan)
+      expect(result.text).toContain('Project entrypoint (jig run)')
+      expect(result.text).toContain('File arguments select current job data when invoked')
+      if (before) expect(result.text).toContain(before)
+      if (after) expect(result.text).toContain(after)
+    }
+  })
+
   test('names the exact missing-feature edge and retains provider claims in details', () => {
     const base = reviewPlan('admission', `sha256:${'b'.repeat(64)}`)
     const digest = `sha256:${'a'.repeat(64)}`
@@ -604,10 +631,11 @@ describe('private project Plan review', () => {
     )
     expect(changed.text).not.toContain('"attachments"')
     expect(changed.text).not.toContain('private-after')
-    expect(changed.text).toContain(
+    expect(changed.text).not.toContain(
       'Flow source, prepared dependencies, settings and permissions are unchanged.',
     )
-    expect(changed.text).toContain('cannot identify which individual component changed')
+    expect(changed.text).toContain('cannot identify which component changed')
+    expect(changed.text).toContain('Approval authorizes this target to run')
     expect(changed.details).toContain('Execution environment changed:')
     const evidence = render({
       ...target,
@@ -615,15 +643,18 @@ describe('private project Plan review', () => {
         ...target.disposition,
         execution: {
           ...target.disposition.execution,
-          preparationInputDigest: `sha256:${'b'.repeat(64)}`,
+          preparation: {
+            inputDigest: `sha256:${'b'.repeat(64)}`,
+            package: target.disposition.execution.package,
+          },
         },
       },
     })
-    expect(evidence.text).toContain(
-      'records captured workspace inputs for future preparation reuse',
+    expect(evidence.details).toContain(
+      'records dependency inputs and installed bytes for future preparation reuse',
     )
-    expect(evidence.text).toContain('Prepared files and dependency layout are unchanged.')
-    expect(evidence.text).not.toContain('Workspace preparation inputs changed')
+    expect(evidence.text).not.toContain('Prepared files and dependency layout are unchanged.')
+    expect(evidence.text).toContain('Dependency preparation evidence changed')
     const reordered = render({
       disposition: target.disposition,
       request: Object.fromEntries(Object.entries(target.request).reverse()),

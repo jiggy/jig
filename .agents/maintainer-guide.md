@@ -81,7 +81,11 @@ implementation convenience.
 Project authoring values are inert. They describe membership and configuration
 but do not read, install, approve, or execute anything. FLOW metadata remains
 small and portable; host runtimes, commands, credentials, dependency locks,
-and sandbox policy do not belong in portable package metadata.
+and sandbox policy do not belong in portable package metadata. Reviewed meaning
+may include an explicitly supplied, retained review operand as well as captured
+source. Keep its effective policy and origin visible across candidate, lock,
+admission and inspection; later review starts from source and its own arguments.
+Do not turn a review operand into a remembered preference or Run-time overlay.
 
 ### Responsibility boundaries
 
@@ -110,6 +114,32 @@ Sley is an independent component runtime that a Flow may use directly behind
 Run/0. Jig should not fork its scheduler, subclass its elements, or put Jig
 domain state inside Sley objects. A Jig-specific graph layer is justified only
 by a real stored-graph consumer that direct Sley cannot express clearly.
+
+### Orthogonal components and explicit dependencies
+
+Give each component one cohesive responsibility and a small explicit interface.
+Changes to one mechanism should not require unrelated consumers to understand
+its implementation. Package separation earns its place through independent
+use, replacement, or verification; moving files alone does not remove coupling.
+
+- Keep dependency directions explicit and acyclic. Shared meaning belongs below
+  its consumers; a reusable component must not import its host's private source.
+- Pass the data and narrowly scoped effects a component needs. Do not pass a
+  coordinator, mutable global state, or an entire internal model for convenience.
+- Keep internal identities separate from supplied identifiers. A reusable
+  component must not depend on callers avoiding its private names.
+- Separate observations from decisions and presentation from execution authority.
+  A consumer interprets supplied facts without acquiring the producer's powers.
+- Keep side effects, resource limits, cancellation and cleanup with an explicit
+  owner. Inject bounded access rather than rediscovering ambient resources.
+- Compose packages through declared exports and ordinary dependencies. Avoid
+  sibling-source imports, build-output paths, duplicated contracts and hidden
+  initialization order that bypass the intended boundary.
+- Prove independence by building and testing components with representative
+  fixtures outside their host. Test the installed composition separately.
+- Extract only demonstrated common meaning. Preserve distinct implementations
+  where their responsibilities differ; do not replace coupling with a universal
+  framework or a proliferation of configuration and adapters.
 
 ### Capture, review, and admission
 
@@ -248,6 +278,17 @@ do not weaken the product or turn the development host into architecture.
 A second containment implementation may eventually reveal a stable public
 Backend boundary. One mechanism alone has not earned it.
 
+Additional hosts preserve native workload parity: ordinary Flows,
+dependencies, and native Agent clients need no host-specific rewrites.
+Keep native workload compatibility distinct from resource-exhaustion protection.
+Qualified Macs use supervised resource accounting and termination with explicit
+overshoot limitations instead of Linux-equivalent aggregate hard quotas. Exact
+admission, authority isolation, complete descendant ownership and truthful
+cleanup remain required. The installed Mac path needs no `sudo`, privileged
+helper installation, or managed execution accounts. Exact qualified kernels
+and their evidence belong in the host implementation and public guidance;
+new kernel profiles require their own qualification before support expands.
+
 ### Composition
 
 A Binding gives one Flow package a reusable project-local configuration.
@@ -326,6 +367,14 @@ guidance, and an optional bounded result schema. Native calls cannot select the 
 client, endpoint, model, executable, credential, or network policy. Those are
 trusted host choices. Skills are immutable guidance for one call, not tools,
 filesystem authority, or provider configuration.
+
+Keep simple ACP policy inline in the ordinary Binding; named policies earn a
+separate file through real reuse or an independently managed responsibility.
+Keep a small private Agent reply schema beside its call, and use ordinary
+adjacent descriptive files for substantial or reused shapes. Public FLOW result
+contracts and private reply shapes stay distinct when their constraints differ.
+Optional managed TypeSpec projections retain declaration-owned generation; neither
+placement nor fewer files justify weaker validation or cross-Flow imports.
 
 A direct OpenAI client is configured by the wire API it uses, an explicit base
 URL, credential, and model. Compatible endpoints are endpoint configuration,
@@ -463,10 +512,38 @@ belong only in [`suspended-experiments.md`](suspended-experiments.md).
 
 Begin design and delivery reviews with the whole consumer task: what useful
 work becomes possible, how the chosen boundaries serve it, and what the author
-and operator must understand or coordinate. Assess architecture, UX and product
-impact before implementation defects and release checks; passing those checks
-does not establish a usable product. Distinguish current defects from supported
-limits and future opportunities rather than making every concern a new gate.
+and operator must understand or coordinate. Compare the strongest credible
+simpler baseline, including the total burden of learning, configuration,
+decisions and recovery, as well as internal dependencies, indirection, state
+and coordination. Assess architecture, UX and product impact before
+implementation defects and release checks; passing those checks does not
+establish a usable product. Distinguish current defects from supported limits
+and future opportunities rather than making every concern a new gate.
+
+Prefer ordinary data, sensible defaults and corrections at the existing
+responsible owner before adding a public command, flag, configuration option
+or extension point. Each new public concept must earn its place through
+demonstrated consumer needs that generalize beyond one example. An optional
+control still adds vocabulary, discovery, documentation and interaction costs;
+hiding it from the ordinary path does not eliminate those costs. Public names
+should describe the consumer's intention, not an internal mechanism.
+
+Apply the same standard to internals. First ask whether the mechanism needs
+to exist. Prefer removing unnecessary work, reusing a fitting local pattern,
+or using standard-library and platform capabilities before writing new
+infrastructure. Use installed dependencies when they fit; do not add a package
+for a few clear lines. Keep native values intact unless a boundary requires
+conversion. Each wrapper, abstraction, duplicate representation, lifecycle owner
+or state transition must earn its place through a concrete responsibility or
+invariant and make the whole task easier to reason about. Anticipated reuse
+alone does not justify it.
+
+Choose the smallest complete, readable implementation, not minimum line count.
+Fix the cause at its responsible owner, inspect affected callers, complete the
+necessary changes to callers, fixtures, exports, documentation and checks, and
+delete obsolete paths. Preserve distinct responsibilities and required
+validation, error handling, accessibility and cleanup when simplifying; fewer
+files or shorter code do not justify weaker guarantees.
 
 Apply the doctrine's
 [progressive-disclosure obligation](doctrine/design-judgment.md#progressive-disclosure-is-a-design-obligation)
@@ -474,7 +551,10 @@ to the before-and-after public usage. Identify configuration, duplicated
 declarations and lifecycle code added or removed, not just API names. Prefer
 reusable coordination at its responsible layer over boilerplate in every caller.
 Check the ordinary path as well as advanced failure handling; simplification
-must preserve authority, truthful results and settlement.
+must preserve authority, truthful results and settlement. Preserve those
+invariants, not every existing implementation constraint: revise the mechanism
+when it can uphold the same promise with less user burden. Do not make users
+manage another concept merely to accommodate the current implementation.
 
 Before a checkpoint, identify the user-visible outcome, smallest observable
 proof, missing seam, public vocabulary, exclusions, and stop condition.
@@ -507,6 +587,23 @@ until each task is complete or owner-actionably blocked. A blocker pauses only
 the affected task; keep working on every other task that can progress. Commit
 stable in-scope work and retain unstable evidence on a separate experimental
 branch only when worth keeping.
+
+Batch related outcomes into a useful review milestone. Keep distinct stable
+commits where they help review, but do not make every commit a separate PR or
+owner checkpoint. Use `just preflight` before pushing: it builds, runs quick
+tooling and portable source checks, and automatically includes Mac-specific
+regression files on an exact supported native Mac. Other hosts report the
+coverage left to CI; unsupported Macs refuse. This local regression pass is
+not complete host qualification. Start full CI at the
+milestone and continue independent work while it runs. Re-run completed checks
+only for changed inputs or unresolved failures. Waiting for CI or review does
+not by itself pause other authorized work. A push, PR creation, or missing
+delivery credential pauses only dependent delivery. Prepare the next useful
+approved batch while those actions are pending; a completed local PR handoff
+is not a stopping point while other work can advance. Continue related stable
+work on the existing open PR branch. CI results qualify their exact revision;
+they do not freeze the branch. Use a separate branch for distinct or unstable
+work, not merely to preserve a running CI head.
 
 For a blocker requiring owner help, first record it in
 `.tmp/current-blockers.md`, including the missing prerequisite or decision,
@@ -600,3 +697,7 @@ ownership is understood. Never reset or clean them to reconstruct the past.
 Stage exact paths and inspect `git diff --cached --name-only` before each
 commit. Read the specifications relevant to the selected work; introductory
 reading should not require the entire archive or optional field notes.
+
+Rebase feature branches onto `main` when updating their base, keeping feature
+history linear. Push rewritten published history with an explicit
+`--force-with-lease` bound to the observed remote revision.

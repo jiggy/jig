@@ -11,6 +11,7 @@ import {
   type RunContext,
   type RunResult,
 } from '@jigging/flow'
+import { type Reporter, validateReportingMessage } from '@jigging/reporting'
 import { brief } from '../flows/project/brief.ts'
 import projectContract from '../flows/project/contracts/revisions.json'
 import { context, identity } from '../flows/worker/context.ts'
@@ -124,6 +125,51 @@ const converse: typeof withAgentConversation = async (_run, _options, use) => {
 
 test('the sibling channel uses identical offline contracts', () =>
   expect(projectContract).toEqual(workerContract))
+
+test('semantic activity precedes answers without echoing supplied context or claiming dispatch', async () => {
+  const f = fixture()
+  const run = { ...f.run, channels: {} }
+  const pending = deferred<AgentTurn>()
+  const messages: string[] = []
+  const views: unknown[] = []
+  const progress = {
+    activity: (_id: string, label: string) => messages.push(label),
+    view: (id: string, options: { title: string }) => ({
+      update: (snapshot: object) =>
+        views.push(validateReportingMessage({ kind: 'view', id, ...options, ...snapshot })),
+    }),
+    notice: () => {},
+  } as unknown as Reporter
+  try {
+    const execution = work(
+      run,
+      async (_run, _options, use) => ({
+        value: await use({
+          initial: pending.promise,
+          prompt: async () => {
+            throw new Error('No follow-up expected')
+          },
+          interrupt: async () => 'not-running',
+        }),
+        turns: [],
+        settlement: { outcome: 'done', output: { turns: 1 } },
+      }),
+      progress,
+    )
+    expect(messages).toEqual(['draft: requesting turn 1/3.'])
+    pending.resolve(turn('The retained draft answer'))
+    expect((await execution).outcome).toBe('done')
+    expect(messages).toEqual([
+      'draft: requesting turn 1/3.',
+      'draft: initial turn result; awaiting context decision.',
+    ])
+    expect(JSON.stringify(messages)).not.toContain('The retained draft answer')
+    expect(JSON.stringify(views.at(-1))).toContain('The retained draft answer')
+    expect(JSON.stringify(views)).not.toContain(input.files[0]!.text)
+  } finally {
+    pending.resolve(turn('settled'))
+  }
+})
 
 test('review commentary continues the same conversation without interruption or a successor', async () => {
   const f = fixture()
@@ -426,6 +472,52 @@ test('failed initial call does not wait forever for a revision producer', async 
   expect(f.calls).toHaveLength(0)
 })
 
+test('unsuccessful work retains public operation causes but not arbitrary exception text', async () => {
+  const f = fixture()
+  Object.assign(f.run, { channels: {} })
+  const terminal = await work(f.run, async () => {
+    throw new AgentConversationError(
+      [
+        new OperationError(
+          'UNCERTAIN',
+          'Native dispatch may have occurred while starting the client.',
+        ),
+        new OperationError('DISCONNECTED', 'The replies connection was lost.'),
+        new Error('/private/secret-token'),
+      ],
+      [turn('retained draft')],
+    )
+  })
+  expect(terminal.outcome).toBe('blocked')
+  expect(terminal.output).toMatchObject({
+    predecessor: null,
+    successor: null,
+    received: [turn('retained draft')],
+    failures: ['UNCERTAIN', 'DISCONNECTED', 'INCOMPLETE_WORK'],
+    failureDetails: [
+      {
+        code: 'UNCERTAIN',
+        message: 'Native dispatch may have occurred while starting the client.',
+      },
+      { code: 'DISCONNECTED', message: 'The replies connection was lost.' },
+      {
+        code: 'INCOMPLETE_WORK',
+        message: 'Application work did not complete; no further cause was retained.',
+      },
+    ],
+  })
+  expect(JSON.stringify(terminal)).not.toContain('secret-token')
+})
+
+test('retained public failure messages are bounded without splitting a Unicode scalar', async () => {
+  const f = fixture()
+  Object.assign(f.run, { channels: {} })
+  const terminal = await work(f.run, async () => {
+    throw new OperationError('EXECUTION_FAILED', '😀'.repeat(1025))
+  })
+  expect((terminal.output as any).failureDetails[0].message).toBe('😀'.repeat(1024))
+})
+
 test('insufficient budget stops before work; unsuccessful successor retains its outcome and budget', async () => {
   const f = fixture()
   Object.assign(f.run, { input: { role: 'draft', context: { ...input, turnBudget: 2 } } })
@@ -487,7 +579,7 @@ test('root connects sibling endpoints and retains independent work after draft f
       calls.push(call)
       if (call.operationId === 'draft') {
         await releaseDraft.promise
-        throw new OperationError('UNCERTAIN')
+        throw new OperationError('UNCERTAIN', 'The drafting worker did not prove settlement.')
       }
       siblingDone.resolve()
       return result('independent questions')
@@ -501,6 +593,96 @@ test('root connects sibling endpoints and retains independent work after draft f
   const terminal = await pending
   expect(terminal.outcome).toBe('blocked')
   expect((terminal.output as any).results[1].result).toEqual(result('independent questions'))
+  expect((terminal.output as any).results[0]).toEqual({
+    role: 'draft',
+    failure: 'UNCERTAIN',
+    message: 'The drafting worker did not prove settlement.',
+  })
+})
+
+test('root publishes scoped branch activity and bounded answer excerpts beside exact evidence', async () => {
+  const answers = {
+    draft: `Possible cause remains uncertain. ${'😀\n\u0001'.repeat(1000)}`,
+    independent: `Which measurement confirms recovery? ${'"\\\t'.repeat(1000)}`,
+  }
+  const activities: { id: string; options: { operationId: string } }[] = []
+  const cleared: string[] = []
+  const progress = {
+    view: (id: string, options: object) => ({
+      update: (snapshot: object) =>
+        validateReportingMessage({ kind: 'view', id, ...options, ...snapshot }),
+    }),
+    activity: (id: string, _label: string, _progress: unknown, options: { operationId: string }) =>
+      activities.push({ id, options }),
+    clear: (id: string) => cleared.push(id),
+    notice: () => {},
+  } as unknown as Reporter
+  const channel = pair()
+  const retained = {
+    draft: {
+      outcome: 'done',
+      output: { brief: answers.draft, revision: 2, evidence: { turns: 3 } },
+    },
+    independent: { outcome: 'done', output: { questions: answers.independent, requestedTurns: 2 } },
+  }
+  const run = {
+    input,
+    signal: new AbortController().signal,
+    channel: async () => channel,
+    call: async ({ operationId }: { operationId: keyof typeof retained }) => retained[operationId],
+  } as unknown as RunContext
+  const terminal = await brief(run, progress)
+  const output = terminal.output as {
+    brief: string
+    questions: string
+    purpose: string
+    results: { role: keyof typeof retained; result: RunResult }[]
+  }
+  expect(activities).toEqual([
+    { id: 'draft', options: { operationId: 'draft' } },
+    { id: 'independent', options: { operationId: 'independent' } },
+  ])
+  expect(cleared).toEqual(['draft', 'independent'])
+  expect(terminal.outcome).toBe('done')
+  expect(output.brief).toStartWith('Possible cause remains uncertain.')
+  expect(output.questions).toStartWith('Which measurement confirms recovery?')
+  for (const excerpt of [output.brief, output.questions]) {
+    expect(JSON.stringify(excerpt).length).toBeLessThanOrEqual(800)
+    expect(excerpt).toEndWith('[Excerpt; complete answer retained in nested evidence.]')
+    expect(excerpt).not.toContain('\ufffd')
+  }
+  expect(
+    JSON.stringify({ brief: output.brief, questions: output.questions, purpose: output.purpose })
+      .length,
+  ).toBeLessThanOrEqual(2048)
+  expect(output.results).toEqual([
+    { role: 'draft', result: retained.draft },
+    { role: 'independent', result: retained.independent },
+  ])
+})
+
+test('root short answers remain complete and missing answers point to retained outcome evidence', async () => {
+  const channel = pair()
+  const run = {
+    input,
+    signal: new AbortController().signal,
+    channel: async () => channel,
+    call: async ({ operationId }: { operationId: string }) =>
+      operationId === 'draft'
+        ? { outcome: 'done', output: { brief: 'Possible cause is still uncertain.' } }
+        : {
+            outcome: 'blocked',
+            output: { questions: '', failureDetails: [{ message: 'No answer was returned.' }] },
+          },
+  } as unknown as RunContext
+  const terminal = await brief(run)
+  expect(terminal.outcome).toBe('blocked')
+  expect(terminal.output).toMatchObject({
+    brief: 'Possible cause is still uncertain.',
+    questions:
+      'No complete suggestion returned. See the retained branch outcome and failure evidence.',
+  })
+  expect(JSON.stringify(terminal.output)).toContain('No answer was returned.')
 })
 
 test('the reviewer continues while drafting settles, without waiting for its successor', async () => {
@@ -602,4 +784,45 @@ test('a revision failure exposed only by receiver disposal prevents replacement'
   expect(failed.outcome).toBe('blocked')
   expect((failed.output as any).failures).toContain('DISCONNECTED')
   expect(f.calls).toHaveLength(0)
+})
+
+test('a branch failure is reported with its public cause before the healthy sibling settles', async () => {
+  const healthy = deferred<RunResult>()
+  const notices: string[] = []
+  const progress = {
+    view: (id: string, options: object) => ({
+      update: (snapshot: object) =>
+        validateReportingMessage({ kind: 'view', id, ...options, ...snapshot }),
+    }),
+    activity: () => {},
+    clear: () => {},
+    notice: (text: string) => notices.push(text),
+  } as unknown as Reporter
+  const revisions = pair()
+  const run = {
+    input,
+    signal: new AbortController().signal,
+    channel: async () => revisions,
+    call: async ({ operationId }: any) => {
+      if (operationId === 'draft')
+        throw new OperationError('CHANNEL_LOST', 'Draft channel ended before a result.')
+      return healthy.promise
+    },
+  } as unknown as RunContext
+  const execution = brief(run, progress)
+  try {
+    for (let turn = 0; turn < 5 && !notices.length; turn++) await Promise.resolve()
+    expect(notices).toHaveLength(1)
+    expect(notices[0]).toContain('Draft channel ended before a result.')
+    healthy.resolve({
+      outcome: 'done',
+      output: { questions: 'Which measurement confirms recovery?' },
+    })
+    const result = await execution
+    expect(result.outcome).toBe('blocked')
+    expect(JSON.stringify(result.output)).toContain('Which measurement confirms recovery?')
+  } finally {
+    healthy.resolve({ outcome: 'done', output: {} })
+    await execution
+  }
 })

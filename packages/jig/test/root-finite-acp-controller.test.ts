@@ -1,13 +1,12 @@
 import { describe, expect, test } from 'bun:test'
-
-import { isPrivateRootFiniteAcpOwner } from '../src/internal/root-finite-acp-controller.js'
 import { mkdtemp } from 'node:fs/promises'
-import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { isPrivateRootFiniteAcpOwner } from '../src/internal/root-finite-acp-controller.js'
 import { settleTestCommand } from './fixtures/bounded-command.js'
 
 describe('private finite ACP resource controller', () => {
-  test('restoration failure boundaries, receipt ordering and actual recipient scope', async () => {
+  test('prelaunch preference refusals, restoration boundaries, receipt ordering and recipient scope', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-acp-controller-'))
     const child = Bun.spawn(
       [process.execPath, join(import.meta.dir, 'fixtures/acp-controller-faults.ts')],
@@ -18,6 +17,7 @@ describe('private finite ACP resource controller', () => {
       timeoutMs: 15_000,
     })
     expect(result.code, result.stderr).toBe(0)
+    expect(result.stdout).toContain('controller preference refusal checks passed')
     expect(result.stdout).toContain('controller fault and scope checks passed')
   })
   test('classifies only its own cleanup-ledger allocation kind', () => {

@@ -7,13 +7,13 @@ import { privateDomainDigest } from '../src/internal/identity.js'
 import {
   cancelPrivateLinuxOwnerStateAllocation,
   normalizePrivateLinuxOwnerStateAllocationIdentity,
+  PrivateLinuxFenceUnconfirmedError,
   planPrivateLinuxOwnerStateAllocation,
   privateLinuxResolverProjection,
-  PrivateLinuxFenceUnconfirmedError,
   releasePrivateLinuxOwnerState,
 } from '../src/internal/linux-rootless-backend.js'
 
-describe('private Linux resolver projection', () => {
+describe.skipIf(process.platform !== 'linux')('private Linux resolver projection', () => {
   test('permits only the host resolver alias at its exact sandbox destination', () => {
     expect(
       privateLinuxResolverProjection(
@@ -45,7 +45,7 @@ describe('private Linux resolver projection', () => {
   })
 })
 
-describe('private Linux durable owner allocation', () => {
+describe.skipIf(process.platform !== 'linux')('private Linux durable owner allocation', () => {
   test('plans without creating a leaf and cancellation is durable and idempotent', async () => {
     const parent = await protectedDirectory('jig-linux-owner-allocation-')
     try {

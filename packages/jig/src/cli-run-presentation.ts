@@ -22,6 +22,18 @@ function isObject(value: JsonValue | undefined): value is { readonly [key: strin
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
+/** Show bounded scalar answers alongside a packet's large nested evidence. */
+function briefOutput(value: JsonValue): JsonValue | undefined {
+  if (!isObject(value)) return undefined
+  const brief: Record<string, JsonValue> = Object.create(null)
+  for (const [key, field] of Object.entries(value)) {
+    if (field !== null && typeof field === 'object') continue
+    if (Object.keys(brief).length === 8) break
+    if (JSON.stringify({ ...brief, [key]: field }).length <= 2_048) brief[key] = field
+  }
+  return Object.keys(brief).length ? brief : undefined
+}
+
 /** Only interactive stdout uses this view; machine records bypass it completely. */
 export class PrivateCliRunPresentation {
   #channel: string | undefined
@@ -89,7 +101,19 @@ export class PrivateCliRunPresentation {
 
   async result(record: JsonValue): Promise<void> {
     let view = record
-    let note = ''
+    const shownDiagnosticPaths = new Set<string>()
+    const diagnosticReports: { source: string; text: string; truncated: boolean }[] = []
+    let diagnosticCaptureIncomplete = false
+    const packetWritten =
+      isObject(record) && isObject(record.delivery) && record.delivery.status === 'written'
+    const applicationOutputStored =
+      isObject(record) &&
+      record.status === 'succeeded' &&
+      packetWritten &&
+      record.output !== undefined &&
+      JSON.stringify(record.output).length > 2_048
+    const brief =
+      applicationOutputStored && isObject(record) ? briefOutput(record.output!) : undefined
     // These are host envelope facts only. Application text and field names
     // cannot establish execution, acceptance, delivery or cleanup success.
     if (isObject(record)) {
@@ -105,15 +129,27 @@ export class PrivateCliRunPresentation {
         summary.push(`  Packet delivery: ${quoted(String(record.delivery.status))}.`)
         if (typeof record.delivery.destination === 'string')
           summary.push(`  Destination: ${quoted(record.delivery.destination)}`)
+        if (packetWritten) {
+          summary.push('  Full evidence: result.json and files/ in that destination.')
+          if (Array.isArray(record.delivery.files) && record.delivery.files.length > 0)
+            summary.push(`  Delivered files: ${record.delivery.files.length}.`)
+        }
       }
+      if (applicationOutputStored)
+        summary.push(
+          brief === undefined
+            ? '  Application output: see result.json.'
+            : '  Application output: brief fields below; full evidence in result.json.',
+        )
       if (isObject(record.cleanup) && record.cleanup.status === 'failed')
         summary.push('  Cleanup: not confirmed. Do not start replacement work yet.')
       if (isObject(record.checkpoint))
-        summary.push('  Checkpoint: retained progress, not proof of success. See details below.')
-      if (
-        summary.length > 0 &&
-        (record.status === 'succeeded' || Object.hasOwn(record, 'output') || summary.length > 1)
-      ) {
+        summary.push(
+          packetWritten
+            ? '  Checkpoint: retained progress, not proof of success. See result.json.'
+            : '  Checkpoint: retained progress, not proof of success. See details below.',
+        )
+      if (summary.length > 0) {
         await this.#section('summary')
         await this.write(privateCliHumanText(`${summary.join('\n')}\n`, this.color, this.columns))
       }
@@ -123,6 +159,23 @@ export class PrivateCliRunPresentation {
     }
     if (isObject(record)) {
       const details = { ...(view as Record<string, JsonValue>) }
+      // Packet provenance remains complete in result.json and machine output.
+      // Repeating manifests and digests here buries the outcome and recovery action.
+      for (const key of ['runId', 'method', 'input', 'delivery', 'cleanup']) delete details[key]
+      // A null checkpoint means the Run has no retained progress. Its exact
+      // machine value remains in the packet, but it is not a useful human detail.
+      if (details.checkpoint === null) delete details.checkpoint
+      // A confirmed packet is the full result. Keep small application answers
+      // useful at the terminal, but do not print a second copy of large
+      // application evidence, patch contents, or checkpoint state.
+      if (record.status === 'succeeded' && packetWritten) {
+        delete details.checkpoint
+        delete details.files
+        if (applicationOutputStored) {
+          if (brief === undefined) delete details.output
+          else details.output = brief
+        }
+      }
       const remaining = (
         value: JsonValue,
         operations: readonly string[],
@@ -135,13 +188,11 @@ export class PrivateCliRunPresentation {
           offset += character.length
         }
         const source = operations.length === 0 ? 'root' : quoted(operations.join(' / '))
-        if (offset > 0)
-          note += `\n  Diagnostics (${source}): ${new TextEncoder().encode(value.stderr.slice(0, offset)).length} bytes of text shown live.\n`
-        if (value.stderrTruncated)
-          note += `\n  Diagnostics (${source}): retained capture truncated.\n`
-        return offset === value.stderr.length
-          ? undefined
-          : { ...value, stderr: value.stderr.slice(offset) }
+        if (offset > 0) shownDiagnosticPaths.add(JSON.stringify(operations))
+        const text = value.stderr.slice(offset)
+        if (text !== '' || value.stderrTruncated === true)
+          diagnosticReports.push({ source, text, truncated: value.stderrTruncated === true })
+        return undefined
       }
       const aggregate = record.runDiagnostics
       const entries =
@@ -166,6 +217,7 @@ export class PrivateCliRunPresentation {
         else details.diagnostics = unseen
       }
       if (isObject(aggregate) && Array.isArray(aggregate.entries)) {
+        diagnosticCaptureIncomplete = aggregate.truncated === true
         const unseen = entries.flatMap((entry) => {
           if (
             !isObject(entry) ||
@@ -176,11 +228,19 @@ export class PrivateCliRunPresentation {
           const value = remaining(entry, entry.operations as string[])
           return value === undefined ? [] : [value]
         })
-        if (unseen.length === 0 && !aggregate.truncated) delete details.runDiagnostics
+        if (unseen.length === 0) delete details.runDiagnostics
         else details.runDiagnostics = { ...aggregate, entries: unseen }
       }
       view = details
     }
+    if (shownDiagnosticPaths.size > 0)
+      await this.write(
+        privateCliHumanText(
+          `  Diagnostics: ${shownDiagnosticPaths.size} invocation ${shownDiagnosticPaths.size === 1 ? 'path' : 'paths'} shown live.${packetWritten ? ' Full capture in result.json.' : ''}\n`,
+          this.color,
+          this.columns,
+        ),
+      )
     // The command's failure block owns status, code and the safe explanation.
     if (isObject(view) && (view.status === 'failed' || view.status === 'lost')) {
       const review = view.details
@@ -196,15 +256,41 @@ export class PrivateCliRunPresentation {
       }
       const { status: _status, code: _code, message: _message, ...details } = view
       view = details
-      if (Object.keys(details).length === 0 && note === '') return
     }
-    await this.#section('result')
-    await this.write(
-      privateCliHumanText(
-        (isObject(view) && Object.keys(view).length === 0 ? '' : fields(view)) + note,
-        this.color,
-        this.columns,
-      ),
-    )
+    if (!isObject(view) || Object.keys(view).length > 0) {
+      await this.#section('result')
+      await this.write(privateCliHumanText(fields(view), this.color, this.columns))
+    }
+    if (diagnosticReports.length > 0 || diagnosticCaptureIncomplete) {
+      await this.#section('diagnostics')
+      for (const report of diagnosticReports) {
+        await this.write(
+          privateCliHumanText(`  Reported by ${report.source}:\n`, this.color, this.columns),
+        )
+        if (report.text !== '') {
+          // Diagnostic bytes are data. Never recognize their prose as host
+          // headings, commands or severity; retain every unseen line.
+          const lines = safeText(report.text).split('\n')
+          if (lines.at(-1) === '') lines.pop()
+          await this.write(`${lines.map((line) => `    ${line}`).join('\n')}\n`)
+        }
+        if (report.truncated)
+          await this.write(
+            privateCliHumanText(
+              `  Diagnostics (${report.source}): retained capture truncated.\n`,
+              this.color,
+              this.columns,
+            ),
+          )
+      }
+      if (diagnosticCaptureIncomplete)
+        await this.write(
+          privateCliHumanText(
+            '  Some diagnostic evidence was not retained.\n',
+            this.color,
+            this.columns,
+          ),
+        )
+    }
   }
 }

@@ -15,17 +15,26 @@ only after executed checks and independent acceptance.
 - `fixtures/log-report/` contains an intentionally defective CLI and its tests.
 - `test/` owns deterministic application checks. The public guide owns the walkthrough.
 
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy;
+  `jig.ts` supplies that ordinary Agent through the contract-keyed default.
+
 ## Local Contracts
 
+- `jig.ts` owns the complete default invocation: `binding:repair --input @issue.json --attach source=fixtures/log-report --timeout 5m`. Ordinary
+  `jig run` uses reviewed defaults and receives a fresh temporary packet for its
+  writable deliverables. The README and guide explain temporary cleanup and
+  optional retained `--out` destinations without overwrite behavior.
+  Explicit targets bypass defaults; display choices remain operator options.
+
 - Complexity cap: one issue, one specialist, one final patch/evidence result.
-  Batch scheduling, monitoring, broadcasts, recording, and checkpoints are outside
+  Batch scheduling, resident monitoring, recording, and checkpoints are outside
   this example. A separate example must justify its own lesson before adding them.
 - The root alone receives read-only source and writable deliverables. Accept
   16 UTF-8 files totaling 64 KiB and at most eight existing editable JS/TS source paths.
 - The leaf takes JSON files and fixed cases. Its `agent` slot calls an ordinary
   Agent Flow; `tests` and `cli` use independently reviewed command grants.
   Operator selection belongs in `bindings/agent.ts`; `jig.ts` supplies that
-  contract-matched default. It receives no attachments.
+  contract-matched default. The leaf receives no attachments.
 - Optional `restoreCorrections` requests Run-scoped native retention for one
   correction after checks, never overlapping Agent and command execution.
   Retention needs a separate grant; unavailability blocks a needed correction,
@@ -45,10 +54,23 @@ only after executed checks and independent acceptance.
 - Repository tests can be interfered with by candidate code. Independent assertions
   compare collected CLI output and exit without importing code or trusting pass flags.
 - Validate base/candidate and command identities before constructing patches from
-  replacement text. Only accepted evidence earns `review.patch`; failed proposals
+  replacement text. Compare decoded JSON evidence by content, independently of
+  object prototypes. Only accepted evidence earns `review.patch`; failed proposals
   remain inspectable. Do not apply or merge anything.
 - Cancellation, deadlines, uncertainty, unavailable support, and cleanup failures
   propagate without retries. Final file delivery does not promise interruption recovery.
+  Repair failure details keep method attempts alongside any supplied underlying
+  `operationDetails`; neither establishes a successful check.
+
+- Package-local `dashboard.ts` projections offer Repair, Checks and root Evidence through the
+  optional canonical `updates` channel. FLOW entrypoints own scoped publishers,
+  activity and failure notices; pure methods retain their exact results and policy.
+  The existing reporting profile serves terminal and web without display code.
+  Tests validate complete escaped items, provisional meanings and evidence links.
+- The root writes complete `goal.txt` only after returned evidence validates.
+  Its Checks verdicts are independent; worker Checks remain provisional and may
+  reference only their own calls. The private `progress` phase protocol remains
+  separate from the optional `updates` dashboard channel.
 
 ## Work Guidance
 

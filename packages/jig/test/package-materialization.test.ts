@@ -7,6 +7,7 @@ import {
   readdir,
   readFile,
   readlink,
+  realpath,
   rm,
   stat,
   symlink,
@@ -164,7 +165,7 @@ describe('private package materialization', () => {
 
   test('allocates with no effect, then reacquires in a fresh process after capture disposal', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))
-    const protectedParent = await mkdtemp(join(tmpdir(), 'jig-materialize-leases-'))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
     try {
       await writeTree(source, durableTree())
       const captured = await capturePackageDirectory(source)
@@ -223,7 +224,7 @@ describe('private package materialization', () => {
 
   test('recovers a subprocess crash after mkdir and before open', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))
-    const protectedParent = await mkdtemp(join(tmpdir(), 'jig-materialize-leases-'))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
     try {
       await writeTree(source, durableTree())
       const captured = await capturePackageDirectory(source)
@@ -261,7 +262,7 @@ describe('private package materialization', () => {
 
   test('reconstructs a complete lease when its creating subprocess dies before returning it', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))
-    const protectedParent = await mkdtemp(join(tmpdir(), 'jig-materialize-leases-'))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
     try {
       await writeTree(source, durableTree())
       const captured = await capturePackageDirectory(source)
@@ -298,7 +299,7 @@ describe('private package materialization', () => {
 
   test('resumes nested disposal interrupted in a subprocess', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))
-    const protectedParent = await mkdtemp(join(tmpdir(), 'jig-materialize-leases-'))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
     try {
       await writeTree(source, durableTree())
       const captured = await capturePackageDirectory(source)
@@ -336,7 +337,7 @@ describe('private package materialization', () => {
 
   test('does not remove unexpected, symlink, or wrong-kind allocation leaves', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))
-    const protectedParent = await mkdtemp(join(tmpdir(), 'jig-materialize-leases-'))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
     try {
       await writeTree(source, durableTree())
       const captured = await capturePackageDirectory(source)
@@ -391,7 +392,7 @@ describe('private package materialization', () => {
   })
 
   test('requires canonical allocation inputs and a meaningful owner token', async () => {
-    const protectedParent = await mkdtemp(join(tmpdir(), 'jig-materialize-leases-'))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
     const digest = `sha256:${'0'.repeat(64)}`
     try {
       await expect(
@@ -435,6 +436,51 @@ describe('private package materialization', () => {
 })
 
 describe('private workspace layout materialization', () => {
+  ;(process.platform === 'darwin' ? test : test.skip)(
+    'recovers the Darwin chmod-before-rename disposal window without readmitting mutable bytes',
+    async () => {
+      const fixture = await workspaceFixture()
+      try {
+        const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+        const child = await runCrashFixture('chmod-before-rename', {
+          JIG_TEST_IDENTITY: JSON.stringify(lease.identity),
+        })
+        expect(child.exitCode).toBe(76)
+        await expect(
+          reacquirePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity),
+        ).rejects.toThrow()
+        await disposePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity)
+        expect(await readdir(fixture.protectedParent)).toEqual([])
+      } finally {
+        await fixture.dispose()
+      }
+    },
+  )
+
+  ;(process.platform === 'darwin' ? test : test.skip)(
+    'refuses changed bytes after interruption before the Darwin disposal rename',
+    async () => {
+      const fixture = await workspaceFixture()
+      try {
+        const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+        const child = await runCrashFixture('chmod-before-rename', {
+          JIG_TEST_IDENTITY: JSON.stringify(lease.identity),
+        })
+        expect(child.exitCode).toBe(76)
+        const file = join(lease.root, 'libraries/shared/value.txt')
+        await chmod(file, 0o600)
+        await writeFile(file, 'changed')
+        await chmod(file, 0o444)
+        await expect(
+          disposePrivatePackageMaterializationLease(fixture.protectedParent, lease.identity),
+        ).rejects.toThrow('changed digest')
+        expect(await readFile(file, 'utf8')).toBe('changed')
+      } finally {
+        await fixture.dispose()
+      }
+    },
+  )
+
   test('retains canonical aliases through materialization, reopen and disposal', async () => {
     const fixture = await workspaceFixture()
     try {
@@ -668,7 +714,9 @@ describe('private workspace layout materialization', () => {
 
 async function workspaceFixture() {
   const source = await mkdtemp(join(tmpdir(), 'jig-layout-source-'))
-  const protectedParent = await mkdtemp(join(tmpdir(), 'jig-layout-materializations-'))
+  const protectedParent = await realpath(
+    await mkdtemp(join(tmpdir(), 'jig-layout-materializations-')),
+  )
   await writeTree(source, {
     'flows/main/package.json': '{"name":"@fixture/main"}',
     'flows/main/FLOW.meta.json': JSON.stringify({

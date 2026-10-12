@@ -31,8 +31,11 @@ defineBinding({
 
 The host qualifies that exact client using operator configuration captured
 before project loading. Review identifies the recipient, client, model,
-authentication mode and executable. No global Agent selection, guessed slot
-name or Flow-authored environment creates this authority. Changed runtime
+authentication mode and executable. The explicit review-only `--agent` operand
+may construct an effective client for every selected ACP policy under
+[project policy](project-policy.md#review-client-selection), with source and
+argument origin visible. No ambient global Agent selection, guessed slot name
+or Flow-authored environment creates this authority. Changed runtime
 identity requires renewed review; the launch still revalidates its artifacts.
 
 An optional grant `model` selects the model for this recipient, overriding the
@@ -150,6 +153,22 @@ The host accepts one serial sequence, with unique bounded request IDs:
    must settle before another dispatch. NUL and leading slash commands are excluded.
 5. Optional `session/close` if the initialized client advertised it.
 
+For example, after `session/new` returns `sessionId:"owned-session"`, the ready
+record above requires these requests in order, each with a fresh request ID and
+each awaiting its correlated result:
+
+```json
+{"jsonrpc":"2.0","id":3,"method":"session/set_config_option","params":{"sessionId":"owned-session","configId":"model","value":"reviewed-model"}}
+{"jsonrpc":"2.0","id":4,"method":"session/set_mode","params":{"sessionId":"owned-session","modeId":"read-only"}}
+```
+
+These are separate JSON/0 frames, each sent through the bounded fragments above.
+Use the actual owned session ID and ready values. A Boolean configuration entry
+also requires `type:"boolean"` in its request parameters. The configuration
+result must confirm the selected value in `configOptions`; the mode result is
+`{}`. Neither step is optional merely because the native client already reports
+the same setting. Only then may a prompt be sent.
+
 After each prompt is dispatched, at most one `session/cancel` notification may
 name that owned session. It cannot settle pending work by itself. A cancellation
 that races completed settlement is consumed without forwarding to the idle
@@ -166,11 +185,27 @@ made by the editable adapter.
 
 Native text and plan updates outside an active prompt fail rather than contaminating
 a subsequent answer. Aggregate frame, byte, update and text ceilings never reset
-between turns. Only correlated results, a constant sanitized request error, public assistant
+between turns. Only correlated results, sanitized request errors, public assistant
 text, public plan updates and closed warning notices reach the adapter. Unneeded native fields are
 withheld. One conversation permits at most 4,096 updates, 8 MiB of assistant
 text and 256 permission requests; raw native protocol ingress remains bounded
 at 32 MiB before projection. The host accounts for ignored frames too.
+
+Request errors retain a safe integer native code and the fixed message
+`Native ACP request failed`; raw native text and data are withheld. For the
+host-selected Codex client only, a `session/new` error with code `-32603`, message
+`Internal error`, and string data beginning exactly
+`failed to load configuration: Failed to synchronize managed preferences\n\nCheck `
+projects the additional closed data
+`{"reason":"managed-preferences-unavailable"}`. The private guidance suffix is
+discarded. Other clients, operations and error shapes receive no reason. This
+is a native client report, not a diagnosis of sandbox policy, authentication,
+remote effects, cleanup, or permission to repeat the call. The ordinary Agent
+independently recognizes only that exact one-field reason object in the matching
+operation/code context and uses fixed explanatory text; unknown causes remain
+explicitly unavailable. The recognized explanation asks the installation's
+operator to check managed-preference configuration and availability, without
+prescribing a repair or authorizing another call.
 
 The host negotiates the supported typed native diagnostic extension independently
 of Flow input. Warnings are projected as `session/update` with
@@ -192,7 +227,14 @@ authentication needs separately implemented host mediation before it qualifies.
 
 ## Settlement and failure
 
-Clean request EOF is eligible only after the finite protocol has settled.
+Clean request EOF is eligible only after the finite protocol has settled: no
+request is pending, and either a prompt has returned its correlated terminal
+result or a correlated native request error has ended the conversation. A
+successful `initialize` and `session/new`, even followed by all configuration
+and mode transitions, do not establish settlement. This interface has no
+successful zero-prompt startup-only invocation; closing there is a protocol
+failure. Optional `session/close` has the same settlement prerequisite and must
+receive its correlated result before EOF.
 The host ends native input and waits for owned process cleanup, using bounded
 controlled termination if needed. Successful resource output contains actual
 process evidence:
@@ -354,8 +396,29 @@ Jig searches the operator's `PATH` in order for `codex`, `claude`, or `pi`.
 Empty and relative entries are ignored. Implicit discovery excludes the project
 tree and ancestor `node_modules` directories, including symlink routes through
 those locations. Operator-managed symlinks are supported. Shell aliases are not
-executables, and discovery does not make shell wrappers or JavaScript launchers
-supported native clients.
+executables. For Codex, the current official npm `bin/codex.js` layout resolves
+statically to its declared `@openai/codex-<os>-<cpu>` native dependency. The
+launcher manifest must name `@openai/codex`, declare that bin, and pin the
+matching platform alias; the native package must match its version, OS and CPU.
+The nearest installed platform package wins; an invalid package cannot fall
+back to another copy. Lookup is bounded to 32 ancestors of the selected launcher.
+
+Codex also recognizes a Volta dispatcher in its `bin` directory. It reads the
+operator's absolute `VOLTA_HOME`, when set, or the dispatcher's installation
+root. The bounded `tools/user/bins/codex.json` record must select the matching
+`@openai/codex` version with the Npm manager, and its recorded image's bin must
+resolve to the supported npm layout. This selects Volta's global installation;
+project-local tool dependencies remain excluded. Invalid explicit `VOLTA_HOME`
+does not fall back to the dispatcher root. These installation records are
+regular UTF-8 JSON files of at most 64 KiB each, and all inferred metadata and
+native paths must remain outside project routes, including with an explicit
+launcher override.
+
+Jig never executes these dispatchers or npm launchers, interprets their program
+contents or extra flags/environment, or retains their Node runtime. It resolves
+the native file before ordinary runtime inspection and review. Unsupported
+layouts retain the wrapper refusal; a direct native executable remains an
+explicit selection option. This does not add npm or Volta support for Claude/Pi.
 
 The selected regular executable and client-specific support files receive the
 same validation and identity checks with either selection method. Invalid client
@@ -365,11 +428,12 @@ resolved executable checked against admitted provider identity, without repeatin
 host PATH discovery. A changed selection cannot silently replace reviewed
 executable or support bytes.
 
-All three native adapters inspect Linux x86-64 ELF executables. Codex and
+On Linux, all three native adapters inspect x86-64 ELF executables. Codex and
 Claude Code also accept the declarative `makeBinaryWrapper` form which preserves
 arguments and prefixes PATH; Pi requires its unwrapped standalone executable.
 Arbitrary shell/JavaScript wrappers, wrapper flags or environment changes, and nested
-wrappers are unsupported. Jig reads installation metadata without executing the
+wrappers are unsupported. The static Codex npm selection above does not execute
+a wrapper. Jig reads installation metadata without executing the
 client during review. It retains the wrapped executable, ELF interpreter, and
 transitive shared libraries as individual regular files at their installation
 paths. Library resolution uses ELF RUNPATH/RPATH, `$ORIGIN`, the selected
@@ -382,7 +446,14 @@ executable and cannot be selected through the project tree. Bun's private loader
 settings are removed before each native client starts, so its libraries use
 the reviewed installation's ABI.
 
-For Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
+On qualified Macs, the adapters inspect native-architecture Mach-O executable
+and library metadata without running the selected client during review. Jig
+retains exact regular-file dependencies outside project source and rechecks
+their digests before launch; qualified system-cache libraries remain OS
+support. A different architecture, unsupported load command, missing library,
+or project-selected dependency fails closed.
+
+On Linux, for Codex's nested sandbox, Jig selects the first eligible unprivileged `bwrap`
 from the wrapper's declared PATH prefix followed by operator PATH, with the
 same project and dependency-directory exclusions as client discovery. With no
 eligible helper, it selects the installation's matching `codex-resources/bwrap`
@@ -426,12 +497,35 @@ network access. Each native client starts in an empty work directory. The finite
 peer advertises no filesystem, terminal, or MCP client capability, supplies no
 MCP servers, and denies permission requests. Claude and Pi additionally disable
 native tools and ambient extensions/skills through their fixed profiles. Codex
-retains its constrained native tool environment: its read-only ACP mode selects
-a no-network workspace policy, managed requirements forbid full-access mode,
-and the projected subscription credential file is denied to its tools. The
+retains its constrained native tool environment: its pinned read-only ACP mode
+selects a no-network workspace policy and Jig refuses permission requests.
+Linux additionally supplies managed requirements forbidding full-access mode;
+rootless Mac execution does not mount that file at `/etc/codex`. Subscription
+authentication uses a one-use in-memory login and ephemeral credential storage,
+so no subscription credential file is exposed to native tools. The
 editable Flow cannot change those profiles or request additional authority. Selected
 FLOW skills are rendered into the call instructions as bounded read-only text;
 they are not exposed as a client filesystem or native skill installation.
+
+On Intel macOS 14.4.1 (Darwin 23.4.0 build 23E224), the verified Codex profile
+also receives exact preference-service lookup and read-only access to the
+daemon/current-UID invalidation-counter pages required for configuration
+synchronization. It receives no permission to read or write host preference
+values. The pages contain counters, including change activity across domains;
+they do not contain preference dictionaries. Other scopes receive none of this
+access, and offline execution gains no network authority.
+
+A fresh trusted observation synchronizes `com.openai.codex` before selection
+and each native launch, including restoration. It checks the native
+`config_toml_base64` and `requirements_toml_base64` forced inputs plus forced
+keys in the public suite search list. Configured managed policy or unavailable
+observation refuses the contained profile with a value-free diagnostic.
+Ordinary nonforced preferences may exist and remain unreadable. This qualifies
+the observed absence of managed policy, not continuous enforcement of policy
+introduced after the check. Managed-policy consumption, other macOS profiles,
+and changed native preference interfaces require separate qualification.
+Rosetta and Apple Silicon are refused for this Codex path. The observer also
+refuses an inherited sandbox and has its own deadline even if the host exits.
 
 Native workers have ordinary inherited network access rather than
 endpoint-filtered egress; their exact trusted bytes and configuration, not a
@@ -440,16 +534,27 @@ uses the exact [HTTP Request](http-request.md) resource. Its API requests ask
 for `store: false`; this is not a promise about an endpoint's retention or
 training policy.
 
+The native Codex Responses base URL must use HTTPS without URL credentials,
+a query or a fragment. Endpoint selection does not disable TLS certificate
+verification.
+
 If the selected client, executable support, credential, or model is missing or
-invalid, reviewing a native-grant target reports it unavailable. A known setup
+invalid, SDK qualification records that native-grant target as unavailable.
+CLI review refuses the complete project before new approval or otherwise
+unchanged success on any observed typed selected ACP prerequisite, even when
+unrelated targets are ready. A known setup
 failure uses `PROJECT_ACP_<CLIENT>_<STAGE>`, with client `CODEX`,
 `CLAUDE` or `PI`. Stages distinguish `EXECUTABLE` discovery, `INSTALLATION`
 support, Codex `SANDBOX` support, `LOGIN` subscription authentication, `API`
-configuration and missing `MODEL` selection. The CLI gives client-specific
+configuration and missing `MODEL` selection. Mac Codex also distinguishes
+unavailable `PREFERENCES` observation from unsupported `MANAGED_POLICY`.
+The CLI gives client-specific
 corrections without publishing raw exceptions or secret values. Unclassified
 failures remain `PROJECT_ACP_UNAVAILABLE`; the host does not guess their cause.
-A target without native requirements in an already admitted generation remains runnable
-because its recipe does not depend on the Agent implementation.
+A failed review preserves the earlier approved code and client together.
+A target without native requirements in that already admitted generation remains
+subject to normal Run admission/environment checks; its recipe does not depend
+on the Agent implementation.
 
 `jig review` authenticates and admits the selected local configuration. It does
 not send a remote health-check request, so `ready` does not assert that a model

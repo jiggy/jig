@@ -38,6 +38,15 @@ filesystem context are not supplied.
 
 Native warnings are separate, sanitized console diagnostics rather than answer
 text or Agent events. Authoritative native errors remain invocation failures.
+Rejected native requests report the failed ACP step, such as `session/new` or
+`session/prompt`, and validated native numeric code with `EXECUTION_FAILED`.
+The client's private error text and data are withheld. A recognized host-projected
+managed-preferences reason adds a fixed explanation that the native client
+reported a configuration failure. Unknown causes remain explicitly unavailable.
+The recognized report asks the installation's operator to check managed-preference
+configuration and availability; it does not prescribe a repair.
+The report does not establish the underlying cause, remote effects, or permission
+to repeat the call.
 
 For conversational use, add `conversation: true` to input and connect direct
 `commands` and `replies` channels from the complete contract bundle. Initial
@@ -61,10 +70,10 @@ through ordinary error handling; the final answer remains separate.
 
 ## Retain or restore native state
 
-The restoration path is a source candidate requiring matching Agent/Jig
-artifacts and separate qualification through an installed native client. Its
-initial collection profile is Codex 0.154.0; this README does not establish
-registry availability or successful live restoration.
+Native restoration requires matching Agent/Jig artifacts and separate
+qualification through an installed native client. The published alphas include
+the interface; its initial collection profile is Codex 0.154.0. Interface
+availability does not establish successful live restoration.
 
 In the native grant, review `retainSessions: true` separately from the client,
 model and turn allowance. Initial Agent input can then include either
@@ -126,6 +135,30 @@ an explicit slot. With one eligible provider the mapping is optional.
 The example's client is a choice, not a Jig default; `codex`, `claude` and `pi`
 use the same grant interface. The operator configures the native installation, model and
 authentication described in [Choose an Agent](https://jig.md/guide/agents).
+
+To call this Agent from a new Flow, install the declared project dependency
+with `bun install`, then select its complete contract when creating the caller:
+
+```sh
+jig new worker --use agent=npm:@jigging/agent-acp
+```
+
+For an existing caller, create its `contracts/` parent and import the bundle:
+
+```sh
+mkdir -p flows/worker/contracts
+jig import-contract npm:@jigging/agent-acp flows/worker/contracts/agent
+```
+
+Declare `uses.agent.contract: './contracts/agent/FLOW.contract.json'` in that
+caller's metadata. Selection uses the nearest ordinary project or member-local
+installation, copies all referenced channel descriptors offline, and runs no
+package code. The copied contract belongs to the caller: an installation update
+does not replace it or grant new authority. An existing destination is refused;
+choose a new directory to inspect a changed contract before updating the caller.
+See the [conversation walkthrough](https://jig.md/guide/conversations) for a
+complete two-turn caller and the separate native turn grant. The published
+Jig alpha supplies these authoring commands.
 
 ```sh
 jig review

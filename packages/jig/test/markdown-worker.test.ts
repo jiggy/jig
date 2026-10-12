@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import {
+  copyFile,
   mkdir,
   mkdtemp,
   readdir,
@@ -33,19 +34,30 @@ const selection = (recipe: number) => ({
   path: '',
 })
 const agent = (structured: unknown) => done({ text: '', structured })
-const hosted = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ? describe.serial : describe.skip
+const hosted =
+  process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+  (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+    ? describe.serial
+    : describe.skip
 let temporary: string
 let worker: string
 let preserveFailureEvidence = false
 
 beforeAll(async () => {
   temporary = await mkdtemp(join(tmpdir(), 'jig-markdown-worker-test-'))
-  worker = join(temporary, 'markdown-runtime.js')
+  const libexec = join(temporary, 'libexec')
+  await mkdir(libexec)
+  worker = join(libexec, 'markdown-runtime.js')
+  if (process.platform === 'darwin')
+    await copyFile(
+      join(packageRoot, 'support/macos-descriptor-bridge.dylib'),
+      join(libexec, 'macos-descriptor-bridge.dylib'),
+    )
   const build = await Bun.build({
     entrypoints: [join(packageRoot, 'src/internal/markdown-runtime-worker.ts')],
     target: 'bun',
     format: 'esm',
-    outdir: temporary,
+    outdir: libexec,
     naming: 'markdown-runtime.js',
   })
   expect(build.success).toBe(true)

@@ -5,6 +5,10 @@ description: What the Agent Run contract ID means, how Flows use it, and where t
 
 # Agent Run contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:agent-run contracts/agent-run`.
+
 Agent Run lets a Flow ask an operator-selected Agent for a bounded response.
 The Flow supplies instructions, any selected package-local Skills, and an
 optional structured-result schema. The operator chooses the Agent, model,
@@ -56,8 +60,9 @@ versions; the descriptor carries the version and exact interface.
 - **See it in an application:** try the
   [support-case application](../guide/support-case.md).
 - **Continue or restore work:** read [Agent conversations](../guide/conversations.md).
-  Native restoration is a source candidate requiring a separately reviewed
-  retention grant and a single-use reference. Its receipt appears only in the
+  Native restoration requires a separately reviewed retention grant, a
+  single-use reference, and qualification of the installed client's save-and-restore
+  path. Its receipt appears only in the
   final invocation output; an individual answer does not prove retention.
 - **Understand contract matching:** read
   [FLOW Invocation Contract/0](https://flow.jig.md/spec/invocation-contracts).

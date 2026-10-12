@@ -36,6 +36,10 @@ whether the host selects an ordinary Flow or a native implementation. Authors
 do not construct the host-supplied context. The initial single-operation profile
 accepts no method or operation selector.
 
+Authors use this same API when their Flow is launched directly or as another
+Flow's dependency. The distinction between `flow/run` and `flow/call` belongs
+to the host/component exchange; it does not require a second child-handler API.
+
 `handle` owns protocol stdin and stdout for the process and handles exactly one
 root Run. The TypeScript SDK captures its transport first, then replaces the
 global console with one backed by stderr; an imported library that reads the

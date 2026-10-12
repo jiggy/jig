@@ -5,6 +5,10 @@ description: Make an exact operator-authorized HTTP request without receiving a 
 
 # HTTP Request contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:http-request contracts/http-request`.
+
 HTTP Request lets an ordinary Flow retrieve data or implement a service client
 without holding that service's credential. Jig performs one exact authorized
 request; the Flow interprets its response.

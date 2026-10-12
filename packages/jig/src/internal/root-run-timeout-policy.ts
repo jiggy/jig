@@ -1,6 +1,41 @@
 export const PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS = 30_000
 export const PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS = 24 * 60 * 60_000
 export const PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS = 5 * 60_000
+export const PRIVATE_PRESENTATION_CLOSE_RESERVE_MS = 45_000
+export const PRIVATE_PRESENTATION_DEADLINE_ENV = 'JIG_PRIVATE_PRESENTATION_DEADLINE'
+
+/**
+ * Epoch-referenced presentation time, advancing monotonically within one process.
+ * Bun's hrtime origin is process-local. The epoch reference preserves normal
+ * cross-process scalar meaning; host-clock changes between startups can shift it.
+ * Independent execution and command timers remain the enforcement authorities.
+ */
+export function privatePresentationNow(): number {
+  return Math.floor(performance.timeOrigin + performance.now())
+}
+
+/** This private scalar can constrain presentation only; it is never launch authority. */
+export function privatePresentationDeadline(
+  environment: Readonly<NodeJS.ProcessEnv>,
+): number | undefined {
+  const text = environment[PRIVATE_PRESENTATION_DEADLINE_ENV]
+  if (text === undefined || !/^(?:0|[1-9][0-9]{0,15})$/.test(text)) return undefined
+  const value = Number(text)
+  return Number.isSafeInteger(value) ? value : undefined
+}
+
+/** Seed before the first actual enclosing timer or child, and never refresh inherited time. */
+export function privateConstrainPresentationDeadline(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  lifetimeMs: number,
+  now = privatePresentationNow(),
+): number {
+  if (!Number.isSafeInteger(lifetimeMs) || lifetimeMs < 1 || !Number.isSafeInteger(now) || now < 0)
+    throw new TypeError('invalid private presentation lifetime')
+  const local = Math.max(0, now + lifetimeMs - PRIVATE_PRESENTATION_CLOSE_RESERVE_MS)
+  const inherited = privatePresentationDeadline(environment)
+  return Math.min(local, inherited ?? local)
+}
 
 export function requirePrivateRootRunTimeout(value: number): number {
   if (!Number.isSafeInteger(value) || value < 1 || value > PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS) {

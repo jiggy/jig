@@ -1,6 +1,10 @@
+import {
+  isPrivateNativeTurnAllowance,
+  PRIVATE_NATIVE_TURN_POLICY,
+} from '../internal/native-agent-turn-policy.js'
 import { canonicalJson, type JsonObject } from '../json.js'
-import { snapshotJsonObject } from './author-value.js'
 import type { SchemaValue } from '../schema/types.js'
+import { snapshotJsonObject } from './author-value.js'
 import { normalizeProjectCommand, type ProjectCommand } from './commands.js'
 
 export const HTTP_LIMITS = Object.freeze({
@@ -126,18 +130,14 @@ export function normalizeGrant(value: unknown): GrantPolicy {
       ) ||
       ('retainSessions' in policy &&
         (policy.retainSessions !== true || policy.client !== 'codex')) ||
-      ('maxTurns' in policy &&
-        (typeof policy.maxTurns !== 'number' ||
-          !Number.isSafeInteger(policy.maxTurns) ||
-          policy.maxTurns < 1 ||
-          policy.maxTurns > 8)) ||
+      ('maxTurns' in policy && !isPrivateNativeTurnAllowance(policy.maxTurns)) ||
       !['codex', 'claude', 'pi'].includes(policy.client as string) ||
       ('model' in policy &&
         (typeof policy.model !== 'string' ||
           !/^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}(?![\s\S])/.test(policy.model)))
     )
       throw new TypeError(
-        'ACP grant requires a supported native client, optional model, maxTurns from 1 to 8, and optional retainSessions: true for Codex',
+        `ACP grant requires a supported native client, optional model, maxTurns from ${PRIVATE_NATIVE_TURN_POLICY.minimum} to ${PRIVATE_NATIVE_TURN_POLICY.maximum}, and optional retainSessions: true for Codex`,
       )
     return Object.freeze({
       kind,

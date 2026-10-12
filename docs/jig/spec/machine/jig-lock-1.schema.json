@@ -4,6 +4,10 @@
   "description": "The portable desired-state value stored as canonical JSON/0 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, exact interface matching, acyclic child-depth, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
   "type": "object",
   "properties": {
+    "agentOverride": {
+      "enum": ["codex", "claude", "pi"],
+      "description": "Explicit review-only client selection that constructed every selected ACP policy. Jig requires at least one such policy and exact agreement. It is retained origin, never a default for future reviews or a Run-time overlay."
+    },
     "packages": {
       "type": "object",
       "description": "Package entries keyed by canonical project-relative package path.",
@@ -19,6 +23,12 @@
         "$ref": "#/$defs/binding"
       },
       "maxProperties": 4096
+    },
+    "entrypoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "description": "An exact Run target followed by optional Jig run invocation arguments. Jig validates quoting, permitted options, project-relative paths and target membership. No shell execution or expansion."
     }
   },
   "required": ["packages", "bindings"],
@@ -274,8 +284,16 @@
             }
           },
           "required": ["kind", "client"],
-          "if": { "required": ["retainSessions"] },
-          "then": { "properties": { "client": { "const": "codex" } } },
+          "if": {
+            "required": ["retainSessions"]
+          },
+          "then": {
+            "properties": {
+              "client": {
+                "const": "codex"
+              }
+            }
+          },
           "additionalProperties": false
         },
         {

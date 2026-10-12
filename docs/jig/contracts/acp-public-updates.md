@@ -1,5 +1,9 @@
 # ACP public updates contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:acp-public-updates contracts/acp-public-updates`.
+
 This identity names the meaning of selected public updates from one Agent turn.
 It is not an ACP endpoint, subscription URL or request for session access.
 

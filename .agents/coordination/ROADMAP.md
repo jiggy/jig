@@ -17,24 +17,38 @@ view of the next steps; active plans, status, evidence and blockers live in
 4. Let others build further capability: support independent builders and
    user-owned Starters based on demonstrated needs.
 
+## Developer-alpha milestone
+
+Complete: protected source, Linux host and native-client qualification gates
+passed, and the qualified packages are publicly available. Published-package
+factory adoption produced reviewable patches with executed repository tests and
+independent acceptance cases. Bounded application-owned summary handoff is
+implemented; it is not a new host subsystem.
+
+This closes the developer-alpha launch milestone, not stable-interface promotion,
+broad model reliability or comparative superiority. Exact revisions, artifacts,
+evidence and supported limits belong in `.tmp/` and the public guides, not in
+this roadmap.
+
 ## Next steps
 
-1. Complete installed alpha reliability. Publish the corrected input projection
-   with source, tested archives, registry versions, tags and public guidance
-   aligned; qualify supported native behavior with installed clients.
-2. Prove independent repair usability. A fresh builder adapts the published
-   repair method to another small Bun project and produces a reviewable patch,
-   executed tests and independent acceptance evidence.
-3. Demonstrate a useful small factory. Builders adapt bounded repair methods
-   across several authorized issues with honest outcomes and a human merge
-   gate. Claim comparative advantage only after a decision-relevant comparison
-   against a capable coding Agent, tests and human review, using a metric chosen
-   beforehand.
+1. Make existing specialist composition easier to adopt through ordinary
+   installed packages and understandable public guidance.
+2. Let consumer needs identify the next useful application increment; reuse
+   delivered conversation, channel and retained-progress interfaces before
+   proposing new host mechanisms.
+
+The [coordination inbox](inbox/) records the postponed contract-discovery and
+conversation/handoff adoption work. Its entries are not implementation approval
+or prerequisites for this completed launch.
 
 ## Ongoing proof
 
-- Show FLOW interoperability by running an unchanged package through public
-  contracts in an independent implementation.
+- Preserve the bounded outside-Jig unchanged-package consumption evidence;
+  extend interoperability proof only for a concrete new claim.
+- Keep adoption, native control, handoff and comparative-advantage claims tied
+  to their distinct evidence. Neither a passing gate nor one small consumer
+  establishes general reliability or superiority.
 - Fix concrete release, CLI, authority and cleanup defects as found.
 
 Use the doctrine's [decision test](../doctrine/design-judgment.md#the-decision-test)

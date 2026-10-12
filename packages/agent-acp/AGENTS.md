@@ -33,6 +33,8 @@ retains credential, process, and dispatch authority.
 - Jig consumers may select this declared dependency with `npm:@jigging/agent-acp`
   in a local Binding; the Binding still grants the exact native client.
   Contract-keyed project selection does not create that grant or choose a vendor.
+  The README teaches package-selected caller creation and offline contract import
+  from ordinary root/member installs; consumers do not name physical installer paths.
 - Reuse `@jigging/agent-method` for prompt preparation and result validation.
   Complete ACP dialogue and resource settlement are separate requirements.
 - Locally detected invalid ACP cancels the resource while preserving that
@@ -45,6 +47,16 @@ retains credential, process, and dispatch authority.
   closes the writer with `error: 'LAGGED'`; no clean EOF hides incomplete output.
   Closed native warning notices go to console diagnostics, not answer text or
   public events; the host strips raw metadata and rejects authoritative errors.
+- A native request rejection reports its known operation and independently
+  validated safe numeric client code with `EXECUTION_FAILED`, never raw error
+  text/data. Recognize only the host-projected one-field
+  `managed-preferences-unavailable` reason on `session/new` with code `-32603`.
+  Use fixed text attributed to the native client's report and retain the reason
+  in structured details. Supply a fixed operator configuration/availability
+  check as the next step, without prescribing a repair. Unknown causes remain
+  unavailable; no raw strings or
+  extra fields acquire the explanation. The report does not diagnose sandbox
+  policy, authentication, remote dispatch, cleanup or permission to retry.
 - Optional conversational mode owns bounded direct commands/replies and per-turn
   results in `src/conversation.ts`. Native maxTurns, serial dispatch and interruption
   settlement remain host-enforced. One-shot calls retain their simple interface.
@@ -65,7 +77,6 @@ retains credential, process, and dispatch authority.
   closure to its owner; the adapter does not wait for optional ACP close.
 - `./transport` is bounded framing, not an alternative host authority filter.
   A frame receipt does not prove dispatch, completion, or cleanup.
-
 ## Work Guidance
 
 - Keep ordinary behavior in the package and independently enforceable policy

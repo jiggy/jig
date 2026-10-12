@@ -1,0 +1,42 @@
+{
+  "name": "@jigging/reporting",
+  "version": "0.1.0-alpha.1",
+  "description": "Report progress, messages and application views through a portable FLOW channel",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/reporting"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./validation": {
+      "types": "./dist/validation.d.ts",
+      "import": "./dist/validation.js"
+    },
+    "./reporting.json": "./dist/reporting.json",
+    "./LICENSE": "./LICENSE"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "peerDependencies": {
+    "@jigging/flow": "0.1.0-alpha.13"
+  },
+  "devDependencies": {
+    "@jigging/flow": "0.1.0-alpha.13",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

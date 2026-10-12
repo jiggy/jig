@@ -1,0 +1,22 @@
+{
+  "toolchain": {
+    "clang": "Apple clang version 15.0.0 (clang-1500.3.9.4)",
+    "linker": "{\n\t\"version\": \"1053.12\",\n\t\"architectures\": [\n\t\t\"armv6\",\n\t\t\"armv7\",\n\t\t\"armv7s\",\n\t\t\"arm64\",\n\t\t\"arm64e\",\n\t\t\"arm64_32\",\n\t\t\"i386\",\n\t\t\"x86_64\",\n\t\t\"x86_64h\",\n\t\t\"armv6m\",\n\t\t\"armv7k\",\n\t\t\"armv7m\",\n\t\t\"armv7em\"\n\t],\n\t\"lto\": {\n\t\t\"runtime_api_version\": 29,\n\t\t\"static_api_version\": 29,\n\t\t\"version_string\": \"LLVM version 15.0.0\"\n\t},\n\t\"tapi\": {\n\t\t\"version\": \"15.0.0\",\n\t\t\"version_string\": \"Apple TAPI version 15.0.0 (tapi-1500.3.2.2)\"\n\t}\n}",
+    "sdk": "14.4",
+    "sdkBuild": "23E208"
+  },
+  "deploymentTarget": "14.4",
+  "architectures": [
+    "x86_64",
+    "arm64"
+  ],
+  "sha256": {
+    "scripts/native-support.mjs": "2c7b743c3f3351b26dfad71b434b65c7f3755408787104c871088a16041674be",
+    "support/macos-exec.c": "8ae6ca1481a073c24c94176dc4ed7a0cf7db2fefa9bc72b7023654fea03993a2",
+    "support/macos-exec-universal": "f352edf1384bbfe6c9276fde288905b7b37ac9e6e3cf4137cf4b7bf90a0133d6",
+    "support/macos-descriptor-bridge.c": "405091f7b18f259cd95466a0360524c776c7975131611d65bf88a62f89cca8b0",
+    "support/macos-descriptor-bridge.dylib": "c8418f5bfc1bd2b346eb962c9379605df12f79b6d7395eefb2fde4ff7ded9b4e",
+    "support/macos-codex-preferences.m": "55062bbdf90f6e702087173eab9e45589bcb97437cdca513e0049f7c1883c334",
+    "support/macos-codex-preferences-universal": "59b5c80023e66f054266637cfcd1f366e40d4ffbf5c236b8330c43d7ef6b6806"
+  }
+}

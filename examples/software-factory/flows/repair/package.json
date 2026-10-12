@@ -4,10 +4,12 @@
   "type": "module",
   "exports": {
     "./policy": "./policy.ts",
+    "./progress": "./progress.ts",
     "./repair": "./repair.ts"
   },
   "dependencies": {
-    "@jigging/agent-method": "0.1.0-alpha.3",
-    "@jigging/flow": "0.1.0-alpha.12"
+    "@jigging/agent-method": "0.1.0-alpha.7",
+    "@jigging/flow": "0.1.0-alpha.13",
+    "@jigging/reporting": "0.1.0-alpha.1"
   }
 }

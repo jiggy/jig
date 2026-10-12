@@ -1,12 +1,19 @@
 import { CheckError, invalid } from '../diagnostics.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning.js'
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
+import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import { privateDomainDigest } from '../internal/identity.js'
+import { privateProfileSpan } from '../internal/private-profile.js'
 import type { JsonValue } from '../json.js'
+import {
+  type PrivateAgentSourceLocation,
+  privateAgentSourceLocations,
+} from './agent-source-location.js'
 import type { BindingDefinition, JigDefinition } from './author.js'
 import {
   type EvaluatedAuthorDeclaration,
   evaluateAuthorClosure,
+  evaluateAuthorClosureBatch,
   type PrivateAuthorEvaluatorOptions,
 } from './author-evaluator.js'
 import { type CapturedAuthorClosure, captureOpenedAuthorClosure } from './author-module.js'
@@ -14,6 +21,7 @@ import {
   captureDeclarationSource,
   type DeclarationSourceObservation,
 } from './declaration-source.js'
+import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
 import {
   type CapturedFlowSource,
   captureOpenedFlowSource,
@@ -22,7 +30,7 @@ import {
   type PrepareCapturedFlow,
 } from './flow-source.js'
 import { captureGrantSource } from './grant-source.js'
-import type { GrantPolicy } from './grants.js'
+import type { AcpGrant, GrantPolicy } from './grants.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
 import { npmPackageName } from './package-selector.js'
 import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
@@ -37,14 +45,16 @@ const authenticProjects = new WeakSet<object>()
 
 export interface PrivateRetainedProjectOptions {
   readonly projectRoot: string
-  readonly storeRoot: string
+  readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
+  readonly agentOverride?: AcpGrant['client']
 }
 
 export interface PrivateRetainedOpenedProjectOptions {
   readonly projectRoot: PrivateProjectRoot
-  readonly storeRoot: string
+  readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
+  readonly agentOverride?: AcpGrant['client']
   readonly prepareFlow?: PrepareCapturedFlow
   readonly dependencyFlows?: (selectors: readonly string[]) => Promise<CapturedFlowSource>
 }
@@ -58,6 +68,7 @@ export interface RetainedBindingDeclaration {
 
 export interface PrivateRetainedPackageProject {
   readonly captureDigest: string
+  readonly agentOverride?: AcpGrant['client']
   readonly root: {
     readonly device: string
     readonly inode: string
@@ -68,6 +79,10 @@ export interface PrivateRetainedPackageProject {
   readonly bindingSource: readonly DeclarationSourceObservation[]
   readonly grantSource: readonly DeclarationSourceObservation[]
   readonly grants: Readonly<Record<string, GrantPolicy>>
+  readonly grantFiles: Readonly<Record<string, PrivateAgentSourceLocation>>
+  readonly agentSources: Readonly<
+    Record<string, Readonly<Record<string, PrivateAgentSourceLocation>>>
+  >
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
   readonly linked: PackageProjectValue
@@ -117,28 +132,34 @@ export async function retainOpenedPackageProject(
   let dependencies: CapturedFlowSource | undefined
   let operationFailure: unknown
   try {
-    bootstrap = await captureOpenedAuthorClosure(root, [entry])
-    const bootstrapProject = (await evaluateAuthorClosure(
-      options.evaluator,
-      bootstrap,
-      entry,
-      'project',
-      signal,
+    const bootstrapClosure = await captureOpenedAuthorClosure(root, [entry])
+    bootstrap = bootstrapClosure
+    const bootstrapProject = (await privateProfileSpan('author-configuration-evaluation', () =>
+      evaluateAuthorClosure(options.evaluator, bootstrapClosure, entry, 'project', signal),
     )) as EvaluatedAuthorDeclaration<JigDefinition>
 
     const bindingSource = await captureDeclarationSource(root, bootstrapProject.value.bindings)
-    closure = await captureOpenedAuthorClosure(root, [
+    const capturedClosure = await captureOpenedAuthorClosure(root, [
       entry,
       ...bindingSource.members.map(({ projectPath }) => projectPath),
     ])
-    assertBootstrapPreserved(bootstrap, closure)
-    const project = (await evaluateAuthorClosure(
-      options.evaluator,
-      closure,
-      entry,
-      'project',
-      signal,
-    )) as EvaluatedAuthorDeclaration<JigDefinition>
+    closure = capturedClosure
+    assertBootstrapPreserved(bootstrapClosure, capturedClosure)
+    const evaluations = await privateProfileSpan('author-configuration-evaluation', () =>
+      evaluateAuthorClosureBatch(
+        options.evaluator,
+        capturedClosure,
+        [
+          { entryProjectPath: entry, expected: 'project' },
+          ...bindingSource.members.map(({ projectPath }) => ({
+            entryProjectPath: projectPath,
+            expected: 'binding' as const,
+          })),
+        ],
+        signal,
+      ),
+    )
+    const project = evaluations[0] as EvaluatedAuthorDeclaration<JigDefinition>
     if (project.outputDigest !== bootstrapProject.outputDigest) {
       invalid(
         'PROJECT_SOURCE_CHANGED',
@@ -149,14 +170,8 @@ export async function retainOpenedPackageProject(
 
     const grantSource = await captureGrantSource(root, project.value.grants)
     const bindings: RetainedBindingDeclaration[] = []
-    for (const member of bindingSource.members) {
-      const evaluation = (await evaluateAuthorClosure(
-        options.evaluator,
-        closure,
-        member.projectPath,
-        'binding',
-        signal,
-      )) as EvaluatedAuthorDeclaration<BindingDefinition>
+    for (const [index, member] of bindingSource.members.entries()) {
+      const evaluation = evaluations[index + 1] as EvaluatedAuthorDeclaration<BindingDefinition>
       let attachments: BoundAttachments | undefined
       try {
         if (evaluation.value.attachments !== undefined)
@@ -195,6 +210,19 @@ export async function retainOpenedPackageProject(
         selected.add(value)
       }
     }
+    if (project.value.entrypoint !== undefined) {
+      try {
+        parseProjectEntrypoint(project.value.entrypoint)
+        select(entrypointWords(project.value.entrypoint)[0]!)
+      } catch {
+        invalid(
+          'PROJECT_ENTRYPOINT_INVALID',
+          'entrypoint has invalid Run arguments',
+          'jig.ts',
+          '/entrypoint',
+        )
+      }
+    }
     for (const value of Object.values(project.value.defaultProviders ?? {})) select(value)
     for (const binding of bindings) {
       select(binding.evaluation.value.package)
@@ -229,6 +257,7 @@ export async function retainOpenedPackageProject(
     const linked = linkPackageProject(
       {
         flows: retainedFlows,
+        ...(project.value.entrypoint === undefined ? {} : { entrypoint: project.value.entrypoint }),
         grants: grantSource.grants,
         ...(project.value.defaultProviders === undefined
           ? {}
@@ -240,12 +269,33 @@ export async function retainOpenedPackageProject(
         })),
       },
       PRIVATE_ACTIVATION_TARGET_LIMIT,
+      options.agentOverride,
     )
+    const agentSources: Record<
+      string,
+      Readonly<Record<string, PrivateAgentSourceLocation>>
+    > = Object.create(null)
+    for (const binding of bindings) {
+      const clients: Record<string, string> = Object.create(null)
+      for (const [slot, selection] of Object.entries(binding.evaluation.value.slots)) {
+        const policy =
+          typeof selection === 'string'
+            ? grantSource.grants[selection.startsWith('grant:') ? selection.slice(6) : selection]
+            : selection
+        if (policy?.kind === 'acp') clients[slot] = policy.client
+      }
+      agentSources[binding.id] = privateAgentSourceLocations(
+        binding.sourcePath,
+        closure.read(binding.sourcePath),
+        clients,
+      )
+    }
     const rootIdentity = Object.freeze({
       device: root.information.dev.toString(),
       inode: root.information.ino.toString(),
     })
     const captureDigest = digestCapture({
+      ...(options.agentOverride === undefined ? {} : { agentOverride: options.agentOverride }),
       root: rootIdentity,
       declarationArtifact,
       project,
@@ -258,6 +308,7 @@ export async function retainOpenedPackageProject(
     })
     const value = Object.freeze({
       captureDigest,
+      ...(options.agentOverride === undefined ? {} : { agentOverride: options.agentOverride }),
       root: rootIdentity,
       declarationArtifact,
       project,
@@ -265,6 +316,8 @@ export async function retainOpenedPackageProject(
       bindingSource: bindingSource.observations,
       grantSource: grantSource.observations,
       grants: grantSource.grants,
+      grantFiles: grantSource.files,
+      agentSources: Object.freeze(agentSources),
       flows: retainedFlows,
       bindings: Object.freeze(bindings),
       linked,
@@ -343,6 +396,7 @@ function assertBootstrapPreserved(
 }
 
 function digestCapture(input: {
+  readonly agentOverride?: AcpGrant['client']
   readonly root: { readonly device: string; readonly inode: string }
   readonly declarationArtifact: RetainedAuthorClosure
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
@@ -354,6 +408,7 @@ function digestCapture(input: {
   readonly bindings: readonly RetainedBindingDeclaration[]
 }): string {
   const value = {
+    ...(input.agentOverride === undefined ? {} : { agentOverride: input.agentOverride }),
     root: input.root,
     declarationArtifact: input.declarationArtifact,
     project: evaluationIdentity(input.project),

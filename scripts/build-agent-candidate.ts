@@ -3,9 +3,10 @@
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
+import { promoteDirectory } from './promote-directory.mjs'
 
 const [kind, destination, ...extra] = process.argv.slice(2)
 if (!['agent-method', 'agent-acp'].includes(kind ?? '') || !destination || extra.length)
@@ -193,8 +194,7 @@ try {
     )}\n`,
     { flag: 'wx' },
   )
-  command('mv', ['-T', '--no-clobber', '--', staging, output])
-  if (existsSync(staging)) throw new Error('candidate destination appeared during qualification')
+  await promoteDirectory(staging, output)
   staging = undefined
   process.stdout.write(`${join(output, basename(archive))}\n`)
 } finally {

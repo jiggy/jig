@@ -1,14 +1,16 @@
 import { Database } from 'bun:sqlite'
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { randomUUID } from 'node:crypto'
-import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ProjectAdministrationError } from '../src/administration/project.js'
+import { RootAdministrationError } from '../src/administration/root.js'
 import { CheckError } from '../src/diagnostics.js'
 import { PrivateBunManifestError } from '../src/internal/bun-native-lock-policy.js'
 import {
+  closedTestErrorCauses,
   openPrivateProjectSession,
   type PrivateProjectSessionHost,
   projectError,
@@ -21,6 +23,72 @@ const missingPlan = `sha256:${'0'.repeat(64)}`
 setDefaultTimeout(30_000)
 
 describe('private finite project session', () => {
+  test('retains a closed cleanup cause behind an unconfirmed native fence', () => {
+    for (const [message, code] of [
+      ['macOS storage recovery is unconfirmed', 'MACOS_STORAGE_RECOVERY_UNCONFIRMED'],
+      ['macOS guardian job is still present', 'MACOS_GUARDIAN_JOB_PRESENT'],
+      ['macOS storage recovery guardian job is still present', 'MACOS_RECOVERY_JOB_PRESENT'],
+      ['macOS volume backing identity changed', 'MACOS_VOLUME_BACKING_CHANGED'],
+      ['macOS volume info failed', 'MACOS_VOLUME_INFO'],
+      ['macOS volume detach failed', 'MACOS_VOLUME_DETACH'],
+      ['macOS guardian contains unexpected state', 'MACOS_GUARDIAN_UNEXPECTED_STATE'],
+      ['macOS recovery slot contains unexpected state', 'MACOS_RECOVERY_UNEXPECTED_STATE'],
+    ] as const) {
+      const failure = Object.assign(new Error('private owner path'), {
+        name: 'PrivateMacosFenceUnconfirmedError',
+        cause: new Error(message, { cause: new Error('synthetic bearer secret') }),
+      })
+      expect(closedTestErrorCauses(failure)).toEqual([
+        'PrivateMacosFenceUnconfirmedError',
+        `Error:${code}`,
+        'Error',
+      ])
+    }
+    const unreadable = Object.defineProperty(new Error(), 'message', {
+      get() {
+        throw new Error('private message getter')
+      },
+    })
+    expect(closedTestErrorCauses(unreadable)).toEqual(['Error'])
+    expect(closedTestErrorCauses(new Error('macOS volume info failed private token'))).toEqual([
+      'Error',
+    ])
+    const nativeFailure = Object.assign(new Error('private owner path'), {
+      name: 'PrivateMacosFenceUnconfirmedError',
+      cause: new AggregateError(
+        [
+          new Error('macOS guardian job is still present'),
+          Object.assign(new Error('synthetic bearer secret'), { code: 'EPERM' }),
+        ],
+        'private recovery directory',
+      ),
+    })
+    expect(closedTestErrorCauses(nativeFailure)).toEqual([
+      'PrivateMacosFenceUnconfirmedError',
+      'AggregateError',
+      'Error:MACOS_GUARDIAN_JOB_PRESENT',
+      'Error:EPERM',
+    ])
+  })
+
+  test('checkpoint attachment mistakes remain actionable candidate failures', () => {
+    const failure = projectError(
+      new CheckError(
+        'invalid',
+        'PROJECT_CHECKPOINT_ATTACHMENT',
+        'private checkpoint detail',
+        'flows/diagnostic',
+      ),
+      'plan',
+    )
+    expect(failure.code).toBe('INVALID_CANDIDATE')
+    expect(failure.diagnostic).toEqual({
+      code: 'PROJECT_CHECKPOINT_ATTACHMENT',
+      path: 'flows/diagnostic',
+    })
+    expect(JSON.stringify(failure)).not.toContain('private checkpoint detail')
+  })
+
   test('manifest diagnostics distinguish already-scoped workspace paths from standalone packages', () => {
     const standalone = new PrivateBunManifestError('SOURCE', '/dependencies/x')
     expect(scopePrivatePackagePlanningError(standalone, 'flows/demo')).toMatchObject({
@@ -137,8 +205,13 @@ describe('private finite project session', () => {
         code: 'PROJECT_CLOSED',
       })
 
-      const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
-      await reopened.close()
+      const descriptors = process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'
+      const before = (await readdir(descriptors)).length
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
+        await reopened.close()
+      }
+      expect((await readdir(descriptors)).length).toBe(before)
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -146,13 +219,27 @@ describe('private finite project session', () => {
 
   test('preserves an accepted apply error while close waits', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-session-'))
+    const evidence: unknown[] = []
     try {
-      const session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+      const session = await openPrivateProjectSession({
+        directory: root,
+        host: inertHost(),
+        onOperationFailure(value) {
+          evidence.push(value)
+          throw new Error('private diagnostic detail')
+        },
+      })
+      await expect(session.plan(null as never)).rejects.toBeInstanceOf(ProjectAdministrationError)
       const applying = session.apply({ planDigest: missingPlan })
       const closing = session.close()
 
       await expect(applying).rejects.toMatchObject({ code: 'PLAN_NOT_FOUND' })
       await closing
+      expect(evidence).toEqual([
+        { operation: 'plan', causes: ['ProjectAdministrationError:INVALID_REQUEST'] },
+        { operation: 'apply', causes: ['CheckError:ADMISSION_PLAN_MISSING'] },
+      ])
+      expect(JSON.stringify(evidence)).not.toContain('private diagnostic detail')
     } finally {
       await rm(root, { recursive: true, force: true })
     }
@@ -195,7 +282,15 @@ describe('private finite project session', () => {
 
   test('maps acquisition failures to closed sanitized values', async () => {
     const root = join(tmpdir(), `jig-missing-${randomUUID()}`)
-    const failure = await openPrivateProjectSession({ directory: root, host: inertHost() }).then(
+    const evidence: unknown[] = []
+    const failure = await openPrivateProjectSession({
+      directory: root,
+      host: inertHost(),
+      onAcquisitionFailure(value) {
+        evidence.push(value)
+        throw new Error('diagnostic observer failed')
+      },
+    }).then(
       () => undefined,
       (error) => error,
     )
@@ -205,6 +300,16 @@ describe('private finite project session', () => {
       message: 'project directory is unavailable',
     })
     expect(JSON.stringify(failure)).not.toContain(root)
+    expect(evidence).toHaveLength(1)
+    expect(evidence[0]).toMatchObject({ phase: 'owner', causes: expect.any(Array) })
+    expect(JSON.stringify(evidence)).not.toContain(root)
+    expect(JSON.stringify(evidence)).not.toContain('diagnostic observer failed')
+    const pendingFence = projectError(
+      new RootAdministrationError('PROJECT_BUSY', 'private fence detail'),
+      'acquire',
+    )
+    expect(pendingFence.code).toBe('PROJECT_BUSY')
+    expect(JSON.stringify(pendingFence)).not.toContain('private fence detail')
   })
 
   test('unreadable retained candidates fail distinctly without resetting state', async () => {
@@ -331,6 +436,9 @@ describe('private finite project session', () => {
       'CONTRACT_FIELD',
       'CONTRACT_LIMIT',
       'CONTRACT_REFERENCE',
+      'PROJECT_AGENT_OVERRIDE_MODEL',
+      'PROJECT_AGENT_OVERRIDE_RETENTION',
+      'PROJECT_AGENT_OVERRIDE_UNUSED',
     ]) {
       const failure = new CheckError(
         'invalid',
@@ -347,6 +455,12 @@ describe('private finite project session', () => {
     expect(
       projectError(
         new CheckError('invalid', 'CHANNEL_PRIVATE', 'private detail', 'flows/bad/FLOW.md'),
+        'plan',
+      ).code,
+    ).toBe('INTERNAL')
+    expect(
+      projectError(
+        new CheckError('invalid', 'PROJECT_AGENT_OVERRIDE_PRIVATE', 'private detail', 'jig.ts'),
         'plan',
       ).code,
     ).toBe('INTERNAL')
@@ -432,6 +546,30 @@ describe('private finite project session', () => {
   })
 
   test('scopes known preparation and Agent failures without projecting private protocol details', () => {
+    const missingClient = new CheckError(
+      'unavailable',
+      'PROJECT_ACP_CODEX_EXECUTABLE',
+      'secret /private/provider',
+      'npm:@jigging/agent-acp/FLOW.ts',
+      '/slots/native',
+    )
+    expect(
+      projectError(
+        scopePrivatePackagePlanningError(
+          missingClient,
+          'npm:@jigging/agent-acp',
+          'bindings/agent.ts',
+        ),
+        'plan',
+      ).diagnostic,
+    ).toEqual({
+      code: 'PROJECT_ACP_CODEX_EXECUTABLE',
+      path: 'bindings/agent.ts',
+      pointer: '/slots/native',
+    })
+    expect(scopePrivatePackagePlanningError(missingClient, 'npm:@jigging/agent-acp')).toBe(
+      missingClient,
+    )
     const failure = new CheckError(
       'unavailable',
       'PACKAGE_BUN_SOURCE_UNSUPPORTED',
@@ -487,6 +625,23 @@ describe('private finite project session', () => {
     )
     expect(projectError(stale, 'plan').diagnostic).toEqual({
       code: 'PACKAGE_BUN_LOCK_STALE',
+      path: 'flows/dependent/bun.lock',
+    })
+    const unsupportedFormat = projectError(
+      scopePrivatePackagePlanningError(
+        new CheckError(
+          'unavailable',
+          'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
+          'private detail',
+          'bun.lock',
+        ),
+        'flows/dependent',
+      ),
+      'plan',
+    )
+    expect(unsupportedFormat.code).toBe('UNAVAILABLE')
+    expect(unsupportedFormat.diagnostic).toEqual({
+      code: 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
       path: 'flows/dependent/bun.lock',
     })
     const privateFailure = new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', 'private detail')

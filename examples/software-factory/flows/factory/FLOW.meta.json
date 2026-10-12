@@ -2,7 +2,7 @@
   "name": "small-software-factory",
   "description": "Turn one or two authorized issues into separately checked patch packets for human review.",
   "uses": {
-    "progress": {
+    "checkpoint": {
       "contract": "./contracts/run-checkpoint/contract.json"
     },
     "router": {},

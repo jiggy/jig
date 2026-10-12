@@ -259,6 +259,7 @@ try {
   await assert.rejects(stat(join(consumer, 'missing')))
   await eventuallyNoJigResidue()
 
+  const readonlyDestination = join(consumer, 'readonly')
   const readonly = await run(
     [
       jig,
@@ -267,11 +268,13 @@ try {
       '--attach',
       `source=${selected}`,
       '--out',
-      join(consumer, 'readonly'),
+      readonlyDestination,
     ],
     project,
   )
-  assert.deepEqual(successfulTerminal(readonly).output, { bytes: [...original] })
+  assert.deepEqual(successfulTerminal(readonly, readonlyDestination).output, {
+    bytes: [...original],
+  })
   assert.deepEqual(await readdir(join(consumer, 'readonly/files')), [])
   await eventuallyNoJigResidue()
 
@@ -428,9 +431,15 @@ for await (const line of lines) {
   )
 }
 
-function successfulTerminal(execution: CommandResult): Record<string, unknown> {
+function successfulTerminal(
+  execution: CommandResult,
+  destination?: string,
+): Record<string, unknown> {
   assert.equal(execution.exitCode, 0)
-  assert.equal(execution.stderr, '')
+  assert.equal(
+    execution.stderr,
+    destination === undefined ? '' : `  Output: ${JSON.stringify(destination)}\n`,
+  )
   const terminal = requireRecord(JSON.parse(execution.stdout))
   assert.equal(terminal.status, 'succeeded')
   assert.equal(terminal.outcome, 'done')

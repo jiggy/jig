@@ -1,8 +1,33 @@
 import { expect, test } from 'bun:test'
+import { AgentConversationError } from '../src/conversation.js'
+
+test('conversation failure summary preserves a bounded already-exposed cause without getters', () => {
+  const cause = new Error('Agent endpoint returned HTTP401. Check operator authentication.')
+  const cleanup = new Error('Cleanup failed')
+  const failure = new AgentConversationError([cause, cleanup], [])
+  expect(failure.message).toContain(cause.message)
+  expect(failure.errors).toEqual([cause, cleanup])
+  expect(failure.cause).toBe(cause)
+  const hostile = new Error()
+  Object.defineProperty(hostile, 'message', {
+    get() {
+      throw new Error('must not read getter')
+    },
+  })
+  expect(new AgentConversationError([hostile], []).message).toBe(
+    'Agent conversation did not complete cleanly',
+  )
+  expect(
+    Array.from(new AgentConversationError([new Error('🙂'.repeat(1000))], []).message).length,
+  ).toBeLessThan(300)
+  const malformed = new Error('bad\ud800text')
+  expect(new AgentConversationError([malformed], []).message).toContain('bad�text')
+  expect(new AgentConversationError([malformed], []).cause).toBe(malformed)
+})
 
 /** Synthetic Agent host, real public SDK subprocess. No native-client qualification. */
 async function exercise(mode: string) {
-  const process = Bun.spawn([Bun.which('bun')!, `${import.meta.dir}/conversation-fixture.ts`], {
+  const process = Bun.spawn([globalThis.process.execPath, `${import.meta.dir}/conversation-fixture.ts`], {
     stdin: 'pipe',
     stdout: 'pipe',
     stderr: 'pipe',
@@ -136,14 +161,27 @@ async function exercise(mode: string) {
         } else if (request.method === 'channel/send') {
           ok(request, null)
           const command = p.value
-          item({ type: 'accepted', command: command.type, turn: command.turn })
-          if (command.type === 'prompt') {
-            if (mode === 'late-error') {
-              nativeSettled = true
-              fail(call, 'EXECUTION_FAILED')
-            } else if (!['interrupt', 'completion-race'].includes(mode)) terminal(command.turn)
-          } else if (command.type === 'interrupt')
-            terminal(command.turn, mode === 'interrupt' ? 'cancelled' : 'result')
+          if (command.type === 'interrupt' && mode === 'not-running-race') {
+            // The turn finishes as the interruption reaches the Agent. The
+            // terminal result must remain distinct from the control rejection.
+            terminal(command.turn)
+            item({
+              type: 'rejected',
+              command: 'interrupt',
+              turn: command.turn,
+              code: 'NOT_RUNNING',
+            })
+          } else {
+            item({ type: 'accepted', command: command.type, turn: command.turn })
+            if (command.type === 'prompt') {
+              if (mode === 'late-error') {
+                nativeSettled = true
+                fail(call, 'EXECUTION_FAILED')
+              } else if (!['interrupt', 'completion-race', 'not-running-race'].includes(mode))
+                terminal(command.turn)
+            } else if (command.type === 'interrupt')
+              terminal(command.turn, mode === 'interrupt' ? 'cancelled' : 'result')
+          }
         } else if (request.method === 'channel/close') {
           expect(p.endpoint).toBe('commands:s')
           closed = true
@@ -230,11 +268,21 @@ async function exercise(mode: string) {
   }
 }
 
-for (const mode of ['normal', 'interrupt', 'completion-race']) {
+for (const mode of ['normal', 'interrupt', 'completion-race', 'not-running-race']) {
   test(`public conversation helper: ${mode}`, async () => {
-    const { output } = await exercise(mode)
+    const { output, operations } = await exercise(mode)
     expect(output.turns).toHaveLength(2)
     expect(output.value.second.type).toBe(mode === 'interrupt' ? 'cancelled' : 'result')
+    if (mode === 'interrupt' || mode === 'completion-race')
+      expect(output.value.control).toBe('accepted')
+    if (mode === 'not-running-race') {
+      expect(output.value.control).toBe('not-running')
+      expect(
+        operations
+          .filter((operation) => operation.method === 'channel/send')
+          .map((operation) => operation.params.value.type),
+      ).toEqual(['prompt', 'interrupt', 'close'])
+    }
     expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
   })
 }

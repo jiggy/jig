@@ -96,6 +96,12 @@
             "$ref": "#/$defs/defaultSelector"
           },
           "maxProperties": 256
+        },
+        "entrypoint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "description": "An exact Run target followed by optional Jig run invocation arguments. Jig validates quoting, permitted options, project-relative paths and target membership. No shell execution or expansion."
         }
       },
       "additionalProperties": false
@@ -167,8 +173,16 @@
             }
           },
           "required": ["kind", "client"],
-          "if": { "required": ["retainSessions"] },
-          "then": { "properties": { "client": { "const": "codex" } } },
+          "if": {
+            "required": ["retainSessions"]
+          },
+          "then": {
+            "properties": {
+              "client": {
+                "const": "codex"
+              }
+            }
+          },
           "additionalProperties": false
         },
         {

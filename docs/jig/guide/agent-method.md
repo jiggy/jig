@@ -66,6 +66,23 @@ instructions and schema guidance, has its own 1 MiB bound.
 Structured schemas use the [bounded profile](../spec/agent-run.md#structured-output-profile)
 and at most 256 KiB of canonical JSON/0.
 
+Keep a small response schema used by one call beside that call, inline or as a
+local `responseSchema` constant. Extract a substantial or reused shape into an
+ordinary adjacent file with a descriptive name, such as
+`charge-assessment.schema.json`. It describes the Agent's requested reply, not
+the Flow's complete public result. There is no required schemas directory or
+`FLOW.response.json` declaration. Keep its explicit dialect, supported profile
+and independent result/domain checks intact. Dynamic choices, such as an enum of
+eligible routes, remain ordinary code. A schema import does not authorize a
+cross-Flow dependency.
+
+When related interfaces actually share constraints, optional
+[`@agentResponse` generation](contracts.md#one-model-related-outputs) can reduce
+repeated declarations. Distinct public and Agent shapes stay distinct when their
+constraints differ. Change managed projections through their source declaration
+and explicit regeneration; placement advice does not permit moving or deleting
+owned outputs behind the authoring tool.
+
 For Jig, declare `@jigging/agent-method` in the project's `package.json`
 dependencies. Use `workspace:*` for source in your Bun workspace or a selected
 published version with its Bun lock. Configure its ordinary Binding:
@@ -121,6 +138,47 @@ wraps this invocation result in its ordinary Run terminal, which also reports
 host execution status. Tool requests, malformed data and non-200 HTTP statuses
 remain failures. Nothing is retried automatically. A refused answer is `blocked`;
 token exhaustion is `limit`.
+
+### Diagnose a failed request
+
+HTTP failures name the selected API and status, explain which configuration to
+check, and retain status-derived facts in the operation error's `details`:
+`phase`, `api`, `status`, `category`, and `retry: "not-attempted"`. An optional
+`parameter` names only an exact recognized API field reported by the provider.
+For example, HTTP 422 points to the Agent Binding's model, API format, output
+mode and token settings. Without a recognized parameter, the exact cause
+remains unknown. HTTP 404 may
+mean an unavailable model or an incorrect endpoint. Neither diagnosis invents
+a provider cause or prints its error body.
+
+Use the originating operation path to identify the selected method and Binding.
+An HTTP response establishes that the endpoint responded, not that remote work
+was undone or safe to replay. Transport uncertainty remains a separate host
+failure. Correct configuration explicitly and review changed settings or grants
+before starting new work; the method never switches providers or retries.
+
+### Use an OpenAI-compatible gateway
+
+The same Flow can call an OpenAI-compatible gateway by changing its model,
+endpoint URL, and operator credential. For example, OpenRouter documents a
+Chat Completions endpoint and a dynamic free-model route:
+
+```ts
+settings: { model: 'openrouter/free', maxCompletionTokens: 4096 },
+slots: {
+  http: {
+    kind: 'http', method: 'POST',
+    url: 'https://openrouter.ai/api/v1/chat/completions',
+    bearerEnv: 'OPENROUTER_API_KEY',
+  },
+},
+```
+
+See [OpenRouter's API instructions](https://openrouter.ai/openrouter/free/apps)
+and [route details](https://openrouter.ai/openrouter/free). The route selects
+from the provider's currently available free models; availability, data policy,
+and model quality are provider-controlled and may change. This is a development
+configuration, not a stable model choice or a quality guarantee.
 
 `maxCompletionTokens` defaults to 4096, within 1–65536. Model and token settings
 guide the admitted method. To enforce them against malicious method code, add

@@ -1,14 +1,24 @@
 import { afterEach, expect, setDefaultTimeout, test } from 'bun:test'
 import { constants } from 'node:fs'
-import { mkdir, mkdtemp, open, readFile, rm, symlink, unlink, writeFile } from 'node:fs/promises'
+import {
+  type FileHandle,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { generateContract } from '../src/internal/contract-authoring-client.js'
+import { prepareContractGeneration } from '../src/internal/contract-generation.js'
+import { parseInvocationContract } from '../src/invocation-contract.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
 import { openPrivateProjectRoot } from '../src/project/root.js'
-import { prepareContractGeneration } from '../src/internal/contract-generation.js'
-import { generateContract } from '../src/internal/contract-authoring-client.js'
-import { parseInvocationContract } from '../src/invocation-contract.js'
 
 const roots: string[] = []
 // These tests synchronize durable publication records. Allow the outer harness
@@ -28,14 +38,13 @@ test('real bundled compiler publishes contracts through the host manager', async
     ),
   )
   await prepare(root, true, {
-    compile: (source, signal, paths) =>
+    compile: (source, signal) =>
       generateContract(
         source,
         signal,
         fileURLToPath(
           new URL('../libexec/authoring/contract-authoring-worker.js', import.meta.url),
         ),
-        paths,
       ),
   })
   expect(
@@ -69,19 +78,58 @@ test('bundled compiler reuses a borrowed agreement without generating or owning 
   })
   await writeFile(join(root, 'flow/progress.channel.json'), agreement)
   await prepare(root, true, {
-    compile: (source, signal, paths) =>
+    compile: (source, signal) =>
       generateContract(
         source,
         signal,
         fileURLToPath(
           new URL('../libexec/authoring/contract-authoring-worker.js', import.meta.url),
         ),
-        paths,
       ),
   })
   expect(await readFile(join(root, 'flow/progress.channel.json'), 'utf8')).toBe(agreement)
   expect(await prepare(root, false)).toBe(false)
 }, 30000)
+
+test('unrelated JSON fixtures do not limit borrowed-channel generation', async () => {
+  const root = await fixture()
+  const source = (
+    await readFile(
+      new URL('../../flow-authoring/test/fixtures/progress.tsp', import.meta.url),
+      'utf8',
+    )
+  ).replace(/@channelContract\([\s\S]*?\)\s*@closed model Progress \{[\s\S]*?\}/, '')
+  await writeFile(join(root, 'flow/FLOW.contract.tsp'), source)
+  const agreement = JSON.stringify({
+    $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
+    id: 'https://example.org/channels/review-progress',
+    version: '1.0.0',
+    semantics: 'Borrowed review progress.',
+    item: true,
+  })
+  await writeFile(join(root, 'flow/progress.channel.json'), agreement)
+  for (let start = 0; start < 4097; start += 64)
+    await Promise.all(
+      Array.from({ length: Math.min(64, 4097 - start) }, (_, offset) =>
+        writeFile(
+          join(root, 'flow', `fixture-${start + offset}-unrelated-captured-input.json`),
+          '{}',
+        ),
+      ),
+    )
+  await prepare(root, true, {
+    compile: (source, signal) =>
+      generateContract(
+        source,
+        signal,
+        fileURLToPath(
+          new URL('../libexec/authoring/contract-authoring-worker.js', import.meta.url),
+        ),
+      ),
+  })
+  expect(await readFile(join(root, 'flow/progress.channel.json'), 'utf8')).toBe(agreement)
+  expect(await prepare(root, false)).toBe(false)
+}, 60000)
 const descriptor = JSON.stringify({
   $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
   input: true,
@@ -110,9 +158,11 @@ async function prepare(
   overrides: Partial<Parameters<typeof prepareContractGeneration>[0]> = {},
 ) {
   const project = await openPrivateProjectRoot(root)
-  const directory = await open(join(root, 'flow'), constants.O_RDONLY | constants.O_DIRECTORY)
-  const captured = await capturePackageDirectory(join(root, 'flow'))
+  let directory: FileHandle | undefined
+  let captured: Awaited<ReturnType<typeof capturePackageDirectory>> | undefined
   try {
+    directory = await open(join(root, 'flow'), constants.O_RDONLY | constants.O_DIRECTORY)
+    captured = await capturePackageDirectory(join(root, 'flow'))
     return await prepareContractGeneration({
       project,
       generate,
@@ -129,8 +179,8 @@ async function prepare(
       ...overrides,
     })(directory, { membership: 'exact', projectPath: 'flow' }, captured)
   } finally {
-    await captured.dispose()
-    await directory.close()
+    await captured?.dispose()
+    await directory?.close()
     await project.dispose()
   }
 }
@@ -153,10 +203,10 @@ test('borrowed agreement bytes stay user-owned and changes require explicit rege
       progress: { direction: 'send', contract: './contracts/progress.json' },
     },
   })
-  const compile = async (source: string, _signal: AbortSignal, paths: readonly string[]) => {
-    expect(paths).toContain('./contracts/progress.json')
-    return { source, artifacts: { 'FLOW.contract.json': contract } }
-  }
+  const compile = async (source: string) => ({
+    source,
+    artifacts: { 'FLOW.contract.json': contract },
+  })
   expect(await prepare(root, true, { compile })).toBe(true)
   expect(await readFile(path, 'utf8')).toBe(agreement)
   expect(await prepare(root, false)).toBe(false)

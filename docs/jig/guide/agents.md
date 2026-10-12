@@ -105,9 +105,14 @@ import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
   package: 'npm:@jigging/agent-acp',
-  slots: { native: { kind: 'acp', client: 'codex' } }, // choose codex, claude, or pi
+  slots: { native: { kind: 'acp', client: 'codex' } },
 })
 ```
+
+A simple native policy belongs directly in its Binding. Use a
+[named grant](../spec/grants.md#reuse-a-named-policy-when-useful) when several
+Bindings intentionally share one policy or it has a separate management owner.
+No grants directory is required for inline policy.
 
 Use the same project default shown above. `client` is required; Codex is only
 the concrete choice in this example, not a product default or recommendation.
@@ -145,28 +150,76 @@ Discovery skips relative PATH entries, the project tree, and ancestor
 `node_modules` directories, including symlink routes through them. Shell aliases
 are not visible to Jig. The adapters require supported native installations;
 a shell wrapper or npm JavaScript launcher is not itself the native executable.
+For Codex's current official npm layout, Jig finds the matching native package
+without running the launcher. This also works with Volta's recorded global npm
+installation. Review shows the native binary that will run; no extra path
+setting is needed for these layouts. Unsupported launchers still require an
+explicit native executable. See the [selection rules](../spec/finite-acp.md#native-client-profiles)
+for the supported metadata and project exclusions.
 
 ### Codex
 
 Install Codex and sign in as the OS user running Jig, using
 [Codex's login instructions](https://developers.openai.com/codex/auth/).
-Jig supports standalone Linux x86-64 Codex binaries and native packages using
-Nix's binary PATH wrapper. It retains the executable and required shared
-libraries as individual reviewed files.
+Jig supports standalone Linux x86-64 Codex binaries, native packages using
+Nix's binary PATH wrapper, the current official npm layout (including Volta),
+and native Mach-O clients on qualified Macs. It
+retains the executable and required non-system shared libraries as individual
+reviewed files.
 
-For Codex's nested sandbox, Jig selects an unprivileged `bwrap` from the
+On Linux, for Codex's nested sandbox, Jig selects an unprivileged `bwrap` from the
 installation wrapper's PATH prefix or your exported PATH. If none is available,
 it uses the installation's matching `codex-resources/bwrap`. You do not need that
 bundled directory when your package supplies Bubblewrap separately.
 `JIG_BWRAP_PATH` configures only Jig's outer containment tool.
+
+On qualified Macs, Codex uses the system `/usr/bin/sandbox-exec` helper.
+Select a native installation for your Mac's architecture; no separate
+Bubblewrap installation is needed. A missing or unverifiable system helper
+requires repairing the supported host, not replacing it with another helper.
+
+Review checks the installation without opening a native session. Codex 0.159.0
+passes the separate offline startup check on Intel macOS 14.4.1, build 23E224.
+Its contained profile can receive preference-change notifications while host
+preference values remain inaccessible. A fresh check refuses configured managed
+policy or unavailable preference synchronization before review selection and
+every native launch. Keep managed settings intact and choose an integration that
+supports them; Jig does not bypass operator policy. Other macOS profiles still
+require separate qualification for this Codex path. Startup qualification does
+not prove endpoint availability or online subscription routing. Rosetta and
+Apple Silicon execution of this Codex profile are currently refused.
 
 The current adapter reads a file-backed login from `$CODEX_HOME/auth.json`,
 defaulting to `~/.codex/auth.json`. Configure Codex with
 `cli_auth_credentials_store = "file"` before signing in. Jig does not currently
 read Codex's OS-keyring credentials.
 
+An overridden `OPENAI_BASE_URL` must use HTTPS, without a username, password,
+query or fragment. The selected endpoint must pass normal certificate
+verification; a local HTTP server is not an accepted native Codex endpoint.
+
 The current adapter supplies a short-lived credential to the contained client;
 it does not give it your full authentication store or refresh credentials.
+
+## Repair a client check
+
+If `jig review` cannot verify a selected client, its error names the failed
+prerequisite and the Binding slot that selected it. Correct that prerequisite
+and review again; this check has not started a Flow or called a model.
+
+An **installation** error means the executable or its required runtime files
+could not be verified. Use a supported Linux x86-64 installation on Linux,
+or a native installation matching your architecture on a qualified Mac.
+Pi requires its standalone 0.84.4 distribution, including `package.json`
+and the theme directory beside its executable. A **sandbox** error identifies
+Codex's separate helper check; follow the host-specific instructions above.
+An unsupported **wrapper** requires selecting the underlying native executable
+with the appropriate absolute path override.
+
+Review checks local prerequisites. It cannot prove that a later native
+session or model call will succeed. If a Run fails after the client starts,
+use its retained result and [failure guidance](results.md); an uncertain
+operation must not be repeated merely to diagnose setup.
 
 ## Continue a conversation
 
@@ -177,10 +230,67 @@ prompts. One-shot calls require neither change.
 
 ## Switching
 
-Choose the new Binding configuration or replace its Flow package, then run `jig review` again.
-Client, endpoint, model, and executable changes affect the admitted execution
-identity. Use the same selection for the subsequent `jig run`; rotating only
-a credential does not require another review.
+For a lasting project choice, edit the ordinary Binding source. The diagnostic
+identifies the captured Binding and its `native` slot, or the named JSON policy
+selected by a slot such as `native: 'grant:agent'`. Simple policies are inline:
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex' } },
+```
+
+Choose `codex`, `claude`, or `pi`, keep the turn limits and required conversation
+features, and configure the client's authentication. A model pin belongs to the
+chosen client; replace it deliberately or omit it to use that client's default.
+Codex-only `retainSessions` must remain with Codex or be deliberately removed
+when the application no longer needs native retention. Then review and approve
+the changed selection before running:
+
+```sh
+jig review
+jig run
+```
+
+You can also propose one client for the current review without editing source:
+
+```sh
+jig review --agent codex
+jig run
+```
+
+`review --agent` requires one value: `codex`, `claude`, or `pi`. It changes only
+`client` in every selected ACP policy, including inline, named/shared and
+computed policies. Review shows the source client, effective client, argument
+origin and affected recipients before normal approval. The approved lock and
+`jig inspect` retain the effective choice; Run uses that exact approval without
+another flag. HTTP Agents and ordinary package/provider routes are unaffected.
+
+Turn limits and other policy fields remain intact. An actual cross-client
+change with a pinned model or incompatible native retention refuses the whole
+request; Jig does not clear or translate either field. The argument also refuses
+when no ACP resources are selected. A same-client choice still undergoes the
+normal prerequisite checks. New or changed resource authority requires the same
+explicit approval as a source edit; `--yes` alone does not grant it.
+
+The argument is not remembered for the next review. Repeat it when reviewing
+later code edits, or edit the Binding for persistence. A later bare `jig review`
+uses its newly captured source client again and explains that proposed change.
+If that review fails, the earlier approved code and client remain together;
+newly edited code is not authorized with the old client.
+
+When a selected client prerequisite fails, the entire CLI review stops before
+new approval, even if another code target is ready or an input might avoid the
+Agent branch. Review gives the known cause and selected policy location. For an
+executable failure it may list passively detected alternatives; detection does
+not prove authentication, native readiness or compatibility. Repair the selected
+installation or its path override, or make a deliberate client change, then
+retry. Review never starts a Flow or calls a model, and it never writes ACP policy.
+`--details` expands retained observed facts and identifies incomplete checks.
+See [review failure recovery](results.md#agent-setup-failures-during-review).
+
+Choose a different ordinary Agent package in its Binding when switching between
+native ACP and HTTP access. Client, endpoint, model and executable changes affect
+admitted execution identity. Rotating only a credential does not require another
+review.
 
 To use API access, select the ordinary Agent Binding in project defaults.
 A missing or incompatible selection fails; Jig does not silently choose

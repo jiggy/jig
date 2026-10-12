@@ -19,8 +19,25 @@ or newer instructions. Keep the reviewer advancing independently.
   instructions and an optional replacement. The root sends that replacement
   only to the reviewer to publish; model output never supplies its contents.
   `test/` owns deterministic application checks.
+  The README teaches ordinary project execution and reusing its complete Agent
+  boundary through offline package-selected import, without installer paths.
+- `jig.ts` owns the reviewed default brief invocation with its input and deadline.
+  Worker reporting activities expose static application phases, not model text or native
+  dispatch claims; they remain distinct from the final settlement packet.
+  Unsuccessful packets retain bounded public SDK error messages beside their
+  codes, never arbitrary exception text; missing causes remain explicit.
+
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy,
+  including its explicit two-turn allowance. `jig.ts` supplies that ordinary
+  Agent through the contract-keyed default.
 
 ## Local Contracts
+
+- `jig.ts` owns the complete default invocation: `binding:brief --input @input.json --timeout 3m`. Ordinary
+  `jig run` uses reviewed defaults and returns its result-only report on stdout.
+  The README explains optional retained `--out` destinations without overwrite
+  behavior; this application declares no writable attachment.
+  Explicit targets bypass defaults; display choices remain operator options.
 
 - Context and file contents are explicit data, never live filesystem access.
   Later instruction revisions are unique and increasing. Summaries cannot
@@ -52,6 +69,21 @@ or newer instructions. Keep the reviewer advancing independently.
   not interruption-retained storage or a machine-crash guarantee.
 - Briefs and review questions are model suggestions for a person to inspect,
   not independently verified incident facts or permission to publish them.
+
+- Package-local `dashboard.ts` projections offer Work, Brief, Review questions and standalone worker views through the
+  optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
+  activity and failure notices; pure methods retain their exact results and policy.
+  The existing reporting profile serves terminal and web without display code.
+  Tests validate complete escaped items, provisional meanings and evidence links.
+- The root reports a branch failure before awaiting its healthy sibling.
+  Views expose requested tasks and returned suggestions, not context file text,
+  earlier private prompts, model reasoning or invented host lifecycle states.
+  Root activities explicitly associate their own operation IDs. Concise top-level
+  brief/questions excerpts together fit the host scalar excerpt budget; original
+  answers and conversation evidence stay in nested results. Work rows declare
+  each branch's call reference before dispatch; the host
+  resolves it only when that actual invocation is observed, including during work.
+  The worker’s private revision `updates` channel remains distinct from `progress`.
 
 ## Work Guidance
 

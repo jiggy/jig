@@ -46,11 +46,21 @@ bounds. The generated JSON still governs actual invocation validation.
 
 ## One model, related outputs
 
-Decorate a closed model with `@agentResponse("./proposal.schema.json")` to
-request a standalone Agent response schema. A shared model edit then updates
-invocation validation, that projection, and implementation types together.
+Small private Agent response schemas usually belong beside their single call;
+substantial or reused schemas may use an ordinary descriptive adjacent file.
+They do not become `FLOW.*` declarations or the Flow's public result envelope.
+See [response schema authoring](agent-method.md#invoke-the-ordinary-flow).
+
+When two interfaces actually share constraints, decorate a closed model with
+`@agentResponse("./proposal.schema.json")` to request a standalone Agent response
+schema. A shared model edit then updates invocation validation, that projection,
+and implementation types together.
 Optional fields and constraints unsupported by the Agent profile cause an
 error identifying the source location; they are never weakened for a provider.
+Keep distinct schemas when the public interface needs constraints absent from
+the Agent profile. Managed projections are edited through their declaration and
+explicit regeneration, under the [generated-file ownership](#generated-file-ownership)
+rules; ordinary projects do not need a compiler for handwritten schemas.
 
 The supported single-file language, complete drafter example and resource bounds
 are documented in the
@@ -59,6 +69,14 @@ This profile supports input, complete result, custom outcomes, named invocation
 identity, optional feature catalogs, channel agreements, and explicit Agent projections—not every TypeSpec
 feature or arbitrary FLOW contract field. Settings and attachments remain
 separate declarations; use native JSON where the profile does not fit.
+
+Standalone schema files such as `settings.schema.json` need the exact root
+identifier `"$schema": "https://flow.jig.md/schemas/schema-0.json"`. Embedded
+schemas in `FLOW.contract.json` do not repeat it. FLOW Schema/0 is a bounded
+JSON Schema dialect; an arbitrary JSON Schema keyword or external `$ref` is not
+accepted. Review identifies the affected file and field and gives a correction.
+See [FLOW schema files](https://flow.jig.md/spec/schema-files) for the supported
+keywords, local references and limits.
 
 ## Named methods with progress
 
@@ -93,11 +111,21 @@ overwrites or deletes them. Editing a borrowed agreement requires explicit
 regeneration before review. The generated descriptor still references that
 file, so distribute the complete bundle.
 
-To reuse a complete invocation contract from an installed package or local
-directory, use `jig import-contract <descriptor.json> <new-directory>`. The
-destination parent must exist. Jig copies only the validated descriptor and
-its referenced channel agreements, preserving bytes and relative paths. It
-does not fetch dependencies, run code, overwrite a destination or approve work.
+Jig's [standard library](../contracts/index.md) uses the `jig:` namespace.
+Browse it with `jig import-contract --list`; for example,
+`jig import-contract jig:agent-run contracts/agent-run` copies the installed
+Agent agreement and all of its referenced channels and license. This selects
+an agreement, not an Agent implementation or permission to invoke one.
+
+To reuse a complete invocation contract from another installed package, use
+`jig import-contract npm:<package> <new-directory>`. Jig resolves the nearest
+installation from the destination's parent, so project-root and member-local
+dependencies use the same command. For an independently supplied contract, use
+`jig import-contract <descriptor.json> <new-directory>`. The destination parent
+must exist. Jig copies only the validated descriptor and its referenced channel
+agreements, preserving bytes and relative paths. The copy is a project-owned
+snapshot; upgrading the dependency does not silently change it. Import does
+not fetch dependencies, run code, overwrite a destination or approve work.
 
 ## Name optional behavior
 

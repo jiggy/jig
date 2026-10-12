@@ -13,16 +13,45 @@ operational baselines, and public-site assembly.
   workspace entries. Tracked source stays local to each checkout; parent links
   into the primary checkout stay unchanged. It does not copy environment files,
   create shared tool state, install dependencies, or choose another workspace.
+  Use Bash 3.2-compatible constructs and portable BSD/GNU link creation; support
+  checkouts with no shared links and refuse collisions while retaining a
+  partially created checkout for inspection.
 - Justfiles own task composition; scripts retain substantive orchestration.
   TypeScript candidate and site scripts invoke the relevant justfile, not
   package scripts. Python Just tasks expose the packaging orchestrator, which
   calls the standard Python build frontend directly.
+- `preflight.ts` owns local pre-push regression checks. `just preflight` builds
+  Jig and its dependencies, runs quick tooling and portable source checks, then
+  runs every discovered `macos-*.test.ts` file sequentially on an exact supported
+  unprivileged Mac with qualified Bun. It uses the hosted prerequisite order,
+  excludes ambient credentials and live-client opt-ins, checks ownership residue,
+  and stops at the first failure. Other hosts report portable-only coverage;
+  unsupported Macs refuse before building. This is not full host qualification.
+  The full local command checks Just, Node and jq availability before building.
+  Before local tests, resolve and verify the selected real Node 22+ executable,
+  supplying compiler paths even when PATH uses a version-manager shim.
+  Preserve distinct operator compiler overrides and exclude ambient credentials.
+  Package-local `jig::check` runs Jig and display-package suites before the same
+  native pass.
 - `test-release.sh` includes the authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
   It also checks the shared Agent method and ordinary ACP package.
-  It freezes complete SDK, HTTP Agent, ACP Agent and Jig archives through their package-owned
-  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE` and
-  `JIG_PACKAGE_ARCHIVE` to the relevant tests, and verifies those bytes afterward.
+  Refuse missing Python build/test tools or separately installed Run/0 fixture
+  dependencies before builds and long tests, with the existing setup commands.
+  It freezes complete SDK, reporting, HTTP Agent, ACP Agent, semantic model,
+  web/TUI renderer and Jig archives under a
+  canonical temporary root through their package-owned
+  packers, passes `FLOW_SDK_PACKAGE_ARCHIVE`, `REPORTING_PACKAGE_ARCHIVE`,
+  `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE`,
+  `JIG_PACKAGE_ARCHIVE`, `DISPLAY_MODEL_PACKAGE_ARCHIVE`,
+  `DISPLAY_WEB_PACKAGE_ARCHIVE` and `DISPLAY_TUI_PACKAGE_ARCHIVE` to the relevant
+  tests, and verifies those bytes afterward. Standalone display consumers install
+  ordinary package closures without Jig; installed Jig composition remains a
+  separate gate. Model and browser consumers require the independently verified
+  absolute `FLOW_NODE` executable for their Node checks, as well as Bun.
+  Renderer packages are qualification inputs, not publication
+  candidates selected by the protected publisher.
+  Hash verification uses the already-qualified Node executable on Linux and Mac.
   The compiler is bundled with Jig; managed authoring is checked through its CLI. For application tests,
   it maps applications' declared SDK/Agent dependencies to the exact frozen
   archives in disposable copies, including nested Flow and application-local
@@ -35,12 +64,26 @@ operational baselines, and public-site assembly.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
   containment and binary-safe file Runs, invalid output, resource limits,
   failure suppression, publication collisions and execution-residue checks.
+- `profile-installed-startup.ts` is an opt-in diagnostic on the selected Ubuntu
+  24.04 x86-64 and exact Intel/Apple Silicon Mac hosts, using the exact frozen Jig and FLOW SDK archives and a deterministic
+  three-Flow conversation. It excludes package/fixture setup, records one warmup
+  plus five fresh-project trials, and preserves bounded failure evidence. It
+  makes no provider calls and is not a performance claim or release threshold.
+  Planning subphases separate configuration support verification, envelope
+  startup, execution/settlement and workspace capture before selecting a change.
 - `test-operational-baseline.ts` retains failed fixtures and private command
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed; residue or
   removal failures never replace the original failure or establish success.
 - `require-linux-host-conformance.sh` owns the bounded, read-only check that an
   exact publication revision passed the complete Linux host workflow.
+- `require-macos-host-conformance.sh` owns the bounded, read-only check that an
+  exact publication revision passed the complete hosted Intel and Apple Silicon
+  Mac workflow.
+- `require-native-agent-api-qualification.sh` owns the bounded, read-only check
+  that the exact main-push revision passed the separate live ACP client check
+  before Agent/Jig npm publication; a manually dispatched check qualifies only
+  when it ran on `main` at that same revision.
 - `build-python-sdk.py` builds and qualifies wheel/sdist pairs; candidate mode
   requires clean Git source and records exact revision and artifact hashes. It
   uses one fixed archive timestamp so shallow CI checkouts and full-history
@@ -48,20 +91,32 @@ operational baselines, and public-site assembly.
 - `build-agent-candidate.ts` builds ordinary HTTP/ACP Agent packages from clean
   archived source with normal Bun packing, then checks exact installed bytes
   and records inventory, revision and hashes. It grants no native or model work.
+- `promote-directory.mjs` publishes complete Agent candidates and site directories
+  on Linux and Mac using a same-filesystem move and exact directory identity.
+  Refuse existing or racing destinations; remove only a nested copy of the
+  original staging inode, never another builder's output.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
 - `ci/` owns disposable CI-host provisioning.
+- `generate-unicode-normalization.py` verifies the exact Unicode 15.1 source
+  digests before generating Jig's canonical normalization tables and official
+  conformance vectors. It makes no network requests or contract-version changes.
 - Site assembly verifies every public HTML page has indexed Markdown and
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.
 - Site assembly requires both products’ home, guide, and understanding routes,
-  plus FLOW’s authoring entrypoint and Jig’s request-triage composition guide.
+  plus FLOW’s authoring entrypoint, SDK/Markdown/Skill guides, and Jig’s
+  request-triage composition guide.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime
   invocation resolution.
   Agent Run publication includes its complete referenced events, commands and
   replies channel bundle, even when a consumer uses only one-shot calls.
+  Reporting publication copies the portable library's exact descriptor and
+  MPL-2.0 license. The release gate freezes its archive beside the SDK, installs
+  both through ordinary dependencies, and qualifies TypeScript/Node and both
+  Python distributions separately.
 
 ## Local Contracts
 
@@ -76,6 +131,12 @@ operational baselines, and public-site assembly.
 - State test claims narrowly. `test-release.sh` is not a Linux proof-host or
   publication-readiness claim.
 - Do not hide a weaker fallback behind a successful command.
+- Startup-profile subprocesses receive an explicit non-credential environment,
+  run only frozen/local package inputs, and have a 30-minute aggregate child
+  budget plus bounded per-command time and output. Keep raw source and full
+  command output out of retained profile artifacts. The supported-host
+  workflow's final residue assertion remains mandatory even when the optional
+  diagnostic itself is non-gating.
 
 ## Work Guidance
 
@@ -93,25 +154,40 @@ operational baselines, and public-site assembly.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
+- `profile-installed-startup.ts` refuses hosts outside the exact Linux and Mac
+  qualification profiles; validate that refusal and obtain timing evidence from
+  the opt-in host workflow steps.
 - `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
   partial retries, registry failures, and immutable candidate/registry bytes.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
-  shell against controlled registry responses without credentials.
+  shell against controlled registry responses without credentials, including
+  independent FLOW publication and host-group preflight refusal.
 - Validate the Host Conformance authorization script with `shellcheck` and
   success plus fail-closed API fixtures.
+- Test the native Agent API publication gate with exact-revision success,
+  failure, and no-match API fixtures; it must not accept a qualification for
+  another source revision.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
   missing-build, mismatched-version, matching-version, and PATH behavior.
 - `bun test scripts/new-worktree.test.ts` uses disposable Git repositories to
-  verify link ownership, shared environment updates, separate indexes, and
-  refusals that preserve existing work and workspace state.
+  verify link ownership, setup without shared links, shared environment updates,
+  separate indexes, and refusals that preserve existing work and workspace state.
+  On macOS it invokes `/bin/bash` to cover the bundled Bash 3.2.
 - `just test-tooling` also checks recipe parsing, argument and working-directory
-  handling, example dependency versions against public package manifests,
+  handling, Linux host shard proof-step coverage and fail-closed aggregation,
+  example dependency versions against public package manifests,
   explicit packing, and build-tool refusal before cleanup or site staging. Its
   no-package-scripts rule covers repository tasks, not imported skill toolchains.
+  It includes all quick CI checks and the protected npm publisher's controlled
+  registry tests; the publisher uses Node hashing so these checks also run on Mac.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
+- `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive
+  native inventory, real compiler selection and early refusal, environment
+  isolation and failure-preserving residue checks.
+  Execute `just preflight` on a qualified native Mac after changing its runner.
 
 ## Child DOX Index
 
-- [ci/AGENTS.md](ci/AGENTS.md) — Disposable privileged CI-host provisioning
-  and residue checks.
+- [ci/AGENTS.md](ci/AGENTS.md) — Disposable Linux proof-host provisioning,
+  rootless Mac candidate qualification, frozen archives, and residue checks.

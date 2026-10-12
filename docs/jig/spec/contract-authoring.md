@@ -52,12 +52,12 @@ catalog before managed publication.
 ## Publication and recovery
 
 Channel ports may reference existing package-local JSON agreements instead of
-generating them. Generation supplies captured available paths to the compiler,
-then validates the complete descriptor and exact referenced bytes with the
-native readers before publication. No URL or remote import is resolved.
-The available-path inventory is bounded to 4096 names and 128 KiB; only exact
-referenced agreements become recorded inputs. Native contract closure limits
-still apply. Unrelated files are not interpreted as channel agreements.
+generating them. The compiler emits those references from authored source;
+generation resolves only the exact referenced bytes from the captured package,
+then validates the complete descriptor and closure with the native readers
+before publication. No URL or remote import is resolved. Only exact referenced
+agreements become recorded inputs; native contract closure limits still apply.
+Unrelated files are not interpreted as channel agreements.
 Borrowed agreements remain user-owned: they are neither outputs nor candidates
 for deletion. Their hashes participate in local freshness; changed bytes require
 explicit regeneration and subsequent review. Publication and interrupted-batch

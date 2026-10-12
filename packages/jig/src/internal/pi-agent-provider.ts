@@ -6,12 +6,12 @@ import {
   type PrivateAcpAgentProvider,
   type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
+import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 import {
   privateNativeAgentSupportResolver,
   resolvePrivateNativeAgentExecutable,
 } from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
-import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
 
 const PI_CLIENT = 'pi'
 const SANDBOX_LAUNCHER_PATH = '/agent/pi-agent-launcher.js'
@@ -75,7 +75,7 @@ export async function openPrivatePiAgentProvider(
         'native Pi light theme',
       ),
       certificatesPath: await ordinaryFile(
-        '/etc/ssl/certs/ca-certificates.crt',
+        process.platform === 'darwin' ? '/etc/ssl/cert.pem' : '/etc/ssl/certs/ca-certificates.crt',
         'host certificate bundle',
       ),
     }),

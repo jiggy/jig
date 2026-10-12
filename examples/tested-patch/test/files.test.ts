@@ -1,8 +1,8 @@
 import { afterEach, expect, test } from 'bun:test'
-import type { RunContext } from '@jigging/flow'
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import type { RunContext } from '@jigging/flow'
 import {
   identity,
   inspect,
@@ -53,18 +53,36 @@ test('only verified successful evidence earns a review patch', async () => {
   const root = await directory(),
     { result } = await syntheticRepair()
   await writeRepairDeliverables(root, input, result)
-  expect((await readdir(root)).sort()).toEqual(['proposal-1.patch', 'review.patch', 'summary.txt'])
+  expect((await readdir(root)).sort()).toEqual([
+    'goal.txt',
+    'proposal-1.patch',
+    'review.patch',
+    'summary.txt',
+  ])
+  expect(await readFile(join(root, 'goal.txt'), 'utf8')).toBe(`${input.issue}\n`)
   const patch = await readFile(join(root, 'review.patch'), 'utf8')
   expect(patch).toContain('--- a/src/parse.ts')
   expect(patch).toContain('--- a/src/report.ts')
   expect(patch).not.toContain('--- a/test/')
   await expect(writeRepairDeliverables(root, input, result)).rejects.toThrow()
 })
+test('decoded JSON evidence accepts null-prototype records and rejects changed verdicts', async () => {
+  const { result } = await syntheticRepair()
+  const decoded = JSON.parse(JSON.stringify(result), (_key, value) =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? Object.assign(Object.create(null), value)
+      : value,
+  )
+  expect(() => inspect(input, decoded)).not.toThrow()
+  decoded.output.attempts[0].evaluation.acceptance[0].passed = false
+  expect(() => inspect(input, decoded)).toThrow('contradicts collected command behavior')
+})
 test('failed attempts remain inspectable and are never renamed review-ready', async () => {
   const root = await directory(),
     { result } = await syntheticRepair({ success: false })
   await writeRepairDeliverables(root, input, result)
   expect((await readdir(root)).sort()).toEqual([
+    'goal.txt',
     'proposal-1.patch',
     'proposal-2.patch',
     'summary.txt',
@@ -110,7 +128,12 @@ for (const success of [true, false]) {
       },
       call: async (request: any) => {
         calls++
-        expect(request).toEqual({ operationId: 'repair', slot: 'repair', input })
+        expect(request).toEqual({
+          operationId: 'repair',
+          slot: 'repair',
+          intent: 'Reproduce the defect and propose a checked repair',
+          input,
+        })
         return result
       },
     } as unknown as RunContext
@@ -118,8 +141,8 @@ for (const success of [true, false]) {
     expect(calls).toBe(1)
     expect((await readdir(destination)).sort()).toEqual(
       success
-        ? ['proposal-1.patch', 'review.patch', 'summary.txt']
-        : ['proposal-1.patch', 'proposal-2.patch', 'summary.txt'],
+        ? ['goal.txt', 'proposal-1.patch', 'review.patch', 'summary.txt']
+        : ['goal.txt', 'proposal-1.patch', 'proposal-2.patch', 'summary.txt'],
     )
   })
 }

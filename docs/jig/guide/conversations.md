@@ -8,30 +8,65 @@ An application can ask an Agent to draft an incident brief, supply a correction,
 and obtain a revised answer in the same native conversation. The application
 chooses when to continue; the operator bounds how many turns may run.
 
-Use the ordinary [native Agent package](agents.md#local-clients). In its existing
-Binding, grant two turns:
+Use the ordinary [native Agent package](agents.md#local-clients). In its
+Binding, allow two turns with an inline policy:
 
 ```ts
-slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } }
+slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
 ```
 
 Choose your installed client and model; this is not a product default. Review
 the changed grant. One-shot calls remain unchanged. The HTTP Agent package does
 not implement continuing conversations and rejects them before dispatch.
 
-## Revise a draft
+## Build a two-turn Flow
 
-The caller declares an `agent` slot using the complete
-[Agent Run contract bundle](../spec/agent-run.md). After installing the ordinary
-`@jigging/agent-method` dependency, import its bundle into your Flow's existing
-`contracts/` directory. For a dependency installed at the project root:
+With Jig installed and a [native client configured](agents.md#local-clients),
+create an ordinary project and caller:
+
+The published Jig alpha supplies `new --use`. It copies the selected Agent
+contract and writes an ordinary editable slot declaration; you supply the
+caller's code and the operator chooses its powers.
 
 ```sh
-jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run
+jig init conversation-demo --agent codex
+cd conversation-demo
+bun install
+jig new worker --use agent=npm:@jigging/agent-acp
+bun add --cwd flows/worker @jigging/agent-method@alpha
 ```
 
-Use the descriptor's actual installed path. In a workspace, a member-local
-dependency may be at `flows/worker/node_modules/@jigging/agent-method/` instead.
+The Bun command installs an authoring dependency and records it in the worker's
+manifest. The project installation supplies the already-declared ACP package
+whose Agent Run contract is selected by `--use`; it grants no additional powers.
+Jig separately prepares reviewed execution dependencies. Choose
+your native client; `codex` here is an example, not a default.
+
+In `bindings/agent.ts`, set the native slot to
+`{ kind: 'acp', client: 'codex', maxTurns: 2 }`. Add `requires` as shown below
+to the generated `agent` slot in `flows/worker/FLOW.meta.json`.
+Replace `flows/worker/FLOW.ts` with the complete caller below. Then run:
+
+```sh
+jig review --allow-resolution-network
+jig run flow:flows/worker --input '{"facts":"Recovery at 09:48; cause unknown.","correction":"Reconciled recovery time: 09:47. Keep the cause uncertain."}'
+```
+
+Review shows the code, dependencies and two-turn authority before approval.
+Resolution permission can contact dependency-selected destinations before that
+approval; see [dependency preparation](dependencies.md). For later edits,
+review again. Inspect the returned turn's `type` and `result.outcome`: a clean
+conversation close alone does not establish a successful revision.
+
+## Declare and implement the caller
+
+The caller declares an `agent` slot using the complete
+[Agent Run contract bundle](../spec/agent-run.md), imported in the step above.
+
+`new --use` finds the nearest project or ancestor installation. You can also
+supply a descriptor path directly. For an existing Flow, use
+[`jig import-contract`](../spec/cli-experience.md#required-experience) and declare
+the corresponding slot in its metadata.
 
 This validates and copies the descriptor and all referenced channel agreements,
 without running the package or approving work. The new directory belongs to
@@ -41,7 +76,7 @@ your project. In the worker's `FLOW.meta.json`:
 {
   "uses": {
     "agent": {
-      "contract": "./contracts/agent-run/FLOW.contract.json",
+      "contract": "./contracts/agent/FLOW.contract.json",
       "requires": ["conversation", "events"]
     }
   }
@@ -58,36 +93,73 @@ cleanup out of application code:
 
 ```ts
 import { withAgentConversation } from '@jigging/agent-method/conversation'
+import { handle } from '@jigging/flow'
 
-const completed = await withAgentConversation(run, {
-  operationId: 'incident-brief', slot: 'agent',
-  input: { instructions: `Draft an incident brief from these facts: ${facts}` },
-  onEvent(event) {
-    if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
-  },
-}, async conversation => {
-  const draft = await conversation.initial
-  if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
-  return await conversation.prompt({
-    instructions: `Revise using this correction: ${correction}`,
+await handle(async run => {
+  if (run.input === null || typeof run.input !== 'object' || Array.isArray(run.input)
+      || !('facts' in run.input) || !('correction' in run.input))
+    throw new TypeError('Supply facts and correction strings.')
+  const { facts, correction } = run.input
+  if (typeof facts !== 'string' || typeof correction !== 'string'
+      || facts.length > 4096 || correction.length > 4096)
+    throw new TypeError('Supply facts and correction strings of at most 4096 characters.')
+
+  const completed = await withAgentConversation(run, {
+    operationId: 'incident-brief', slot: 'agent',
+    input: { instructions: `Draft an incident brief from these facts: ${facts}` },
+    onEvent(event) {
+      if (event.sessionUpdate === 'agent_message_chunk') console.log(event.content.text)
+    },
+  }, async conversation => {
+    const draft = await conversation.initial
+    if (draft.type !== 'result' || draft.result.outcome !== 'done') return draft
+    return await conversation.prompt({
+      instructions: `Revise using this correction: ${correction}`,
+    })
   })
+  return {
+    outcome: 'done',
+    output: {
+      turn: completed.value,
+      settlement: completed.settlement,
+      observation: completed.observation?.status ?? 'complete',
+    },
+  }
 })
 ```
 
-Declare `@jigging/agent-method` as an ordinary package dependency. `facts` and
-`correction` above are validated application input. `completed.value` is the
+The caller's `done` means it returned a settled conversation packet; inspect
+`output.turn` to distinguish an answer from an unsuccessful or cancelled turn.
+Operational errors still fail the Run. `completed.value` is the
 callback result, `completed.turns` retains received answers and unsuccessful
 turns, and `completed.settlement` is the final invocation result. The helper
 closes the conversation and waits for that actual result before returning.
 It does not grant authority or determine whether an answer is correct.
 
-To interrupt an active turn, await `conversation.interrupt()`, then await that
-turn's promise. An accepted interruption can race ordinary completion. Leaving
-a live turn unfinished at callback return fails rather than detaching it.
+After two successful turns, expect `output.turn.type: 'result'`,
+`output.turn.turn: 1`, and `output.turn.result.outcome: 'done'`. The answer is in
+`output.turn.result.output.text`; its wording depends on the selected Agent.
+`output.settlement` separately reports `{ outcome: 'done', output: { turns: 2 } }`.
+Observation is `complete` only when the public update stream closed cleanly.
+
+Try changing the correction while keeping the cause uncertain. Review the source
+again if you change the caller. If the initial turn is `blocked` or `limit`, this
+caller returns that turn without requesting a revision; a clean settlement does
+not turn that outcome into an answer.
+
+To interrupt an active turn, call `conversation.prompt(...)`, then await
+`conversation.interrupt()` and that same prompt's promise. It is safe to request
+interruption immediately: the helper waits for the prompt acknowledgement before
+sending the interrupt. `accepted` means the request was accepted, not that the
+turn was cancelled; natural completion can win, in which case the control may be
+`not-running` and the prompt still returns its result. Leaving a live turn
+unfinished at callback return fails rather than detaching it.
 `AgentConversationError` retains received `turns`, any known `settlement`, and
 both primary and cleanup `errors`; ordinary `try/catch` remains sufficient.
+Its failure summary includes the first exposed error's bounded message. Inspect
+the retained `errors` when deliberately recovering.
 Optional `onEvent` filters or displays public updates synchronously without
-manual channel setup. Inspect `completed.observation.status`: `incomplete`
+manual channel setup. Inspect `completed.observation?.status`: `incomplete`
 preserves observation errors without replacing the actual execution result.
 Asynchronous routing can instead use a caller-created `events` writer; do not
 combine it with `onEvent`. There is no privileged host echo of filtered text.
@@ -158,10 +230,23 @@ received and distinguish incomplete work from a finished revision.
 
 ## Interrupt without replacing the conversation
 
-Send `{type: 'interrupt', turn: 1}` while turn one is running. Its accepted
-reply means the method accepted that control. Only the later `cancelled` reply
-establishes native turn settlement. A completion racing interruption can instead
-return an ordinary result. Wait for either terminal turn reply before continuing.
+Keep the follow-up promise, request interruption, then await that same promise:
+
+```ts
+const turn = conversation.prompt({ instructions: 'Continue the draft.' })
+const control = await conversation.interrupt()
+const settled = await turn
+```
+
+The control reply (`accepted` or `not-running`) is not the turn result. The
+settled turn is either `cancelled` or an ordinary `result` if completion won the
+race. Do not start subsequent work until the turn promise settles.
+
+At the channel level, send `{type: 'interrupt', turn: 1}` while turn one is
+running. Its accepted reply means the method accepted that control. Only the
+later `cancelled` reply establishes native turn settlement. A completion racing
+interruption can instead return an ordinary result. Wait for either terminal
+turn reply before continuing.
 
 Busy or stale controls are rejected, not queued. The host independently refuses
 prompts beyond `maxTurns`. A native interruption that does not settle within
@@ -220,10 +305,10 @@ not that summary handoff improves model answers.
 ## Restore after a clean close
 
 A later Run can request the earlier native conversation through an opaque
-reference. This is the synchronized source candidate: use matching Agent and
-Jig artifacts, and qualify the installed client's save-and-restore path before
-relying on it. The initial retention profile is Codex 0.154.0; successful live
-follow-up alone does not qualify restoration.
+reference. The published Agent and Jig alphas include this interface. Qualify
+the installed client's save-and-restore path before relying on it. The initial
+retention profile is Codex 0.154.0; successful live follow-up alone does not
+qualify restoration.
 
 In the Agent Binding, separately grant retention and review the changed
 authority:

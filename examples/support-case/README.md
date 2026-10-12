@@ -4,14 +4,30 @@ An Agent interprets a customer's request. Code checks account records and
 credit policy, then returns a decision another application can consume.
 A persuasive answer cannot raise the credit limit or create a duplicate payment.
 
-After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages)
-and [Agent configuration](../../docs/jig/guide/agents.md), run here on a
-[supported host](../../docs/jig/guide/index.md#supported-host):
+With Jig installed on a [supported host](https://jig.md/guide/), configure and
+authenticate a supported client through [Choose an Agent](https://jig.md/guide/agents).
+The inline native policy in `bindings/agent.ts` selects Codex as an example
+choice. Edit that Binding and review again for a lasting client preference.
+`jig.ts` routes the assessor's Agent slot to this configured Binding. Run here:
 
 ```sh
-jig review
-jig run binding:support --input @fixtures/duplicate.json --timeout 2m
+jig review --allow-resolution-network
+jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
+
+The reviewed entrypoint supplies the duplicate-charge fixture and two-minute deadline.
+This result-only Flow returns its decision on stdout; no packet directory is
+created by default. Add `--json` for the complete machine record, or use
+`jig run --out ./support-result` to save `result.json` in a retained location.
+That directory must not already exist; Jig never overwrites an earlier result.
 
 For the intended assessment (`ch-102`, 2400 cents), `done` returns
 `disposition: "credit_eligible"` and `credit: {chargeId: "ch-102", amountCents: 2400}`.
@@ -38,6 +54,19 @@ order. Customer text must never populate those facts. A consuming billing
 service must recheck current state and own authorization and idempotency before
 acting; the example returns eligibility, not a reusable payment authorization.
 This policy does not prove that the Agent identified the customer's intent correctly.
+
+## Follow the work
+
+**Case** follows the request, proposed charge and code-owned eligibility decision.
+**Charges** keeps the supplied chronological records available for comparison; long
+lists explicitly show their retained excerpt. The assessor's own Case view stops at a
+proposal. An eligible decision never claims that a credit was issued.
+
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 Read the [walkthrough](../../docs/jig/guide/support-case.md), then run:
 

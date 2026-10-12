@@ -53,11 +53,22 @@ if (mode === 'interrupt-alias-disposal') {
   const layout = normalizePrivatePackageAliases(identity.allocation.aliases)
   const disposing = join(identity.allocation.path, 'package.disposing')
   await chmod(identity.allocation.path, 0o700)
+  if (process.platform === 'darwin') await chmod(identity.package.path, 0o700)
   await rename(identity.package.path, disposing)
   const alias = join(disposing, layout[0]!.path)
   await chmod(dirname(alias), 0o700)
   await unlink(alias)
   process.exit(75)
+}
+
+if (mode === 'chmod-before-rename') {
+  const identity = parsed('JIG_TEST_IDENTITY') as {
+    allocation: { path: string }
+    package: { path: string }
+  }
+  await chmod(identity.allocation.path, 0o700)
+  await chmod(identity.package.path, 0o700)
+  process.exit(76)
 }
 
 if (mode === 'fresh-reacquire') {
@@ -79,6 +90,7 @@ if (mode === 'interrupt-nested-disposal') {
   const transaction = identity.allocation.path
   const disposing = join(transaction, 'package.disposing')
   await chmod(transaction, 0o700)
+  if (process.platform === 'darwin') await chmod(identity.package.path, 0o700)
   await rename(identity.package.path, disposing)
   const nested = join(disposing, 'nested')
   const removed = join(nested, 'removed')

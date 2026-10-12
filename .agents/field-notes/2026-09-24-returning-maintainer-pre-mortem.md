@@ -224,9 +224,9 @@ the result and limitation. The test suite is not a goal in itself.
 
 ## Evidence that shaped this judgment
 
-These examples are dated observations, not fresh qualification. Their detailed
-receipts are in the linked transient reports; use live sources to establish
-today's state.
+These examples are dated observations, not fresh qualification. Some detailed
+receipts were held in transient reports that may no longer exist; use live
+sources to establish today's state.
 
 ### Release speed improved only after measuring the whole critical path
 
@@ -244,8 +244,7 @@ Jig alpha.19 about 640 seconds after its push-triggered run began. Queueing was
 usually seconds in those observations, but one run waited about 8.5 hours.
 That outlier shows why workflow execution time alone cannot promise delivery
 time. Retained candidate bytes, authorization waits, queue delay, registry
-visibility, and tag/release completion belong in the end-to-end account. See
-[`delivery-latency-evidence.md`](../../.tmp/delivery-latency-evidence.md).
+visibility, and tag/release completion belong in the end-to-end account.
 
 The later pushed checkpoint `c69548dd` completed the full host gate in 362
 seconds against the same 966-second baseline. CI wall time changed only from
@@ -282,8 +281,8 @@ were unchanged. During manual checking, I once applied the patch to the original
 temporary fixture; I reversed it immediately, rechecked hashes, and applied it
 only to a disposable copy afterward. The Jig Run had not edited that fixture.
 That mistake and recovery are recorded so future readers do not confuse manual
-verification with product mutation. See
-[`public-alpha-probe.md`](../../.tmp/public-alpha-probe.md).
+verification with product mutation. The original detailed report was
+transient and may no longer be available.
 
 ### The software-factory comparison did not establish superiority
 
@@ -316,9 +315,9 @@ passed again in separate disposable copies. The original 24 files remained
 unchanged. A separate selected cancellation recorded a cancelled invoice
 without a patch and preserved the healthy word-frequency patch. This is a
 bounded candidate-consumer success, not proof of public registry alpha.21,
-broad repair quality, or comparative advantage. The builder report is
-`/tmp/jig-factory-builder.oEiFm1/BUILDER-REPORT.md`; verify its archive,
-receipts, and registry state before making a current claim.
+broad repair quality, or comparative advantage. The builder report was stored
+in a host temporary directory and may no longer be available; verify any
+archive, receipts, and registry state before making a current claim.
 
 Factory jobs also gained an explicit method preference. `single-pass` and
 `checked-correction` dispatch directly; omission uses checked correction; only
@@ -332,9 +331,8 @@ baseline each accepted two patches, but took about 128 and 96 seconds. In the
 earlier direct-Agent comparison, after excluding a direct-arm CLI typo, the
 preselected operator-action measure tied while the direct Agent accepted 2/2
 patches versus the factory's 1/2. These are completed results, not experiments
-to tune until they favor the factory. Reports:
-[`software-factory-comparison.md`](../../.tmp/software-factory-comparison.md)
-and [`software-factory-builder.md`](../../.tmp/software-factory-builder.md).
+to tune until they favor the factory. The detailed reports were transient and
+may no longer be available.
 
 ### Installed native behavior and FLOW independence remain bounded
 
@@ -445,8 +443,192 @@ When coming back after time away, use this order to rebuild context quickly:
 
 Living truth is in the product docs, specs, code, workflows, and passing
 evidence. This note is optional historical context, not a task queue or status
-report. Contemporary evidence from this window was kept separately in
-`.tmp/delivery-latency-evidence.md`, `.tmp/public-alpha-probe.md`,
-`.tmp/software-factory-comparison.md`, and `.tmp/software-factory-builder.md`;
-those execution reports can be stale or absent and must be rechecked against
-the repository and services before reuse.
+report. Some contemporary evidence from its original window was kept in
+transient `.tmp/` reports; those reports may no longer exist. Recheck the
+repository and services before relying on any such result.
+
+## Supplement: a succession note from the project-purpose discussion
+
+- **Recorded:** 2026-09-25 UTC
+- **Recorder:** Primary Codex maintainer; session/thread
+  `01a0ca92-73e5-76a0-b2d1-54c1bb21c0bd`
+- **Evidence window:** The purpose and design discussion in this session,
+  through beta commit `ab1db6b6`.
+- **Scope:** The deepest product intent, fragile invariants, recurring
+  mistakes, and a compact way for a future maintainer to regain useful context.
+
+This supplement deliberately extends the existing return-to-project note
+instead of creating a second competing guide. It records the conclusions of
+this particular discussion; the original evidence window and dated observations
+above remain intact. It is optional, historical context. The
+[product compass](../product-compass.md), relevant
+[doctrine](../doctrine/purpose.md),
+[FLOW](../doctrine/flow.md) and [Jig](../doctrine/jig.md) branches,
+[design judgment](../doctrine/design-judgment.md),
+[maintainer guide](../maintainer-guide.md), specifications, code, and current
+evidence remain authoritative.
+
+### The reason beneath the architecture
+
+The shared aspiration is **expand human possibility**. It is not a promise
+that more automation, more software, or more technical power is intrinsically
+good. The products' more specific ideas are:
+
+- **FLOW — capability compounding.** Make executable know-how something a
+  specialist can contribute and another builder can apply, evaluate, adapt,
+  combine, and share. Packaging or portability alone does not show that
+  capability has grown; it must make useful work achievable or give the next
+  builder a better starting point.
+- **Jig — agency.** Put useful power under meaningful control. Jig is used by
+  people, applications, and software subsystems; “human possibility” is the
+  larger purpose, not a restriction that every consumer or decision must be a
+  person. A subsystem can exercise previously delegated authority without
+  becoming the authority that grants itself more.
+
+The connection matters: FLOW lets a method travel beyond its author; Jig lets
+the recipient put it to work without adopting the author's providers, policy,
+or consequences. The intended value is not “portable workflows” but more useful
+capability that remains understandable, adaptable, and directed by the party
+responsible for using it.
+
+Keep this descent in mind when reviewing a proposal:
+
+```text
+Expand human possibility
+    FLOW: capability compounds
+    Jig: agency through power under control
+        useful executable methods become easier to apply and combine
+        operators and applications keep direction over delegated power
+            standards, host boundaries, APIs, packages, examples
+```
+
+The lower levels serve the ones above. “Microkernel-inspired” can help explain
+the host's role in communication, but it is not a development target. A smaller
+core, an extracted module, a new protocol, or another abstraction has no
+priority merely because it is architecturally elegant. The product question is
+whether an ordinary consumer can accomplish something useful with less
+coordination and lifecycle knowledge while keeping meaningful control.
+
+### Invariants most likely to be simplified away
+
+The preceding note covers source/admission, authority, lifecycle, evidence,
+and release identity in detail. These are the shorthand checks I would keep
+close at hand:
+
+| Preserve | The tempting but wrong simplification |
+| --- | --- |
+| FLOW method meaning and Jig host authority remain separate; FLOW must work beyond Jig. | “Jig is the standard because it is the implementation we have.” |
+| Editable source proposes; reviewed immutable meaning executes. | “The source was reviewed before, so run whatever is there now.” |
+| Models return data and reason only within delegated powers. | “The model chose the target, therefore the target is authorized.” |
+| Launched effects have an owner until they are fenced, reaped, and cleaned up. | “Cancellation was requested, so ownership is settled.” |
+| Execution, application success, delivery, and cleanup are separate facts. | “A completed Run or delivered patch proves the requested outcome.” |
+| Essential distinctions should remain explicit in the system, but their repetitive coordination belongs with the responsible layer. | “Every caller must manually implement the lifecycle” or “remove distinctions to reduce method count.” |
+| Evidence is specific to the tested artifact, host, client, and claim. | “A fixture, high test count, or one successful run proves general reliability.” |
+
+Channels, calls, capabilities, Agent updates, logs, results, and checkpoints
+can all carry or describe work, but their semantics are not interchangeable.
+Message delivery is not completion; a channel ending is not application
+success; an Agent answer is not a policy decision. Keep familiar error handling
+ordinary where possible. New cross-cutting contracts should not burden channel-
+free callers merely to detect every mistake an application could make.
+
+### Additional mistakes not to repeat
+
+The older parts of this note record significant architecture detours. This
+discussion added a few product and interaction lessons worth making explicit:
+
+1. **Do not answer “why?” with a feature.** Portability, composability,
+   ownership, and observability can be useful means, not the project purpose.
+   “Capability compounding” needs its object; “agency” needs its promise of
+   power under control. Start with the valuable change for the consumer, then
+   descend to the mechanism.
+2. **Do not bury product friction inside an example wrapper.** A long setup
+   command, confusing `repair.ts`/`snapshot.ts` roles, or a misplaced output
+   directory is evidence to inspect the actual Jig experience. Moving flags
+   under `./run` would move the burden, not remove it. Example-only helpers are
+   appropriate only when they express genuine application policy, not when
+   they compensate for a reusable product gap.
+3. **Do not turn one use case into a universal subsystem prematurely.** The
+   request to see ACP messages was a useful way to expose a general need for
+   information across running work. It did not automatically justify a global
+   event bus, scheduler, lock manager, remote sink framework, or universal
+   workflow language. Raise the abstraction only as far as real consumers and
+   failure boundaries require; keep the default path small.
+4. **Do not confuse extraction with decoupling.** Making Agent-related
+   packages or SDK methods more visible is not enough if Jig still owns the
+   meaningful Agent implementation or the ordinary author must understand more
+   machinery. Extraction should enable independent replacement, reuse, or a
+   simpler consumer path, and remove the superseded seam in the same change.
+5. **Do not make the owner manage solvable research and experiments.** Specialists
+   can challenge different dimensions and reveal design gaps. Use them for
+   material choices about authority, public contracts, or scope; ask focused
+   questions; preserve dissent and failure. Once the proposal is strong, return
+   to a user-facing increment rather than seeking another round of agreement.
+   Routine engineering details are the maintainer's responsibility.
+6. **Do not let prose review or a benchmark become a gate by inertia.** A
+   reviewer that rejects valid content is not an approval authority. A tied
+   co-designed comparison is a completed result, not superiority and not an
+   owner blocker. Preserve the evidence and its limits; do not tune prompts or
+   move the metric until the story looks favorable.
+7. **Do not dismiss packaging mismatches as flukes.** The Linux artifact
+   failure on 2026-09-25 was a concrete stale SRI for the local bundled
+   `@jigging/flow-authoring` archive. Updating its authoring source changed the
+   packed bytes while the [Jig support lock](../../packages/jig/support/authoring-package-lock.json)
+   still pinned the former archive. The matching lock refresh is `ab1db6b6`. A real
+   package build and pack path plus the installed-package smoke passed locally;
+   the owner subsequently reported CI and Linux host conformance passing after
+   push. On future authoring-source changes, qualify the newly packed bytes
+   against the generated npm lock, not just the source tests.
+8. **Write entrypoints, not documents that require a lost conversation.**
+   Current guidance should explain the concept from its top-level purpose and
+   route downward. A historical note can point to prior context, but a new
+   maintainer must not need that history to understand what the product means
+   or which files currently govern it. Keep this note optional rather than
+   adding it to root required reading.
+
+### A practical return path
+
+When returning, do not start by reconstructing every experiment or reading
+every file in `.tmp/`. Re-establish today's authority and status first:
+
+1. Inspect branch, worktree, recent commits, active changes, and current
+   automation. A previous note can only describe its own evidence window.
+2. Read the root `AGENTS.md`, product compass, shared purpose, relevant FLOW
+   and Jig doctrine, design judgment, and maintainer guide. Then read the
+   nearest package instructions and exact specification owning the task.
+3. Check the coordination roadmap and inbox to understand ordered outcomes
+   and deferred work; neither a field note nor a completed phase selects the
+   next project frontier.
+4. For a delivery claim, inspect the exact source revision, candidate
+   artifacts, dependent package versions and pins, workflow results, host
+   qualification, and registry state that actually apply. Do not infer a
+   registry result from a green build or a green run on a different revision.
+5. Start from an ordinary user task and a simple example. Record what the
+   user must configure, decide, coordinate, and recover from. Add machinery
+   only for a responsibility Jig must enforce or a consumer has demonstrated
+   cannot otherwise be expressed cleanly.
+6. Verify the changed seam first, then the installed or host path appropriate
+   to the claim. Give sustained checks a clear purpose and keep the user
+   informed. Commit stable, authorized work on the correct branch; publishing,
+   pushing, or changing release state requires its own authority.
+
+For this supplement's evidence window, local `beta` was at `ab1db6b6` with a
+clean worktree. The owner reported both CI and Linux host conformance had
+passed for the pushed revision. Those statements are a dated handoff, not
+live release state; verify the current branch and run receipts on return.
+
+My final decision test is three questions:
+
+1. **What useful work becomes achievable for an ordinary consumer, and what
+   simpler existing approach is the baseline?**
+2. **Who owns the method, data, authority, consequences, and lifetime at each
+   boundary? Can the consumer understand and direct them?**
+3. **What specific evidence would show this increment succeeded, failed, or
+   needs a smaller design?**
+
+If those answers are vague, choose a smaller experiment or ask for the missing
+material decision. Do not build a universal subsystem to answer a hypothetical,
+and do not use the aspiration of agency or simplicity to waive a known
+safeguard. The work succeeds when capability is easier to inherit and combine,
+and the people and systems using it remain able to understand, direct, adapt,
+and stop it.

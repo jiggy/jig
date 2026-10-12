@@ -1,10 +1,11 @@
 // Assemble a normal npm dependency layout before packing. Bun's isolated
 // workspace links are not a complete bundled-dependency distribution.
 import { execFileSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { create } from 'tar'
 
 const args = process.argv.slice(2)
 if (args.length !== 2 || args[0] !== '--destination')
@@ -34,36 +35,23 @@ try {
   }
   // Standard script-disabled npm preparation supplies the ENTIRE runtime closure.
   // No workspace path, local archive locator or build-only dependency is published.
-  await writeFile(
-    join(stage, 'package.json'),
-    JSON.stringify({
-      name: 'jig-packing',
-      version: '0.0.0',
-      private: true,
-      dependencies: { '@jigging/flow-authoring': `file:${archive}` },
-    }),
-  )
-  execFileSync(
-    'npm',
-    [
-      'install',
-      '--ignore-scripts',
-      '--omit=dev',
-      '--package-lock=false',
-      '--no-audit',
-      '--no-fund',
-    ],
-    { cwd: stage, stdio: 'inherit' },
-  )
+  await cp(archive, join(stage, 'flow-authoring.tgz'))
+  await cp(join(root, 'support/authoring-install.json'), join(stage, 'package.json'))
+  await cp(join(root, 'support/authoring-package-lock.json'), join(stage, 'package-lock.json'))
+  execFileSync('npm', ['ci', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], {
+    cwd: stage,
+    stdio: 'inherit',
+  })
   // Keep the complete npm-installed tool private. It is not a consumer dependency:
   // installers must not re-resolve its unpublished workspace package from a registry.
-  // npm's local install index can contain the temporary archive locator; it
-  // is preparation metadata, not a runtime dependency.
+  // npm's local install index is preparation metadata, not a runtime dependency.
   await rm(join(stage, 'node_modules/.package-lock.json'), { force: true })
   // npm's executable links are not used by the bundled authoring API, and the
   // registry rejects symlinks inside a published package archive.
   await rm(join(stage, 'node_modules/.bin'), { recursive: true, force: true })
   await rename(join(stage, 'node_modules'), join(stage, 'libexec/authoring/node_modules'))
+  await rm(join(stage, 'flow-authoring.tgz'))
+  await rm(join(stage, 'package-lock.json'))
   delete manifest.devDependencies
   await writeFile(join(stage, 'package.json'), JSON.stringify(manifest, null, 2))
   await requireRegularTree(stage)
@@ -73,9 +61,18 @@ try {
   )
   // npm's packlist excludes nested node_modules. Archive this complete, allowlisted
   // package tree in the ordinary npm tarball format instead of pruning its closure.
-  execFileSync('tar', ['-czf', output, '-C', temporary, 'package'], {
-    stdio: 'inherit',
-  })
+  await create(
+    {
+      file: output,
+      cwd: temporary,
+      portable: true,
+      mtime: new Date(0),
+      gzip: true,
+      noDirRecurse: true,
+      strict: true,
+    },
+    await archivePaths(temporary, 'package'),
+  )
   console.log(output)
 } finally {
   await rm(temporary, { recursive: true, force: true })
@@ -87,4 +84,17 @@ async function requireRegularTree(root: string, relative = ''): Promise<void> {
     if (entry.isDirectory()) await requireRegularTree(root, path)
     else if (!entry.isFile()) throw new Error(`Jig archive contains a non-regular entry: ${path}`)
   }
+}
+
+async function archivePaths(root: string, relative: string): Promise<string[]> {
+  const paths = [relative]
+  const entries = await readdir(join(root, relative), { withFileTypes: true })
+  entries.sort((left, right) => (left.name < right.name ? -1 : left.name > right.name ? 1 : 0))
+  for (const entry of entries) {
+    const path = join(relative, entry.name)
+    if (entry.isDirectory()) paths.push(...(await archivePaths(root, path)))
+    else if (entry.isFile()) paths.push(path)
+    else throw new Error(`Jig archive contains a non-regular entry: ${path}`)
+  }
+  return paths
 }

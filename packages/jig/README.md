@@ -9,10 +9,14 @@ combine specialists, inspect their results, and stop owned work.
 npm install --global @jigging/jig@alpha
 ```
 
-The developer alpha requires Linux x86_64/glibc, Bubblewrap, and a systemd user
-manager with delegated cgroup v2 controllers. See the
+The developer alpha supports qualified Linux x86_64 and selected native Intel
+and Apple Silicon Macs. Linux needs Bubblewrap and a systemd user manager with
+delegated cgroup v2 controllers. Mac needs no administrator setup or `sudo`;
+its supervised resource limits can briefly overshoot. See the
 [complete supported-host requirements](https://jig.md/guide/#supported-host).
 npm installs Jig's exact Bun runtime dependency alongside the package.
+Linux ARM64 is unsupported. npm's independent OS and CPU allowlists may permit
+installation there, but the launcher refuses execution before selecting a runtime.
 
 ## Get started
 
@@ -40,20 +44,67 @@ Project commands:
 
 ```text
 jig init [--bare] <directory> [--agent [codex|claude|pi]]
-jig new <name>
+jig new <name> [--use slot=jig:name|slot=descriptor.json|slot=npm:package]...
 jig review [project] [--generate-contracts] [--allow-resolution-network] [--allow-authority-changes] [--yes] [--details]
 jig run [flow:path|npm:package|binding:id] [options]
 jig inspect [flow:path|npm:package|binding:id] [--json]
-jig import-contract <source> <destination>
+jig inspect --result <directory> [--display plain|tui|web] [--json]
+jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
+jig import-contract --list
 jig completion <bash|zsh|fish>
 ```
+
+Runs open TUI in suitable interactive terminals, with ordinary output otherwise.
+`jig run --display tui` explicitly opens a terminal workspace with Activity,
+Execution, application views, compact record tables and expandable evidence once
+root execution begins. Initial review, input, file and runtime refusals stay in
+ordinary output.
+Large layouts group views in a navigation rail; `v` opens all views at any size.
+Context appears beside the list when it adds information. Enter opens full
+details; `!` opens retained causes, `d` opens attributed diagnostics, and `?`
+explains the current keys.
+q asks before leaving, with Stay selected; live work continues inline after
+confirmation. Escape dismisses a panel or returns from a reference jump, and
+stays in the TUI at the top level.
+Ctrl-C during work cancels and waits for cleanup. After work and delivery settle,
+keyboard Ctrl-C asks before closing read-only result inspection. Inspection stays open until you
+leave, subject to any explicit enclosing command limit.
+File previews use
+verified immutable delivery. Use `--display plain`
+for nonanimated summaries. `--json` and effective `--receive` preserve exact
+machine/channel output. Flow authors compose views through the portable
+[reporting agreement](https://jig.md/guide/channels), without terminal code or
+host-specific domain adapters.
+
+`jig run --display web` publishes a private loopback browser link on terminal
+stderr after execution starts. It shows the same semantic views, actual calls,
+causes and delivered file contents with independent navigation in each tab.
+Close inspection or press q to leave; closing a tab does not cancel work or end
+inspection. There is no automatic inspection timeout. The web display needs no
+development server and initializes no native terminal renderer. `--json` and
+effective `--receive` take precedence; redirected Run stdout remains exact JSON.
+See [live progress and views](https://jig.md/guide/channels).
+
+The TUI uses pinned OpenTUI Core, installed with Jig and loaded only for
+an eligible TUI. Automatic selection falls back to ordinary output when native
+support is unavailable; explicit TUI refuses before execution with
+`JIG_TUI_UNAVAILABLE`. Restore the complete installation or select `--display plain`. Flows and the reporting SDK do not depend on OpenTUI.
 
 `review` shows changed policy; `--details` also includes unchanged policy. `--yes` approves without a prompt but does not grant resolution network
 permission. `--bare` creates only an empty project skeleton.
 
 `new` adds ordinary editable source under `flows/<name>` without installation or
-approval. Interactive `jig run` can offer an explicit choice of approved targets;
-scripts must name a target. Shell completion also reads only approved targets.
+approval. Jig's [standard library](https://jig.md/contracts/) uses one `jig:`
+namespace. `import-contract --list` lists its invocation and channel agreements
+offline. For example, `jig new worker --use agent=jig:agent-run` copies the complete
+Agent agreement and declares the collaborator slot. Importing preserves exact
+descriptors and licenses as local snapshots; implementations and grants remain
+separately selected and reviewed. Channel agreements belong under `channels`.
+Interactive `jig run` can offer an explicit choice of ready approved targets;
+scripts must name a target when no entrypoint is declared. An unavailable
+Agent disables only targets that depend on it; unrelated code methods can
+still be reviewed and run. Inspection includes unavailable targets and their
+retained cause. Shell completion offers ready approved targets.
 A Binding can pin a declared read attachment with
 `attachments: { reference: './resources/reference' }`. Review captures and
 identifies its files; Runs use those approved bytes without repeating `--attach`
@@ -69,11 +120,32 @@ network socket. See [delegated HTTP access](https://jig.md/guide/http).
 managed JSON and types before the separate execution-approval question. Plain
 review does not compile; already-generated contracts need no compiler runtime.
 
+Declare a project starting point using familiar Run arguments in `jig.ts`:
+
+```ts
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --timeout 8m",
+```
+
+After review, `jig run` uses that entrypoint. Explicit options override defaults;
+an explicit target bypasses them. Declaration paths are project-relative and job
+files are captured when invoked. Targets with file outputs receive a fresh
+temporary packet when output is omitted; Jig reports its path. Packets survive
+command exit, but the operating system may clear temporary storage. Use `--out DIR`
+to keep a packet in a chosen location; existing destinations are never replaced.
+Targets without file outputs return their result on stdout unless output is selected.
+A target-only string is valid too. See [project entrypoints](https://jig.md/guide/configuration#project-entrypoint).
+
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.
 It checks that approval against current local execution identities and reports
 changed or unverifiable environments. It does not check visible source edits,
 launch readiness or remote availability; Run still revalidates before execution.
+
+`jig inspect --result ./result-packet --display tui` reopens saved result,
+file and diagnostic evidence without starting work or requiring a project.
+Use `--display web` for browser inspection instead.
+These are recorded local claims, not a new execution verdict. File previews use
+captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/guide/results).
 
 `run` executes the approved revision and shows a YAML terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout
@@ -96,6 +168,14 @@ Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered 
 specific installation. Review shows the resolved executable; project-local
 binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)
 for supported installations and authentication.
+Keep a simple ACP policy inline in its Binding. Review reports a missing selected
+client with its captured setting and detected executable alternatives. Edit the
+source for a lasting preference, or use `jig review --agent codex` to propose Codex
+for all selected ACP resources in this approval. The flag leaves source unchanged;
+repeat it on later reviews. Bare review returns to source choices, while Run keeps
+using the exact approved client and code. Model pins or incompatible retention
+can refuse a cross-client override. Unavailable selected ACP prerequisites stop
+CLI review before new approval; no Flow starts.
 
 ## Guides
 

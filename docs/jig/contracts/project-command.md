@@ -5,6 +5,10 @@ description: What the Project Command contract ID means, how command authority i
 
 # Project Command contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:project-command contracts/project-command`.
+
 Project Command lets a Flow run an operator-reviewed Bun entrypoint or tests
 against supplied project files in containment. It returns captured output and
 termination evidence. The application decides whether that evidence establishes

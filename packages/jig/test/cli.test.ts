@@ -6,6 +6,7 @@ import {
   open,
   readdir,
   readFile,
+  realpath,
   rm,
   rmdir,
   symlink,
@@ -34,11 +35,12 @@ import {
   privateCliRequiresHost,
   privateCliVerification,
 } from '../src/cli.js'
-import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
-import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
-import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
 import { CheckError } from '../src/diagnostics.js'
+import { PrivateInstalledBundleError } from '../src/internal/installed-bun-support.js'
 import { projectError as projectFailure } from '../src/internal/project-session-controller.js'
+import { canonicalJson, JSON_1_LIMITS } from '../src/json.js'
+import { EVALUATOR_HINTS } from '../src/project/evaluator-diagnostics.js'
+import { createProject, type ProjectInitFileSystem } from '../src/project-init.js'
 
 const cli = resolve(import.meta.dir, '../src/cli.ts')
 
@@ -139,7 +141,7 @@ test('jig init --bare creates only the fixed inert project envelope', async () =
     })
     expect(await initialized.exited).toBe(0)
     expect(await new Response(initialized.stdout).text()).toBe(
-      `Created bare Jig project ${JSON.stringify(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`,
+      `Created bare Jig project ${JSON.stringify(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`,
     )
     expect(await new Response(initialized.stderr).text()).toBe('')
 
@@ -286,7 +288,7 @@ test('concurrent bare initializers have exactly one winner', async () => {
     )
     expect(results.map((result) => result.exit).sort()).toEqual([0, 1])
     expect(results.filter((result) => result.exit === 0)[0]?.stdout).toBe(
-      `Created bare Jig project ${JSON.stringify(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`,
+      `Created bare Jig project ${JSON.stringify(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`,
     )
     expect(results.filter((result) => result.exit === 1)[0]?.stderr).toBe(
       'Error: Project destination already exists\n\n  the destination already exists.\n  Next step: Choose a new directory; existing files are never replaced.\n\n  Diagnostic code: JIG_INIT_DESTINATION_EXISTS\n',
@@ -382,8 +384,10 @@ test.each(['codex', 'claude', 'pi'] as const)(
         dependencies: { '@jigging/agent-acp': manifest.version },
       })
       expect(await Bun.file(join(destination, 'bindings/agent.ts')).text()).toContain(
-        `slots: { native: { kind: "acp", client: "${client}" } }`,
+        `slots: { native: { kind: "acp", client: ${JSON.stringify(client)} } }`,
       )
+      expect(await Bun.file(join(destination, 'grants/agent.json')).exists()).toBeFalse()
+      expect(await Bun.file(join(destination, 'jig.ts')).text()).not.toContain('grants:')
       expect(await Bun.file(join(destination, 'jig.ts')).text()).toContain(
         'defaultProviders: { "https://jig.md/contracts/agent-run": "binding:agent" }',
       )
@@ -428,6 +432,7 @@ test('interactive Agent selection is explicit and cancellation creates nothing',
         expect(await Bun.file(join(root, 'project/bindings/agent.ts')).text()).toContain(
           'client: "pi"',
         )
+        expect(await Bun.file(join(root, 'project/grants/agent.json')).exists()).toBeFalse()
       } else {
         expect(code).toBe(answer === '' ? 0 : 2)
         expect(await readdir(root)).toEqual([])
@@ -530,7 +535,7 @@ test('inspect is read-only and host-free, with exact JSON for subprocesses', asy
       }),
     ).toBe(0)
     expect(output).toContain('No approved revision')
-    expect(output).toContain('jig review')
+    expect(withoutPresentationControls(output)).toContain('jig review')
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -572,11 +577,11 @@ describe('finite Jig project commands', () => {
 
     const removed = commandInvocation(unusedHost())
     expect(await main(['package', 'check', '.'], removed.options)).toBe(2)
-    expect(removed.error).toContain('Help: jig --help')
+    expect(removed.error).toMatch(/Help:\s+\$ jig --help/)
 
     const superseded = commandInvocation(unusedHost())
     expect(await main(['check'], superseded.options)).toBe(2)
-    expect(superseded.error).toContain('Help: jig --help')
+    expect(superseded.error).toMatch(/Help:\s+\$ jig --help/)
   })
 
   test('verification uses command grammar and rejects invalid selections before acquiring a host', async () => {
@@ -620,6 +625,20 @@ describe('finite Jig project commands', () => {
     ).toBe(privateCliCommandLifetimeMs(['run', 'flow:flows/hello', '--timeout', '2m']))
   })
 
+  test('Run and saved inspection refuse the replaced dashboard mode before acquiring a host', async () => {
+    for (const prefix of [
+      ['run', 'flow:flows/hello'],
+      ['inspect', '--result', './packet'],
+    ]) {
+      const args = [...prefix, '--display', 'dashboard']
+      const invocation = commandInvocation(unusedHost())
+      expect(await main(args, invocation.options)).toBe(2)
+      expect(invocation.error).toContain('JIG_USAGE')
+      expect(invocation.error).toContain('tui or web')
+      expect(privateCliRequiresHost(args)).toBe(false)
+    }
+  })
+
   test('version reports the package version without host acquisition', async () => {
     const manifest = await Bun.file(new URL('../package.json', import.meta.url)).json()
     const invocation = commandInvocation(unusedHost())
@@ -631,11 +650,28 @@ describe('finite Jig project commands', () => {
     const extra = commandInvocation(unusedHost())
     expect(await main(['--version', 'extra'], extra.options)).toBe(2)
     expect(extra.output).toBe('')
-    expect(extra.error).toContain('Help: jig --help')
+    expect(extra.error).toMatch(/Help:\s+\$ jig --help/)
+  })
+
+  test('default Run on an unreviewed project requests review without acquiring a host', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-unreviewed-entrypoint-'))
+    try {
+      const invocation = commandInvocation(unusedHost())
+      expect(
+        await main(['run'], {
+          ...invocation.options,
+          currentDirectory: directory,
+          runArgumentsPrepared: false,
+        }),
+      ).toBe(1)
+      expect(invocation.error).toContain('No approved targets')
+      expect(invocation.error).toContain('jig review')
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
   })
 
   test.each([
-    { args: ['run'], reason: 'exact target is required' },
     { args: ['run', 'flow:flows/hello', '--input'], reason: '--input needs a value' },
     {
       args: ['run', 'flow:flows/hello', '--timout', '2m'],
@@ -672,7 +708,7 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['review', '--details', '--yes'], invocation.options)).toBe(0)
     expect(invocation.output).toBe(
-      'complete policy\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+      'complete policy\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
     expect(events).toContain(`apply:${digest}`)
   })
@@ -699,6 +735,40 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('Success')
   })
 
+  test('resolved default settings are visible without exposing input or changing machine output', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-entrypoint-input-'))
+    try {
+      const path = join(directory, 'job.json')
+      await writeFile(path, '{"secret":"private job contents"}')
+      const events: string[] = []
+      let receivedDigest: string | undefined
+      const expectedAdmissionDigest = 'sha256:' + '1'.repeat(64)
+      const session = fakeSession(events)
+      const invocation = commandInvocation(
+        {
+          async acquire(_project, options) {
+            receivedDigest = options?.expectedAdmissionDigest
+            return session
+          },
+        },
+        { terminalOutput: true, expectedAdmissionDigest },
+      )
+      expect(
+        await main(
+          ['run', 'flow:flows/work', '--input', '@' + path, '--timeout', '8m', '--json'],
+          invocation.options,
+        ),
+      ).toBe(0)
+      expect(receivedDigest).toBe(expectedAdmissionDigest)
+      expect(invocation.error).toContain('Timeout: 480s')
+      expect(invocation.error).toContain('Input file:')
+      expect(invocation.error).not.toContain('private job contents')
+      expect(JSON.parse(invocation.output)).toMatchObject({ status: 'succeeded' })
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  })
+
   test('interactive runs show a readable result while redirected runs preserve exact JSON', async () => {
     const terminal: RootRunTerminal = {
       status: 'succeeded',
@@ -714,7 +784,7 @@ describe('finite Jig project commands', () => {
     expect(human.output).toContain('Run output: result')
     expect(withoutPresentationControls(human.output)).toContain('One answer.\n')
     expect(human.output).not.toContain('"diagnostics"')
-    expect(human.error).toContain('result above')
+    expect(human.error).not.toContain('result above')
     const machine = commandInvocation(fakeHost(fakeSession(events, { terminal }), events), {
       terminalOutput: false,
     })
@@ -722,7 +792,7 @@ describe('finite Jig project commands', () => {
     expect(machine.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
   })
 
-  test('explains invalid input before expanding details and names the whole input clearly', async () => {
+  test('ends invalid input output with its cause, approved schema and next steps', async () => {
     const terminal: RootRunTerminal = {
       status: 'failed',
       code: 'INVALID_INPUT',
@@ -752,13 +822,19 @@ describe('finite Jig project commands', () => {
         },
       }),
     ).toBe(1)
-    const output = transcript.join('')
+    const output = withoutPresentationControls(transcript.join(''))
     expect(output).toContain('Value: entire input')
     expect(output).toMatch(/jig inspect\s+'flow:flows\/work'/)
     expect(output).toContain('Run output: result')
-    expect(output.indexOf('Expected string; received object.')).toBeLessThan(
+    expect(output.indexOf('Expected string; received object.')).toBeGreaterThan(
       output.indexOf('Run output: result'),
     )
+    expect(output.indexOf('Execution: failed.')).toBeLessThan(output.indexOf('Run output: result'))
+    expect(output).toContain('approved target input schema')
+    expect(output.replace(/\s+/g, ' ')).toContain(
+      'If you edited the Flow or its schema, approve those edits first: $ jig review',
+    )
+    expect(output).not.toContain('Error: Review required')
     expect(output).not.toContain('Value: ""')
   })
 
@@ -779,12 +855,14 @@ describe('finite Jig project commands', () => {
       })
       expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
       expect(invocation.error).toContain('Review required')
-      expect(invocation.error).toContain('Run jig review')
+      expect(withoutPresentationControls(invocation.error)).toContain('$ jig review')
       expect(invocation.error).toContain('No Flow was started for this Run.')
       expect(invocation.error).not.toContain('Inspect any effects')
-      expect(invocation.output).toBe(
-        terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
-      )
+      if (terminalOutput) {
+        expect(invocation.output).toContain('Execution: failed.')
+        expect(invocation.output).not.toContain('Run output: result')
+      } else
+        expect(invocation.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
     }
   })
 
@@ -805,8 +883,43 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
     expect(invocation.error).not.toContain('No Flow was started')
-    expect(invocation.error).not.toContain('Run jig review')
+    expect(invocation.error).not.toContain('$ jig review')
     expect(invocation.output).toContain('"details"')
+  })
+
+  test('a dispatched Flow cannot impersonate retained target unavailability', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'UNAVAILABLE',
+      message: 'application report',
+      details: {
+        code: 'RUN_TARGET_UNAVAILABLE',
+        availability: { cause: { diagnostic: 'PROJECT_ACP_PI_EXECUTABLE' } },
+      },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(
+      {
+        async acquire(_project, options) {
+          const session = fakeSession([], { terminal })
+          return {
+            ...session,
+            rootAdministration: {
+              ...session.rootAdministration,
+              async startRun(request) {
+                options?.channelOutput?.dispatched?.()
+                return session.rootAdministration.startRun(request)
+              },
+            },
+          }
+        },
+      },
+      { terminalOutput: true },
+    )
+    expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
+    expect(invocation.error).not.toContain('No Flow was started')
+    expect(invocation.error).not.toContain('approved as unavailable')
+    expect(invocation.error).toContain('application report')
   })
 
   test.each(['UNAVAILABLE', 'EXECUTION_FAILED'] as const)(
@@ -832,9 +945,11 @@ describe('finite Jig project commands', () => {
         expect(invocation.error.replace(/\s+/g, ' ')).toContain('native ACP client for this Flow')
         expect(invocation.error).not.toContain('did not retain a more specific cause')
         expect(invocation.error).not.toContain('No Flow was started')
-        expect(invocation.output).toBe(
-          terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
-        )
+        if (terminalOutput) {
+          expect(invocation.output).toContain('Execution: failed.')
+          expect(invocation.output).not.toContain('Run output: result')
+        } else
+          expect(invocation.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
       }
     },
   )
@@ -857,9 +972,11 @@ describe('finite Jig project commands', () => {
       )
       expect(invocation.error).not.toContain('No Flow was started')
       expect(invocation.error).not.toContain('did not retain a more specific cause')
-      expect(invocation.output).toBe(
-        terminalOutput ? '' : new TextDecoder().decode(canonicalJson(terminal)) + '\n',
-      )
+      if (terminalOutput) {
+        expect(invocation.output).toContain('Execution: failed.')
+        expect(invocation.output).not.toContain('Run output: result')
+      } else
+        expect(invocation.output).toBe(new TextDecoder().decode(canonicalJson(terminal)) + '\n')
     }
   })
 
@@ -891,7 +1008,8 @@ describe('finite Jig project commands', () => {
       terminalOutput: true,
     })
     expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
-    expect(invocation.output).toBe('')
+    expect(invocation.output).toContain('Execution: failed.')
+    expect(invocation.output).not.toContain('Run output: result')
     expect(invocation.error).toContain('No Flow diagnostic text was captured.')
     expect(invocation.error.replace(/\s+/g, ' ')).toContain(
       'does not establish whether the Flow started.',
@@ -916,7 +1034,7 @@ describe('finite Jig project commands', () => {
     })
     expect(await main(['run', 'flow:flows/work', '--json'], invocation.options)).toBe(1)
     expect(invocation.error).not.toContain('No Flow diagnostic text was captured.')
-    expect(invocation.error).toContain('See attributed runDiagnostics')
+    expect(invocation.error).toContain('See the attributed diagnostics shown above')
     expect(JSON.parse(invocation.output).runDiagnostics.entries[0]).toMatchObject({
       operations: ['worker'],
       stderr: 'child warning',
@@ -991,7 +1109,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review'], invocation.options)).toBe(0)
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(invocation.output).toBe(
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
     expect(invocation.error).toBe('')
   })
@@ -1015,7 +1133,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review', 'workspace', '--yes'], invocation.options)).toBe(0)
     expect(events).toEqual(['acquire:workspace', 'plan:update', `apply:${digest}`, 'close'])
     expect(invocation.output).toBe(
-      'review project changes\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
+      'review project changes\nProject ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
     )
     expect(invocation.output).not.toContain(digest)
     expect(invocation.output).not.toContain('admission')
@@ -1085,7 +1203,7 @@ describe('finite Jig project commands', () => {
     expect(nonInteractiveEvents).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(nonInteractive.output).toBe('review\n')
     expect(nonInteractive.error).toBe(
-      'Approval required\n\n  Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).\n\n  Diagnostic code: JIG_APPROVAL_REQUIRED\n',
+      'Approval required\n\n  Review the displayed changes. To approve this exact revision without a prompt, rerun with --yes:\n  \n    $ jig review --yes\n\n  Diagnostic code: JIG_APPROVAL_REQUIRED\n',
     )
 
     const declinedEvents: string[] = []
@@ -1104,9 +1222,84 @@ describe('finite Jig project commands', () => {
     expect(prompt).toBe('Approve this exact revision for execution? [y/N] ')
     expect(declinedEvents).toEqual(['acquire:/project', 'plan:update', 'close'])
     expect(declined.error).toBe(
-      'Review declined\n\n  The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.\n\n  Diagnostic code: JIG_CHANGES_DECLINED\n',
+      'Review declined\n\n  The proposed changes were not approved. Any existing approval remains unchanged. Dependency requests already made cannot be undone.\n\n  Diagnostic code: JIG_CHANGES_DECLINED\n',
     )
   })
+
+  test.each(['confirm', 'answer'] as const)(
+    'the %s prompt waits for asynchronous progress output',
+    async (kind) => {
+      const events: string[] = []
+      const plan: ProjectPlanResult = {
+        state: 'applicable',
+        operation: 'lock-repair',
+        planDigest: digest,
+        review: {
+          authorityChanges: false,
+          mediaType: 'text/plain; charset=utf-8',
+          text: 'review\n',
+          details: 'details\n',
+        },
+      }
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let transcript = ''
+      let asked = false
+      const session = fakeSession(events, { plan })
+      const invocation = commandInvocation(
+        {
+          async acquire(_project, options) {
+            return {
+              ...session,
+              async plan(request) {
+                options?.onStage?.('Checking execution recipes and retaining the review')
+                return session.plan(request)
+              },
+            }
+          },
+        },
+        {
+          interactive: true,
+          terminalOutput: true,
+          terminalError: true,
+          writeStderr: async (text) => {
+            await gate
+            transcript += text
+          },
+          confirm: async (prompt) => {
+            asked = true
+            transcript += prompt + 'n\n'
+            return false
+          },
+          answer: async (prompt) => {
+            asked = true
+            transcript += prompt + '\n'
+            return ''
+          },
+        },
+      )
+      const execution = main(
+        kind === 'confirm' ? ['review'] : ['init', '/unused-new-project', '--agent'],
+        invocation.options,
+      )
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(asked).toBe(false)
+      release()
+      expect(await execution).toBe(kind === 'confirm' ? 1 : 0)
+      expect(asked).toBe(true)
+      if (kind === 'confirm') {
+        expect(transcript.indexOf('Checking execution recipes')).toBeLessThan(
+          transcript.indexOf('Approve this exact revision'),
+        )
+        expect(transcript).toContain('Approve this exact revision for execution? [y/N] n\n')
+        expect(transcript.indexOf('Waiting for your approval')).toBeLessThan(
+          transcript.indexOf('Approve this exact revision'),
+        )
+      }
+    },
+  )
 
   test.each([false, true])(
     'resolution permission is separate from execution approval (yes=%s)',
@@ -1128,6 +1321,8 @@ describe('finite Jig project commands', () => {
         acquire: async (_path, options) => {
           received = options
           options?.onResolution?.('flows/hello\u001b[31m')
+          options?.onResolution?.('flows/second')
+          options?.onResolution?.('flows/third')
           return fakeSession(events, { plan })
         },
       }
@@ -1140,6 +1335,9 @@ describe('finite Jig project commands', () => {
       ).toBe(yes ? 0 : 2)
       expect(received?.allowResolutionNetwork).toBeTrue()
       expect(invocation.error).toContain('private-network services')
+      expect(invocation.error.match(/Warning: Dependency network access allowed/g)).toHaveLength(1)
+      expect(invocation.error).toContain('Dependency preparation across this review')
+      expect(invocation.error).toContain('before graph validation')
       expect(invocation.error).not.toContain('\u001b')
       expect(events.some((event) => event.startsWith('apply:'))).toBe(yes)
     },
@@ -1192,7 +1390,7 @@ describe('finite Jig project commands', () => {
   ])('rejects misplaced or duplicate resolution permission: %j', async (args) => {
     const invocation = commandInvocation(fakeHost(fakeSession([]), []))
     expect(await main(args, invocation.options)).toBe(2)
-    expect(invocation.error).toContain('Help: jig')
+    expect(invocation.error).toMatch(/Help:\s+\$ jig/)
   })
 
   test('contract generation is explicit and does not grant resolution or execution approval', async () => {
@@ -1268,7 +1466,10 @@ describe('finite Jig project commands', () => {
     const invocation = commandInvocation(host, { createSubmissionId: () => 'private-submission' })
 
     expect(await main(['run', 'flow:./flows/work'], invocation.options)).toBe(0)
-    expect(acquisition).toMatchObject({ runTimeoutMs: 30_000, channelOutput: { receive: [] } })
+    expect(acquisition).toMatchObject({
+      runTimeoutMs: 30_000,
+      channelOutput: { receive: [] },
+    })
     expect(request).toEqual({
       submissionId: 'private-submission',
       target: { kind: 'flow', path: 'flows/work' },
@@ -1339,6 +1540,57 @@ describe('finite Jig project commands', () => {
       expect(invocation.error).toBe('')
     },
   )
+
+  test('automatic updates select terminal stderr independently and preserve the machine result bytes', async () => {
+    let baseline: string | undefined
+    for (const [terminalError, args, enabled] of [
+      [false, [], true],
+      [true, [], true],
+      [true, ['--json'], false],
+      [true, ['--updates', 'off'], false],
+      [true, ['--receive', 'updates'], false],
+    ] as const) {
+      const host: PrivateCliCommandHost = {
+        async acquire(_path, options) {
+          expect(options!.channelOutput!.updates !== undefined).toBe(enabled)
+          const observer = options!.channelOutput!.updates?.open('updates')
+          observer?.accept({
+            kind: 'activity',
+            id: 'read',
+            label: 'Read all invoices; verification pending',
+            progress: { completed: 2, total: 2 },
+          })
+          observer?.accept({
+            kind: 'notice',
+            text: 'Application says complete\nverification pending',
+          })
+          return fakeSession([], {
+            terminal: {
+              status: 'failed',
+              code: 'INVALID_RESULT',
+              message: 'Verification failed.',
+              diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+            },
+          })
+        },
+      }
+      const invocation = commandInvocation(host, { terminalOutput: false, terminalError })
+      expect(await main(['run', 'binding:work', ...args], invocation.options)).toBe(1)
+      expect(
+        withoutPresentationControls(invocation.error).includes('Flow: Application says complete'),
+      ).toBe(enabled)
+      if (args.some((value) => value === '--receive')) {
+        expect(JSON.parse(invocation.output)).toMatchObject({
+          type: 'terminal',
+          result: { status: 'failed' },
+        })
+      } else {
+        baseline ??= invocation.output
+        expect(invocation.output).toBe(baseline)
+        expect(JSON.parse(invocation.output)).toMatchObject({ status: 'failed' })
+      }
+    }
+  })
 
   test('terminal channel output joins fragments; --json retains the exact NDJSON records', async () => {
     const records = [
@@ -1429,7 +1681,7 @@ describe('finite Jig project commands', () => {
         expect(invocation.output).not.toContain('root text')
         expect(invocation.output).not.toContain('child text')
         expect(invocation.output).not.toContain('sibling text')
-        expect(invocation.output).toContain('Diagnostics ("worker")')
+        expect(invocation.output).toContain('Diagnostics: 3 invocation paths shown live.')
       } else {
         const record = JSON.parse(invocation.output)
         expect(record.diagnostics).toEqual(terminal.diagnostics)
@@ -1652,9 +1904,13 @@ describe('finite Jig project commands', () => {
     expect(
       await main(['run', 'flow:flows/work', '--attach', 'source=/proc'], unsupported.options),
     ).toBe(1)
-    expect(unsupported.error).toContain('ext4, XFS, Btrfs, or tmpfs')
+    expect(unsupported.error).toContain(
+      process.platform === 'darwin'
+        ? 'Jig state and host control files cannot be selected'
+        : 'ext4, XFS, Btrfs, or tmpfs',
+    )
     expect(unsupported.error).not.toContain('/proc')
-    const root = await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-cli-file-limit-')))
     try {
       await writeFile(join(root, 'large'), Buffer.alloc(8 * 1024 * 1024 + 1))
       const bounded = commandInvocation(unusedHost())
@@ -1685,8 +1941,72 @@ describe('finite Jig project commands', () => {
     )
     expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(1)
     expect(invocation.output).toBe('')
-    expect(invocation.error).toContain('supply exactly')
+    expect(invocation.error).toContain('Supply exactly')
+    expect(invocation.error).toContain('No Flow was started.')
+    expect(invocation.error).toContain('$ jig inspect <target>')
     expect(invocation.error).not.toContain('private message')
+  })
+
+  test('output reports its destination on stderr even when delivery prerequisites refuse', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-cli-output-notice-'))
+    try {
+      for (const terminalOutput of [true, false]) {
+        const invocation = commandInvocation(
+          fakeHost(
+            fakeSession([], {
+              captureRequest() {
+                throw new RootAdministrationError('INVALID_REQUEST', 'private message', {
+                  code: 'RUN_ATTACHMENTS_INVALID',
+                })
+              },
+            }),
+            [],
+          ),
+          { currentDirectory: root, terminalOutput, terminalError: false },
+        )
+        expect(
+          await main(
+            ['run', 'binding:work', '--out', 'evidence', '--display', 'plain'],
+            invocation.options,
+          ),
+        ).toBe(2)
+        expect(invocation.error).toContain(`Output: "${root}/evidence"`)
+        expect(invocation.output).toBe('')
+        expect(await readdir(root)).toEqual([])
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('file mapping refusal names missing inputs and a template before dispatch', async () => {
+    const invocation = commandInvocation(
+      fakeHost(
+        fakeSession([], {
+          captureRequest() {
+            throw new RootAdministrationError('INVALID_REQUEST', 'private message', {
+              code: 'RUN_ATTACHMENTS_INVALID',
+              fileMapping: {
+                missingReads: ['source', 'reference'],
+                unknownNames: ['typo'],
+                boundOverrides: ['rules'],
+                missingWritableDestination: ['deliverables'],
+              },
+            })
+          },
+        }),
+        [],
+      ),
+    )
+    expect(await main(['run', 'binding:work', '--display', 'plain'], invocation.options)).toBe(1)
+    expect(invocation.output).toBe('')
+    expect(invocation.error).toContain('No Flow was started.')
+    for (const name of ['source', 'reference', 'typo', 'rules', 'deliverables'])
+      expect(invocation.error).toContain(`"${name}"`)
+    expect(invocation.error).toContain('--out ./result-packet')
+    expect(invocation.error).toContain('template')
+    expect(invocation.error).not.toContain('private message')
+    expect(invocation.error).not.toContain('Submitting')
   })
 
   test.each(['ADMISSION_MISSING', 'STALE_PLAN'])(
@@ -1706,7 +2026,7 @@ describe('finite Jig project commands', () => {
       expect(await main(['run', 'flow:flows/work'], invocation.options)).toBe(2)
       expect(invocation.output).toBe('')
       expect(invocation.error).toBe(
-        `Error: Command could not finish\n\n  the project has no usable reviewed revision; complete jig review before running\n\n  Diagnostic code: ${code}\n`,
+        `Error: Command could not finish\n\n  The project has no usable reviewed revision. No Flow was started. Complete jig review before running.\n\n  Diagnostic code: ${code}\n`,
       )
     },
   )
@@ -1736,7 +2056,7 @@ describe('finite Jig project commands', () => {
   })
 
   test('file report limits do not discard an already settled large terminal', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-cli-large-result-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-cli-large-result-')))
     try {
       for (let i = 0; i < 16; i++) await writeFile(join(root, `file-${i}`), '')
       const terminal: RootRunTerminal = {
@@ -1803,7 +2123,7 @@ describe('finite Jig project commands', () => {
         duplicate.options,
       ),
     ).toBe(2)
-    expect(duplicate.error).toContain('Help: jig run --help')
+    expect(duplicate.error).toMatch(/Help:\s+\$ jig run --help/)
   })
 
   test('installed command lifetime encloses Run cleanup without extending invalid commands', () => {
@@ -1865,6 +2185,24 @@ describe('finite Jig project commands', () => {
     }
   })
 
+  test('run does not misidentify an operation result failure as a Flow contract mismatch', async () => {
+    const terminal: RootRunTerminal = {
+      status: 'failed',
+      code: 'INVALID_RESULT',
+      message:
+        'Agent chat-completions endpoint returned HTTP 404. Check the reviewed endpoint URL and selected model availability.',
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const invocation = commandInvocation(fakeHost(fakeSession([], { terminal }), []))
+    expect(await main(['run', 'binding:agent'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain(
+      'A Flow or one of its operations rejected a returned result.',
+    )
+    expect(invocation.error).toContain('Agent chat-completions endpoint returned HTTP 404.')
+    expect(invocation.error).not.toContain('does not match its declared contract')
+    expect(JSON.parse(invocation.output)).toEqual(terminal)
+  })
+
   test('run rejects invalid target and JSON/0 before acquiring a project', async () => {
     const target = commandInvocation(unusedHost())
     expect(await main(['run', 'work'], target.options)).toBe(1)
@@ -1882,7 +2220,7 @@ describe('finite Jig project commands', () => {
 
     const usage = commandInvocation(unusedHost())
     expect(await main(['review', '--yes', 'project', 'extra'], usage.options)).toBe(2)
-    expect(usage.error).toContain('Help: jig review --help')
+    expect(usage.error).toMatch(/Help:\s+\$ jig review --help/)
   })
 
   test('interrupting a pending Run closes the session and reports no private state', async () => {
@@ -2023,14 +2361,14 @@ describe('finite Jig project commands', () => {
           {
             delivery: {
               async prepare() {},
-              async publish(record, outputFd, signal) {
+              async publish(record, retainedOutput, signal) {
                 expect(events).toContain('close')
                 expect(record).toMatchObject({ status: 'succeeded' })
                 if (interruptAt === 'settlement') {
                   expect(record).toMatchObject({ command: { status: 'interrupted' } })
-                  expect(outputFd).toBeUndefined()
+                  expect(retainedOutput).toBeUndefined()
                 } else {
-                  expect(outputFd).toBe(output.fd)
+                  expect(retainedOutput).toEqual({ kind: 'linux-directory', directory: output })
                   controller.abort()
                 }
                 expect(signal?.aborted).toBe(true)
@@ -2046,7 +2384,7 @@ describe('finite Jig project commands', () => {
               },
             },
             async acquire(_project, options) {
-              options!.files!.retainOutput(output)
+              options!.files!.retainOutput({ kind: 'linux-directory', directory: output })
               return {
                 ...session,
                 async close() {
@@ -2115,6 +2453,18 @@ describe('finite Jig project commands', () => {
     )
   })
 
+  test('an incomplete installed runtime gives a closed repair step', async () => {
+    const invocation = commandInvocation({
+      async acquire() {
+        throw new PrivateInstalledBundleError()
+      },
+    })
+    expect(await main(['review', 'project', '--yes'], invocation.options)).toBe(2)
+    expect(invocation.error).toContain('The installed Jig runtime is incomplete or invalid.')
+    expect(invocation.error).toContain('Restore the complete installation')
+    expect(invocation.error).not.toContain('/private/')
+  })
+
   test('renders invalid project diagnostics with terminal-safe relative locations', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError(
@@ -2139,6 +2489,59 @@ describe('finite Jig project commands', () => {
     )
     expect(invocation.error).not.toContain('\u202e')
   })
+
+  test.each([
+    [
+      'SCHEMA_INVALID',
+      '/$schema',
+      'Set the root "$schema" to "https://flow.jig.md/schemas/schema-0.json"',
+    ],
+    [
+      'SCHEMA_INVALID',
+      '/properties/count/type',
+      'Correct the indicated schema declaration using FLOW Schema/0',
+    ],
+    [
+      'SCHEMA_INVALID_JSON',
+      '',
+      'Use valid UTF-8 JSON/0 without duplicate keys and within its value limits',
+    ],
+    ['SCHEMA_KEYWORD_UNSUPPORTED', '/format', 'Use only the supported FLOW Schema/0 keywords'],
+    [
+      'SCHEMA_REFERENCE_INVALID',
+      '/$ref',
+      'Use an acyclic same-document reference spelled #/$defs/<name>',
+    ],
+    [
+      'SCHEMA_LIMIT_EXCEEDED',
+      '',
+      'Reduce schema size or validation work to the FLOW Schema/0 limits',
+    ],
+  ])(
+    'schema authoring failure %s at %s gives a concrete repair',
+    async (code, pointer, guidance) => {
+      const events: string[] = []
+      const failure = new ProjectAdministrationError(
+        'INVALID_CANDIDATE',
+        'private-token /private/schema',
+        {
+          code,
+          path: 'flows/worker/settings.schema.json',
+          pointer,
+        },
+      )
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+      expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
+      expect(invocation.error).toContain('Location: "flows/worker/settings.schema.json"')
+      expect(invocation.error).toContain(guidance)
+      expect(invocation.error).toContain(`Diagnostic code: ${code}`)
+      expect(invocation.error).not.toMatch(/private-token|\/private\/schema/)
+      if (pointer) expect(invocation.error).toContain(`Value: "${pointer}"`)
+    },
+  )
 
   test('workspace manifest failures identify the real ancestor and field without echoing rejected values', async () => {
     const events: string[] = []
@@ -2201,6 +2604,24 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).not.toContain('private parser detail')
   })
 
+  test('checkpoint attachment failures explain the required root output authority', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private detail', {
+      code: 'PROJECT_CHECKPOINT_ATTACHMENT',
+      path: 'flows/diagnostic',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('Location: "flows/diagnostic"')
+    expect(invocation.error).toContain(
+      'declare a read-write attachment in FLOW.contract.json for the root Flow that uses Run Checkpoint',
+    )
+    expect(invocation.error).toContain('Diagnostic code: PROJECT_CHECKPOINT_ATTACHMENT')
+    expect(invocation.error).not.toContain('private detail')
+  })
+
   test('author evaluation guidance includes the allowed project fields without echoing an exception', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'secret /private/file', {
@@ -2213,7 +2634,7 @@ describe('finite Jig project commands', () => {
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
     expect(invocation.error).toContain('unknown fields, invalid values')
     expect(invocation.error).toContain(
-      'defineJig accepts only flows, bindings, grants and defaultProviders',
+      'defineJig accepts only flows, bindings, grants, defaultProviders and entrypoint',
     )
     expect(invocation.error).toContain('Location: "jig.ts"')
     expect(invocation.error).toContain('Diagnostic code: PROJECT_EVALUATION_FAILED')
@@ -2246,7 +2667,7 @@ describe('finite Jig project commands', () => {
     },
   )
 
-  test('evaluation limits explain bounded authoring and host pressure without relaxing execution', async () => {
+  test('unclassified evaluation limits do not guess a resource or host-pressure cause', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError(
       'INVALID_CANDIDATE',
@@ -2260,8 +2681,9 @@ describe('finite Jig project commands', () => {
       fakeHost(fakeSession(events, { planFailure: failure }), events),
     )
     expect(await main(['review', '--yes'], invocation.options)).toBe(1)
-    expect(invocation.error).toContain('exceeded its resource or time limit')
-    expect(invocation.error).toContain('check host load before retrying review')
+    expect(invocation.error).toContain('exceeded a capture or execution limit')
+    expect(invocation.error).toContain('specific limiting resource was not retained')
+    expect(invocation.error).not.toContain('check host load')
     expect(invocation.error).toContain('No Flow was started')
     expect(invocation.error).not.toContain('private evaluator detail')
     expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
@@ -2292,6 +2714,11 @@ describe('finite Jig project commands', () => {
   })
 
   test.each([
+    [
+      'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
+      'bun.lock',
+      'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.3 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
+    ],
     [
       'PACKAGE_BUN_NODE_MODULES',
       'flows/drafter/node_modules',
@@ -2334,7 +2761,26 @@ describe('finite Jig project commands', () => {
     ['PROJECT_ACP_CODEX_EXECUTABLE', 'CODEX_PATH'],
     ['PROJECT_ACP_CLAUDE_LOGIN', 'CLAUDE_CODE_OAUTH_TOKEN'],
     ['PROJECT_ACP_PI_MODEL', 'model in the ACP grant or PI_MODEL'],
-    ['PROJECT_ACP_PI_INSTALLATION', 'standalone Linux x86-64 Pi 0.84.4'],
+    [
+      'PROJECT_ACP_CODEX_INSTALLATION',
+      process.platform === 'darwin' ? 'native macOS Codex' : 'Linux x86-64 Codex',
+    ],
+    [
+      'PROJECT_ACP_CLAUDE_INSTALLATION',
+      process.platform === 'darwin'
+        ? 'native macOS Claude Code'
+        : 'Linux x86-64 native Claude Code',
+    ],
+    [
+      'PROJECT_ACP_PI_INSTALLATION',
+      process.platform === 'darwin'
+        ? 'standalone macOS Pi 0.84.4'
+        : 'standalone Linux x86-64 Pi 0.84.4',
+    ],
+    [
+      'PROJECT_ACP_CODEX_SANDBOX',
+      process.platform === 'darwin' ? '/usr/bin/sandbox-exec' : 'unprivileged Bubblewrap',
+    ],
     ['PROJECT_ACP_CODEX_API', 'OPENAI_API_KEY and a model in the ACP grant'],
   ])(
     'ACP setup code %s identifies a specific correction without private errors',
@@ -2343,7 +2789,7 @@ describe('finite Jig project commands', () => {
       const failure = new ProjectAdministrationError(
         'UNAVAILABLE',
         'secret-token /private/runtime',
-        { code, path: 'flows/agent/FLOW.ts' },
+        { code, path: 'bindings/agent.ts', pointer: '/slots/native' },
       )
       const invocation = commandInvocation(
         fakeHost(fakeSession(events, { planFailure: failure }), events),
@@ -2352,8 +2798,25 @@ describe('finite Jig project commands', () => {
       expect(invocation.error).toContain(hint)
       expect(invocation.error).toContain(code)
       expect(invocation.error).toContain('retry jig review')
+      expect(invocation.error).toContain('Cause:')
+      expect(invocation.error).toContain('is selected, but')
+      expect(invocation.error).toContain('bindings/agent.ts')
+      expect(invocation.error).toContain('/slots/native')
+      expect(invocation.error).toContain('Agent selection:')
+      expect(invocation.error).toContain('Use another installed client')
+      expect(invocation.error).toContain('choosing codex, claude, or pi')
+      expect(invocation.error).toContain('inline Binding value or named JSON file')
+      expect(invocation.error).toContain('$ jig review')
+      if (code === 'PROJECT_ACP_CODEX_EXECUTABLE') {
+        expect(invocation.error).toContain('no usable executable was found')
+        expect(invocation.error).toContain('Shell aliases and functions')
+      }
       expect(invocation.error).not.toContain('secret-token')
       expect(invocation.error).not.toContain('/private/runtime')
+      if (process.platform === 'darwin') {
+        expect(invocation.error).not.toContain('Linux')
+        expect(invocation.error).not.toContain('Bubblewrap')
+      }
       expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
     },
   )
@@ -2396,6 +2859,25 @@ describe('finite Jig project commands', () => {
     expect(invocation.error).toContain('missing Flow or Binding')
     expect(invocation.error).toContain('Provider selection does not create Bindings')
     expect(invocation.error).not.toContain('INTERNAL')
+  })
+
+  test('a child Flow with unresolved requirements explains how to supply its configuration', async () => {
+    const events: string[] = []
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private candidate text', {
+      code: 'PROJECT_BINDING_SLOT_NOT_DIRECT',
+      path: 'bindings/support.ts',
+      pointer: '/slots/assessment',
+    })
+    const invocation = commandInvocation(
+      fakeHost(fakeSession(events, { planFailure: failure }), events),
+    )
+    expect(await main(['review'], invocation.options)).toBe(1)
+    expect(invocation.error).toContain('the selected child Flow cannot run directly')
+    expect(invocation.error).toContain('defaultProviders in jig.ts')
+    expect(invocation.error).toContain('Binding that supplies its slots and settings')
+    expect(invocation.error).toContain('No Flow was started')
+    expect(invocation.error).not.toContain('private candidate text')
+    expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
   })
 
   interface FakeSessionOptions {
@@ -2490,6 +2972,8 @@ describe('finite Jig project commands', () => {
     const options: PrivateCliOptions = {
       host,
       currentDirectory: '/project',
+      // The fake host models the inner installed command after argument ownership.
+      runArgumentsPrepared: true,
       interactive: false,
       ...extra,
       writeOutput: (text) => {

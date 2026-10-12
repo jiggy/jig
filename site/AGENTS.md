@@ -27,8 +27,10 @@ Jig public sites.
   theme. Keep the two sites' mark assets separate; their visual distinction is
   intentional, while wordmark typography and balanced lockup proportions are
   owned by `theme/`.
-- FLOW publishes the Python SDK guide at `/guide/python`; navigation and
-  `llms.txt` link it, and site assembly checks the route. Jig introduces
+- FLOW publishes SDK guides at `/guide/python` and `/guide/typescript`, Markdown
+  authoring at `/guide/markdown`, Skill compatibility at `/guide/skills`,
+  language and runtime matrix at `/guide/runtimes`, and host/platform integration
+  at `/guide/platforms`. Navigation, `llms.txt`, and site assembly keep these routes reachable. Jig introduces
   composition at `/guide/request-triage`; its navigation, generated index, and
   assembly gate keep that walkthrough reachable.
   The bounded factory walkthrough is published at `/guide/software-factory`.
@@ -54,6 +56,8 @@ Jig public sites.
   downloads.
 - `scripts/build-site.sh` owns fresh staging, exact artifact copying,
   inventory enforcement, and cross-site exclusion.
+  Jig's reporting landing page, descriptor download and license are copied
+  from the portable profile owner; never regenerate an equivalent descriptor.
 - Rspress generates `.md` companions, `llms.txt`, and `llms-full.txt` from the
   public pages. Do not maintain separate copies of agent-facing prose.
 - Reconcile navigation, generated indexes, workflow path filters, and build mappings

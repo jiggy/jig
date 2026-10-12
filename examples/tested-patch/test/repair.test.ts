@@ -79,6 +79,28 @@ test('cancellation, uncertainty and deadlines retain the first proposal without 
     }
   }
 })
+test('repair failures preserve underlying command details and prior method evidence separately', async () => {
+  const details = {
+    command: { cleanup: 'complete', stopReason: 'cancelled' },
+    attempts: ['external'],
+  }
+  try {
+    await syntheticRepair({ failCommand: 'CANCELLED', failCommandDetails: details })
+    throw new Error('Expected failure')
+  } catch (error) {
+    expect(error).toBeInstanceOf(OperationError)
+    const failure = error as OperationError
+    expect(failure.code).toBe('CANCELLED')
+    expect(failure.message).toBe('Synthetic interruption.')
+    expect(failure.details).toMatchObject({
+      baseDigest: digest(input.files),
+      operationDetails: details,
+    })
+    expect((failure.details as any).attempts).toHaveLength(1)
+    expect((failure.details as any).attempts[0].evaluation).toBeUndefined()
+    expect(details.attempts).toEqual(['external'])
+  }
+})
 test('project and replacement bounds reject traversal, test edits, duplicates and invalid Unicode', () => {
   expect(parseInput(input)).toEqual(input)
   for (const replacements of [

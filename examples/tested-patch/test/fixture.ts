@@ -78,6 +78,7 @@ export async function syntheticRepair(
     success?: boolean
     invalid?: boolean
     failCommand?: string
+    failCommandDetails?: RunContext['input']
     alreadyPasses?: boolean
   } = {},
 ) {
@@ -103,7 +104,11 @@ export async function syntheticRepair(
       }
       commands++
       if (options.failCommand && call.operationId.startsWith('attempt-'))
-        throw new OperationError(options.failCommand as any, 'Synthetic interruption.')
+        throw new OperationError(
+          options.failCommand as any,
+          'Synthetic interruption.',
+          options.failCommandDetails,
+        )
       const p = call.input as any
       return {
         outcome: 'done',

@@ -52,6 +52,12 @@ You can optionally generate one with Bun 1.3.3:
 bun install --lockfile-only
 ```
 
+Its version-1 text lock works on both supported Linux and Mac hosts. Mac also
+accepts version-2 text locks produced by Bun 1.4.2. Jig installs supported
+locks frozen without conversion. An unsupported format has the diagnostic
+`PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED`; changing dependency sources cannot
+correct a format mismatch.
+
 This authoring command may use the network and Bun's cache; it writes `bun.lock`
 without creating a local `node_modules` tree. The FLOW package contains the
 manifest and lock, not an installed dependency tree.
@@ -63,9 +69,13 @@ access. Invalid or stale supplied locks are errors even with the flag. Correct
 those locks explicitly; Jig never silently replaces them.
 
 `jig run` uses the admitted snapshot without fetching or installing. Later
-reviews reuse it without another resolution permission while its source and
-execution evidence still match. Any source change, including code-only edits,
-or changed host support can require fresh resolution for an unlocked package.
+reviews reuse verified dependencies when the manifest, authored lock and
+preparation support still match. Code-only edits produce a fresh execution
+snapshot without reinstalling. Settings and permissions still receive ordinary
+review; they do not themselves reinstall dependencies. For unchanged unlocked
+inputs, reuse keeps the previously approved generated lock and dependency
+selection. Changed dependency inputs or preparation support require fresh
+preparation, with explicit resolution permission if there is no authored lock.
 The permission lasts only for this review. Declined preparation is not admitted
 reuse. Missing or corrupt admitted bytes fail closed instead of being silently
 resolved again. Separate machines resolving unlocked source may select different
@@ -100,6 +110,10 @@ The Jig application itself may live at the workspace root or in a declared
 member. Declare `npm:` Flow targets in that application's `dependencies`;
 root applications need not move into a member directory. Root dependency
 selection captures metadata and selected packages, not the whole repository.
+An application can keep its own `workspaces` declaration for standalone use.
+When the outer workspace declares the selected application or Flow, review
+uses that outer root and its local packages. Include nested Flows explicitly
+in the outer workspace list; the application's declaration does not expand it.
 
 If a supplied lock is stale, review identifies the manifest and mismatched
 field. Update the authored lock with Bun and review again; Jig never repairs
@@ -114,12 +128,14 @@ workspace aliases within the retained snapshot, so nested versions and shared
 library instances keep their usual resolution behavior.
 Registry dependencies still use the locked default-registry policy above.
 
-Workspace dependencies are recaptured on each review. When the complete inputs
-and execution environment still match, Jig reuses that project's approved
-preparation without installing or resolving again. Preparation is never shared
-between separate Jig projects, even in the same workspace. Editing a library
-invalidates reuse, even if its Flow is unchanged. Existing admissions continue
-using their original bytes. When fresh preparation needs a missing root lock,
+Workspace source is recaptured on each review. When installer inputs and
+preparation support still match, Jig reuses that project's approved dependencies
+without installing or resolving again. Editing Flow or library code assembles
+new source with those verified dependencies and requires ordinary review.
+Manifest, lock, patch or selected-membership changes require preparation.
+Preparation is never shared between separate Jig projects, even in the same
+workspace. Existing admissions continue using their original bytes.
+When fresh preparation needs a missing root lock,
 it requires explicit resolution permission; stale supplied locks require updating.
 
 Root `patchedDependencies` is supported for exact package versions and bounded

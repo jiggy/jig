@@ -14,6 +14,7 @@ import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
 } from '../internal/package-artifact-store.js'
+import type { PrivateRuntimeReadinessCause } from '../internal/resource-qualification-evidence.js'
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import type { PackageEntrypoint } from '../package/inspect.js'
 import {
@@ -60,6 +61,7 @@ export type PrivateResolutionObservedDisposition =
   | {
       readonly state: 'unavailable'
       readonly code: PrivateResolutionUnavailableCode
+      readonly cause?: PrivateRuntimeReadinessCause
       readonly evidenceDigests: readonly string[]
     }
 
@@ -203,7 +205,7 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     root.entrypoint,
     root.entrypoint !== null &&
       typeof root.entrypoint === 'object' &&
-      Object.prototype.hasOwnProperty.call(root.entrypoint, 'selector')
+      Object.hasOwn(root.entrypoint, 'selector')
       ? ['path', 'suffix', 'selector']
       : ['path', 'suffix'],
     'activation entrypoint',
@@ -374,12 +376,14 @@ function copyDisposition(
   return Object.freeze({
     state: 'unavailable' as const,
     code: disposition.code,
+    ...(disposition.cause === undefined ? {} : { cause: disposition.cause }),
     evidenceDigests: disposition.evidenceDigests,
   })
 }
 
 function semanticProject(project: PackageProjectValue): JsonValue {
   return {
+    ...(project.entrypoint === undefined ? {} : { entrypoint: project.entrypoint }),
     flows: project.flows.map((flow) => ({
       path: flow.provenance.projectPath,
       package: flow.package,
@@ -416,6 +420,7 @@ function semanticDisposition(disposition: PrivateResolutionObservedDisposition):
     : {
         state: 'unavailable',
         code: disposition.code,
+        ...(disposition.cause === undefined ? {} : { cause: disposition.cause }),
         evidenceDigests: disposition.evidenceDigests,
       }
 }

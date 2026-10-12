@@ -1,12 +1,42 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { isAbsolute, join, resolve } from 'node:path'
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
+import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
+import { checkInstalledConversation } from './installed-conversation-adoption.js'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
 let completed = false
+const installedRuntime =
+  process.platform === 'darwin'
+    ? Object.freeze({
+        package: process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline',
+        version: '1.4.2',
+        revision: '1.4.2+744846f84',
+        sha256:
+          process.arch === 'arm64'
+            ? '35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5'
+            : '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
+      })
+    : Object.freeze({
+        package: 'bun-linux-x64-baseline',
+        version: '1.3.3',
+        revision: '1.3.3+274e01c73',
+        sha256: 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+      })
 const expectedInstalledFiles = [
   'LICENSE.md',
   'PRICING.md',
@@ -30,6 +60,18 @@ const expectedInstalledFiles = [
   'libexec/markdown-runtime.js',
   'libexec/http-request-worker.js',
   'libexec/flow.LICENSE',
+  'libexec/contracts/reporting/reporting.json',
+  'libexec/contracts/reporting/LICENSE',
+  ...['agent-run', 'project-command', 'http-request', 'run-checkpoint', 'finite-acp'].flatMap(
+    (name) => [`libexec/contracts/${name}/contract.json`, `libexec/contracts/${name}/LICENSE`],
+  ),
+  'libexec/contracts/agent-run/contracts/acp-public-updates.json',
+  'libexec/contracts/agent-run/contracts/agent-commands.json',
+  'libexec/contracts/agent-run/contracts/agent-replies.json',
+  'libexec/contracts/finite-acp/requests.json',
+  'libexec/contracts/finite-acp/responses.json',
+  'libexec/contracts/acp-public-updates/acp-public-updates.json',
+  'libexec/contracts/acp-public-updates/LICENSE',
   'libexec/agent/codex-acp.LICENSE',
   'libexec/agent/codex-acp.js',
   'libexec/agent/codex-agent-launcher.js',
@@ -46,6 +88,10 @@ const expectedInstalledFiles = [
   'libexec/evaluator/project-evaluator-worker.js',
   'libexec/preparation/bun-native-preparation-worker.js',
   'libexec/linux-rootless-supervisor.js',
+  'libexec/macos-native-supervisor.js',
+  'libexec/macos-exec',
+  'libexec/macos-codex-preferences',
+  'libexec/macos-descriptor-bridge.dylib',
   'package.json',
 ].sort()
 
@@ -66,18 +112,23 @@ try {
   )
   await run(
     [
-      'bun',
+      process.env.JIG_NPM ?? 'npm',
       'install',
       '--ignore-scripts',
-      '--no-progress',
-      '--cache-dir',
+      '--no-audit',
+      '--no-fund',
+      '--cache',
       join(temporary, 'cache'),
-      '--backend',
-      'copyfile',
     ],
     consumer,
+    process.env.JIG_AUTHORING_NODE_PATH
+      ? {
+          PATH: `${dirname(process.env.JIG_AUTHORING_NODE_PATH)}${delimiter}${process.env.PATH ?? ''}`,
+        }
+      : {},
   )
   const installed = join(consumer, 'node_modules', '@jigging', 'jig')
+  const runtime = join(consumer, 'node_modules', '@oven', installedRuntime.package, 'bin', 'bun')
   const installedFiles = await listFiles(installed)
   const installedManifest = JSON.parse(
     await readFile(join(installed, 'package.json'), 'utf8'),
@@ -86,6 +137,20 @@ try {
   await stat(
     join(installed, 'libexec/authoring/node_modules/@jigging/flow-authoring/dist/index.js'),
   )
+  const authoringLock = JSON.parse(
+    await readFile(join(packageRoot, 'support/authoring-package-lock.json'), 'utf8'),
+  ) as { packages: Record<string, { version?: string }> }
+  for (const [path, locked] of Object.entries(authoringLock.packages)) {
+    if (!path.startsWith('node_modules/') || !locked.version) continue
+    let manifest: string
+    try {
+      manifest = await readFile(join(installed, 'libexec/authoring', path, 'package.json'), 'utf8')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue // Optional platform package.
+      throw error
+    }
+    assert.equal(JSON.parse(manifest).version, locked.version, path)
+  }
   assert.deepEqual(installedManifest.bin, { jig: './bin/jig' })
   await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.package-lock.json')), {
     code: 'ENOENT',
@@ -93,8 +158,14 @@ try {
   await assert.rejects(stat(join(installed, 'libexec/authoring/node_modules/.bin')), {
     code: 'ENOENT',
   })
-  assert.deepEqual(installedManifest.dependencies, {
+  assert.deepEqual(installedManifest.optionalDependencies, {
+    '@oven/bun-darwin-x64-baseline': '1.4.2',
+    '@oven/bun-darwin-aarch64': '1.4.2',
     '@oven/bun-linux-x64-baseline': '1.3.3',
+  })
+  assert.deepEqual(installedManifest.dependencies, {
+    '@opentui/core': '0.5.17',
+    'web-tree-sitter': '0.25.10',
   })
   assert.equal(Object.hasOwn(installedManifest, 'private'), false)
   const sourceManifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
@@ -147,14 +218,94 @@ try {
       retained,
     )
   }
-  assert.deepEqual(installedManifest.os, ['linux'])
-  assert.deepEqual(installedManifest.cpu, ['x64'])
-  assert.deepEqual(installedManifest.libc, ['glibc'])
+  assert.deepEqual(installedManifest.os, ['linux', 'darwin'])
+  assert.deepEqual(installedManifest.cpu, ['x64', 'arm64'])
+  assert.equal(Object.hasOwn(installedManifest, 'libc'), false)
   assert.equal(Object.hasOwn(installedManifest, 'scripts'), false)
 
   const executable = join(installed, 'bin', 'jig')
   const piLauncher = join(installed, 'libexec', 'agent', 'pi-agent-launcher.js')
   const command = join(consumer, 'node_modules', '.bin', 'jig')
+  // The ordinary script-disabled install must retain Core's native and peer
+  // closure. Plain commands and public authoring do not import that renderer.
+  const rendererCheck = join(consumer, 'renderer-check.mjs')
+  await writeFile(
+    rendererCheck,
+    `import { createRequire } from 'node:module';
+const resolve = createRequire(${JSON.stringify(join(installed, 'package.json'))});
+const path = resolve.resolve('@opentui/core');
+const core = await import(path);
+const buffer = core.OptimizedBuffer.create(1, 1, 'unicode');
+buffer.destroy();
+console.log(path);
+`,
+  )
+  const renderer = await run([runtime, rendererCheck], consumer)
+  const rendererDirectory = resolve(renderer.stdout.trim(), '..')
+  const rendererManifest = JSON.parse(
+    await readFile(join(rendererDirectory, 'package.json'), 'utf8'),
+  )
+  assert.equal(rendererManifest.version, '0.5.17')
+  const hiddenRenderer = `${rendererDirectory}.missing-test`
+  await rename(rendererDirectory, hiddenRenderer)
+  try {
+    assert.match((await run([command, '--help'], consumer)).stdout, /Jig runs reusable methods/)
+    const authoringCheck = join(consumer, 'authoring-without-renderer.mjs')
+    await writeFile(
+      authoringCheck,
+      "import { defineJig } from '@jigging/jig';\nconsole.log(typeof defineJig);\n",
+    )
+    assert.equal((await run([runtime, authoringCheck], consumer)).stdout, 'function\n')
+    // Linux delegation is checked before renderer preparation. Ordinary source
+    // CI has no execution envelope; require this Run proof on the provisioned
+    // host instead of mistaking SANDBOX_UNAVAILABLE for a renderer failure.
+    if (process.platform === 'darwin' || process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+      const tuiRefusal = await run(
+        [
+          process.env.PYTHON ?? 'python3',
+          join(import.meta.dir, 'fixtures/installed-tui-refusal.py'),
+          command,
+        ],
+        consumer,
+        {},
+        45_000,
+      )
+      assert.equal(JSON.parse(tuiRefusal.stdout).passed, true)
+      assert.equal(tuiRefusal.stderr, '')
+    } else {
+      console.log('Skipped installed TUI Run refusal: requires the provisioned Linux host gate.')
+    }
+    // Saved inspection needs terminal stdout as well as terminal stderr. The
+    // test-only PTY owner keeps the capability in memory and emits sanitized
+    // evidence; no project, execution host or native renderer is involved.
+    const web = await run(
+      [
+        process.env.PYTHON ?? 'python3',
+        join(import.meta.dir, 'fixtures/installed-saved-web.py'),
+        command,
+        join(consumer, 'saved-web-packet'),
+      ],
+      consumer,
+      {},
+      90_000,
+    )
+    assert.deepEqual(JSON.parse(web.stdout), {
+      passed: true,
+      checks: [
+        'embedded-assets',
+        'bearer-required',
+        'recorded-capture',
+        'immutable-previews',
+        'exact-origin-close',
+        'piped-input',
+        'joined-exit',
+        'capability-redaction',
+      ],
+    })
+    assert.equal(web.stderr, '')
+  } finally {
+    await rename(hiddenRenderer, rendererDirectory)
+  }
   assert.notEqual((await stat(executable)).mode & 0o111, 0)
   assert.notEqual((await stat(piLauncher)).mode & 0o111, 0)
   const launcher = await readFile(executable, 'utf8')
@@ -223,6 +374,55 @@ try {
   assert.equal(targets.stdout, '')
   assert.equal(targets.stderr, '')
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
+  await run([command, 'import-contract', 'jig:reporting', 'imported-updates'], consumer)
+  assert.deepEqual(
+    await readFile(join(consumer, 'imported-updates/reporting.json')),
+    await readFile(join(installed, 'libexec/contracts/reporting/reporting.json')),
+  )
+  assert.deepEqual(
+    await readFile(join(consumer, 'imported-updates/LICENSE')),
+    await readFile(join(installed, 'libexec/contracts/reporting/LICENSE')),
+  )
+  await assert.rejects(
+    run([command, 'import-contract', 'jig:reporting', 'imported-updates'], consumer),
+  )
+  const catalog = await run([command, 'import-contract', '--list'], consumer)
+  assert(catalog.stdout.includes('jig:reporting'))
+  for (const name of [
+    'agent-run',
+    'project-command',
+    'http-request',
+    'run-checkpoint',
+    'finite-acp',
+    'acp-public-updates',
+  ]) {
+    assert(catalog.stdout.includes(`jig:${name}`))
+    const destination = `imported-${name}`
+    await run([command, 'import-contract', `jig:${name}`, destination], consumer)
+    const compare = async (relative: string) =>
+      assert.deepEqual(
+        await readFile(join(consumer, destination, relative)),
+        await readFile(join(installed, 'libexec/contracts', name, relative)),
+      )
+    await compare(name === 'acp-public-updates' ? 'acp-public-updates.json' : 'contract.json')
+    await compare('LICENSE')
+    if (name === 'agent-run')
+      for (const file of ['acp-public-updates.json', 'agent-commands.json', 'agent-replies.json'])
+        await compare(`contracts/${file}`)
+    if (name === 'finite-acp')
+      for (const file of ['requests.json', 'responses.json']) await compare(file)
+  }
+  await run([command, 'new', 'standard-agent', '--use', 'agent=jig:agent-run'], greeting)
+  assert.deepEqual(
+    JSON.parse(await readFile(join(greeting, 'flows/standard-agent/FLOW.meta.json'), 'utf8')).uses,
+    { agent: { contract: './contracts/agent/contract.json' } },
+  )
+  assert.deepEqual(
+    await readFile(
+      join(greeting, 'flows/standard-agent/contracts/agent/contracts/agent-commands.json'),
+    ),
+    await readFile(join(installed, 'libexec/contracts/agent-run/contracts/agent-commands.json')),
+  )
 
   // Ordinary installed authoring must work without acquiring the execution host
   // and must not evaluate the source package or the consumer's ambient config.
@@ -257,6 +457,17 @@ try {
   )
   await assert.rejects(stat(join(consumer, 'imported-contract/FLOW.ts')), { code: 'ENOENT' })
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
+  await mkdir(join(consumer, 'node_modules'), { recursive: true })
+  await symlink(contractSource, join(consumer, 'node_modules/import-fixture'))
+  const installedImport = await run(
+    [command, 'import-contract', 'npm:import-fixture', 'imported-from-package'],
+    consumer,
+  )
+  assert.match(installedImport.stdout, /Imported 2 contract files/)
+  assert.equal(
+    await readFile(join(consumer, 'imported-from-package/FLOW.contract.json'), 'utf8'),
+    contract,
+  )
 
   await Promise.all([
     rm(join(consumer, '.env')),
@@ -302,17 +513,13 @@ using FLOW;
     await compiler.exited
   }
 
-  const runtime = join(consumer, 'node_modules', '@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
   const runtimeBytes = await readFile(runtime)
-  assert.equal(
-    createHash('sha256').update(runtimeBytes).digest('hex'),
-    'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
-  )
+  assert.equal(createHash('sha256').update(runtimeBytes).digest('hex'), installedRuntime.sha256)
   const bun = await run([runtime, '--version'], consumer)
-  assert.equal(bun.stdout, '1.3.3\n')
+  assert.equal(bun.stdout, `${installedRuntime.version}\n`)
   assert.equal(bun.stderr, '')
   const revision = await run([runtime, '--revision'], consumer)
-  assert.equal(revision.stdout, '1.3.3+274e01c73\n')
+  assert.equal(revision.stdout, `${installedRuntime.revision}\n`)
   assert.match(
     await readFile(join(installed, 'THIRD_PARTY_NOTICES'), 'utf8'),
     /EXTERNAL RUNTIME DEPENDENCY — NOT INCLUDED/,
@@ -341,7 +548,7 @@ using FLOW;
   const initialized = await run([command, 'init', '--bare', bareProject], consumer)
   assert.equal(
     initialized.stdout,
-    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`,
+    `Created bare Jig project ${JSON.stringify(bareProject)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`,
   )
   assert.equal(initialized.stderr, '')
   assert.deepEqual((await readdir(bareProject)).sort(), [
@@ -355,6 +562,7 @@ using FLOW;
 
   for (const relative of [
     'libexec/linux-rootless-supervisor.js',
+    'libexec/macos-native-supervisor.js',
     'libexec/markdown-runtime.js',
     'libexec/evaluator/project-evaluator-worker.js',
     'libexec/evaluator/project-evaluator-sdk.bundle.js',
@@ -386,7 +594,223 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
 }
 `,
   )
-  await run(['bun', 'smoke.mjs'], consumer)
+  await run([runtime, 'smoke.mjs'], consumer)
+
+  if (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1') {
+    const project = join(consumer, 'macos-greeting')
+    await run([command, 'init', project], consumer)
+    const greetingPath = join(project, 'flows/hello/FLOW.ts')
+    const greeting = await readFile(greetingPath, 'utf8')
+    const scratchGreeting = greeting.replace(
+      '  return { outcome: "done", output: { message: `Hello, ${name}!` } };',
+      '  await Bun.write(`${run.scratch}/greeting.txt`, name);\n' +
+        '  return { outcome: "done", output: { message: `Hello, ${await Bun.file(`${run.scratch}/greeting.txt`).text()}!` } };',
+    )
+    assert.notEqual(scratchGreeting, greeting)
+    await writeFile(greetingPath, scratchGreeting)
+    await run([command, 'review', '--allow-resolution-network', '--yes'], project, {}, 120_000)
+    const result = await run(
+      [command, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada')],
+      project,
+      {},
+      120_000,
+    )
+    assert.deepEqual(JSON.parse(result.stdout), {
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+      outcome: 'done',
+      output: { message: 'Hello, Ada!' },
+      status: 'succeeded',
+    })
+
+    const child = join(project, 'flows/child')
+    await mkdir(child)
+    await writeFile(
+      join(child, 'package.json'),
+      await readFile(join(project, 'flows/hello/package.json')),
+    )
+    await writeFile(
+      join(child, 'FLOW.meta.json'),
+      JSON.stringify({ name: 'child', description: 'Verify isolated child scratch.' }),
+    )
+    await writeFile(
+      join(child, 'FLOW.ts'),
+      [
+        'import { handle } from "@jigging/flow";',
+        'await handle(async (run) => {',
+        '  const inherited = await Bun.file(`${run.scratch}/parent-marker`).exists();',
+        '  await Bun.write(`${run.scratch}/child-marker`, String(run.input));',
+        '  return { outcome: "done", output: { inherited, child: await Bun.file(`${run.scratch}/child-marker`).text() } };',
+        '});',
+      ].join('\n'),
+    )
+    await writeFile(
+      greetingPath,
+      [
+        'import { handle } from "@jigging/flow";',
+        'await handle(async (run) => {',
+        '  await Bun.write(`${run.scratch}/parent-marker`, "parent");',
+        '  return run.call({ operationId: "scratch-child", slot: "child", input: run.input });',
+        '});',
+      ].join('\n'),
+    )
+    await writeFile(
+      join(project, 'bindings/with-child.ts'),
+      [
+        'import { defineBinding } from "@jigging/jig";',
+        'export default defineBinding({ package: "flows/hello", slots: { child: "flow:flows/child" } });',
+      ].join('\n'),
+    )
+    await run(
+      [command, 'review', '--allow-resolution-network', '--allow-authority-changes', '--yes'],
+      project,
+      {},
+      120_000,
+    )
+    const composed = await run(
+      [command, 'run', 'binding:with-child', '--input', JSON.stringify('Ada')],
+      project,
+      {},
+      120_000,
+    )
+    assert.deepEqual(JSON.parse(composed.stdout).output, { inherited: false, child: 'Ada' })
+  }
+
+  if (
+    process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+    (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+  ) {
+    const sdkArchive = process.env.FLOW_SDK_PACKAGE_ARCHIVE
+    const updatesArchive = process.env.REPORTING_PACKAGE_ARCHIVE
+    assert(
+      sdkArchive && updatesArchive,
+      'The installed updates host probe needs both frozen public archives',
+    )
+    const project = join(consumer, 'invoice-updates')
+    await run([command, 'init', project], consumer)
+    const flow = join(project, 'flows/hello')
+    // Before publication, use ordinary declared workspace members containing
+    // unmodified frozen public package bytes. Jig refuses file: requests.
+    for (const [name, archive] of [
+      ['sdk', sdkArchive],
+      ['updates', updatesArchive],
+    ]) {
+      const member = join(project, 'packages', name!)
+      await mkdir(member, { recursive: true })
+      await run(['tar', '-xf', archive!, '-C', member, '--strip-components=1'], project)
+    }
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({ private: true, type: 'module', workspaces: ['flows/*', 'packages/*'] }),
+    )
+    await mkdir(join(flow, 'contracts'))
+    await writeFile(
+      join(flow, 'package.json'),
+      JSON.stringify({
+        name: 'invoice-updates-flow',
+        private: true,
+        type: 'module',
+        dependencies: {
+          '@jigging/flow': 'workspace:*',
+          '@jigging/reporting': 'workspace:*',
+        },
+      }),
+    )
+    await run(
+      [command, 'import-contract', 'jig:reporting', 'flows/hello/contracts/reporting'],
+      project,
+    )
+    await writeFile(
+      join(flow, 'FLOW.contract.json'),
+      JSON.stringify({
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        outcomes: { 'needs-review': 'Invoice verification still needs application review.' },
+        channels: {
+          updates: {
+            direction: 'send',
+            required: false,
+            contract: './contracts/reporting/reporting.json',
+          },
+        },
+      }),
+    )
+    await writeFile(
+      join(flow, 'FLOW.ts'),
+      [
+        'import { handle, OperationError } from "@jigging/flow";',
+        'import { withReporting } from "@jigging/reporting";',
+        'await handle(run => withReporting(run, "updates", async updates => {',
+        '  updates.notice("Checking invoices\\nVerification remains pending.");',
+        '  const count = run.input.allocations;',
+        '  for (let n = 0; n < count; n++) { const pair = await run.channel(); await pair.send.close(); await pair.receive.close(); }',
+        '  updates.activity("invoices", "Read all invoices; verification pending", { completed: count, total: count, unit: "invoices" });',
+        '  await new Promise(resolve => setTimeout(resolve, 700));',
+        '  if (run.input.fail) { updates.notice("Invoice verification failed.\\nNo invoice was accepted.", "error"); await new Promise(resolve => setTimeout(resolve, 250)); throw new OperationError("INVALID_RESULT", "Invoice verification failed."); }',
+        '  return { outcome: "needs-review", output: { allocations: count } };',
+        '}));',
+      ].join('\n'),
+    )
+    await run([command, 'review', '--allow-resolution-network', '--yes'], project, {}, 120_000)
+    const python = process.env.PYTHON ?? 'python3'
+    const terminal = async (args: string[]) =>
+      JSON.parse(
+        (
+          await run(
+            [python, join(import.meta.dir, 'fixtures/terminal-stderr.py'), command, ...args],
+            project,
+            {},
+            180_000,
+          )
+        ).stdout,
+      ) as { code: number; stdout: string; stderr: string }
+    const common = ['run', 'flow:flows/hello', '--input', JSON.stringify({ allocations: 16 })]
+    const ordinary = await run([command, ...common], project, {}, 120_000)
+    const automatic = await terminal(common)
+    assert.equal(automatic.code, 0)
+    assert.equal(automatic.stdout, ordinary.stdout)
+    assert.deepEqual(JSON.parse(automatic.stdout).output, { allocations: 16 })
+    assert.match(automatic.stderr, /Flow: Checking invoices\n {4}Verification remains pending\./)
+    for (const options of [['--updates', 'off'], ['--json']]) {
+      const quiet = await terminal([...common, ...options])
+      assert.equal(quiet.code, 0)
+      assert.equal(quiet.stdout, ordinary.stdout)
+      assert.doesNotMatch(quiet.stderr, /Flow:/)
+    }
+    const explicit = await terminal([
+      'run',
+      'flow:flows/hello',
+      '--input',
+      JSON.stringify({ allocations: 15 }),
+      '--receive',
+      'updates',
+      '--json',
+      '--updates',
+      'off',
+    ])
+    assert.equal(explicit.code, 0)
+    const records = explicit.stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    assert.equal(records[0].type, 'begin')
+    assert.equal(records.at(-1).type, 'terminal')
+    assert.equal(records.filter((record) => record.type === 'terminal').length, 1)
+    assert(records.some((record) => record.type === 'data' && record.value.kind === 'notice'))
+    assert.doesNotMatch(explicit.stderr, /Flow:/)
+    const failed = await terminal([
+      'run',
+      'flow:flows/hello',
+      '--input',
+      JSON.stringify({ allocations: 16, fail: true }),
+    ])
+    assert.equal(failed.code, 1)
+    assert.equal(JSON.parse(failed.stdout).status, 'failed')
+    assert.match(failed.stderr, /Flow-reported error:/)
+    assert.match(
+      failed.stderr,
+      /Flow: Invoice verification failed\.\n {4}No invoice was accepted\./,
+    )
+    assert.match(failed.stderr, /Invoice verification failed/)
+  }
 
   await writeFile(
     join(consumer, 'smoke.ts'),
@@ -426,7 +850,10 @@ void binding;
     ],
     packageRoot,
   )
-  if (process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+  if (
+    process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
+    (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+  ) {
     const project = join(consumer, 'granted-command')
     for (const path of ['flows/check', 'bindings', 'grants', 'libs/flow'])
       await mkdir(join(project, path), { recursive: true })
@@ -542,6 +969,12 @@ void binding;
     const methodArtifacts = join(temporary, 'method-artifacts')
     await mkdir(methodArtifacts)
     const methodArchive = await selectArchive(methodArtifacts, 'agent-method')
+    await checkInstalledConversation({
+      directory: join(consumer, 'conversation-adoption'),
+      cli: command,
+      sdkArchive,
+      methodArchive,
+    })
     await run(
       [
         'tar',
@@ -660,6 +1093,11 @@ void binding;
         environment,
         120000,
       )
+      // This checks composed installed behavior, not the production default deadline.
+      // Use the same explicit operator budget as the native composition fixtures.
+      const agentRunOptions =
+        process.platform === 'darwin' ? ['--timeout', `${MACOS_FIXTURE_RUN_MS}ms`] : []
+      const agentSettlementMs = process.platform === 'darwin' ? MACOS_FIXTURE_SETTLEMENT_MS : 120000
       const input = JSON.stringify({
         instructions: 'Classify this request: I need help.',
         responseSchema: {
@@ -671,10 +1109,10 @@ void binding;
         },
       })
       const completed = await run(
-        [command, 'run', 'binding:agent', '--input', input],
+        [command, 'run', 'binding:agent', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       const answer = JSON.parse(completed.stdout)
       assert.equal(answer.status, 'succeeded')
@@ -683,7 +1121,12 @@ void binding;
       assert.doesNotMatch(completed.stdout + completed.stderr, /local-method-test-token/)
       mode = 'malformed'
       await assert.rejects(
-        run([command, 'run', 'binding:agent', '--input', input], agentProject, environment, 120000),
+        run(
+          [command, 'run', 'binding:agent', ...agentRunOptions, '--input', input],
+          agentProject,
+          environment,
+          agentSettlementMs,
+        ),
         /INVALID_RESULT/,
       )
       assert.equal(requests, 2) // One per invocation, including the unsuccessful one.
@@ -760,20 +1203,20 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       const admittedDeclaration = await readFile(join(agentProject, 'jig.ts'))
       await writeFile(join(agentProject, 'jig.ts'), 'throw new Error("not admitted");')
       const composed = await run(
-        [command, 'run', 'binding:application', '--input', input],
+        [command, 'run', 'binding:application', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.deepEqual(JSON.parse(composed.stdout).output.structured, { category: 'support' })
       assert.equal(JSON.parse(composed.stdout).status, 'succeeded')
       mode = 'malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'binding:application', '--input', input],
+          [command, 'run', 'binding:application', ...agentRunOptions, '--input', input],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -791,20 +1234,20 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'markdown'
       const markdown = await run(
-        [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+        [command, 'run', 'flow:flows/markdown', ...agentRunOptions, '--input', 'null'],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.equal(JSON.parse(markdown.stdout).status, 'succeeded')
       assert.equal(JSON.parse(markdown.stdout).output, 'READY')
       mode = 'markdown-malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'flow:flows/markdown', '--input', 'null'],
+          [command, 'run', 'flow:flows/markdown', ...agentRunOptions, '--input', 'null'],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -841,19 +1284,19 @@ await handle(run => run.call({operationId:'answer',slot:${JSON.stringify(slot)},
       )
       mode = 'answer'
       const response = await run(
-        [command, 'run', 'flow:flows/specialist', '--input', input],
+        [command, 'run', 'flow:flows/specialist', ...agentRunOptions, '--input', input],
         agentProject,
         environment,
-        120000,
+        agentSettlementMs,
       )
       assert.deepEqual(JSON.parse(response.stdout).output.structured, { category: 'support' })
       mode = 'malformed'
       await assert.rejects(
         run(
-          [command, 'run', 'flow:flows/specialist', '--input', input],
+          [command, 'run', 'flow:flows/specialist', ...agentRunOptions, '--input', input],
           agentProject,
           environment,
-          120000,
+          agentSettlementMs,
         ),
         /INVALID_RESULT/,
       )
@@ -890,7 +1333,7 @@ async function selectArchive(
     return canonical
   }
   await run(
-    packageName !== 'flow-sdk'
+    packageName === 'jig'
       ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
       : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
     resolve(packageRoot, '..', packageName),

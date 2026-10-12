@@ -14,7 +14,6 @@ export async function generateContract(
   source: string,
   signal: AbortSignal,
   workerPath?: string,
-  channelContracts: readonly string[] = [],
 ): Promise<GeneratedContract> {
   signal.throwIfAborted()
   const override = process.env.JIG_AUTHORING_NODE_PATH
@@ -92,6 +91,6 @@ export async function generateContract(
       }
     })
     if (signal.aborted) abort()
-    else child.stdin.write(JSON.stringify({ source, channelContracts }) + '\n')
+    else child.stdin.write(JSON.stringify({ source }) + '\n')
   })
 }

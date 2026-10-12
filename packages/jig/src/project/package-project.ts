@@ -13,8 +13,19 @@ import {
   parseRunTargetSelector,
 } from './author.js'
 import { snapshotJsonObject } from './author-value.js'
+import {
+  entrypointWords,
+  parseProjectEntrypoint,
+  validateEntrypointInterface,
+} from './entrypoint.js'
 import { isDirectRunEligible } from './flow-source.js'
-import { type GrantedSlot, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
+import {
+  type AcpGrant,
+  type GrantedSlot,
+  type GrantPolicy,
+  grantName,
+  normalizeGrant,
+} from './grants.js'
 import {
   type InvocationIdentity,
   type InvocationRequirement,
@@ -45,6 +56,7 @@ export interface InjectedBindingDeclaration {
 }
 
 export interface PackageProjectInput {
+  readonly entrypoint?: string
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly InjectedBindingDeclaration[]
   readonly grants?: Readonly<Record<string, GrantPolicy>>
@@ -80,6 +92,7 @@ export interface LinkedPackageBinding {
 }
 
 export interface PackageProjectValue {
+  readonly entrypoint?: string
   readonly flows: readonly LinkedFlow[]
   readonly bindings: readonly LinkedPackageBinding[]
 }
@@ -101,7 +114,10 @@ interface PreparedFlow {
 export function linkPackageProject(
   input: PackageProjectInput,
   maximumActivationTargets?: number,
+  agentOverride?: AcpGrant['client'],
 ): PackageProjectValue {
+  if (agentOverride !== undefined && !['codex', 'claude', 'pi'].includes(agentOverride))
+    throw new TypeError('review Agent selection must be codex, claude or pi')
   if (
     maximumActivationTargets !== undefined &&
     (!Number.isSafeInteger(maximumActivationTargets) || maximumActivationTargets < 1)
@@ -113,6 +129,7 @@ export function linkPackageProject(
     [
       'flows',
       'bindings',
+      ...(input && Object.hasOwn(input, 'entrypoint') ? ['entrypoint'] : []),
       ...(input && Object.hasOwn(input, 'grants') ? ['grants'] : []),
       ...(input && Object.hasOwn(input, 'defaultProviders') ? ['defaultProviders'] : []),
     ],
@@ -213,7 +230,28 @@ export function linkPackageProject(
         '/defaultProviders',
       )
   }
-  const value = Object.freeze({
+  if (root.entrypoint !== undefined) {
+    try {
+      const parsed = parseProjectEntrypoint(root.entrypoint)
+      const binding =
+        parsed.target.kind === 'binding' ? bindingById.get(parsed.target.id) : undefined
+      const flow =
+        parsed.target.kind === 'flow' ? flowByPath.get(parsed.target.path) : binding?.flow
+      if (!flow || (parsed.target.kind === 'flow' && !flow.value.directRun))
+        throw new TypeError('entrypoint must select an invokable project Flow or Binding')
+      validateEntrypointInterface(parsed, flow.value.invocation, binding?.boundAttachments)
+      const words = entrypointWords(root.entrypoint)
+      if (
+        words.some((word, index) => index % 2 === 1 && word === '--input') &&
+        parsed.inputFile === undefined
+      )
+        flow.inspected.schemas.input?.validate(parsed.input, 'INVALID_INPUT')
+    } catch (error) {
+      invalid('PROJECT_ENTRYPOINT_INVALID', errorText(error), 'jig.ts', '/entrypoint')
+    }
+  }
+  let value: PackageProjectValue = Object.freeze({
+    ...(root.entrypoint === undefined ? {} : { entrypoint: root.entrypoint as string }),
     flows: Object.freeze(flows.map((flow) => flow.value)),
     bindings: Object.freeze(
       preparedBindings.map((binding) =>
@@ -258,6 +296,51 @@ export function linkPackageProject(
     ),
     (units) => budget.consume(units),
   )
+  // Authored policy and the complete graph have passed ordinary validation.
+  // Construct one effective reviewed policy; Run never applies an overlay.
+  if (agentOverride !== undefined) {
+    let selected = 0
+    const bindings = value.bindings.map((binding) => {
+      const slots = Object.fromEntries(
+        Object.entries(binding.slots).map(([slot, route]) => {
+          if (route.kind !== 'grant' || route.policy.kind !== 'acp') return [slot, route]
+          selected++
+          const policy = route.policy
+          if (policy.client !== agentOverride) {
+            if (policy.model !== undefined)
+              invalid(
+                'PROJECT_AGENT_OVERRIDE_MODEL',
+                'A client-only override cannot carry an explicit model pin to another client. Edit this ACP policy before reviewing with --agent.',
+                binding.declarationPath,
+                `/slots/${pointerToken(slot)}`,
+              )
+            if (policy.retainSessions === true && agentOverride !== 'codex')
+              invalid(
+                'PROJECT_AGENT_OVERRIDE_RETENTION',
+                'This ACP policy retains Codex sessions. A client-only override cannot change its retention policy. Edit this policy before selecting another client.',
+                binding.declarationPath,
+                `/slots/${pointerToken(slot)}`,
+              )
+          }
+          return [
+            slot,
+            Object.freeze({
+              ...route,
+              policy: normalizeGrant({ ...policy, client: agentOverride }),
+            }),
+          ]
+        }),
+      )
+      return Object.freeze({ ...binding, slots: Object.freeze(slots) })
+    })
+    if (selected === 0)
+      invalid(
+        'PROJECT_AGENT_OVERRIDE_UNUSED',
+        '--agent requires at least one selected ACP resource. This project selects none.',
+        'jig.ts',
+      )
+    value = Object.freeze({ ...value, bindings: Object.freeze(bindings) })
+  }
   authenticPackageProjects.add(value)
   return value
 }

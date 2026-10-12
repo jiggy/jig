@@ -229,7 +229,12 @@ path: string
 
 This uses supported string/integer schema fields; local validation supplies the
 conditional rules. `recipe` actions require an existing 1-based index and empty
-path. Static operands require `operand:none,value:""`; `@value` requires `value`
+path. Static operands use `operand:none,value:""`. For `@input` and `@previous`,
+`operand:value` with a known handle is also valid only when its complete JSON
+value equals the authored operand (object key order is immaterial). An absent
+previous cursor has no matching handle. This is a redundant assertion, never
+an override: execution still resolves the authored operand. Other static
+operands require the empty sentinel. `@value` requires `value`
 with a known handle; `?` requires `literal` containing separately validated JSON
 text. `read` requires recipe 0, operand none, empty value and an allowed path.
 `finish` requires recipe 0, empty path and literal JSON or a handle to a complete

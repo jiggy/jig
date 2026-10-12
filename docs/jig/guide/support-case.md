@@ -15,14 +15,24 @@ intelligent method, it can evaluate that method's contribution before proceeding
 
 ## Run a case
 
-Complete [workspace setup](./dependencies.md#local-workspace-packages) and
-[configure an Agent](./agents.md) on a [supported host](./index.md#supported-host).
+Install Jig on a [supported host](./index.md#supported-host) and configure a
+supported [native client](./agents.md#local-clients). The inline policy in
+`bindings/agent.ts` selects Codex as an editable example choice. Edit that Binding
+for a lasting choice, or use an explicit [review client selection](./agents.md#switching).
+A selected ACP prerequisite failure stops review before approval. The included ordinary dependency and
+`jig.ts` default supply that Agent to the assessor.
 From `examples/support-case`, inspect the two Flows and their policy, then run:
 
 ```sh
-jig review
-jig run binding:support --input @fixtures/duplicate.json --timeout 2m
+jig review --allow-resolution-network
+jig run
 ```
+
+The entrypoint supplies the fixture and two-minute deadline. This result-only
+target returns its decision on stdout without creating a packet directory.
+Add `--json` for the complete machine record, or use `jig run --out ./support-result`
+to save `result.json` in a retained location. The directory must not already
+exist; Jig never overwrites an earlier result.
 
 The fixture supplies two settled USD 24 payments for the same invoice. The
 customer names the second charge, `ch-102`. When the Agent identifies that
@@ -46,6 +56,17 @@ The Agent can make a different assessment; this is the expected path, not a
 promise of identical model output. Fixtures are synthetic. The example sends
 neither payments nor customer messages.
 
+## Follow the work
+
+**Case** follows the request, proposed charge and code-owned eligibility decision.
+**Charges** keeps the supplied chronological records available for comparison; long
+lists explicitly show their retained excerpt. The assessor's own Case view stops at a
+proposal. An eligible decision never claims that a credit was issued.
+
+Use `--display web` for the same views through the private browser link printed after
+work starts. Completed inspection waits for explicit exit. The host’s graph and blocking
+causes remain separate from application reports; plain and JSON output remain available.
+
 ## Follow the decision
 
 There are two Flow packages. The `assess` method uses one Agent call to propose
@@ -56,6 +77,7 @@ its configured slot and applies the application's policy:
 const assessment = await run.call({
   operationId: 'assess-case',
   slot: 'assessment',
+  intent: 'Interpret the disputed charge before policy checks',
   input: run.input,
 })
 ```

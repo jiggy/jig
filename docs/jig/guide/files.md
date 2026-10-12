@@ -9,7 +9,7 @@ your own capture or export program. Jig supplies the file boundary; the Flow
 decides what its files mean.
 
 ```sh
-jig run binding:repair --input @issue.json --attach source=./src --out ./review
+jig run binding:repair --input @issue.json --attach source=./src
 ```
 
 `--input @issue.json` snapshots bounded JSON from an operator-selected regular
@@ -17,8 +17,11 @@ file, then parses it before project execution. Inline JSON continues to work.
 This data file is not an execution attachment, so its parent may use ordinary
 filesystem or path aliases; the selected file itself cannot be a symbolic
 link. `--attach source=./src` supplies the directory to the
-admitted Flow's declared `source` read attachment. `--out ./review` saves a
-new result packet. Relative paths are relative to your command directory.
+admitted Flow's declared `source` read attachment. If the Flow declares writable
+deliverables, Jig saves a new packet in operating-system temporary storage and
+reports its destination on stderr. The operating system may clear that storage;
+add `--out ./review` for a chosen retained location that does not already exist.
+Relative paths are relative to your command directory.
 
 ## Choose what to share
 
@@ -90,10 +93,20 @@ restrict a tool to particular arguments. See the
 
 ## Receive one packet
 
+Omit `--out` when a reviewed root target declares writable deliverables: Jig
+chooses a fresh packet directory in operating-system temporary storage for each
+invocation and reports the exact destination on stderr, including with `--json`.
+Earlier packets remain intact, but the operating system may clear temporary
+storage. Use `--out ./review` to choose a retained location. It replaces any
+entrypoint output default and never overwrites an existing destination. The
+chosen destination stays identical through command reexecution; a refusal does
+not automatically retry work or choose another path.
+
 A root Flow may declare one writable attachment. It begins empty and is
 limited to 16 MiB. Jig supplies its contained path and collects files only
 after execution is fenced and the result accepted. A Flow with no writable
-attachment can still use `--out` to save its execution record.
+attachment returns its result on stdout without creating a packet by default;
+it can still use `--out` to save its execution record.
 
 Starting empty keeps your originals outside the Flow's write authority. The
 size, file-count, and path limits bound memory, storage, and capture/export work.

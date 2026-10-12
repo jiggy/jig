@@ -5,6 +5,10 @@ description: Connect a replaceable Agent Flow to a narrowly authorized native cl
 
 # Finite ACP contract
 
+Part of the [Jig standard library](index.md). With a `contracts` parent directory,
+copy the installed agreement and its license using
+`jig import-contract jig:finite-acp contracts/finite-acp`.
+
 Finite ACP lets ordinary Flow code conduct one native Agent task without
 receiving credentials or unrestricted process access. The Flow owns the
 conversation and checks its answer. Jig independently enforces the approved

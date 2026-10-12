@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -13,7 +13,9 @@ afterEach(async () => {
   for (const root of temporary.splice(0)) await rm(root, { recursive: true, force: true })
 })
 const fixture = async () => {
-  const root = await mkdtemp(join(tmpdir(), 'agent-method-test-'))
+  // macOS's temporary-directory spelling can itself traverse /var's symlink.
+  // Supply a canonical root so the reader still tests package symlink refusal.
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'agent-method-test-')))
   temporary.push(root)
   await mkdir(join(root, 'skills', 'check'), { recursive: true })
   await writeFile(join(root, 'skills', 'check', 'SKILL.md'), 'Exact guidance.\n')
@@ -167,6 +169,32 @@ describe('ordinary Flow wiring', () => {
       },
     } as unknown as RunContext
     await expect(agentFlow(run)).rejects.toBe(failure)
+    expect(calls).toBe(1)
+  })
+
+  test('provider response diagnostics cross the ordinary Flow error boundary once', async () => {
+    let calls = 0
+    const run = {
+      input: { instructions: 'private task' },
+      settings: { model: 'fixture-model' },
+      attachments: {},
+      channels: {},
+      signal: new AbortController().signal,
+      call: async () => {
+        calls++
+        return { outcome: 'done', output: { status: 422, body: { error: 'private task and key' } } }
+      },
+    } as unknown as RunContext
+    await expect(agentFlow(run)).rejects.toMatchObject({
+      code: 'INVALID_RESULT',
+      details: {
+        phase: 'provider-response',
+        api: 'chat-completions',
+        status: 422,
+        category: 'request',
+        retry: 'not-attempted',
+      },
+    })
     expect(calls).toBe(1)
   })
 

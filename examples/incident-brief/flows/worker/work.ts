@@ -5,7 +5,9 @@ import {
   withAgentConversation,
 } from '@jigging/agent-method/conversation'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
+import type { Reporter } from '@jigging/reporting'
 import { context, identity } from './context.ts'
+import { workerView } from './dashboard.ts'
 import { revisionFeed } from './revisions.ts'
 
 function answer(turn: AgentTurn): string {
@@ -21,11 +23,20 @@ function answer(turn: AgentTurn): string {
 }
 
 /** Application-owned reaction to context, never a host scheduler or native restore. */
-export async function work(run: RunContext, converse = withAgentConversation): Promise<RunResult> {
+export async function work(
+  run: RunContext,
+  converse = withAgentConversation,
+  progress?: Reporter,
+): Promise<RunResult> {
   const input = run.input as { role: string; context: unknown; replacement?: unknown }
   if (!input || !['draft', 'independent'].includes(input.role))
     throw new TypeError('Unknown worker role.')
   const snapshot = context(input.context)
+  const view = progress?.view('worker', {
+    title: input.role === 'draft' ? 'Draft' : 'Review questions',
+    landing: true,
+  })
+  view?.update(workerView(snapshot, input.role))
   let replacement = snapshot
   if (input.replacement !== undefined) {
     if (input.role !== 'independent')
@@ -70,6 +81,10 @@ export async function work(run: RunContext, converse = withAgentConversation): P
     if (Date.now() >= run.deadlineUnixMs) throw new Error('Application deadline elapsed.')
     if (requestedTurns >= snapshot.turnBudget) throw new Error('Application turn budget exhausted.')
     requestedTurns++
+    progress?.activity(
+      'worker',
+      `${input.role}: requesting turn ${requestedTurns}/${snapshot.turnBudget}.`,
+    )
   }
   try {
     const requiredTurns = input.role === 'draft' ? (feed ? 3 : 1) : updates ? 2 : 1
@@ -80,6 +95,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
       if (!updates) {
         const result = await run.call({
           operationId: 'review-questions',
+          intent: 'Prepare independent review questions',
           slot: 'agent',
           input: {
             instructions:
@@ -104,6 +120,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
           },
           async (conversation) => {
             const initial = await conversation.initial
+            progress?.activity('worker', 'independent: preliminary analysis received.')
             received.push(initial)
             const analysis = answer(initial)
             const deliveryFailures: string[] = []
@@ -146,6 +163,10 @@ export async function work(run: RunContext, converse = withAgentConversation): P
                     ],
                   }),
             })
+            progress?.activity(
+              'worker',
+              'independent: review questions received; settling conversation.',
+            )
             received.push(questions)
             return { analysis, questions: answer(questions) }
           },
@@ -168,6 +189,10 @@ export async function work(run: RunContext, converse = withAgentConversation): P
         },
         async (conversation) => {
           const initial = conversation.initial.then((turn) => {
+            progress?.activity(
+              'worker',
+              `draft: initial turn ${turn.type}; awaiting context decision.`,
+            )
             received.push(turn)
             return turn
           })
@@ -199,9 +224,10 @@ export async function work(run: RunContext, converse = withAgentConversation): P
             received.push(continued)
             return { kind: 'continued' as const, text: answer(continued) }
           }
-          console.log('Context update received; preparing one drafting handoff.')
+          progress?.activity('worker', 'Context update received; preparing one drafting handoff.')
           interruption = await conversation.interrupt()
           const settledTurn = await initial
+          progress?.activity('worker', 'draft: interrupted turn settled; preparing summary.')
           if (settledTurn.type !== 'cancelled') answer(settledTurn)
           feed.check()
           charge()
@@ -210,6 +236,10 @@ export async function work(run: RunContext, converse = withAgentConversation): P
               'Summarize the work so far for a fresh drafting worker. Preserve uncertainty and partial work. Do not advance the task or invent instructions. Keep it under 150 words.',
           })
           received.push(summary)
+          progress?.activity(
+            'worker',
+            'draft: summary received; awaiting revision closure and predecessor settlement.',
+          )
           const text = answer(summary)
           await feed.complete()
           return { kind: 'handoff' as const, text }
@@ -235,9 +265,13 @@ export async function work(run: RunContext, converse = withAgentConversation): P
           deadlineUnixMs: run.deadlineUnixMs,
         }
         charge()
-        console.log(`Predecessor settled; starting successor with revision ${latest.revision}.`)
+        progress?.activity(
+          'worker',
+          `Predecessor settled; starting successor with revision ${latest.revision}.`,
+        )
         successor = await run.call({
           operationId: 'successor',
+          intent: 'Draft with the accepted replacement context and fallible summary',
           slot: 'agent',
           input: {
             instructions:
@@ -284,7 +318,7 @@ export async function work(run: RunContext, converse = withAgentConversation): P
     }
   }
   run.signal.throwIfAborted()
-  return {
+  const result: RunResult = {
     outcome: failures.length ? 'blocked' : 'done',
     output: {
       ...output,
@@ -301,8 +335,24 @@ export async function work(run: RunContext, converse = withAgentConversation): P
             failures: failures.map((error) =>
               error instanceof OperationError ? error.code : 'INCOMPLETE_WORK',
             ),
+            failureDetails: failures.map((error) => ({
+              code: error instanceof OperationError ? error.code : 'INCOMPLETE_WORK',
+              // Public SDK error text is data. Never copy arbitrary exception
+              // messages, causes, stack traces or native implementation details.
+              message:
+                error instanceof OperationError
+                  ? [...error.message].slice(0, 1024).join('')
+                  : 'Application work did not complete; no further cause was retained.',
+            })),
           }
         : {}),
     } as unknown as JsonValue,
   }
+  if (failures.length)
+    progress?.notice(
+      'Incident worker did not complete. Retained failure details describe the reported cause.',
+      'error',
+    )
+  view?.update(workerView(snapshot, input.role, result))
+  return result
 }

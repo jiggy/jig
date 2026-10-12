@@ -1,16 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import { constants } from 'node:fs'
-
-import {
-  acquireOrReexecutePrivateRootlessLinux,
-  preparePrivateRootlessLinuxScope,
-  type PrivateRootlessLinuxDelegationDependencies,
-  type PrivateRootlessLinuxScopeDependencies,
-} from '../src/internal/linux-rootless-delegation.js'
 import {
   PrivateRootlessLinuxAcquisitionError,
   type PrivateRootlessLinuxAcquisitionObservation,
 } from '../src/internal/linux-rootless-acquisition.js'
+import {
+  acquireOrReexecutePrivateRootlessLinux,
+  type PrivateRootlessLinuxDelegationDependencies,
+  type PrivateRootlessLinuxScopeDependencies,
+  preparePrivateRootlessLinuxScope,
+} from '../src/internal/linux-rootless-delegation.js'
 
 const UNIT = 'jig-0123456789abcdef01234567.scope'
 const SCOPE = `/sys/fs/cgroup/user.slice/${UNIT}`
@@ -44,16 +43,18 @@ describe('private rootless Linux delegation', () => {
     expect(reexecuted).toBe(false)
   })
 
-  test('reexecutes the exact current command once through the fixed manager', async () => {
+  test('reexecutes the prepared command once through the fixed manager', async () => {
     const environment = { KEEP: 'exact' }
     const commandLifetimeMs = 86_700_000
+    const signal = new AbortController().signal
     let request: unknown
+    let delegatedSignal: AbortSignal | undefined
     const dependencies = orchestrationDependencies({
       acquire: async () => {
         throw new PrivateRootlessLinuxAcquisitionError()
       },
       environment: () => environment,
-      currentCommand: () => [...COMMAND, 'run', 'answer'],
+      currentCommand: (arguments_) => [...COMMAND, ...arguments_],
       currentDirectory: () => '/project',
       nonce: () => '0123456789abcdef01234567',
       resolveManager: async () => '/bin/systemd-run',
@@ -64,7 +65,9 @@ describe('private rootless Linux delegation', () => {
         directory,
         actualEnvironment,
         actualCommandLifetimeMs,
+        actualSignal,
       ) => {
+        delegatedSignal = actualSignal
         request = {
           managerPath,
           unit,
@@ -85,6 +88,8 @@ describe('private rootless Linux delegation', () => {
       acquireOrReexecutePrivateRootlessLinux({
         dependencies,
         commandLifetimeMs,
+        commandArguments: ['run', 'binding:factory'],
+        signal,
       }),
     ).resolves.toEqual({
       kind: 'private-rootless-linux-reexecuted/1',
@@ -94,11 +99,12 @@ describe('private rootless Linux delegation', () => {
     expect(request).toEqual({
       managerPath: '/bin/systemd-run',
       unit: UNIT,
-      command: [...COMMAND, 'run', 'answer'],
+      command: [...COMMAND, 'run', 'binding:factory'],
       directory: '/project',
       environment,
       commandLifetimeMs,
     })
+    expect(delegatedSignal).toBe(signal)
   })
 
   test('prepares only the marked child scope and acknowledges strict reacquisition', async () => {
@@ -137,6 +143,25 @@ describe('private rootless Linux delegation', () => {
       },
     ])
     expect(environment).toEqual({})
+  })
+
+  test('interactive presentation omits only the default command timer and preserves inherited constraints', async () => {
+    const environment = { JIG_PRIVATE_PRESENTATION_DEADLINE: '12345' }
+    let lifetime: number | null | undefined
+    const dependencies = orchestrationDependencies({
+      acquire: async () => {
+        throw new PrivateRootlessLinuxAcquisitionError()
+      },
+      environment: () => environment,
+      reexecute: async (_manager, _unit, _command, _directory, forwarded, selected) => {
+        expect(forwarded).toBe(environment)
+        expect(forwarded.JIG_PRIVATE_PRESENTATION_DEADLINE).toBe('12345')
+        lifetime = selected
+        return { kind: 'private-rootless-linux-reexecuted/1', exitCode: 0, signal: null }
+      },
+    })
+    await acquireOrReexecutePrivateRootlessLinux({ commandLifetimeMs: null, dependencies })
+    expect(lifetime).toBeNull()
   })
 
   test('rejects command lifetimes outside the bounded rootless envelope before acquisition', async () => {

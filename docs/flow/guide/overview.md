@@ -22,7 +22,12 @@ A compatible host supplies local powers.
 | --- | --- |
 | See code and Agent work compose through one boundary | [Understand FLOW](./understand.md), then [the Jig example](https://jig.md/guide/request-triage) |
 | Package a reusable procedure | [Start building](./start.mdx), then [Package/0](../spec/package-format.md) |
+| Write a Markdown method with inputs, child calls and outcomes | [Markdown authoring](./markdown.md) |
+| Bring an existing Skill and understand execution differences | [Skill compatibility](./skills.md) |
+| Write TypeScript or JavaScript and exercise the protocol | [TypeScript / JavaScript SDK guide](./typescript.md) |
 | Write a Python method and exercise the protocol | [Python SDK guide](./python.md) |
+| Check runtime support matrix or implement a new SDK | [Runtimes and SDKs](./runtimes.md) |
+| Implement a FLOW host or integrate with coding agents & ACP | [Host and platform integration](./platforms.md) |
 | Write TypeScript under a qualified Jig build | [Jig's first Flow](https://jig.md/guide/) |
 | Understand portable input and output values | [JSON/0](../spec/json-values.md) |
 | Validate inputs, settings, or results | [Schema/0](../spec/schema-files.md) |

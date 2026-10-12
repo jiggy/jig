@@ -5,7 +5,8 @@ import {
   type JsonObject,
   type JsonValue,
 } from '../json.js'
-import { type GrantedSlot, normalizeGrant, grantName } from '../project/grants.js'
+import { parseProjectEntrypoint } from '../project/entrypoint.js'
+import { type AcpGrant, type GrantedSlot, grantName, normalizeGrant } from '../project/grants.js'
 import {
   type InvocationRequirement,
   normalizeInvocationRequirement,
@@ -21,10 +22,10 @@ import {
   isProtectedProjectPath,
   validateProjectPath,
 } from '../project/paths.js'
+import { validateChildGraph } from '../project/slot-graph.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
 import { type BoundAttachments, normalizeBoundAttachments } from './bound-attachments.js'
 import { privateDomainDigest } from './identity.js'
-import { validateChildGraph } from '../project/slot-graph.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -46,6 +47,8 @@ export interface PrivateLockBinding {
 }
 
 export interface PrivateProjectLocalLock {
+  readonly agentOverride?: AcpGrant['client']
+  readonly entrypoint?: string
   readonly packages: Readonly<Record<string, PrivateLockPackage>>
   readonly bindings: Readonly<Record<string, PrivateLockBinding>>
 }
@@ -53,6 +56,7 @@ export interface PrivateProjectLocalLock {
 /** Project-portable package and Binding choices, with no host activation data. */
 export function createPrivateProjectLocalLock(
   project: PackageProjectValue,
+  agentOverride?: AcpGrant['client'],
 ): PrivateProjectLocalLock {
   const linked = requirePackageProjectValue(project)
   const packages: Record<string, PrivateLockPackage> = Object.create(null) as Record<
@@ -80,7 +84,12 @@ export function createPrivateProjectLocalLock(
       ...(binding.boundAttachments === undefined ? {} : { attachments: binding.boundAttachments }),
     })
   }
-  const lock = normalizeLock({ packages, bindings })
+  const lock = normalizeLock({
+    ...(agentOverride === undefined ? {} : { agentOverride }),
+    packages,
+    bindings,
+    ...(linked.entrypoint === undefined ? {} : { entrypoint: linked.entrypoint }),
+  })
   encodeNormalized(lock)
   return markValidated(lock)
 }
@@ -112,9 +121,29 @@ export function requirePrivateProjectLocalLock(value: unknown): PrivateProjectLo
 }
 
 function normalizeLock(value: unknown): PrivateProjectLocalLock {
-  const root = exactObject(value, ['packages', 'bindings'], 'lock')
+  const root = exactObject(
+    value,
+    [
+      'packages',
+      'bindings',
+      ...(Object.hasOwn(object(value, 'lock'), 'agentOverride') ? ['agentOverride'] : []),
+      ...(Object.hasOwn(object(value, 'lock'), 'entrypoint') ? ['entrypoint'] : []),
+    ],
+    'lock',
+  )
   const packages = normalizePackages(root.packages)
   const bindings = normalizeBindings(root.bindings)
+  if (root.agentOverride !== undefined) {
+    if (!['codex', 'claude', 'pi'].includes(root.agentOverride as string))
+      throw new TypeError('lock Agent override must be codex, claude or pi')
+    const policies = Object.values(bindings).flatMap((binding) =>
+      Object.values(binding.slots).flatMap((route) =>
+        route.kind === 'grant' && route.policy.kind === 'acp' ? [route.policy] : [],
+      ),
+    )
+    if (policies.length === 0 || policies.some((policy) => policy.client !== root.agentOverride))
+      throw new TypeError('lock Agent override must agree with every selected ACP policy')
+  }
   const activationTargetCount =
     Object.keys(bindings).length +
     Object.values(packages).filter(({ directRun }) => directRun).length
@@ -122,7 +151,23 @@ function normalizeLock(value: unknown): PrivateProjectLocalLock {
     throw new TypeError(`lock activation targets exceed ${PRIVATE_ACTIVATION_TARGET_LIMIT} targets`)
   }
   validateReferences(packages, bindings)
-  return Object.freeze({ packages, bindings })
+  if (root.entrypoint !== undefined) {
+    const { target } = parseProjectEntrypoint(root.entrypoint)
+    if (
+      target.kind === 'flow'
+        ? !packages[target.path]?.directRun
+        : !Object.hasOwn(bindings, target.id)
+    )
+      throw new TypeError('lock entrypoint must select an invokable project target')
+  }
+  return Object.freeze({
+    ...(root.agentOverride === undefined
+      ? {}
+      : { agentOverride: root.agentOverride as AcpGrant['client'] }),
+    packages,
+    bindings,
+    ...(root.entrypoint === undefined ? {} : { entrypoint: root.entrypoint as string }),
+  })
 }
 
 function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] {

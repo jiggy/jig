@@ -56,11 +56,12 @@ export function deterministicAcpProgram(): string {
   return `import { createInterface } from 'node:readline';
 let authentication;
 let cancel;
+let shutdownScenario;
 const send = value => process.stdout.write(JSON.stringify(value) + '\\n');
 const reply = (id, result) => send({jsonrpc:'2.0', id, result});
 async function prompt(message) {
   const text = message.params.prompt.map(item => item.text ?? '').join('');
-  const scenario = ['schema-invalid','malformed','recovery','success','slow'].find(value => text.includes('scenario:' + value));
+  const scenario = ['schema-invalid','malformed','recovery','success','slow','signal','exit','linger'].find(value => text.includes('scenario:' + value));
   if (!scenario || !authentication) throw new Error('invalid fixture prompt');
   let wait;
   if (scenario === 'slow' || scenario === 'recovery') wait = new Promise(resolve => {
@@ -70,6 +71,15 @@ async function prompt(message) {
   const event = {scenario, selectedSkill:text.includes('SELECTED_SKILL_MARKER'), hiddenSkill:text.includes('HIDDEN_SKILL_MARKER'), keyInEnvironment:process.env.METHOD_TEST_TOKEN !== undefined};
   const recorded = await fetch(authentication.endpoint, {method:'POST', headers:{authorization:'Bearer ' + authentication.credential}, body:JSON.stringify(event)});
   if (!recorded.ok) throw new Error('fixture recorder rejected dispatch');
+  // Explicit fault injection, not a reproduction of an unprompted native crash.
+  if (scenario === 'signal') { console.error('fixture: deliberately raising SIGSEGV'); process.kill(process.pid, 'SIGSEGV'); return; }
+  if (scenario === 'exit') { console.error('fixture: deliberately exiting 17'); process.exit(17); }
+  if (scenario === 'linger') {
+    shutdownScenario = scenario;
+    // Keep this real process alive after protocol completion and stdin EOF.
+    // The production resource's shutdown grace must fence it, not the test.
+    setInterval(() => {}, 1000);
+  }
   if (scenario === 'slow' || scenario === 'recovery') {
     await wait;
     reply(message.id, {stopReason:'cancelled'});
@@ -91,6 +101,10 @@ for await (const line of createInterface({input:process.stdin})) {
     case 'session/close': reply(message.id, {}); break;
     default: if (message.id !== undefined) send({jsonrpc:'2.0',id:message.id,error:{code:-32601,message:'unsupported fixture operation'}});
   }
+}
+if (shutdownScenario === 'linger') {
+  const recorded = await fetch(authentication.endpoint, {method:'POST', headers:{authorization:'Bearer ' + authentication.credential}, body:JSON.stringify({scenario:shutdownScenario,phase:'stdin-eof'})});
+  if (!recorded.ok) throw new Error('fixture recorder rejected shutdown');
 }
 `
 }

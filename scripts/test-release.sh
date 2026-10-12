@@ -35,23 +35,64 @@ if ! "$python_bin" --version >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! "$python_bin" -c 'import build, twine, mypy' >/dev/null 2>&1; then
+  echo "Install release test tools for $python_bin: build==1.3.0 twine==6.2.0 mypy==1.18.2" >&2
+  exit 1
+fi
+if ! (cd conformance/run-0 && bun --no-env-file -e '
+  import.meta.resolve("ajv/dist/2020.js");
+  import.meta.resolve("@jigging/sley");
+') >/dev/null 2>&1; then
+  echo "Install protocol fixture dependencies: bun install --cwd conformance/run-0 --frozen-lockfile" >&2
+  exit 1
+fi
+
+archive_digests() {
+  "$FLOW_NODE" --input-type=module -e '
+    import { createHash } from "node:crypto";
+    import { readFile } from "node:fs/promises";
+    for (const path of process.argv.slice(1)) {
+      const digest = createHash("sha256").update(await readFile(path)).digest("hex");
+      console.log(`${digest} ${JSON.stringify(path)}`);
+    }
+  ' "$@"
+}
+
 just flow::build
 just authoring::test
 just jig::build
 
-release_tmp=$(mktemp -d "${TMPDIR:-/tmp}/jig-release.XXXXXX")
+# Installed artifact checks require canonical archive paths, including Mac's
+# temporary-directory aliases.
+temporary_parent=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P)
+release_tmp=$(mktemp -d "$temporary_parent/jig-release.XXXXXX")
 trap 'rm -rf -- "$release_tmp"' EXIT HUP INT TERM
 
 # Test authored applications against the exact local package candidates, including
 # before their versions reach the registry. Only disposable copies' declared
 # dependencies change; Flow source and repository manifests do not.
-mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/jig"
+mkdir -p "$release_tmp/artifacts/flow-sdk" "$release_tmp/artifacts/reporting" "$release_tmp/artifacts/agent-method" "$release_tmp/artifacts/agent-acp" "$release_tmp/artifacts/display-model" "$release_tmp/artifacts/display-web" "$release_tmp/artifacts/display-tui" "$release_tmp/artifacts/jig"
 bun pm pack --cwd packages/flow-sdk --ignore-scripts --destination "$release_tmp/artifacts/flow-sdk"
 set -- "$release_tmp"/artifacts/flow-sdk/*.tgz
 test "$#" -eq 1 && test -f "$1"
 sdk_archive=$1
 FLOW_SDK_PACKAGE_ARCHIVE=$sdk_archive
 export FLOW_SDK_PACKAGE_ARCHIVE
+bun pm pack --cwd packages/reporting --ignore-scripts --destination "$release_tmp/artifacts/reporting"
+set -- "$release_tmp"/artifacts/reporting/*.tgz
+test "$#" -eq 1 && test -f "$1"
+REPORTING_PACKAGE_ARCHIVE=$1
+export REPORTING_PACKAGE_ARCHIVE
+for display_package in display-model display-web display-tui; do
+  bun pm pack --cwd "packages/$display_package" --ignore-scripts --destination "$release_tmp/artifacts/$display_package"
+  set -- "$release_tmp/artifacts/$display_package/"*.tgz
+  test "$#" -eq 1 && test -f "$1"
+  case "$display_package" in
+    display-model) DISPLAY_MODEL_PACKAGE_ARCHIVE=$1; export DISPLAY_MODEL_PACKAGE_ARCHIVE ;;
+    display-web) DISPLAY_WEB_PACKAGE_ARCHIVE=$1; export DISPLAY_WEB_PACKAGE_ARCHIVE ;;
+    display-tui) DISPLAY_TUI_PACKAGE_ARCHIVE=$1; export DISPLAY_TUI_PACKAGE_ARCHIVE ;;
+  esac
+done
 bun pm --cwd packages/agent-method pack --ignore-scripts --destination "$release_tmp/artifacts/agent-method"
 set -- "$release_tmp"/artifacts/agent-method/*.tgz
 test "$#" -eq 1 && test -f "$1"
@@ -66,7 +107,7 @@ set -- "$release_tmp"/artifacts/jig/*.tgz
 test "$#" -eq 1 && test -f "$1"
 JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
-sha256sum "$FLOW_SDK_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$DISPLAY_MODEL_PACKAGE_ARCHIVE" "$DISPLAY_WEB_PACKAGE_ARCHIVE" "$DISPLAY_TUI_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
 for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
   application_copy="$release_tmp/$application"
@@ -96,6 +137,7 @@ for application in tested-patch software-factory request-triage support-case con
       "@jigging/flow": Bun.argv[2],
       "@jigging/agent-method": Bun.argv[3],
       "@jigging/agent-acp": Bun.argv[4],
+      "@jigging/reporting": Bun.argv[5],
     };
     const manifests = [path];
     for (const directory of ["flows", "methods"]) {
@@ -129,12 +171,16 @@ for application in tested-patch software-factory request-triage support-case con
       }
       await Bun.write(current, JSON.stringify(manifest));
     }
-  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE"
+  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE"
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   set -- "$@" "$application_copy/test"
 done
-bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/jig conformance/run-0 "$@"
+bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/reporting packages/display-model packages/display-web packages/display-tui packages/jig conformance/run-0 "$@"
 bun packages/flow-sdk/test/package-smoke.ts
+bun packages/reporting/test/package-smoke.ts
+bun packages/display-model/test/package-smoke.ts
+bun packages/display-web/test/package-smoke.ts
+bun packages/display-tui/test/package-smoke.ts
 bun packages/jig/test/package-smoke.ts
 
 PYTHONDONTWRITEBYTECODE=1 \
@@ -148,6 +194,18 @@ PYTHONDONTWRITEBYTECODE=1 \
 
 # Both installed Python distributions run the SDK suite and typed consumer.
 "$python_bin" scripts/build-python-sdk.py "$release_tmp/python-dist"
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-reporting/src \
+  "$python_bin" -m unittest discover -s packages/jiggy-reporting/tests -p 'test_*.py' -v
+PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-reporting/src \
+  "$python_bin" -m mypy --strict packages/jiggy-reporting/src/jiggy/reporting
+"$python_bin" -m build --outdir "$release_tmp/python-reporting-dist" packages/jiggy-reporting
+"$python_bin" -m twine check --strict "$release_tmp"/python-reporting-dist/*
+"$python_bin" packages/jiggy-reporting/tests/package_smoke.py \
+  "$release_tmp"/python-reporting-dist/*.whl "$release_tmp"/python-reporting-dist/*.tar.gz "$release_tmp"/python-dist/*.whl
 "$python_bin" -m unittest discover -s scripts -p 'test_pypi_release.py' -v
 
-sha256sum --check "$release_tmp/archive-digests"
+archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$DISPLAY_MODEL_PACKAGE_ARCHIVE" "$DISPLAY_WEB_PACKAGE_ARCHIVE" "$DISPLAY_TUI_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/verified-digests"
+cmp "$release_tmp/archive-digests" "$release_tmp/verified-digests" || {
+  echo "release tests changed the frozen package archives" >&2
+  exit 1
+}

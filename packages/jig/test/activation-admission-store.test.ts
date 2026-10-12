@@ -1,11 +1,12 @@
 import { describe, expect, setDefaultTimeout, spyOn, test } from 'bun:test'
 import { createHash } from 'node:crypto'
+import { realpathSync } from 'node:fs'
 import {
   chmod,
   mkdir,
   mkdtemp,
-  readFile,
   readdir,
+  readFile,
   rename,
   rm,
   stat,
@@ -14,7 +15,10 @@ import {
 } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
+import { stripVTControlCharacters } from 'node:util'
+import { main, privateCliPrepareArguments } from '../src/cli.js'
+import { CheckError } from '../src/diagnostics.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -52,8 +56,6 @@ import {
   submitPrivateRootRun,
 } from '../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../src/internal/identity.js'
-import { main, privateCliPrepareArguments } from '../src/cli.js'
-import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import {
   normalizePackageArtifactRef,
   type PackageArtifactRef,
@@ -64,8 +66,11 @@ import {
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../src/internal/project-local-lock.js'
+import { attachPrivateRootAdministrationController } from '../src/internal/root-administration-controller.js'
 import { canonicalJson, type JsonValue } from '../src/json.js'
 import { capturePackageDirectory } from '../src/package/capture.js'
+import { restorePrivateActivationRequest } from '../src/project/package-resolution.js'
+import { parseRun } from '../src/run-arguments.js'
 
 const TABLES = [
   'admission_head',
@@ -580,67 +585,397 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  for (const scenario of ['pending', 'throws'] as const) {
-    test(`root status exposes ${scenario} settlement without silently rescheduling`, async () => {
-      const fixture = await createFixture('ready')
-      let coordinator: PrivateProjectCoordinator | undefined
-      let controller:
-        | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
-        | undefined
-      let executions = 0
-      try {
-        await admit(fixture)
-        coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-        controller = await attachPrivateRootAdministrationController({
-          projectRoot: fixture.root,
-          packageStoreRoot: fixture.store,
-          coordinator,
-          runTimeoutMs: 60_000,
-          async execute() {
-            executions++
-            if (scenario === 'throws') throw new Error('private cleanup cause')
-            return { state: 'pending', reason: 'fence-unconfirmed' }
-          },
+  test('root controller consumes a durable terminal when pending-work reacquisition loses the race', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    let executions = 0
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      controller = await attachPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        coordinator,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          executions++
+          const terminal = successTerminal({ accepted: true })
+          await settleExecution(fixture, owner, runId, terminal)
+          await closePrivateRootExecution({
+            coordinator: owner,
+            projectRoot: fixture.root,
+            runId,
+            terminal,
+          })
+          // Model a stale pending-work observation reaching the real
+          // reacquisition boundary after another task committed completion.
+          await reacquirePrivateRootExecutionWork({
+            coordinator: owner,
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            runId,
+          })
+          throw new Error('terminal reacquisition unexpectedly succeeded')
+        },
+      })
+      const { runId } = await controller.administration.startRun({
+        submissionId: 'terminal-race',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'first' },
+      })
+      await controller.drain()
+      for (let poll = 0; poll < 4; poll++) {
+        expect(await controller.administration.runStatus({ runId })).toMatchObject({
+          runId,
+          state: 'terminal',
+          terminal: { status: 'succeeded', output: { accepted: true } },
         })
-        const { runId } = await controller.administration.startRun({
-          submissionId: 'failed-settlement',
-          target: { kind: 'flow', path: 'flows/run' },
-          input: { value: 'first' },
-        })
-        await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-        for (let poll = 0; poll < 4; poll++) {
-          const error = await controller.administration.runStatus({ runId }).catch((error) => error)
-          expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
-          expect(JSON.stringify(error)).not.toContain('private cleanup cause')
-        }
-        expect(executions).toBe(1)
-        expect(
-          (
-            await loadPrivateRootRunForCoordinator({
-              coordinator,
+      }
+      expect(executions).toBe(1)
+      await controller.dispose()
+    } finally {
+      await controller?.dispose().catch(() => undefined)
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('current root work reacquires a transient pending fence without another Run', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    let attempts = 0
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      controller = await attachPrivateRootAdministrationController({
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        coordinator,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          attempts++
+          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
+          const terminal = successTerminal({ accepted: true })
+          await settleExecution(fixture, owner, runId, terminal)
+          return {
+            state: 'terminal',
+            run: await closePrivateRootExecution({
+              coordinator: owner,
               projectRoot: fixture.root,
               runId,
+              terminal,
+            }),
+          }
+        },
+      })
+      const { runId } = await controller.administration.startRun({
+        submissionId: 'transient-pending-fence',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'first' },
+      })
+      await controller.drain()
+      expect(await controller.administration.runStatus({ runId })).toMatchObject({
+        runId,
+        state: 'terminal',
+        terminal: { status: 'succeeded', output: { accepted: true } },
+      })
+      expect(attempts).toBe(2)
+    } finally {
+      await controller?.dispose().catch(() => undefined)
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  for (const scenario of ['pending', 'throws', 'terminal-refusal-without-terminal'] as const) {
+    test(
+      `root status exposes ${scenario} settlement without silently rescheduling`,
+      async () => {
+        const fixture = await createFixture('ready')
+        let coordinator: PrivateProjectCoordinator | undefined
+        let controller:
+          | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+          | undefined
+        let executions = 0
+        try {
+          await admit(fixture)
+          coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+          controller = await attachPrivateRootAdministrationController({
+            projectRoot: fixture.root,
+            packageStoreRoot: fixture.store,
+            coordinator,
+            runTimeoutMs: 60_000,
+            async execute() {
+              executions++
+              if (scenario === 'throws') throw new Error('private cleanup cause')
+              if (scenario === 'terminal-refusal-without-terminal') {
+                throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
+              }
+              return { state: 'pending', reason: 'fence-unconfirmed' }
+            },
+          })
+          const { runId } = await controller.administration.startRun({
+            submissionId: 'failed-settlement',
+            target: { kind: 'flow', path: 'flows/run' },
+            input: { value: 'first' },
+          })
+          await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+          const settledAttempts = executions
+          for (let poll = 0; poll < 4; poll++) {
+            const error = await controller.administration
+              .runStatus({ runId })
+              .catch((error) => error)
+            expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
+            expect(JSON.stringify(error)).not.toContain('private cleanup cause')
+          }
+          if (scenario === 'pending') expect(settledAttempts).toBeGreaterThan(1)
+          else expect(settledAttempts).toBe(1)
+          expect(executions).toBe(settledAttempts)
+          expect(
+            (
+              await loadPrivateRootRunForCoordinator({
+                coordinator,
+                projectRoot: fixture.root,
+                runId,
+              })
+            ).state,
+          ).toBe('spawn-intent')
+          // A second admitted root is independent; the first failure does not
+          // turn the controller into a global execution lock.
+          if (scenario !== 'pending') {
+            await controller.administration.startRun({
+              submissionId: 'independent-settlement',
+              target: { kind: 'flow', path: 'flows/run' },
+              input: { value: 'second' },
             })
-          ).state,
-        ).toBe('spawn-intent')
-        // A second admitted root is independent; the first failure does not
-        // turn the controller into a global execution lock.
-        await controller.administration.startRun({
-          submissionId: 'independent-settlement',
-          target: { kind: 'flow', path: 'flows/run' },
-          input: { value: 'second' },
+            await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+            expect(executions).toBe(2)
+          }
+          await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
+          expect(executions).toBe(scenario === 'pending' ? settledAttempts : 2)
+        } finally {
+          await controller?.dispose().catch(() => undefined)
+          await coordinator?.dispose()
+          await fixture.dispose()
+        }
+      },
+      scenario === 'pending' ? 75_000 : 60_000,
+    )
+  }
+  test.each(['ready', 'unavailable'] as const)(
+    'omitted writable output selects one temporary packet from the retained %s interface',
+    async (state) => {
+      const original = await createFixture(state, 'flow:flows/run', { deliverables: 'read-write' })
+      const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+      try {
+        const approved = await admit(original)
+        await rename(original.store, fixture.store)
+        let inventory: readonly string[] = []
+        await inspectPrivateApprovedProject(
+          fixture.root,
+          undefined,
+          undefined,
+          false,
+          (digest, writable) => {
+            expect(digest).toBe(approved)
+            inventory = writable
+          },
+        )
+        expect(inventory).toEqual(['flow:flows/run'])
+        expect(Object.isFrozen(inventory)).toBe(true)
+        const defaults = await privateCliPrepareArguments(['run'], {
+          currentDirectory: fixture.root,
         })
-        await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-        expect(executions).toBe(2)
-        await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
-        expect(executions).toBe(2)
+        // Explicit output lookup uses retained request modes, without package recapture.
+        await rm(fixture.store, { recursive: true })
+        const explicit = await privateCliPrepareArguments(['run', 'flow:./flows/run'], {
+          currentDirectory: fixture.root,
+        })
+        if ('exitCode' in defaults || 'exitCode' in explicit) throw new Error('selection refused')
+        const first = parseRun(defaults.arguments).output!,
+          second = parseRun(explicit.arguments).output!
+        expect(dirname(first)).toBe(realpathSync(tmpdir()))
+        expect(basename(first)).toMatch(/^jig-result-[a-f0-9]{32}$/)
+        expect(second).not.toBe(first)
+        expect(defaults.admissionDigest).toBe(approved)
+        expect(explicit.admissionDigest).toBe(approved)
+        await expect(stat(first)).rejects.toMatchObject({ code: 'ENOENT' })
+        expect(
+          await privateCliPrepareArguments(defaults.arguments, {
+            currentDirectory: fixture.root,
+            runArgumentsPrepared: true,
+            expectedAdmissionDigest: approved,
+          }),
+        ).toEqual({ arguments: defaults.arguments })
+        const chosen = ['run', 'flow:flows/run', '--out', './chosen']
+        expect(
+          await privateCliPrepareArguments(chosen, { currentDirectory: fixture.root }),
+        ).toEqual({
+          arguments: chosen,
+        })
+        const unknown = ['run', 'binding:missing']
+        expect(
+          await privateCliPrepareArguments(unknown, { currentDirectory: fixture.root }),
+        ).toEqual({
+          arguments: unknown,
+          admissionDigest: approved,
+        })
       } finally {
-        await controller?.dispose().catch(() => undefined)
-        await coordinator?.dispose()
         await fixture.dispose()
       }
-    })
-  }
+    },
+  )
+
+  test('a completed no-output decision survives later approval without a late file owner', async () => {
+    const original = await createFixture('ready', undefined, { deliverables: 'read-write' })
+    const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+    try {
+      const args = ['run', 'flow:flows/run']
+      expect(await privateCliPrepareArguments(args, { currentDirectory: fixture.root })).toEqual({
+        arguments: args,
+      })
+      await admit(original)
+      await rename(original.store, fixture.store)
+      expect(
+        await privateCliPrepareArguments(args, {
+          currentDirectory: fixture.root,
+          runArgumentsPrepared: true,
+        }),
+      ).toEqual({ arguments: args })
+      expect(
+        await privateCliPrepareArguments(['run'], {
+          currentDirectory: fixture.root,
+          runArgumentsPrepared: true,
+          writeError: () => {},
+        }),
+      ).toEqual({ exitCode: 2 })
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
+  test.each(['ready', 'unavailable'] as const)(
+    'an inaccessible temporary parent refuses before dispatch for a retained %s writable target',
+    async (state) => {
+      const original = await createFixture(state, undefined, { deliverables: 'read-write' })
+      const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+      const prior = process.env.TMPDIR
+      try {
+        await admit(original)
+        await rename(original.store, fixture.store)
+        process.env.TMPDIR = join(fixture.root, 'missing-temp')
+        let diagnostic = ''
+        expect(
+          await privateCliPrepareArguments(['run', 'flow:flows/run'], {
+            currentDirectory: fixture.root,
+            writeError: (text) => {
+              diagnostic += text
+            },
+          }),
+        ).toEqual({ exitCode: 1 })
+        expect(diagnostic).toContain('Temporary output storage is unavailable')
+        expect(diagnostic).toContain('No Flow was started')
+        expect(diagnostic).toContain('Add --out ./result-packet to the same invocation')
+        const fallback = ['run', 'flow:flows/run', '--out', 'chosen']
+        expect(
+          await privateCliPrepareArguments(fallback, { currentDirectory: fixture.root }),
+        ).toEqual({
+          arguments: fallback,
+        })
+      } finally {
+        if (prior === undefined) delete process.env.TMPDIR
+        else process.env.TMPDIR = prior
+        await fixture.dispose()
+      }
+    },
+  )
+
+  test('entrypoint selection uses approval, survives explicit overrides, and refuses a newer admission', async () => {
+    const original = await createFixture('ready', 'flow:flows/run --input @job.json --timeout 8m')
+    let coordinator: PrivateProjectCoordinator | undefined
+    const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
+    try {
+      const approved = await admit(original)
+      await rename(original.store, fixture.store)
+      await writeFile(join(fixture.root, 'jig.ts'), 'throw new Error("unreviewed source")')
+      // A missing job file is okay during selection; Run captures it later.
+      const prepared = await privateCliPrepareArguments(['run', '--timeout', '12m'], {
+        currentDirectory: fixture.root,
+        interactive: false,
+        answer: async () => {
+          throw new Error('entrypoint must never prompt')
+        },
+      })
+      expect(prepared).toEqual({
+        arguments: [
+          'run',
+          'flow:flows/run',
+          '--input',
+          '@' + join(fixture.root, 'job.json'),
+          '--timeout',
+          '12m',
+        ],
+        admissionDigest: approved,
+      })
+      expect(await inspectPrivateApprovedProject(fixture.root)).toMatchObject({
+        entrypoint: original.candidate.lock.entrypoint,
+      })
+      const direct = ['run', 'flow:flows/run', '--input', '{"value":"direct"}']
+      expect(await privateCliPrepareArguments(direct, { currentDirectory: fixture.root })).toEqual({
+        arguments: direct,
+        admissionDigest: approved,
+      })
+      const newer = insertCandidate(fixture, 'entrypoint-race', false)
+      const next = requireAdmission(
+        await applyPlan(
+          fixture,
+          seedPlan(fixture, newer, {
+            baseGeneration: approved,
+            observedLock: 'present',
+            operation: 'admission',
+          }),
+        ),
+      )
+      expect(
+        await privateCliPrepareArguments(direct, {
+          currentDirectory: fixture.root,
+          runArgumentsPrepared: true,
+          expectedAdmissionDigest: approved,
+        }),
+      ).toEqual({ arguments: direct })
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      await expect(
+        submitPrivateRootRun({
+          coordinator,
+          projectRoot: fixture.root,
+          packageStoreRoot: fixture.store,
+          submissionId: 'entrypoint-race',
+          expectedAdmissionDigest: approved,
+          target: { kind: 'flow', path: 'flows/run' },
+          input: { value: 'test' },
+          deadlineUnixMs: Date.now() + 1000,
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_APPROVAL_CHANGED' })
+      expect(next.admissionDigest).not.toBe(approved)
+      expect(
+        await listPrivateRootExecutionWork({
+          coordinator,
+          projectRoot: fixture.root,
+          epoch: 'current',
+        }),
+      ).toEqual([])
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('inspection reads only approved retained meaning without state writes or coordinator acquisition', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
@@ -689,7 +1024,10 @@ describe.serial('direct alpha activation store', () => {
           menu += text
         },
       })
-      expect(selection).toEqual({ arguments: ['run', 'flow:flows/run', '--input', '{"value":1}'] })
+      expect(selection).toEqual({
+        arguments: ['run', 'flow:flows/run', '--input', '{"value":1}'],
+        admissionDigest: approved,
+      })
       expect(menu).toContain('Direct alpha store fixture.')
       expect(menu).not.toContain('binding:router') // pending source is not approval
       for (const answer of ['', '99', '1;exit']) {
@@ -763,7 +1101,7 @@ describe.serial('direct alpha activation store', () => {
             expect(output).toContain(heading)
             expect(output).toMatch(/Visible source\s+changes are not checked/)
             if (state !== 'environment-matches') {
-              expect(output).toContain('jig review')
+              expect(stripVTControlCharacters(output)).toContain('jig review')
               expect(output).not.toContain('Next: jig run')
             }
           }
@@ -2125,10 +2463,34 @@ describe.serial('direct alpha activation store', () => {
       await admit(fixture)
       const after = await capturePrivateActivationPlanningBase({ projectRoot: fixture.root })
       expect(readPrivateAdmittedExecutionReuse({ planningBase: after, request })).toEqual({
-        recipeDigest: digest('direct-recipe'),
-        observationDigest: digest('direct-observation'),
         execution: { package: fixture.flow, layout: { flowRoot: '', members: [], aliases: [] } },
       })
+      const changed = (changes: Record<string, unknown>) => {
+        const { digest: _, ...fields } = request
+        return restorePrivateActivationRequest(activationRequest({ ...fields, ...changes }))
+      }
+      // Dependency reuse does not carry the old request's source/settings approval.
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({
+            settings: { changed: true },
+            package: { ...request.package, digest: digest('new-source') },
+          }),
+        })?.execution.package,
+      ).toEqual(fixture.flow)
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({ packagePath: 'flows/other' }),
+        }),
+      ).toBeUndefined()
+      expect(
+        readPrivateAdmittedExecutionReuse({
+          planningBase: after,
+          request: changed({ target: { kind: 'binding', id: 'other' } }),
+        }),
+      ).toBeUndefined()
     } finally {
       await fixture.dispose()
     }
@@ -2202,31 +2564,43 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
-  test('corrupt execution Package fails before Candidate, Plan, or admission mutation', async () => {
-    const fixture = await createFixture('ready')
-    try {
-      const executionPackage = await retainDistinctExecutionPackage(fixture, 'corrupt')
-      const candidate = insertExecutionCandidate(fixture, executionPackage, 'corrupt')
-      const plan = seedPlan(fixture, candidate, {
-        baseGeneration: null,
-        observedLock: 'absent',
-        operation: 'admission',
-      })
-      const artifact = packageArtifactPath(fixture.store, executionPackage)
-      await chmod(artifact, 0o600)
-      await writeFile(artifact, 'corrupt\n')
-      await chmod(artifact, 0o400)
-      const before = activationAuthoritySnapshot(fixture.database)
+  test.each(['execution', 'dependencies'] as const)(
+    'corrupt %s Package fails before Candidate, Plan, or admission mutation',
+    async (kind) => {
+      const fixture = await createFixture('ready')
+      try {
+        const executionPackage = await retainDistinctExecutionPackage(fixture, 'corrupt')
+        const dependencies =
+          kind === 'dependencies'
+            ? await retainDistinctExecutionPackage(fixture, 'dependencies')
+            : undefined
+        const candidate = insertExecutionCandidate(
+          fixture,
+          executionPackage,
+          'corrupt',
+          dependencies,
+        )
+        const plan = seedPlan(fixture, candidate, {
+          baseGeneration: null,
+          observedLock: 'absent',
+          operation: 'admission',
+        })
+        const artifact = packageArtifactPath(fixture.store, dependencies ?? executionPackage)
+        await chmod(artifact, 0o600)
+        await writeFile(artifact, 'corrupt\n')
+        await chmod(artifact, 0o400)
+        const before = activationAuthoritySnapshot(fixture.database)
 
-      await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
-        code: 'PACKAGE_ARTIFACT_CORRUPT',
-      })
-      expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
-      await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
-    } finally {
-      await fixture.dispose()
-    }
-  })
+        await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
+          code: 'PACKAGE_ARTIFACT_CORRUPT',
+        })
+        expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
+        await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
+      } finally {
+        await fixture.dispose()
+      }
+    },
+  )
 
   test('repairs the visible lock without creating another authority record', async () => {
     const fixture = await createFixture()
@@ -2413,6 +2787,79 @@ describe.serial('direct alpha activation store', () => {
         state: 'terminal',
         terminal: { status: 'failed', code: 'INVALID_INPUT' },
       })
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+
+  test('inspection exposes retained availability separately from approval freshness and refuses its root before dispatch', async () => {
+    const fixture = await createFixture('unavailable')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      const store = join(fixture.root, '.jig/private-package-store')
+      await rename(fixture.store, store)
+      const list = await inspectPrivateApprovedProject(fixture.root)
+      expect(list).toMatchObject({
+        state: 'unchecked',
+        targets: [
+          {
+            target: 'flow:flows/run',
+            availability: {
+              state: 'unavailable',
+              code: 'RUNTIME_UNAVAILABLE',
+              evidenceDigests: [digest('runtime-unavailable')],
+            },
+          },
+        ],
+      })
+      expect(await inspectPrivateApprovedProject(fixture.root, 'flow:flows/run')).toMatchObject({
+        state: 'unchecked',
+        availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
+      })
+      expect(
+        await inspectPrivateApprovedProject(
+          fixture.root,
+          'flow:flows/run',
+          async () => 'environment-matches',
+        ),
+      ).toMatchObject({
+        state: 'environment-matches',
+        availability: { state: 'unavailable', code: 'RUNTIME_UNAVAILABLE' },
+      })
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const refused = await submitPrivateRootRun({
+        coordinator,
+        projectRoot: fixture.root,
+        packageStoreRoot: store,
+        submissionId: 'retained-unavailable',
+        target: { kind: 'flow', path: 'flows/run' },
+        input: { value: 'unused' },
+        deadlineUnixMs: Date.now() + 60_000,
+      })
+      expect(refused.run).toMatchObject({
+        state: 'terminal',
+        terminal: {
+          status: 'failed',
+          code: 'UNAVAILABLE',
+          details: {
+            code: 'RUN_TARGET_UNAVAILABLE',
+            availability: {
+              state: 'unavailable',
+              code: 'RUNTIME_UNAVAILABLE',
+              evidenceDigests: [digest('runtime-unavailable')],
+            },
+          },
+        },
+      })
+      expect(
+        await listPrivateRootExecutionWork({
+          coordinator,
+          projectRoot: fixture.root,
+          epoch: 'current',
+        }),
+      ).toEqual([])
     } finally {
       await coordinator?.dispose()
       await fixture.dispose()
@@ -2671,6 +3118,68 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('retries a transient unconfirmed older fence without creating another Run', async () => {
+    const fixture = await createFixture('ready')
+    let first: PrivateProjectCoordinator | undefined
+    let replacement: PrivateProjectCoordinator | undefined
+    let controller:
+      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
+      | undefined
+    try {
+      await admit(fixture)
+      first = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const created = await submitReadyRun(fixture, first, 'recover-pending')
+      await first.dispose()
+      first = undefined
+      replacement = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      let attempts = 0
+      controller = await attachPrivateRootAdministrationController({
+        coordinator: replacement,
+        projectRoot: fixture.root,
+        packageStoreRoot: fixture.store,
+        runTimeoutMs: 60_000,
+        async execute(runId, owner) {
+          attempts++
+          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
+          const terminal = {
+            status: 'lost' as const,
+            code: 'COORDINATOR_LOST' as const,
+            message: 'the prior coordinator disappeared before a proved result',
+          }
+          await checkpoint(fixture, owner, runId, 'provisional', terminal as unknown as JsonValue)
+          await checkpoint(fixture, owner, runId, 'release', { released: true })
+          await checkpoint(fixture, owner, runId, 'admitted', terminal as unknown as JsonValue)
+          return {
+            state: 'terminal',
+            run: await closePrivateRootExecution({
+              coordinator: owner,
+              projectRoot: fixture.root,
+              runId,
+              terminal,
+            }),
+          }
+        },
+      })
+      expect(attempts).toBe(2)
+      expect(await controller.administration.runStatus({ runId: created.run.runId })).toMatchObject(
+        { state: 'terminal', terminal: { status: 'lost' } },
+      )
+      const database = openSqlite(fixture.database, 'readonly')
+      try {
+        expect(database.query('SELECT count(*) AS count FROM root_runs').get()).toEqual({
+          count: 1,
+        })
+      } finally {
+        database.close(true)
+      }
+    } finally {
+      await controller?.dispose()
+      await replacement?.dispose()
+      await first?.dispose()
+      await fixture.dispose()
+    }
+  })
+
   test('fails closed on current Candidate, Plan, admission, and terminal corruption', async () => {
     const candidate = await createFixture()
     try {
@@ -2834,6 +3343,8 @@ async function createEmptyFixture(): Promise<EmptyFixture> {
 
 async function createFixture(
   disposition: 'ready' | 'unavailable' = 'unavailable',
+  entrypoint?: string,
+  attachments: Readonly<Record<string, 'read' | 'read-write'>> = {},
 ): Promise<Fixture> {
   const empty = await createEmptyFixture()
   const flowSource = join(empty.base, 'run-flow')
@@ -2850,6 +3361,7 @@ async function createFixture(
       join(flowSource, 'FLOW.contract.json'),
       JSON.stringify({
         $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        ...(Object.keys(attachments).length ? { attachments } : {}),
         input: {
           type: 'object',
           properties: {
@@ -2867,6 +3379,7 @@ async function createFixture(
     const declaration = await retainPackage(empty.store, declarationSource)
     const information = await stat(empty.root, { bigint: true })
     const lockBytes = json1({
+      ...(entrypoint === undefined ? {} : { entrypoint }),
       packages: {
         'flows/run': {
           digest: flow.digest,
@@ -2884,7 +3397,7 @@ async function createFixture(
       package: flow,
       entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
       settings: {},
-      attachments: {},
+      attachments,
     })
     const targets = [
       {
@@ -2978,6 +3491,7 @@ function insertExecutionCandidate(
   fixture: Fixture,
   executionPackage: PackageArtifactRef,
   label: string,
+  dependencies?: PackageArtifactRef,
 ): PrivateActivationCandidateArtifactV5 {
   const database = openSqlite(fixture.database, 'readonly')
   const revision = database.query('SELECT revision FROM candidate_head WHERE singleton = 1').get()
@@ -2992,7 +3506,15 @@ function insertExecutionCandidate(
         ...target.disposition,
         recipeDigest: digest(`direct-recipe:${label}`),
         observationDigest: digest(`direct-observation:${label}`),
-        execution: { ...target.disposition.execution, package: executionPackage },
+        execution: {
+          ...target.disposition.execution,
+          package: executionPackage,
+          ...(dependencies === undefined
+            ? {}
+            : {
+                preparation: { inputDigest: digest('preparation-inputs'), package: dependencies },
+              }),
+        },
       },
     },
   ]
@@ -3405,7 +3927,8 @@ function openSqlite(path: string, mode: 'readonly' | 'readwrite'): any {
     mode === 'readonly'
       ? sqlite.constants.SQLITE_OPEN_READONLY
       : sqlite.constants.SQLITE_OPEN_READWRITE
-  return sqlite.Database.open(path, access | sqlite.constants.SQLITE_OPEN_NOFOLLOW)
+  const visible = join(realpathSync(dirname(path)), basename(path))
+  return sqlite.Database.open(visible, access | sqlite.constants.SQLITE_OPEN_NOFOLLOW)
 }
 
 function json1(value: JsonValue): Uint8Array {

@@ -1,5 +1,4 @@
 import { type BigIntStats, constants } from 'node:fs'
-import { lstat, mkdir, open } from 'node:fs/promises'
 import {
   normalizeProjectApplyRequest,
   normalizeProjectPlanRequest,
@@ -10,10 +9,11 @@ import {
   type ProjectPlanResult,
   type ProjectSession,
 } from '../administration/project.js'
-import type { RootRunTerminal } from '../administration/root.js'
+import { RootAdministrationError, type RootRunTerminal } from '../administration/root.js'
 import { CheckError } from '../diagnostics.js'
-import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
 import { validateJson1 } from '../json.js'
+import { EVALUATOR_HINTS } from '../project/evaluator-diagnostics.js'
+import type { AcpGrant } from '../project/grants.js'
 import {
   buildPrivateActivationRequests,
   resolveRetainedPackageProjectObservation,
@@ -29,9 +29,10 @@ import {
   readPrivateAdmittedExecutionReuse,
   PRIVATE_PACKAGE_STORE_DIRECTORY as STORE_DIRECTORY,
 } from './activation-admission-store.js'
-import { createPrivateActivationPlanningObservation } from './activation-planning.js'
-import { privateActivationTargetKey } from './activation-planning.js'
-import { privateProjectFeatureFailures } from './project-feature-qualification.js'
+import {
+  createPrivateActivationPlanningObservation,
+  privateActivationTargetKey,
+} from './activation-planning.js'
 import {
   type PrivateBunExecutionArtifact,
   privateBunExecutionArtifact,
@@ -49,38 +50,62 @@ import {
   inspectPrivateBunPackageInput,
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
+import {
+  assemblePrivateBunExecution,
+  capturePrivateBunDependencies,
+  type PrivateBunPreparationWorkspace,
+  privateBunPreparationInputs,
+} from './bun-preparation-evidence.js'
 import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
 import { captureDependencyFlows } from './dependency-flows.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
+import {
+  statPrivateFile as lstat,
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  privateChildLocation,
+} from './descriptor-files.js'
 import { type PrivateDirectRunRecipe, planPrivateDirectRun } from './direct-run.js'
+import type { PrivateExecutionBackend } from './execution-backend.js'
 import type { PrivateFileRecovery } from './file-command.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import type { PrivateInstalledBunSupport } from './installed-bun-support.js'
-import type { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 import {
   captureStoredPackage,
   type PackageArtifactRef,
   publishCapturedPackage,
 } from './package-artifact-store.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
+import { privateProfileInstant, privateProfileSpan } from './private-profile.js'
+import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
+import {
+  privateAgentReadinessReport,
+  qualifyPrivateProjectAcpResources,
+} from './project-resource-qualification.js'
 import {
   openPrivateProjectSessionOwner,
   type PrivateProjectSessionOwner,
 } from './project-session-owner.js'
+import type { PrivateAgentReadinessReport } from './review-agent-setup.js'
 import {
   attachPrivateRootAdministrationController,
   type PrivateRootAdministrationController,
 } from './root-administration-controller.js'
-import { executePrivateRootRunLaunch } from './root-run-controller.js'
+import {
+  executePrivateRootRunLaunch,
+  type PrivateRootExecutionFailurePhase,
+} from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 import type { PrivateRunChannelOutput } from './run-channels.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
-  readonly backend: PrivateLinuxCgroupBackend
+  readonly expectedAdmissionDigest?: string
+  readonly backend: PrivateExecutionBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
   readonly runTimeoutMs: number
   readonly httpGrants?: PrivateHttpGrants | undefined
@@ -88,6 +113,11 @@ export interface PrivateProjectSessionHost {
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
   readonly allowResolutionNetwork?: boolean
+  readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
+  readonly agentOverride?: AcpGrant['client']
+  readonly detectAgentAlternatives?: (
+    selected: readonly AcpGrant['client'][],
+  ) => Promise<readonly AcpGrant['client'][]>
   readonly onStage?: (stage: string) => void
   readonly onResolution?: (packagePath: string) => void
   readonly generateContracts?: boolean
@@ -100,6 +130,7 @@ export async function recoverPrivateCheckpointRun(
   host: PrivateProjectSessionHost,
 ): Promise<RootRunTerminal> {
   const owner = await openPrivateProjectSessionOwner(selected.project)
+  let store: PreparedPackageStore | undefined
   try {
     if (
       String(owner.root.information.dev) !== selected.device ||
@@ -113,9 +144,10 @@ export async function recoverPrivateCheckpointRun(
     })
     if (run.coordinatorEpoch !== selected.epoch || run.coordinatorEpoch >= owner.coordinator.epoch)
       throw new Error('recovery cannot execute a current or substituted Run')
+    store = await preparePackageStore(owner)
     const settled = await executePrivateRootRunLaunch({
       projectRoot: selected.project,
-      packageStoreRoot: await preparePackageStore(owner),
+      packageStoreRoot: store.root,
       runId: selected.runId,
       coordinator: owner.coordinator,
       installedSupport: host.installedBunSupport,
@@ -134,7 +166,11 @@ export async function recoverPrivateCheckpointRun(
         }
       : terminal
   } finally {
-    await owner.dispose()
+    try {
+      await store?.dispose()
+    } finally {
+      await owner.dispose()
+    }
   }
 }
 
@@ -142,23 +178,45 @@ export async function recoverPrivateCheckpointRun(
 export async function openPrivateProjectSession(input: {
   readonly directory: string
   readonly host: PrivateProjectSessionHost
+  readonly onAcquisitionFailure?: (evidence: {
+    readonly phase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery'
+    readonly causes: readonly string[]
+  }) => void
+  readonly onOperationFailure?: (evidence: {
+    readonly operation: 'plan' | 'apply'
+    readonly causes: readonly string[]
+  }) => void
+  readonly onRootExecutionFailure?: (evidence: {
+    readonly phase: PrivateRootExecutionFailurePhase
+    readonly causes: readonly string[]
+  }) => void
 }): Promise<ProjectSession> {
   let owner: PrivateProjectSessionOwner | undefined
   let roots: PrivateRootAdministrationController | undefined
+  let packageStore: PreparedPackageStore | undefined
   let projectIdentityLost = false
   let closeForIdentityLoss: (() => void) | undefined
+  let acquisitionPhase: 'owner' | 'package-store' | 'preparation-recovery' | 'root-recovery' =
+    'owner'
   try {
     owner = await openPrivateProjectSessionOwner(input.directory)
-    const packageStoreRoot = await preparePackageStore(owner)
+    acquisitionPhase = 'package-store'
+    packageStore = await preparePackageStore(owner)
+    const packageStoreRoot = packageStore.root
+    acquisitionPhase = 'preparation-recovery'
     await recoverPrivateBunPreparationOwner({
       projectRoot: owner.root.requestedPath,
       coordinator: owner.coordinator,
       backend: input.host.backend,
     })
+    acquisitionPhase = 'root-recovery'
     roots = await attachPrivateRootAdministrationController({
       coordinator: owner.coordinator,
       projectRoot: owner.root.requestedPath,
       packageStoreRoot,
+      ...(input.host.expectedAdmissionDigest === undefined
+        ? {}
+        : { expectedAdmissionDigest: input.host.expectedAdmissionDigest }),
       runTimeoutMs: input.host.runTimeoutMs,
       ...(input.host.channelOutput?.terminal === undefined
         ? {}
@@ -179,20 +237,40 @@ export async function openPrivateProjectSession(input: {
             ? {}
             : { channelOutput: input.host.channelOutput }),
           signal,
+          onFailure: (phase, error) => {
+            try {
+              input.onRootExecutionFailure?.({ phase, causes: closedTestErrorCauses(error) })
+            } catch {
+              // Optional closed test evidence cannot change execution.
+            }
+          },
         }),
       onProjectIdentityLoss: () => {
         projectIdentityLost = true
         closeForIdentityLoss?.()
       },
     })
-    const created = createSession(owner, roots, packageStoreRoot, input.host)
+    const created = createSession(owner, roots, packageStore, input.host, input.onOperationFailure)
     closeForIdentityLoss = created.projectIdentityLost
     if (projectIdentityLost) created.projectIdentityLost()
     return created.session
   } catch (error) {
+    try {
+      input.onAcquisitionFailure?.({
+        phase: acquisitionPhase,
+        causes: closedTestErrorCauses(error),
+      })
+    } catch {
+      // Optional closed diagnostics cannot replace acquisition or cleanup.
+    }
     const failures: unknown[] = [error]
     try {
       await roots?.dispose()
+    } catch (cleanup) {
+      failures.push(cleanup)
+    }
+    try {
+      await packageStore?.dispose()
     } catch (cleanup) {
       failures.push(cleanup)
     }
@@ -211,15 +289,84 @@ export async function openPrivateProjectSession(input: {
   }
 }
 
+/** Bounded host-test evidence. Never retain messages, paths, or rejected values. */
+export function closedTestErrorCauses(error: unknown): readonly string[] {
+  const result: string[] = []
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 3 || result.length >= 8 || !(value instanceof Error)) return
+    const name = /^[A-Za-z][A-Za-z0-9]{0,79}$/.test(value.name) ? value.name : 'Error'
+    const code = (value as Error & { code?: unknown }).code
+    const closedCode =
+      typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)
+        ? code
+        : closedNativeTestCause(value)
+    result.push(closedCode === undefined ? name : `${name}:${closedCode}`)
+    if (value instanceof AggregateError) {
+      for (const nested of value.errors.slice(0, 4)) visit(nested, depth + 1)
+    }
+    visit(value.cause, depth + 1)
+  }
+  visit(error, 0)
+  return result
+}
+
+function closedNativeTestCause(error: Error): string | undefined {
+  let message: string
+  try {
+    message = error.message
+  } catch {
+    return undefined
+  }
+  switch (message) {
+    case 'macOS control deadline expired':
+      return 'MACOS_CONTROL_DEADLINE'
+    case 'macOS guardian bootstrap failed':
+      return 'MACOS_GUARDIAN_BOOTSTRAP'
+    case 'macOS guardian connection lost':
+      return 'MACOS_GUARDIAN_CONNECTION_LOST'
+    case 'macOS guardian job removal is unconfirmed':
+      return 'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED'
+    case 'macOS guardian job is still present':
+      return 'MACOS_GUARDIAN_JOB_PRESENT'
+    case 'macOS storage recovery guardian job is still present':
+      return 'MACOS_RECOVERY_JOB_PRESENT'
+    case 'macOS storage recovery is unconfirmed':
+      return 'MACOS_STORAGE_RECOVERY_UNCONFIRMED'
+    case 'macOS volume backing identity changed':
+      return 'MACOS_VOLUME_BACKING_CHANGED'
+    case 'macOS volume info failed':
+      return 'MACOS_VOLUME_INFO'
+    case 'macOS volume detach failed':
+      return 'MACOS_VOLUME_DETACH'
+    case 'macOS guardian contains unexpected state':
+      return 'MACOS_GUARDIAN_UNEXPECTED_STATE'
+    case 'macOS recovery slot contains unexpected state':
+      return 'MACOS_RECOVERY_UNEXPECTED_STATE'
+    case 'macOS prepared ownership does not match':
+      return 'MACOS_PREPARED_OWNER_MISMATCH'
+    case 'native macOS Run was cancelled before admission':
+      return 'MACOS_STARTUP_CANCELLED'
+    default:
+      return message.startsWith('macOS guardian ended before readiness (') && message.endsWith(')')
+        ? 'MACOS_GUARDIAN_BEFORE_READINESS'
+        : undefined
+  }
+}
+
 function createSession(
   owner: PrivateProjectSessionOwner,
   roots: PrivateRootAdministrationController,
-  packageStoreRoot: string,
+  packageStore: PreparedPackageStore,
   host: PrivateProjectSessionHost,
+  onOperationFailure?: (evidence: {
+    readonly operation: 'plan' | 'apply'
+    readonly causes: readonly string[]
+  }) => void,
 ): {
   readonly session: ProjectSession
   readonly projectIdentityLost: () => void
 } {
+  const packageStoreRoot = packageStore.root
   const planningCancellation = new AbortController()
   const operations = new Set<Promise<void>>()
   let state: 'open' | 'closing' | 'closed' = 'open'
@@ -241,13 +388,15 @@ function createSession(
         })
         planningCancellation.signal.throwIfAborted()
         host.onStage?.('Capturing project source and declarations')
-        preparationBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
+        const createdBudget = createPrivateBunPreparationBudget(planningCancellation.signal)
+        preparationBudget = createdBudget
         const executions = new Map<string, PrivateBunExecutionArtifact>()
-        const budget = preparationBudget
+        const budget = createdBudget
         const aggregate = await retainOpenedPackageProject(
           {
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
+            ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
             dependencyFlows: (selectors) =>
               captureDependencyFlows({
                 root: owner.root,
@@ -258,17 +407,19 @@ function createSession(
                   const unlocked = !captured.files.some((file) => file.path === 'bun.lock')
                   if (unlocked && host.allowResolutionNetwork === true)
                     host.onResolution?.('package.json')
-                  return preparePrivateBunPackage({
-                    captured,
-                    ...(workspace === undefined ? {} : { workspace }),
-                    installedSupport: host.installedBunSupport,
-                    backend: host.backend,
-                    projectRoot: owner.root.requestedPath,
-                    coordinator: owner.coordinator,
-                    deadlineUnixMs: budget.deadlineUnixMs,
-                    signal: budget.signal,
-                    allowResolutionNetwork: host.allowResolutionNetwork === true,
-                  })
+                  return privateProfileSpan('dependency-preparation', () =>
+                    preparePrivateBunPackage({
+                      captured,
+                      ...(workspace === undefined ? {} : { workspace }),
+                      installedSupport: host.installedBunSupport,
+                      backend: host.backend,
+                      projectRoot: owner.root.requestedPath,
+                      coordinator: owner.coordinator,
+                      deadlineUnixMs: budget.deadlineUnixMs,
+                      signal: budget.signal,
+                      allowResolutionNetwork: host.allowResolutionNetwork === true,
+                    }),
+                  )
                 },
                 retain: async (selector, source, prepared) => {
                   budget.retain(
@@ -307,13 +458,47 @@ function createSession(
         }
         const recipes: PrivateDirectRunRecipe[] = []
         const featureFailures = privateProjectFeatureFailures(aggregate.linked)
+        const resourceFailures = await qualifyPrivateProjectAcpResources({
+          requests,
+          resources: host.acpResources,
+          installedSupport: host.installedBunSupport,
+          featureFailures,
+          signal: budget.signal,
+          declarationFor: (request) => {
+            const id = request.target.kind === 'binding' ? request.target.id : undefined
+            return id === undefined
+              ? `${request.packagePath}/${request.entrypoint.path}`
+              : aggregate.bindings.find((binding) => binding.id === id)!.sourcePath
+          },
+        })
+        if (host.onAgentReadiness) {
+          const missing = [...resourceFailures.values()].flatMap(({ cause }) =>
+            cause.kind === 'acp' && cause.diagnostic.endsWith('_EXECUTABLE') ? [cause.client] : [],
+          )
+          const alternatives =
+            missing.length === 0 ? [] : ((await host.detectAgentAlternatives?.(missing)) ?? [])
+          budget.signal.throwIfAborted()
+          host.onAgentReadiness(
+            await privateAgentReadinessReport({
+              aggregate,
+              requests,
+              failures: resourceFailures,
+              featureFailures,
+              alternatives,
+            }),
+          )
+        }
         for (const request of requests) {
           const packageLabel = JSON.stringify(request.packagePath).replace(
             /[\u007f-\uffff]/g,
             (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
           )
-          preparationBudget.signal.throwIfAborted()
-          if (featureFailures.has(privateActivationTargetKey(request.target))) continue
+          budget.signal.throwIfAborted()
+          if (
+            featureFailures.has(privateActivationTargetKey(request.target)) ||
+            resourceFailures.has(privateActivationTargetKey(request.target))
+          )
+            continue
           if (request.mode !== 'run') {
             throw new ProjectAdministrationError(
               'UNAVAILABLE',
@@ -333,74 +518,17 @@ function createSession(
               const source = await captureStoredPackage(packageStoreRoot, request.package)
               try {
                 host.onStage?.(`Capturing dependency inputs for ${packageLabel}`)
-                const workspace = await capturePrivateBunWorkspace({
-                  projectRoot: owner.root,
-                  packagePath: request.packagePath,
-                  captured: source,
-                  signal: preparationBudget.signal,
-                })
+                const workspace = await privateProfileSpan('dependency-workspace-capture', () =>
+                  capturePrivateBunWorkspace({
+                    projectRoot: owner.root,
+                    packagePath: request.packagePath,
+                    captured: source,
+                    signal: budget.signal,
+                  }),
+                )
                 if (workspace !== undefined) {
                   try {
-                    const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
-                    if (
-                      admitted?.execution.preparationInputDigest === workspace.captured.digest &&
-                      admitted.execution.layout.flowRoot === workspace.target
-                    ) {
-                      const current = await planPrivateDirectRun({
-                        request,
-                        execution: admitted.execution,
-                        installedSupport: host.installedBunSupport,
-                        backend: host.backend,
-                        httpGrants: host.httpGrants,
-                        acpResources: host.acpResources,
-                      })
-                      if (
-                        current.digest === admitted.recipeDigest &&
-                        current.observation.digest === admitted.observationDigest
-                      ) {
-                        execution = admitted.execution
-                        host.onStage?.(`Reusing approved dependencies for ${packageLabel}`)
-                      }
-                    }
-                    if (execution === undefined) {
-                      preparationBudget.reserve(workspace.captured.digest, request.packagePath)
-                      const unlocked = !workspace.captured.files.some(
-                        ({ path }) => path === 'bun.lock',
-                      )
-                      requirePrivateBunResolutionPermission(
-                        unlocked
-                          ? { state: 'unlocked', manifestPath: 'package.json' }
-                          : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
-                        host.allowResolutionNetwork,
-                      )
-                      if (unlocked) host.onResolution?.(request.packagePath)
-                      host.onStage?.(`Preparing dependencies for ${packageLabel}`)
-                      const prepared = await preparePrivateBunPackage({
-                        captured: workspace.captured,
-                        workspace,
-                        installedSupport: host.installedBunSupport,
-                        backend: host.backend,
-                        projectRoot: owner.root.requestedPath,
-                        coordinator: owner.coordinator,
-                        deadlineUnixMs: preparationBudget.deadlineUnixMs,
-                        signal: preparationBudget.signal,
-                        allowResolutionNetwork: host.allowResolutionNetwork === true,
-                      })
-                      try {
-                        preparationBudget.retain(
-                          prepared.captured.files,
-                          request.packagePath,
-                          Buffer.byteLength(JSON.stringify(prepared.layout)),
-                        )
-                        execution = privateBunExecutionArtifact(
-                          await publishCapturedPackage(packageStoreRoot, prepared.captured),
-                          prepared.layout,
-                          workspace.captured.digest,
-                        )
-                      } finally {
-                        await prepared.captured.dispose()
-                      }
-                    }
+                    execution = await prepareExecution(workspace.captured, workspace)
                   } finally {
                     await workspace.captured.dispose()
                   }
@@ -409,56 +537,106 @@ function createSession(
                   if (dependencyInput.state === 'direct') {
                     execution = privateBunExecutionArtifact(request.package)
                   } else {
-                    const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
-                    if (admitted !== undefined) {
-                      const current = await planPrivateDirectRun({
-                        request,
-                        execution: admitted.execution,
-                        installedSupport: host.installedBunSupport,
-                        backend: host.backend,
-                        httpGrants: host.httpGrants,
-                        acpResources: host.acpResources,
-                      })
-                      if (
-                        current.digest === admitted.recipeDigest &&
-                        current.observation.digest === admitted.observationDigest
-                      ) {
-                        execution = admitted.execution
-                      }
-                    }
-                    if (execution === undefined) {
-                      requirePrivateBunResolutionPermission(
-                        dependencyInput,
-                        host.allowResolutionNetwork,
-                      )
-                      preparationBudget.reserve(request.package.digest, request.packagePath)
-                      if (dependencyInput.state === 'unlocked')
-                        host.onResolution?.(request.packagePath)
-                      host.onStage?.(`Preparing dependencies for ${packageLabel}`)
-                      const prepared = await preparePrivateBunPackage({
-                        captured: source,
-                        installedSupport: host.installedBunSupport,
-                        backend: host.backend,
-                        projectRoot: owner.root.requestedPath,
-                        coordinator: owner.coordinator,
-                        deadlineUnixMs: preparationBudget.deadlineUnixMs,
-                        signal: preparationBudget.signal,
-                        allowResolutionNetwork: host.allowResolutionNetwork === true,
+                    execution = await prepareExecution(source)
+                  }
+                }
+
+                async function prepareExecution(
+                  captured: typeof source,
+                  workspace?: PrivateBunPreparationWorkspace,
+                ): Promise<PrivateBunExecutionArtifact> {
+                  const inputs = await privateBunPreparationInputs({
+                    captured,
+                    ...(workspace === undefined ? {} : { workspace }),
+                    supportDigest: privateDomainDigest('JIG-Bun-Preparation-Support/1', {
+                      installation: host.installedBunSupport.digest,
+                      mechanism: (await host.backend.inspectSupport()).digest,
+                    }),
+                  })
+                  const admitted = readPrivateAdmittedExecutionReuse({ planningBase, request })
+                  const evidence = admitted?.execution.preparation
+                  if (admitted !== undefined && evidence?.inputDigest === inputs.digest) {
+                    // Reverify both admitted images. Corruption cannot silently trigger installation.
+                    const previous = await captureStoredPackage(
+                      packageStoreRoot,
+                      admitted.execution.package,
+                    )
+                    await previous.dispose()
+                    const dependencies = await captureStoredPackage(
+                      packageStoreRoot,
+                      evidence.package,
+                    )
+                    try {
+                      const assembled = await assemblePrivateBunExecution({
+                        source: captured,
+                        sourcePaths: inputs.sourcePaths,
+                        dependencies,
+                        layout: admitted.execution.layout,
                       })
                       try {
-                        preparationBudget.retain(
-                          prepared.captured.files,
-                          request.packagePath,
-                          Buffer.byteLength(JSON.stringify(prepared.layout)),
+                        budget.signal.throwIfAborted()
+                        const execution = privateBunExecutionArtifact(
+                          await publishCapturedPackage(packageStoreRoot, assembled),
+                          admitted.execution.layout,
+                          evidence,
                         )
-                        execution = privateBunExecutionArtifact(
-                          await publishCapturedPackage(packageStoreRoot, prepared.captured),
-                          prepared.layout,
-                        )
+                        privateProfileInstant('dependency-reuse')
+                        host.onStage?.(`Reusing approved dependencies for ${packageLabel}`)
+                        return execution
                       } finally {
-                        await prepared.captured.dispose()
+                        await assembled.dispose()
                       }
+                    } finally {
+                      await dependencies.dispose()
                     }
+                  }
+                  const unlocked = !captured.files.some(({ path }) => path === 'bun.lock')
+                  requirePrivateBunResolutionPermission(
+                    unlocked
+                      ? { state: 'unlocked', manifestPath: 'package.json' }
+                      : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
+                    host.allowResolutionNetwork,
+                  )
+                  budget.reserve(captured.digest, request.packagePath)
+                  if (unlocked) host.onResolution?.(request.packagePath)
+                  host.onStage?.(`Preparing dependencies for ${packageLabel}`)
+                  const prepared = await privateProfileSpan('dependency-preparation', () =>
+                    preparePrivateBunPackage({
+                      captured,
+                      ...(workspace === undefined ? {} : { workspace }),
+                      installedSupport: host.installedBunSupport,
+                      backend: host.backend,
+                      projectRoot: owner.root.requestedPath,
+                      coordinator: owner.coordinator,
+                      deadlineUnixMs: budget.deadlineUnixMs,
+                      signal: budget.signal,
+                      allowResolutionNetwork: host.allowResolutionNetwork === true,
+                    }),
+                  )
+                  try {
+                    budget.retain(
+                      prepared.captured.files,
+                      request.packagePath,
+                      Buffer.byteLength(JSON.stringify(prepared.layout)),
+                    )
+                    const dependencies = await capturePrivateBunDependencies(
+                      prepared.captured,
+                      inputs.sourcePaths,
+                    )
+                    try {
+                      return privateBunExecutionArtifact(
+                        await publishCapturedPackage(packageStoreRoot, prepared.captured),
+                        prepared.layout,
+                        {
+                          inputDigest: inputs.digest,
+                          package: await publishCapturedPackage(packageStoreRoot, dependencies),
+                        },
+                      )
+                    } finally {
+                      await dependencies.dispose()
+                    }
+                  } finally {
+                    await prepared.captured.dispose()
                   }
                 }
               } finally {
@@ -477,7 +655,16 @@ function createSession(
               }),
             )
           } catch (error) {
-            const scoped = scopePrivatePackagePlanningError(error, request.packagePath)
+            const target = request.target
+            const binding =
+              target.kind === 'binding'
+                ? aggregate.linked.bindings.find(({ id }) => id === target.id)
+                : undefined
+            const scoped = scopePrivatePackagePlanningError(
+              error,
+              request.packagePath,
+              binding?.declarationPath,
+            )
             if (scoped !== error) throw scoped
             if (error instanceof TypeError) {
               throw new ProjectAdministrationError(
@@ -488,7 +675,7 @@ function createSession(
             throw error
           }
         }
-        preparationBudget.signal.throwIfAborted()
+        budget.signal.throwIfAborted()
         host.onStage?.('Checking execution recipes and retaining the review')
         const mechanismDigests = new Set(recipes.map(({ mechanismDigest }) => mechanismDigest))
         if (mechanismDigests.size > 1) {
@@ -496,17 +683,19 @@ function createSession(
         }
         const planning = createPrivateActivationPlanningObservation({
           policyDigest: privateDomainDigest('JIG-Private-Project-Session-Policy/1', {
-            targetPolicy: 'exact-targets-with-feature-qualification',
+            targetPolicy: 'exact-targets-with-feature-and-resource-qualification',
           }),
           mechanismDigest:
             recipes[0]?.mechanismDigest ?? (await host.backend.inspectSupport()).digest,
           entries: requests.map((request) => {
             const failure = featureFailures.get(privateActivationTargetKey(request.target))
+            const resourceFailure = resourceFailures.get(privateActivationTargetKey(request.target))
             return {
               target: request.target,
               requestDigest: request.digest,
               disposition:
-                failure === undefined
+                resourceFailure ??
+                (failure === undefined
                   ? {
                       state: 'planned' as const,
                       observation: recipes.find(
@@ -517,7 +706,7 @@ function createSession(
                       state: 'unavailable' as const,
                       code: 'FEATURE_UNAVAILABLE' as const,
                       evidenceDigests: [failure],
-                    },
+                    }),
             }
           }),
         })
@@ -526,7 +715,7 @@ function createSession(
           resolveRetainedPackageProjectObservation(aggregate, planning),
           recipes,
         )
-        preparationBudget.signal.throwIfAborted()
+        budget.signal.throwIfAborted()
         let review: PrivateProjectPlanReview | undefined
         const result = await publishPrivateActivationReviewPlan({
           projectRoot: owner.root,
@@ -538,9 +727,9 @@ function createSession(
             review = renderPrivateProjectPlanReview(applicable, undefined, recipes)
           },
         })
-        preparationBudget.signal.throwIfAborted()
+        budget.signal.throwIfAborted()
         await owner.verify()
-        preparationBudget.signal.throwIfAborted()
+        budget.signal.throwIfAborted()
         if (result.state === 'unchanged') return Object.freeze({ state: 'unchanged' as const })
         if (review === undefined) throw new Error('applicable project Plan has no validated review')
         const publicResult = Object.freeze({
@@ -552,6 +741,7 @@ function createSession(
         validateJson1(publicResult)
         return publicResult
       } catch (error) {
+        reportOperationFailure('plan', error)
         throw handleOperationError(error, 'plan')
       } finally {
         preparationBudget?.dispose()
@@ -583,6 +773,7 @@ function createSession(
               },
         )
       } catch (error) {
+        reportOperationFailure('apply', error)
         throw handleOperationError(error, 'apply')
       } finally {
         leave()
@@ -636,6 +827,11 @@ function createSession(
       failures.push(error)
     }
     try {
+      await packageStore.dispose()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
       await owner.dispose()
     } catch (error) {
       failures.push(error)
@@ -662,24 +858,39 @@ function createSession(
     }
     return projectError(error, operation)
   }
+
+  function reportOperationFailure(operation: 'plan' | 'apply', error: unknown): void {
+    try {
+      onOperationFailure?.({ operation, causes: closedTestErrorCauses(error) })
+    } catch {
+      // Optional closed diagnostics cannot replace the operation failure.
+    }
+  }
 }
 
-async function preparePackageStore(owner: PrivateProjectSessionOwner): Promise<string> {
+interface PreparedPackageStore {
+  readonly root: PrivateFileLocation
+  dispose(): Promise<void>
+}
+
+async function preparePackageStore(
+  owner: PrivateProjectSessionOwner,
+): Promise<PreparedPackageStore> {
   await owner.verify()
-  const statePath = `/proc/self/fd/${owner.root.handle.fd}/.jig`
+  const statePath = privateChildLocation(owner.root.handle, '.jig')
   const state = await open(
     statePath,
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   )
   try {
-    const storePath = `/proc/self/fd/${state.fd}/${STORE_DIRECTORY}`
+    const storePath = privateChildLocation(state, STORE_DIRECTORY)
     try {
-      await mkdir(storePath, { mode: 0o700 })
+      await mkdirPrivateFile(storePath)
     } catch (error) {
       if (!hasCode(error, 'EEXIST')) throw error
     }
     await state.sync()
-    const observed = await lstat(storePath, { bigint: true })
+    const observed = await lstat(storePath)
     requireProtectedStore(observed, owner.root.information.dev)
     const store = await open(
       storePath,
@@ -697,11 +908,20 @@ async function preparePackageStore(owner: PrivateProjectSessionOwner): Promise<s
     } finally {
       await store.close()
     }
-  } finally {
+    await owner.verify()
+    let closed = false
+    return Object.freeze({
+      root: storePath,
+      async dispose(): Promise<void> {
+        if (closed) return
+        closed = true
+        await state.close()
+      },
+    })
+  } catch (error) {
     await state.close()
+    throw error
   }
-  await owner.verify()
-  return `/proc/self/fd/${owner.root.handle.fd}/.jig/${STORE_DIRECTORY}`
 }
 
 function requireProtectedStore(information: BigIntStats, projectDevice: bigint): void {
@@ -725,6 +945,12 @@ export function projectError(
   operation: 'acquire' | 'plan' | 'apply',
 ): ProjectAdministrationError {
   if (error instanceof ProjectAdministrationError) return error
+  if (error instanceof RootAdministrationError && error.code === 'PROJECT_BUSY') {
+    return new ProjectAdministrationError(
+      'PROJECT_BUSY',
+      'project changed or is busy; retry the operation',
+    )
+  }
   if (error instanceof CheckError) {
     if (
       error.code === 'COORDINATOR_BUSY' ||
@@ -823,11 +1049,21 @@ export function projectError(
 }
 
 /** Package-private projection of known package-local preparation failures. */
-export function scopePrivatePackagePlanningError(error: unknown, packagePath: string): unknown {
+export function scopePrivatePackagePlanningError(
+  error: unknown,
+  packagePath: string,
+  bindingPath?: string,
+): unknown {
   if (error instanceof PrivateBunManifestError && error.projectRelative) return error
   if (!(error instanceof CheckError)) {
     return error
   }
+  if (
+    bindingPath !== undefined &&
+    Object.hasOwn(ACP_SETUP_HINTS, error.code) &&
+    error.pointer?.startsWith('/slots/')
+  )
+    return new CheckError(error.kind, error.code, error.message, bindingPath, error.pointer)
   const relativePath =
     error.code.startsWith('PACKAGE_BUN_') &&
     (error.path === 'bun.lock' || error.path === 'package.json')
@@ -858,6 +1094,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
       'AUTHORING_STATE',
     ].includes(code) ||
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
+    code === 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
     code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||
     code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
@@ -915,6 +1152,10 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PACKAGE_SYMLINK',
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
+      'PROJECT_CHECKPOINT_ATTACHMENT',
+      'PROJECT_AGENT_OVERRIDE_MODEL',
+      'PROJECT_AGENT_OVERRIDE_RETENTION',
+      'PROJECT_AGENT_OVERRIDE_UNUSED',
     ].includes(code)
   )
 }

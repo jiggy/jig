@@ -6,23 +6,90 @@ sends its initial analysis through a FLOW channel, then keeps preparing question
 Commentary refines the draft in its existing conversation. A separately supplied
 replacement of files or instructions triggers one handoff to a fresh conversation.
 
-After the repository's ordinary workspace setup, configure the included
-Agent Binding and your native client as described in the
-[conversation guide](../../docs/jig/guide/conversations.md). Then, here:
+Download this directory as an ordinary project. With Jig installed, configure
+the inline native policy in `bindings/agent.ts` and your client as described in
+the [conversation guide](https://jig.md/guide/conversations). The included policy
+selects Codex with a two-turn allowance. From this directory:
 
 ```sh
-jig review
-jig run binding:brief --input @input.json --timeout 3m
+jig review --allow-resolution-network
+jig run
 ```
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged and preserves the two-turn allowance.
+Repeat `--agent CLIENT` on later reviews, or edit the Binding for a lasting
+choice. Without the argument, later review proposes the source client again.
+Normal `jig run` uses the approved client and code; failed review keeps the
+previous approval.
+
+Review prepares the declared package dependencies; no repository-private tools
+or separate Flow installations are needed. Resolution can make dependency-selected
+network requests before approval. An authored lock avoids fresh resolution;
+see [dependencies](https://jig.md/guide/dependencies).
+In a Jig source checkout, the ordinary workspace setup supplies matching local
+packages instead of requiring publication.
+
+The included worker already carries its complete Agent contract; no contract
+copy is needed to run this project. To reuse that boundary in your own existing
+Flow, install its declared `@jigging/agent-acp` dependency with `bun install` and
+import from the package, without specifying an installation directory:
+
+```sh
+mkdir -p flows/worker/contracts
+jig import-contract npm:@jigging/agent-acp flows/worker/contracts/agent-run
+```
+
+This copies the complete offline bundle for the caller's
+`uses.agent.contract: './contracts/agent-run/FLOW.contract.json'`. Require
+`conversation` for the handoff method; the native Binding separately grants two
+turns per invocation. The importer resolves project-root or worker-local installs,
+executes no package code, and refuses an existing destination. Installed dependency
+updates do not silently replace this project-owned contract. The published
+Jig alpha supplies this importer.
 
 The synthetic fixture corrects 600 affected requests to 48, then supplies a
 reconciled 47-minute duration in `replacement`, keeping the cause uncertain.
+The reviewed entrypoint in `jig.ts`
+selects the brief, input and three-minute deadline. This result-only example
+returns its report on stdout; it does not create a file packet by default.
+Use `jig run --out ./brief-result` to save the report in a new directory;
+Jig never overwrites a packet. Open `result.json` there for full branch answers
+and conversation evidence; concise answer excerpts are shown when a packet was written.
+Override an argument when needed, for example `jig run --input @my-incident.json`.
 Successful output contains a proposed brief, independent questions, actual
-conversation settlement and, when replaced, the exact handoff snapshot. Progress
-diagnostics show when handoff preparation and successor dispatch happen.
+conversation settlement and, when replaced, the exact handoff snapshot. When a
+worker is invoked independently, its dashboard activity identifies its requested
+turn, received answer, handoff preparation and actual predecessor settlement. A
+requested turn is not evidence of remote dispatch or completion; a deadline can
+still prevent the final packet.
 Inspect each branch's `outcome`: `blocked` retains available unsuccessful work
 and the other worker's result. Model text is not independently verified evidence
 or permission to publish.
+An unsuccessful worker includes `failureDetails` with bounded public operation
+explanations; a root-level worker-call failure includes `message`. These distinguish
+lost connections, execution failures and incomplete application work without
+requiring private traces. A received answer still does not establish clean final
+settlement, and a deadline can prevent the packet from arriving at all.
+
+## Follow the work
+
+**Work** shows the requested incident task and both independent branches. **Brief** and
+**Review questions** contain the returned suggestions, turn counts and retained failure
+explanations. When invoked independently, each worker offers its own Draft or
+Review questions view and current activity. Activity reports requested turns and
+observed answers without echoing source context or private prompts. A branch
+failure is reported immediately while its healthy
+sibling continues. These suggestions still require human review; a completed call does
+not verify incident facts.
+
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 ## What triggers the handoff?
 

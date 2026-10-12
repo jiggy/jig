@@ -33,10 +33,12 @@ Both SDKs implement the same portable Run SDK/0 contract:
 
 | Language | Package | Start here |
 | --- | --- | --- |
-| TypeScript | `@jigging/flow` | [SDK quickstart](https://github.com/jiggy/jig/tree/main/packages/flow-sdk) |
+| TypeScript / JavaScript | `@jigging/flow` | [SDK guide](./typescript.md) |
 | Python | `jiggy-flow` | [Python guide](./python.md) |
 
 A host's language support is separate from FLOW's SDK availability.
+For an interpreted method, follow the [Markdown guide](./markdown.md) and
+[Skill compatibility notes](./skills.md).
 
 ## Specifications
 

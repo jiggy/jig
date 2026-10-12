@@ -8,11 +8,51 @@ descriptors.
 ## Ownership
 
 - `cli-experience.md` owns task presentation, progress, color/plain behavior, actionable failures, section boundaries, secondary emphasis, and CLI acceptance requirements.
+  It also owns final failure ordering, concise human packet summaries, Agent
+  setup cause/captured selection locations, manual recovery, review-only client
+  selection, all-selected-ACP CLI prerequisite refusal, compact inline work
+  projection/root-summary deduplication, and one dependency-network notice per review.
+  Schema authoring recovery identifies the required dialect and supported
+  vocabulary without exposing rejected values or private compiler diagnostics.
+  Command syntax accents omit Markdown delimiters; prompts wait for queued
+  progress. Compact reviews preserve changed facts and uncertainty while
+  unchanged reassurance belongs to details. Repeated ACP selections require
+  unchanged environment proof under identical recipient routes.
   Interrupted delivery retains confirmed terminal/checkpoint evidence, not
   unfinished final files; cleanup uncertainty and forced termination stay explicit.
+  Saved-result inspection owns recorded-claim attribution, confined immutable
+  file capture, exact JSON and independent read status. Workspace entry follows trusted root execution admission; initial refusals stay
+  plain. Auto selects TUI only in suitable interactive terminals and falls back
+  on unavailable native support. TUI exit asks with Stay selected; Escape stays
+  at the top level. Inspection is operator-controlled, subject to explicit inherited command
+  constraints, and retains no execution or channel owner.
+  Terminal panes consume semantic view data without exporting renderer types;
+  required display support is checked before execution. Native cell rendering
+  retains the shared bounded writer and explicit compact-size behavior.
+  Lists, selected context and explicitly expanded evidence have distinct roles;
+  duplicate-only detail is unavailable. Color denotes declared syntax/navigation
+  and host observations, never application success inferred from literal words.
+  Grouped host/application destinations and dense tables consume the shared
+  semantic display model. Conditional context, visible Action feedback, viewport-aware
+  view selection and bounded reference-return navigation preserve progressive disclosure.
+  Observation spans never infer execution durations or domain outcomes.
+  Large blank panes preserve the frame budget and exit controls. Recorded results
+  navigate ordinary fields without reconstructing domain views or privileging keys.
 
 - Prose files own Jig-specific admission, project, execution, SDK, and Agent
   invocation behavior.
+- `web-display.md` owns the local browser display's access boundary, bounded
+  snapshots/streams, independent viewer navigation, confined immutable previews,
+  admission and finite authority retirement before indefinite inspection. It
+  adds no Flow author API or HTTP/execution SPI. Independently packaged browser
+  and terminal renderers consume bounded semantic snapshots; Jig owns transport,
+  authenticated evidence access and execution authority. CLI grammar and hierarchy
+  remain in `cli-experience.md`. Appearance is viewer-local, with accessible
+  System/Light/Dark/Monochrome icon controls and no Flow API.
+- `reporting.md` owns Jig's exact optional-port selection, separate CLI pool,
+  bounded shared stderr presentation and qualification policy. The portable
+  descriptor and scoped libraries belong to `packages/reporting/` and
+  `packages/jiggy-reporting/`, without new FLOW wire operations.
 - `machine/` and `contracts/` contain their assigned published companions.
 - FLOW specifications continue to own portable package and Run semantics.
 - `agent-run.md` owns the explicit-context Agent method interface. Ordinary
@@ -30,12 +70,22 @@ descriptors.
   compiler operation, output ownership and interrupted-publication recovery.
   Identified single-form authoring may emit the descriptor's `features` map;
   support claims and dependency requirements remain package metadata.
-- `grants.md` owns inline/named resource policy, capture and reuse, recipient
-  identity and explicit authority approval through the existing plan.
-- `project-sdk.md` and `project-policy.md` own contract-keyed `defaultProviders`,
+- `grants.md` owns inline-by-default/named resource policy, capture and meaningful
+  reuse, recipient identity and explicit authority approval through the existing
+  plan. It defers review client construction to project policy; review does not
+  publish ACP source corrections.
+- `project-sdk.md` and `project-policy.md` own the approved string `entrypoint`,
+  shared Run grammar, exact `--out` overrides, automatic temporary packets for
+  retained writable targets, stdout-only result targets and stable output/no-output
+  selection through command ownership, per-invocation job capture,
+  contract-keyed `defaultProviders`,
   sole-match review-time resolution and declared `npm:` package targets.
   Selected feature requirements qualify package support before execution;
-  unavailable dependencies affect their consumers, not unrelated targets.
+  SDK unavailable dependencies affect their consumers, not unrelated targets.
+  CLI review refuses any observed typed selected ACP prerequisite before apply
+  or unchanged success. Explicit `review --agent` construction, effective policy
+  identity and retained origin agree across candidate, qualification, lock,
+  admission and inspection; Run does not override or remember this selection.
   Authoring and lock schemas mirror selected targets and retained effective
   routes, not mutable runtime lookup or new resource authority.
 - `http-request.md` owns exact endpoint policy and requests,
@@ -47,6 +97,9 @@ descriptors.
   and cleanup, including separately authorized bounded native retention,
   single-use restoration and clean-exit receipts. Ordinary packages own Agent
   dialogue and answer interpretation.
+  Its native selection profile includes bounded static resolution of official
+  Codex npm/Volta installations without executing their launchers, importing
+  Node or using project-selected dependencies.
 - `channels.md` owns Jig's direct/broadcast channel support, local limits and
   installed NDJSON output. `contracts/acp-public-updates.json`
   defines the exact optional Agent update meaning, not raw ACP access.
@@ -66,8 +119,15 @@ descriptors.
   Agent and CLI contracts reference that policy instead of promising unconditional
   fresh byte checks. FLOW schemas and approval authority remain independent.
   Workspace preparation reuse is project-scoped and bound to freshly captured
-  complete inputs plus current execution evidence; sibling Jig projects never
+  installer inputs and current preparation support; fresh source and authority
+  always receive independent execution planning. Sibling Jig projects never
   supply reusable preparations. Keep dependency guidance aligned with that scope.
+  Workspace capture prioritizes a qualifying root above the Jig application
+  over standalone member declarations. Require direct membership of the selected
+  package; an application's own patterns cannot expand an outer root's members.
+  Dependency lock formats follow the current pinned preparer's readers:
+  version 1 on Linux and versions 1/2 on Mac, without conversion or source-policy
+  relaxation. Keep format refusal distinct from unsupported dependency sources.
 - Native restoration specifications remain distinct from installed-client
   qualification and registry support. Retention requires actual clean native
   exit, validated collection, complete fencing and cleanup, and atomic commit;

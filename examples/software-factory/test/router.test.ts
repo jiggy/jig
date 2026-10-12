@@ -21,7 +21,11 @@ function invoke(
       calls++
       expect(call.slot).toBe('agent')
       expect(call.operationId).toBe('select')
-      expect((call.input as any).instructions).toContain(JSON.stringify(value))
+      const instructions = (call.input as any).instructions as string
+      expect(instructions).toContain(JSON.stringify(value))
+      expect(instructions).toContain('distinguish mandatory requirements from preferences')
+      expect(instructions).toContain('do not silently downgrade a requirement to a preference')
+      expect(instructions).toContain('explicitly describes itself as the default')
       expect((call.input as any).responseSchema.properties.candidateId.enum).toEqual([
         ...(value as any).candidates.map((c: any) => c.id),
         null,

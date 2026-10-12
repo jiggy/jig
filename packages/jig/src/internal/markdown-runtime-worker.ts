@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { basename, dirname, resolve } from 'node:path'
 import { handle } from '@jigging/flow'
 import { runMarkdown } from '../markdown/runtime.js'
-import { capturePackageDirectory } from '../package/capture.js'
+import { capturePrivateContainedPackageDirectory } from '../package/capture.js'
 import { inspectCapturedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
 
 // This entry runs inside the same contained FLOW/0 process as a code runner.
@@ -11,7 +11,7 @@ import { inspectCapturedPackage, requireSupportedPackageProfile } from '../packa
 await handle(async (run) => {
   if (process.argv.length !== 3 || basename(process.argv[2]!) !== 'FLOW.md')
     throw new TypeError('the Markdown runtime requires one FLOW.md entrypoint')
-  const captured = await capturePackageDirectory(dirname(resolve(process.argv[2]!)))
+  const captured = await capturePrivateContainedPackageDirectory(dirname(resolve(process.argv[2]!)))
   try {
     const inspected = await inspectCapturedPackage(captured)
     requireSupportedPackageProfile(inspected)

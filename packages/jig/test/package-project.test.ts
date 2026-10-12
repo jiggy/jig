@@ -7,13 +7,13 @@ import {
   captureStoredPackage,
   type PackageArtifactRef,
 } from '../src/internal/package-artifact-store.js'
-import { defineJig } from '../src/project/author.js'
 import { privateProjectFeatureFailures } from '../src/internal/project-feature-qualification.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
 } from '../src/internal/project-local-lock.js'
+import { defineJig } from '../src/project/author.js'
 import { captureFlowSource } from '../src/project/flow-source.js'
 import {
   type InjectedBindingDeclaration,
@@ -23,9 +23,9 @@ import { buildPrivateActivationRequests } from '../src/project/package-resolutio
 import { type RetainedFlowInput, retainFlowSourcePackages } from '../src/project/retained-flow.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
-  agentChannelFiles,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
+  agentChannelFiles,
 } from './fixtures/agent-contract.js'
 
 const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
@@ -33,11 +33,296 @@ const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
+const finiteAcpFiles = Object.fromEntries(
+  await Promise.all(
+    ['contract.json', 'requests.json', 'responses.json'].map(async (name) => [
+      `contracts/finite-acp/${name}`,
+      await readFile(
+        new URL(`../../../docs/jig/spec/contracts/finite-acp/${name}`, import.meta.url),
+        'utf8',
+      ),
+    ]),
+  ),
+)
+const httpRequestContract = await readFile(
+  new URL('../../../docs/jig/spec/contracts/http-request/contract.json', import.meta.url),
+  'utf8',
+)
 
 // These linker fixtures capture and durably retain real package trees before assertions.
 setDefaultTimeout(30_000)
 
 describe('private package-project linker', () => {
+  test('constructs one review client for all mixed inline and shared named ACP selections only', async () => {
+    await withFlows(nativeAgentTrees(true), (flows) => {
+      const slots = {
+        api: { kind: 'http', url: 'https://example.org/records', method: 'GET' },
+        helper: 'flow:flows/worker',
+      }
+      const bindings = [
+        binding('bindings/inline.ts', {
+          package: 'flows/native',
+          settings: { revision: 2 },
+          slots: { ...slots, native: { kind: 'acp', client: 'pi', maxTurns: 3 } },
+        }),
+        ...['named', 'shared'].map((id) =>
+          binding(`bindings/${id}.ts`, {
+            package: 'flows/native',
+            settings: { revision: 5 },
+            slots: { ...slots, native: 'grant:shared' },
+          }),
+        ),
+      ]
+      const grants = {
+        shared: { kind: 'acp' as const, client: 'claude' as const, maxTurns: 2 },
+        unused: { kind: 'acp' as const, client: 'pi' as const, model: 'provider/pinned' },
+      }
+      const original = structuredClone({ bindings, grants })
+      const input = { flows, bindings, grants }
+      const authored = linkPackageProject(input)
+      const effective = linkPackageProject(input, undefined, 'codex')
+      expect({ bindings, grants }).toEqual(original)
+      expect(effective.flows).toEqual(authored.flows)
+      for (const selected of effective.bindings) {
+        const previous = authored.bindings.find((value) => value.id === selected.id)!
+        expect(selected.settings).toEqual(previous.settings)
+        expect(selected.slots.api).toEqual(previous.slots.api)
+        expect(selected.slots.helper).toEqual({ kind: 'flow', path: 'flows/worker' })
+        expect(selected.slots.native).toEqual({
+          kind: 'grant',
+          policy: { kind: 'acp', client: 'codex', maxTurns: selected.id === 'inline' ? 3 : 2 },
+          ...(selected.id === 'inline' ? {} : { name: 'shared' }),
+        })
+        const request = buildPrivateActivationRequests(effective).find(
+          (value) => value.target.kind === 'binding' && value.target.id === selected.id,
+        )!
+        const previousRequest = buildPrivateActivationRequests(authored).find(
+          (value) => value.target.kind === 'binding' && value.target.id === selected.id,
+        )!
+        expect(request.slots.native).toMatchObject({
+          kind: 'native',
+          native: 'finite-acp',
+          grant: { kind: 'acp', client: 'codex', maxTurns: selected.id === 'inline' ? 3 : 2 },
+        })
+        expect(request.slots.api).toEqual(previousRequest.slots.api)
+        expect(request.slots.helper).toEqual(previousRequest.slots.helper)
+        expect(request.settings).toEqual(previousRequest.settings)
+        expect(request.digest).not.toBe(previousRequest.digest)
+      }
+      const fresh = linkPackageProject(input)
+      expect(fresh).toEqual(authored)
+      expect(buildPrivateActivationRequests(fresh)).toEqual(
+        buildPrivateActivationRequests(authored),
+      )
+      expect(fresh.bindings[0]!.slots.native).toMatchObject({ policy: { client: 'pi' } })
+      expect(effective.bindings[0]!.slots.native).toMatchObject({ policy: { client: 'codex' } })
+    })
+  })
+
+  test('refuses an override without selected ACP and validates authored policy before changing its client', async () => {
+    await withFlows({ 'flows/worker': run('worker') }, (flows) => {
+      expectCode(
+        () =>
+          linkPackageProject(
+            { flows, bindings: [], grants: { unused: { kind: 'acp', client: 'pi' } } },
+            undefined,
+            'codex',
+          ),
+        'PROJECT_AGENT_OVERRIDE_UNUSED',
+      )
+      expect(() =>
+        linkPackageProject({ flows, bindings: [] }, undefined, 'unknown' as never),
+      ).toThrow('must be codex, claude or pi')
+    })
+    await withFlows(nativeAgentTrees(), (flows) => {
+      for (const policy of [
+        { kind: 'acp', client: 'unknown' },
+        { kind: 'acp', client: 'pi', maxTurns: 9 },
+        { kind: 'acp', client: 'pi', retainSessions: true },
+        { kind: 'acp', client: 'pi', model: 'bad\nmodel' },
+      ])
+        expectCode(
+          () =>
+            linkPackageProject(
+              {
+                flows,
+                bindings: [
+                  binding('bindings/native.ts', {
+                    package: 'flows/native',
+                    slots: { native: policy },
+                  }),
+                ],
+              },
+              undefined,
+              'codex',
+            ),
+          'PROJECT_BINDING_DECLARATION',
+        )
+      expectCode(
+        () =>
+          linkPackageProject(
+            {
+              flows,
+              bindings: [
+                binding('bindings/native.ts', {
+                  package: 'flows/native',
+                  settings: { revision: 'bad' },
+                  slots: { native: { kind: 'acp', client: 'pi' } },
+                }),
+              ],
+            },
+            undefined,
+            'codex',
+          ),
+        'PROJECT_BINDING_SETTINGS_INVALID',
+        '/settings/revision',
+      )
+      expectCode(
+        () =>
+          linkPackageProject(
+            {
+              flows,
+              bindings: [
+                binding('bindings/native.ts', {
+                  package: 'flows/native',
+                  slots: { native: 'grant:missing' },
+                }),
+              ],
+            },
+            undefined,
+            'codex',
+          ),
+        'PROJECT_GRANT_MISSING',
+        '/slots/native',
+      )
+    })
+  })
+
+  test('cross-client model or retention blockers refuse the complete requested selection', async () => {
+    await withFlows(nativeAgentTrees(), (flows) => {
+      for (const [policy, override, code] of [
+        [
+          { kind: 'acp', client: 'pi', model: 'provider/pinned', maxTurns: 3 },
+          'codex',
+          'PROJECT_AGENT_OVERRIDE_MODEL',
+        ],
+        [
+          { kind: 'acp', client: 'codex', retainSessions: true, maxTurns: 2 },
+          'pi',
+          'PROJECT_AGENT_OVERRIDE_RETENTION',
+        ],
+      ] as const) {
+        const bindings = [
+          binding('bindings/first.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'claude', maxTurns: 1 } },
+          }),
+          binding('bindings/second.ts', {
+            package: 'flows/native',
+            slots: { native: 'grant:blocked' },
+          }),
+        ]
+        const grants = { blocked: policy }
+        const original = structuredClone({ bindings, grants })
+        const authored = linkPackageProject({ flows, bindings, grants })
+        expectCode(
+          () => linkPackageProject({ flows, bindings, grants }, undefined, override),
+          code,
+          '/slots/native',
+        )
+        expect({ bindings, grants }).toEqual(original)
+        expect(linkPackageProject({ flows, bindings, grants })).toEqual(authored)
+      }
+    })
+  })
+
+  test('same-client review retains every model, turn and session field while changing other selected clients', async () => {
+    await withFlows(nativeAgentTrees(), (flows) => {
+      const policy = {
+        kind: 'acp' as const,
+        client: 'codex' as const,
+        model: 'pinned-model',
+        maxTurns: 4,
+        retainSessions: true as const,
+      }
+      const named = binding('bindings/pinned.ts', {
+        package: 'flows/native',
+        slots: { native: 'grant:pinned' },
+      })
+      const input = { flows, bindings: [named], grants: { pinned: policy } }
+      const authored = linkPackageProject(input)
+      expect(linkPackageProject(input, undefined, 'codex')).toEqual(authored)
+      expect(buildPrivateActivationRequests(linkPackageProject(input, undefined, 'codex'))).toEqual(
+        buildPrivateActivationRequests(authored),
+      )
+      const mixed = linkPackageProject(
+        {
+          ...input,
+          bindings: [
+            named,
+            binding('bindings/other.ts', {
+              package: 'flows/native',
+              slots: { native: { kind: 'acp', client: 'pi', maxTurns: 2 } },
+            }),
+          ],
+        },
+        undefined,
+        'codex',
+      )
+      expect(mixed.bindings.find((value) => value.id === 'pinned')!.slots.native).toEqual({
+        kind: 'grant',
+        name: 'pinned',
+        policy,
+      })
+      expect(mixed.bindings.find((value) => value.id === 'other')!.slots.native).toEqual({
+        kind: 'grant',
+        policy: { kind: 'acp', client: 'codex', maxTurns: 2 },
+      })
+    })
+  })
+
+  test('links and retains the project entrypoint; rejects missing targets and incompatible defaults', async () => {
+    await withFlows(
+      {
+        'flows/work': {
+          ...run('work'),
+          'FLOW.contract.json': invocation({
+            input: { type: 'string' },
+            attachments: { source: 'read' },
+          }),
+        },
+      },
+      (flows) => {
+        for (const entrypoint of [
+          'flow:flows/work',
+          'binding:work --input \'"hello"\' --attach source=fixtures',
+        ]) {
+          const linked = linkPackageProject({
+            flows,
+            bindings: [binding('bindings/work.ts', { package: 'flows/work' })],
+            entrypoint,
+          })
+          const lock = createPrivateProjectLocalLock(linked)
+          expect(
+            decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock)).entrypoint,
+          ).toBe(entrypoint)
+        }
+        for (const entrypoint of [
+          'flow:flows/missing',
+          'binding:missing',
+          'flow:flows/work --input {}',
+          'flow:flows/work --attach unknown=fixtures',
+          'flow:flows/work --receive missing',
+        ])
+          expectCode(
+            () => linkPackageProject({ flows, bindings: [], entrypoint }),
+            'PROJECT_ENTRYPOINT_INVALID',
+            '/entrypoint',
+          )
+      },
+    )
+  })
+
   test('feature requirements qualify only the selected graph and persist in the lock', async () => {
     const consumer = {
       ...agentConsumer('consumer'),
@@ -1310,6 +1595,31 @@ function agentProvider(name: string): Record<string, string> {
     ...run(name),
     'FLOW.contract.json': agentRunContract,
     ...agentChannelFiles('contracts'),
+  }
+}
+
+function nativeAgentTrees(extraSlots = false): Record<string, Record<string, string>> {
+  return {
+    'flows/native': {
+      ...run('native'),
+      'FLOW.meta.json': metadata({
+        name: 'native',
+        uses: {
+          native: { contract: './contracts/finite-acp/contract.json' },
+          ...(extraSlots
+            ? { api: { contract: './contracts/http-request/contract.json' }, helper: {} }
+            : {}),
+        },
+      }),
+      'settings.schema.json': schema({
+        type: 'object',
+        properties: { revision: { type: 'integer' } },
+        additionalProperties: false,
+      }),
+      ...finiteAcpFiles,
+      ...(extraSlots ? { 'contracts/http-request/contract.json': httpRequestContract } : {}),
+    },
+    'flows/worker': run('worker'),
   }
 }
 

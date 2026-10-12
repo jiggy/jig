@@ -1,9 +1,16 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomBytes } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
-import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises'
+import { lstat, mkdir, open, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
+import {
+  observePrivateDescriptorPath,
+  openPrivateFile,
+  privateChildLocation,
+  renamePrivateFile,
+  unlinkPrivateFile,
+} from './descriptor-files.js'
 
 import { privateFileDigest } from './identity.js'
 
@@ -128,13 +135,13 @@ class InstallationVerification {
       if (
         directoryStat.uid !== process.getuid!() ||
         (directoryStat.mode & 0o077) !== 0 ||
-        !this.outsideProjects(await realpath(`/proc/self/fd/${this.directory.fd}`))
+        !this.outsideProjects(await observePrivateDescriptorPath(this.directory))
       )
         throw new Error('unsafe verification cache')
       let file: Awaited<ReturnType<typeof open>>
       try {
-        file = await open(
-          `/proc/self/fd/${this.directory.fd}/${NAME}`,
+        file = await openPrivateFile(
+          privateChildLocation(this.directory, NAME),
           constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
         )
       } catch (error) {
@@ -175,10 +182,11 @@ class InstallationVerification {
   async close(): Promise<void> {
     const directory = this.directory
     if (directory === undefined) return
-    const temporary = `/proc/self/fd/${directory.fd}/.${randomBytes(16).toString('hex')}`
+    const temporary = privateChildLocation(directory, `.${randomBytes(16).toString('hex')}`)
+    let temporaryOwned = false
     try {
       if (this.disabled || this.readOnly || !this.dirty) return
-      if (!this.outsideProjects(await realpath(`/proc/self/fd/${directory.fd}`))) return
+      if (!this.outsideProjects(await observePrivateDescriptorPath(directory))) return
       // Bounded and disposable: atomic replacement, no lock or durability fsync.
       const entries = [...this.entries.values()]
       let bytes = JSON.stringify(entries)
@@ -186,21 +194,23 @@ class InstallationVerification {
         entries.shift()
         bytes = JSON.stringify(entries)
       }
-      const file = await open(
+      const file = await openPrivateFile(
         temporary,
         constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
         0o600,
       )
+      temporaryOwned = true
       try {
         await file.writeFile(bytes)
       } finally {
         await file.close()
       }
-      await rename(temporary, `/proc/self/fd/${directory.fd}/${NAME}`)
+      await renamePrivateFile(temporary, privateChildLocation(directory, NAME))
+      temporaryOwned = false
     } catch {
       // Losing cached work never changes the command's result or cleanup.
     } finally {
-      await unlink(temporary).catch(() => undefined)
+      if (temporaryOwned) await unlinkPrivateFile(temporary).catch(() => undefined)
       await directory.close().catch(() => undefined)
     }
   }

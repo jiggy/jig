@@ -5,12 +5,12 @@ import { flowSlotTargets } from '../project/invocation-slots.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { validateProjectPath } from '../project/paths.js'
 import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
-import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
 import {
   listPrivateRootChildOwners,
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
 } from './activation-admission-store.js'
+import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
 
 /** Bounded invocation ancestry, shared by every contained effect.
  * This is private ownership machinery, not a provider API. */
@@ -161,7 +161,7 @@ export function normalizeParentFlow(
 
 export async function protectedOwnerRoot(projectRoot: string): Promise<string> {
   const state = await realpath(join(projectRoot, '.jig'))
-  const owners = join(state, 'private-root-linux-owners')
+  const owners = join(state, 'private-root-owners')
   await mkdir(owners, { mode: 0o700 }).catch((error) => {
     if (!hasCode(error, 'EEXIST')) throw error
   })

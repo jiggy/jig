@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
 const repository = resolve(import.meta.dir, '..')
-const bash = Bun.which('bash')
+const bash = process.platform === 'darwin' ? '/bin/bash' : Bun.which('bash')
 if (!bash) throw new Error('Worktree tests require Bash')
 const environment = {
   PATH: process.env.PATH,
@@ -134,6 +134,25 @@ test('worktrees preserve both link directions, shared updates, and independent s
     expect(await git(main, 'rev-parse', 'HEAD')).toBe(originalHead)
     expect(await git(join(workspace, 'second'), 'rev-parse', 'HEAD')).toBe(originalHead)
     expect(await readFile(join(workspace, '.envrc'), 'utf8')).toBe('tracked fixture\n')
+  })
+})
+
+test('worktrees with no shared links finish setup for new and existing branches', async () => {
+  await withWorkspace(async (workspace, main) => {
+    for (const entry of shared) await unlink(join(main, entry))
+    await git(main, 'branch', 'second')
+    for (const name of ['first', 'second']) {
+      const result = await create(workspace, main, name)
+      expect(result.code).toBe(0)
+      expect(result.stdout).toContain('Worktree ready:')
+      expect(result.stderr).not.toContain('Setup incomplete')
+      const checkout = join(workspace, name)
+      expect(await git(checkout, 'branch', '--show-current')).toBe(name)
+      expect(await git(checkout, 'status', '--porcelain')).toBe('')
+      const entries = await readdir(checkout)
+      for (const entry of shared) expect(entries).not.toContain(entry)
+      expect(await readFile(join(checkout, '.envrc'), 'utf8')).toBe('tracked fixture\n')
+    }
   })
 })
 

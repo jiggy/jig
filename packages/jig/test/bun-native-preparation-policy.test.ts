@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../src/internal/bun-execution-layout.js'
 import {
+  PrivateBunLockVersionError,
   PrivateBunManifestError,
   requirePrivateBunLockPolicy,
   requirePrivateBunPatches,
@@ -20,6 +21,52 @@ const INTEGRITY =
   'sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=='
 
 describe('private Bun preparation policy', () => {
+  test('the current Mac runtime accepts a frozen version-1 registry lock', () => {
+    expect(() =>
+      requirePrivateBunLockPolicy(
+        lock({ value: ['value@1.0.0', '', {}, INTEGRITY] }),
+        undefined,
+        2,
+      ),
+    ).not.toThrow()
+  })
+
+  test.each([1, 2] as const)(
+    'binds native lock version %s without admitting other source kinds',
+    (version) => {
+      const value = {
+        ...lock({ value: ['value@1.0.0', '', {}, INTEGRITY] }),
+        lockfileVersion: version,
+      }
+      expect(() => requirePrivateBunLockPolicy(value, undefined, version)).not.toThrow()
+      if (version === 2)
+        expect(() => requirePrivateBunLockPolicy(value, undefined, 1)).toThrow(
+          PrivateBunLockVersionError,
+        )
+      for (const resolution of [
+        ['value@file:../outside', '', {}, INTEGRITY],
+        ['value@1.0.0', 'https://example.invalid', {}, INTEGRITY],
+        ['value@1.0.0', '', {}, 'sha512-A'],
+        ['value@1.0.0', '', { dependencies: { other: 'github:private/repo' } }, INTEGRITY],
+      ])
+        expect(() =>
+          requirePrivateBunLockPolicy(
+            { ...value, packages: { value: resolution } },
+            undefined,
+            version,
+          ),
+        ).toThrow()
+    },
+  )
+  test.each([0, 3, '1', null, undefined])(
+    'unsupported lock format %j has a distinct value-free refusal',
+    (lockfileVersion) => {
+      for (const nativeVersion of [1, 2] as const)
+        expect(() =>
+          requirePrivateBunLockPolicy({ ...lock({}), lockfileVersion }, undefined, nativeVersion),
+        ).toThrow(PrivateBunLockVersionError)
+    },
+  )
   test.each([
     [null, 'SHAPE', ''],
     [{ overrides: { x: 'sensitive-rejected-value' } }, 'FIELD', '/overrides'],

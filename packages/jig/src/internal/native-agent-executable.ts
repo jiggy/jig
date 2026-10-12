@@ -1,11 +1,16 @@
 import { constants } from 'node:fs'
-import { access, lstat, readlink, realpath } from 'node:fs/promises'
-import { delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { access, lstat, open, readlink, realpath } from 'node:fs/promises'
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { markExpectedAcpRefusal, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import { resolvePrivateCodexInstallation } from './codex-installation.js'
 
 type NativeClient = 'codex' | 'claude' | 'pi' | 'bwrap'
 
 export class PrivateNativeAgentExecutableUnavailableError extends Error {
-  constructor(readonly client: NativeClient) {
+  constructor(
+    readonly client: NativeClient,
+    readonly overrideRejected = false,
+  ) {
     super(`the native ${client} executable is unavailable`)
   }
 }
@@ -19,11 +24,18 @@ export async function resolvePrivateNativeAgentExecutable(
   // Copy selections before any filesystem await, including for private direct callers.
   const selected = environment[`${client.toUpperCase()}_PATH`]
   const searchPath = environment.PATH
+  const voltaHome = environment.VOLTA_HOME
   const project = resolve(projectDirectory)
   try {
     if (selected !== undefined) {
-      if (!isAbsolute(selected) || selected.includes('\0')) throw new Error('invalid override')
-      return await executable(selected)
+      if (!isAbsolute(selected) || selected.includes('\0'))
+        throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client, true))
+      return await selectExecutable(
+        client,
+        await selectedExecutable(selected, client),
+        voltaHome,
+        project,
+      )
     }
 
     const outside = await privateNativeAgentSupportResolver(project)
@@ -34,15 +46,20 @@ export async function resolvePrivateNativeAgentExecutable(
         const path = await outside(candidate)
         if (path === undefined) continue
         if ((await executable(path)) !== path) throw new Error('executable selection changed')
-        return path
+        return await selectExecutable(client, path, voltaHome, project, outside)
       } catch (error) {
         if (!absent(error) && (error as NodeJS.ErrnoException).code !== 'EACCES') throw error
       }
     }
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof PrivateAcpSetupError ||
+      error instanceof PrivateNativeAgentExecutableUnavailableError
+    )
+      throw error
     throw new PrivateNativeAgentExecutableUnavailableError(client)
   }
-  throw new PrivateNativeAgentExecutableUnavailableError(client)
+  throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client))
 }
 
 /** Apply the same project exclusion to implicit installation dependencies. */
@@ -106,6 +123,46 @@ async function executable(candidate: string): Promise<string> {
   return path
 }
 
+async function selectExecutable(
+  client: NativeClient,
+  selected: string,
+  voltaHome: string | undefined,
+  project: string,
+  outside?: (path: string) => Promise<string | undefined>,
+): Promise<string> {
+  const dispatcher = basename(selected) === 'volta-shim'
+  if (dispatcher && client !== 'codex') throw new PrivateAcpSetupError('wrapper')
+  if (
+    client === 'codex' &&
+    (dispatcher || (basename(selected) === 'codex.js' && (await script(selected))))
+  ) {
+    try {
+      const native = await resolvePrivateCodexInstallation(
+        selected,
+        voltaHome,
+        outside ?? (await privateNativeAgentSupportResolver(project)),
+      )
+      if ((await executable(native)) !== native) throw new Error('executable selection changed')
+      return native
+    } catch {
+      throw new PrivateAcpSetupError('wrapper')
+    }
+  }
+  return selected
+}
+
+async function script(path: string): Promise<boolean> {
+  const file = await open(path, constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW)
+  try {
+    if (!(await file.stat()).isFile()) throw new Error('invalid executable selection')
+    const magic = Buffer.alloc(2)
+    await file.read(magic, 0, magic.length, 0)
+    return magic.toString() === '#!'
+  } finally {
+    await file.close()
+  }
+}
+
 function inside(root: string, path: string): boolean {
   const child = relative(root, path)
   return child === '' || (child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child))
@@ -113,4 +170,17 @@ function inside(root: string, path: string): boolean {
 
 function absent(error: unknown): boolean {
   return ['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')
+}
+
+function expectedExecutableObservation(error: unknown): boolean {
+  return ['ENOENT', 'ENOTDIR', 'EACCES'].includes((error as NodeJS.ErrnoException)?.code ?? '')
+}
+
+async function selectedExecutable(path: string, client: NativeClient): Promise<string> {
+  try {
+    return await executable(path)
+  } catch (error) {
+    if (!expectedExecutableObservation(error)) throw error
+    throw markExpectedAcpRefusal(new PrivateNativeAgentExecutableUnavailableError(client, true))
+  }
 }

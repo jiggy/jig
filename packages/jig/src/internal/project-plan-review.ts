@@ -3,7 +3,9 @@ import { privateCliValueFields } from '../cli-value-presentation.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { flowSelector } from '../project/package-selector.js'
 import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-agent-provider.js'
+import { ACP_SETUP_CAUSES, ACP_SETUP_HINTS } from './acp-setup-diagnostics.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
+import { inspectPrivateBunDirectIdentityWithCurrentEnvironment } from './bun-direct-run.js'
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { grantChanges, requiresAuthorityApproval } from './grant-review.js'
 
@@ -54,7 +56,9 @@ export function renderPrivateProjectPlanReview(
   const render = (includeUnchanged: boolean): string => {
     const summary = new BoundedAsciiWriter(maximumBytes)
     summary.write('Review changes before approval\n\n')
-    summary.write('Approval permits these exact methods, settings and invocation routes to run.\n')
+    summary.write(
+      'Approval permits ready targets with these exact methods, settings and invocation routes to run.\n',
+    )
     summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
     if (grants.length !== 0) {
       summary.write('Resource delegation changes (recipient, exact policy):\n')
@@ -63,11 +67,75 @@ export function renderPrivateProjectPlanReview(
         '\nNew or changed grants require explicit authority approval. Removed grants affect new Runs after admission.\n\n',
       )
     }
-    if (Object.keys(acp).length !== 0) {
+    const visibleAcp = includeUnchanged
+      ? acp
+      : Object.fromEntries(
+          Object.entries(acp).filter(([key]) => {
+            const before = review.baseCandidate?.candidate.targets.find(
+              (target) => targetKey(target.request.target) === key,
+            )
+            const after = plan.proposed.targets.find(
+              (target) => targetKey(target.request.target) === key,
+            )
+            if (
+              before?.disposition.state === 'ready' &&
+              after?.disposition.state === 'ready' &&
+              before.request.digest === after.request.digest &&
+              before.disposition.recipeDigest === after.disposition.recipeDigest &&
+              before.disposition.observationDigest === after.disposition.observationDigest
+            )
+              return false
+            const recipe = recipes.find((value) => targetKey(value.request.target) === key)
+            if (
+              before?.disposition.state === 'ready' &&
+              after?.disposition.state === 'ready' &&
+              before.disposition.execution !== undefined &&
+              recipe !== undefined &&
+              before.request.packagePath === after.request.packagePath &&
+              samePolicy(before.request.slots, after.request.slots)
+            ) {
+              try {
+                const historical = inspectPrivateBunDirectIdentityWithCurrentEnvironment(
+                  recipe,
+                  before.request,
+                  before.disposition.execution,
+                )
+                if (
+                  historical.digest === before.disposition.recipeDigest &&
+                  historical.observationDigest === before.disposition.observationDigest
+                )
+                  return false
+              } catch {
+                // Unknown historical selection stays visible; this proof changes no authority.
+              }
+            }
+            return true
+          }),
+        )
+    if (Object.keys(visibleAcp).length !== 0) {
       summary.write('ACP runtimes selected for resource slots:\n')
-      writePolicy(summary, acp, 1)
+      writePolicy(summary, visibleAcp, 1)
       summary.write(
         '\nData supplied to these slots goes to the selected clients. Credentials remain private.\n\n',
+      )
+    }
+    const beforeEntrypoint = review.baseCandidate?.lock.entrypoint
+    const afterEntrypoint = plan.proposed.lock.entrypoint
+    if (
+      beforeEntrypoint !== afterEntrypoint ||
+      (includeUnchanged && afterEntrypoint !== undefined)
+    ) {
+      summary.write('Project entrypoint (jig run):\n')
+      if (beforeEntrypoint === afterEntrypoint) writePolicy(summary, afterEntrypoint, 1)
+      else
+        writePolicyDiff(
+          summary,
+          { entrypoint: beforeEntrypoint ?? null },
+          { entrypoint: afterEntrypoint ?? null },
+          1,
+        )
+      summary.write(
+        '  File arguments select current job data when invoked; paths are project-relative.\n\n',
       )
     }
     writeChanges(
@@ -101,9 +169,19 @@ export function renderPrivateProjectPlanReview(
             (target) => targetKey(target.request.target) === key,
           ),
           plan.proposed.targets.find((target) => targetKey(target.request.target) === key),
+          includeUnchanged,
         ),
     )
-    summary.write('Targets after approval:\n')
+    const readyCount = proposed.targets.filter(
+      (target) => target.availability.state === 'ready',
+    ).length
+    summary.write(
+      `Targets after approval: ${readyCount} ready, ${proposed.targets.length - readyCount} unavailable.\n`,
+    )
+    if (readyCount === 0)
+      summary.write(
+        '  No targets can run under this revision. Fix the reported prerequisites and review again.\n',
+      )
     if (featureMismatches.length > 0) {
       summary.write(
         '  Required features are missing on these selected routes (their dependents are unavailable too):\n',
@@ -112,10 +190,33 @@ export function renderPrivateProjectPlanReview(
     }
     if (proposed.targets.length === 0)
       summary.write('  None. Add a Flow under flows/ and review again.\n')
+    const originalTargets = new Map(
+      plan.proposed.targets.map((entry) => [targetKey(entry.request.target), entry]),
+    )
     for (const target of proposed.targets) {
       summary.write('  ')
       writeAsciiJsonString(summary, targetKey(target.target))
       summary.write(` - ${target.availability.state}\n`)
+      const original = originalTargets.get(targetKey(target.target))!
+      if (
+        original.disposition.state === 'unavailable' &&
+        original.disposition.code === 'RUNTIME_UNAVAILABLE'
+      ) {
+        const cause = original.disposition.cause
+        if (cause?.kind === 'acp') {
+          summary.write('    Slot ')
+          writeAsciiJsonString(summary, cause.slot)
+          summary.write(
+            `: ${ACP_SETUP_CAUSES[cause.diagnostic]}\n    ${ACP_SETUP_HINTS[cause.diagnostic]}\n`,
+          )
+        } else if (cause?.kind === 'dependency') {
+          summary.write('    Selected dependency ')
+          writeAsciiJsonString(summary, targetKey(cause.target))
+          summary.write(' at slot ')
+          writeAsciiJsonString(summary, cause.slot)
+          summary.write(' is unavailable.\n')
+        }
+      }
     }
     if (!includeUnchanged)
       summary.write(
@@ -185,6 +286,7 @@ function projectAcpSelections(
 function executionChangeExplanation(
   before: ReviewedTarget | undefined,
   after: ReviewedTarget | undefined,
+  details: boolean,
 ): string {
   if (samePolicy(before, after))
     return 'A selected child target changed. Approval authorizes this parent to use the changed child revision described in this review.'
@@ -200,25 +302,24 @@ function executionChangeExplanation(
     )
       reasons.push('Prepared execution files or dependency layout changed.')
     else if (
-      before.disposition.execution?.preparationInputDigest !==
-      after.disposition.execution?.preparationInputDigest
+      !samePolicy(
+        before.disposition.execution?.preparation,
+        after.disposition.execution?.preparation,
+      )
     )
       reasons.push(
-        before.disposition.execution?.preparationInputDigest === undefined
-          ? 'This review records captured workspace inputs for future preparation reuse.\n  Prepared files and dependency layout are unchanged.'
-          : 'Workspace preparation inputs changed.\n  Prepared files and dependency layout are unchanged.',
+        details && before.disposition.execution?.preparation === undefined
+          ? 'This review records dependency inputs and installed bytes for future preparation reuse.\n  Prepared files and dependency layout are unchanged.'
+          : `Dependency preparation evidence changed.${details ? '\n  Prepared files and dependency layout are unchanged.' : ''}`,
       )
     if (reasons.length === 0) {
       reasons.push(
-        'Execution environment changed: Jig installation, Agent configuration, or sandbox support.',
+        'Execution environment changed: Jig installation, Agent configuration, or sandbox support. The retained fingerprint cannot identify which component changed.',
       )
-      reasons.push('Flow source, prepared dependencies, settings and permissions are unchanged.')
-      reasons.push(
-        'The previous approval retains a combined environment fingerprint; it cannot identify which individual component changed.',
-      )
-      reasons.push(
-        'Approval authorizes this target to run with the currently selected execution environment.',
-      )
+      reasons.push('Approval authorizes this target to run with the current execution environment.')
+      if (details) {
+        reasons.push('Flow source, prepared dependencies, settings and permissions are unchanged.')
+      }
     }
     return reasons.join('\n  ')
   }
@@ -386,6 +487,7 @@ function projectCandidate(
         : {
             state: 'unavailable' as const,
             code: disposition.code,
+            ...(disposition.cause === undefined ? {} : { cause: disposition.cause }),
             ...(disposition.code === 'FEATURE_UNAVAILABLE'
               ? {
                   hint: 'A selected dependency does not declare all required features. Review uses.requires and select a matching implementation; grants do not supply feature support.',

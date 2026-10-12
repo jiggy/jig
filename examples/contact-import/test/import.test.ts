@@ -1,13 +1,13 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RunContext, RunResult } from '@jigging/flow'
-import { parseContacts, runMethod as importer } from '../flows/import/method.ts'
-import { runMethod as known } from '../flows/map-code/method.ts'
-import { runMethod as agent } from '../flows/map-agent/method.ts'
-import { runMethod as mixed } from '../flows/map-mixed/method.ts'
 import { runMethod as convert } from '../flows/convert/method.ts'
+import { runMethod as importer, parseContacts } from '../flows/import/method.ts'
+import { runMethod as agent } from '../flows/map-agent/method.ts'
+import { runMethod as known } from '../flows/map-code/method.ts'
+import { runMethod as mixed } from '../flows/map-mixed/method.ts'
 
 const headers = ['Customer', 'Email address', 'Company']
 const mapping = { name: 0, email: 1, organization: 2 }
@@ -287,3 +287,46 @@ for (const method of [agent, mixed])
       }),
     ).toEqual(completed({ mapping: null }))
   })
+
+for (const [name, method] of Object.entries({ agent, mixed })) {
+  test(`${name} rejects a comma-combined key before collapsing an abstention`, async () => {
+    for (const structured of [
+      { 'email,name': null, organization: null },
+      { 'email,name': null, organization: null, extra: null },
+    ])
+      await expect(
+        method({
+          input: { headers: ['Unclear heading'] },
+          call: async () => completed({ structured }),
+        }),
+      ).rejects.toThrow('Missing structured mapping.')
+  })
+  test(`${name} accepts a complete ambiguous reply`, async () => {
+    expect(
+      await method({
+        input: { headers: ['Unclear heading'] },
+        call: async () =>
+          completed({ structured: { name: null, email: null, organization: null } }),
+      }),
+    ).toEqual(completed({ mapping: null }))
+  })
+  for (const [kind, invalid] of Object.entries({
+    string: '2',
+    boolean: false,
+    fraction: 1.5,
+    unsafeInteger: Number.MAX_SAFE_INTEGER + 1,
+    array: [],
+    object: {},
+    nan: NaN,
+    infinity: Infinity,
+  }))
+    test(`${name} rejects a ${kind} sibling of an abstaining index`, async () => {
+      await expect(
+        method({
+          input: { headers: ['Unclear heading'] },
+          call: async () =>
+            completed({ structured: { name: 0, email: null, organization: invalid } }),
+        }),
+      ).rejects.toThrow('Missing structured mapping.')
+    })
+}

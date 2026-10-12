@@ -1,10 +1,12 @@
 #!/usr/bin/env bun
-
 import { randomBytes } from 'node:crypto'
-import { lstat } from 'node:fs/promises'
+import { lstat, realpath } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
+import type { WebAssets } from '@jigging/display-model'
+import type { Reference } from '@jigging/reporting'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
 import {
@@ -20,44 +22,58 @@ import {
   privateCliDiagnostic as renderDiagnostic,
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
+import { renderReviewAgentSelections, renderReviewAgentSetup } from './cli-review-agent-setup.js'
 import { PrivateCliRunPresentation } from './cli-run-presentation.js'
+import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
+import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
 import { CheckError } from './diagnostics.js'
-import { ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
-import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
-import { importContract } from './internal/contract-import.js'
+import { ACP_SETUP_CAUSES, ACP_SETUP_HINTS } from './internal/acp-setup-diagnostics.js'
 import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
+import { importContract } from './internal/contract-import.js'
+import {
+  PRIVATE_INSPECTION_COMPLETION_MS,
+  type PrivateDeliveryInspectionCapture,
+  privateBoundInspection,
+  privateCaptureDeliveryInspection,
+} from './internal/delivery-inspection.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
-  privateAttachmentName,
   privateCaptureAttachments,
-  privateFilePath,
   privateReadOperatorFile,
   sha256,
-} from './internal/linux-file-input.js'
+} from './internal/file-input.js'
+import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
+import { privateProfileSpan } from './internal/private-profile.js'
+import type { PrivateAgentReadinessReport } from './internal/review-agent-setup.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
 import {
-  PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
-  PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS,
+  privatePresentationNow,
   privateRootlessCommandLifetime,
 } from './internal/root-run-timeout-policy.js'
 import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
+import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
+import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
-import { bindingRef, flowRef, type RunTargetRef } from './project/author.js'
-import { flowSelector, npmPackageName } from './project/package-selector.js'
+import type { RunTargetRef } from './project/author.js'
+import { resolveProjectEntrypoint } from './project/entrypoint.js'
+import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
+import type { AcpGrant } from './project/grants.js'
+import { flowSelector } from './project/package-selector.js'
 import {
   createFlow,
   createProject,
   type ProjectInitAgent,
   ProjectInitError,
 } from './project-init.js'
-import { schemaTypeMismatchText } from './schema/types.js'
+import { parseRun, parseTarget, parseVerification, privateRunDisplay } from './run-arguments.js'
+import { SCHEMA_1_URI, schemaTypeMismatchText } from './schema/types.js'
 
 const VERIFICATION_HELP = `Startup verification:
   --verification MODE  Select cached, strict, or fast for this command
@@ -77,7 +93,7 @@ Usage:
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
   jig completion <shell>     Print shell completion for bash, zsh, or fish
-  jig import-contract <file> <directory>  Copy a complete offline contract bundle
+  jig import-contract <jig:name|file|npm:package> <directory>  Copy an offline contract bundle
   jig --version             Print the installed version
 
 Start here:
@@ -88,40 +104,60 @@ Start here:
 
 ${VERIFICATION_HELP}
 
-Use jig <command> --help for options and examples.
+Command options and examples:
+  jig <command> --help
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
-  new: `Usage: jig new <name>
+  new: `Usage: jig new <name> [--use <slot=jig:name|slot=descriptor.json|slot=npm:package>]...
 
 Create flows/<name> in the current Jig project. Names use lowercase letters,
 digits and hyphens. Existing files are never replaced. The Flow uses the SDK
 dependency declared by the project's package.json, or Jig's tested SDK version.
 No installation, network, approval, source evaluation or execution occurs.
 
-Example: jig new summarize
+Example:
+  $ jig new summarize
+
+With a collaborator:
+  $ jig new worker --use agent=jig:agent-run
+--use copies the selected complete contract bundle into contracts/<slot> and
+declares uses.<slot>. Repeat for up to 16 distinct slots. Descriptor paths are
+relative to this project; jig: names select the installed standard library.
+Browse it with jig import-contract --list. npm sources must already be installed in its tree
+or an ancestor. Edit FLOW.ts to call the slots; providers and grants stay separate.
 Review project membership in jig.ts if you use explicit arrays rather than discover().`,
   completion: `Usage: jig completion <bash|zsh|fish>
 
 Print a completion script; Jig does not modify your shell configuration.
 Load the script in your shell, or save it in that shell's completion directory.
 
-Bash: source <(jig completion bash)
-Zsh:  source <(jig completion zsh)  # after compinit
-Fish: jig completion fish | source
+Bash:
+  $ source <(jig completion bash)
+Zsh (after compinit):
+  $ source <(jig completion zsh)
+Fish:
+  $ jig completion fish | source
 
-The scripts use jig completion targets [prefix] to read approved selectors.
+The scripts use \`jig completion targets [prefix]\` to read approved selectors.
 Lookup never evaluates source, checks providers, prepares dependencies or approves work.`,
-  'import-contract': `Usage: jig import-contract <descriptor.json> <new-directory>
+  'import-contract': `Usage: jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>
+       jig import-contract --list
 
-Copy an installed or local invocation descriptor and its referenced channel
-agreements into a new directory. Bytes and relative paths are preserved.
+Copy a local descriptor or an explicitly selected installed package's invocation
+contract and referenced channel agreements into a new directory. An npm:package
+selector resolves from the destination's parent toward its ancestors, so member-
+local and project-root installations use the same command. Bytes and relative
+paths are preserved.
+Use jig:name for Jig's standard library of agreements, included in this installation.
+List the available names with --list. Each imported bundle includes its license.
 The source is validated without importing code, fetching, or approving work.
 The destination parent must exist; existing destinations are never replaced.
 
 Example:
-  jig import-contract node_modules/@jigging/agent-method/FLOW.contract.json flows/worker/contracts/agent-run`,
+  jig import-contract jig:agent-run flows/worker/contracts/agent-run`,
   inspect: `Usage: jig inspect [flow:path|binding:id] [--json]
+       jig inspect --result DIRECTORY [--display plain|tui|web] [--json]
 
 List the current project's approved targets, or show one target's retained
 input/result schemas, settings, child slots, capabilities, files and channels.
@@ -132,11 +168,22 @@ No source evaluation, installation, provider requests, recovery or state writes.
 Visible edits, launch readiness and remote provider availability are not checked.
 
   --json     Emit JSON even in a terminal (redirected output is always JSON)
+  --result DIRECTORY  Inspect a saved packet without approval or new execution
+  --display MODE      For saved results: plain (default), tui or web
+
+Saved results are local recorded claims. Files are captured once and checked
+against the recorded manifest; matching hashes do not authenticate the report.
+No project, provider, verification setting or execution support is acquired.
+Live views and history are not retained in a result packet. Inspection exits 0
+for valid consistent evidence (including failed Runs), 1 for unreadable/invalid
+evidence, incomplete files or output failure, and 2 for external interruption.
 
 Examples:
   jig inspect
   jig inspect flow:flows/hello
   jig inspect binding:repair --json
+  jig inspect --result ./result-packet --display tui
+  jig inspect --result ./result-packet --display web
 
 ${VERIFICATION_HELP}`,
   init: `Usage: jig init [--bare] <directory> [--agent [codex|claude|pi]]
@@ -144,15 +191,18 @@ ${VERIFICATION_HELP}`,
 Create a new editable project and greeting Flow. No installation, network
 requests, approval, or execution happens during initialization.
 
-  --bare     Create only jig.ts and empty flows/ and bindings/ directories
+  --bare     Omit the greeting; an explicit --agent still creates its starter
 
-Example: jig init hello-jig
-With an ordinary Agent: jig init my-app --agent codex
+Example:
+  $ jig init hello-jig
+
+With an ordinary Agent:
+  $ jig init my-app --agent codex
 Use --agent without a client for an interactive choice. It writes a visible
 dependency, Binding and default selection; client installation and authority
 approval remain separate. Without --agent the greeting needs no Agent.
 The destination must not exist; existing files are never replaced.`,
-  review: `Usage: jig review [project] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
+  review: `Usage: jig review [project] [--agent codex|claude|pi] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
 The project defaults to the current directory. This command has side effects:
@@ -161,7 +211,8 @@ it retains private snapshots and, after approval, updates jig.lock.
   --allow-resolution-network  Permit fresh resolution for missing dependency locks
   --yes                      Approve the displayed revision without a prompt
   --allow-authority-changes   Also approve new or changed resource grants
-  --details                  Show complete policy when proposing a change
+  --details                  Show complete policy and retained setup details
+  --agent CLIENT             Propose codex, claude or pi for every selected ACP grant
   --generate-contracts                 Generate contracts with Jig's bundled TypeSpec tool
                              Writes managed companions before Run approval
 
@@ -173,6 +224,12 @@ Examples:
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
 --yes alone does not approve new resource authority or resolution networking.
+Unavailable selected ACP prerequisites stop review before new approval.
+Diagnostics identify the captured source setting and detected executable options.
+--agent CLIENT proposes that client for all selected ACP grants, leaving source
+unchanged. Model pins and incompatible retention can block a cross-client choice.
+Repeat the flag on later reviews; a bare review derives choices from source again.
+Run uses the approved client and code together; review never rewrites grants.
 Supplied locks stay frozen; stale locks must be updated explicitly.
 
 ${VERIFICATION_HELP}`,
@@ -180,15 +237,20 @@ ${VERIFICATION_HELP}`,
 
 Run an exact reviewed target in the current project. No dependencies are
 installed and source changes are not approved automatically.
-Omit the target in an interactive terminal to choose from approved targets.
-Scripts must supply an exact target; selection never approves changed source.
+Omit the target to use the approved project entrypoint and its default arguments.
+Your options override its defaults. An explicit target uses no entrypoint defaults.
+Without an entrypoint, terminals offer a chooser and scripts require a target.
+Selection never approves changed source.
+Unavailable alternatives remain unavailable until a new review approves them.
 
   --json             Emit exact JSON/NDJSON even in a terminal
   --input JSON|@FILE  Supply JSON inline or from a file (default: {})
   --attach NAME=DIR   Capture a declared read attachment; repeat for each name
   --select NAME=FILE  Select a relative file within an attachment; repeat as needed
-  --out DIR          Save a result packet to a new directory outside input roots
+  --out DIR          Choose a new result directory (file outputs default to temp)
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
+  --updates off      Disable automatic Flow updates on terminal stderr
+  --display MODE     Select auto (default), plain, tui or web
   --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
@@ -196,45 +258,27 @@ Examples:
   jig run flow:flows/hello --input '"Ada"'
   jig run binding:repair --input @issue.json --attach source=./src --out ./review
   jig run binding:worker --receive progress --timeout 2m
+  With a reviewed project entrypoint:
+  jig run --display web
 
 Ctrl-C cancels owned work and waits for cleanup. Repeating a run starts new work.
+Auto opens TUI in suitable interactive terminals; otherwise it uses ordinary output.
+q asks before leaving TUI; Escape returns within it. Use --display plain for logs.
 Terminal stdout shows readable results and live channel text. Redirect stdout or
 use --json for JSON (NDJSON with --receive). Diagnostics and status use stderr.
 Scripts should check the result and exit status.
+File outputs default to a fresh temporary packet; Jig reports its path on stderr.
+Temporary storage may be cleared. Use --out DIR to keep a packet in a chosen location.
+Web prints a private local browser link on terminal stderr after work starts.
+Close inspection leaves running work alone; settled inspection has no idle expiry.
+--json and --receive take precedence. --updates off suppresses automatic Flow views.
 
 ${VERIFICATION_HELP}`,
 } as const
 
-function usage(command: keyof typeof COMMAND_HELP, message: string): never {
-  throw new CliDiagnostic('JIG_USAGE', `${message}\n\nHelp: jig ${command} --help`, 2)
-}
-
-/** Suggestions are spelling assistance, never alternate dispatch authority. */
-function spellingHint(value: string, choices: readonly string[]): string {
-  if (value.length > 64) return ''
-  const distance = (other: string): number => {
-    let row = Array.from({ length: other.length + 1 }, (_, index) => index)
-    for (let i = 0; i < value.length; i++) {
-      const next = [i + 1]
-      for (let j = 0; j < other.length; j++)
-        next.push(Math.min(next[j]! + 1, row[j + 1]! + 1, row[j]! + Number(value[i] !== other[j])))
-      row = next
-    }
-    return row[other.length]!
-  }
-  const matches = choices
-    .map((choice) => ({ choice, distance: distance(choice) }))
-    .filter((item) => item.distance <= (value.length > 5 ? 2 : 1))
-    .sort((a, b) => a.distance - b.distance)
-  return matches[0] && matches[0].distance !== matches[1]?.distance
-    ? `\nDid you mean ${matches[0].choice}?`
-    : ''
-}
-
 const RESOLUTION_WARNING =
   'Bun may contact dependency-selected public or private-network services before graph validation; requests cannot be undone, and unsupported dependencies may still fail. Applies only to this review; Runs gain no network access.'
 
-const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
 /** Private injection seam until the installed host owns project acquisition. */
@@ -242,6 +286,7 @@ export interface PrivateCliCommandHost {
   acquire(
     project: string,
     options?: {
+      readonly expectedAdmissionDigest?: string
       readonly runTimeoutMs?: number
       readonly files?: PrivateRootRunFiles
       readonly channelOutput?: PrivateRunChannelOutput
@@ -249,6 +294,8 @@ export interface PrivateCliCommandHost {
       readonly onResolution?: (packagePath: string) => void
       readonly onNotice?: (text: string) => void
       readonly onStage?: (stage: string) => void
+      readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
+      readonly agentOverride?: AcpGrant['client']
       readonly generateContracts?: boolean
       readonly onGeneration?: (packagePath: string, files: readonly string[]) => void
     },
@@ -258,12 +305,21 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  readonly webAssets?: WebAssets
+  readonly presentationDeadline?: number | undefined
+  readonly dashboardInputStream?: typeof process.stdin
+  readonly standardContractDirectory?: string
+  readonly expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
+  /** Installed owner handoff only; never changes root admission authority. */
+  readonly runArgumentsPrepared?: boolean
   readonly host?: PrivateCliCommandHost
   readonly currentDirectory?: string
   readonly signal?: AbortSignal
   readonly interactive?: boolean
   readonly terminalOutput?: boolean
+  readonly terminalError?: boolean
+  readonly writeStderr?: (text: string) => Promise<void>
   readonly confirm?: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly answer?: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput?: (text: string) => void
@@ -273,15 +329,20 @@ export interface PrivateCliOptions {
 }
 
 interface CliRuntime {
+  readonly standardContractDirectory?: string
+  expectedAdmissionDigest?: string
   readonly inspectEnvironment?: PrivateInspectionEnvironmentCheck
   readonly humanOutput: boolean
   readonly outputColor: boolean
   readonly outputColumns: number
+  readonly terminalError: boolean
   readonly progress: PrivateCliProgress
   readonly host: PrivateCliCommandHost
   readonly currentDirectory: string
   readonly signal?: AbortSignal
   readonly interactive: boolean
+  readonly dashboardInput: boolean
+  readonly dashboardInputStream: typeof process.stdin
   readonly confirm: (prompt: string, signal?: AbortSignal) => Promise<boolean>
   readonly answer: (prompt: string, signal?: AbortSignal) => Promise<string>
   readonly writeOutput: (text: string) => void
@@ -292,22 +353,37 @@ interface CliRuntime {
   readonly createSubmissionId: () => string
 }
 
-class CliDiagnostic extends Error {
-  constructor(
-    readonly code: string,
-    message: string,
-    readonly exitCode: 1 | 2,
-  ) {
-    super(message)
-    this.name = 'CliDiagnostic'
-  }
-}
-
 export async function main(
   arguments_: readonly string[] = process.argv.slice(2),
   options: PrivateCliOptions = {},
 ): Promise<number> {
   const runtime = cliRuntime(options)
+  let code: number
+  let presentationCloseFailed = false
+  try {
+    code = await executeCommand(arguments_, options, runtime)
+  } finally {
+    try {
+      await runtime.progress.closeWorkspace()
+    } catch {
+      presentationCloseFailed = true
+    } finally {
+      runtime.progress.close()
+    }
+  }
+  try {
+    await runtime.progress.flush()
+  } catch {
+    return privateCliSavedResultInspection(arguments_) ? (runtime.signal?.aborted ? 2 : 1) : 2
+  }
+  return presentationCloseFailed ? (privateCliSavedResultInspection(arguments_) ? 1 : 2) : code
+}
+
+async function executeCommand(
+  arguments_: readonly string[],
+  options: PrivateCliOptions,
+  runtime: CliRuntime,
+): Promise<number> {
   if (arguments_.length === 1 && arguments_[0] === '--version') {
     runtime.writeOutput(`${manifest.version}\n`)
     return 0
@@ -327,6 +403,8 @@ export async function main(
     const prepared = await privateCliPrepareArguments(arguments_, options)
     if ('exitCode' in prepared) return prepared.exitCode
     arguments_ = prepared.arguments
+    if (runtime.expectedAdmissionDigest === undefined && prepared.admissionDigest !== undefined)
+      runtime.expectedAdmissionDigest = prepared.admissionDigest
     if (arguments_[0] === 'import-contract') return await executeImportContract(arguments_, runtime)
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
@@ -337,7 +415,7 @@ export async function main(
     runtime.writeError(
       renderDiagnostic(
         'JIG_UNKNOWN_COMMAND',
-        `Unknown command ${asciiJsonString(arguments_[0]!.slice(0, 128))}.${spellingHint(arguments_[0]!, Object.keys(COMMAND_HELP))}\n\nHelp: jig --help`,
+        `Unknown command ${asciiJsonString(arguments_[0]!.slice(0, 128))}.${spellingHint(arguments_[0]!, Object.keys(COMMAND_HELP))}\n\nHelp:\n  $ jig --help`,
         'Error: Unknown command',
       ),
     )
@@ -353,39 +431,109 @@ export async function main(
       return 2
     }
     return renderFailure(error, runtime)
-  } finally {
-    runtime.progress.close()
   }
 }
 
-/** Resolve interactive selection before the installed launcher acquires any host. */
+/** Resolve reviewed invocation and output once, before host/command-owner acquisition. */
 export async function privateCliPrepareArguments(
   arguments_: readonly string[],
   options: PrivateCliOptions = {},
-): Promise<{ arguments: readonly string[] } | { exitCode: number }> {
-  if (
-    arguments_[0] !== 'run' ||
-    isHelpRequest(arguments_) ||
-    (arguments_[1] !== undefined && !arguments_[1].startsWith('-'))
-  )
-    return { arguments: arguments_ }
+): Promise<{ arguments: readonly string[]; admissionDigest?: string } | { exitCode: number }> {
+  if (arguments_[0] !== 'run' || isHelpRequest(arguments_)) return { arguments: arguments_ }
   const runtime = cliRuntime(options)
   try {
-    // Validate options before prompting. This placeholder is never dispatched.
-    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
-    if (!runtime.interactive)
-      usage(
-        'run',
-        'An exact target is required without an interactive terminal. List approved targets with jig inspect.',
+    const explicit = arguments_[1] !== undefined && !arguments_[1].startsWith('-')
+    if (options.runArgumentsPrepared) {
+      if (!explicit)
+        throw new CliDiagnostic(
+          'JIG_COMMAND_UNAVAILABLE',
+          'The retained Run selection is invalid. No Flow was started. Start a fresh jig run command.',
+          2,
+        )
+      parseRun(arguments_)
+      return { arguments: arguments_ }
+    }
+    if (explicit && parseRun(arguments_).output !== undefined) return { arguments: arguments_ }
+    // The placeholder is only syntax validation; it is never dispatched.
+    if (!explicit) parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)], true)
+    let admissionDigest: string | undefined
+    let writableTargets: readonly string[] = []
+    let snapshot: Record<string, JsonValue>
+    try {
+      snapshot = (await inspectPrivateApprovedProject(
+        runtime.currentDirectory,
+        undefined,
+        undefined,
+        !explicit,
+        (digest, writable) => {
+          admissionDigest = digest
+          writableTargets = writable
+        },
+      )) as Record<string, JsonValue>
+    } catch {
+      throw new CliDiagnostic(
+        'JIG_INSPECTION_UNAVAILABLE',
+        'The approved Run selection could not be read safely. No Flow was started. If a review is in progress, wait and retry; otherwise diagnose the project state:\n\n  $ jig review',
+        2,
       )
-    const targets = approvedTargets(
-      await inspectPrivateApprovedProject(runtime.currentDirectory, undefined, undefined, true),
-    )
+    }
+    const prepare = async (effective: readonly string[]) => {
+      const parsed = parseRun(effective)
+      const selector =
+        parsed.target.kind === 'flow'
+          ? flowSelector(parsed.target.path)
+          : `binding:${parsed.target.id}`
+      let prepared = effective
+      if (parsed.output === undefined && writableTargets.includes(selector)) {
+        let destination: string
+        try {
+          const parent = await realpath(tmpdir())
+          if (!(await lstat(parent)).isDirectory())
+            throw new Error('temporary parent is not a directory')
+          destination = resolve(parent, `jig-result-${randomBytes(16).toString('hex')}`)
+          if (Buffer.byteLength(destination) > 4096) throw new Error('output path limit')
+        } catch {
+          throw new CliDiagnostic(
+            'JIG_RUN_FILES_INVALID',
+            'Temporary output storage is unavailable. No Flow was started. Add --out ./result-packet to the same invocation, preserving its target and inputs. Choose a new directory with an existing supported parent.',
+            1,
+          )
+        }
+        prepared = [...effective, '--out', destination]
+      }
+      return {
+        arguments: prepared,
+        ...(admissionDigest === undefined ? {} : { admissionDigest }),
+      }
+    }
+    if (explicit) return await prepare(arguments_)
+    if (typeof snapshot.entrypoint === 'string') {
+      const effective = resolveProjectEntrypoint(
+        snapshot.entrypoint,
+        arguments_.slice(1),
+        runtime.currentDirectory,
+      )
+      return await prepare(effective)
+    }
+    parseRun(['run', 'flow:flows/placeholder', ...arguments_.slice(1)])
+    const targets = approvedTargets(snapshot, true)
+    const unavailable = approvedTargets(snapshot).filter(({ available }) => !available)
+    if (unavailable.length)
+      runtime.writeError(
+        `Unavailable alternatives: ${unavailable.map(({ target }) => asciiJsonString(target)).join(', ')}. Correct their reported setup and review again.\n\n  $ jig review\n\n`,
+      )
     if (targets.length === 0)
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
-        'No approved targets. Run jig review to review your project first. No Flow was started.',
+        unavailable.length
+          ? 'No reviewed targets can run with this configuration. No Flow was started. Correct the reported setup, then review again:\n\n  $ jig review'
+          : 'No approved targets. Review your project first. No Flow was started.\n\n  $ jig review',
         1,
+      )
+    if (!runtime.interactive)
+      usage(
+        'run',
+        'An exact target is required without a project entrypoint or interactive terminal. List approved targets:\n\n  $ jig inspect',
       )
     runtime.writeError(
       `Choose a reviewed target\n\n${targets
@@ -404,7 +552,7 @@ export async function privateCliPrepareArguments(
     const index = /^[1-9][0-9]*$/.test(answer) ? Number(answer) - 1 : -1
     const target = targets[index]
     if (target === undefined) usage('run', 'Choose a listed target number. No Flow was started.')
-    return { arguments: ['run', target.target, ...arguments_.slice(1)] }
+    return await prepare(['run', target.target, ...arguments_.slice(1)])
   } catch (error) {
     if (runtime.signal?.aborted) {
       runtime.writeError('Target selection cancelled. No Flow was started.\n')
@@ -423,7 +571,10 @@ async function executeCompletion(
   if (arguments_[1] === 'targets' && arguments_.length <= 3) {
     const prefix = arguments_[2] ?? ''
     try {
-      const targets = approvedTargets(await inspectPrivateApprovedProject(runtime.currentDirectory))
+      const targets = approvedTargets(
+        await inspectPrivateApprovedProject(runtime.currentDirectory),
+        true,
+      )
       await runtime.writeRecord(
         targets
           .filter(({ target }) => target.startsWith(prefix))
@@ -442,9 +593,27 @@ async function executeCompletion(
 }
 
 async function executeNew(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  if (arguments_.length !== 2) usage('new', 'Supply one Flow name, for example: jig new summarize.')
+  const name = arguments_[1]
+  if (name === undefined || name.startsWith('-'))
+    usage('new', 'Supply one Flow name, optionally followed by --use slot=source.')
+  const uses: { slot: string; source: string }[] = []
+  for (let index = 2; index < arguments_.length; index += 2) {
+    const declaration = arguments_[index + 1]
+    if (arguments_[index] !== '--use' || declaration === undefined || declaration.startsWith('-'))
+      usage('new', 'Use --use slot=source for each selected collaborator contract.')
+    const separator = declaration.indexOf('=')
+    if (separator <= 0 || separator === declaration.length - 1)
+      usage('new', 'Use --use slot=source with a local descriptor or installed npm package.')
+    uses.push({ slot: declaration.slice(0, separator), source: declaration.slice(separator + 1) })
+  }
   try {
-    const path = await createFlow(runtime.currentDirectory, arguments_[1]!)
+    const path = await createFlow(
+      runtime.currentDirectory,
+      name,
+      uses,
+      runtime.signal,
+      runtime.standardContractDirectory,
+    )
     runtime.writeOutput(
       `Created Flow ${asciiJsonString(path)}.\n\nNext:\n  Edit ${path}/FLOW.ts.\n  If jig.ts uses explicit membership, add ${asciiJsonString(path)}.\n  jig review --allow-resolution-network\n  jig run ${shellWord(`flow:${path}`)}\n\nNo dependencies installed or execution approved.\n`,
     )
@@ -453,6 +622,21 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
     if (error instanceof ProjectInitError) {
       runtime.writeError(renderDiagnostic(error.code, error.message))
       return error.kind === 'invalid' ? 1 : 2
+    }
+    if (error instanceof CheckError) {
+      const location =
+        error.path === undefined ? '' : `Location: ${asciiJsonString(error.path.slice(0, 1024))}. `
+      runtime.writeError(
+        renderDiagnostic(
+          error.code,
+          `Flow creation failed. ${location}${asciiJsonString(error.message.slice(0, 2048))} No Flow was published. Check the selected contract source and try again.`,
+        ),
+      )
+      return error.kind === 'invalid' ? 1 : 2
+    }
+    if (runtime.signal?.aborted) {
+      runtime.writeError('Flow creation cancelled. Unpublished files were removed.\n')
+      return 2
     }
     throw error
   }
@@ -485,12 +669,6 @@ export function privateCliVerification(arguments_: readonly string[]): string | 
   return undefined
 }
 
-function parseVerification(command: 'run' | 'review' | 'inspect', value?: string): string {
-  if (value !== 'cached' && value !== 'strict' && value !== 'fast')
-    usage(command, '--verification requires cached, strict, or fast.')
-  return value
-}
-
 function isHelpRequest(arguments_: readonly string[]): boolean {
   const help = arguments_.at(-1) === '--help' || arguments_.at(-1) === '-h'
   return (
@@ -504,16 +682,28 @@ async function executeImportContract(
   arguments_: readonly string[],
   runtime: CliRuntime,
 ): Promise<number> {
+  if (arguments_.length === 2 && arguments_[1] === '--list') {
+    runtime.writeOutput(
+      `Jig standard contracts\n\n${JIG_STANDARD_CONTRACTS.map((entry) => `  jig:${entry.name} (${entry.kind})\n    ${entry.description}`).join('\n')}\n\nImport template (replace NAME with a name above):\n\n  $ jig import-contract jig:NAME contracts/NAME\n\nThe parent directory must exist. Importing an agreement does not select an implementation or grant permissions.\n`,
+    )
+    return 0
+  }
   if (arguments_.length !== 3 || arguments_.slice(1).some((value) => value.startsWith('-')))
-    usage('import-contract', 'Specify one descriptor file and one new destination directory.')
+    usage(
+      'import-contract',
+      'Specify jig:name, a descriptor file or npm:package and one new directory; use --list to browse Jig contracts.',
+    )
   try {
     const result = await importContract(
-      resolve(runtime.currentDirectory, arguments_[1]!),
+      /^(npm:|jig:)/.test(arguments_[1]!)
+        ? arguments_[1]!
+        : resolve(runtime.currentDirectory, arguments_[1]!),
       resolve(runtime.currentDirectory, arguments_[2]!),
       runtime.signal,
+      runtime.standardContractDirectory,
     )
     runtime.writeOutput(
-      `Imported ${result.files} contract files into ${asciiJsonString(arguments_[2]!)}.\nUse ${asciiJsonString(basename(result.descriptor))} in the caller's slot declaration, then review the project.\n`,
+      `Imported ${result.files} contract files into ${asciiJsonString(arguments_[2]!)}.\nUse ${asciiJsonString(basename(result.descriptor))} in ${result.kind === 'channel' ? 'an optional channel declaration' : "the caller's slot declaration"}, then review the project.\n`,
     )
     return 0
   } catch (error) {
@@ -534,8 +724,24 @@ function parseInspect(arguments_: readonly string[]) {
   let selector: string | undefined
   let json = false
   let verification: string | undefined
+  let resultDirectory: string | undefined
+  let display: 'plain' | 'tui' | 'web' | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const value = arguments_[index]!
+    if (value === '--result') {
+      const next = arguments_[++index]
+      if (resultDirectory !== undefined || next === undefined || next.startsWith('-'))
+        usage('inspect', 'Specify --result with one saved packet directory.')
+      resultDirectory = next
+      continue
+    }
+    if (value === '--display') {
+      const next = arguments_[++index]
+      if (display !== undefined || (next !== 'plain' && next !== 'tui' && next !== 'web'))
+        usage('inspect', 'Saved-result --display accepts plain, tui or web once.')
+      display = next
+      continue
+    }
     if (value === '--verification') {
       if (verification !== undefined) usage('inspect', '--verification may only be supplied once.')
       verification = parseVerification('inspect', arguments_[++index])
@@ -552,11 +758,89 @@ function parseInspect(arguments_: readonly string[]) {
       selector = value
     } else usage('inspect', 'Specify at most one target and one --json option.')
   }
-  return { selector, json, verification }
+  if (resultDirectory !== undefined && (selector !== undefined || verification !== undefined))
+    usage('inspect', '--result cannot be combined with a target or --verification.')
+  if (display !== undefined && resultDirectory === undefined)
+    usage('inspect', '--display requires --result DIRECTORY.')
+  return { selector, json, verification, resultDirectory, display: display ?? 'plain' }
+}
+
+/** Complete grammar classification before any installed inspection probes. */
+export function privateCliSavedResultInspection(arguments_: readonly string[]): boolean {
+  if (arguments_[0] !== 'inspect' || isHelpRequest(arguments_)) return false
+  try {
+    return parseInspect(arguments_).resultDirectory !== undefined
+  } catch {
+    return false
+  }
+}
+
+async function executeSavedResultInspect(
+  parsed: ReturnType<typeof parseInspect>,
+  runtime: CliRuntime,
+): Promise<number> {
+  let packet: ReturnType<typeof privateCaptureSavedResult> | undefined
+  try {
+    packet = privateCaptureSavedResult(
+      resolve(runtime.currentDirectory, parsed.resultDirectory!),
+      runtime.signal,
+    )
+    if (packet.finding)
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RESULT_FILES_INCOMPLETE',
+          packet.finding,
+          'Saved file verification incomplete',
+        ),
+      )
+    if (parsed.json || !runtime.humanOutput) {
+      await runtime.writeRecord(`${textDecoder.decode(canonicalJson(packet.record))}\n`)
+    } else {
+      if (parsed.display === 'tui' || parsed.display === 'web')
+        await runtime.progress.inspectSavedResult(
+          packet,
+          runtime.dashboardInput,
+          runtime.dashboardInputStream,
+          parsed.display,
+        )
+      runtime.signal?.throwIfAborted()
+      // Recorded text bypasses trusted host-command recognition and styling.
+      await runtime.writeRecord(privateSavedResultPlain(packet))
+    }
+    return packet.complete ? 0 : 1
+  } catch (error) {
+    if (runtime.signal?.aborted) {
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_COMMAND_INTERRUPTED',
+          'Saved inspection was interrupted. No work was started and the recorded result is unchanged.',
+        ),
+      )
+      return 2
+    }
+    if (error instanceof PrivateSavedResultError)
+      runtime.writeError(
+        renderDiagnostic('JIG_RESULT_UNAVAILABLE', error.message, 'Saved result unavailable'),
+      )
+    else
+      runtime.writeError(
+        renderDiagnostic(
+          'JIG_RESULT_INSPECTION_FAILED',
+          'Saved inspection could not finish or deliver its output. The recorded result is unchanged; no work was started.',
+          'Saved inspection failed',
+        ),
+      )
+    return 1
+  } finally {
+    await runtime.progress.closeWorkspace().catch(() => undefined)
+    packet?.close()
+  }
 }
 
 async function executeInspect(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
-  const { selector, json } = parseInspect(arguments_)
+  const parsed = parseInspect(arguments_)
+  if (parsed.resultDirectory !== undefined) return executeSavedResultInspect(parsed, runtime)
+  const { selector, json } = parsed
   let snapshot: JsonValue
   runtime.signal?.throwIfAborted()
   try {
@@ -570,12 +854,12 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
     if (error instanceof CheckError && error.code === 'INSPECTION_TARGET_MISSING')
       throw new CliDiagnostic(
         'JIG_TARGET_NOT_FOUND',
-        'That target is not in the approved revision. Use jig inspect to list approved targets, or jig review to review source changes.',
+        'That target is not in the approved revision. List approved targets:\n\n  $ jig inspect\n\nTo review source changes:\n  $ jig review',
         1,
       )
     throw new CliDiagnostic(
       'JIG_INSPECTION_UNAVAILABLE',
-      'The approved snapshot could not be read safely. No state was changed. If a review is in progress, wait and retry; otherwise use jig review to diagnose the project state.',
+      'The approved snapshot could not be read safely. No state was changed. If a review is in progress, wait and retry; otherwise diagnose the project state:\n\n  $ jig review',
       2,
     )
   }
@@ -587,13 +871,13 @@ async function executeInspect(arguments_: readonly string[], runtime: CliRuntime
         : 'unchecked'
     const explanation =
       state === 'review-required'
-        ? 'Review required\n\n  The execution environment has changed since approval.\n  Run jig review, inspect the changes, and approve before running again.'
+        ? 'Review required\n\n  The execution environment has changed since approval.\n  Inspect the changes and approve before running again:\n\n  $ jig review'
         : state === 'environment-matches'
           ? 'Approval environment matches\n\n  Current local execution identities match this approval.\n  Run still revalidates launch authority; remote provider availability is not checked.'
-          : 'Approval validity not checked\n\n  The current execution environment could not be verified.\n  Use jig review to diagnose missing support or configuration before running.'
+          : 'Approval validity not checked\n\n  The current execution environment could not be verified.\n  Diagnose missing support or configuration before running:\n\n  $ jig review'
     runtime.writeOutput(
       state === 'unreviewed'
-        ? 'No approved revision\n\n  Run jig review to review and approve this project. Nothing was changed.\n'
+        ? 'No approved revision\n\n  Review and approve this project. Nothing was changed.\n\n  $ jig review\n'
         : `${explanation}\n\n  The interfaces below belong to the last approved revision. Visible source changes are not checked.\n\n${invocationGuide(snapshot)}${selector === undefined ? '' : privateCliValueFields(snapshot)}\n`,
     )
   } else await runtime.writeRecord(`${textDecoder.decode(canonicalJson(snapshot))}\n`)
@@ -643,9 +927,9 @@ async function executeInit(arguments_: readonly string[], runtime: CliRuntime): 
     await createProject(resolve(runtime.currentDirectory, destination), undefined, bare, agent)
     runtime.writeOutput(
       agent !== undefined
-        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then run jig review --allow-resolution-network.\n\nNo client installed, credentials copied or execution approved.\n`
+        ? `Created Jig project ${asciiJsonString(destination)} with ${agent} selected.\n\nNext:\n  Open the project README for native client prerequisites and the first Run.\n  Review bindings/agent.ts for the requested authority, then:\n\n  $ jig review --allow-resolution-network\n\nNo client installed, credentials copied or execution approved.\n`
         : bare
-          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then run jig review.\n`
+          ? `Created bare Jig project ${asciiJsonString(destination)}.\n\nNext:\n  Add a Flow under flows/ and select it in jig.ts, then:\n\n  $ jig review\n`
           : `Created Jig project ${asciiJsonString(destination)}.\n\nNext:\n${/^[\x20-\x7e]+$/.test(destination) ? `  cd ${shellWord(destination)}\n` : '  Open the created directory in your terminal, then:\n'}  jig review --allow-resolution-network\n  jig run flow:flows/hello --input '"Ada"'\n\nNo dependencies installed or execution approved. See jig review --help.\n`,
     )
     return 0
@@ -669,18 +953,72 @@ function shellWord(value: string): string {
 }
 
 async function executeReview(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
+  let resolutionNoticeShown = false
   const parsed = parseReview(arguments_, runtime.currentDirectory)
   runtime.progress.note(
     `Reviewing ${asciiJsonString(basename(resolve(runtime.currentDirectory, parsed.project)))}`,
   )
+  let readiness: PrivateAgentReadinessReport | undefined
+  let previousAgent: AcpGrant['client'] | undefined
+  try {
+    const approved = await inspectPrivateApprovedProject(
+      resolve(runtime.currentDirectory, parsed.project),
+    )
+    if (approved !== null && typeof approved === 'object' && !Array.isArray(approved)) {
+      const origin = (approved as Readonly<Record<string, JsonValue>>).agentOverride
+      if (typeof origin === 'string' && ['codex', 'claude', 'pi'].includes(origin))
+        previousAgent = origin as AcpGrant['client']
+    }
+  } catch {
+    // Ordinary project acquisition reports unsafe/unreadable state. A missing
+    // optional historical explanation must never select an effective client.
+  }
+  const unsafeRetryPath =
+    parsed.project.length > 4096 || /[\p{Cc}\u2028\u2029]/u.test(parsed.project)
+  const retry = [
+    'jig',
+    'review',
+    ...(parsed.project === runtime.currentDirectory
+      ? []
+      : [unsafeRetryPath ? 'PROJECT_DIRECTORY' : shellWord(parsed.project)]),
+    ...(parsed.agent === undefined ? [] : ['--agent', parsed.agent]),
+    ...(parsed.allowResolutionNetwork ? ['--allow-resolution-network'] : []),
+    ...(parsed.generate ? ['--generate-contracts'] : []),
+    ...(parsed.verification === undefined ? [] : ['--verification', parsed.verification]),
+  ].join(' ')
   const result = await withProjectSession(
     parsed.project,
     runtime,
     async (session) => {
-      const plan = await session.plan({ lockMode: 'update' })
+      let plan: Awaited<ReturnType<ProjectSession['plan']>>
+      try {
+        plan = await privateProfileSpan('project-planning', () =>
+          session.plan({ lockMode: 'update' }),
+        )
+      } catch (error) {
+        if (
+          !(error instanceof ProjectAdministrationError) ||
+          error.diagnostic?.code !== 'JIG_REVIEW_AGENT_UNAVAILABLE' ||
+          !readiness?.selectedAcpUnavailable
+        )
+          throw error
+        runtime.progress.complete(true)
+        runtime.writeError(
+          renderReviewAgentSetup(readiness, { details: parsed.details, retryCommand: retry }),
+        )
+        return 2
+      }
+      runtime.signal?.throwIfAborted()
       runtime.progress.complete(true)
+      // A private injected host may return after observation. The CLI still
+      // refuses before both unchanged success and admission.
+      if (readiness?.selectedAcpUnavailable) {
+        runtime.writeError(
+          renderReviewAgentSetup(readiness, { details: parsed.details, retryCommand: retry }),
+        )
+        return 2
+      }
       if (plan.state === 'unchanged') return 0
-
       runtime.writeOutput(
         `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
       )
@@ -691,29 +1029,28 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
           2,
         )
       if (!parsed.yes) {
-        if (!runtime.interactive) {
+        if (!runtime.interactive)
           throw new CliDiagnostic(
             'JIG_APPROVAL_REQUIRED',
-            'Review the displayed changes. To approve this exact revision without a prompt, rerun jig review --yes (with the same project and resolution options).',
+            `Review the displayed changes. To approve this exact revision without a prompt, rerun with --yes:\n\n  $ ${retry} --yes`,
             2,
           )
-        }
         runtime.progress.note('Waiting for your approval. No Flow has been started.')
-        const accepted = await runtime.confirm(
-          'Approve this exact revision for execution? [y/N] ',
-          runtime.signal,
-        )
-        if (!accepted) {
+        if (
+          !(await runtime.confirm(
+            'Approve this exact revision for execution? [y/N] ',
+            runtime.signal,
+          ))
+        ) {
           runtime.writeError(
             renderDiagnostic(
               'JIG_CHANGES_DECLINED',
-              'The proposed changes were not approved. Your previous approval is unchanged. Dependency requests already made cannot be undone.',
+              'The proposed changes were not approved. Any existing approval remains unchanged. Dependency requests already made cannot be undone.',
             ),
           )
           return 1
         }
       }
-
       runtime.signal?.throwIfAborted()
       runtime.progress.stage('Recording approval for the reviewed revision')
       await session.apply({
@@ -724,13 +1061,40 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       return 0
     },
     {
+      ...(parsed.agent === undefined ? {} : { agentOverride: parsed.agent }),
+      onAgentReadiness: (report) => {
+        readiness = report
+        if (unsafeRetryPath && parsed.project !== runtime.currentDirectory)
+          runtime.writeError(
+            'The retry below is a template: replace PROJECT_DIRECTORY with your safely quoted project path.\n\n',
+          )
+        if (parsed.agent !== undefined || previousAgent !== undefined) {
+          runtime.progress.complete(true)
+          runtime.writeError(
+            renderReviewAgentSelections(report, {
+              ...(parsed.agent === undefined ? {} : { agent: parsed.agent }),
+              ...(previousAgent === undefined ? {} : { previousAgent }),
+              details: parsed.details,
+            }),
+          )
+        }
+        if (report.selectedAcpUnavailable)
+          throw new ProjectAdministrationError(
+            'UNAVAILABLE',
+            'Selected ACP prerequisites are unavailable.',
+            { code: 'JIG_REVIEW_AGENT_UNAVAILABLE', path: 'jig.ts' },
+          )
+      },
       ...(parsed.allowResolutionNetwork
         ? {
             allowResolutionNetwork: true,
-            onResolution: (path: string) =>
+            onResolution: () => {
+              if (resolutionNoticeShown) return
+              resolutionNoticeShown = true
               runtime.writeNotice(
-                `Warning: Dependency network access allowed\n\n  Package: ${asciiJsonString(path)}\n  Scope: This review only; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n`,
-              ),
+                'Warning: Dependency network access allowed\n\n  Scope: Dependency preparation across this review; Runs gain no network access.\n  Bun may contact dependency-selected public or private-network services\n  before graph validation. Requests cannot be undone; unsupported\n  dependencies may still fail.\n\n',
+              )
+            },
           }
         : {}),
       ...(parsed.generate
@@ -745,20 +1109,110 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     },
   )
   runtime.signal?.throwIfAborted()
-  if (result === 0)
-    runtime.writeOutput(
-      'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Next: jig run <target> (see jig run --help).\n',
-    )
+  if (result === 0) {
+    if (readiness?.readyTargets === 0)
+      runtime.writeOutput(
+        'Review recorded\n\n  No approved targets are ready. Resolve the retained target requirements and review again.\n  No Flow was started.\n\n  $ jig inspect\n',
+      )
+    else if (readiness?.entrypoint?.state === 'unavailable')
+      runtime.writeOutput(
+        'Review recorded\n\n  The approved default target is unavailable. Inspect its retained cause, or choose a ready target explicitly.\n  No Flow was started.\n\n  $ jig inspect\n',
+      )
+    else
+      runtime.writeOutput(
+        'Project ready\n\n  The exact reviewed revision is approved. No Flow was started.\n  Start the application or choose a ready target:\n\n  $ jig run\n\n  For a different target or options:\n  $ jig run --help\n',
+      )
+  }
   return result
 }
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  runtime.progress.model.configureWorkspace({
+    target:
+      parsed.target.kind === 'flow'
+        ? flowSelector(parsed.target.path)
+        : `binding:${parsed.target.id}`,
+    limitMs: parsed.timeoutMs,
+    startedAt: privatePresentationNow(),
+  })
+  const automaticPresentation = !parsed.json && parsed.receive.length === 0
+  let display = privateRunDisplay(
+    parsed.display,
+    runtime.dashboardInput &&
+      runtime.terminalError &&
+      typeof runtime.dashboardInputStream.setRawMode === 'function' &&
+      process.env.TERM !== 'dumb',
+    runtime.humanOutput,
+  )
+  if (automaticPresentation && display === 'tui') {
+    try {
+      await runtime.progress.prepareTuiDisplay(runtime.dashboardInput, runtime.dashboardInputStream)
+    } catch (error) {
+      if (parsed.display !== 'auto') throw error
+      display = 'auto'
+      runtime.progress.notice('TUI support unavailable; using ordinary display.\n')
+    }
+  }
+  const dashboardRequested = automaticPresentation && display === 'tui'
+  const webRequested = automaticPresentation && parsed.display === 'web' && runtime.terminalError
+  const workspaceRequested = dashboardRequested || webRequested
+  if (webRequested) {
+    try {
+      runtime.progress.prepareWeb()
+    } catch {
+      throw new CliDiagnostic(
+        'JIG_WEB_UNAVAILABLE',
+        'The local web display could not be prepared. Check this Jig installation and local listener availability, or use --display plain. No Flow was started.',
+        1,
+      )
+    }
+  }
+  if (automaticPresentation && !workspaceRequested)
+    await runtime.progress.configureDisplay(
+      display === 'web' ? 'plain' : display,
+      runtime.dashboardInput,
+      runtime.dashboardInputStream,
+    )
+  // Immutable delivery capture must be selected before publication, even though
+  // the screen waits for trusted root dispatch rather than prerequisite checks.
+  if (
+    (webRequested || dashboardRequested) &&
+    runtime.terminalError &&
+    (webRequested ||
+      (runtime.dashboardInput &&
+        typeof runtime.dashboardInputStream.setRawMode === 'function' &&
+        process.env.TERM !== 'dumb'))
+  )
+    runtime.host.delivery?.enableInspection?.()
   runtime.progress.note(
     `Running ${asciiJsonString(parsed.target.kind === 'flow' ? flowSelector(parsed.target.path) : `binding:${parsed.target.id}`)}`,
   )
+  if (parsed.output !== undefined)
+    runtime.progress.notice(
+      `  Output: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.output))}\n`,
+      'info',
+      false,
+    )
+  if (runtime.expectedAdmissionDigest !== undefined) {
+    const settings = [`  Timeout: ${parsed.timeoutMs / 1000}s`]
+    if (parsed.inputFile !== undefined)
+      settings.push(
+        `  Input file: ${asciiJsonString(resolve(runtime.currentDirectory, parsed.inputFile))}`,
+      )
+    for (const attachment of parsed.attachments) {
+      settings.push(
+        `  Attachment ${asciiJsonString(attachment.name)}: ${asciiJsonString(resolve(runtime.currentDirectory, attachment.directory))}`,
+      )
+      for (const path of attachment.select) settings.push(`    Select: ${asciiJsonString(path)}`)
+    }
+    for (const name of parsed.receive) settings.push(`  Receive: ${asciiJsonString(name)}`)
+    // Operator invocation paths belong to terminal setup, never browser snapshots.
+    runtime.progress.note(settings.join('\n'), false)
+  }
   runtime.progress.stage('Reading selected inputs')
   const outputStop = new AbortController()
+  runtime.progress.onOutputFailure((error) => outputStop.abort(error))
   runtime = {
     ...runtime,
     signal: AbortSignal.any([
@@ -777,6 +1231,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   const submissionId = runtime.createSubmissionId()
   let settledRoot: Extract<RootRunStatus, { state: 'terminal' }> | undefined
   const diagnostics = new PrivateRunDiagnostics()
+  let rootDispatched = false
+  let dashboardEntry: Promise<void> | undefined
+  let cleanupFailed = false
   let diagnosticSource = '[]'
   const writeLive = (text: string, diagnostic = false): void => {
     try {
@@ -789,8 +1246,40 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const channelOutput: PrivateRunChannelOutput = {
     receive: parsed.receive,
+    dispatched: () => {
+      rootDispatched = true
+      if (!workspaceRequested) return
+      // Root execution never waits on terminal setup. The CLI joins it before settlement.
+      dashboardEntry ??= runtime.progress
+        .configureDisplay(
+          webRequested ? 'web' : 'tui',
+          runtime.dashboardInput,
+          runtime.dashboardInputStream,
+        )
+        .catch((error) => outputStop.abort(error))
+    },
+    ...(!parsed.json && parsed.receive.length === 0
+      ? {
+          call: (event: import('./cli-run-model.js').PrivateCallEvent) =>
+            runtime.progress.observeCall(event),
+        }
+      : {}),
+    ...(parsed.receive.length === 0 && !parsed.json && parsed.updates !== 'off'
+      ? {
+          updates: {
+            open: (port: string) => runtime.progress.observe(port, true),
+            ambiguous: (ports: readonly string[]) =>
+              runtime.progress.notice(
+                `Multiple optional user-update outputs: ${ports.join(', ')}. Use --receive NAME for existing stdout channel records.\n`,
+              ),
+          },
+        }
+      : {}),
     terminal(status) {
-      if (status.submissionId === submissionId) settledRoot = status
+      if (status.submissionId === submissionId) {
+        settledRoot = status
+        runtime.progress.stopUpdates()
+      }
     },
     async record(value) {
       try {
@@ -801,8 +1290,19 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         throw error
       }
     },
-    diagnostic(bytes, operations = []) {
+    diagnostic(bytes, operations = [], origin) {
       const decoded = diagnostics.record(bytes, operations)
+      const admission = {
+        provenance: 'host-observed' as const,
+        ...(origin === undefined ? {} : { emitter: origin.emitter }),
+        ...(origin?.call === undefined ? {} : origin.call),
+      }
+      if (runtime.progress.workspaceActive) {
+        runtime.progress.diagnostic(decoded, operations, false, admission)
+        return
+      }
+      if (workspaceRequested)
+        runtime.progress.model.addDiagnostic(decoded, operations, false, admission)
       const source = JSON.stringify(operations)
       if (source !== diagnosticSource) {
         diagnosticSource = source
@@ -820,10 +1320,14 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         ),
         true,
       )
-      presentation?.diagnostic(decoded, operations)
+      // Fullscreen journal admission does not prove this bounded evidence was
+      // delivered in scrollback. Preserve the full capture for its final result.
+      if (!runtime.progress.workspaceUsed) presentation?.diagnostic(decoded, operations)
     },
   }
+  let terminalEmissionStarted = false
   const emitTerminal = async (record: JsonValue): Promise<void> => {
+    terminalEmissionStarted = true
     if (presentation) {
       await presentation.result(record)
       return
@@ -877,6 +1381,41 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     parsed.output === undefined ? null : resolve(runtime.currentDirectory, parsed.output),
     runtime.host.delivery,
   )
+  let inspectionCapture: PrivateDeliveryInspectionCapture | undefined
+  let filesClosedEarly = false
+  let inspectionCompletionDeadline: number | undefined
+  let inspectionFilesClose: Promise<void> | undefined
+  let knownTerminal: JsonValue | undefined
+  let knownExecution: JsonValue | undefined
+  let knownDelivery: PrivateDeliveryReceipt | undefined
+  let inspectionFinalization: Promise<void> | undefined
+  const finalizeInspection = (receipt: PrivateDeliveryReceipt | undefined): Promise<void> => {
+    inspectionCompletionDeadline ??= Math.min(
+      privatePresentationNow() + PRIVATE_INSPECTION_COMPLETION_MS,
+      runtime.progress.lifetime.presentationDeadline ?? Infinity,
+    )
+    const bound = {
+      deadline: inspectionCompletionDeadline,
+    }
+    // Execution cancellation does not cancel spending file authority. This
+    // cleanup has its own finite deadline, including after a Run abort.
+    inspectionFinalization ??= (async () => {
+      try {
+        inspectionCapture = await privateCaptureDeliveryInspection(runtime.host.delivery, receipt, {
+          presentationDeadline: bound.deadline,
+        })
+      } finally {
+        try {
+          inspectionFilesClose ??= privateBoundInspection(files.close(), bound)
+          await inspectionFilesClose
+          filesClosedEarly = true
+        } finally {
+          capture.close()
+        }
+      }
+    })()
+    return inspectionFinalization
+  }
   try {
     if (parsed.output !== undefined) {
       // An explanatory check only: the delivery owner still revalidates and
@@ -912,27 +1451,26 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       } catch {
         throw new CliDiagnostic(
           'JIG_OUTPUT_INVALID',
-          '--out requires a new destination outside input roots and protected state, beneath an existing supported directory',
+          '--out requires a new destination outside input roots and protected state, beneath an existing supported directory. No Flow was started.',
           1,
         )
       }
     }
     runtime.progress.complete()
-    let cleanupFailed = false
     let status: Extract<RootRunStatus, { state: 'terminal' }>
     try {
       status = await withProjectSession(
         runtime.currentDirectory,
         runtime,
         async (session) => {
-          runtime.progress.stage('Submitting the reviewed target')
+          runtime.progress.stage('Checking invocation inputs and admitting the reviewed target')
           const receipt = await session.rootAdministration.startRun({
             submissionId,
             target: parsed.target,
             input,
           })
           runtime.progress.complete()
-          runtime.progress.stage('Waiting for the Flow result (Ctrl-C to cancel)')
+          runtime.progress.stage('Waiting for the result (Ctrl-C to cancel)')
           try {
             return await waitForTerminal(
               session.rootAdministration,
@@ -945,6 +1483,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           }
         },
         {
+          ...(runtime.expectedAdmissionDigest === undefined
+            ? {}
+            : { expectedAdmissionDigest: runtime.expectedAdmissionDigest }),
           runTimeoutMs: parsed.timeoutMs,
           channelOutput,
           ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
@@ -959,6 +1500,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       status = settledRoot
     }
     let record = publicTerminal(status.terminal)
+    knownTerminal = knownExecution = record
+    await dashboardEntry
+    runtime.progress.stopUpdates()
     const runDiagnostics = diagnostics.snapshot()
     if (runDiagnostics.entries.length !== 0 || runDiagnostics.truncated)
       record = { ...(record as Record<string, JsonValue>), runDiagnostics }
@@ -969,6 +1513,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         ...(record as Record<string, JsonValue>),
         cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' },
       }
+    knownTerminal = record
+    if (cleanupFailed) await runtime.progress.closeWorkspace().catch(() => undefined)
     let delivery: PrivateDeliveryReceipt | undefined
     if (parsed.output !== undefined) {
       record = {
@@ -977,18 +1523,21 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         method: files.method ?? null,
         input: { digest: sha256(canonicalJson(input)), attachments: files.identity.attachments },
       } as unknown as JsonValue
+      knownTerminal = record
       try {
         runtime.progress.stage('Publishing the result packet')
         delivery = await runtime.host.delivery!.publish(
           record,
           !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
-            ? files.outputDirectory?.fd
+            ? files.output
             : undefined,
           runtime.signal,
         )
       } catch {
         delivery = { status: 'unknown', destination: files.identity.output!, code: 'CHANNEL_LOST' }
       }
+      knownDelivery = delivery
+      if (delivery.status === 'written') runtime.progress.complete(true)
       record = {
         ...(record as Record<string, JsonValue>),
         delivery,
@@ -996,17 +1545,89 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           ? {}
           : { checkpoint: runtime.host.delivery!.checkpoint }),
       } as unknown as JsonValue
+      knownTerminal = record
     }
     // Publication can itself be interrupted after the first record snapshot.
     if (runtime.signal?.aborted)
       record = { ...(record as Record<string, JsonValue>), command: { status: 'interrupted' } }
+    knownTerminal = record
     let encodedRecord: Uint8Array
+    let inspectionFailed = false
+    if (dashboardEntry !== undefined) {
+      // The indefinite inspector receives only excerpts after the outer file
+      // owner ACKs irreversible retirement. Preserve the known terminal even
+      // when this separate command cleanup cannot be confirmed.
+      try {
+        await finalizeInspection(delivery)
+      } catch {
+        inspectionCapture?.close()
+        inspectionCapture = undefined
+        inspectionFailed = true
+        cleanupFailed = true
+        record = {
+          ...(record as Record<string, JsonValue>),
+          cleanup: (record as Record<string, JsonValue>).cleanup ?? {
+            status: 'failed',
+            code: 'INSPECTION_CLOSE_FAILED',
+          },
+        }
+        knownTerminal = record
+        await runtime.progress.closeWorkspace()
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_INSPECTION_CLEANUP_FAILED',
+            'Execution and packet delivery retain their reported results. File authority retirement could not be confirmed, so inspection was closed. Inspect effects before starting new work.',
+          ),
+        )
+      }
+    }
+    const artifact = inspectionCapture
+      ? {
+          resolve: (publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) =>
+            publisher === 'root' &&
+            files.outputAttachments.includes(ref.attachment) &&
+            inspectionCapture!.files.some((f) => f.path === ref.path && f.state !== 'unavailable')
+              ? ref.path
+              : undefined,
+          preview: async (path: string) => {
+            const preview = inspectionCapture!.preview(path)
+            return preview?.text === undefined
+              ? undefined
+              : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
+          },
+          capture: {
+            generation: inspectionCapture.generation,
+            sourcePublisher: 'root',
+            provenance: 'verified-delivery' as const,
+            phase: delivery?.status === 'written' ? ('ready' as const) : ('unavailable' as const),
+            files: inspectionCapture.files,
+          },
+        }
+      : undefined
     try {
       encodedRecord = canonicalJson(record)
     } catch {
       // File manifests or late observations may exceed JSON/0 even when the
       // accepted terminal fits. Preserve that terminal; never truncate it or
       // reinterpret a report failure as permission to repeat the Run.
+      if (dashboardEntry !== undefined) {
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_REPORT_LIMIT',
+            'The expanded report exceeds JSON/0 limits. The execution terminal is preserved; inspect any result packet before starting new work.',
+          ),
+        )
+        await runtime.progress.settleDisplay(
+          {
+            ...(publicTerminal(status.terminal) as Record<string, JsonValue>),
+            ...((record as Record<string, JsonValue>).cleanup !== undefined
+              ? { cleanup: (record as Record<string, JsonValue>).cleanup! }
+              : {}),
+            ...(delivery === undefined ? {} : { delivery }),
+          } as JsonValue,
+          artifact,
+        )
+      } else await runtime.progress.closeWorkspace()
       await emitTerminal(publicTerminal(status.terminal))
       runtime.writeError(
         renderDiagnostic(
@@ -1017,29 +1638,31 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       return 2
     }
     const terminal = status.terminal
-    // State the failure before expanding its validation or retained-evidence details.
+    await runtime.progress.settleDisplay(decodeJson1(encodedRecord), artifact)
+    await emitTerminal(decodeJson1(encodedRecord))
+    if (terminal.status === 'succeeded' && !presentation)
+      runtime.progress.note(
+        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the JSON result.`,
+      )
+    if (delivery !== undefined && !presentation)
+      runtime.progress.note(
+        `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
+      )
+    if (runtime.host.delivery?.checkpoint != null && !presentation)
+      runtime.progress.note(
+        'Retained checkpoint information is in result.json; it is not proof of successful execution.',
+      )
+    // Finish with the cause and recovery action, after any retained evidence.
     if (terminal.status !== 'succeeded')
       runtime.writeError(
         renderRunFailure(
           terminal,
           parsed.target,
           runDiagnostics.entries.some((entry) => entry.stderrBytes > 0),
+          rootDispatched,
         ),
       )
-    await emitTerminal(decodeJson1(encodedRecord))
-    if (terminal.status === 'succeeded')
-      runtime.progress.note(
-        `Execution completed. Application outcome: ${asciiJsonString(terminal.outcome)}. See output in the ${presentation ? 'result above' : 'JSON result'}.`,
-      )
-    if (delivery !== undefined)
-      runtime.progress.note(
-        `Delivery: ${delivery.status}. Destination: ${asciiJsonString(parsed.output!)}.${delivery.status === 'written' ? ' Inspect result.json and files/.' : ' Check the destination before starting new work.'}`,
-      )
-    if (runtime.host.delivery?.checkpoint != null)
-      runtime.progress.note(
-        'Retained checkpoint information is in result.json; it is not proof of successful execution.',
-      )
-    if (cleanupFailed) return 2
+    if (cleanupFailed || inspectionFailed) return 2
     if (delivery !== undefined && delivery.status !== 'written') {
       runtime.writeError(
         renderDiagnostic(
@@ -1053,11 +1676,88 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     if (runtime.signal?.aborted) return 2
     return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
+  } catch (error) {
+    if (knownTerminal !== undefined) {
+      await runtime.progress.closeWorkspace().catch(() => undefined)
+      let retirementFailed = false
+      if (dashboardEntry !== undefined) {
+        try {
+          await finalizeInspection(knownDelivery)
+        } catch {
+          retirementFailed = true
+        }
+      }
+      if (!terminalEmissionStarted) {
+        const final = {
+          ...(knownTerminal as Record<string, JsonValue>),
+          cleanup: (knownTerminal as Record<string, JsonValue>).cleanup ?? {
+            status: 'failed',
+            code: retirementFailed ? 'INSPECTION_CLOSE_FAILED' : 'COMMAND_FINALIZATION_FAILED',
+          },
+        }
+        let retained: JsonValue
+        try {
+          retained = decodeJson1(canonicalJson(final))
+        } catch {
+          retained = knownExecution!
+        }
+        await emitTerminal(retained)
+      }
+      renderFailure(error, runtime)
+      return 2
+    }
+    await dashboardEntry?.catch(() => undefined)
+    if (dashboardEntry !== undefined) {
+      // No terminal is invented when command observation failed after dispatch.
+      // Owned project cleanup has already run through withProjectSession.
+      const exitCode = renderFailure(error, runtime)
+      if (runtime.signal?.aborted || cleanupFailed)
+        await runtime.progress.closeWorkspace().catch(() => undefined)
+      try {
+        await finalizeInspection(undefined)
+      } catch {
+        await runtime.progress.closeWorkspace().catch(() => undefined)
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_INSPECTION_CLEANUP_FAILED',
+            'No execution result was confirmed, and file authority retirement could not be confirmed. Inspection was closed; inspect effects before starting new work.',
+          ),
+        )
+        return 2
+      }
+      if (cleanupFailed) {
+        runtime.writeError(
+          renderDiagnostic(
+            'JIG_RUN_CLEANUP_FAILED',
+            'The command could not confirm an execution result, and project cleanup could not be confirmed. Inspection was closed; inspect any result and effects before starting new work.',
+          ),
+        )
+        return 2
+      }
+      if (runtime.signal?.aborted) return 2
+      await runtime.progress.settleDisplay({
+        status: 'unknown',
+        message:
+          'The command could not confirm an execution result. Inspect any result and effects before starting new work.',
+        ...(cleanupFailed ? { cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } } : {}),
+      })
+      return exitCode
+    }
+    throw error
   } finally {
     try {
-      await files.close()
+      if (!filesClosedEarly) {
+        if (inspectionCompletionDeadline === undefined) await files.close()
+        else {
+          inspectionFilesClose ??= privateBoundInspection(files.close(), {
+            deadline: inspectionCompletionDeadline,
+          })
+          await inspectionFilesClose.catch(() => undefined)
+        }
+      }
     } finally {
       capture.close()
+      inspectionCapture?.close()
     }
   }
 }
@@ -1073,7 +1773,9 @@ function parseReview(
   readonly allowResolutionNetwork: boolean
   readonly verification: string | undefined
   readonly generate: boolean
+  readonly agent: AcpGrant['client'] | undefined
 } {
+  let agent: AcpGrant['client'] | undefined
   let project: string | undefined
   let yes = false
   let allowAuthorityChanges = false
@@ -1083,6 +1785,14 @@ function parseReview(
   let verification: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const argument = arguments_[index]!
+    if (argument === '--agent') {
+      if (agent !== undefined) usage('review', '--agent may only be supplied once.')
+      const value = arguments_[++index]
+      if (value === undefined || !['codex', 'claude', 'pi'].includes(value))
+        usage('review', '--agent requires codex, claude or pi.')
+      agent = value as AcpGrant['client']
+      continue
+    }
     if (argument === '--verification') {
       if (verification !== undefined) usage('review', '--verification may only be supplied once.')
       verification = parseVerification('review', arguments_[++index])
@@ -1112,205 +1822,33 @@ function parseReview(
     allowResolutionNetwork,
     generate,
     verification,
+    agent,
   }
-}
-
-function parseRun(arguments_: readonly string[]): {
-  readonly target: RunTargetRef
-  readonly input: JsonValue
-  readonly inputFile?: string
-  readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
-  readonly output?: string
-  readonly timeoutMs: number
-  readonly receive: readonly string[]
-  readonly json: boolean
-  readonly verification: string | undefined
-} {
-  if (arguments_.length < 2)
-    usage('run', 'Choose a target, for example flow:flows/hello or binding:repair.')
-  const target = parseTarget(arguments_[1]!)
-  let input: JsonValue = {}
-  let inputFile: string | undefined, output: string | undefined
-  const attachments = new Map<string, string>(),
-    selectors = new Map<string, string[]>()
-  let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
-  let json = false
-  let sawInput = false
-  let sawTimeout = false
-  let verification: string | undefined
-  const receive: string[] = []
-  for (let index = 2; index < arguments_.length; index += 2) {
-    const option = arguments_[index]
-    if (option === '--json') {
-      if (json) usage('run', '--json may only be supplied once.')
-      json = true
-      index -= 1
-      continue
-    }
-    const value = arguments_[index + 1]
-    if (
-      ![
-        '--input',
-        '--attach',
-        '--select',
-        '--out',
-        '--receive',
-        '--timeout',
-        '--verification',
-      ].includes(option!)
-    )
-      usage(
-        'run',
-        `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--receive', '--timeout', '--verification', '--json'])}`,
-      )
-    if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
-    if (option === '--verification') {
-      if (verification !== undefined) usage('run', '--verification may only be supplied once.')
-      verification = parseVerification('run', value)
-      continue
-    }
-    if (option === '--receive') {
-      if (
-        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value) ||
-        value.length > 64 ||
-        receive.includes(value) ||
-        receive.length >= 16
-      )
-        throw new CliDiagnostic(
-          'JIG_USAGE',
-          '--receive requires unique channel names, at most 16',
-          2,
-        )
-      receive.push(value)
-      continue
-    }
-    if (option === '--input' && !sawInput) {
-      sawInput = true
-      if (value.startsWith('@')) {
-        if (value.length < 2)
-          throw new CliDiagnostic('JIG_RUN_INPUT_INVALID', '@FILE requires a file path', 1)
-        inputFile = value.slice(1)
-        continue
-      }
-      try {
-        input = decodeJson1(textEncoder.encode(value))
-      } catch {
-        throw new CliDiagnostic(
-          'JIG_RUN_INPUT_INVALID',
-          '--input must be valid JSON; quote inline JSON or use --input @file.json. No Flow was started.',
-          1,
-        )
-      }
-      continue
-    }
-    if (option === '--timeout' && !sawTimeout) {
-      sawTimeout = true
-      timeoutMs = parseRunTimeout(value)
-      continue
-    }
-    if (option === '--out' && output === undefined) {
-      output = value
-      continue
-    }
-    if (option === '--attach' || option === '--select') {
-      const split = value.indexOf('=')
-      try {
-        if (split < 1 || split === value.length - 1) throw new Error('missing mapping')
-        const name = privateAttachmentName(value.slice(0, split)),
-          path = value.slice(split + 1)
-        if (option === '--attach') {
-          if (attachments.has(name)) throw new Error('duplicate mapping')
-          attachments.set(name, path)
-        } else {
-          privateFilePath(path)
-          const selected = selectors.get(name) ?? []
-          if (selected.includes(path)) throw new Error('duplicate selector')
-          selected.push(path)
-          selectors.set(name, selected)
-        }
-      } catch {
-        throw new CliDiagnostic(
-          'JIG_RUN_FILES_INVALID',
-          'use --attach NAME=DIR and optional unique --select NAME=RELATIVE_FILE values',
-          1,
-        )
-      }
-      continue
-    }
-    usage('run', `${option} may only be supplied once.`)
-  }
-  if ([...selectors.keys()].some((name) => !attachments.has(name)))
-    throw new CliDiagnostic(
-      'JIG_RUN_FILES_INVALID',
-      '--select requires a matching --attach name',
-      1,
-    )
-  return {
-    target,
-    input,
-    timeoutMs,
-    receive,
-    json,
-    verification,
-    attachments: [...attachments].map(([name, directory]) => ({
-      name,
-      directory,
-      select: selectors.get(name) ?? [],
-    })),
-    ...(inputFile === undefined ? {} : { inputFile }),
-    ...(output === undefined ? {} : { output }),
-  }
-}
-
-function parseRunTimeout(value: string): number {
-  const match = /^([1-9][0-9]*)(ms|s|m|h)$/.exec(value)
-  if (match === null) return invalidRunTimeout()
-  const quantity = Number(match[1])
-  const factor =
-    match[2] === 'ms' ? 1 : match[2] === 's' ? 1_000 : match[2] === 'm' ? 60_000 : 3_600_000
-  const milliseconds = quantity * factor
-  if (!Number.isSafeInteger(milliseconds) || milliseconds > PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS) {
-    return invalidRunTimeout()
-  }
-  return milliseconds
-}
-
-function invalidRunTimeout(): never {
-  throw new CliDiagnostic(
-    'JIG_RUN_TIMEOUT_INVALID',
-    '--timeout must be a positive integer followed by ms, s, m, or h, up to 24h',
-    1,
-  )
 }
 
 /** Private installed-launcher seam; it deliberately exposes no package API. */
-export function privateCliCommandLifetimeMs(arguments_: readonly string[]): number {
+export function privateCliCommandLifetimeMs(
+  arguments_: readonly string[],
+  interactiveDashboard = false,
+  terminalStderr = false,
+  terminalStdout = false,
+): number | null {
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   try {
-    return privateRootlessCommandLifetime(parseRun(arguments_).timeoutMs)
+    const parsed = parseRun(arguments_)
+    if (
+      ((interactiveDashboard &&
+        privateRunDisplay(parsed.display, interactiveDashboard, terminalStdout) === 'tui') ||
+        (terminalStderr && parsed.display === 'web')) &&
+      !parsed.json &&
+      parsed.receive.length === 0
+    )
+      return null
+    return privateRootlessCommandLifetime(parsed.timeoutMs)
   } catch {
     // `main` renders invalid invocations inside this short bounded envelope.
     return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   }
-}
-
-function parseTarget(value: string): RunTargetRef {
-  try {
-    if (value.startsWith('npm:')) {
-      npmPackageName(value)
-      return flowRef(value)
-    }
-    if (value.startsWith('flow:npm:')) throw new TypeError('use npm:<package>')
-    if (value.startsWith('flow:')) return flowRef(value.slice('flow:'.length))
-    if (value.startsWith('binding:')) return bindingRef(value.slice('binding:'.length))
-  } catch {
-    // The public diagnostic intentionally does not repeat project-controlled input.
-  }
-  throw new CliDiagnostic(
-    'JIG_RUN_TARGET_INVALID',
-    'use flow:<path>, npm:<package> or binding:<id>, for example flow:flows/hello. Run jig review after adding a target.',
-    1,
-  )
 }
 
 async function withProjectSession<T>(
@@ -1352,8 +1890,9 @@ async function withProjectSession<T>(
   let closeFailed = false
   let closeFailure: unknown
   try {
+    runtime.progress.stopUpdates()
     runtime.progress.stage('Stopping remaining work and cleaning up')
-    await close()
+    await privateProfileSpan('project-session-close', close)
     runtime.progress.complete()
     if (runtime.signal?.aborted)
       runtime.progress.note('Cleanup complete. The command remains interrupted.')
@@ -1433,23 +1972,35 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ((text: string) => {
       process.stdout.write(text)
     })
-  const terminal = options.terminalOutput ?? process.stderr.isTTY === true
+  const terminal = options.terminalError ?? options.terminalOutput ?? process.stderr.isTTY === true
   const errorColor = privateCliStyleEnabled(terminal)
   const outputColor = privateCliStyleEnabled(
     options.terminalOutput ?? process.stdout.isTTY === true,
   )
   const progress = new PrivateCliProgress(
     terminal,
-    (text) =>
-      writeError(
-        privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
-      ),
+    options.writeStderr ?? writeError,
     options.signal,
+    privateCliStyleEnabled(terminal),
+    () => process.stderr.columns ?? 80,
+    (text) =>
+      privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
+    {
+      presentationDeadline: options.presentationDeadline,
+      ...(options.webAssets === undefined ? {} : { webAssets: options.webAssets }),
+    },
   )
   return {
+    ...(options.expectedAdmissionDigest === undefined
+      ? {}
+      : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
+    ...(options.standardContractDirectory === undefined
+      ? {}
+      : { standardContractDirectory: options.standardContractDirectory }),
     humanOutput: options.terminalOutput ?? process.stdout.isTTY === true,
     outputColor,
     outputColumns: process.stdout.columns || 80,
+    terminalError: terminal,
     progress,
     host: options.host ?? unavailableHost,
     ...(options.inspectEnvironment === undefined
@@ -1459,10 +2010,24 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     ...(options.signal === undefined ? {} : { signal: options.signal }),
     interactive:
       options.interactive ?? (process.stdin.isTTY === true && process.stdout.isTTY === true),
-    confirm: options.confirm ?? terminalConfirmation,
-    answer: options.answer ?? terminalAnswer,
-    writeRecord: async (text) => {
+    dashboardInput: options.interactive ?? process.stdin.isTTY === true,
+    dashboardInputStream: options.dashboardInputStream ?? process.stdin,
+    confirm: async (prompt, signal) => {
       progress.pause()
+      await progress.flush()
+      signal?.throwIfAborted()
+      return (options.confirm ?? terminalConfirmation)(prompt, signal)
+    },
+    answer: async (prompt, signal) => {
+      progress.pause()
+      await progress.flush()
+      signal?.throwIfAborted()
+      return (options.answer ?? terminalAnswer)(prompt, signal)
+    },
+    writeRecord: async (text) => {
+      await progress.closeWorkspace()
+      progress.pause()
+      await progress.flush()
       if (options.writeRecord) await options.writeRecord(text)
       else writeOutput(text)
     },
@@ -1480,14 +2045,11 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     },
     writeError: (text) => {
       progress.pause()
-      writeError(
-        privateCliHumanText(text, errorColor, terminal ? process.stderr.columns || 80 : undefined),
-      )
+      progress.notice(text, 'error')
     },
     writeNotice: (text) => progress.notice(text),
     writeDiagnostic: (text) => {
-      progress.pause()
-      writeError(text)
+      progress.diagnostic(text)
     },
     createSubmissionId:
       options.createSubmissionId ?? (() => `jig-cli-${randomBytes(16).toString('hex')}`),
@@ -1546,10 +2108,25 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     runtime.writeError(renderDiagnostic(error.code, error.message))
     return error.exitCode
   }
+  if (error instanceof PrivateInstalledBundleError) {
+    runtime.writeError(
+      renderDiagnostic(
+        'JIG_COMMAND_UNAVAILABLE',
+        'The installed Jig runtime is incomplete or invalid. Restore the complete installation; inspect any result or effects before retrying. See https://jig.md/guide/#install.',
+      ),
+    )
+    return 2
+  }
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
       ...ACP_SETUP_HINTS,
+      PROJECT_AGENT_OVERRIDE_MODEL:
+        'this ACP policy pins a model. Review its model and client together at the indicated Binding slot, following any grant:name selector to its JSON policy; --agent never translates or drops a model pin',
+      PROJECT_AGENT_OVERRIDE_RETENTION:
+        'this ACP policy requires retained Codex sessions. Review the indicated Binding slot, following any grant:name selector to its JSON policy; --agent preserves session requirements',
+      PROJECT_AGENT_OVERRIDE_UNUSED:
+        'this project selects no ACP resources. Omit --agent and review its source normally',
       ...EVALUATOR_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',
@@ -1578,6 +2155,18 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_METADATA_OWNER:
         'keep Markdown frontmatter in FLOW.md; use FLOW.meta.json only with a code entrypoint',
       PACKAGE_SCHEMA_OWNER: 'place invocation input and result schemas in FLOW.contract.json',
+      SCHEMA_INVALID:
+        error.diagnostic?.pointer === '/$schema'
+          ? `Set the root "$schema" to "${SCHEMA_1_URI}" in the indicated file, then run jig review again.`
+          : 'Correct the indicated schema declaration using FLOW Schema/0; see https://flow.jig.md/spec/schema-files.',
+      SCHEMA_INVALID_JSON:
+        'Use valid UTF-8 JSON/0 without duplicate keys and within its value limits; see https://flow.jig.md/spec/json-values.',
+      SCHEMA_KEYWORD_UNSUPPORTED:
+        'Use only the supported FLOW Schema/0 keywords; see https://flow.jig.md/spec/schema-files.',
+      SCHEMA_REFERENCE_INVALID:
+        'Use an acyclic same-document reference spelled #/$defs/<name> to an existing root definition; see https://flow.jig.md/spec/schema-files.',
+      SCHEMA_LIMIT_EXCEEDED:
+        'Reduce schema size or validation work to the FLOW Schema/0 limits; see https://flow.jig.md/spec/schema-files.',
       PACKAGE_PROFILE_UNSUPPORTED:
         'use a runtime and single-invocation contract supported by this host',
       PACKAGE_METADATA_UNSUPPORTED:
@@ -1605,8 +2194,12 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'select only attachment names declared read-only in the Flow contract',
       PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED:
         'the selected Binding files could not be retained consistently; review stable source directories again',
+      PROJECT_CHECKPOINT_ATTACHMENT:
+        'declare a read-write attachment in FLOW.contract.json for the root Flow that uses Run Checkpoint',
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
+      PROJECT_ENTRYPOINT_INVALID:
+        'Fix entrypoint in jig.ts: use an invokable Flow or Binding followed by valid jig run invocation arguments, project-relative paths, and declared unbound attachments or outgoing channels. Operator flags such as --verification are not project defaults.',
       PROJECT_DEFAULT_MISSING:
         'defaultProviders in jig.ts names a missing Flow or Binding; create the selected local Binding and include its Flow in discovery, or correct the selector. Provider selection does not create Bindings',
       PROJECT_DEFAULT_CONTRACT:
@@ -1629,6 +2222,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'select at most 256 npm Flow packages within the existing dependency preparation limits',
       PROJECT_BINDING_SLOT_MISSING:
         'a child slot references a target not selected by jig.ts; correct the slot or project membership',
+      PROJECT_BINDING_SLOT_NOT_DIRECT:
+        'the selected child Flow cannot run directly with its current slots or settings. Configure its required providers through defaultProviders in jig.ts, or select a Binding that supplies its slots and settings. Then run jig review. No Flow was started by this review.',
       PROJECT_GRANT_MISSING:
         'the slot names a grant not included by jig.ts; include grants: discover("./grants") and provide the matching <name>.json, or use an inline policy',
       PROJECT_GRANT_INVALID:
@@ -1640,9 +2235,9 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants and defaultProviders',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants, defaultProviders and entrypoint',
       PROJECT_EVALUATION_LIMIT:
-        'project evaluation exceeded its resource or time limit; keep authoring modules small and inert. If they already are, check host load before retrying review. No Flow was started',
+        'project evaluation exceeded a capture or execution limit; keep authoring modules small and inert. The specific limiting resource was not retained. Preserve this diagnostic if a small declaration fails. No Flow was started',
       PROJECT_DECLARATION_INVALID:
         'export a valid defineJig or defineBinding declaration from the indicated module',
       CHANNEL_FIELD: 'check channel declarations and descriptors against FLOW Channel Contract/0',
@@ -1657,6 +2252,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
       PACKAGE_BUN_SOURCE_UNSUPPORTED:
         'use default npm registry dependencies or declared workspace members; patches require workspace-root declarations and captured .patch files; overrides and other dependency sources are unsupported',
+      PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED:
+        'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.3 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
       PACKAGE_BUN_MANIFEST_SHAPE: 'package.json must contain an object',
       PACKAGE_BUN_MANIFEST_FIELD:
         'the indicated manifest field is unsupported here; use default npm registry dependencies or declared workspace members, with patches declared only at the workspace root',
@@ -1706,6 +2303,21 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   }
   if (error instanceof RootAdministrationError) {
     if (
+      error.details &&
+      typeof error.details === 'object' &&
+      !Array.isArray(error.details) &&
+      (error.details as Record<string, JsonValue>).code === 'RUN_APPROVAL_CHANGED'
+    ) {
+      runtime.writeError(
+        renderDiagnostic(
+          'RUN_APPROVAL_CHANGED',
+          'The project approval changed after selection. Inspect it with jig inspect, then invoke jig run again. No Flow was started by this invocation.',
+        ),
+      )
+      return 2
+    }
+
+    if (
       error.code === 'UNAVAILABLE' &&
       error.details !== null &&
       typeof error.details === 'object' &&
@@ -1717,7 +2329,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       runtime.writeError(
         renderDiagnostic(
           String((error.details as Record<string, JsonValue>).code),
-          'the project has no usable reviewed revision; complete jig review before running',
+          'The project has no usable reviewed revision. No Flow was started. Complete jig review before running.',
         ),
       )
       return 2
@@ -1731,7 +2343,10 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       runtime.writeError(
         renderDiagnostic(
           'JIG_RUN_FILES_INVALID',
-          'supply exactly the unbound read attachments with --attach and the required writable destination with --out; captured Binding attachments cannot be overridden. Combined inputs must fit the 64-file/8-MiB limit',
+          renderFileMappingGuidance(
+            (error.details as Record<string, JsonValue>).fileMapping,
+            (error.details as Record<string, JsonValue>).fileLimitExceeded === true,
+          ),
         ),
       )
       return 1
@@ -1747,6 +2362,69 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     ),
   )
   return 2
+}
+
+function renderFileMappingGuidance(
+  value: JsonValue | undefined,
+  fileLimitExceeded: boolean,
+): string {
+  const mapping =
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, JsonValue>)
+      : {}
+  const names = (key: string): string[] =>
+    Array.isArray(mapping[key])
+      ? (mapping[key] as JsonValue[])
+          .slice(0, 8)
+          .filter(
+            (name): name is string =>
+              typeof name === 'string' &&
+              /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name) &&
+              name.length <= 64,
+          )
+      : []
+  const missing = names('missingReads'),
+    unknown = names('unknownNames'),
+    bound = names('boundOverrides'),
+    writable = names('missingWritableDestination')
+  const lines = ['Invocation files do not match this reviewed target. No Flow was started.']
+  if (missing.length)
+    lines.push(`Missing read attachments: ${missing.map(asciiJsonString).join(', ')}.`)
+  if (unknown.length)
+    lines.push(`Remove undeclared attachment mappings: ${unknown.map(asciiJsonString).join(', ')}.`)
+  if (bound.length)
+    lines.push(
+      `Remove overrides of review-pinned attachments: ${bound.map(asciiJsonString).join(', ')}.`,
+    )
+  if (writable.length)
+    lines.push(
+      `Supply a result destination for writable attachments: ${writable.map(asciiJsonString).join(', ')}.`,
+    )
+  if (!missing.length && !unknown.length && !bound.length && !writable.length)
+    lines.push(
+      fileLimitExceeded
+        ? 'Combined input attachments exceed the 64-file/8-MiB limit. Reduce the supplied files.'
+        : 'Supply exactly the declared unbound read attachments and the required output destination; captured Binding attachments cannot be overridden.',
+    )
+  if (missing.length || writable.length) {
+    const flags = missing.map((name) => `--attach ${shellWord(`${name}=./${name}-input`)}`)
+    if (writable.length) flags.push('--out ./result-packet')
+    lines.push(
+      '',
+      'Template: replace the target and input directories; retain your other required input/options:',
+      '',
+      `  $ jig run <target> ${flags.join(' ')}`,
+    )
+  }
+  lines.push(
+    '',
+    'Inspect the approved interface and complete invocation template:',
+    '',
+    '  $ jig inspect <target>',
+    '',
+    'A bare jig run uses the approved entrypoint defaults when the project supplies them.',
+  )
+  return lines.join('\n')
 }
 
 function projectError(code: ProjectAdministrationError['code']): {
@@ -1775,11 +2453,11 @@ function projectError(code: ProjectAdministrationError['code']): {
     INVALID_CANDIDATE:
       'The project definition is invalid. Check jig.ts and the selected Flow declarations; see https://jig.md/guide/.',
     LOCK_MISMATCH:
-      'The project lock does not match the reviewed state. Run jig review to inspect and approve the current revision.',
+      'The project lock does not match the reviewed state. Inspect and approve the current revision:\n\n  $ jig review',
     PLAN_NOT_FOUND:
-      'The reviewed project changes are no longer available. Run jig review again to inspect a fresh proposal.',
+      'The reviewed project changes are no longer available. Inspect a fresh proposal:\n\n  $ jig review',
     STALE_PLAN:
-      'The project changed before approval could be recorded. Let source edits settle, then run jig review again.',
+      'The project changed before approval could be recorded. Let source edits settle, then:\n\n  $ jig review',
     PROJECT_BUSY:
       'the project is already in use; wait for its current command to finish or cancel that command; do not delete .jig to bypass ownership',
     PROJECT_CLOSED:
@@ -1821,6 +2499,7 @@ function renderRunFailure(
   terminal: Exclude<RootRunTerminal, { readonly status: 'succeeded' }>,
   target: RunTargetRef,
   hasRunDiagnostics = false,
+  rootDispatched = true,
 ): string {
   if (terminal.code === 'PROTOCOL_ERROR')
     return renderDiagnostic(
@@ -1834,10 +2513,44 @@ function renderRunFailure(
     !Array.isArray(terminal.details)
       ? (terminal.details as Record<string, JsonValue>)
       : undefined
+  if (
+    !rootDispatched &&
+    terminal.code === 'UNAVAILABLE' &&
+    details?.code === 'RUN_TARGET_UNAVAILABLE'
+  ) {
+    const availability =
+      details.availability &&
+      typeof details.availability === 'object' &&
+      !Array.isArray(details.availability)
+        ? (details.availability as Record<string, JsonValue>)
+        : {}
+    const cause =
+      availability.cause &&
+      typeof availability.cause === 'object' &&
+      !Array.isArray(availability.cause)
+        ? (availability.cause as Record<string, JsonValue>)
+        : {}
+    const diagnostic = typeof cause.diagnostic === 'string' ? cause.diagnostic : ''
+    const blocked =
+      cause.target && typeof cause.target === 'object' && !Array.isArray(cause.target)
+        ? (cause.target as Record<string, JsonValue>)
+        : {}
+    const child =
+      blocked.kind === 'binding' && typeof blocked.id === 'string'
+        ? `binding:${blocked.id}`
+        : blocked.kind === 'flow' && typeof blocked.path === 'string'
+          ? flowSelector(blocked.path)
+          : undefined
+    return renderDiagnostic(
+      'RUN_TARGET_UNAVAILABLE',
+      `This target was approved as unavailable. No Flow was started.${ACP_SETUP_CAUSES[diagnostic] ? `\nCause: ${ACP_SETUP_CAUSES[diagnostic]}\n\n${ACP_SETUP_HINTS[diagnostic]}` : child ? `\nRequired target ${asciiJsonString(child)} is unavailable. Inspect its retained cause:\n\n  $ jig inspect ${shellWord(child)}` : '\nRequired execution support was unavailable during review.'}\n\nAfter correcting the reported setup or selected grant, review again:\n\n  $ jig review`,
+      'Target unavailable',
+    )
+  }
   if (terminal.code === 'REVIEW_REQUIRED')
     return renderDiagnostic(
       'REVIEW_REQUIRED',
-      'The current execution environment no longer matches your approval. Jig, its runtime, the selected Agent configuration, or sandbox support has changed.\nNo Flow was started for this Run.\n\nNext step: Run jig review, inspect the changes, and approve the revision before running this target again.',
+      'The current execution environment no longer matches your approval. Jig, its runtime, the selected Agent configuration, or sandbox support has changed.\nNo Flow was started for this Run.\n\nNext step: Inspect the changes and approve the revision before running this target again:\n\n  $ jig review',
       'Review required',
     )
   if (details?.code === 'RUN_TARGET_NOT_FOUND') {
@@ -1848,13 +2561,13 @@ function renderRunFailure(
       : []
     return renderDiagnostic(
       'JIG_RUN_TARGET_NOT_FOUND',
-      `That target is not in the reviewed revision. No Flow was started.\n\nReviewed targets:\n${targets.length === 0 ? '  None. Add a Flow under flows/ first.' : targets.map((target) => `  ${asciiJsonString(target.slice(0, 512))}`).join('\n')}\n\nNext step: Choose an exact target above, or run jig review after changing jig.ts. No target is selected automatically.`,
+      `That target is not in the reviewed revision. No Flow was started.\n\nReviewed targets:\n${targets.length === 0 ? '  None. Add a Flow under flows/ first.' : targets.map((target) => `  ${asciiJsonString(target.slice(0, 512))}`).join('\n')}\n\nNext step: Choose an exact target above. No target is selected automatically. After changing jig.ts, review it:\n\n  $ jig review`,
     )
   }
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\nNext step: Check --input against the approved schema with jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)}; see the result for validation details.`,
+      `Input does not match the approved target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${details?.keyword === 'enum' ? '\nThis field must be one of the choices declared in that schema.' : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\n\nNext step: Inspect the approved schema and correct --input:\n\n  $ jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)}\n\nJig runs the last approved revision. If you edited the Flow or its schema, approve those edits first:\n\n  $ jig review`,
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(
@@ -1869,7 +2582,7 @@ function renderRunFailure(
   )
     return renderDiagnostic(
       terminal.code,
-      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See attributed runDiagnostics in the result; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
+      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See the attributed diagnostics shown above; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
       'Run failed',
     )
   const reasons: Record<string, string> = {
@@ -1880,7 +2593,7 @@ function renderRunFailure(
     UNAVAILABLE: 'Required execution support was unavailable.',
     PERMISSION_DENIED: 'The requested action was outside the approved permissions.',
     RESOURCE_EXHAUSTED: 'Execution reached a resource limit.',
-    INVALID_RESULT: 'The Flow returned a result that does not match its declared contract.',
+    INVALID_RESULT: 'A Flow or one of its operations rejected a returned result.',
     UNCERTAIN: 'The operation may have produced effects; do not blindly repeat the Run.',
     EXECUTION_FAILED: 'The Flow could not complete execution.',
     CHANNEL_LOST: 'A required connection was lost.',
@@ -1900,22 +2613,15 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const pointer =
     diagnostic.pointer === undefined ? '' : `\n  Value: ${asciiJsonString(diagnostic.pointer)}`
   const mismatch = schemaTypeMismatchText(diagnostic.typeMismatch)
-  return `Review could not finish\n\n  Location: ${asciiJsonString(diagnostic.path)}${pointer}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
-}
-
-function asciiJsonString(value: string): string {
-  let output = '"'
-  for (const scalar of value) {
-    const code = scalar.codePointAt(0)!
-    if (scalar === '"' || scalar === '\\') output += `\\${scalar}`
-    else if (code >= 0x20 && code <= 0x7e) output += scalar
-    else if (code <= 0xffff) output += `\\u${code.toString(16).padStart(4, '0')}`
-    else {
-      const adjusted = code - 0x10000
-      output += `\\u${(0xd800 + (adjusted >> 10)).toString(16)}\\u${(0xdc00 + (adjusted & 0x3ff)).toString(16)}`
-    }
-  }
-  return `${output}"`
+  const cause = ACP_SETUP_CAUSES[diagnostic.code]
+  const selection =
+    cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
+      ? '\n  Agent selection: the resource grant at this Binding slot.'
+      : ''
+  const alternative = selection
+    ? '\n\n  Use another installed client\n    Edit client in the ACP grant selected by this slot (its inline Binding value or named JSON file), choosing codex, claude, or pi. Check model and client-specific policy, then review the change:\n\n  $ jig review'
+    : ''
+  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 if (import.meta.main) {

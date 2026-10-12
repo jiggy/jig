@@ -1,4 +1,4 @@
-import { constants, type BigIntStats } from 'node:fs'
+import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, lstat, open } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
@@ -16,8 +16,11 @@ export interface PrivateProjectRoot {
 }
 
 export async function openPrivateProjectRoot(projectRoot: string): Promise<PrivateProjectRoot> {
-  if (process.platform !== 'linux') {
-    unavailable('PROJECT_ROOT_UNAVAILABLE', 'project-root capture requires Linux descriptor paths')
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
+    unavailable(
+      'PROJECT_ROOT_UNAVAILABLE',
+      'project capture is unavailable on this host; use a supported Jig host',
+    )
   }
   const requestedPath = resolve(projectRoot)
   let observed: BigIntStats

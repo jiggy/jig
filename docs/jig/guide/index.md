@@ -11,11 +11,11 @@ to see how Agent work fits into the same model.
 
 ## Install
 
-Use a [supported Linux host](#supported-host). The qualified environment is
-Ubuntu 24.04 x86_64 with the isolation prerequisites listed below; a stock
-Linux installation may need host configuration. If you do not administer the
-host, ask its administrator to check that list before installing. Jig reports
-missing execution support rather than weakening isolation.
+Use a [supported host](#supported-host). Linux may need the isolation
+configuration listed below; if you do not administer that host, ask its
+administrator to check it. The qualified Mac path needs no administrator setup
+or `sudo`. Jig reports missing execution support rather than weakening its
+boundary.
 
 Install the CLI:
 
@@ -161,6 +161,11 @@ directory; if you selected explicit members in `jig.ts`, add it there first.
 Dependency resolution still requires your explicit network permission when
 needed, as described in [dependencies](./dependencies.md).
 
+Use `jig new worker --use agent=npm:@jigging/agent-acp`
+after installing that declared dependency. It copies the complete selected
+contract and declares the slot, leaving the method's code, provider selection
+and grants with you. See [conversations](./conversations.md) for a complete caller.
+
 - [Add an ordinary Agent](./agents.md) in the project you just created.
 - [Compose code and Agent methods](./request-triage.md) through one caller.
 - [Run a Markdown method](./markdown.md) without an SDK dependency.
@@ -175,15 +180,28 @@ needed, as described in [dependencies](./dependencies.md).
 
 ## Supported host
 
-The alpha has independent host evidence on provisioned Ubuntu 24.04 x86_64.
-Other matching Linux hosts are not yet independently validated. Jig checks
-required invocation contracts and reports missing support.
+Jig qualifies Linux x86_64 and selected native Macs. It checks the exact host
+mechanism before execution and refuses unqualified kernels or missing support.
+
+On Linux, Jig is developed primarily on NixOS and qualified in automated CI on
+provisioned Ubuntu 24.04 x86_64. This host needs:
 
 - Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
 - Bubblewrap 0.12 or newer and GNU `readlink -f`.
 - cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers.
 - A systemd user manager supporting transient scopes with `Delegate=yes`.
 - Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
+
+On Mac, the qualified profiles are Intel Darwin 23.4.0 build 23E224 and
+Intel or Apple Silicon Darwin 24.6.0 build 24G830. These are exact kernel
+profiles, not a promise for every macOS release. Install through the same npm
+command above; npm selects the matching pinned Bun runtime. No privileged
+helper, managed execution account, separate Bun installation, or `sudo` is
+required. Jig uses a private native sandbox and an owned process coalition to
+contain and stop work. Resource limits are supervised and sampled on Mac, so
+CPU, memory, and process use can briefly exceed the requested ceiling before
+Jig terminates the scope. See the [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
+when deciding whether this tradeoff fits your workload.
 
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
 `/run/current-system/sw/bin`. An absolute `JIG_BWRAP_PATH` selects another
@@ -192,8 +210,8 @@ explicit selection fails rather than falling back.
 
 On NixOS, enable `programs.nix-ld.enable` for npm's runtime binary. Jig resolves
 glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs
-only the required loader and libraries. Independent NixOS conformance remains
-unverified.
+only the required loader and libraries. Automated CI conformance on NixOS
+remains unconfigured.
 
 `review` and `run` acquire their delegated scopes without `sudo`. Jig verifies
 the package-local Bun runtime before execution. See the

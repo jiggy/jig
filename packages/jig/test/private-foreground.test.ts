@@ -136,7 +136,9 @@ proofDescribe('private rootless project session', () => {
         'decoder=tools/first',
       ])
       expect(override.code).not.toBe(0)
-      expect(override.stderr).toContain('cannot be overridden')
+      expect(override.stderr).toContain('JIG_RUN_FILES_INVALID')
+      expect(override.stderr).toContain('No Flow was started')
+      expect(override.stderr).toContain('Remove overrides of review-pinned attachments: "decoder".')
       const failed = await invokeChannelCli(root, ['run', 'binding:first', '--input', '"bad"'])
       expect(JSON.parse(failed.stdout)).toMatchObject({
         status: 'succeeded',
@@ -180,7 +182,9 @@ proofDescribe('private rootless project session', () => {
         '"AP+ACg0B/g=="',
       ])
       expect(refused.code).not.toBe(0)
-      expect(refused.stderr).toContain('unbound read attachments')
+      expect(refused.stderr).toContain('JIG_RUN_FILES_INVALID')
+      expect(refused.stderr).toContain('No Flow was started')
+      expect(refused.stderr).toContain('Missing read attachments: "decoder".')
       await waitForRootlessCgroups(initialRootlessCgroups)
     } finally {
       await rm(root, { recursive: true, force: true })
@@ -283,7 +287,7 @@ proofDescribe('private rootless project session', () => {
           }
         }
         await expectNoChildResidue(root)
-        expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+        expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
         await waitForRootlessCgroups(initialRootlessCgroups)
         await waitForRootlessTemporaryState(initialRootlessTemporaryState)
       } finally {
@@ -486,7 +490,7 @@ proofDescribe('private rootless project session', () => {
           .every((record) => record.result.status !== 'succeeded'),
       ).toBeTrue()
       await expectNoChildResidue(root)
-      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
       await waitForRootlessCgroups(initialRootlessCgroups)
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
     } finally {
@@ -625,7 +629,7 @@ proofDescribe('private rootless project session', () => {
       ).toEqual(terminals[0].result)
       expect(await readdir(join(root, 'cancelled-result/files'))).toEqual([])
       await expectNoChildResidue(root)
-      expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+      expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
       await waitForRootlessCgroups(initialRootlessCgroups)
       await waitForRootlessTemporaryState(initialRootlessTemporaryState)
     } finally {
@@ -704,7 +708,10 @@ proofDescribe('private rootless project session', () => {
       const next = await session.plan({ lockMode: 'update' })
       if (next.state !== 'applicable') throw new Error('expected renewed review')
       expect(next.review.text).toContain('Execution environment changed:')
-      expect(next.review.text).toContain(
+      expect(next.review.text).not.toContain(
+        'Flow source, prepared dependencies, settings and permissions are unchanged.',
+      )
+      expect(next.review.details).toContain(
         'Flow source, prepared dependencies, settings and permissions are unchanged.',
       )
       await session.apply({ planDigest: next.planDigest })
@@ -840,7 +847,7 @@ proofDescribe('private rootless project session', () => {
             await session.close()
             session = undefined
             await expectNoChildResidue(root)
-            expect(await directoryEntries(join(root, '.jig/private-root-linux-owners'))).toEqual([])
+            expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
             await waitForRootlessCgroups(initialRootlessCgroups)
             await waitForRootlessTemporaryState(initialRootlessTemporaryState)
           } finally {
@@ -2700,7 +2707,7 @@ async function expectNoChildResidue(root: string): Promise<void> {
   expect(inspectChildOwnerCount(root)).toBe(0)
   const [materializations, owners] = await Promise.all([
     directoryEntries(join(root, '.jig', 'private-root-materializations')),
-    directoryEntries(join(root, '.jig', 'private-root-linux-owners')),
+    directoryEntries(join(root, '.jig', 'private-root-owners')),
   ])
   expect(materializations.filter((entry) => entry.startsWith('child-'))).toEqual([])
   expect(owners.filter((entry) => /^(c-|a-|x-)/.test(entry))).toEqual([])

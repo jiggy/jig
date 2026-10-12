@@ -10,7 +10,7 @@ powers you approve. Start with one Flow, then build Agent intelligence into
 your application while keeping authority and consequences explicit.
 
 <div className="reader-grid">
-<a className="reader-card" href="/guide/"><span className="tile-index">START</span><h3>Run your first Flow.</h3><p>Install on a supported Linux host, create a method, review it, and change its result.</p><span className="card-link">Follow the quickstart ↗</span></a>
+<a className="reader-card" href="/guide/"><span className="tile-index">START</span><h3>Run your first Flow.</h3><p>Install on a supported Linux or Mac host, create a method, review it, and change its result.</p><span className="card-link">Follow the quickstart ↗</span></a>
 <a className="reader-card" href="/guide/request-triage"><span className="tile-index">COMPOSE</span><h3>One caller. Three implementations.</h3><p>Call code, Agent judgment, and a combination through the same method boundary.</p><span className="card-link">Explore the example ↗</span></a>
 <a className="reader-card" href="/guide/understand"><span className="tile-index">UNDERSTAND</span><h3>Learn the small architecture.</h3><p>See what applications, methods, the host, and the FLOW standard each own.</p><span className="card-link">Meet the four parts ↗</span></a>
 <a className="reader-card" href="/guide/for-agents"><span className="tile-index">FOR AGENTS</span><h3>Bring the right context.</h3><p>Read focused Markdown pages or the complete public documentation bundle.</p><span className="card-link">Use the agent entrypoint ↗</span></a>

@@ -1,23 +1,8 @@
 import { type BigIntStats, constants } from 'node:fs'
-import {
-  chmod,
-  type FileHandle,
-  lstat,
-  mkdir,
-  mkdtemp,
-  open,
-  readdir,
-  readlink,
-  rename,
-  rm,
-  rmdir,
-  symlink,
-  unlink,
-} from 'node:fs/promises'
+import { chmod, type FileHandle, mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { types as utilTypes } from 'node:util'
-
 import {
   type CapturedFile,
   type CapturedPackage,
@@ -25,6 +10,20 @@ import {
 } from '../package/capture.js'
 import { PACKAGE_1_LIMITS } from '../package/digest.js'
 import { validateLogicalPath } from '../package/paths.js'
+import {
+  privateChildLocation as childPath,
+  duplicatePrivateDirectory,
+  statPrivateFile as lstat,
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  type PrivateFileLocation,
+  privateDirectoryEntries,
+  readlinkPrivateFile as readlink,
+  renamePrivateFile as rename,
+  rmdirPrivateFile as rmdir,
+  symlinkPrivateFile as symlink,
+  unlinkPrivateFile as unlink,
+} from './descriptor-files.js'
 import {
   assertPrivatePackageAliasFiles,
   normalizePrivatePackageAliases,
@@ -198,11 +197,9 @@ export async function materializePrivatePackageLease(
   let created = false
   let failure: unknown
   try {
-    await mkdir(childPath(parent.handle, allocation.name), { mode: 0o700 })
+    await mkdirPrivateFile(childPath(parent.handle, allocation.name))
     created = true
-    transactionInformation = await lstat(childPath(parent.handle, allocation.name), {
-      bigint: true,
-    })
+    transactionInformation = await lstat(childPath(parent.handle, allocation.name))
     const openedTransaction = await openOwnedDirectory(
       parent.handle,
       allocation.name,
@@ -214,7 +211,7 @@ export async function materializePrivatePackageLease(
       throw new Error('new materialization transaction changed before opening')
     }
 
-    await mkdir(childPath(transaction, PACKAGE_NAME), { mode: 0o700 })
+    await mkdirPrivateFile(childPath(transaction, PACKAGE_NAME))
     const openedPackage = await openOwnedDirectory(transaction, PACKAGE_NAME, parent.information, [
       0o700n,
     ])
@@ -313,6 +310,7 @@ export async function materializePrivatePackageLease(
             transactionInformation !== undefined &&
             !sameIdentity(transactionInformation, opened.information)
           ) {
+            // biome-ignore lint/correctness/noUnsafeFinally: Identity mismatch forbids cleanup even after an earlier failure.
             throw new Error('refusing to clean a replaced materialization transaction')
           }
           transactionInformation = opened.information
@@ -476,14 +474,25 @@ export async function disposePrivatePackageMaterializationLease(
         transaction,
         PACKAGE_NAME,
         parent.information,
-        [0o555n],
+        process.platform === 'darwin' ? [0o555n, 0o700n] : [0o555n],
       )
       packageDirectory = openedPackage.handle
       requireStoredIdentity(openedPackage.information, identity.package, 'package')
+      // Darwin needs write permission on the moved directory itself. A crash
+      // before rename can leave this exact lease in that intermediate state.
+      // Restore read-only mode and prove all bytes again before continuing;
+      // ordinary reacquisition still rejects a writable package root.
+      if (fileMode(openedPackage.information) === 0o700n) {
+        if (fileMode(openedTransaction.information) !== 0o700n)
+          throw new Error('writable package has no disposing transaction')
+        await packageDirectory.chmod(0o555)
+        await packageDirectory.sync()
+      }
+      const packageInformation = await packageDirectory.stat({ bigint: true })
       if (
         !(await packageMatches(
           packageDirectory,
-          openedPackage.information,
+          packageInformation,
           allocation.packageDigest,
           parent.information,
           allocation.aliases,
@@ -495,6 +504,10 @@ export async function disposePrivatePackageMaterializationLease(
       await requireChildIdentity(transaction, PACKAGE_NAME, openedPackage.information)
       await transaction.chmod(0o700)
       await transaction.sync()
+      if (process.platform === 'darwin') {
+        await packageDirectory.chmod(0o700)
+        await packageDirectory.sync()
+      }
       await rename(childPath(transaction, PACKAGE_NAME), childPath(transaction, DISPOSING_NAME))
       await transaction.sync()
       await requireChildIdentity(transaction, DISPOSING_NAME, openedPackage.information)
@@ -651,7 +664,7 @@ async function openProtectedParent(
   value: string,
   expected?: PrivateMaterializationPathIdentity,
 ): Promise<PrivateOpenedParent> {
-  requireLinux()
+  requireNativeHost()
   const path = normalizeParent(value)
   const handle = await openAbsoluteDirectory(path)
   try {
@@ -707,7 +720,7 @@ async function openDirectoryUnchecked(
   name: string,
 ): Promise<{ readonly handle: FileHandle; readonly information: BigIntStats }> {
   const path = childPath(parent, name)
-  const observed = await lstat(path, { bigint: true })
+  const observed = await lstat(path)
   if (observed.isSymbolicLink() || !observed.isDirectory()) {
     throw new Error(`materialization path ${JSON.stringify(name)} is not a real directory`)
   }
@@ -774,7 +787,7 @@ async function openPackageDirectory(
       const path = childPath(current, segment)
       if (create) {
         try {
-          await mkdir(path, { mode: Number(expectedMode) })
+          await mkdirPrivateFile(path, Number(expectedMode))
           await current.sync()
         } catch (error) {
           if (!hasCode(error, 'EEXIST')) throw error
@@ -793,10 +806,7 @@ async function openPackageDirectory(
 
 async function duplicateDirectory(directory: FileHandle): Promise<FileHandle> {
   const before = await directory.stat({ bigint: true })
-  const duplicate = await open(
-    `/proc/self/fd/${directory.fd}`,
-    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NONBLOCK,
-  )
+  const duplicate = await duplicatePrivateDirectory(directory)
   try {
     const after = await duplicate.stat({ bigint: true })
     if (!after.isDirectory() || !sameIdentity(before, after)) {
@@ -882,7 +892,7 @@ async function packageModesMatch(
     }
     try {
       const path = childPath(parent, segments.at(-1)!)
-      const observed = await lstat(path, { bigint: true })
+      const observed = await lstat(path)
       if (observed.isSymbolicLink() || !observed.isFile()) return false
       const handle = await open(
         path,
@@ -931,7 +941,7 @@ async function aliasesMatch(
         0o555n,
       )
       const path = childPath(parent, parts.at(-1)!)
-      const observed = await lstat(path, { bigint: true })
+      const observed = await lstat(path)
       if (
         !safeAlias(observed, filesystem) ||
         (await readlink(path)) !== privatePackageAliasText(alias)
@@ -1008,7 +1018,7 @@ async function removeTree(
   for (const name of await directoryNames(root)) {
     const path = childPath(root, name)
     const logicalPath = prefix === '' ? name : `${prefix}/${name}`
-    const observed = await lstat(path, { bigint: true })
+    const observed = await lstat(path)
     const aliasText = aliases.get(logicalPath)
     if (aliasText !== undefined) {
       if (!safeAlias(observed, filesystem) || (await readlink(path)) !== aliasText)
@@ -1069,7 +1079,8 @@ async function requireEntries(directory: FileHandle, expected: readonly string[]
 }
 
 async function directoryNames(directory: FileHandle): Promise<string[]> {
-  const names = await readdir(`/proc/self/fd/${directory.fd}`, { encoding: 'utf8' })
+  const names: string[] = []
+  for await (const entry of privateDirectoryEntries(directory)) names.push(entry.name)
   for (const name of names) {
     if (name.length === 0 || name === '.' || name === '..' || name.includes('/')) {
       throw new Error('materialization contains an invalid directory entry name')
@@ -1080,7 +1091,7 @@ async function directoryNames(directory: FileHandle): Promise<string[]> {
 
 async function requireChildAbsent(parent: FileHandle, name: string): Promise<void> {
   try {
-    await lstat(childPath(parent, name), { bigint: true })
+    await lstat(childPath(parent, name))
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -1093,7 +1104,7 @@ async function requireChildIdentity(
   name: string,
   expected: BigIntStats,
 ): Promise<void> {
-  const visible = await lstat(childPath(parent, name), { bigint: true })
+  const visible = await lstat(childPath(parent, name))
   if (!sameIdentity(visible, expected)) {
     throw new Error(`materialization entry ${JSON.stringify(name)} changed identity`)
   }
@@ -1353,7 +1364,7 @@ async function copyCapturedFile(
   captured: CapturedPackage,
   logicalPath: string,
   expectedBytes: number,
-  destination: string,
+  destination: PrivateFileLocation,
   filesystem?: BigIntStats,
 ): Promise<void> {
   const handle = await open(
@@ -1427,10 +1438,6 @@ async function closeAll(...handles: Array<FileHandle | undefined>): Promise<void
   for (const handle of handles) await handle?.close().catch(() => undefined)
 }
 
-function childPath(parent: FileHandle, name: string): string {
-  return `/proc/self/fd/${parent.fd}/${name}`
-}
-
 function fileMode(information: { readonly mode: bigint }): bigint {
   return information.mode & 0o7777n
 }
@@ -1442,9 +1449,9 @@ function sameIdentity(
   return left.dev === right.dev && left.ino === right.ino
 }
 
-function requireLinux(): void {
-  if (process.platform !== 'linux') {
-    throw new Error('durable materialization requires Linux descriptor paths')
+function requireNativeHost(): void {
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
+    throw new Error('durable materialization requires a qualified native host')
   }
 }
 

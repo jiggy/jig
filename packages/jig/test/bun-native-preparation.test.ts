@@ -20,10 +20,13 @@ import { capturePackageDirectory } from '../src/package/capture.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
-const proofDescribe = HOSTILE ? describe.serial : describe.skip
+const MACOS = process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1'
+const proofDescribe = HOSTILE || MACOS ? describe.serial : describe.skip
+const hostTest = HOSTILE || MACOS ? test : test.skip
+const linuxTest = HOSTILE ? test : test.skip
 
 proofDescribe('private contained Bun dependency preparation', () => {
-  test('workspace preparation reuse stays in the approving project and checks fresh shared inputs', async () => {
+  test('workspace dependencies stay project-local while code edits assemble fresh reviewed source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-workspace-reuse-'))
     const put = async (path: string, value: unknown) => {
       await mkdir(dirname(join(root, path)), { recursive: true })
@@ -67,17 +70,47 @@ proofDescribe('private contained Bun dependency preparation', () => {
         { ...process.env, JIG_VERIFICATION: 'cached', XDG_CACHE_HOME: join(root, 'cache') },
         async () => {
           const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+          let reviewSequence = 0
           const review = async (project: string, allowResolutionNetwork: boolean, apply = true) => {
+            const sequence = ++reviewSequence
             const stages: string[] = []
+            let operationFailure: unknown
             const session = await openPrivateProjectSession({
               directory: join(root, 'apps', project),
               host: { ...host, allowResolutionNetwork, onStage: (stage) => stages.push(stage) },
+              onOperationFailure: (evidence) => {
+                operationFailure = evidence
+              },
             })
             try {
               const plan = await session.plan({ lockMode: 'update' })
               if (apply && plan.state === 'applicable')
                 await session.apply({ planDigest: plan.planDigest })
               return { plan, stages }
+            } catch (error) {
+              const failure = error as { diagnostic?: { code?: unknown } }
+              if (
+                failure?.diagnostic?.code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
+                (failure as { code?: unknown })?.code === 'INTERNAL'
+              ) {
+                console.error(
+                  'workspace-preparation-failed',
+                  JSON.stringify({
+                    sequence,
+                    project,
+                    allowResolutionNetwork,
+                    stages: stages.map((stage) =>
+                      stage.startsWith('Preparing dependencies')
+                        ? 'prepare'
+                        : stage.startsWith('Reusing approved dependencies')
+                          ? 'reuse'
+                          : 'other',
+                    ),
+                    operationFailure,
+                  }),
+                )
+              }
+              throw error
             } finally {
               await session.close()
             }
@@ -112,16 +145,19 @@ proofDescribe('private contained Bun dependency preparation', () => {
             ),
           ).toBeTrue()
           await put('libs/helper/index.js', 'export const value = 2')
-          await expect(review('a', false)).rejects.toMatchObject({
-            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
-          })
-          await review('a', true)
+          const edited = await review('a', false)
+          expect(edited.plan.state).toBe('applicable')
+          expect(
+            edited.stages.some((stage) => stage.startsWith('Reusing approved dependencies')),
+          ).toBeTrue()
+          expect(
+            edited.stages.some((stage) => stage.startsWith('Preparing dependencies')),
+          ).toBeFalse()
           expect((await review('a', false)).plan.state).toBe('unchanged')
           await put('libs/helper/added.txt', 'new captured file')
-          await expect(review('a', false)).rejects.toMatchObject({
-            diagnostic: { code: 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' },
-          })
+          expect((await review('a', false)).plan.state).toBe('applicable')
           await rm(join(root, 'libs/helper/added.txt'))
+          expect((await review('a', false)).plan.state).toBe('applicable')
           expect((await review('a', false)).plan.state).toBe('unchanged')
           await put('package.json', {
             private: true,
@@ -138,12 +174,17 @@ proofDescribe('private contained Bun dependency preparation', () => {
     }
   }, 180_000)
 
-  test.each([false, true])(
-    'prepares a transitive graph without scripts or authored config (resolve=%s)',
-    async (resolve) => {
+  hostTest.each([
+    { resolve: false, lockVersion: 1 },
+    ...(MACOS ? [{ resolve: false, lockVersion: 2 as const }] : []),
+    { resolve: true, lockVersion: MACOS ? 2 : 1 },
+  ] as const)(
+    'prepares a transitive graph without scripts or authored config (%j)',
+    async ({ resolve, lockVersion }) => {
       const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
       const initialCgroups = new Set(await rootlessCgroups())
-      const root = await fixture()
+      const root = await fixture(lockVersion)
+      const authoredLock = await readFile(join(root, 'bun.lock'))
       try {
         if (resolve) {
           await rm(join(root, 'bun.lock'))
@@ -201,6 +242,9 @@ proofDescribe('private contained Bun dependency preparation', () => {
                 expect(
                   new TextDecoder().decode(await first.captured.read('package-lock.json')),
                 ).toBe('not a lock; must remain inert')
+              } else {
+                expect(Buffer.from(await first.captured.read('bun.lock'))).toEqual(authoredLock)
+                expect(await readFile(join(root, 'bun.lock'))).toEqual(authoredLock)
               }
 
               const second = await preparePrivateBunPackage({
@@ -237,51 +281,58 @@ proofDescribe('private contained Bun dependency preparation', () => {
     120_000,
   )
 
-  test('rejects non-registry lock sources before installer fetch', async () => {
-    const root = await fixture()
-    try {
-      await writeFile(
-        join(root, 'bun.lock'),
-        `${JSON.stringify(
-          {
-            lockfileVersion: 1,
-            workspaces: { '': { dependencies: { local: 'file:../local' } } },
-            packages: { local: ['local@file:../local', {}] },
-          },
-          null,
-          2,
-        )}\n`,
-      )
-      const captured = await capturePackageDirectory(root)
+  hostTest.each(['source', 'format'] as const)(
+    'rejects an unsupported lock %s before installer fetch',
+    async (kind) => {
+      const root = await fixture()
       try {
-        await initializePrivateActivationState({ projectRoot: root })
-        const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
+        await writeFile(
+          join(root, 'bun.lock'),
+          `${JSON.stringify(
+            {
+              lockfileVersion: kind === 'format' ? 3 : MACOS ? 2 : 1,
+              workspaces: { '': { dependencies: { local: 'file:../local' } } },
+              packages: { local: ['local@file:../local', {}] },
+            },
+            null,
+            2,
+          )}\n`,
+        )
+        const captured = await capturePackageDirectory(root)
         try {
-          const host = await openPrivateInstalledBunHost(installedBunLocation)
-          await expect(
-            preparePrivateBunPackage({
-              captured,
-              installedSupport: host.installedBunSupport,
-              backend: host.backend,
-              projectRoot: root,
-              coordinator,
-            }),
-          ).rejects.toMatchObject({
-            code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
-            path: 'bun.lock',
-          })
+          await initializePrivateActivationState({ projectRoot: root })
+          const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
+          try {
+            const host = await openPrivateInstalledBunHost(installedBunLocation)
+            await expect(
+              preparePrivateBunPackage({
+                captured,
+                installedSupport: host.installedBunSupport,
+                backend: host.backend,
+                projectRoot: root,
+                coordinator,
+              }),
+            ).rejects.toMatchObject({
+              code:
+                kind === 'format'
+                  ? 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED'
+                  : 'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+              path: 'bun.lock',
+            })
+          } finally {
+            await coordinator.dispose()
+          }
         } finally {
-          await coordinator.dispose()
+          await captured.dispose()
         }
       } finally {
-        await captured.dispose()
+        await rm(root, { recursive: true, force: true })
       }
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }, 30_000)
+    },
+    30_000,
+  )
 
-  test.each([false, true])(
+  linuxTest.each([false, true])(
     'recovers preparation after coordinator loss (resolve=%s)',
     async (resolve) => {
       const projectRoot = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-project-'))
@@ -351,9 +402,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
         }
         await waitForCgroups(initialCgroups)
         await waitForTemporary(initialTemporary)
-        expect(
-          await readdir(join(projectRoot, '.jig', 'private-preparation-linux-owners')),
-        ).toEqual([])
+        expect(await readdir(join(projectRoot, '.jig', 'private-preparation-owners'))).toEqual([])
       } finally {
         await Promise.all([
           rm(projectRoot, { recursive: true, force: true }),
@@ -365,7 +414,7 @@ proofDescribe('private contained Bun dependency preparation', () => {
   )
 })
 
-async function fixture(): Promise<string> {
+async function fixture(lockVersion: 1 | 2 = MACOS ? 2 : 1): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'jig-bun-preparation-'))
   await writeFile(
     join(root, 'FLOW.meta.json'),
@@ -403,7 +452,7 @@ async function fixture(): Promise<string> {
   await writeFile(
     join(root, 'bun.lock'),
     `{
-  "lockfileVersion": 1,
+  "lockfileVersion": ${lockVersion},
   "configVersion": 1,
   "workspaces": {
     "": {
@@ -433,7 +482,7 @@ function rootlessTemporaryEntry(name: string): boolean {
 }
 
 async function waitForActivePreparation(projectRoot: string): Promise<void> {
-  const parent = join(projectRoot, '.jig', 'private-preparation-linux-owners')
+  const parent = join(projectRoot, '.jig', 'private-preparation-owners')
   for (let attempt = 0; attempt < 1_000; attempt += 1) {
     try {
       for (const name of await readdir(parent)) {
@@ -488,7 +537,7 @@ async function recoverEventually(
     }
     await Bun.sleep(25)
   }
-  const ownerParent = join(input.projectRoot, '.jig', 'private-preparation-linux-owners')
+  const ownerParent = join(input.projectRoot, '.jig', 'private-preparation-owners')
   const owners = await readdir(ownerParent).catch(() => [])
   const evidence = await Promise.all(
     owners.map(async (name) => ({

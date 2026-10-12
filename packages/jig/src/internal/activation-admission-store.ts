@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { type BigIntStats, constants } from 'node:fs'
-import { type FileHandle, lstat, mkdir, open, rename, unlink } from 'node:fs/promises'
+import { type FileHandle, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { ProjectAdministrationError } from '../administration/project.js'
@@ -46,6 +46,15 @@ import {
 import { privateActivationTargetKey } from './activation-planning.js'
 import { verifyBoundAttachment } from './bound-attachments.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import {
+  privateChildLocation as descriptorChild,
+  statPrivateFile as lstat,
+  mkdirPrivateFile,
+  openPrivateFile as open,
+  type PrivateFileLocation,
+  renamePrivateFile as rename,
+  unlinkPrivateFile as unlink,
+} from './descriptor-files.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -85,7 +94,12 @@ import {
   isPrivateBranchDepth,
   isPrivateChildFlowAllocation,
 } from './root-operation-limits.js'
-import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
+import {
+  PrivateRootFileInputLimitError,
+  PrivateRootFileMappingError,
+  type PrivateRunFileIdentity,
+  requirePrivateRootFileMapping,
+} from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
   createPrivateRootRunRequest,
@@ -413,8 +427,6 @@ interface PrivateActivationPlanningSnapshot {
 }
 
 export interface PrivateAdmittedExecutionReuse {
-  readonly recipeDigest: string
-  readonly observationDigest: string
   readonly execution: PrivateBunExecutionArtifact
 }
 
@@ -621,8 +633,8 @@ export async function capturePrivateActivationPlanningBase(input: {
 }
 
 /**
- * Reopen the exact prepared execution reference admitted for one unchanged
- * request. The opaque planning base keeps this lookup tied to the same heads
+ * Reopen preparation evidence for the same exact target and package location.
+ * It is not authority for the fresh request. The opaque planning base ties it to the heads
  * that final Candidate publication will compare-and-set.
  */
 export function readPrivateAdmittedExecutionReuse(input: {
@@ -632,12 +644,13 @@ export function readPrivateAdmittedExecutionReuse(input: {
   const base = requirePrivateActivationPlanningBase(input.planningBase)
   const request = requirePrivateActivationRequest(input.request)
   const target = base.admittedCandidate?.candidate.targets.find(
-    (candidate) => candidate.request.digest === request.digest,
+    (candidate) =>
+      privateActivationTargetKey(candidate.request.target) ===
+        privateActivationTargetKey(request.target) &&
+      candidate.request.packagePath === request.packagePath,
   )
   if (target?.disposition.state !== 'ready') return undefined
   return Object.freeze({
-    recipeDigest: target.disposition.recipeDigest,
-    observationDigest: target.disposition.observationDigest,
     execution: target.disposition.execution,
   })
 }
@@ -649,7 +662,7 @@ export function readPrivateAdmittedExecutionReuse(input: {
  */
 export async function publishPrivateActivationReviewPlan(input: {
   readonly projectRoot: string | PrivateProjectRoot
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly planningBase: PrivateActivationPlanningBase
   readonly candidate: PrivateActivationCandidateArtifactV5
   readonly lockMode: 'update' | 'locked'
@@ -891,8 +904,9 @@ export async function replacePrivateBunPreparationOwner(input: {
 export async function submitPrivateRootRun(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly submissionId: string
+  readonly expectedAdmissionDigest?: string
   readonly target: RunTargetIdentity
   readonly input: JsonValue
   readonly files?: PrivateRunFileIdentity
@@ -923,6 +937,15 @@ export async function submitPrivateRootRun(input: {
       unavailable('ADMISSION_MISSING', 'no activation generation is active')
     const admissionRow = requireAdmissionRow(owner.database, head.revision)
     const admission = loadAndCrossCheckAdmission(owner.database, admissionRow, owner.root)
+    if (
+      input.expectedAdmissionDigest !== undefined &&
+      input.expectedAdmissionDigest !== admission.admissionDigest
+    )
+      unavailable(
+        'RUN_APPROVAL_CHANGED',
+        'approval changed after selecting the project entrypoint; invoke again to use the current approval',
+      )
+
     const candidateRow = requireCandidateRow(
       owner.database,
       BigInt(admission.admission.candidateRevision),
@@ -936,11 +959,13 @@ export async function submitPrivateRootRun(input: {
       try {
         requirePrivateRootFileMapping(fileTarget.request, request.files)
         input.identifyFiles?.(fileTarget.request)
-      } catch {
-        invalid(
-          'RUN_ATTACHMENTS_INVALID',
-          'provide the unbound root read attachments and required output destination; captured Binding attachments cannot be overridden, and combined input must fit the file limits',
+      } catch (error) {
+        if (
+          error instanceof PrivateRootFileMappingError ||
+          error instanceof PrivateRootFileInputLimitError
         )
+          throw error
+        invalid('RUN_ATTACHMENTS_INVALID', 'root file mappings are invalid')
       }
     }
     const terminal = rootPreflightTerminal(candidate, request, artifacts)
@@ -1638,7 +1663,7 @@ export async function listPrivateRootExecutionWork(input: {
 export async function reacquirePrivateRootExecutionWork(input: {
   readonly coordinator: PrivateProjectCoordinator
   readonly projectRoot: string
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly runId: string
 }): Promise<PrivateReacquiredRootExecutionWork> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator)
@@ -2104,7 +2129,7 @@ function requireCoordinatorRoot(
 export async function applyPrivateActivationReviewPlan(input: {
   readonly allowAuthorityChanges?: boolean
   readonly projectRoot: string | PrivateProjectRoot
-  readonly packageStoreRoot: string
+  readonly packageStoreRoot: PrivateFileLocation
   readonly planDigest: string
 }): Promise<PrivateActivationApplyReceipt> {
   requireDigest(input.planDigest, 'review plan')
@@ -2300,6 +2325,8 @@ function rootPreflightTerminal(
       'UNAVAILABLE',
       `the admitted target is unavailable: ${target.disposition.code}`,
       {
+        code: 'RUN_TARGET_UNAVAILABLE',
+        availability: target.disposition as unknown as JsonValue,
         evidenceDigests: target.disposition.evidenceDigests,
       },
     )
@@ -3273,7 +3300,7 @@ async function openCoordinatorLock(owner: StateOwner): Promise<CoordinatorLock> 
     COORDINATOR_DATABASE_NAME,
   )
   await validateSidecars(owner.directory, databaseInformation.dev, COORDINATOR_DATABASE_NAME)
-  const visibleStatePath = join(owner.root.requestedPath, STATE_DIRECTORY)
+  const visibleStatePath = join(await sqliteVisibleRoot(owner.root), STATE_DIRECTORY)
   const visibleDatabasePath = join(visibleStatePath, COORDINATOR_DATABASE_NAME)
   await verifyVisibleHierarchy(
     owner.root,
@@ -3420,6 +3447,7 @@ export async function inspectPrivateApprovedProject(
   selector?: string,
   checkEnvironment?: PrivateInspectionEnvironmentCheck,
   describeTargets = false,
+  onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -3446,12 +3474,13 @@ export async function inspectPrivateApprovedProject(
     )
     requireCandidateRoot(candidate, owner.root)
     owner.database.exec('COMMIT')
-    const targets = candidate.candidate.targets.map(({ request }) => ({
+    const targets = candidate.candidate.targets.map(({ request, disposition }) => ({
       target:
         request.target.kind === 'flow'
           ? flowSelector(request.target.path)
           : `binding:${request.target.id}`,
       package: request.packagePath,
+      availability: disposition.state === 'ready' ? { state: 'ready' } : disposition,
     }))
     const targetIndexes = new Map(targets.map((item, index) => [item.target, index]))
     const selectedIndex = selector === undefined ? undefined : targetIndexes.get(selector)
@@ -3472,17 +3501,27 @@ export async function inspectPrivateApprovedProject(
       }
       return pending
     }
-    const checkWithChildren = async (index: number): Promise<PrivateInspectionState> => {
-      const states = [await check(index)]
-      for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
-        if (route.kind !== 'flow') continue
-        const child = route.target
-        const childSelector =
-          child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
-        const childIndex = targetIndexes.get(childSelector)
-        states.push(childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex))
+    const checkedGraphs = new Map<number, Promise<PrivateInspectionState>>()
+    const checkWithChildren = (index: number): Promise<PrivateInspectionState> => {
+      let pending = checkedGraphs.get(index)
+      if (pending === undefined) {
+        pending = (async () => {
+          const states = [await check(index)]
+          for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
+            if (route.kind !== 'flow') continue
+            const child = route.target
+            const childSelector =
+              child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
+            const childIndex = targetIndexes.get(childSelector)
+            states.push(
+              childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex),
+            )
+          }
+          return inspectionState(states)
+        })()
+        checkedGraphs.set(index, pending)
       }
-      return inspectionState(states)
+      return pending
     }
     const listed: JsonValue[] = []
     const states: PrivateInspectionState[] = []
@@ -3515,7 +3554,31 @@ export async function inspectPrivateApprovedProject(
       })
     }
     const state = inspectionState(states)
-    let result: JsonValue = { state, revision: candidate.candidate.lockDigest, targets: listed }
+    onAdmission?.(
+      receipt.admissionDigest,
+      Object.freeze(
+        targets.flatMap((target, index) =>
+          Object.values(candidate.candidate.targets[index]!.request.attachments).includes(
+            'read-write',
+          )
+            ? [target.target]
+            : [],
+        ),
+      ),
+    )
+    const entrypoint =
+      candidate.lock.entrypoint === undefined ? {} : { entrypoint: candidate.lock.entrypoint }
+    const agentOrigin =
+      candidate.lock.agentOverride === undefined
+        ? {}
+        : { agentOverride: candidate.lock.agentOverride }
+    let result: JsonValue = {
+      state,
+      revision: candidate.candidate.lockDigest,
+      ...entrypoint,
+      ...agentOrigin,
+      targets: listed,
+    }
     if (selector !== undefined) {
       const index = selectedIndex!
       const { request } = candidate.candidate.targets[index]!
@@ -3533,7 +3596,10 @@ export async function inspectPrivateApprovedProject(
         result = {
           state,
           revision: candidate.candidate.lockDigest,
+          ...entrypoint,
+          ...agentOrigin,
           target: selector,
+          availability: targets[index]!.availability as unknown as JsonValue,
           package: request.packagePath,
           digest: request.package.digest,
           ...(inspected.metadata.name === undefined ? {} : { name: inspected.metadata.name }),
@@ -3549,6 +3615,7 @@ export async function inspectPrivateApprovedProject(
           settings: request.settings,
           slots: request.slots as unknown as JsonValue,
           attachments: request.attachments,
+          boundReadAttachments: Object.keys(request.boundAttachments ?? {}).sort(),
         }
       } finally {
         await captured.dispose()
@@ -3579,7 +3646,7 @@ async function openStateOwner(
     const statePath = descriptorChild(root.handle, STATE_DIRECTORY)
     if (create) {
       try {
-        await mkdir(statePath, { mode: 0o700 })
+        await mkdirPrivateFile(statePath)
         await root.handle.sync()
       } catch (error) {
         if (!hasCode(error, 'EEXIST')) throw error
@@ -3597,7 +3664,7 @@ async function openStateOwner(
       create && !databaseExists,
     )
     await validateSidecars(directory, databaseInformation.dev)
-    const visibleStatePath = join(root.requestedPath, STATE_DIRECTORY)
+    const visibleStatePath = join(await sqliteVisibleRoot(root), STATE_DIRECTORY)
     const visibleDatabasePath = join(visibleStatePath, DATABASE_NAME)
     await verifyVisibleHierarchy(
       root,
@@ -3750,10 +3817,13 @@ async function acquireStateTurn(root: PrivateProjectRoot): Promise<() => void> {
   }
 }
 
-async function openCheckedDirectory(path: string, projectDevice: bigint): Promise<FileHandle> {
+async function openCheckedDirectory(
+  path: PrivateFileLocation,
+  projectDevice: bigint,
+): Promise<FileHandle> {
   let observed: BigIntStats
   try {
-    observed = await lstat(path, { bigint: true })
+    observed = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT'))
       unavailable('ADMISSION_STATE_MISSING', 'protected .jig admission state does not exist')
@@ -3796,7 +3866,7 @@ function requireStateDirectory(information: BigIntStats, projectDevice: bigint):
 }
 
 async function ensureDatabaseFile(
-  path: string,
+  path: PrivateFileLocation,
   directory: FileHandle,
   expectedDevice: bigint,
   create: boolean,
@@ -3821,7 +3891,7 @@ async function ensureDatabaseFile(
   }
   let observed: BigIntStats
   try {
-    observed = await lstat(path, { bigint: true })
+    observed = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT'))
       unavailable('ADMISSION_STATE_MISSING', `${databaseName} does not exist`)
@@ -3877,7 +3947,7 @@ async function validateSidecars(
   const journalPath = descriptorChild(directory, `${databaseName}-journal`)
   let journal: BigIntStats
   try {
-    journal = await lstat(journalPath, { bigint: true })
+    journal = await lstat(journalPath)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -4701,7 +4771,7 @@ async function observeVisibleLock(root: PrivateProjectRoot): Promise<
       invalid('LOCK_INVALID', 'jig.lock exceeds the private lock byte ceiling')
     const bytes = await readBounded(handle, Number(before.size), JSON_1_LIMITS.bytes)
     const after = await handle.stat({ bigint: true })
-    const pathInformation = await lstat(path, { bigint: true })
+    const pathInformation = await lstat(path)
     if (!sameSnapshot(before, after) || !sameSnapshot(after, pathInformation)) {
       invalid('LOCK_CHANGED', 'jig.lock changed while it was being observed')
     }
@@ -4820,7 +4890,7 @@ async function synchronizeExactVisibleLock(owner: StateOwner, proposed: Uint8Arr
     if (!sameBytes(bytes, proposed)) stale('jig.lock differs from the exact proposed bytes')
     await handle.sync()
     const after = await handle.stat({ bigint: true })
-    const visible = await lstat(path, { bigint: true })
+    const visible = await lstat(path)
     if (!sameSnapshot(before, after) || !sameSnapshot(after, visible)) {
       stale('jig.lock changed while it was synchronized')
     }
@@ -4860,7 +4930,7 @@ async function publishVisibleLock(
     await handle.sync()
     const prepared = await handle.stat({ bigint: true })
     requirePreparedLockStage(prepared, owner.root.information.dev, proposed.byteLength)
-    const preparedPath = await lstat(stagePath, { bigint: true })
+    const preparedPath = await lstat(stagePath)
     if (!sameSnapshot(prepared, preparedPath)) {
       invalid('ADMISSION_LOCK_STAGE_CHANGED', 'reserved lock stage changed while it was prepared')
     }
@@ -4886,7 +4956,7 @@ async function publishVisibleLock(
     await rename(stagePath, lockPath)
     const renamed = await handle.stat({ bigint: true })
     requirePreparedLockStage(renamed, owner.root.information.dev, proposed.byteLength)
-    const visible = await lstat(lockPath, { bigint: true })
+    const visible = await lstat(lockPath)
     if (!sameSnapshot(renamed, visible)) {
       invalid('LOCK_CHANGED', 'published jig.lock path differs from its staged inode')
     }
@@ -4930,7 +5000,7 @@ async function clearSafeLockStage(owner: StateOwner): Promise<void> {
   const path = descriptorChild(owner.directory, LOCK_STAGE_NAME)
   let information: BigIntStats
   try {
-    information = await lstat(path, { bigint: true })
+    information = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -4942,12 +5012,12 @@ async function clearSafeLockStage(owner: StateOwner): Promise<void> {
 
 async function clearOwnedStage(
   owner: StateOwner,
-  path: string,
+  path: PrivateFileLocation,
   expected: BigIntStats,
 ): Promise<void> {
   let current: BigIntStats
   try {
-    current = await lstat(path, { bigint: true })
+    current = await lstat(path)
   } catch (error) {
     if (hasCode(error, 'ENOENT')) return
     throw error
@@ -5009,7 +5079,7 @@ function requireVisibleLockFile(information: BigIntStats, expectedDevice: bigint
 }
 
 async function reacquireCandidateArtifacts(
-  packageStoreRoot: string,
+  packageStoreRoot: PrivateFileLocation,
   candidate: PrivateActivationCandidateArtifactV5,
 ): Promise<ReacquiredArtifacts> {
   const captures = new Map<string, Awaited<ReturnType<typeof captureStoredPackage>>>()
@@ -5023,7 +5093,14 @@ async function reacquireCandidateArtifacts(
         Object.values(entry.attachments ?? {}).map((item) => item.digest),
       ),
       ...candidate.candidate.targets.flatMap((target) =>
-        target.disposition.state === 'ready' ? [target.disposition.execution.package.digest] : [],
+        target.disposition.state === 'ready'
+          ? [
+              target.disposition.execution.package.digest,
+              ...(target.disposition.execution.preparation === undefined
+                ? []
+                : [target.disposition.execution.preparation.package.digest]),
+            ]
+          : [],
       ),
     ])
     for (const digest of [...digests].sort()) {
@@ -5140,20 +5217,27 @@ function requireCandidateRoot(
 }
 
 async function verifyPathIdentity(
-  path: string,
+  path: PrivateFileLocation,
   expected: BigIntStats,
   label: string,
   validate?: (information: BigIntStats) => void,
 ): Promise<void> {
   let current: BigIntStats
   try {
-    current = await lstat(path, { bigint: true })
+    current = await lstat(path)
   } catch {
     invalid('ADMISSION_STATE_CHANGED', `${label} disappeared during the operation`)
   }
   if (!sameIdentity(current, expected))
     invalid('ADMISSION_STATE_CHANGED', `${label} changed during the operation`)
   validate?.(current)
+}
+
+// Apple's system SQLite rejects even the OS /var -> /private/var ancestor alias.
+// SQLite still opens a visible pathname with NOFOLLOW; every hierarchy check
+// compares it with the held root/state/database and also verifies the requested root.
+async function sqliteVisibleRoot(root: PrivateProjectRoot): Promise<string> {
+  return process.platform === 'darwin' ? realpath(root.requestedPath) : root.requestedPath
 }
 
 async function verifyVisibleHierarchy(
@@ -5341,10 +5425,6 @@ async function readBounded(
   return buffer.subarray(0, offset)
 }
 
-function descriptorChild(parent: FileHandle, name: string): string {
-  return `/proc/self/fd/${parent.fd}/${name}`
-}
-
 function sameIdentity(
   left: { readonly dev: bigint; readonly ino: bigint },
   right: { readonly dev: bigint; readonly ino: bigint },
@@ -5378,7 +5458,7 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index])
 }
 
-async function pathExists(path: string): Promise<boolean> {
+async function pathExists(path: PrivateFileLocation): Promise<boolean> {
   try {
     await lstat(path)
     return true
