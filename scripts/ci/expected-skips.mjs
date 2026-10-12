@@ -14,6 +14,9 @@ const manifest = JSON.parse(
 )
 export const expectedSkipInventory = manifest.expectedSkips
 const rules = new Map(expectedSkipInventory.rules.map((rule) => [rule.file, rule]))
+const macExecutedMultiplicities = new Map(
+  manifest.macosExecutedCaseMultiplicities.map((rule) => [rule.file, rule]),
+)
 const linuxFilters = new Map([
   [
     'packages/jig/test/package-provider-host.test.ts',
@@ -102,11 +105,14 @@ export function authorizeExpectedSkips({
     throw new Error('Expected-skip proof requires an exact source revision')
   git(repository, ['rev-parse', '--verify', '--end-of-options', `${source}^{commit}`])
   const blobs = new Map()
-  const seen = new Set()
+  const occurrences = new Map()
   const normalizedCases = skippedCases.map((item) => {
     const file = repositoryPath(item?.file)
     const classname = item.classname ?? ''
     const name = item.name
+    const line = item.line
+    if (line !== undefined && (typeof line !== 'string' || !/^[1-9]\d*$/.test(line)))
+      throw new Error('Skipped case has an invalid source line')
     const fullName = bunCaseFullName({ classname, name })
     const commandKind = item.commandKind ?? 'ordinary'
     if (commandKind !== 'ordinary')
@@ -138,14 +144,44 @@ export function authorizeExpectedSkips({
         : targetId === 'linux'
           ? rule.linuxPatterns
           : rule.macosPatterns
-    if (!filteredOut && !patterns.some((pattern) => new RegExp(pattern).test(fullName)))
+    // Bun leaves skipped test.each placeholders unexpanded, so two frozen
+    // registrations can have identical reporter identities. Only a reviewed
+    // exact case may raise the cap; reporter ordinals or lines never do so.
+    const multiplicity = rule.caseMultiplicities?.find(
+      (entry) =>
+        entry.classname === classname && entry.name === name && entry.targets.includes(targetId),
+    )
+    if (multiplicity && (filter || line !== multiplicity.line))
+      throw new Error('Parameterized skipped case differs from its reviewed owning identity')
+    if (
+      !filteredOut &&
+      !multiplicity &&
+      !patterns.some((pattern) => new RegExp(pattern).test(fullName))
+    )
       throw new Error(`Unexpected skipped case: ${file}: ${fullName}`)
-    const result = { file, classname, name, profile, commandKind, ...(filter ? { filter } : {}) }
+    const result = {
+      file,
+      classname,
+      name,
+      profile,
+      commandKind,
+      ...(line === undefined ? {} : { line }),
+      ...(filter ? { filter } : {}),
+    }
     if (item.profile !== undefined && item.profile !== profile)
       throw new Error('Skipped case has a different runtime profile')
-    const identity = stableJson(result)
-    if (seen.has(identity)) throw new Error('Repeated skipped case identity in one owning command')
-    seen.add(identity)
+    const identity = stableJson({
+      file,
+      classname,
+      name,
+      profile,
+      commandKind,
+      ...(filter ? { filter } : {}),
+    })
+    const count = (occurrences.get(identity) ?? 0) + 1
+    if (count > (multiplicity?.maxOccurrences ?? 1))
+      throw new Error('Repeated skipped case exceeds its reviewed owning-command multiplicity')
+    occurrences.set(identity, count)
     return result
   })
   return {
@@ -262,7 +298,8 @@ export function readMacSkippedCases({
     .sort()
   const shards = planMacHostTests(files, architecture)
   const skippedCases = []
-  const executed = new Set()
+  const executedOwners = new Map()
+  const verifiedMultiplicityFiles = new Set()
   let count = 0
   for (const shard of shards) {
     const directory = inertPath(
@@ -307,6 +344,29 @@ export function readMacSkippedCases({
       const cases = parseJUnit(inertPath(directory, report.path))
       if (!cases.length) throw new Error('Mac owning command has no reported cases')
       const observedFiles = new Set()
+      const owningCommand = `${shard.index}/${report.path}`
+      const executedOccurrences = new Map()
+      const obligations = new Map()
+      if (report.commandKind === 'ordinary') {
+        for (const file of report.files) {
+          const rule = macExecutedMultiplicities.get(file)
+          if (!rule) continue
+          if (report.filter)
+            throw new Error('Mac execution multiplicity has no reviewed name partition')
+          if (!verifiedMultiplicityFiles.has(file)) {
+            const entry = git(repository, ['ls-tree', source, '--', file]).trim()
+            const match = /^100(?:644|755) blob ([0-9a-f]{40,64})\t/.exec(entry)
+            if (!match || match[1] !== rule.blob)
+              throw new Error(`Changed or unavailable Mac execution multiplicity source: ${file}`)
+            verifiedMultiplicityFiles.add(file)
+          }
+          for (const expected of rule.cases)
+            obligations.set(
+              stableJson({ file, classname: expected.classname, name: expected.name }),
+              expected,
+            )
+        }
+      }
       for (const item of cases) {
         const file = repositoryPath(item.file)
         if (!report.files.includes(file))
@@ -318,6 +378,7 @@ export function readMacSkippedCases({
             file,
             classname: item.classname ?? '',
             name: item.name,
+            ...(item.line === undefined ? {} : { line: item.line }),
             commandKind: report.commandKind,
             ...(report.filter ? { filter: report.filter } : {}),
           })
@@ -328,10 +389,18 @@ export function readMacSkippedCases({
             file,
             classname: item.classname ?? '',
             name: item.name,
-            line: item.line ?? null,
           })
-          if (executed.has(identity)) throw new Error('Mac case executed more than once')
-          executed.add(identity)
+          const previousOwner = executedOwners.get(identity)
+          if (previousOwner !== undefined && previousOwner !== owningCommand)
+            throw new Error('Mac case executed more than once across owning commands')
+          const expected = obligations.get(identity)
+          if (expected && item.line !== expected.line)
+            throw new Error('Mac parameterized execution differs from its reviewed source line')
+          const occurrences = (executedOccurrences.get(identity) ?? 0) + 1
+          if (occurrences > (expected?.occurrences ?? 1))
+            throw new Error('Mac execution exceeds its reviewed owning-command multiplicity')
+          executedOccurrences.set(identity, occurrences)
+          executedOwners.set(identity, owningCommand)
           count++
         }
       }
@@ -339,6 +408,9 @@ export function readMacSkippedCases({
         throw new Error('Mac owning command omits a planned file')
       if (report.commandKind !== 'ordinary' && cases.some((item) => item.skipped))
         throw new Error('Native prerequisite and installed-startup reports may not skip cases')
+      for (const [identity, expected] of obligations)
+        if (executedOccurrences.get(identity) !== expected.occurrences)
+          throw new Error('Mac owning command omits reviewed parameterized executions')
     }
   }
   return { count, skipped: skippedCases.length, skippedCases, basis: 'test-cases' }
