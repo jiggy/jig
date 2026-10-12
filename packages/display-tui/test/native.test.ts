@@ -724,3 +724,110 @@ test('local action feedback stays visible without context and alongside a sticky
     model.close()
   }
 })
+
+test('captured image bytes render as bounded native blocks and disposal releases image state', async () => {
+  const { ViewerModel } = await import('../src/viewer-model.js')
+  const { snapshot } = await import('./fixtures.js')
+  const value = snapshot()
+  const image = {
+    mime: 'image/png' as const,
+    width: 1,
+    height: 1,
+    base64:
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+  }
+  value.artifacts.files = [
+    { id: 'image', path: 'photo.png', bytes: 68, state: 'image', clipped: false },
+  ]
+  value.artifacts.permittedAttachments = ['output']
+  const model = new ViewerModel(value, {
+    preview: async () => ({
+      artifactId: 'image',
+      captureGeneration: value.artifacts.generation,
+      provenance: 'verified-delivery',
+      state: 'image',
+      image,
+      bytes: 68,
+      clipped: false,
+    }),
+  })
+  model.select('files')
+  await model.activateFile('image')
+  expect(model.preview?.image).toEqual(image)
+  const dashboard = await NativeRenderer.create(await prepareNative(), model, 100, 36)
+  try {
+    const frame = await dashboard.frame(
+      100,
+      36,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      true,
+    )
+    expect(frame.text).toContain('1 × 1')
+    expect(frame.text).not.toContain('could not be decoded')
+    expect(frame.text).toContain('38;2;255;0;0')
+    expect(Buffer.byteLength(frame.text)).toBeLessThanOrEqual(32768)
+    expect(frame.text).not.toContain(image.base64)
+    const plain = await dashboard.frame(
+      100,
+      36,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      false,
+    )
+    expect(plain.text).toContain('Image preview needs terminal colour')
+    expect(plain.text).not.toMatch(sgr)
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+  expect(model.preview).toBeUndefined()
+})
+
+test('captured CSV retains raw rows with coloured columns and a colour-free fallback', async () => {
+  const { ViewerModel } = await import('../src/viewer-model.js')
+  const { snapshot } = await import('./fixtures.js')
+  const value = snapshot()
+  const text = 'event,filename\nBeach,photo.svg\n'
+  value.artifacts.files = [
+    { id: 'csv', path: 'manifest.csv', bytes: text.length, state: 'text', clipped: false },
+  ]
+  value.artifacts.permittedAttachments = ['output']
+  const model = new ViewerModel(value, {
+    preview: async (intent) => ({
+      ...intent,
+      provenance: 'verified-delivery',
+      state: 'text',
+      text,
+      bytes: text.length,
+      clipped: false,
+    }),
+  })
+  model.select('files')
+  await model.activateFile('csv')
+  const dashboard = await NativeRenderer.create(await prepareNative(), model, 100, 36)
+  try {
+    const frame = await dashboard.frame(
+      100,
+      36,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      true,
+    )
+    expect(frame.text).toMatch(sgr)
+    expect(strip(frame.text)).toContain('Beach,photo.svg')
+    expect(Buffer.byteLength(frame.text)).toBeLessThanOrEqual(32768)
+    const plain = await dashboard.frame(
+      100,
+      36,
+      { panels: [{ kind: 'preview', scroll: 0 }] },
+      0,
+      false,
+    )
+    expect(plain.text).not.toMatch(sgr)
+    expect(plain.text).toContain('event,filename')
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})

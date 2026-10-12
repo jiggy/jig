@@ -32,10 +32,10 @@ Agent, or one that combines both. A **Binding** configures the exact Flow behind
 the slot. The caller receives the method's outcome and output without needing
 to orchestrate its internal implementation.
 
-The [request-triage example](./request-triage.md) demonstrates all three. Code
-handles explicit labels, an Agent interprets messages, and the mixed method
-uses code before asking an Agent. Each returns a suggested queue. The
-application decides whether and how to act on it.
+The [contact-import example](./contact-import.md) demonstrates all three. Its importer calls
+a mapper implemented with code, Agent interpretation, or both. Code validates
+the mapping and rows before writing a contact preview. The application decides
+whether to import those proposed records.
 
 This is what **AI-native** means in Jig's architecture: code and Agent work
 compose at the same level through the methods that contain them. Intelligence
@@ -55,7 +55,7 @@ interpret within that method. Jig supplies only its admitted powers and
 accounts for the work's execution lifecycle. Model output cannot grant new
 authority by requesting it.
 
-In the triage example, the method can suggest only one of three queue names.
+In this hypothetical classifier, the method can suggest only one of three queue names.
 It receives no refund or messaging capability. A valid suggestion can still
 be wrong. The application needs its own policy before a classification can
 cause a consequential action; even a correctly enforced power can be misused
@@ -119,6 +119,6 @@ that idea: help you put powerful methods to work under meaningful direction.
 We call this **agency: power under control**.
 
 [Run your first Flow](./index.md), then
-[try one caller with three implementations](./request-triage.md).
+[try one caller with three implementations](./contact-import.md).
 For a larger application, follow [a tested patch](./tested-patch.md) or the
 [support-case example](./support-case.md).

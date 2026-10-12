@@ -1,9 +1,0 @@
-{
-  "name": "request-triage-mixed",
-  "description": "Use explicit labels first and Agent interpretation for other requests.",
-  "uses": {
-    "agent": {
-      "contract": "./contracts/agent-run/contract.json"
-    }
-  }
-}

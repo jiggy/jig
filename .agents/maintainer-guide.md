@@ -141,6 +141,40 @@ use, replacement, or verification; moving files alone does not remove coupling.
   where their responsibilities differ; do not replace coupling with a universal
   framework or a proliferation of configuration and adapters.
 
+### Create focused, composable Flows
+
+**High modularity is the default for Flow creation.** Build an application by
+composing focused, independently callable Flows. Each Flow owns one cohesive
+capability, with understandable inputs, results, outcomes and required powers.
+An introductory example must teach this practice as clearly as production code.
+A short coordinator can compose substantial work without implementing every
+stage itself.
+
+When a workflow stage has a meaningful input and result, extract it as an
+independent Flow. Grouping captions, creating a contact sheet, finding duplicate
+images and applying a checked copy plan are examples of distinct capabilities.
+Independent responsibility, testing, replacement and narrower powers justify
+these boundaries; a second application using the method is not a prerequisite.
+Do not impose an arbitrary Flow-count ceiling or retain a monolithic method
+merely to make an example look small.
+
+- Make the coordinator's sequence and outcome handling easy to read. Invoke
+  child methods through declared slots and `run.call()`, and inspect their
+  complete results. Never compose Flows by importing their private source.
+- Give each child only the data, attachments and powers needed for its task.
+  Keep application acceptance policy explicit; an Agent proposal does not
+  become an accepted plan merely by crossing a Flow boundary.
+- Give each extracted method a clear invocation contract and focused tests.
+  Verify the composed application separately, including failure, cancellation
+  and any output already produced before a later step fails.
+- Keep mechanical parsing, escaping and formatting helpers as ordinary modules
+  inside their owning Flow when they do not form a meaningful callable method.
+  Moving helpers into files complements Flow composition; it does not replace
+  decomposition of independent capabilities.
+- Prefer explicit, readable composition over generic frameworks, hidden state
+  or configurable orchestration layers. Modularity should make responsibilities
+  easier to understand and methods easier to use separately.
+
 ### Capture, review, and admission
 
 These laws make the accepted work independent of later edits. The portable

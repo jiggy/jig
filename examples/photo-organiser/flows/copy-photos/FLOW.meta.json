@@ -1,0 +1,4 @@
+{
+  "name": "photo-copy",
+  "description": "Check complete photo assignments and produce byte-preserving grouped copies with a CSV manifest."
+}

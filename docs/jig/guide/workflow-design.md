@@ -12,7 +12,7 @@ This guide helps choose a design; it is not a list of current Jig features.
 The [direct-alpha guide](./index.md) defines what Jig supports today.
 
 Code and Agent work share a Flow boundary. Choose their arrangement inside a
-method before adding orchestration around it. The [request-triage example](./request-triage.md)
+method before adding orchestration around it. The [contact-import example](./contact-import.md)
 shows one caller using code, an Agent, or both without changing its calling model.
 
 ## Put each concern where it belongs

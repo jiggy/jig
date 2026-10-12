@@ -33,7 +33,7 @@ const sidebar = [
   {
     text: 'Examples',
     items: [
-      { text: 'One caller, three implementations', link: '/guide/request-triage' },
+      { text: 'Preview unfamiliar CSV contacts', link: '/guide/contact-import' },
       { text: 'Handle a disputed charge', link: '/guide/support-case' },
       { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
       { text: 'Run a small software factory', link: '/guide/software-factory' },
@@ -144,7 +144,7 @@ export default defineConfig({
     enableScrollToTop: true,
     nav: [
       { text: 'Documentation', link: '/guide/overview' },
-      { text: 'Example', link: '/guide/request-triage' },
+      { text: 'Example', link: '/guide/contact-import' },
       { text: 'For agents', link: '/guide/for-agents' },
       { text: 'Pricing', link: '/pricing' },
       { text: 'FLOW', link: 'https://flow.jig.md/' },

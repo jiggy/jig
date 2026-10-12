@@ -20,6 +20,9 @@ browser inspector. Producers own evidence and authority; viewers own navigation.
 
 ## Local Contracts
 
+- Captured text uses shared format detection and inert token spans. Complete
+  rectangular CSV/TSV excerpts offer Table/Raw views (500 rows, 64 columns);
+  clipped or malformed excerpts stay raw, and search always uses raw text.
 - Import only model/reporting and this package's modules; no Jig/TUI import.
 - Keep capability in memory and remove its fragment before requests. No storage,
   CDN, router, server framework, automatic Run replay or execution callbacks.
@@ -33,6 +36,8 @@ browser inspector. Producers own evidence and authority; viewers own navigation.
   reference targets retain raw IDs. Use `browserView` to resolve selected views.
 - Render author/file/diagnostic data as inert text. Only typed scoped references
   navigate; path strings never grant evidence access or assign domain success.
+- Captured images use validated bounded PNG/JPEG data URLs in image elements.
+  Never insert SVG into the DOM or load image paths/URLs from authored text.
 - Fixed bundled Preact is build-only. Installed assets read no sibling source or
   checkout-relative files and initialize no native renderer.
 

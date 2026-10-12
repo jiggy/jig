@@ -1,5 +1,11 @@
 import type { DetailBlock, Reference, Value } from '@jigging/reporting'
-import { attentionImportance, displayViewKey } from '@jigging/display-model'
+import {
+  attentionImportance,
+  displayViewKey,
+  detectDisplayTextFormat,
+  displayTextTokens,
+  displayDelimitedRows,
+} from '@jigging/display-model'
 import { type ComponentChildren, h, render } from 'preact'
 import type {
   DisplayAttribution,
@@ -603,13 +609,29 @@ function recordKeyDown(event: KeyboardEvent): void {
 
 function Preview({ path }: { path: string }): ComponentChildren {
   const state = currentLocal()
-  const { previewSearch, previewWrap, plainDiff } = state
+  const { previewSearch, previewWrap, plainDiff, csvRaw } = state
   const preview = client?.preview
   const reply = preview?.reply
   const text = privateBrowserLiteral(reply?.text ?? '')
+  const format = detectDisplayTextFormat(path, text)
+  const rows =
+    !reply?.clipped && (format === 'csv' || format === 'tsv')
+      ? displayDelimitedRows(text, format === 'tsv' ? '\t' : ',')
+      : undefined
   const patchText = text.startsWith('diff --git ') || /^--- [^\n]+\n\+\+\+ [^\n]+\n@@ /.test(text)
   const diff = !plainDiff && patchText && text.split('\n').length <= 2048
-  let content: ComponentChildren = text
+  let content: ComponentChildren = displayTextTokens(text, format).map((token, index) =>
+    h(
+      'span',
+      {
+        key: index,
+        class:
+          token.column === undefined ? `syntax-${token.role}` : `csv-column-${token.column % 6}`,
+      },
+      token.text,
+    ),
+  )
+  if (patchText && plainDiff) content = text
   let matches = 0
   if (previewSearch && text) {
     const parts: ComponentChildren[] = []
@@ -661,78 +683,138 @@ function Preview({ path }: { path: string }): ComponentChildren {
               {},
               'Immutable text preview unavailable. Inspect the delivered evidence location reported in the terminal.',
             )
-          : reply?.state === 'non-text'
-            ? h('p', {}, 'This captured file has no UTF-8 text preview.')
-            : reply?.state === 'empty'
-              ? h('p', {}, 'This file is empty.')
-              : h(
-                  'div',
+          : reply?.state === 'image' && reply.image
+            ? h(
+                'figure',
+                { class: 'captured-image' },
+                h('img', {
+                  src: `data:${reply.image.mime};base64,${reply.image.base64}`,
+                  alt: `Captured image: ${privateBrowserLiteral(path)}`,
+                  width: reply.image.width,
+                  height: reply.image.height,
+                }),
+                h(
+                  'figcaption',
                   {},
-                  h(
-                    'div',
-                    { class: 'preview-controls' },
-                    button(previewWrap ? 'Preserve lines' : 'Wrap text', () => {
-                      state.previewWrap = !previewWrap
-                      redraw()
-                    }),
-                    patchText
-                      ? button(plainDiff ? 'Diff colors' : 'Plain text', () => {
-                          state.plainDiff = !plainDiff
-                          redraw()
-                        })
-                      : null,
-                    h(
-                      'label',
-                      {},
-                      'Search retained excerpt',
-                      h('input', {
-                        value: previewSearch,
-                        maxLength: 1024,
-                        placeholder: 'Literal text…',
-                        onInput: (event: Event) => {
-                          state.previewSearch = (event.target as HTMLInputElement).value
-                          redraw()
-                        },
-                      }),
-                    ),
-                  ),
-                  previewSearch
-                    ? h(
-                        'p',
-                        { class: 'secondary' },
-                        `${matches}${matches === 128 ? ' or more' : ''} matches in this retained excerpt`,
-                      )
-                    : null,
-                  h(
-                    'pre',
-                    {
-                      class: previewWrap ? 'wrap' : '',
-                      tabIndex: 0,
-                      'aria-label': 'Retained file excerpt',
-                      onScroll: (event: Event) => {
-                        const element = event.currentTarget as HTMLElement
-                        state.previewScroll = {
-                          signature: state.signature ?? '',
-                          left: element.scrollLeft,
-                          top: element.scrollTop,
-                        }
-                      },
-                      ref: (element: HTMLElement | null) => {
-                        const anchor = state.previewScroll
-                        if (element && anchor && anchor.signature === state.signature) {
-                          element.scrollTop = anchor.top
-                          element.scrollLeft = anchor.left
-                        }
-                      },
-                    },
-                    h('code', {}, content),
-                  ),
+                  `${reply.image.width} × ${reply.image.height} · ${reply.bytes} original bytes`,
                 ),
+              )
+            : reply?.state === 'non-text'
+              ? h('p', {}, 'This captured file has no UTF-8 text preview.')
+              : reply?.state === 'empty'
+                ? h('p', {}, 'This file is empty.')
+                : h(
+                    'div',
+                    {},
+                    h(
+                      'div',
+                      { class: 'preview-controls' },
+                      button(previewWrap ? 'Preserve lines' : 'Wrap text', () => {
+                        state.previewWrap = !previewWrap
+                        redraw()
+                      }),
+                      rows
+                        ? button(csvRaw ? 'Table view' : 'Raw text', () => {
+                            state.csvRaw = !csvRaw
+                            redraw()
+                          })
+                        : null,
+                      h(
+                        'span',
+                        { class: 'secondary' },
+                        format === 'plain' ? 'Plain text' : format.toUpperCase(),
+                      ),
+                      patchText
+                        ? button(plainDiff ? 'Diff colors' : 'Plain text', () => {
+                            state.plainDiff = !plainDiff
+                            redraw()
+                          })
+                        : null,
+                      h(
+                        'label',
+                        {},
+                        'Search retained excerpt',
+                        h('input', {
+                          value: previewSearch,
+                          maxLength: 1024,
+                          placeholder: 'Literal text…',
+                          onInput: (event: Event) => {
+                            state.previewSearch = (event.target as HTMLInputElement).value
+                            redraw()
+                          },
+                        }),
+                      ),
+                    ),
+                    previewSearch
+                      ? h(
+                          'p',
+                          { class: 'secondary' },
+                          `${matches}${matches === 128 ? ' or more' : ''} matches in this retained excerpt`,
+                        )
+                      : null,
+                    rows && !csvRaw && !previewSearch
+                      ? h(
+                          'div',
+                          { class: 'csv-table', tabIndex: 0 },
+                          h(
+                            'table',
+                            {},
+                            h(
+                              'thead',
+                              {},
+                              h(
+                                'tr',
+                                {},
+                                rows[0]!.map((cell, i) =>
+                                  h('th', { class: `csv-column-${i % 6}` }, cell),
+                                ),
+                              ),
+                            ),
+                            h(
+                              'tbody',
+                              {},
+                              rows.slice(1).map((row) =>
+                                h(
+                                  'tr',
+                                  {},
+                                  row.map((cell, i) =>
+                                    h('td', { class: `csv-column-${i % 6}` }, cell),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : h(
+                          'pre',
+                          {
+                            class: previewWrap ? 'wrap' : '',
+                            tabIndex: 0,
+                            'aria-label': 'Retained file excerpt',
+                            onScroll: (event: Event) => {
+                              const element = event.currentTarget as HTMLElement
+                              state.previewScroll = {
+                                signature: state.signature ?? '',
+                                left: element.scrollLeft,
+                                top: element.scrollTop,
+                              }
+                            },
+                            ref: (element: HTMLElement | null) => {
+                              const anchor = state.previewScroll
+                              if (element && anchor && anchor.signature === state.signature) {
+                                element.scrollTop = anchor.top
+                                element.scrollLeft = anchor.left
+                              }
+                            },
+                          },
+                          h('code', {}, content),
+                        ),
+                  ),
     reply
       ? h(
           'p',
           { class: 'secondary' },
-          `${reply.bytes} bytes · ${reply.provenance === 'recorded-capture' ? 'Recorded immutable capture' : 'Verified delivery'}${reply.clipped ? ' · excerpt clipped at 64 KiB' : ''}. Search covers the retained excerpt only.`,
+          `${reply.bytes} bytes · ${reply.provenance === 'recorded-capture' ? 'Recorded immutable capture' : 'Verified delivery'}${reply.clipped ? ' · excerpt clipped at 64 KiB' : ''}${reply.state === 'image' ? '.' : '. Search covers the retained excerpt only.'}`,
         )
       : null,
   )
@@ -906,13 +988,15 @@ function Files(): ComponentChildren {
                     h(
                       'small',
                       {},
-                      item.state === 'non-text'
-                        ? 'No text preview'
-                        : item.state === 'unavailable'
-                          ? 'Preview unavailable'
-                          : item.state === 'empty'
-                            ? 'Empty file'
-                            : 'Text preview',
+                      item.state === 'image'
+                        ? 'Image preview'
+                        : item.state === 'non-text'
+                          ? 'No text preview'
+                          : item.state === 'unavailable'
+                            ? 'Preview unavailable'
+                            : item.state === 'empty'
+                              ? 'Empty file'
+                              : 'Text preview',
                     ),
                   ),
                   () => select(item.id),

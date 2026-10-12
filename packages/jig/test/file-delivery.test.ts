@@ -23,6 +23,7 @@ import {
 import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
 import { privateOpenFileRoot } from '../src/internal/file-input.js'
 import { PrivateRunCheckpoints } from '../src/internal/private-run-checkpoint.js'
+import { privatePresentationNow } from '../src/internal/root-run-timeout-policy.js'
 
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-file-delivery-')))
@@ -33,6 +34,67 @@ async function fixture(work: (root: string) => Promise<void>) {
   }
 }
 const record = { status: 'succeeded', outcome: 'blocked', output: { reason: 'synthetic evidence' } }
+
+test('packet streaming cannot renew time already spent in its native delivery phase', async () =>
+  fixture(async (root) => {
+    for (const phase of ['expired', 'during-staging']) {
+      const owner = new PrivateFileDeliveryOwner(new AbortController().signal, async () => {
+        await Bun.sleep(60)
+      })
+      const destination = join(root, phase)
+      try {
+        await owner.prepare(destination, [])
+        const deadline = privatePresentationNow() + (phase === 'expired' ? -1 : 30)
+        expect(
+          await owner.publish(record, undefined, undefined, false, undefined, deadline),
+        ).toMatchObject({ status: 'failed', code: 'DEADLINE_EXCEEDED' })
+        await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        expect(await readdir(root)).toEqual([])
+      } finally {
+        await owner.close()
+      }
+    }
+  }))
+
+test.skipIf(!['linux', 'darwin'].includes(process.platform))(
+  'command recovers its pinned root without checkpoints, before and after publication',
+  async () =>
+    fixture(async (root) => {
+      for (const phase of ['before-setup', 'after-publication']) {
+        const destination = join(root, `packet-${phase}`)
+        const recovered = join(root, `recovered-${phase}`)
+        const exit = await privateOwnFileCommand(
+          [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
+          ],
+          [destination, join(root, `pid-${phase}`), `root-recovery-${phase}`, recovered],
+          undefined,
+          10_000,
+        )
+        expect(exit).toEqual({ exitCode: null, signal: 'SIGKILL' })
+        const binding = JSON.parse(await readFile(recovered, 'utf8'))
+        const information = await stat(root, { bigint: true })
+        expect(binding).toEqual({
+          project: root,
+          epoch: 1,
+          runId: `sha256:${'a'.repeat(64)}`,
+          device: String(information.dev),
+          inode: String(information.ino),
+        })
+        if (phase === 'before-setup')
+          await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        else
+          expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
+            'succeeded',
+          )
+      }
+    }),
+  25_000,
+)
 
 test.skipIf(process.platform !== 'darwin')(
   'native inspection retains immutable preview within the unchanged command lifetime',
@@ -93,6 +155,10 @@ test('inspection retains only verified immutable bytes and closes previews with 
     await writeFile(join(source, 'large.txt'), 'x' + '🧭'.repeat(20000))
     await writeFile(join(source, 'binary'), Buffer.from([255, 128]))
     await writeFile(join(source, 'empty'), '')
+    await writeFile(
+      join(source, 'chart.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
+    )
     const fd = privateOpenFileRoot(source),
       capture = capturePrivateOutput(fd)
     closeSync(fd)
@@ -106,26 +172,32 @@ test('inspection retains only verified immutable bytes and closes previews with 
       expect(owner.preview('review.patch')?.text).toBe('Original checked patch\n')
       const large = owner.preview('large.txt')!
       expect(large.clipped).toBe(true)
-      expect(Buffer.byteLength(large.text)).toBeLessThanOrEqual(65536)
+      expect(Buffer.byteLength(large.text)).toBeLessThanOrEqual(4096)
       expect(large.text.endsWith('🧭')).toBe(true)
       expect(large.bytes).toBe(80001)
       expect(owner.preview('binary')).toBeUndefined()
-      expect(owner.inspectionPreview('binary')).toEqual({
+      expect(await owner.inspectionPreview('binary')).toEqual({
         state: 'non-text',
         bytes: 2,
         clipped: false,
       })
-      expect(owner.inspectionPreview('empty')).toEqual({
+      expect(await owner.inspectionPreview('empty')).toEqual({
         state: 'empty',
         text: '',
         bytes: 0,
         clipped: false,
       })
-      expect(owner.inspectionPreview('missing')).toEqual({
+      expect(await owner.inspectionPreview('missing')).toEqual({
         state: 'unavailable',
         bytes: 0,
         clipped: false,
       })
+      const image = await owner.inspectionPreview('chart.svg')
+      expect(image.state).toBe('text')
+      expect(image.text).toContain('<svg')
+      expect(image.image).toBeUndefined()
+      await writeFile(join(destination, 'files/chart.svg'), 'Changed image')
+      expect(await owner.inspectionPreview('chart.svg')).toEqual(image)
       await rm(destination, { recursive: true })
       expect(owner.preview('review.patch')?.text).toContain('Original')
     } finally {
@@ -133,6 +205,68 @@ test('inspection retains only verified immutable bytes and closes previews with 
       capture.close()
     }
     expect(owner.preview('review.patch')).toBeUndefined()
+  }))
+
+test('every accepted text file retains its excerpt when output exceeds the preview allowance', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source')
+    await mkdir(source)
+    for (let index = 0; index < 5; index++)
+      await writeFile(join(source, `file-${index}.txt`), String(index).repeat(1024 * 1024))
+    const fd = privateOpenFileRoot(source)
+    const capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    owner.enableInspection()
+    try {
+      await owner.prepare(join(root, 'packet'), [])
+      expect((await owner.publish(record, { kind: 'snapshot', capture })).status).toBe('written')
+      for (let index = 0; index < 5; index++) {
+        expect(await owner.inspectionPreview(`file-${index}.txt`)).toEqual({
+          state: 'text',
+          text: String(index).repeat(4096),
+          bytes: 1024 * 1024,
+          clipped: true,
+        })
+      }
+    } finally {
+      await owner.close()
+      capture.close()
+    }
+  }))
+
+test('image source retention shares one aggregate budget and reserves every text prefix', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source')
+    await mkdir(source)
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/><!--' +
+      'x'.repeat(48000) +
+      '--></svg>'
+    for (let index = 0; index < 64; index++)
+      await writeFile(join(source, `image-${String(index).padStart(2, '0')}.svg`), svg)
+    const fd = privateOpenFileRoot(source)
+    const capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    owner.enableInspection()
+    const destination = join(root, 'packet')
+    try {
+      await owner.prepare(destination, [])
+      expect((await owner.publish(record, { kind: 'snapshot', capture })).status).toBe('written')
+      expect((await owner.inspectionPreview('image-00.svg')).state).toBe('text')
+      const last = await owner.inspectionPreview('image-63.svg')
+      expect(last.state).toBe('text')
+      expect(last.text?.length).toBe(4096)
+      expect(last.clipped).toBeTrue()
+      expect(await readFile(join(destination, 'files/image-63.svg'), 'utf8')).toBe(svg)
+      const pending = owner.inspectionPreview('image-01.svg')
+      await owner.close()
+      expect((await pending).state).toBe('unavailable')
+    } finally {
+      await owner.close()
+      capture.close()
+    }
   }))
 
 test('delivery close joins pending preparation and memoizes exact descriptor cleanup failure', async () =>

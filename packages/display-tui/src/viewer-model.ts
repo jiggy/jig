@@ -1,3 +1,4 @@
+import { validDisplayImage, type DisplayImagePreview } from '@jigging/display-model'
 import type {
   Block,
   Collection,
@@ -61,7 +62,7 @@ export function observedTime(value: number): string {
   return Number.isFinite(date.getTime()) ? date.toISOString() : 'Time unavailable'
 }
 
-type ViewerPreview = { text: string; bytes: number; clipped: boolean }
+type ViewerPreview = { text: string; image?: DisplayImagePreview; bytes: number; clipped: boolean }
 export type ViewerCall = {
   id: string
   key: string
@@ -122,7 +123,7 @@ type CaptureFile = {
   id: string
   path: string
   bytes: number
-  state: 'text' | 'empty' | 'non-text' | 'unavailable'
+  state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   clipped: boolean
 }
 export type ViewerRecord = {
@@ -953,7 +954,7 @@ export class ViewerModel {
       this.onChange()
       return
     }
-    if (!['text', 'empty'].includes(file.state)) {
+    if (!['text', 'empty', 'image'].includes(file.state)) {
       this.previewState = file.state
       this.onChange()
       return
@@ -980,13 +981,34 @@ export class ViewerModel {
           Number.isSafeInteger(reply.bytes) &&
           reply.bytes >= 0 &&
           typeof reply.clipped === 'boolean' &&
-          (reply.state === 'text' || reply.state === 'empty') &&
-          typeof reply.text === 'string' &&
-          Buffer.byteLength(reply.text) <= 65536
+          ((reply.state === 'image' && validDisplayImage(reply.image)) ||
+            ((reply.state === 'text' || reply.state === 'empty') &&
+              typeof reply.text === 'string' &&
+              Buffer.byteLength(reply.text) <= 65536))
         this.preview = valid
-          ? { text: reply.text!, bytes: reply.bytes, clipped: reply.clipped }
+          ? {
+              text: reply.text ?? '',
+              ...(reply.image
+                ? {
+                    image: Object.freeze({
+                      mime: reply.image.mime,
+                      width: reply.image.width,
+                      height: reply.image.height,
+                      base64: reply.image.base64,
+                    }),
+                  }
+                : {}),
+              bytes: reply.bytes,
+              clipped: reply.clipped,
+            }
           : undefined
-        this.previewState = this.preview ? (this.preview.text ? 'text' : 'empty') : 'unavailable'
+        this.previewState = this.preview
+          ? this.preview.image
+            ? 'image'
+            : this.preview.text
+              ? 'text'
+              : 'empty'
+          : 'unavailable'
         this.feedback = this.preview
           ? `Immutable captured preview: ${title}`
           : `Immutable preview unavailable; inspect ${this.workspace.recorded ? 'the selected packet' : 'the delivered location'}`

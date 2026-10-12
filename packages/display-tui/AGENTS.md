@@ -25,6 +25,8 @@ and portable reporting data without a Jig host or execution owner.
 
 ## Local Contracts
 
+- Captured text uses shared format detection and lexical token roles; CSV/TSV
+  columns have repeating colours without changing raw whitespace or search.
 - Depend only on declared display-model, reporting and native support exports;
   never import Jig, another renderer, sibling source or generated output paths.
 - Hydrate owned validated snapshots atomically. Do not replay host admission,
@@ -44,8 +46,12 @@ and portable reporting data without a Jig host or execution owner.
 - Snapshot replacement preserves local stable identities and repairs removed rows
   against the previous ordering, including views not currently selected.
 - Preview requests use opaque inventory and capture-generation identities.
-  Retain one active excerpt of at most 64 KiB, fence selection/capture/disposal,
-  and reuse retained content for expansion and literal search.
+  Retain one active excerpt of at most 64 KiB or a bounded model image. Fence
+  selection/capture/disposal; reuse text for expansion and literal search.
+- ImageRenderable receives decoded captured PNG/JPEG bytes only, using blocks
+  within the existing frame ceiling. Colour-free/compact output retains image
+  metadata; images have no excerpt-search action. No paths, URLs, overlays or graphics escapes.
+  Destroying the selected subtree releases its retained native image.
 - Exit confirmation is viewer-local, defaults to Stay and survives observation
   replacement. q requests it; Escape dismisses panels/returns without closing
   at the top level. Live interrupt and caller-driven disposal stay immediate.

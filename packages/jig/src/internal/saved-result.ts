@@ -1,3 +1,7 @@
+import { privateImagePreview } from './image-preview.js'
+import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
+import type { DisplayImagePreview } from '@jigging/display-model'
+import type { PrivatePreview } from '../cli-run-model.js'
 import { closeSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
@@ -12,7 +16,7 @@ import {
 } from './file-input.js'
 
 const FILE_BYTES = 16 * 1024 * 1024
-const PREVIEW_BYTES = 65536
+const PREVIEW_BYTES = PRIVATE_PREVIEW_LIMITS.textBytes
 export type PrivateSavedResultFile = Readonly<{
   path: string
   bytes: number
@@ -94,15 +98,15 @@ export interface PrivateSavedResult {
   readonly complete: boolean
   readonly finding?: string
   reportPreview(): { text: string; bytes: number; clipped: boolean }
-  preview(path: string): { text: string; bytes: number; clipped: boolean } | undefined
+  preview(path: string): PrivatePreview | undefined
   close(): void
 }
 
 /** Capture once through held descriptors. Previews never reopen mutable paths. */
-export function privateCaptureSavedResult(
+export async function privateCaptureSavedResult(
   directory: string,
   signal?: AbortSignal,
-): PrivateSavedResult {
+): Promise<PrivateSavedResult> {
   const deadline = performance.now() + 10_000
   const check = () => {
     signal?.throwIfAborted()
@@ -110,11 +114,13 @@ export function privateCaptureSavedResult(
   }
   let root: number | undefined, filesRoot: number | undefined, report: Buffer | undefined
   const retained = new Map<string, Buffer>()
+  const images = new Map<string, DisplayImagePreview>()
   const discard = () => {
     report?.fill(0)
     report = undefined
     for (const bytes of retained.values()) bytes.fill(0)
     retained.clear()
+    images.clear()
   }
   const closeDirectories = () => {
     const owned = [filesRoot, root]
@@ -177,6 +183,19 @@ export function privateCaptureSavedResult(
     // Finish all descriptor cleanup before handing the copied-byte owner out.
     closeDirectories()
     signal?.throwIfAborted()
+    let imageBytes = 0
+    for (const [path, bytes] of retained) {
+      check()
+      const image = await privateImagePreview(bytes, signal)
+      signal?.throwIfAborted()
+      if (image) {
+        const charge = privatePreviewStringBytes(image.base64)
+        if (imageBytes + charge <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
+          images.set(path, image)
+          imageBytes += charge
+        }
+      }
+    }
     const capturedReport = report
     let closed = false
     return {
@@ -195,7 +214,9 @@ export function privateCaptureSavedResult(
         if (closed) return undefined
         privateFilePath(path)
         const bytes = retained.get(path)
-        return bytes === undefined ? undefined : preview(bytes)
+        if (bytes === undefined) return undefined
+        const image = images.get(path)
+        return image ? { text: '', image, bytes: bytes.length, clipped: false } : preview(bytes)
       },
       close() {
         if (closed) return

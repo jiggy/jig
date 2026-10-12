@@ -42,12 +42,19 @@ export type DisplayAttribution =
       ancestryIncomplete: boolean
     }>
   | Readonly<{ provenance: 'recorded-claim'; sourceLabel: string }>
+export type DisplayImagePreview = Readonly<{
+  mime: 'image/png' | 'image/jpeg'
+  width: number
+  height: number
+  base64: string
+}>
 export type DisplayPreviewReply = Readonly<{
   artifactId: string
   captureGeneration: string
   provenance: 'verified-delivery' | 'recorded-capture'
-  state: 'text' | 'empty' | 'non-text' | 'unavailable'
+  state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   text?: string
+  image?: DisplayImagePreview
   bytes: number
   clipped: boolean
 }>

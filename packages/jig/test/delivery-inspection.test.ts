@@ -99,8 +99,8 @@ test('inspection captures serial verified excerpts and exposes only pure state a
   expect(capture.preview('patch')).toBeUndefined()
 })
 
-test('maximum legal serial capture retains 64 excerpts at the 4 MiB text ceiling', async () => {
-  const text = 'x'.repeat(65536)
+test('maximum legal serial capture retains 64 excerpts at the 512 KiB UTF-16 ceiling', async () => {
+  const text = 'x'.repeat(4096)
   const files = Array.from({ length: 64 }, (_, index) => ({ path: `file-${index}`, bytes: 65537 }))
   let reads = 0
   const capture = await privateCaptureDeliveryInspection(
@@ -117,8 +117,53 @@ test('maximum legal serial capture retains 64 excerpts at the 4 MiB text ceiling
   expect(capture.files.every((file) => file.clipped)).toBe(true)
   expect(
     files.reduce((sum, file) => sum + Buffer.byteLength(capture.preview(file.path)!.text!), 0),
-  ).toBe(4 * 1024 * 1024)
+  ).toBe(256 * 1024)
   capture.close()
+})
+
+test('inspection uses the output allowance rather than the smaller input allowance', async () => {
+  const bytes = 16 * 1024 * 1024
+  let retired = false
+  const capture = await privateCaptureDeliveryInspection(
+    connection({
+      async inspectionPreview() {
+        return { state: 'non-text', bytes, clipped: true }
+      },
+      async retire() {
+        retired = true
+      },
+    }),
+    receipt([{ path: 'full-output.bin', bytes }]),
+  )
+  expect(capture.files[0]?.bytes).toBe(bytes)
+  expect(retired).toBeTrue()
+  capture.close()
+})
+
+test('aggregate retained image strings are charged before transfer at two bytes per code unit', async () => {
+  const png = Buffer.alloc(65536)
+  png.set([137, 80, 78, 71, 13, 10, 26, 10])
+  png.write('IHDR', 12, 'ascii')
+  png.writeUInt32BE(1, 16)
+  png.writeUInt32BE(1, 20)
+  const image = { mime: 'image/png' as const, width: 1, height: 1, base64: png.toString('base64') }
+  let retired = false
+  await expect(
+    privateCaptureDeliveryInspection(
+      connection({
+        async inspectionPreview() {
+          return { state: 'image', image, bytes: 65536, clipped: false }
+        },
+        async retire() {
+          retired = true
+        },
+      }),
+      receipt(
+        Array.from({ length: 3 }, (_, index) => ({ path: `image-${index}.png`, bytes: 65536 })),
+      ),
+    ),
+  ).rejects.toMatchObject({ code: 'INVALID_CAPTURE' })
+  expect(retired).toBeTrue()
 })
 
 test('preview extraction stops at ten seconds and cannot refresh the total retirement deadline', async () => {
@@ -580,7 +625,7 @@ test('retire joins one pending preview before sending its authenticated request'
   const delivery = channel(socket)
   delivery.enableInspection!()
   const preview = delivery.inspectionPreview!('evidence', bound())
-  await Promise.resolve()
+  await new Promise<void>((resolve) => setImmediate(resolve))
   const retiring = delivery.retire!(bound())
   expect(socket.requests.map((request) => request.type)).toEqual(['preview'])
   previewPeer!.reply({ ok: true, preview: { state: 'empty', text: '', bytes: 0, clipped: false } })
@@ -588,4 +633,42 @@ test('retire joins one pending preview before sending its authenticated request'
   await retiring
   expect(socket.requests.map((request) => request.type)).toEqual(['preview', 'retire'])
   expect(delivery.signal.aborted).toBe(false)
+})
+
+test('image transfer retires authority and rejects non-raster or oversized preview payloads', async () => {
+  const image = {
+    mime: 'image/png' as const,
+    width: 1,
+    height: 1,
+    base64:
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+  }
+  const capture = await privateCaptureDeliveryInspection(
+    connection({
+      async inspectionPreview() {
+        return { state: 'image', image, bytes: 100, clipped: false }
+      },
+      async retire() {},
+    }),
+    receipt([{ path: 'photo.png', bytes: 100 }]),
+  )
+  expect(capture.files[0]?.state).toBe('image')
+  expect(capture.preview('photo.png')?.image).toEqual(image)
+  capture.close()
+  expect(capture.preview('photo.png')).toBeUndefined()
+  let retired = false
+  await expect(
+    privateCaptureDeliveryInspection(
+      connection({
+        async inspectionPreview() {
+          return { state: 'image', image: { ...image, width: 100000 }, bytes: 100, clipped: false }
+        },
+        async retire() {
+          retired = true
+        },
+      }),
+      receipt([{ path: 'photo.png', bytes: 100 }]),
+    ),
+  ).rejects.toThrow('INVALID_CAPTURE')
+  expect(retired).toBeTrue()
 })

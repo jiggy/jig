@@ -29,7 +29,7 @@ FLOW owns the portable boundary. Jig owns local authority and execution lifecycl
 A shared interface does not establish equal judgment, cost, or required powers.
 
 See [why FLOW exists](./understand.md) and the
-[complete Jig example](https://jig.md/guide/request-triage).
+[complete Jig example](https://jig.md/guide/contact-import).
 
 ## A focused starting instruction
 

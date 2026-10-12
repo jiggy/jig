@@ -5,7 +5,9 @@
   "workspaces": [
     "packages/*",
     "examples/*",
-    "examples/*/flows/*"
+    "examples/*/flows/*",
+    "packages/jig/test/fixtures/incident-brief",
+    "packages/jig/test/fixtures/incident-brief/flows/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "2.5.12"

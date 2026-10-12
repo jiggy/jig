@@ -10,6 +10,7 @@ import {
   statPrivateFile,
   unlinkPrivateFile,
 } from './descriptor-files.js'
+import { PRIVATE_CAPTURE_CHUNK_BYTES } from './file-input-policy.js'
 
 const DIRECTORY = constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW
 
@@ -18,6 +19,20 @@ export async function writePrivateDeliveryFile(
   root: FileHandle,
   path: string,
   bytes: Uint8Array,
+  check: () => void,
+): Promise<void> {
+  function* chunks() {
+    for (let offset = 0; offset < bytes.byteLength; offset += PRIVATE_CAPTURE_CHUNK_BYTES)
+      yield bytes.subarray(offset, offset + PRIVATE_CAPTURE_CHUNK_BYTES)
+  }
+  await writePrivateDeliveryStream(root, path, chunks(), check)
+}
+
+/** Borrow each bounded chunk until its write completes, then request the next. */
+export async function writePrivateDeliveryStream(
+  root: FileHandle,
+  path: string,
+  chunks: Iterable<Uint8Array>,
   check: () => void,
 ): Promise<void> {
   const parts = path.split('/')
@@ -40,7 +55,17 @@ export async function writePrivateDeliveryFile(
       constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
     )
     try {
-      await file.writeFile(bytes)
+      for (const chunk of chunks) {
+        if (!(chunk instanceof Uint8Array) || chunk.byteLength > PRIVATE_CAPTURE_CHUNK_BYTES)
+          throw new TypeError('delivery stream chunk exceeds its bound')
+        let written = 0
+        while (written < chunk.byteLength) {
+          check()
+          const result = await file.write(chunk, written, chunk.byteLength - written)
+          if (result.bytesWritten === 0) throw new Error('delivery write made no progress')
+          written += result.bytesWritten
+        }
+      }
     } finally {
       await file.close()
     }

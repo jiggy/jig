@@ -425,6 +425,8 @@ function progressText(block: Extract<DetailBlock, { kind: 'progress' }>, width: 
 /** The list owns identity and a short observation; details add context or evidence.
  * Typed parts are private presentation data, not a new author-facing contract. */
 export function viewerPreviewState(model: ViewerModel): string {
+  if (model.preview?.image)
+    return `Image preview: ${model.preview.image.width} × ${model.preview.image.height}`
   return model.previewState === 'empty'
     ? 'This captured text file is empty.'
     : model.previewState === 'non-text'
@@ -489,7 +491,11 @@ export function viewerDetailParts(
     (record.file || (artifact.length === 1 && artifact[0]?.kind === 'artifact'))
   ) {
     heading(model.previewTitle ?? 'Immutable captured content')
-    text(model.preview?.text ?? viewerPreviewState(model))
+    text(
+      model.preview?.image
+        ? viewerPreviewState(model)
+        : (model.preview?.text ?? viewerPreviewState(model)),
+    )
     text(
       `${model.artifactCapture.provenance === 'recorded-capture' ? 'Recorded capture' : 'Verified delivery'}${model.preview ? ` · ${model.preview.bytes} bytes${model.preview.clipped ? ' · excerpt clipped at 64 KiB' : ''}` : ''}`,
       'note',
@@ -1008,7 +1014,7 @@ export function viewerFrame(
           : [diagnosticLoss || 'No captured diagnostic reports']
       } else if (panel.kind === 'preview')
         content = wrapTerminalText(
-          `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.text ?? viewerPreviewState(model)}`,
+          `Immutable ${model.workspace.recorded ? 'recorded-file' : 'delivered-file'} preview: ${model.previewTitle ?? 'verified capture'}${model.preview?.clipped ? ' [capture clipped at 64 KiB]' : ''}\n${model.preview?.image ? viewerPreviewState(model) : (model.preview?.text ?? viewerPreviewState(model))}`,
           width,
         )
       else if (panel.kind === 'references')

@@ -46,6 +46,7 @@
     "dist/schema/types.d.ts",
     "dist/json.d.ts",
     "libexec/installed-cli.js",
+    "libexec/image-preview-worker.js",
     "libexec/authoring/contract-authoring-worker.js",
     "libexec/markdown-runtime.js",
     "libexec/http-request-worker.js",
@@ -110,6 +111,8 @@
     "tar": "7.5.22",
     "typescript": "7.0.2",
     "yaml": "2.9.0",
-    "zod": "4.3.6"
+    "zod": "4.3.6",
+    "@resvg/resvg-wasm": "2.6.2",
+    "dejavu-fonts-ttf": "2.37.3"
   }
 }

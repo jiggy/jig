@@ -34,8 +34,8 @@ use-case and orchestration hypotheses.
   including the distinction between control replies and final settlement, and
   explicit native retention and restoration under a separately reviewed grant.
   It distinguishes final retention receipts from turn answers and published
-  interface availability from installed-client qualification, and routes to the application-owned
-  summary handoff example.
+  interface availability from installed-client qualification, and explains application-owned
+  summary handoff.
   `guide/dependencies.md` owns package dependency preparation guidance.
   Keep its workspace examples aligned with `spec/project-policy.md`'s root
   selection, direct membership and supported lock-format rules.
@@ -75,12 +75,11 @@ use-case and orchestration hypotheses.
   through the common Flow boundary and Jig's microkernel-inspired responsibilities.
   The landing page follows a suggestion into application checks, reveals Jig's
   execution boundary, and ends at a first run with visible prerequisites.
-- `guide/request-triage.md` owns the one-caller, three-implementation walkthrough:
-  code, Agent, and mixed classifiers share a result contract; changed targets
-  need review, and suggestions never authorize business actions. Its result-only
-  targets return stdout; optional `--out` saves their record without overwrite.
+- `guide/contact-import.md` owns the introductory CSV preview walkthrough:
+  code, Agent and mixed mappers share one contract, and code validates the rows.
+  Its writable target receives a fresh temporary packet; `--out` retains it.
 
-- `guide/support-case.md` follows request triage with a useful policy decision:
+- `guide/support-case.md` follows contact import with a useful policy decision:
   an Agent proposes a disputed charge, code checks supplied account records,
   and the caller receives eligibility rather than a payment authorization. Its
   result-only target returns stdout unless the operator chooses `--out`.

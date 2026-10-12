@@ -131,7 +131,7 @@ describe('ordinary Agent Run contract', () => {
       'conversation',
       'sessions',
     ])
-    const worker = await metadata('../../../examples/incident-brief/flows/worker/FLOW.meta.json')
+    const worker = await metadata('./fixtures/incident-brief/flows/worker/FLOW.meta.json')
     expect(worker.uses.agent.requires).toEqual(['conversation'])
     const repair = await metadata('../../../examples/tested-patch/flows/repair/FLOW.meta.json')
     expect(repair.uses.agent.requires).toBeUndefined()
@@ -168,13 +168,13 @@ describe('ordinary Agent Run contract', () => {
       ).digest,
     ).toBe(contract.digest)
     for (const flow of [
-      'request-triage/flows/agent',
-      'request-triage/flows/mixed',
-      'tested-patch/flows/repair',
-      'support-case/flows/assess',
-      'incident-brief/flows/worker',
+      '../../../examples/contact-import/flows/map-agent',
+      '../../../examples/contact-import/flows/map-mixed',
+      '../../../examples/tested-patch/flows/repair',
+      '../../../examples/support-case/flows/assess',
+      './fixtures/incident-brief/flows/worker',
     ]) {
-      const base = new URL(`../../../examples/${flow}/contracts/`, import.meta.url)
+      const base = new URL(`${flow}/contracts/`, import.meta.url)
       const consumerContract = parseInvocationContract(
         await Bun.file(new URL('agent-run/contract.json', base)).bytes(),
         'agent-run/contract.json',

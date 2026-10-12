@@ -5,6 +5,8 @@ The caller owns the temporary directory and hides OpenTUI for this invocation.
 Python is test tooling only; no product source, private API or browser is loaded.
 """
 
+import base64
+import struct
 import errno
 import hashlib
 from html.parser import HTMLParser
@@ -26,7 +28,7 @@ HTTP_LIMIT = 8 * 1024 * 1024
 LINK = re.compile(rb"http://127\.0\.0\.1:(\d+)/#cap=([A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])")
 CHECKS = [
     "embedded-assets", "bearer-required", "recorded-capture",
-    "immutable-previews", "exact-origin-close", "piped-input",
+    "immutable-previews", "captured-svg-image", "exact-origin-close", "piped-input",
     "joined-exit", "capability-redaction",
 ]
 
@@ -145,6 +147,7 @@ def main():
     contents = {
         "notes.txt": b"Captured document intake evidence.\n",
         "review.patch": b"--- a/intake.txt\n+++ b/intake.txt\n@@ -1 +1 @@\n-missing\n+received\n",
+        "chart.svg": b'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
         "empty.txt": b"",
         "binary.dat": bytes([255, 0, 254, 128]),
         "long.txt": b"LONG_CAPTURE_BEGIN\n" + b"x" * (70 * 1024) + b"\nLONG_CAPTURE_END\n",
@@ -243,10 +246,18 @@ def main():
             require(preview["artifactId"] == entry["id"])
             require(preview["captureGeneration"] == capture["generation"])
             require(preview["provenance"] == "recorded-capture" and preview["bytes"] == len(data))
-            state = "non-text" if name == "binary.dat" else "empty" if not data else "text"
+            state = "image" if name == "chart.svg" else "non-text" if name == "binary.dat" else "empty" if not data else "text"
             require(entry["state"] == state and preview["state"] == state)
             require(entry["clipped"] == (name == "long.txt") and preview["clipped"] == (name == "long.txt"))
-            if state == "non-text":
+            if state == "image":
+                phase = "captured-svg-image"
+                image = preview["image"]
+                png = base64.b64decode(image["base64"], validate=True)
+                require(len(png) <= 1024 * 1024 and image["mime"] == "image/png")
+                require(png[:8] == b"\x89PNG\r\n\x1a\n")
+                require(struct.unpack(">II", png[16:24]) == (image["width"], image["height"]) == (1024, 512))
+                require("text" not in preview)
+            elif state == "non-text":
                 require("text" not in preview)
             else:
                 require(preview["text"] == data[:65536].decode("utf-8"))

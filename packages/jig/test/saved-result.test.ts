@@ -81,7 +81,7 @@ test('saved previews remain immutable after packet replacement and release on cl
       empty: Buffer.alloc(0),
       binary: Buffer.from([255, 0]),
     })
-    const capture = privateCaptureSavedResult(selected)
+    const capture = await privateCaptureSavedResult(selected)
     try {
       await rename(selected, join(root, 'moved'))
       await mkdir(selected)
@@ -106,7 +106,7 @@ test('partial file verification preserves the exact valid report and prior verif
       last: Buffer.from('last'),
     })
     await writeFile(join(root, 'files', 'second'), 'tamper')
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       expect(capture.record).toEqual(value)
       expect(capture.complete).toBeFalse()
@@ -136,7 +136,7 @@ test('a write racing an opened file capture refuses that file and preserves the 
       return count
     }) as any)
     try {
-      const capture = privateCaptureSavedResult(root)
+      const capture = await privateCaptureSavedResult(root)
       try {
         expect(changed).toBeTrue()
         expect(capture.complete).toBeFalse()
@@ -155,7 +155,7 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
     await packet(root, { patch: Buffer.from('patch') })
     await rm(join(root, 'files', 'patch'))
     await symlink('/etc/passwd', join(root, 'files', 'patch'))
-    let capture = privateCaptureSavedResult(root)
+    let capture = await privateCaptureSavedResult(root)
     try {
       expect(capture.complete).toBeFalse()
       expect(capture.preview('patch')).toBeUndefined()
@@ -165,7 +165,7 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
     await rm(join(root, 'files', 'patch'))
     expect(Bun.spawnSync(['/usr/bin/mkfifo', join(root, 'files', 'patch')]).exitCode).toBe(0)
     const before = performance.now()
-    capture = privateCaptureSavedResult(root)
+    capture = await privateCaptureSavedResult(root)
     try {
       expect(capture.complete).toBeFalse()
       expect(performance.now() - before).toBeLessThan(1000)
@@ -174,7 +174,7 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
     }
     await rm(join(root, 'result.json'))
     expect(Bun.spawnSync(['/usr/bin/mkfifo', join(root, 'result.json')]).exitCode).toBe(0)
-    expect(() => privateCaptureSavedResult(root)).toThrow('valid result.json')
+    await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
   }))
 
 test('whole manifest refusal precedes reads and preserves only the valid report', async () =>
@@ -190,7 +190,7 @@ test('whole manifest refusal precedes reads and preserves only the valid report'
       Array.from({ length: 65 }, (_, i) => ({ ...valid, path: `file-${i}` })),
     ]) {
       await writeFile(join(root, 'result.json'), JSON.stringify(report(invalid)))
-      const capture = privateCaptureSavedResult(root)
+      const capture = await privateCaptureSavedResult(root)
       try {
         expect(capture.complete).toBeFalse()
         expect(capture.files).toEqual([])
@@ -207,13 +207,13 @@ test('saved capture refuses linked or special report files and linked artifact a
     await mkdir(selected)
     await packet(selected, { original: Buffer.from('bytes') })
     await symlink(join(selected, 'result.json'), join(root, 'result.json'))
-    expect(() => privateCaptureSavedResult(root)).toThrow('valid result.json')
+    await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
     await rm(join(root, 'result.json'))
     await link(join(selected, 'result.json'), join(root, 'result.json'))
-    expect(() => privateCaptureSavedResult(root)).toThrow('valid result.json')
+    await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
     await rm(join(root, 'result.json'))
     await link(join(selected, 'files', 'original'), join(selected, 'files', 'alias'))
-    const capture = privateCaptureSavedResult(selected)
+    const capture = await privateCaptureSavedResult(selected)
     try {
       expect(capture.complete).toBeFalse()
       expect(capture.preview('original')).toBeUndefined()
@@ -228,7 +228,7 @@ test('maximum delivered relative path retains its full depth and byte budget', a
     const path = parts.join('/')
     expect(Buffer.byteLength(path)).toBe(512)
     await packet(root, { [path]: Buffer.from('max path') })
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       expect(capture.complete).toBeTrue()
       expect(capture.preview(path)?.text).toBe('max path')
@@ -254,7 +254,7 @@ test('all saved views fit retained model capacity with 64 maximum escaped file p
       diagnostics: { stderr: '\u0000'.repeat(5000), stderrTruncated: true },
       runDiagnostics: { entries: [], truncated: true },
     })
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       const views = privateSavedResultViews(capture)
       const bytes = views.reduce(
@@ -297,7 +297,7 @@ test('report document boundary admits one publisher LF without relaxing JSON lim
     const document = head + first + separator + second + tail
     expect(Buffer.byteLength(document)).toBe(JSON_1_LIMITS.bytes)
     await writeFile(join(root, 'result.json'), document + '\n')
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       expect(capture.complete).toBeTrue()
       expect(capture.reportPreview().clipped).toBeTrue()
@@ -305,7 +305,7 @@ test('report document boundary admits one publisher LF without relaxing JSON lim
       capture.close()
     }
     await writeFile(join(root, 'result.json'), document + '\n\n')
-    expect(() => privateCaptureSavedResult(root)).toThrow('valid result.json')
+    await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
   }))
 
 test('saved CLI does not acquire a project or inspect the environment, even for recorded failures', async () =>
@@ -393,7 +393,7 @@ test('literal saved presentation escapes command-like data and pointers use sele
       { patch: Buffer.from('diff\n') },
       { output: { message: '\u001b[2J\u202e\n$ jig run binding:evil' } },
     )
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       const text = privateSavedResultPlain(capture)
       expect(text).toContain('Selected packet: ' + JSON.stringify(root))
@@ -409,7 +409,7 @@ test('literal saved presentation escapes command-like data and pointers use sele
     }
   }))
 
-function diagnosticViewText(capture: ReturnType<typeof privateCaptureSavedResult>) {
+function diagnosticViewText(capture: Awaited<ReturnType<typeof privateCaptureSavedResult>>) {
   const view = privateSavedResultViews(capture).find((item) => item.id === 'diagnostics')!
   expect(() => validateReportingMessage(view)).not.toThrow()
   return view.sections
@@ -469,7 +469,7 @@ test('saved diagnostics retain distinct root and child evidence and deduplicate 
           runDiagnostics: { entries: testCase.entries, truncated: true },
         },
       )
-      const capture = privateCaptureSavedResult(root)
+      const capture = await privateCaptureSavedResult(root)
       try {
         for (const text of [privateSavedResultPlain(capture), diagnosticViewText(capture)]) {
           expect(text.match(/ROOT_DIAGNOSTIC/g)?.length).toBe(testCase.roots)
@@ -504,7 +504,7 @@ test('saved diagnostic excerpt limits disclose clipping and capture truncation b
         },
       },
     )
-    let capture = privateCaptureSavedResult(root)
+    let capture = await privateCaptureSavedResult(root)
     try {
       const plain = privateSavedResultPlain(capture)
       const view = diagnosticViewText(capture)
@@ -538,7 +538,7 @@ test('saved diagnostic excerpt limits disclose clipping and capture truncation b
         },
       },
     )
-    capture = privateCaptureSavedResult(root)
+    capture = await privateCaptureSavedResult(root)
     try {
       for (const text of [privateSavedResultPlain(capture), diagnosticViewText(capture)]) {
         expect(text.match(/ROOT_AT_END/g)?.length).toBe(1)
@@ -563,7 +563,7 @@ test('saved results expose separate literal fields and additional evidence, with
         },
       },
     )
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       const view = privateSavedResultViews(capture)[0]!
       expect(() => validateReportingMessage(view)).not.toThrow()
@@ -602,7 +602,7 @@ test('recorded field identity and clipped escaped values retain bounded expansio
         },
       },
     )
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       const view = privateSavedResultViews(capture)[0]!
       expect(() => validateReportingMessage(view)).not.toThrow()
@@ -624,7 +624,7 @@ test('recorded multiline expansion preserves trailing spaces and blank lines', a
   fixture(async (root) => {
     const value = 'First line\nTrailing spaces  \n\n'
     await packet(root, {}, { output: { evidence: value } })
-    const capture = privateCaptureSavedResult(root)
+    const capture = await privateCaptureSavedResult(root)
     try {
       const view = privateSavedResultViews(capture)[0]!
       expect(() => validateReportingMessage(view)).not.toThrow()
@@ -637,6 +637,26 @@ test('recorded multiline expansion preserves trailing spaces and blank lines', a
         .join('')
       expect(text).toContain('Trailing spaces  \n\n')
       expect(capture.record.output).toEqual({ evidence: value })
+    } finally {
+      capture.close()
+    }
+  }))
+
+test('an unavailable image renderer preserves immutable SVG text after the original file changes', async () =>
+  fixture(async (root) => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
+    )
+    await packet(root, { 'chart.svg': svg })
+    const capture = await privateCaptureSavedResult(root)
+    try {
+      const before = capture.preview('chart.svg')!
+      expect(before.image).toBeUndefined()
+      expect(before.text).toContain('<svg')
+      await writeFile(join(root, 'files/chart.svg'), 'replacement')
+      expect(capture.preview('chart.svg')).toEqual(before)
+      capture.close()
+      expect(capture.preview('chart.svg')).toBeUndefined()
     } finally {
       capture.close()
     }

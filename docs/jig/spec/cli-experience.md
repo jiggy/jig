@@ -325,6 +325,19 @@ available in TUI/web. Final evidence remains independent of optional updates.
    or choose a client on the operator's behalf.
 7. **Honest completion.** Command success follows required cleanup. Execution
    completion, application outcome, delivery, and cleanup remain separate.
+   After a confirmed terminal and project closure, every display mode retires
+   delivery authority through its authenticated acknowledgment and spent-channel
+   completion before command success, including record-only runs. Plain and
+   machine output request no inspection excerpts. Retirement uses the same
+   finite completion allowance and existing presentation minimum as inspection;
+   later error/finally joins retain the original operation and failure.
+   Without a confirmed terminal or when project closure failed, close presentation
+   and local captures without spending the original recovery authority. Bound
+   those local joins by the existing enclosing presentation end without starting
+   a new completion reserve. Unknown work cannot retain an indefinite inspector.
+   Preserve the primary error and known execution/delivery while reporting
+   local-close uncertainty separately;
+   do not invent a terminal or mask the original cause with a finally error.
    Cancellation requested is not cancellation complete. Lost work and unknown
    delivery never invite automatic replay. A declined review is a decision,
    not a crash; already incurred dependency effects are not undone.
@@ -725,8 +738,12 @@ applied. Refuse links, multiple-link files, special files, traversal, duplicate
 manifest paths and out-of-profile sizes. Capture admits at most 16 MiB of JSON
 value plus the publisher's single framing LF, 64 manifest files and 16 MiB
 aggregate file bytes, within ten seconds. File previews use already verified
-immutable captures, with at most one active 64 KiB UTF-8 preview; they never reopen a
-mutable path. One owner releases descriptors and captured buffers on every exit.
+immutable captures, with at most one active 64 KiB UTF-8 excerpt or bounded
+image preview under [the shared captured-image profile](web-display.md#evidence-and-presentation).
+Terminal images use native coloured blocks within the existing 32 KiB frame
+ceiling. Colour-free terminals retain image metadata with a colour requirement;
+no image overlay process or terminal graphics protocol is launched.
+They never reopen a mutable path. One owner releases descriptors and captured buffers on every exit.
 Partial file verification preserves the valid report and already verified
 captures while disclosing unavailable evidence. It never invents replacement JSON.
 

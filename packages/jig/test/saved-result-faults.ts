@@ -85,12 +85,12 @@ for (const target of ['report', 'artifact'] as const) {
         throw injected
       }
     })
-    let capture: ReturnType<typeof privateCaptureSavedResult> | undefined
+    let capture: Awaited<ReturnType<typeof privateCaptureSavedResult>> | undefined
     try {
       if (target === 'report' && fault !== 'success')
-        assert.throws(() => privateCaptureSavedResult(directory), /valid result.json/)
+        await assert.rejects(privateCaptureSavedResult(directory), /valid result.json/)
       else {
-        capture = privateCaptureSavedResult(directory)
+        capture = await privateCaptureSavedResult(directory)
         assert.equal(capture.complete, fault === 'success')
         if (fault === 'success') {
           assert.equal(allocations.size, 1)
@@ -182,8 +182,8 @@ for (const failedClose of ['files', 'root', 'both', 'interrupted', 'abort-on-clo
     }
   })
   try {
-    assert.throws(
-      () => privateCaptureSavedResult(directory, controller.signal),
+    await assert.rejects(
+      privateCaptureSavedResult(directory, controller.signal),
       failedClose === 'interrupted' || failedClose === 'abort-on-close'
         ? (error) => error === interruption
         : /valid result.json/,

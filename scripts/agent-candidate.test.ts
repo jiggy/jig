@@ -66,7 +66,7 @@ test('PRs start complete hosted Mac qualification and quick checks finish indepe
     'packages/flow-sdk/src/index.ts',
     'docs/flow/spec/machine/invocation-contract-0.schema.json',
     'docs/jig/spec/contracts/agent-run/contract.json',
-    'examples/incident-brief/flows/worker/FLOW.ts',
+    'packages/jig/test/fixtures/incident-brief/flows/worker/FLOW.ts',
     'scripts/ci/qualify-macos-host.sh',
     'scripts/test-installed-hostile-baseline.ts',
     '.github/workflows/macos-hosted-candidates.yml',

@@ -32,8 +32,8 @@ All three can contribute at the same compositional level. The mixed method
 adds interpretation without asking its caller to coordinate a conversation.
 The code method runs without an Agent interpreting instructions first.
 
-The [complete example on Jig](https://jig.md/guide/request-triage) contains the
-same caller with three configured implementations. That is a concrete host
+The [complete example on Jig](https://jig.md/guide/contact-import) shows a contact
+importer with three configured column-mapping implementations. That is a concrete host
 example; Jig's configuration and Agent capability are not FLOW requirements.
 Shared result shape does not guarantee matching answers, costs, latency, or
 required powers. Those remain part of choosing and evaluating a method.

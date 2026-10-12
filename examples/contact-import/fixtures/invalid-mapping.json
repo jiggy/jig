@@ -1,16 +1,6 @@
 {
-  "headers": [
-    "Customer",
-    "Email address",
-    "Company"
-  ],
-  "rows": [
-    [
-      "Ada Lovelace",
-      "ada@example.com",
-      "Analytical Engines"
-    ]
-  ],
+  "headers": ["Customer", "Email address", "Company"],
+  "rows": [["Ada Lovelace", "ada@example.com", "Analytical Engines"]],
   "mapping": {
     "name": 0,
     "email": 7,

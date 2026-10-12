@@ -348,7 +348,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       identity(file.id)
       text(file.path, 512, 1)
       count(file.bytes)
-      choice(file.state, ['text', 'empty', 'non-text', 'unavailable'])
+      choice(file.state, ['text', 'empty', 'image', 'non-text', 'unavailable'])
       flag(file.clipped)
     })
   }

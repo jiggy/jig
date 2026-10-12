@@ -1,0 +1,26 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
+  "type": "object",
+  "properties": {
+    "assignments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "event"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["assignments"],
+  "additionalProperties": false
+}

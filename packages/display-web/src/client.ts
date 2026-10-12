@@ -1,3 +1,4 @@
+import { validDisplayImage } from '@jigging/display-model'
 import { validateDisplaySnapshot } from '@jigging/display-model'
 import type {
   DisplayPreviewReply,
@@ -6,7 +7,7 @@ import type {
 } from '@jigging/display-model'
 
 const SNAPSHOT_BYTES = 8 * 1024 * 1024
-const PREVIEW_BYTES = 512 * 1024
+const PREVIEW_BYTES = 2 * 1024 * 1024
 export type PrivateBrowserConnection =
   | 'connecting'
   | 'current'
@@ -381,10 +382,11 @@ export class PrivateBrowserClient {
         reply.captureGeneration !== intent.captureGeneration ||
         !['verified-delivery', 'recorded-capture'].includes(reply.provenance) ||
         reply.provenance !== this.body?.artifacts.provenance ||
-        !['text', 'empty', 'non-text', 'unavailable'].includes(reply.state) ||
+        !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(reply.state) ||
         !Number.isSafeInteger(reply.bytes) ||
         reply.bytes < 0 ||
         typeof reply.clipped !== 'boolean' ||
+        (reply.state === 'image' ? !validDisplayImage(reply.image) : reply.image !== undefined) ||
         (reply.state === 'text' && typeof reply.text !== 'string') ||
         (reply.text !== undefined &&
           (typeof reply.text !== 'string' || new TextEncoder().encode(reply.text).length > 65536))

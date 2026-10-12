@@ -4,6 +4,7 @@ export type {
   DisplayFact,
   DisplayIncompleteSnapshot,
   DisplayPreviewReply,
+  DisplayImagePreview,
   DisplayReferenceRecord,
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
@@ -22,3 +23,8 @@ export {
   referenceKey,
 } from './semantics.js'
 export { validateDisplaySnapshot } from './validate.js'
+
+export { DISPLAY_IMAGE_BYTES, validDisplayImage } from './image.js'
+
+export { detectDisplayTextFormat, displayTextTokens, displayDelimitedRows } from './text.js'
+export type { DisplayTextFormat, DisplayTextToken } from './text.js'

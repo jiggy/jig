@@ -22,7 +22,7 @@ heroVideo:
   title: "Jig — Power under control video overview"
 showcase:
   kind: execution
-  label: Explore request triage with code and Agents
+  label: Explore contact import with code and Agents
   title: One method call. Code, an Agent, or both.
   description: >
     Your app needs to route a request. Change the implementation below: your application makes the exact same call regardless of who does the reasoning.
@@ -32,7 +32,7 @@ showcase:
   resultLabel: Suggested queue
   detailsLabel: See the caller and implementation
   note: Illustrative walkthrough. Code enforces invariant contracts; Agent judgment interprets human intent. Changing an implementation changes cost and latency, never the caller's interface.
-  link: "/guide/request-triage"
+  link: "/guide/contact-import"
   linkText: Run the complete example in your terminal
   caller:
     file: The caller stays the same
@@ -99,7 +99,7 @@ showcase:
 </div>
 
 <div className="reader-grid">
-<a className="reader-card" href="/guide/request-triage"><span className="tile-index">01 · Method Boundary</span><h3>One caller, three implementations</h3><p>See how code, an Agent, and a hybrid Flow satisfy the exact same result contract.</p><span className="card-link">Explore walkthrough ↗</span></a>
+<a className="reader-card" href="/guide/contact-import"><span className="tile-index">01 · Method Boundary</span><h3>Preview unfamiliar CSV contacts</h3><p>Swap a column mapper, validate rows, and inspect a contact preview.</p><span className="card-link">Explore walkthrough ↗</span></a>
 <a className="reader-card" href="/guide/support-case"><span className="tile-index">02 · Consequence Policy</span><h3>Handle a disputed charge</h3><p>An Agent interprets the claim, code checks records, and the caller receives eligibility.</p><span className="card-link">Explore walkthrough ↗</span></a>
 <a className="reader-card" href="/guide/tested-patch"><span className="tile-index">03 · Autonomous Patching</span><h3>An issue becomes a tested patch</h3><p>Specialists reproduce failure, draft changes, and deliver verified patch evidence.</p><span className="card-link">Explore walkthrough ↗</span></a>
 </div>

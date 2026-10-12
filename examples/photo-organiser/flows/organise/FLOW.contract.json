@@ -1,0 +1,37 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "attachments": {
+    "source": "read",
+    "photos": "read-write"
+  },
+  "outcomes": {
+    "blocked": "The Agent cannot propose groups.",
+    "limit": "The Agent reaches its limit."
+  },
+  "input": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "enum": ["done", "blocked", "limit"]
+      },
+      "output": {
+        "type": "object"
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/reporting/reporting.json"
+    }
+  }
+}

@@ -1151,3 +1151,69 @@ footer {
     min-width: 0;
   }
 }
+
+.captured-image {
+  margin: 0;
+}
+.captured-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 75vh;
+  object-fit: contain;
+  background: var(--surface, transparent);
+}
+.captured-image figcaption {
+  padding-top: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.workspace.expanded .captured-image img {
+  max-height: none;
+}
+
+.syntax-string,
+.csv-column-0 {
+  color: var(--add);
+}
+.syntax-key,
+.csv-column-1 {
+  color: var(--accent);
+}
+.syntax-number,
+.csv-column-2 {
+  color: var(--warning);
+}
+.syntax-literal,
+.csv-column-3 {
+  color: var(--accent);
+}
+.syntax-comment {
+  color: var(--secondary);
+}
+.csv-column-4 {
+  color: var(--remove);
+}
+.csv-column-5 {
+  color: var(--secondary);
+}
+.csv-table {
+  overflow: auto;
+  max-height: 65vh;
+}
+.csv-table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.csv-table th,
+.csv-table td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  white-space: pre-wrap;
+}
+
+:root[data-theme="color-free"] .file-preview [class^="syntax-"],
+:root[data-theme="color-free"] .file-preview [class^="csv-column-"] {
+  color: inherit;
+}

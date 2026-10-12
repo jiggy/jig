@@ -1,3 +1,4 @@
+import type { DisplayImagePreview } from '@jigging/display-model'
 import {
   type Collection,
   type NoticeSeverity,
@@ -57,7 +58,7 @@ export type PrivateAdmission =
 export type PrivateArtifactFile = Readonly<{
   path: string
   bytes: number
-  state: 'text' | 'empty' | 'non-text' | 'unavailable'
+  state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   clipped: boolean
 }>
 export type PrivateArtifactCapture = Readonly<{
@@ -77,7 +78,12 @@ export type PrivateAttention = {
   readonly bytes: number
   readonly color: boolean
 }
-export type PrivatePreview = { text: string; bytes: number; clipped: boolean }
+export type PrivatePreview = {
+  text: string
+  image?: DisplayImagePreview
+  bytes: number
+  clipped: boolean
+}
 const key = (publisher: string, id: string) => JSON.stringify([publisher, id])
 function bound(value: string, maximum: number): string {
   const scalars = [...value]
@@ -638,7 +644,7 @@ export class PrivateRunModel {
         paths.has(file.path) ||
         !Number.isSafeInteger(file.bytes) ||
         file.bytes < 0 ||
-        !['text', 'empty', 'non-text', 'unavailable'].includes(file.state)
+        !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(file.state)
       )
         throw new TypeError('Invalid immutable capture inventory')
       paths.add(file.path)
@@ -660,7 +666,9 @@ export class PrivateRunModel {
       this.#closed ||
       capture.generation !== generation ||
       capture.phase !== 'ready' ||
-      !capture.files.some((file) => file.path === path && ['text', 'empty'].includes(file.state))
+      !capture.files.some(
+        (file) => file.path === path && ['text', 'empty', 'image'].includes(file.state),
+      )
     )
       return undefined
     const preview = await this.#preview?.(path)

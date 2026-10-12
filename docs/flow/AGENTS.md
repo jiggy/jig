@@ -28,7 +28,7 @@ and invocation-contract semantics.
   optional metadata and an invocation contract.
   Its progressive disclosure describes package layers, not automatic Agent
   context loading. `guide/understand.md` develops the same boundary through
-  request triage on Jig. Keep host examples distinct from portable requirements.
+  contact import on Jig. Keep host examples distinct from portable requirements.
 - `guide/start.mdx` routes authors to complete SDK or host tutorials without
   treating a source candidate as a published install. Its native language tabs
   preserve both examples in the generated `/guide/start.md` resource.

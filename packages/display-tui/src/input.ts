@@ -373,6 +373,7 @@ export class ViewerInput {
       text === ']' || text === '\u001b[6~' ? 3 : text === '[' || text === '\u001b[5~' ? -3 : 0
     if (
       text === '/' &&
+      !this.model.preview?.image &&
       (panel?.kind === 'preview' || (panel?.kind === 'detail' && this.model.preview))
     ) {
       if (panel.kind === 'detail') this.#push({ kind: 'preview', scroll: 0 })
