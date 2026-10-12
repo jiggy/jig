@@ -168,6 +168,8 @@ test('planning and native subphases remain bounded names understood by the insta
       'contained-effect-launch',
       'contained-effect-collection',
       'contained-effect-settlement',
+      'macos-guardian-preparation',
+      'macos-guardian-admission',
       'root-package-release',
       'root-owner-release',
     ] as const
@@ -208,6 +210,13 @@ test('active native profiling preserves returned values and the exact thrown fai
           await privateProfileSpan('finite-acp-containment', async () => { throw failure });
           throw new Error('Failure disappeared');
         } catch (error) { if (error !== failure) throw error }
+        const guardian = Object.freeze({ prepared: true });
+        const prepared = await privateProfileSpan('macos-guardian-preparation', async () => guardian);
+        if (prepared !== guardian) throw new Error('Prepared value changed');
+        try {
+          await privateProfileSpan('macos-guardian-admission', async () => { throw failure });
+          throw new Error('Admission failure disappeared');
+        } catch (error) { if (error !== failure) throw error }
         privateProfileFinish();`,
       ],
       {
@@ -227,6 +236,8 @@ test('active native profiling preserves returned values and the exact thrown fai
     expect(records.filter((record) => record.kind === 'end')).toEqual([
       expect.objectContaining({ phase: 'finite-acp-revalidation', outcome: 'returned' }),
       expect.objectContaining({ phase: 'finite-acp-containment', outcome: 'failed' }),
+      expect.objectContaining({ phase: 'macos-guardian-preparation', outcome: 'returned' }),
+      expect.objectContaining({ phase: 'macos-guardian-admission', outcome: 'failed' }),
     ])
   } finally {
     await rm(directory, { recursive: true, force: true })

@@ -115,6 +115,10 @@ operational baselines, and public-site assembly.
   launch, collection and settlement spans. Collection includes backend enforcement
   and cleanup; it does not establish child CPU time. The consumer admits the same
   closed phase names as the private recorder.
+  Mac guardian preparation and admission subspans time the existing coordinator
+  awaits across root and child Flows and effects. Fixed labels provide aggregate
+  counts, not per-operation attribution; nested and concurrent wall spans remain
+  non-additive.
 - `test-operational-baseline.ts` retains failed fixtures and private command
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed; residue or
@@ -221,6 +225,10 @@ operational baselines, and public-site assembly.
   no-package-scripts rule covers repository tasks, not imported skill toolchains.
   It includes all quick CI checks and the protected npm publisher's controlled
   registry tests; the publisher uses Node hashing so these checks also run on Mac.
+  The Node policy files run in their ordinary pool before the complete source-lane
+  lifecycle file runs alone. Its process and shell readiness deadlines remain
+  unchanged; every discovered CI test file executes once, and a failed phase
+  stops subsequent phases before the ordinary Bun tooling checks.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 - `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive

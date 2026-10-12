@@ -11,7 +11,6 @@ import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
 import { readPrivateCapturedOutput } from '../../src/internal/captured-output.js'
 import { closePrivateExecutionOutput } from '../../src/internal/execution-output.js'
-import { retainPrivateMacosGuardianOutput } from '../../src/internal/macos-guardian-output.js'
 import { PrivateExecutionPreparationDeadlineError } from '../../src/internal/execution-process.js'
 import {
   preparePrivateMacosGuardian,
@@ -21,6 +20,7 @@ import {
   type PrivateMacosGuardianRecoveryDiagnostic,
   withPrivateMacosGuardianDiagnostics,
 } from '../../src/internal/macos-guardian-diagnostics.js'
+import { retainPrivateMacosGuardianOutput } from '../../src/internal/macos-guardian-output.js'
 import type { PrivateMacosGuardianStart } from '../../src/internal/macos-native-supervisor.js'
 import { accountingFaults, accountingSupervisor } from '.././macos-guardian.fixture.js'
 
@@ -509,165 +509,157 @@ test('guardian preserves native exit evidence when the payload leaves buffered s
     }
   }
 }, 40_000)
-test(
-  'terminal cleanup recovery preserves authenticated exit and captured output only after confirmed removal',
-  async () => {
-    for (const [persistent, collect] of [
-      [false, false],
-      [true, false],
-      [false, true],
-      [true, true],
-    ]) {
-      const ownerDirectory = await realpath(await mkdtemp('/private/tmp/jig-guardian-terminal-'))
-      const scratch = await realpath(await mkdtemp('/private/tmp/jig-guardian-terminal-data-'))
-      const token = randomBytes(32).toString('hex')
-      const events: PrivateMacosGuardianRecoveryDiagnostic[] = []
-      let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
-      let outputOwner: ReturnType<typeof retainPrivateMacosGuardianOutput> | undefined
-      let removed = false
-      let injected = 0
-      let bootedOut: string | undefined
-      const original = childProcess.spawnSync
-      const interception = spyOn(childProcess, 'spawnSync').mockImplementation(((
-        ...args: unknown[]
-      ) => {
-        const result = Reflect.apply(original, childProcess, args)
-        const commandArgs = args[1] as readonly string[] | undefined
-        if (
-          owner !== undefined &&
-          bootedOut === undefined &&
-          args[0] === '/bin/launchctl' &&
-          commandArgs?.[0] === 'bootout'
-        )
-          bootedOut = commandArgs[1]
-        if (
-          args[0] === '/bin/launchctl' &&
-          commandArgs?.[0] === 'print' &&
-          owner !== undefined &&
-          commandArgs[1] === bootedOut &&
-          (persistent || injected === 0)
-        ) {
-          injected++
-          return { ...result, status: 0 }
-        }
-        return result
-      }) as typeof childProcess.spawnSync)
-      try {
-        owner = await withPrivateMacosGuardianDiagnostics(
-          (event) => events.push(event),
-          () =>
-            preparePrivateMacosGuardian({
-              bun: process.execPath,
-              supervisor: fileURLToPath(
-                new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
-              ),
-              configuration: {
-                type: 'start',
-                ownerDirectory,
-                ownerToken: token,
-                launcher: fileURLToPath(
-                  new URL('../support/macos-exec-universal', suiteTestUrl),
-                ),
-                cwd: collect ? join(scratch, 'work') : scratch,
-                command: [
-                  process.execPath,
-                  '--no-env-file',
-                  '--no-install',
-                  '--config=/dev/null',
-                  '-e',
-                  collect
-                    ? `await Bun.stdin.text(); await Bun.write(${JSON.stringify(join(scratch, 'output/result.txt'))}, 'retained output');`
-                    : 'await Bun.stdin.text(); process.exit(17)',
-                ],
-                environment: {},
-                files: {
-                  readOnlyFiles: [process.execPath],
-                  readOnlyTrees: [],
-                  writableTrees: collect
-                    ? ['work', 'tmp', 'output'].map((name) => join(scratch, name))
-                    : [scratch],
-                  protectedRoots: [ownerDirectory],
-                  network: 'isolated',
-                },
-                limits: {
-                  memoryBytes: 256 * 1024 * 1024,
-                  pids: 4,
-                  cpuQuotaMicros: 50_000,
-                  cpuPeriodMicros: 100_000,
-                  deadlineUnixMs: Date.now() + 30_000,
-                  cleanupTimeoutMs: 5000,
-                },
-                maxOutputBytes: 4096,
-                ...(collect
-                  ? {
-                      storage: {
-                        mountPath: scratch,
-                        bytes: 16 * 1024 * 1024,
-                        collect: 'output' as const,
-                      },
-                    }
-                  : {}),
+test('terminal cleanup recovery preserves authenticated exit and captured output only after confirmed removal', async () => {
+  for (const [persistent, collect] of [
+    [false, false],
+    [true, false],
+    [false, true],
+    [true, true],
+  ]) {
+    const ownerDirectory = await realpath(await mkdtemp('/private/tmp/jig-guardian-terminal-'))
+    const scratch = await realpath(await mkdtemp('/private/tmp/jig-guardian-terminal-data-'))
+    const token = randomBytes(32).toString('hex')
+    const events: PrivateMacosGuardianRecoveryDiagnostic[] = []
+    let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
+    let outputOwner: ReturnType<typeof retainPrivateMacosGuardianOutput> | undefined
+    let removed = false
+    let injected = 0
+    let bootedOut: string | undefined
+    const original = childProcess.spawnSync
+    const interception = spyOn(childProcess, 'spawnSync').mockImplementation(((
+      ...args: unknown[]
+    ) => {
+      const result = Reflect.apply(original, childProcess, args)
+      const commandArgs = args[1] as readonly string[] | undefined
+      if (
+        owner !== undefined &&
+        bootedOut === undefined &&
+        args[0] === '/bin/launchctl' &&
+        commandArgs?.[0] === 'bootout'
+      )
+        bootedOut = commandArgs[1]
+      if (
+        args[0] === '/bin/launchctl' &&
+        commandArgs?.[0] === 'print' &&
+        owner !== undefined &&
+        commandArgs[1] === bootedOut &&
+        (persistent || injected === 0)
+      ) {
+        injected++
+        return { ...result, status: 0 }
+      }
+      return result
+    }) as typeof childProcess.spawnSync)
+    try {
+      owner = await withPrivateMacosGuardianDiagnostics(
+        (event) => events.push(event),
+        () =>
+          preparePrivateMacosGuardian({
+            bun: process.execPath,
+            supervisor: fileURLToPath(
+              new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+            ),
+            configuration: {
+              type: 'start',
+              ownerDirectory,
+              ownerToken: token,
+              launcher: fileURLToPath(new URL('../support/macos-exec-universal', suiteTestUrl)),
+              cwd: collect ? join(scratch, 'work') : scratch,
+              command: [
+                process.execPath,
+                '--no-env-file',
+                '--no-install',
+                '--config=/dev/null',
+                '-e',
+                collect
+                  ? `await Bun.stdin.text(); await Bun.write(${JSON.stringify(join(scratch, 'output/result.txt'))}, 'retained output');`
+                  : 'await Bun.stdin.text(); process.exit(17)',
+              ],
+              environment: {},
+              files: {
+                readOnlyFiles: [process.execPath],
+                readOnlyTrees: [],
+                writableTrees: collect
+                  ? ['work', 'tmp', 'output'].map((name) => join(scratch, name))
+                  : [scratch],
+                protectedRoots: [ownerDirectory],
+                network: 'isolated',
               },
-            }),
-        )
-        owner.stdout.resume()
-        owner.stderr.resume()
-        if (collect) outputOwner = retainPrivateMacosGuardianOutput(owner)
-        await owner.admit()
-        owner.continue()
-        owner.stdin.end()
-        if (persistent) {
-          await expect(owner.completion).rejects.toThrow(
-            'macOS guardian job removal is unconfirmed',
-          )
-          if (outputOwner) await expect(outputOwner.output.ready).rejects.toThrow('cleanup failed')
-          expect((await readFile(join(ownerDirectory, 'owner.json'))).length).toBeGreaterThan(0)
-        } else {
-          const result = await owner.completion
-          removed = result.fenced
-          expect(result).toMatchObject({
-            result: {
-              reason: 'payload_exit',
-              exitCode: collect ? 0 : 17,
-              signal: null,
-              fenced: true,
+              limits: {
+                memoryBytes: 256 * 1024 * 1024,
+                pids: 4,
+                cpuQuotaMicros: 50_000,
+                cpuPeriodMicros: 100_000,
+                deadlineUnixMs: Date.now() + 30_000,
+                cleanupTimeoutMs: 5000,
+              },
+              maxOutputBytes: 4096,
+              ...(collect
+                ? {
+                    storage: {
+                      mountPath: scratch,
+                      bytes: 16 * 1024 * 1024,
+                      collect: 'output' as const,
+                    },
+                  }
+                : {}),
             },
-            outputLost: true,
-            recovered: true,
+          }),
+      )
+      owner.stdout.resume()
+      owner.stderr.resume()
+      if (collect) outputOwner = retainPrivateMacosGuardianOutput(owner)
+      await owner.admit()
+      owner.continue()
+      owner.stdin.end()
+      if (persistent) {
+        await expect(owner.completion).rejects.toThrow('macOS guardian job removal is unconfirmed')
+        if (outputOwner) await expect(outputOwner.output.ready).rejects.toThrow('cleanup failed')
+        expect((await readFile(join(ownerDirectory, 'owner.json'))).length).toBeGreaterThan(0)
+      } else {
+        const result = await owner.completion
+        removed = result.fenced
+        expect(result).toMatchObject({
+          result: {
+            reason: 'payload_exit',
+            exitCode: collect ? 0 : 17,
+            signal: null,
             fenced: true,
-          })
-          if (outputOwner) {
-            const captured = await outputOwner.output.ready
-            expect(
-              readPrivateCapturedOutput(captured).map((file) => [
-                file.path,
-                file.contents.toString(),
-              ]),
-            ).toEqual([['result.txt', 'retained output']])
-          }
-        }
-        expect(injected).toBeGreaterThan(0)
-        expect(events).toEqual([
-          { phase: 'terminal', step: 'terminal-cleanup', cause: 'JOB_REMOVAL_UNCONFIRMED' },
-        ])
-      } finally {
-        interception.mockRestore()
-        await closePrivateExecutionOutput(outputOwner?.output)
-        if (!removed) {
-          owner?.cancel()
-          await owner?.completion.catch(() => undefined)
-          await recoverPrivateMacosGuardian(ownerDirectory, token, 5000)
-          removed = true
-        }
-        if (removed) {
-          await rm(ownerDirectory, { recursive: true })
-          if (collect) await expect(access(scratch)).rejects.toMatchObject({ code: 'ENOENT' })
-          else await rm(scratch, { recursive: true })
+          },
+          outputLost: true,
+          recovered: true,
+          fenced: true,
+        })
+        if (outputOwner) {
+          const captured = await outputOwner.output.ready
+          expect(
+            readPrivateCapturedOutput(captured).map((file) => [
+              file.path,
+              file.contents.toString(),
+            ]),
+          ).toEqual([['result.txt', 'retained output']])
         }
       }
+      expect(injected).toBeGreaterThan(0)
+      expect(events).toEqual([
+        { phase: 'terminal', step: 'terminal-cleanup', cause: 'JOB_REMOVAL_UNCONFIRMED' },
+      ])
+    } finally {
+      interception.mockRestore()
+      await closePrivateExecutionOutput(outputOwner?.output)
+      if (!removed) {
+        owner?.cancel()
+        await owner?.completion.catch(() => undefined)
+        await recoverPrivateMacosGuardian(ownerDirectory, token, 5000)
+        removed = true
+      }
+      if (removed) {
+        await rm(ownerDirectory, { recursive: true })
+        if (collect) await expect(access(scratch)).rejects.toMatchObject({ code: 'ENOENT' })
+        else await rm(scratch, { recursive: true })
+      }
     }
-  },
-  90_000,
-)
+  }
+}, 90_000)
 
 if (process.platform !== 'darwin') throw Error('This suite requires a native Mac')

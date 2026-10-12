@@ -32,6 +32,8 @@ export type PrivateProfilePhase =
   | 'contained-effect-launch'
   | 'contained-effect-collection'
   | 'contained-effect-settlement'
+  | 'macos-guardian-preparation'
+  | 'macos-guardian-admission'
   | 'operation-owner-settlement'
   | 'root-fence'
   | 'root-settlement'
