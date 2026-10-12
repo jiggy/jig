@@ -1,0 +1,10 @@
+bun test v1.3.3 (274e01c7)
+
+packages/jig/test/package-provider-host.test.ts:
+(pass) packed project dependencies uses fresh reviewed data and immutable execution [36647.19ms]
+
+ 1 pass
+ 6 filtered out
+ 0 fail
+ 37 expect() calls
+Ran 1 test across 1 file. [36.71s]

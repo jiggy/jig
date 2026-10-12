@@ -353,10 +353,22 @@ test('Mac summary needs qualified true, matching source/architecture, and actual
 test('per-command Bun manifests preserve separate complementary partition skip identities', async (t) => {
   const f = await fixture(t)
   const file = 'packages/jig/test/package-provider-host.test.ts'
-  const transcript = (name) =>
-    `${file}:\n(skip) ${name}\n(pass) selected ordinary proof [1ms]\n\n1 pass\n1 skip\n0 fail\nRan 2 tests across 1 file. [10ms]\n`
-  await f.put('logs/yes.txt', transcript('installed CLI reviews independent project'))
-  await f.put('logs/no.txt', transcript('packed project dependencies retain immutable bytes'))
+  const transcript = (name, passed) =>
+    `${file}:\n(skip) ${name}\n(pass) ${passed} [1ms]\n\n1 pass\n1 skip\n0 fail\nRan 2 tests across 1 file. [10ms]\n`
+  await f.put(
+    'logs/yes.txt',
+    transcript(
+      'installed CLI reviews independent project',
+      'packed project dependencies retain reviewed bytes',
+    ),
+  )
+  await f.put(
+    'logs/no.txt',
+    transcript(
+      'packed project dependencies retain immutable bytes',
+      'installed CLI reviews ordinary project',
+    ),
+  )
   const commands = [
     {
       transcript: 'yes.txt',
@@ -379,6 +391,48 @@ test('per-command Bun manifests preserve separate complementary partition skip i
   )
   await f.put('logs/manifest.json', { schemaVersion: 1, commands: [commands[0], commands[0]] })
   await assert.rejects(() => observedCount({ transcriptManifest }), /Repeated/)
+})
+
+test('retained filtered Bun reports produce a diagnostic without adding execution or skip credit', async (t) => {
+  const f = await fixture(t)
+  const file = 'packages/jig/test/package-provider-host.test.ts'
+  const patterns = ['^packed project dependencies ', '^(?!packed project dependencies )']
+  for (const name of ['packed', 'ordinary'])
+    await f.put(
+      `logs/${name}.txt`,
+      await readFile(
+        new URL(`./fixtures/bun-1.3.3-linux/provider-${name}.txt`, import.meta.url),
+        'utf8',
+      ),
+    )
+  const commands = ['packed', 'ordinary'].map((name, index) => ({
+    transcript: `${name}.txt`,
+    files: [file],
+    filter: { file, pattern: patterns[index] },
+  }))
+  const transcriptManifest = await f.put('logs/manifest.json', { schemaVersion: 1, commands })
+  const result = await observedCount({ transcriptManifest })
+  assert.equal(result.count, 7)
+  assert.equal(result.skipped, 0)
+  assert.equal(result.filtered, 7)
+  assert.deepEqual(result.skippedCases, [])
+  const planPath = await f.put('plan.json', plan())
+  await writeJobEvidence({
+    planPath,
+    id: 'quick-checks',
+    transcriptManifest,
+    output: join(f.root, 'evidence.json'),
+  })
+  const proof = (await f.json('evidence.json')).results[0]
+  assert.equal(proof.executedCount, 7)
+  assert.equal(proof.observedSkipped, 0)
+  assert.equal(proof.observedFiltered, 7)
+  assert.equal(proof.unexpectedSkips, 0)
+  await f.put('logs/manifest.json', {
+    schemaVersion: 1,
+    commands: [{ ...commands[1], transcript: commands[0].transcript }],
+  })
+  await assert.rejects(() => observedCount({ transcriptManifest }), /outside.*owning filter/)
 })
 
 test('transcript manifests refuse path escape, links and relabeling tests as installed scripts', async (t) => {
@@ -457,12 +511,20 @@ test('collection reconciles actual profile rows and explicit authorized omission
     'python-installed': 'success',
     sites: 'skipped',
   })
-  await f.put('reports/windows/report.json', report([row(selected, selected.runtimeProfiles[0])]))
-  await f.put('reports/linux/report.json', report([row(selected, selected.runtimeProfiles[1])]))
+  await f.put(
+    'reports/windows/report.json',
+    report([{ ...row(selected, selected.runtimeProfiles[0]), observedFiltered: 2 }]),
+  )
+  await f.put(
+    'reports/linux/report.json',
+    report([{ ...row(selected, selected.runtimeProfiles[1]), observedFiltered: 4 }]),
+  )
   const output = join(f.root, 'collected.json')
   await collectJobEvidence({ planPath, directory: join(f.root, 'reports'), resultsPath, output })
   const evidence = await f.json('collected.json')
   assert.equal(evidence.results[0].executedCount, 6)
+  assert.equal(evidence.results[0].observedFiltered, 6)
+  assert.equal(evidence.results[0].observedSkipped, 0)
   assert.deepEqual(evidence.results[0].profiles.sort(), [...selected.runtimeProfiles].sort())
   assert.deepEqual(evidence.results[1], {
     id: 'sites',
