@@ -518,7 +518,8 @@ function httpPlan(
       privateExecutionPath(recipe.installedSupport.sandboxHttpWorkerPath),
     ],
     network: 'inherited',
-    storageBytes: 16 * 1024 * 1024,
+    readOnlyCwd: '/',
+    storageBytes: 0,
     maxOutputBytes: JSON_1_LIMITS.bytes + PROJECT_COMMAND_LIMITS.streamBytes,
   }
 }

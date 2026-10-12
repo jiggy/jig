@@ -25,6 +25,9 @@ test('an expired retry resolves and releases its prior contained-effect owner fi
     })
     expect(result.code, result.stderr).toBe(0)
     expect(result.stdout).toContain('contained effect deadline/prior-owner ordering checks passed')
+    expect(result.stdout).toContain(
+      'HTTP actual intent/file-only lowering/failure cleanup checks passed',
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -48,7 +51,11 @@ test('contained-effect phase diagnostics preserve actual controller results and 
     })
     expect(result.code, result.stderr).toBe(0)
     expect(result.stdout).toContain('contained effect deadline/prior-owner ordering checks passed')
+    expect(result.stdout).toContain(
+      'HTTP actual intent/file-only lowering/failure cleanup checks passed',
+    )
     const text = await readFile(destination, 'utf8')
+    expect(text).not.toContain('private-http-intent-test-canary')
     expect(text).not.toContain('private allocation diagnostic canary')
     expect(text).not.toContain('private collection diagnostic canary')
     expect(text).not.toContain('untrusted success')
@@ -135,6 +142,9 @@ test('an unavailable diagnostic destination cannot replace contained-effect outc
     })
     expect(result.code, result.stderr).toBe(0)
     expect(result.stdout).toContain('contained effect deadline/prior-owner ordering checks passed')
+    expect(result.stdout).toContain(
+      'HTTP actual intent/file-only lowering/failure cleanup checks passed',
+    )
     expect(result.stderr).toContain('local startup profile capture could not be opened')
     expect(result.stderr).not.toContain(destination)
     expect(result.stderr).not.toContain(retained)
