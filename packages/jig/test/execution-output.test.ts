@@ -21,6 +21,24 @@ const terminal: PrivateMacosGuardianResult = {
   recovered: false,
   outputLost: false,
 }
+const exited: PrivateMacosGuardianResult = {
+  ...terminal,
+  result: {
+    reason: 'payload_exit',
+    exitCode: 0,
+    signal: null,
+    fenced: true,
+    evidence: {
+      cpuNanoseconds: '1',
+      peakFootprintBytes: '1',
+      peakTasks: 1,
+      samples: 1,
+      pauses: 0,
+      incompleteSamples: 0,
+      maxSampleMilliseconds: 1,
+    },
+  },
+}
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (error: unknown) => void
   const promise = new Promise<T>((yes, no) => {
@@ -104,6 +122,64 @@ test('output profile failure preserves cleanup evidence while cleanup failure re
       await closePrivateExecutionOutput(owner.output)
     } finally {
       if (!releases) closeSync(fd)
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+})
+
+test('a completed snapshot survives confirmed terminal cleanup recovery, never missing exit or collection evidence', async () => {
+  for (const mode of ['retained', 'missing-exit', 'lost-collection', 'unrecovered-loss']) {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-output-recovery-')))
+    const source = join(root, 'source')
+    await mkdir(source)
+    await writeFile(join(source, 'result'), 'already captured')
+    let fd = privateOpenFileRoot(source)
+    let ready = false
+    const completion = deferred<PrivateMacosGuardianResult>()
+    const owner = retainPrivateMacosGuardianOutput({
+      fenced: Promise.resolve({
+        ...exited,
+        outputFd: fd,
+        outputLost: mode === 'lost-collection',
+      }),
+      completion: completion.promise,
+      release() {
+        closeSync(fd)
+        fd = -1
+        rmSync(source, { recursive: true })
+      },
+    } as PrivateMacosGuardian)
+    void owner.output.ready.then(
+      () => {
+        ready = true
+      },
+      () => {},
+    )
+    try {
+      await Bun.sleep(1)
+      expect(fd).toBe(-1)
+      expect(ready).toBe(false)
+      completion.resolve({
+        ...exited,
+        result: mode === 'missing-exit' ? null : exited.result,
+        recovered: mode !== 'unrecovered-loss',
+        outputLost: true,
+      })
+      expect((await owner.completion).fenced).toBe(true)
+      if (mode === 'retained') {
+        const capture = await owner.output.ready
+        expect(
+          readPrivateCapturedOutput(capture).map(({ path, contents }) => [
+            path,
+            contents.toString(),
+          ]),
+        ).toEqual([['result', 'already captured']])
+        await closePrivateExecutionOutput(owner.output)
+        expect(() => readPrivateCapturedOutput(capture)).toThrow('not active')
+      } else await expect(owner.output.ready).rejects.toThrow()
+    } finally {
+      await closePrivateExecutionOutput(owner.output)
+      if (fd >= 0) closeSync(fd)
       await rm(root, { recursive: true, force: true })
     }
   }
