@@ -151,7 +151,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   used by Run files and native-session collection. `macos-guardian-output.ts`
   captures only after fencing, releases an available collector, and waits for
   complete storage cleanup before exposing bytes. Missing collectors need no
-  release. Content-profile rejection remains a delivery or optional-history
+  release. An immutable snapshot copied after fencing survives later confirmed
+  terminal cleanup recovery only with the authenticated successful native exit.
+  Missing collection, missing exit evidence and unconfirmed cleanup still refuse
+  output; recovery never recaptures a mutable source or replays execution.
+  Content-profile rejection remains a delivery or optional-history
   outcome; unexpected I/O and cleanup failure retain their separate consequences.
   Closing an unavailable snapshot cannot manufacture a storage-cleanup failure.
 - `file-delivery.ts` accepts local held input roots and bounded output snapshots
@@ -1205,8 +1209,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   composition; those remain platform/installed qualification gates.
   `execution-output.test.ts` verifies fencing/release/cleanup order, capture
   refusal, missing collectors and cleanup failure. Native guardian input evidence
-  exercises that same retention path after image removal. Session collectors
-  validate captured empty directories too; controller faults distinguish expected
+  and terminal cleanup recovery cover retained bytes after storage removal;
+  the latter injects transient and persistent job-retirement refusal with actual
+  bounded output collection, preserving refusal until removal is confirmed.
+  Session collectors validate captured empty directories too; controller faults distinguish expected
   snapshot-profile refusal from unexpected snapshot I/O failure.
   The complete file-delivery suite also runs on qualified Mac: it covers the
   independent process, authenticated parent rejection, renamed input roots,

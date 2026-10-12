@@ -8,6 +8,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
 import { fileURLToPath } from 'node:url'
+import { readPrivateCapturedOutput } from '../src/internal/captured-output.js'
+import { closePrivateExecutionOutput } from '../src/internal/execution-output.js'
 import { PrivateExecutionPreparationDeadlineError } from '../src/internal/execution-process.js'
 import {
   preparePrivateMacosGuardian,
@@ -17,6 +19,7 @@ import {
   type PrivateMacosGuardianRecoveryDiagnostic,
   withPrivateMacosGuardianDiagnostics,
 } from '../src/internal/macos-guardian-diagnostics.js'
+import { retainPrivateMacosGuardianOutput } from '../src/internal/macos-guardian-output.js'
 import type { PrivateMacosGuardianStart } from '../src/internal/macos-native-supervisor.js'
 
 const native = test.skipIf(
@@ -631,14 +634,20 @@ native(
 )
 
 native(
-  'terminal cleanup recovery preserves authenticated exit evidence and still requires confirmed removal',
+  'terminal cleanup recovery preserves authenticated exit and captured output only after confirmed removal',
   async () => {
-    for (const persistent of [false, true]) {
+    for (const [persistent, collect] of [
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ]) {
       const ownerDirectory = await realpath(await mkdtemp('/private/tmp/jig-guardian-terminal-'))
       const scratch = await realpath(await mkdtemp('/private/tmp/jig-guardian-terminal-data-'))
       const token = randomBytes(32).toString('hex')
       const events: PrivateMacosGuardianRecoveryDiagnostic[] = []
       let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
+      let outputOwner: ReturnType<typeof retainPrivateMacosGuardianOutput> | undefined
       let removed = false
       let injected = 0
       let bootedOut: string | undefined
@@ -648,11 +657,17 @@ native(
       ) => {
         const result = Reflect.apply(original, childProcess, args)
         const commandArgs = args[1] as readonly string[] | undefined
-        if (args[0] === '/bin/launchctl' && commandArgs?.[0] === 'bootout')
+        if (
+          owner !== undefined &&
+          bootedOut === undefined &&
+          args[0] === '/bin/launchctl' &&
+          commandArgs?.[0] === 'bootout'
+        )
           bootedOut = commandArgs[1]
         if (
           args[0] === '/bin/launchctl' &&
           commandArgs?.[0] === 'print' &&
+          owner !== undefined &&
           commandArgs[1] === bootedOut &&
           (persistent || injected === 0)
         ) {
@@ -677,20 +692,24 @@ native(
                 launcher: fileURLToPath(
                   new URL('../support/macos-exec-universal', import.meta.url),
                 ),
-                cwd: scratch,
+                cwd: collect ? join(scratch, 'work') : scratch,
                 command: [
                   process.execPath,
                   '--no-env-file',
                   '--no-install',
                   '--config=/dev/null',
                   '-e',
-                  'await Bun.stdin.text(); process.exit(17)',
+                  collect
+                    ? `await Bun.stdin.text(); await Bun.write(${JSON.stringify(join(scratch, 'output/result.txt'))}, 'retained output');`
+                    : 'await Bun.stdin.text(); process.exit(17)',
                 ],
                 environment: {},
                 files: {
                   readOnlyFiles: [process.execPath],
                   readOnlyTrees: [],
-                  writableTrees: [scratch],
+                  writableTrees: collect
+                    ? ['work', 'tmp', 'output'].map((name) => join(scratch, name))
+                    : [scratch],
                   protectedRoots: [ownerDirectory],
                   network: 'isolated',
                 },
@@ -703,11 +722,21 @@ native(
                   cleanupTimeoutMs: 5000,
                 },
                 maxOutputBytes: 4096,
+                ...(collect
+                  ? {
+                      storage: {
+                        mountPath: scratch,
+                        bytes: 16 * 1024 * 1024,
+                        collect: 'output' as const,
+                      },
+                    }
+                  : {}),
               },
             }),
         )
         owner.stdout.resume()
         owner.stderr.resume()
+        if (collect) outputOwner = retainPrivateMacosGuardianOutput(owner)
         await owner.admit()
         owner.continue()
         owner.stdin.end()
@@ -715,16 +744,31 @@ native(
           await expect(owner.completion).rejects.toThrow(
             'macOS guardian job removal is unconfirmed',
           )
+          if (outputOwner) await expect(outputOwner.output.ready).rejects.toThrow('cleanup failed')
           expect((await readFile(join(ownerDirectory, 'owner.json'))).length).toBeGreaterThan(0)
         } else {
           const result = await owner.completion
           removed = result.fenced
           expect(result).toMatchObject({
-            result: { reason: 'payload_exit', exitCode: 17, signal: null, fenced: true },
+            result: {
+              reason: 'payload_exit',
+              exitCode: collect ? 0 : 17,
+              signal: null,
+              fenced: true,
+            },
             outputLost: true,
             recovered: true,
             fenced: true,
           })
+          if (outputOwner) {
+            const captured = await outputOwner.output.ready
+            expect(
+              readPrivateCapturedOutput(captured).map((file) => [
+                file.path,
+                file.contents.toString(),
+              ]),
+            ).toEqual([['result.txt', 'retained output']])
+          }
         }
         expect(injected).toBeGreaterThan(0)
         expect(events).toEqual([
@@ -732,6 +776,7 @@ native(
         ])
       } finally {
         interception.mockRestore()
+        await closePrivateExecutionOutput(outputOwner?.output)
         if (!removed) {
           owner?.cancel()
           await owner?.completion.catch(() => undefined)
@@ -740,10 +785,11 @@ native(
         }
         if (removed) {
           await rm(ownerDirectory, { recursive: true })
-          await rm(scratch, { recursive: true })
+          if (collect) await expect(access(scratch)).rejects.toMatchObject({ code: 'ENOENT' })
+          else await rm(scratch, { recursive: true })
         }
       }
     }
   },
-  60_000,
+  90_000,
 )

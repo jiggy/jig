@@ -31,7 +31,16 @@ export function retainPrivateMacosGuardianOutput(guardian: PrivateMacosGuardian)
   })
   const ready = completion.then(
     (result) => {
-      if (result.outputLost || result.recovered) {
+      // Recovery can confirm removal after an authenticated terminal while the
+      // original collector is gone. Bytes already copied after fencing belong
+      // to this immutable snapshot, independently of that collector's lifetime.
+      const retainedAfterRecovery =
+        captured !== undefined &&
+        result.recovered &&
+        result.result?.reason === 'payload_exit' &&
+        result.result.exitCode === 0 &&
+        result.result.signal === null
+      if ((result.outputLost || result.recovered) && !retainedAfterRecovery) {
         captured?.close()
         throw new Error('native output was lost during cleanup')
       }
