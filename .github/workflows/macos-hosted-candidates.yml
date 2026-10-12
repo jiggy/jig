@@ -574,3 +574,180 @@ jobs:
           path: "${{ runner.temp }}/affected-report.json"
           retention-days: 7
           if-no-files-found: "ignore"
+  audit-installed-witness:
+    name: "Audit Mac installed witness — ${{ matrix.arch }}"
+    needs:
+      - "plan"
+      - "host-artifacts"
+      - "qualified-architecture"
+    if: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && contains(github.event.pull_request.labels.*.name, 'ci-performance-audit') && needs.plan.outputs.macos == 'true' && needs.qualified-architecture.result == 'success' }}"
+    runs-on: "${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}"
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        arch:
+          - "x64"
+          - "arm64"
+    steps:
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+      -
+        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+        with:
+          bun-version: "1.4.2"
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
+        with:
+          just-version: "1.43.1"
+      -
+        name: "Record exact host and verify native process prerequisites"
+        env:
+          EXPECTED_ARCH: "${{ matrix.arch }}"
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/mac-evidence"
+          git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
+          uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
+          sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
+          xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
+          bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
+          bun scripts/ci/probe-macos-host.ts | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+      -
+        name: "Install build dependencies without lifecycle scripts"
+        run: "bun install --ignore-scripts"
+      -
+        name: "Build the source-test workspace packages"
+        run: "just --justfile packages/jig/justfile build"
+      -
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/macos-host-artifacts"
+      -
+        name: "Verify exact canonical publication archives"
+        run: |
+          set -eu
+          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
+          printf 'JIG_CI_CANDIDATE_DIRECTORY=%s\n' "$RUNNER_TEMP/macos-host-artifacts" >> "$GITHUB_ENV"
+          cp "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/mac-evidence/CANDIDATE.json"
+          cp "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/mac-evidence/ARTIFACT.json"
+      -
+        name: "Read the exact source plan"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "macos-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/affected-plan"
+      -
+        name: "Require a fresh empty native ownership baseline"
+        run: |
+          set -eu
+          set -o pipefail
+          jobs=$(launchctl list) || exit 1
+          mounts=$(mount) || exit 1
+          processes=$(ps -axo pid=,command=) || exit 1
+          {
+            printf '%s\n' "$jobs" | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'
+            printf '%s\n' "$mounts" | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'
+            printf '%s\n' "$processes" | awk '/macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/ && !/awk/ {print "process " $1}'
+          } | LC_ALL=C sort > "$RUNNER_TEMP/mac-evidence/residue-before.txt"
+          test ! -s "$RUNNER_TEMP/mac-evidence/residue-before.txt"
+      -
+        name: "Run the compact installed observation and display witness"
+        env:
+          JIG_MACOS_TEST_TIMINGS_DIRECTORY: "${{ runner.temp }}/mac-evidence"
+        run: |
+          set -o pipefail
+          scripts/ci/qualify-macos-host.sh --witness 2>&1 | tee "$RUNNER_TEMP/mac-evidence/witness.txt"
+      -
+        name: "Verify canonical candidate metadata is unchanged"
+        if: "always()"
+        run: |
+          set -eu
+          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
+          cmp "$RUNNER_TEMP/mac-evidence/CANDIDATE.json" "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json"
+          cmp "$RUNNER_TEMP/mac-evidence/ARTIFACT.json" "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json"
+      -
+        name: "Retain final empty native ownership"
+        if: "always()"
+        run: |
+          set -eu
+          set -o pipefail
+          jobs=$(launchctl list) || exit 1
+          mounts=$(mount) || exit 1
+          processes=$(ps -axo pid=,command=) || exit 1
+          {
+            printf '%s\n' "$jobs" | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'
+            printf '%s\n' "$mounts" | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'
+            printf '%s\n' "$processes" | awk '/macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/ && !/awk/ {print "process " $1}'
+          } | LC_ALL=C sort > "$RUNNER_TEMP/mac-evidence/residue-after.txt"
+          test ! -s "$RUNNER_TEMP/mac-evidence/residue-after.txt"
+      -
+        name: "Record only partial audit execution"
+        env:
+          ARCHITECTURE: "${{ matrix.arch }}"
+        run: |
+          set -eu
+          expected="$GITHUB_SHA $ARCHITECTURE witness"
+          test "$(cat "$RUNNER_TEMP/mac-evidence/witness.complete")" = "$expected"
+          set -eu
+          node --input-type=module <<'JS'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { execFileSync } from 'node:child_process';
+          import { verifyCandidateBundle, candidateBinding, githubContext } from './scripts/ci/candidate-provenance.mjs';
+          import { observedCount } from './scripts/ci/job-evidence.mjs';
+          const root=process.env.RUNNER_TEMP, source=process.env.GITHUB_SHA, profile='macos-24G830/'+process.env.ARCHITECTURE+'/bun-1.4.2';
+          if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==source)throw Error('Audit checkout is not the tested merge');
+          const plan=JSON.parse(await readFile(root+"/affected-plan/plan.json",'utf8'));
+          const target=plan.targets.find(t=>t.id==='macos-'+process.env.ARCHITECTURE+'-witness');
+          if(plan.identity.head!==source||!plan.decisions.linux||!plan.decisions.macos||JSON.stringify(plan.decisions.sourceTargets)!==JSON.stringify(['source-portable','source-protocol','source-applications','source-python'])||JSON.stringify(plan.decisions.npmPackages)!==JSON.stringify(['flow','agent','acp','jig'])||!Array.isArray(plan.inventory?.coverageErrors)||plan.inventory.coverageErrors.length||!target?.testInventory?.length||!target.runtimeProfiles.includes(profile))throw Error('Audit needs an exact full baseline and owning inventory');
+          const candidateRoot=root+"/macos-host-artifacts";
+          const receipt=await verifyCandidateBundle(candidateRoot,{sourceRevision:source,producerRepository:process.env.GITHUB_REPOSITORY});
+          const artifact=JSON.parse(await readFile(candidateRoot+'/ARTIFACT.json','utf8'));
+          if(target.id==='source-portable'&&(receipt.producer.runId!==Number(process.env.GITHUB_RUN_ID)||receipt.producer.runAttempt!==Number(process.env.GITHUB_RUN_ATTEMPT)))throw Error('Audit source producer is not this run attempt');
+          const candidate=candidateBinding(receipt,artifact), context=await githubContext({sourceRevision:source});
+          if(context.event!=='pull_request'||receipt.producer.workflowPath!=='.github/workflows/ci.yml'||receipt.producer.event!==context.event||receipt.producer.headSha!==context.headSha||receipt.producer.headBranch!==context.headBranch||receipt.producer.headRepository!==context.headRepository)throw Error('Audit candidate is from another proposal');
+          const manifest=JSON.parse(await readFile(root+"/mac-evidence/transcript-manifest.json",'utf8')); if(JSON.stringify(manifest)!==JSON.stringify({schemaVersion:1,commands:[{transcript:'installed-display.txt',files:['packages/jig/test/installed-display-smoke.ts'],commandKind:'installed-script'}]}))throw Error('Audit installed script manifest differs from the owning entrypoint');
+
+          const observed=await observedCount({repository:process.cwd(),source,targetId:target.id,profiles:[profile],testFiles:target.testInventory,junit:root+"/mac-evidence/observation.xml",transcriptManifest:root+"/mac-evidence/transcript-manifest.json"});
+          if(!Number.isSafeInteger(observed.count)||observed.count<=0||observed.skipped!==0||(observed.filtered??0)!==0)throw Error('Audit execution is empty or incomplete');
+          const proof={schemaVersion:1,scope:'performance-audit-only',ordering:'full-first-per-profile',source,tree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),workflow:context.workflowPath,runId:context.runId,runAttempt:context.runAttempt,role:target.id,profile,planDigest:plan.planDigest,inventoryDigest:target.inventoryDigest,candidate,archiveHashes:Object.fromEntries(receipt.packages.map(p=>[p.kind,p.sha256])),observed,qualificationReceipt:false};
+          await writeFile(root+"/audit-mac-observed.json",JSON.stringify(proof,null,2)+'\n',{flag:'wx'});
+          JS
+      -
+        name: "Retain observed witness execution"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "audit-macos-observed-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/audit-mac-observed.json"
+          if-no-files-found: "error"
+          retention-days: 7
+      -
+        name: "Retain bounded installed witness evidence"
+        if: "always()"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "audit-macos-witness-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: |
+            ${{ runner.temp }}/mac-evidence/source.txt
+            ${{ runner.temp }}/mac-evidence/host.txt
+            ${{ runner.temp }}/mac-evidence/prerequisites.json
+            ${{ runner.temp }}/mac-evidence/CANDIDATE.json
+            ${{ runner.temp }}/mac-evidence/ARTIFACT.json
+            ${{ runner.temp }}/mac-evidence/observation.xml
+            ${{ runner.temp }}/mac-evidence/observation.txt
+            ${{ runner.temp }}/mac-evidence/installed-display.txt
+            ${{ runner.temp }}/mac-evidence/transcript-manifest.json
+            ${{ runner.temp }}/mac-evidence/witness.txt
+            ${{ runner.temp }}/mac-evidence/witness.complete
+            ${{ runner.temp }}/mac-evidence/residue-before.txt
+            ${{ runner.temp }}/mac-evidence/residue-after.txt
+          if-no-files-found: "error"
+          retention-days: 7

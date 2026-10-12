@@ -466,6 +466,11 @@ jobs:
         name: "Install host-test dependencies"
         run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/flow-authoring --filter @jigging/agent-acp --filter @jigging/flow --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui"
       -
+        name: "Build the portable observation fixture dependencies"
+        run: |
+          just flow::build
+          just reporting::build
+      -
         name: "Download the frozen archives"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
@@ -752,3 +757,213 @@ jobs:
           path: "${{ runner.temp }}/affected-report.json"
           retention-days: 7
           if-no-files-found: "ignore"
+  audit-linux-witness:
+    name: "Audit Linux installed witness"
+    needs:
+      - "plan"
+      - "host-artifacts"
+      - "rootless-linux"
+    if: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && contains(github.event.pull_request.labels.*.name, 'ci-performance-audit') && needs.plan.outputs.linux == 'true' && needs.rootless-linux.result == 'success' }}"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 20
+    steps:
+      -
+        name: "Check out the exact source"
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
+        with:
+          just-version: "1.43.1"
+      -
+        name: "Install exact Bun test tool"
+        id: "setup-bun"
+        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+        with:
+          bun-version: "1.3.3"
+      -
+        name: "Retain the exact Bun executable"
+        env:
+          JIG_CI_BUN: "${{ steps.setup-bun.outputs.bun-path }}"
+        run: "printf 'JIG_CI_BUN=%s\\n' \"$JIG_CI_BUN\" >> \"$GITHUB_ENV\""
+      -
+        name: "Provision and preflight the ephemeral host"
+        id: "host"
+        run: |
+          scripts/ci/provision-github-rootless-host.sh provision
+          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
+      -
+        name: "Retain the initial clean host assertion"
+        run: "scripts/ci/provision-github-rootless-host.sh assert-clean > \"$RUNNER_TEMP/audit-residue-before.txt\""
+      -
+        name: "Install host-test dependencies"
+        run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/flow-authoring --filter @jigging/agent-acp --filter @jigging/flow --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui"
+      -
+        name: "Build the portable observation fixture dependencies"
+        run: |
+          just flow::build
+          just reporting::build
+      -
+        name: "Download the frozen archives"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "linux-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/linux-host-artifacts"
+      -
+        name: "Identify and verify the frozen archives"
+        shell: "bash"
+        run: |
+          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/linux-host-artifacts" --source "$GITHUB_SHA"
+          set -euo pipefail
+          artifact_directory="$RUNNER_TEMP/linux-host-artifacts"
+          (
+            cd "$artifact_directory"
+            sha256sum --check SHA256SUMS
+          )
+          one_archive() {
+            local -a archives
+            mapfile -t archives < <(find "$1" -maxdepth 1 -type f -name '*.tgz' -print)
+            if [[ ${#archives[@]} -ne 1 ]]; then
+              echo "expected exactly one archive in $1" >&2
+              return 1
+            fi
+            readlink -f "${archives[0]}"
+          }
+          {
+            printf 'REPORTING_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/reporting")"
+            printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
+            printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
+            printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'DISPLAY_MODEL_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-model")"
+            printf 'DISPLAY_WEB_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-web")"
+            printf 'DISPLAY_TUI_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-tui")"
+            printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
+            printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
+          } >> "$GITHUB_ENV"
+
+          cp "$RUNNER_TEMP/linux-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/CANDIDATE.json"
+          cp "$RUNNER_TEMP/linux-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/ARTIFACT.json"
+
+          mkdir "$RUNNER_TEMP/linux-command-evidence"
+          printf '%s\n' '{"schemaVersion":1,"commands":[]}' > "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+      -
+        name: "Download the exact selection plan"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "linux-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/affected-plan"
+      -
+        name: "Require the selected observation whole file"
+        run: |
+          set -eu
+          node scripts/ci/suite-inventory.mjs --target linux-witness --profile linux --revision "$GITHUB_SHA" --format json > "$RUNNER_TEMP/witness-inventory.json"
+          node -e 'const fs=require("node:fs"); if(JSON.stringify(JSON.parse(fs.readFileSync(process.argv[1])))!==JSON.stringify(["packages/jig/test/host/package-provider-observation.test.ts"]))throw Error("Changed compact observation inventory");' "$RUNNER_TEMP/witness-inventory.json"
+      -
+        name: "Observe clean and lost live installed updates"
+        shell: "bash"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env \
+            "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" \
+            "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
+            "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \
+            "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
+            "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
+            "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" \
+            "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
+            "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
+            "JIG_AUTHORING_NODE_PATH=$(command -v node)" "JIG_NPM=$(command -v npm)" \
+            JIG_LINUX_ROOTLESS_HOSTILE=1 "$JIG_CI_BUN" test \
+            packages/jig/test/host/package-provider-observation.test.ts \
+            --reporter=junit --reporter-outfile="$RUNNER_TEMP/linux-command-evidence/observation.xml" \
+            2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/observation.txt"
+      -
+        name: "Qualify installed display bytes and real web and terminal ownership"
+        shell: "bash"
+        run: |
+          set -euo pipefail
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env \
+            "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" \
+            "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
+            "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \
+            "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
+            "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
+            "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" \
+            "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
+            "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
+            "FLOW_NODE=$(command -v node)" "JIG_AUTHORING_NODE_PATH=$(command -v node)" \
+            "JIG_NPM=$(command -v npm)" JIG_LINUX_ROOTLESS_HOSTILE=1 \
+            "$JIG_CI_BUN" packages/jig/test/installed-display-smoke.ts \
+            2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/installed-display.txt"
+          printf '%s\n' '{"schemaVersion":1,"commands":[{"transcript":"installed-display.txt","files":["packages/jig/test/installed-display-smoke.ts"],"commandKind":"installed-script"}]}' > "$RUNNER_TEMP/linux-command-evidence/manifest.json"
+      -
+        name: "Verify the tested archives are unchanged"
+        if: "always()"
+        run: |
+          set -eu
+          node scripts/ci/candidate-provenance.mjs verify "$JIG_CI_ARCHIVE_DIRECTORY" --source "$GITHUB_SHA"
+          cmp "$RUNNER_TEMP/CANDIDATE.json" "$JIG_CI_ARCHIVE_DIRECTORY/CANDIDATE.json"
+          cmp "$RUNNER_TEMP/ARTIFACT.json" "$JIG_CI_ARCHIVE_DIRECTORY/ARTIFACT.json"
+      -
+        name: "Require zero host residue"
+        if: "always() && steps.host.outputs.ready == 'true'"
+        run: "scripts/ci/provision-github-rootless-host.sh assert-clean > \"$RUNNER_TEMP/audit-residue-after.txt\""
+      -
+        name: "Record only partial audit execution"
+        run: |
+          set -eu
+          node --input-type=module <<'JS'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { execFileSync } from 'node:child_process';
+          import { verifyCandidateBundle, candidateBinding, githubContext } from './scripts/ci/candidate-provenance.mjs';
+          import { observedCount } from './scripts/ci/job-evidence.mjs';
+          const root=process.env.RUNNER_TEMP, source=process.env.GITHUB_SHA, profile='ubuntu-24.04/x64/bun-1.3.3/rootless';
+          if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==source)throw Error('Audit checkout is not the tested merge');
+          const plan=JSON.parse(await readFile(root+"/affected-plan/plan.json",'utf8'));
+          const target=plan.targets.find(t=>t.id==='linux-witness');
+          if(plan.identity.head!==source||!plan.decisions.linux||!plan.decisions.macos||JSON.stringify(plan.decisions.sourceTargets)!==JSON.stringify(['source-portable','source-protocol','source-applications','source-python'])||JSON.stringify(plan.decisions.npmPackages)!==JSON.stringify(['flow','agent','acp','jig'])||!Array.isArray(plan.inventory?.coverageErrors)||plan.inventory.coverageErrors.length||!target?.testInventory?.length||!target.runtimeProfiles.includes(profile))throw Error('Audit needs an exact full baseline and owning inventory');
+          const candidateRoot=root+"/linux-host-artifacts";
+          const receipt=await verifyCandidateBundle(candidateRoot,{sourceRevision:source,producerRepository:process.env.GITHUB_REPOSITORY});
+          const artifact=JSON.parse(await readFile(candidateRoot+'/ARTIFACT.json','utf8'));
+          if(target.id==='source-portable'&&(receipt.producer.runId!==Number(process.env.GITHUB_RUN_ID)||receipt.producer.runAttempt!==Number(process.env.GITHUB_RUN_ATTEMPT)))throw Error('Audit source producer is not this run attempt');
+          const candidate=candidateBinding(receipt,artifact), context=await githubContext({sourceRevision:source});
+          if(context.event!=='pull_request'||receipt.producer.workflowPath!=='.github/workflows/ci.yml'||receipt.producer.event!==context.event||receipt.producer.headSha!==context.headSha||receipt.producer.headBranch!==context.headBranch||receipt.producer.headRepository!==context.headRepository)throw Error('Audit candidate is from another proposal');
+          const manifest=JSON.parse(await readFile(root+"/linux-command-evidence/manifest.json",'utf8')); if(JSON.stringify(manifest)!==JSON.stringify({schemaVersion:1,commands:[{transcript:'installed-display.txt',files:['packages/jig/test/installed-display-smoke.ts'],commandKind:'installed-script'}]}))throw Error('Audit installed script manifest differs from the owning entrypoint');
+          for(const phase of ['before','after'])if(await readFile(root+'/audit-residue-'+phase+'.txt','utf8')!=='GitHub rootless host residue check passed\n')throw Error('Audit Linux residue proof is missing or not the owning success marker');
+          const observed=await observedCount({repository:process.cwd(),source,targetId:target.id,profiles:[profile],testFiles:target.testInventory,junit:root+"/linux-command-evidence/observation.xml",transcriptManifest:root+"/linux-command-evidence/manifest.json"});
+          if(!Number.isSafeInteger(observed.count)||observed.count<=0||observed.skipped!==0||(observed.filtered??0)!==0)throw Error('Audit execution is empty or incomplete');
+          const proof={schemaVersion:1,scope:'performance-audit-only',ordering:'full-first-per-profile',source,tree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),workflow:context.workflowPath,runId:context.runId,runAttempt:context.runAttempt,role:target.id,profile,planDigest:plan.planDigest,inventoryDigest:target.inventoryDigest,candidate,archiveHashes:Object.fromEntries(receipt.packages.map(p=>[p.kind,p.sha256])),observed,qualificationReceipt:false};
+          await writeFile(root+"/audit-linux-observed.json",JSON.stringify(proof,null,2)+'\n',{flag:'wx'});
+          JS
+          printf '%s audit-linux-witness %s %s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" > "$RUNNER_TEMP/witness.complete"
+      -
+        name: "Retain compact observed proof"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "audit-linux-observed-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/audit-linux-observed.json"
+          retention-days: 7
+          if-no-files-found: "error"
+      -
+        name: "Retain compact witness diagnostics"
+        if: "always()"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "audit-linux-witness-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: |
+            ${{ runner.temp }}/linux-command-evidence/observation.xml
+            ${{ runner.temp }}/linux-command-evidence/observation.txt
+            ${{ runner.temp }}/linux-command-evidence/installed-display.txt
+            ${{ runner.temp }}/linux-command-evidence/manifest.json
+            ${{ runner.temp }}/witness.complete
+            ${{ runner.temp }}/CANDIDATE.json
+            ${{ runner.temp }}/ARTIFACT.json
+            ${{ runner.temp }}/audit-residue-before.txt
+            ${{ runner.temp }}/audit-residue-after.txt
+          retention-days: 7
+          if-no-files-found: "error"
