@@ -15,13 +15,14 @@ import {
   rm,
   writeFile,
 } from 'node:fs/promises'
-import { createServer as createHttpsServer } from 'node:https'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { RootAdministration, StartRootRunReceipt } from '../../src/administration/root.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { privateDomainDigest } from '../../src/internal/identity.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
+import { settleTestCommand } from '../fixtures/bounded-command.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 import { untrustedCertificate, untrustedKey } from '../http-tls-fixture.js'
 
@@ -485,29 +486,90 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
   test(
     'resolves a local TLS name and preserves certificate refusal without an HTTP request',
     async () => {
+      const caseStarted = performance.now()
+      const peerActiveDeadline =
+        caseStarted + (process.platform === 'darwin' ? 180000 : 90000) - 15000
       const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-http-tls-')))
-      let connections = 0,
-        requests = 0,
-        completed = false
-      const server = createHttpsServer(
-        { key: untrustedKey, cert: untrustedCertificate },
-        (_request, response) => {
-          requests++
-          response.end('must not arrive')
+      let completed = false
+      const node = process.env.FLOW_NODE ?? process.env.JIG_AUTHORING_NODE_PATH
+      if (!node || !isAbsolute(node))
+        throw Error('TLS peer requires the qualified absolute Node executable')
+      await writeFile(
+        join(root, 'tls-peer-config.json'),
+        JSON.stringify({ key: untrustedKey, cert: untrustedCertificate }),
+        { mode: 0o600, flag: 'wx' },
+      )
+      if (performance.now() >= peerActiveDeadline) throw Error('TLS peer active budget unavailable')
+      const peer = Bun.spawn(
+        [node, fileURLToPath(new URL('../fixtures/http-tls-peer.mjs', import.meta.url)), root],
+        {
+          cwd: root,
+          env: {},
+          stdin: 'pipe',
+          stdout: 'pipe',
+          stderr: 'pipe',
         },
       )
-      server.on('connection', () => {
-        connections++
+      const peerResult = settleTestCommand(peer, {
+        evidence: join(root, 'tls-peer'),
+        timeoutMs: Math.max(1, peerActiveDeadline - performance.now()),
+        stdoutLimit: 4096,
+        stderrLimit: 4096,
       })
-      server.on('tlsClientError', () => {})
+      void peerResult.catch(() => undefined)
+      let stopping = false
+      const stopPeer = async () => {
+        let endError: unknown
+        if (!stopping) {
+          stopping = true
+          try {
+            peer.stdin.end()
+          } catch (error) {
+            endError = error
+          }
+        }
+        const result = await peerResult
+        if (endError !== undefined) throw Error('TLS peer input closure failed')
+        if (result.code !== 0 || result.stderr !== '') throw Error('Real Node TLS peer failed')
+        const counts = JSON.parse(result.stdout) as {
+          connections: number
+          requests: number
+        }
+        if (
+          Object.keys(counts).sort().join() !== 'connections,requests' ||
+          !Number.isSafeInteger(counts.connections) ||
+          counts.connections < 0 ||
+          !Number.isSafeInteger(counts.requests) ||
+          counts.requests < 0
+        )
+          throw Error('Invalid TLS peer counts')
+        return counts
+      }
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
-        await new Promise<void>((resolve, reject) => {
-          server.once('error', reject)
-          server.listen(0, resolve)
-        })
-        const address = server.address()
-        if (!address || typeof address === 'string') throw Error('Missing local TLS endpoint')
+        const readyPath = join(root, 'tls-peer.ready.json')
+        const readyUntil = Math.min(performance.now() + 5000, peerActiveDeadline)
+        let address: { port: number } | undefined
+        while (!address) {
+          if (peer.exitCode !== null || performance.now() >= readyUntil)
+            throw Error('Missing local TLS endpoint')
+          try {
+            const value = JSON.parse(await readFile(readyPath, 'utf8')) as { port: number }
+            if (
+              Object.keys(value).join() !== 'port' ||
+              !Number.isSafeInteger(value.port) ||
+              value.port < 1 ||
+              value.port > 65535
+            )
+              throw Error('Invalid real Node TLS readiness')
+            address = value
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+            if (peer.exitCode !== null || performance.now() >= readyUntil)
+              throw Error('Missing local TLS endpoint')
+            await Bun.sleep(10)
+          }
+        }
         const grant = { url: `https://localhost:${address.port}/`, method: 'POST', timeoutMs: 5000 }
         await fixture(
           root,
@@ -528,6 +590,7 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
         expect(await terminal(session.rootAdministration, receipt)).toMatchObject({
           terminal: { status: 'failed', code: 'UNCERTAIN' },
         })
+        const { connections, requests } = await stopPeer()
         expect(connections).toBeGreaterThan(0)
         expect(requests).toBe(0)
         await noOwners(root)
@@ -538,16 +601,12 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
         try {
           await session?.close()
         } finally {
-          server.closeAllConnections()
-          await new Promise<void>((resolve, reject) =>
-            server.close((error) =>
-              error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING'
-                ? reject(error)
-                : resolve(),
-            ),
-          )
-          if (completed) await rm(root, { recursive: true, force: true })
-          else console.error(`Retained HTTP TLS fixture: ${root}`)
+          try {
+            await stopPeer()
+          } finally {
+            if (completed) await rm(root, { recursive: true, force: true })
+            else console.error(`Retained HTTP TLS fixture: ${root}`)
+          }
         }
       }
     },
