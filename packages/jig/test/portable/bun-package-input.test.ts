@@ -1,0 +1,207 @@
+import { describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  inspectPrivateBunPackageInput,
+  requirePrivateBunResolutionPermission,
+} from '../../src/internal/bun-package-input.js'
+import { capturePackageDirectory } from '../../src/package/capture.js'
+
+function metadata(): string {
+  return JSON.stringify({
+    name: 'dependency-fixture',
+    description: 'Exercises private Bun input policy.',
+  })
+}
+async function withPackage(
+  files: Readonly<Record<string, string>>,
+  use: (captured: Awaited<ReturnType<typeof capturePackageDirectory>>) => Promise<void>,
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), 'jig-bun-input-'))
+  try {
+    for (const [path, contents] of Object.entries(files)) {
+      const destination = join(root, path)
+      await mkdir(join(destination, '..'), { recursive: true })
+      await writeFile(destination, contents)
+    }
+    const captured = await capturePackageDirectory(root)
+    try {
+      await use(captured)
+    } finally {
+      await captured.dispose()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+describe('private Bun package input', () => {
+  test('accepts a package-local implementation without native dependencies', async () => {
+    await withPackage(
+      {
+        'FLOW.meta.json': metadata(),
+        'FLOW.ts':
+          'import { readFile } from "node:fs/promises"; import "./helper.ts"; void readFile;\n',
+        'helper.ts': 'export const value = 1;\n',
+      },
+      async (captured) => {
+        expect(await inspectPrivateBunPackageInput(captured)).toEqual({ state: 'direct' })
+      },
+    )
+  })
+  test('accepts the ordinary package.json plus bun.lock shape', async () => {
+    await withPackage(
+      {
+        'FLOW.meta.json': metadata(),
+        'FLOW.ts': 'import { z } from "zod"; void z;\n',
+        'package.json': '{"private":true,"dependencies":{"zod":"4.1.5"}}\n',
+        'bun.lock':
+          '{"lockfileVersion":1,"workspaces":{"":{"dependencies":{"zod":"4.1.5"}}},"packages":{}}\n',
+      },
+      async (captured) => {
+        expect(await inspectPrivateBunPackageInput(captured)).toEqual({
+          state: 'locked',
+          manifestPath: 'package.json',
+          lockPath: 'bun.lock',
+        })
+      },
+    )
+  })
+  test('does not require a lock for an inert package.json', async () => {
+    await withPackage(
+      {
+        'FLOW.meta.json': metadata(),
+        'FLOW.ts': 'export {};\n',
+        'package.json': '{"private":true,"type":"module"}\n',
+      },
+      async (captured) => {
+        expect(await inspectPrivateBunPackageInput(captured)).toEqual({ state: 'direct' })
+      },
+    )
+  })
+  for (const [suiteCaseIndex, suiteCaseValue] of [
+    {
+      files: { 'bun.lock': '{}\n' },
+      code: 'PACKAGE_BUN_MANIFEST_MISSING',
+      path: 'package.json',
+    },
+    {
+      files: { 'node_modules/zod/index.js': 'export {};\n' },
+      code: 'PACKAGE_BUN_NODE_MODULES',
+      path: 'node_modules',
+    },
+    {
+      files: {
+        'package.json': '{"dependencies":{"@example/value":"1.0.0"}}\n',
+        'bun.lock':
+          '{"lockfileVersion":1,"workspaces":{"":{"dependencies":{"@example/value":"1.0.0"}}},"packages":{}}\n',
+        '.npmrc': '@example:registry=https://packages.example.invalid/\n',
+      },
+      code: 'PACKAGE_BUN_CONFIG_UNSUPPORTED',
+      path: '.npmrc',
+    },
+  ].entries()) {
+    test(
+      'rejects incomplete or generated dependency input: $code' + ` (case ${suiteCaseIndex + 1})`,
+      () =>
+        Reflect.apply(
+          async ({ files, code, path }) => {
+            await withPackage(
+              {
+                'FLOW.meta.json': metadata(),
+                'FLOW.ts': 'export {};\n',
+                ...files,
+              },
+              async (captured) => {
+                await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
+                  code,
+                  path,
+                })
+              },
+            )
+          },
+          undefined,
+          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
+        ),
+    )
+  }
+  test('classifies missing locks without granting resolution permission', async () => {
+    await withPackage(
+      { 'package.json': '{"dependencies":{"is-number":"7.0.0"}}' },
+      async (captured) => {
+        const input = await inspectPrivateBunPackageInput(captured)
+        expect(input).toEqual({ state: 'unlocked', manifestPath: 'package.json' })
+        for (const allowed of [undefined, false, 'true']) {
+          expect(() => requirePrivateBunResolutionPermission(input, allowed as boolean)).toThrow(
+            'explicitly allow resolution',
+          )
+        }
+        expect(() => requirePrivateBunResolutionPermission(input, true)).not.toThrow()
+        expect(() =>
+          requirePrivateBunResolutionPermission({ state: 'direct' }, false),
+        ).not.toThrow()
+      },
+    )
+  })
+  for (const [suiteCaseIndex, suiteCaseValue] of [
+    { dependencies: { x: 'file:../outside' } },
+    { dependencies: { x: 'https://example.invalid/x.tgz' } },
+    { dependencies: { x: '1.0.0' }, overrides: { x: 'https://example.invalid/x.tgz' } },
+    { dependencies: { x: '1.0.0' }, workspaces: ['../outside'] },
+    { dependencies: { x: '1.0.0' }, patchedDependencies: {} },
+  ].entries()) {
+    test(
+      'rejects known unsupported missing-lock inputs before resolution: %j' +
+        ` (case ${suiteCaseIndex + 1})`,
+      () =>
+        Reflect.apply(
+          async (manifest) => {
+            await withPackage({ 'package.json': JSON.stringify(manifest) }, async (captured) => {
+              await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
+                code:
+                  'PACKAGE_BUN_MANIFEST_' +
+                  ('overrides' in manifest ||
+                  'workspaces' in manifest ||
+                  'patchedDependencies' in manifest
+                    ? 'FIELD'
+                    : 'SOURCE'),
+                path: 'package.json',
+              })
+            })
+          },
+          undefined,
+          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
+        ),
+    )
+  }
+  test('rejects .npmrc for missing-lock preparation too', async () => {
+    await withPackage(
+      {
+        'package.json': '{"dependencies":{"x":"1.0.0"}}',
+        '.npmrc': 'registry=https://example.invalid',
+      },
+      async (captured) => {
+        await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
+          code: 'PACKAGE_BUN_CONFIG_UNSUPPORTED',
+        })
+      },
+    )
+  })
+  test('rejects malformed package.json', async () => {
+    await withPackage(
+      {
+        'FLOW.meta.json': metadata(),
+        'FLOW.ts': 'export {};\n',
+        'package.json': 'not json\n',
+        'bun.lock': '{}\n',
+      },
+      async (captured) => {
+        await expect(inspectPrivateBunPackageInput(captured)).rejects.toMatchObject({
+          code: 'PACKAGE_BUN_MANIFEST_INVALID',
+          path: 'package.json',
+        })
+      },
+    )
+  })
+})

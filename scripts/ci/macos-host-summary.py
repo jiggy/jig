@@ -17,6 +17,14 @@ def test_counts(path):
     if root.tag not in ("testsuites", "testsuite"):
         raise ValueError("invalid JUnit root")
     cases = list(root.iter("testcase"))
+    if root.get("tests") is not None and int(root.get("tests")) != len(cases):
+        raise ValueError("incomplete owning JUnit cases")
+    if any(
+        int(suite.get("failures", "0")) or int(suite.get("errors", "0")) or int(suite.get("skipped", "0"))
+        for suite in root.iter()
+        if suite.tag in ("testsuite", "testsuites")
+    ):
+        raise ValueError("failed or skipped owning suite")
     executed = [c for c in cases if c.find("skipped") is None]
     failures = sum(c.find("failure") is not None or c.find("error") is not None for c in cases)
     files = {c.get("file") for c in cases}
@@ -28,7 +36,7 @@ def test_counts(path):
             "skipped_reports": len(cases) - len(executed),
             "failures": failures,
         },
-        {(c.get("file"), c.get("classname"), c.get("name"), c.get("line")) for c in executed},
+        [(c.get("file"), c.get("classname", ""), c.get("name")) for c in executed],
         files,
     )
 
@@ -114,9 +122,12 @@ def summarize(architecture, revision, count, evidence, jobs):
                 not isinstance(group, dict)
                 or not isinstance(group.get("file"), str)
                 or not group["file"]
+                or "pattern" in group
                 for group in groups
             ):
                 raise ValueError("plan file")
+            if len({group["file"] for group in groups}) != len(groups):
+                raise ValueError("repeated whole-file group")
             if any(not isinstance(file, str) or not file for file in native):
                 raise ValueError("native file")
             paths = [
@@ -128,7 +139,7 @@ def summarize(architecture, revision, count, evidence, jobs):
             if plan["installed"]:
                 paths.append((
                     directory / "installed-startup.xml",
-                    {"packages/jig/test/native-agent-startup.test.ts"},
+                    {"packages/jig/test/startup/native-agent-startup.test.ts"},
                 ))
         except (OSError, ValueError, KeyError, TypeError):
             errors.append(f"Shard {shard}: missing or invalid test plan")
@@ -136,15 +147,12 @@ def summarize(architecture, revision, count, evidence, jobs):
         for path, expected_files in paths:
             try:
                 counts, cases, files = test_counts(path)
-                if files and files != expected_files:
+                if files != expected_files:
                     raise ValueError("testcase file does not match plan")
-                if (
-                    path.name in ("native-tests.xml", "installed-startup.xml")
-                    and not counts["executed"]
-                ):
-                    raise ValueError("native prerequisite proof is empty")
-                if cases & seen_cases:
-                    errors.append(f"Shard {shard}: repeated execution across test groups")
+                if not counts["executed"]:
+                    raise ValueError("owning whole-file proof is empty")
+                if len(set(cases)) != len(cases) or set(cases) & seen_cases:
+                    errors.append(f"Shard {shard}: repeated execution within or across test groups")
                 seen_cases.update(cases)
                 for key in counts:
                     row[key] += counts[key]
@@ -153,6 +161,8 @@ def summarize(architecture, revision, count, evidence, jobs):
                 errors.append(f"Shard {shard}: missing or invalid {path.name}")
         if row["failures"]:
             errors.append(f"Shard {shard}: failed test cases")
+        if row["skipped_reports"]:
+            errors.append(f"Shard {shard}: selected whole-file cases were skipped")
     report["qualified"] = not errors
     return report
 
@@ -167,7 +177,7 @@ def markdown(report):
         wait = f"{timing['wait_seconds']:.0f}s" if timing else "unavailable"
         execution = f"{timing['job_seconds']:.0f}s" if timing else "unavailable"
         lines.append(f"| {row['shard']} | {wait} | {execution} | {row['executed']} | {row['skipped_reports']} | {row['failures']} |")
-    lines.extend(["", f"Executed cases: **{report['executed']}**. Skipped reports include name-partition filters and platform/opt-in skips; they are not executed proof.", "",
+    lines.extend(["", f"Executed cases: **{report['executed']}**. Skipped or filtered cases are not executed proof and reject selected whole-file qualification.", "",
                   "Counts cover planned Bun source, native and installed-client startup tests. Packed consumer CLI probes, archive identity and residue checks are additionally required by completion markers.", "",
                   "Runner wait is measured from job creation to runner start. Job execution includes setup, proof and cleanup; neither value is a per-test runtime."])
     if not report["timing_available"]:

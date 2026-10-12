@@ -18,14 +18,9 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promoteDirectory } from '../promote-directory.mjs'
+import { PACKAGE_LAYOUT } from './candidate-provenance.mjs'
 
-export const CANDIDATE_PACKAGES = Object.freeze({
-  'flow-sdk': '@jigging/flow',
-  'user-updates': '@jigging/user-updates',
-  'agent-method': '@jigging/agent-method',
-  'agent-acp': '@jigging/agent-acp',
-  jig: '@jigging/jig',
-})
+export const CANDIDATE_PACKAGES = PACKAGE_LAYOUT
 export const QUALIFIED_BUN = Object.freeze({
   version: '1.3.3',
   revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',

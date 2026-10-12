@@ -91,7 +91,7 @@ async function bundleFixture(action) {
   }
 }
 
-test('candidate receipt verifies all five archives, actual inventories and resolution without changing frozen files', async () => {
+test('candidate receipt verifies all eight archives, actual inventories and resolution without changing frozen files', async () => {
   await bundleFixture(async ({ root, receipt }) => {
     const before = await readFile(join(root, 'CANDIDATE.json'))
     const verified = await verifyCandidateBundle(root, {
@@ -100,7 +100,7 @@ test('candidate receipt verifies all five archives, actual inventories and resol
       producerRunAttempt: 1,
       producerRepository: repository,
     })
-    assert.equal(verified.packages.length, 5)
+    assert.equal(verified.packages.length, 8)
     assert.equal(verified.receiptSha256, receipt.receiptSha256)
     assert.deepEqual(await readFile(join(root, 'CANDIDATE.json')), before)
     for (const expected of [
@@ -113,10 +113,51 @@ test('candidate receipt verifies all five archives, actual inventories and resol
   })
 })
 
+test('display archives are mandatory canonical inputs and a five-package receipt cannot qualify', async () => {
+  await bundleFixture(async ({ root }) => {
+    const path = join(root, 'CANDIDATE.json')
+    const original = JSON.parse(await readFile(path, 'utf8'))
+    for (const kind of ['display-model', 'display-web', 'display-tui']) {
+      await writeFile(
+        path,
+        JSON.stringify({
+          ...original,
+          packages: original.packages.filter((entry) => entry.kind !== kind),
+        }),
+      )
+      await assert.rejects(verifyCandidateBundle(root), /Incomplete candidate package set/)
+    }
+    await writeFile(
+      path,
+      JSON.stringify({
+        ...original,
+        packages: original.packages.filter((entry) => !entry.kind.startsWith('display-')),
+      }),
+    )
+    await assert.rejects(verifyCandidateBundle(root), /Incomplete candidate package set/)
+    await writeFile(
+      path,
+      JSON.stringify({
+        ...original,
+        packages: original.packages.map((entry) =>
+          entry.kind === 'display-web'
+            ? original.packages.find((candidate) => candidate.kind === 'display-model')
+            : entry,
+        ),
+      }),
+    )
+    await assert.rejects(verifyCandidateBundle(root), /Unknown or duplicate candidate package/)
+  })
+})
+
 test('archive, inventory, dependency and symlink tampering fail before qualification', async () => {
   for (const [file, pattern] of [
     ['jig/jig.tgz', /archive digest/],
     ['jig/jig.tgz.files', /inventory digest/],
+    ['display-model/display-model.tgz', /archive digest/],
+    ['display-web/display-web.tgz', /archive digest/],
+    ['display-tui/display-tui.tgz', /archive digest/],
+    ['display-tui/display-tui.tgz.files', /inventory digest/],
     ['resolution/bun.lock', /dependency resolution/],
   ]) {
     await bundleFixture(async ({ root }) => {

@@ -3,7 +3,6 @@ import { execFileSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { createAffectedPlan, digest, parseArguments, stableJson } from './affected-plan.mjs'
-import { authorizeExpectedSkips } from './expected-skips.mjs'
 
 const SOURCE_REVISION = /^[0-9a-f]{40}$/
 
@@ -127,6 +126,13 @@ export function reconcileAffectedEvidence(
       errors.push(`Selected target missing, failed, cancelled or skipped: ${target.id}`)
       return row
     }
+    if (
+      ['tooling', 'source-and-consumer', 'native-and-installed', 'installed-witness'].includes(
+        target.kind,
+      ) &&
+      (!Array.isArray(target.testInventory) || target.testInventory.length === 0)
+    )
+      errors.push(`Selected target has an empty source test inventory: ${target.id}`)
     if (result.inventoryDigest !== target.inventoryDigest)
       errors.push(`Wrong execution inventory: ${target.id}`)
     if (
@@ -142,44 +148,20 @@ export function reconcileAffectedEvidence(
       stableJson([...profiles].sort()) !== stableJson([...target.runtimeProfiles].sort())
     )
       errors.push(`Incomplete or unexpected runtime/host matrix: ${target.id}`)
-    if (!Number.isSafeInteger(result.observedSkipped) || result.observedSkipped < 0)
-      errors.push(`Missing observed skip accounting: ${target.id}`)
-    else if (result.observedSkipped > 0) {
-      try {
-        if (!target.skipPolicy || result.skipPolicy !== target.skipPolicy || profiles.length !== 1)
-          throw new Error('Unknown skip policy')
-        const authorization = authorizeExpectedSkips({
-          repository: cwd,
-          source: expected.identity.head,
-          targetId: target.id,
-          profile: profiles[0],
-          skipPolicy: result.skipPolicy,
-          skippedCases: result.skippedCases,
-        })
-        if (
-          authorization.observedSkipped !== result.observedSkipped ||
-          authorization.skippedCaseDigest !== result.skippedCaseDigest
-        )
-          throw new Error('Incomplete skipped case identities')
-      } catch {
-        errors.push(
-          `Skipped cases lack unchanged reviewed source and owning command proof: ${target.id}`,
-        )
-      }
-    } else if (result.skippedCases?.length)
-      errors.push(`Skip totals disagree with reported case identities: ${target.id}`)
     if (
-      [
-        'native-and-installed',
-        'installed-consumer',
-        'candidate-and-consumer',
-        'candidate-build',
-      ].includes(target.kind)
-    ) {
+      result.observedSkipped !== 0 ||
+      result.skippedCases !== undefined ||
+      result.skipPolicy !== undefined ||
+      result.skippedCaseDigest !== undefined
+    )
+      errors.push(`Selected whole-file suite contains skipped execution: ${target.id}`)
+    if (result.observedFiltered !== undefined && result.observedFiltered !== 0)
+      errors.push(`Selected whole-file suite contains filtered execution: ${target.id}`)
+    if (target.requiresArtifacts) {
       if (result.artifactsVerified !== true)
         errors.push(`Missing unchanged archive identity proof: ${target.id}`)
     }
-    if (target.kind === 'native-and-installed' && result.residueVerified !== true)
+    if (target.requiresResidue && result.residueVerified !== true)
       errors.push(`Missing host residue proof: ${target.id}`)
     row.qualified = !errors.some((error) => error.endsWith(`: ${target.id}`))
     return row

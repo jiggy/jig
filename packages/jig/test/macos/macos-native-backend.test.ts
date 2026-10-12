@@ -1,0 +1,416 @@
+const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
+
+import { expect, spyOn, test } from 'bun:test'
+import * as childProcess from 'node:child_process'
+import { spawnSync } from 'node:child_process'
+import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { readPrivateCapturedOutput } from '../../src/internal/captured-output.js'
+import {
+  closePrivateExecutionOutput,
+  resolvePrivateExecutionOutput,
+} from '../../src/internal/execution-output.js'
+import {
+  openPrivateMacosBackendState,
+  planPrivateMacosOwnerStateAllocation,
+  releasePrivateMacosOwnerState,
+} from '../../src/internal/macos-backend-state.js'
+import {
+  PrivateMacosBackend,
+  type PrivateMacosLaunchPlan,
+} from '../../src/internal/macos-native-backend.js'
+
+test('backend retains known exit and recovered cleanup in its authenticated final receipt', async () => {
+  const root = await mkdtemp('/private/tmp/jig-native-terminal-')
+  const owners = join(root, 'owners')
+  const work = join(root, 'work')
+  await mkdir(owners, { mode: 0o700 })
+  await mkdir(work, { mode: 0o700 })
+  const allocation = await planPrivateMacosOwnerStateAllocation({
+    parent: owners,
+    name: 'terminal',
+  })
+  const backend = new PrivateMacosBackend({
+    bunPath: process.execPath,
+    supervisorPath: fileURLToPath(
+      new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+    ),
+    launcherPath: fileURLToPath(new URL('../support/macos-exec-universal', suiteTestUrl)),
+  })
+  let safeToRemove = false
+  let component: Awaited<ReturnType<typeof backend.launch>> | undefined
+  let bootedOut: string | undefined
+  let injected = false
+  const original = childProcess.spawnSync
+  const interception = spyOn(childProcess, 'spawnSync').mockImplementation(((
+    ...args: unknown[]
+  ) => {
+    const result = Reflect.apply(original, childProcess, args)
+    const commandArgs = args[1] as readonly string[] | undefined
+    if (args[0] === '/bin/launchctl' && commandArgs?.[0] === 'bootout') bootedOut = commandArgs[1]
+    if (
+      !injected &&
+      args[0] === '/bin/launchctl' &&
+      commandArgs?.[0] === 'print' &&
+      commandArgs[1] === bootedOut
+    ) {
+      injected = true
+      return { ...result, status: 0 }
+    }
+    return result
+  }) as typeof childProcess.spawnSync)
+  try {
+    const sealed = await backend.seal(
+      {
+        runId: 'terminal',
+        limits: {
+          memoryBytes: 256 * 1024 * 1024,
+          pids: 4,
+          cpuQuotaMicros: 50_000,
+          cpuPeriodMicros: 100_000,
+          deadlineUnixMs: Date.now() + 30_000,
+          cleanupTimeoutMs: 5000,
+        },
+        command: [
+          process.execPath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          '-e',
+          'await Bun.stdin.text(); process.exit(17)',
+        ],
+        cwd: work,
+        environment: {},
+        files: {
+          readOnlyFiles: [process.execPath],
+          readOnlyTrees: [work],
+          writableTrees: [],
+          protectedRoots: [owners],
+          network: 'isolated',
+        },
+        maxOutputBytes: 4096,
+      },
+      allocation,
+    )
+    component = await sealed.admit()
+    component.stdout[Symbol.asyncIterator]()
+    component.stderr[Symbol.asyncIterator]()
+    await component.closeInput()
+    const [exit, receipt] = await Promise.all([component.completion, component.enforcement])
+    expect(injected).toBe(true)
+    expect(exit).toMatchObject({
+      exitCode: 17,
+      signal: null,
+      stopReason: 'payload_exit',
+      fenced: true,
+    })
+    expect(receipt).toMatchObject({
+      exitCode: 17,
+      signal: null,
+      stopReason: 'payload_exit',
+      recovered: true,
+      outputLost: true,
+    })
+    const state = await openPrivateMacosBackendState(allocation)
+    try {
+      expect((await state.read()).final).toEqual(receipt)
+    } finally {
+      await state.close()
+    }
+    await releasePrivateMacosOwnerState(allocation, receipt as never)
+    expect(await readdir(owners)).toEqual([])
+    safeToRemove = true
+  } finally {
+    interception.mockRestore()
+    if (!safeToRemove && component !== undefined) {
+      await component.terminate().catch(() => undefined)
+      const receipt = await backend.recoverFence(component.owner)
+      await releasePrivateMacosOwnerState(allocation, receipt as never)
+      safeToRemove = true
+    }
+    if (safeToRemove) await rm(root, { recursive: true })
+  }
+}, 60_000)
+test('native backend seals, admits, retains output, persists fencing and releases exact ownership', async () => {
+  const root = await mkdtemp('/private/tmp/jig-native-backend-')
+  const owners = join(root, 'owners')
+  await mkdir(owners, { mode: 0o700 })
+  const launcher = join(root, 'macos-exec')
+  const payload = join(root, 'payload')
+  let safeToRemove = false
+  try {
+    for (const [source, output] of [
+      [new URL('../support/macos-exec.c', suiteTestUrl), launcher],
+      [new URL('./fixtures/macos-storage-payload.c', suiteTestUrl), payload],
+    ] as const) {
+      const compiled = spawnSync(
+        '/usr/bin/clang',
+        [
+          '-O2',
+          '-Wall',
+          '-Wextra',
+          '-Werror',
+          '-Wno-deprecated-declarations',
+          fileURLToPath(source),
+          '-o',
+          output,
+        ],
+        { encoding: 'utf8', timeout: 15_000 },
+      )
+      expect({ status: compiled.status, stderr: compiled.stderr }).toEqual({
+        status: 0,
+        stderr: '',
+      })
+    }
+    const backend = new PrivateMacosBackend({
+      bunPath: process.execPath,
+      supervisorPath: fileURLToPath(
+        new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+      ),
+      launcherPath: launcher,
+    })
+    const support = await backend.inspectSupport()
+    expect(support.resourceOvershoot).toBe(true)
+    const allocation = await planPrivateMacosOwnerStateAllocation({
+      parent: owners,
+      name: 'successful',
+    })
+    const data = join(allocation.directory, 'data')
+    const plan: PrivateMacosLaunchPlan = {
+      runId: 'successful',
+      limits: {
+        memoryBytes: 32 * 1024 * 1024,
+        pids: 4,
+        cpuQuotaMicros: 50_000,
+        cpuPeriodMicros: 100_000,
+        deadlineUnixMs: Date.now() + 30_000,
+        cleanupTimeoutMs: 5000,
+      },
+      command: [
+        payload,
+        'complete',
+        join(data, 'output/result.txt'),
+        join(allocation.directory, 'control/guardian/storage/volume.dmg'),
+      ],
+      cwd: join(data, 'work'),
+      environment: {},
+      files: {
+        readOnlyFiles: [payload],
+        readOnlyTrees: [],
+        writableTrees: ['work', 'tmp', 'output'].map((name) => join(data, name)),
+        protectedRoots: [join(allocation.directory, 'control')],
+        network: 'isolated',
+      },
+      maxOutputBytes: 4096,
+      storage: { mountPath: data, bytes: 16 * 1024 * 1024, collect: 'output' },
+    }
+    const sealed = await backend.seal(plan, allocation)
+    await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow(
+      'native execution owner is still held by another coordinator',
+    )
+    let prepared = ''
+    const component = await sealed.admit(undefined, async (owner) => {
+      prepared = owner.digest
+    })
+    component.stdout[Symbol.asyncIterator]()
+    component.stderr[Symbol.asyncIterator]()
+    await component.closeInput()
+    const [exit, receipt] = await Promise.all([component.completion, component.enforcement])
+    expect(prepared).toBe(component.owner.digest)
+    expect(exit).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
+    expect(receipt.recovered).toBe(false)
+    expect(receipt.evidence.samples).toBeGreaterThan(0)
+    const observed = await openPrivateMacosBackendState(allocation)
+    try {
+      expect((await observed.read()).sealed).toEqual(sealed.identity)
+    } finally {
+      await observed.close()
+    }
+    const output = await resolvePrivateExecutionOutput(component.output)
+    const files = readPrivateCapturedOutput(output as never)
+    expect(files.map((file) => [file.path, file.contents.toString()])).toEqual([
+      ['result.txt', 'captured-output'],
+    ])
+    await closePrivateExecutionOutput(component.output)
+    expect(
+      await access(data).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    expect((await backend.recoverFence(sealed.identity)).ownerDigest).toBe(receipt.ownerDigest)
+    await releasePrivateMacosOwnerState(allocation, receipt as never)
+    expect(await readdir(owners)).toEqual([])
+
+    const unused = await planPrivateMacosOwnerStateAllocation({ parent: owners, name: 'unused' })
+    const unusedData = join(unused.directory, 'data')
+    const unusedPlan: PrivateMacosLaunchPlan = {
+      ...plan,
+      runId: 'unused',
+      cwd: join(unusedData, 'work'),
+      command: [
+        payload,
+        'complete',
+        join(unusedData, 'output/result.txt'),
+        join(unused.directory, 'control/guardian/storage/volume.dmg'),
+      ],
+      files: {
+        ...plan.files,
+        writableTrees: ['work', 'tmp', 'output'].map((name) => join(unusedData, name)),
+        protectedRoots: [join(unused.directory, 'control')],
+      },
+      storage: { ...plan.storage!, mountPath: unusedData },
+    }
+    const unusedIdentityPath = join(root, 'unused-identity.json')
+    const unusedFixturePath = join(root, 'unused-fixture.json')
+    await writeFile(
+      unusedFixturePath,
+      JSON.stringify({
+        mode: 'sealed',
+        identityPath: unusedIdentityPath,
+        options: {
+          bunPath: process.execPath,
+          supervisorPath: fileURLToPath(
+            new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+          ),
+          launcherPath: launcher,
+        },
+        allocation: unused,
+        plan: unusedPlan,
+      }),
+      { mode: 0o600, flag: 'wx' },
+    )
+    const unusedChild = spawnSync(
+      process.execPath,
+      [
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        fileURLToPath(new URL('./fixtures/macos-native-backend-loss.ts', suiteTestUrl)),
+        unusedFixturePath,
+      ],
+      { env: {}, encoding: 'utf8', timeout: 20_000 },
+    )
+    expect(unusedChild.status).toBe(75)
+    const unusedIdentity = JSON.parse(await readFile(unusedIdentityPath, 'utf8'))
+    const recovered = await backend.recoverFence(unusedIdentity)
+    expect(recovered).toMatchObject({ stopReason: 'recovered', recovered: true, fenced: true })
+    await releasePrivateMacosOwnerState(unused, recovered as never)
+    expect(await readdir(owners)).toEqual([])
+
+    for (const [index, mode] of ['prepared', 'active'].entries()) {
+      const name = `loss-${mode}`
+      const lost = await planPrivateMacosOwnerStateAllocation({ parent: owners, name })
+      const lostData = join(lost.directory, 'data')
+      const identityPath = join(root, `identity-${index}.json`)
+      const lostPlan: PrivateMacosLaunchPlan = {
+        ...plan,
+        runId: name,
+        cwd: join(lostData, 'work'),
+        command: [
+          payload,
+          'waiting',
+          join(lostData, 'output/result.txt'),
+          join(lost.directory, 'control/guardian/storage/volume.dmg'),
+        ],
+        files: {
+          ...plan.files,
+          writableTrees: ['work', 'tmp', 'output'].map((part) => join(lostData, part)),
+          protectedRoots: [join(lost.directory, 'control')],
+        },
+        storage: { ...plan.storage!, mountPath: lostData },
+      }
+      const fixturePath = join(root, `loss-${index}.json`)
+      await writeFile(
+        fixturePath,
+        JSON.stringify({
+          mode,
+          identityPath,
+          options: {
+            bunPath: process.execPath,
+            supervisorPath: fileURLToPath(
+              new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+            ),
+            launcherPath: launcher,
+          },
+          allocation: lost,
+          plan: lostPlan,
+        }),
+        { mode: 0o600, flag: 'wx' },
+      )
+      const child = spawnSync(
+        process.execPath,
+        [
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          fileURLToPath(new URL('./fixtures/macos-native-backend-loss.ts', suiteTestUrl)),
+          fixturePath,
+        ],
+        { env: {}, encoding: 'utf8', timeout: 20_000 },
+      )
+      expect({ status: child.status, stdout: child.stdout, stderr: child.stderr }).toEqual({
+        status: mode === 'prepared' ? 76 : 77,
+        stdout: '',
+        stderr: '',
+      })
+      const identity = JSON.parse(await readFile(identityPath, 'utf8'))
+      const lostReceipt = await backend.recoverFence(identity)
+      expect(lostReceipt).toMatchObject({
+        stopReason: 'recovered',
+        recovered: true,
+        fenced: true,
+      })
+      await releasePrivateMacosOwnerState(lost, lostReceipt as never)
+      expect(await readdir(owners)).toEqual([])
+    }
+
+    const automatic = await backend.launch((allocation) => {
+      const data = join(allocation.directory, 'data')
+      const work = join(data, 'work')
+      return {
+        runId: 'automatic',
+        limits: {
+          memoryBytes: 256 * 1024 * 1024,
+          pids: 64,
+          cpuQuotaMicros: 50_000,
+          cpuPeriodMicros: 100_000,
+          deadlineUnixMs: Date.now() + 30_000,
+          cleanupTimeoutMs: 5000,
+        },
+        command: [payload],
+        cwd: work,
+        environment: {},
+        files: {
+          readOnlyFiles: [payload],
+          readOnlyTrees: [],
+          writableTrees: [work],
+          protectedRoots: [join(allocation.directory, 'control')],
+          network: 'isolated',
+        },
+        maxOutputBytes: 1,
+        storage: { mountPath: data, bytes: 16 * 1024 * 1024, collect: null },
+      }
+    })
+    const automaticParent = automatic.owner.owner.allocation.parent
+    await automatic.closeInput()
+    await expect(automatic.enforcement).resolves.toMatchObject({
+      stopReason: 'payload_exit',
+      exitCode: 1,
+      fenced: true,
+    })
+    expect(
+      await access(automaticParent).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false)
+    safeToRemove = true
+  } finally {
+    if (safeToRemove) await rm(root, { recursive: true })
+    else console.error(`Native backend evidence retained at ${root}`)
+  }
+}, 90_000)
+
+if (process.platform !== 'darwin') throw Error('This suite requires a native Mac')

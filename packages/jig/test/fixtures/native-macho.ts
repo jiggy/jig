@@ -30,7 +30,7 @@ export function nativeMachO(
   commands.push(platform, ...(options.commands ?? []))
   const header = Buffer.alloc(32)
   header.writeUInt32LE(0xfeedfacf)
-  header.writeUInt32LE((process.arch === 'arm64' ? 0x0100000c : 0x01000007), 4)
+  header.writeUInt32LE(process.arch === 'arm64' ? 0x0100000c : 0x01000007, 4)
   header.writeUInt32LE(process.arch === 'arm64' ? 0 : 3, 8)
   header.writeUInt32LE(options.library === undefined ? 2 : 6, 12)
   header.writeUInt32LE(commands.length, 16)
@@ -51,7 +51,7 @@ export function universalMachO(slice: Buffer, wide = false, little = false): Buf
       : bytes.writeBigUInt64BE(BigInt(value), offset)
   u32(wide ? 0xcafebabf : 0xcafebabe, 0)
   u32(1, 4)
-  u32((process.arch === 'arm64' ? 0x0100000c : 0x01000007), 8)
+  u32(process.arch === 'arm64' ? 0x0100000c : 0x01000007, 8)
   u32(process.arch === 'arm64' ? 0 : 3, 12)
   if (wide) {
     u64(4096, 16)

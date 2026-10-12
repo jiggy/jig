@@ -1,0 +1,1279 @@
+const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
+
+import { afterAll, describe, expect, test } from 'bun:test'
+import { spawn } from 'node:child_process'
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
+import type { PrivateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
+import { privateCaptureAttachments } from '../../src/internal/file-input.js'
+import {
+  PRIVATE_FINITE_ACP_CHANNELS,
+  runPrivateFiniteAcpResource,
+} from '../../src/internal/finite-acp-resource.js'
+import {
+  PrivateLinuxCgroupBackend,
+  type PrivateLinuxSealedOwnerIdentity,
+  releasePrivateLinuxOwnerState,
+  requirePrivateLinuxMechanismUnchanged,
+} from '../../src/internal/linux-rootless-backend.js'
+import type { JsonObject, JsonValue } from '../../src/json.js'
+import { ChannelBroker } from '../../src/run/channels.js'
+import { RunHostSession } from '../../src/run/session.js'
+import { deterministicAcpProgram } from '.././fixtures/deterministic-acp-agent.js'
+import {
+  childExit,
+  collect,
+  createFixture,
+  delayedReadinessSupervisor,
+  delayedReadyForwardingSupervisor,
+  delegatedCgroup,
+  deliberatelySignalledInnerSupervisor,
+  heldContinuationSupervisor,
+  hostConfiguration,
+  missing,
+  plan,
+  readLine,
+  replaceOnce,
+  rootlessTemporaryEntry,
+  unavailableDescriptorRestrictionSupervisor,
+  waitForFence,
+  waitForMissing,
+  waitForNoRunCgroups,
+  waitForPresent,
+} from '.././linux-rootless-run.fixture.js'
+
+const initialRootlessTemporaryState = new Set(
+  (await readdir(tmpdir())).filter(rootlessTemporaryEntry),
+)
+
+describe('private rootless Linux Run', () => {
+  for (const [suiteCaseIndex, suiteCaseValue] of (
+    ['exit', 'signal', 'linger'] as const
+  ).entries()) {
+    test(
+      'settles a contained finite ACP peer: %s' + ` (case ${suiteCaseIndex + 1})`,
+      () =>
+        Reflect.apply(
+          async (scenario) => {
+            const host = await hostConfiguration()
+            const fixture = await createFixture(deterministicAcpProgram())
+            const evidence = await mkdtemp(join(tmpdir(), 'jig-acp-settlement-evidence-'))
+            const started = performance.now()
+            const phases: { phase: string; timeMs: number }[] = []
+            const mark = (phase: string) =>
+              phases.push({ phase, timeMs: Math.round(performance.now() - started) })
+            const key = 'synthetic-settlement-only'
+            const abort = new AbortController()
+            const server = Bun.serve({
+              hostname: '127.0.0.1',
+              port: 0,
+              async fetch(request) {
+                expect(new URL(request.url).pathname).toBe('/dispatch')
+                expect(request.headers.get('authorization')).toBe(`Bearer ${key}`)
+                const event = (await request.json()) as {
+                  scenario: string
+                  phase?: string
+                  keyInEnvironment?: boolean
+                }
+                expect(event.scenario).toBe(scenario)
+                if (event.phase === undefined) expect(event.keyInEnvironment).toBe(false)
+                mark(event.phase ?? 'prompt-dispatched')
+                return new Response('recorded')
+              },
+            })
+            let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+            let work:
+              | Promise<{
+                  result?: Awaited<ReturnType<typeof runPrivateFiniteAcpResource>>
+                  error?: unknown
+                }>
+              | undefined
+            let clean = false
+            try {
+              component = await host.backend.launch({
+                ...plan(host, fixture, `acp-${scenario}`, { deadlineMs: 30_000 }),
+                network: 'inherited',
+              })
+              mark('contained-peer-started')
+              const runtime: PrivateAcpAgentRuntime = {
+                client: 'fixture',
+                adapterPath: join(fixture, 'FLOW.ts'),
+                sandboxAdapterPath: '/package/FLOW.ts',
+                adapterExecutable: false,
+                executablePath: host.bun,
+                sandboxExecutablePath: '/jig-runtime/bun',
+                environment: {},
+                configuration: [],
+                nestedUserNamespaces: false,
+                readOnlyMounts: [],
+                authentication: {
+                  identity: { method: 'fixture' },
+                  request: {
+                    methodId: 'fixture',
+                    _meta: {
+                      endpoint: `http://127.0.0.1:${server.port}/dispatch`,
+                      credential: key,
+                    },
+                  },
+                },
+              }
+              const broker = new ChannelBroker()
+              const app = broker.participant('app', {
+                resolveContract: (path) =>
+                  PRIVATE_FINITE_ACP_CHANNELS[
+                    path === './requests.json' ? 'requests' : 'responses'
+                  ]!.contract!,
+              })
+              const owner = broker.participant('resource')
+              const requests = await app.create({ contract: './requests.json' })
+              const responses = await app.create({ contract: './responses.json' })
+              const grants = app.transfer(
+                owner,
+                { requests: requests.receive.endpoint, responses: responses.send.endpoint },
+                PRIVATE_FINITE_ACP_CHANNELS,
+              )
+              work = runPrivateFiniteAcpResource(
+                component,
+                runtime,
+                {
+                  owner,
+                  requests: grants.requests!.endpoint,
+                  responses: grants.responses!.endpoint,
+                },
+                abort.signal,
+              ).then(
+                (result) => ({ result }),
+                (error) => ({ error }),
+              )
+              const frames = new FiniteAcpFrames('responses')
+              const next = async (): Promise<JsonObject> => {
+                for (;;) {
+                  const item = (await app.next(responses.receive.endpoint)) as JsonObject
+                  if (item.end !== undefined)
+                    throw new Error('finite responses ended before the expected reply')
+                  const value = (item.item as JsonObject).value as JsonObject
+                  if (value.kind === 'ready') return value
+                  const text = frames.accept(value)
+                  if (text !== undefined) return JSON.parse(text)
+                }
+              }
+              const request = async (id: number, method: string, params: JsonObject) => {
+                for (const fragment of fragmentFiniteAcpFrame(
+                  JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+                ))
+                  await app.send(requests.send.endpoint, fragment as unknown as JsonValue)
+              }
+              expect((await next()).kind).toBe('ready')
+              await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
+              expect((await next()).id).toBe(1)
+              await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
+              expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
+              await request(3, 'session/prompt', {
+                sessionId: 'fixture-session',
+                prompt: [{ type: 'text', text: `scenario:${scenario}` }],
+              })
+              if (scenario === 'linger') {
+                expect((await next()).method).toBe('session/update')
+                expect((await next()).result).toEqual({ stopReason: 'end_turn' })
+                mark('turn-completed')
+                app.close(requests.send.endpoint)
+              } else {
+                await expect(next()).rejects.toThrow()
+              }
+              const settled = await work
+              mark('resource-settled')
+              const fence = await component.enforcement
+              await writeFile(
+                join(evidence, 'result.json'),
+                JSON.stringify({
+                  scenario,
+                  phases,
+                  result: settled.result ?? null,
+                  error: settled.error instanceof Error ? settled.error.name : null,
+                  fence,
+                }),
+                { flag: 'wx', mode: 0o600 },
+              )
+              expect(fence.fenced).toBe(true)
+              expect(fence.stopReason).not.toBe('deadline')
+              expect(phases.filter((item) => item.phase === 'prompt-dispatched')).toHaveLength(1)
+              if (scenario === 'linger') {
+                expect(settled.result).toMatchObject({
+                  closed: true,
+                  fence: { stopReason: 'cancelled' },
+                })
+                expect(phases.map((item) => item.phase)).toContain('stdin-eof')
+              } else {
+                expect(settled.error).toBeDefined()
+                expect(fence.exitCode === 0 && fence.signal === null).toBe(false)
+                if (scenario === 'exit')
+                  expect(fence).toMatchObject({
+                    stopReason: 'payload_exit',
+                    exitCode: 17,
+                    signal: null,
+                  })
+                if (scenario === 'signal') {
+                  expect(['payload_exit', 'core_dump']).toContain(fence.stopReason)
+                  expect(abort.signal.aborted).toBe(false)
+                  const dispatched = phases.find((item) => item.phase === 'prompt-dispatched')
+                  const completed = phases.at(-1)
+                  if (dispatched === undefined || completed === undefined)
+                    throw new Error('The native crash proof omitted its phase observations')
+                  expect(completed.timeMs - dispatched.timeMs).toBeLessThan(5_000)
+                }
+              }
+              expect(await missing(component.cgroup.runCgroup)).toBe(true)
+              expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+              clean = true
+            } finally {
+              abort.abort()
+              try {
+                await work
+                await component?.terminate()
+              } finally {
+                await server.stop(true)
+                if (clean) await rm(fixture, { recursive: true, force: true })
+                else console.error(`Finite ACP settlement proof failed; retained ${fixture}`)
+                console.error(`Finite ACP settlement evidence retained ${evidence}`)
+                await waitForNoRunCgroups()
+              }
+            }
+          },
+          undefined,
+          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
+        ),
+      45_000,
+    )
+  }
+  for (const [suiteCaseIndex, suiteCaseValue] of (['payload', 'inner'] as const).entries()) {
+    test(
+      'records and fences deliberate SIGSEGV in %s' + ` (case ${suiteCaseIndex + 1})`,
+      () =>
+        Reflect.apply(
+          async (origin) => {
+            const host = await hostConfiguration()
+            const fixture = await createFixture(
+              origin === 'inner'
+                ? "throw new Error('payload must not start');"
+                : `
+      console.error('fixture: payload deliberately raising SIGSEGV');
+      process.kill(process.pid, 'SIGSEGV');
+    `,
+            )
+            const supervisor =
+              origin === 'inner' ? await deliberatelySignalledInnerSupervisor() : undefined
+            const backend =
+              supervisor === undefined
+                ? host.backend
+                : new PrivateLinuxCgroupBackend({
+                    bunPath: host.bun,
+                    bunHostLibraryPath: host.bunHostLibraryPath,
+                    supervisorPath: supervisor.path,
+                  })
+            let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+            let settled = false
+            const evidence = await mkdtemp(join(tmpdir(), 'jig-signal-evidence-'))
+            let crashObservedAt: number | undefined
+            try {
+              component = await backend.launch(
+                plan(host, fixture, 'signal-provenance', { deadlineMs: 30_000 }),
+              )
+              await component.closeInput()
+              const [stdout, stderr, receipt] = await Promise.all([
+                collect(component.stdout, 65_536),
+                (async () => {
+                  let text = ''
+                  let sampled = false
+                  for await (const bytes of component!.stderr) {
+                    text += Buffer.from(bytes).toString('utf8')
+                    if (Buffer.byteLength(text) > 65_536)
+                      throw new Error('signal diagnostic output exceeded its bound')
+                    if (!sampled && text.includes('Segmentation fault')) {
+                      sampled = true
+                      crashObservedAt = performance.now()
+                      await Bun.sleep(200)
+                      const pids = (
+                        await readFile(
+                          join(component!.cgroup.runCgroup, 'cgroup.procs'),
+                          'utf8',
+                        ).catch((error) => {
+                          if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+                          throw error
+                        })
+                      )
+                        .trim()
+                        .split('\n')
+                        .filter(Boolean)
+                      const states = await Promise.all(
+                        pids.map(async (pid) => {
+                          try {
+                            const status = await readFile(`/proc/${pid}/status`, 'utf8')
+                            return {
+                              pid,
+                              status: status
+                                .split('\n')
+                                .filter((line) =>
+                                  /^(Name|State|Pid|PPid|NSpid|Threads|CoreDumping):/.test(line),
+                                ),
+                              wait: (await readFile(`/proc/${pid}/wchan`, 'utf8')).trim(),
+                            }
+                          } catch (error) {
+                            if ((error as NodeJS.ErrnoException).code === 'ENOENT')
+                              return { pid, exited: true }
+                            throw error
+                          }
+                        }),
+                      )
+                      await writeFile(
+                        join(evidence, 'process-state.json'),
+                        JSON.stringify(states),
+                        {
+                          flag: 'wx',
+                          mode: 0o600,
+                        },
+                      )
+                    }
+                  }
+                  return text
+                })(),
+                component.enforcement,
+              ])
+              await writeFile(
+                join(evidence, 'result.json'),
+                JSON.stringify({ origin, stdout, stderr, receipt }),
+                {
+                  flag: 'wx',
+                  mode: 0o600,
+                },
+              )
+              expect(stdout).toBe('')
+              expect(stderr).toContain(`fixture: ${origin} deliberately raising SIGSEGV`)
+              if (origin === 'inner') {
+                expect(stderr).toContain('/jig/linux-rootless-supervisor.ts')
+                expect(stderr).toContain('--inner')
+                expect(stderr).not.toContain('payload must not start')
+              }
+              // A Bun handler may report the payload, or forwarding may report the
+              // trampoline. Preserve the actual text; neither names the cause alone.
+              expect(stderr).toContain('Segmentation fault')
+              // Preserve natural exit versus explicit crash fencing, never wait for
+              // the thirty-second Run deadline or infer a signal from the panic text.
+              expect(receipt.fenced).toBe(true)
+              expect(['payload_exit', 'core_dump']).toContain(receipt.stopReason)
+              expect(crashObservedAt).toBeDefined()
+              if (crashObservedAt === undefined)
+                throw new Error('The signal diagnostic was not observed')
+              expect(performance.now() - crashObservedAt).toBeLessThan(5_000)
+              expect(receipt.exitCode === 0 && receipt.signal === null).toBe(false)
+              expect(receipt.evidence.memoryEvents.oom_kill ?? 0).toBe(0)
+              expect(receipt.evidence.pidsEvents.max ?? 0).toBe(0)
+              expect(await missing(component.cgroup.runCgroup)).toBe(true)
+              expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+              settled = true
+            } finally {
+              await component?.terminate()
+              if (settled) {
+                await rm(fixture, { recursive: true, force: true })
+                if (supervisor) await rm(supervisor.root, { recursive: true, force: true })
+              } else console.error(`Signal provenance proof failed; retained ${fixture}`)
+              console.error(`Signal provenance evidence retained ${evidence}`)
+              await waitForNoRunCgroups()
+            }
+          },
+          undefined,
+          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
+        ),
+      45_000,
+    )
+  }
+  test('refuses execution and fences when inherited descriptor restriction is unavailable', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("throw new Error('package must not execute');")
+    const supervisor = await unavailableDescriptorRestrictionSupervisor()
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-descriptor-owner-'))
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: supervisor.path,
+    })
+    // This checks the descriptor refusal, not a five-second startup deadline.
+    // Give retained-state I/O time to complete on the provisioned proof host.
+    const owner = await backend.seal(
+      plan(host, fixture, 'descriptor-unavailable', { deadlineMs: 30_000 }),
+      {
+        parent: ownerStateParent,
+        name: 'owner',
+      },
+    )
+    let released = false
+    try {
+      await expect(owner.admit()).rejects.toThrow()
+      const receipt = await waitForFence(backend, owner.identity, 10_000)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'setup_failed', exitCode: null })
+      expect(await missing(owner.identity.runCgroup)).toBe(true)
+      await releasePrivateLinuxOwnerState(owner.identity, receipt)
+      released = true
+      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true)
+      await waitForNoRunCgroups()
+    } finally {
+      // Retain recovery evidence if fencing could not be confirmed.
+      if (released) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(supervisor.root, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+      }
+    }
+  }, 45_000)
+  test('excludes unselected file and directory descriptors from the payload and visible parents', async () => {
+    const host = await hostConfiguration()
+    const secretRoot = await mkdtemp(join(tmpdir(), 'jig-rootless-descriptor-'))
+    const secretPath = join(secretRoot, 'synthetic.txt')
+    await writeFile(secretPath, 'ungranted-synthetic-descriptor')
+    const secretFile = await open(secretPath, 'r')
+    const secretDirectory = await open(secretRoot, 'r')
+    const fixture = await createFixture(`
+      import { readdirSync, readlinkSync, readFileSync, writeFileSync } from 'node:fs';
+      const forbidden = ${JSON.stringify([secretPath, secretRoot])};
+      const leaks = [];
+      let inspected = 0;
+      const entries = (path) => { try { return readdirSync(path); } catch { return []; } };
+      for (const pid of entries('/proc').filter((name) => /^[0-9]+$/.test(name))) {
+        for (const tid of entries('/proc/' + pid + '/task')) {
+          const directory = '/proc/' + pid + '/task/' + tid + '/fd';
+          for (const fd of entries(directory)) {
+            let target;
+            try { target = readlinkSync(directory + '/' + fd); } catch { continue; }
+            inspected++;
+            if (forbidden.includes(target)) {
+              let content;
+              try {
+                content = readFileSync(directory + '/' + fd + (target === forbidden[1] ? '/synthetic.txt' : ''), 'utf8');
+              } catch { content = 'unreadable'; }
+              leaks.push({ pid, tid, fd, target, content });
+            }
+          }
+        }
+      }
+      const input = readFileSync('/jig-input/source/input.bin');
+      writeFileSync('/jig-output/result.bin', input);
+      console.log(JSON.stringify({ inspected, leaks, input: [...input] }));
+    `)
+    await writeFile(join(fixture, 'input.bin'), new Uint8Array([0, 255, 128]))
+    const capture = privateCaptureAttachments([
+      { name: 'source', directory: fixture, select: ['input.bin'] },
+    ])
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      // Exercise actual inheritable handles, not merely descriptors already
+      // protected by the caller's runtime. This test uses Jig's fixed Bun.
+      for (const handle of [secretFile, secretDirectory]) {
+        const info = await readFile(`/proc/self/fdinfo/${handle.fd}`, 'utf8')
+        const flags = info.match(/^flags:\s+([0-7]+)$/m)?.[1]
+        expect(flags).toBeDefined()
+        expect(Number.parseInt(flags!, 8) & 0o2000000).toBe(0)
+      }
+      component = await host.backend.launch({
+        ...plan(host, fixture, 'descriptor-denial'),
+        output: true,
+        inputDirectories: ['/jig-input/source'],
+        capturedInputs: capture.attachments[0]!.files.map((file) => ({
+          ...file,
+          destination: `/jig-input/source/${file.path}`,
+        })),
+      })
+      await component.closeInput()
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
+      const facts = JSON.parse(stdout)
+      expect(facts.inspected).toBeGreaterThan(0)
+      expect(facts.leaks).toEqual([])
+      expect(facts.input).toEqual([0, 255, 128])
+      expect([
+        ...(await readFile(`/proc/self/fd/${component.output!.directory.fd}/result.bin`)),
+      ]).toEqual([0, 255, 128])
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+      expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+      // Restriction occurs only in dedicated trusted launchers, never the coordinator.
+      expect(await secretFile.readFile('utf8')).toBe('ungranted-synthetic-descriptor')
+      expect(await readFile(`/proc/self/fd/${secretDirectory.fd}/synthetic.txt`, 'utf8')).toBe(
+        'ungranted-synthetic-descriptor',
+      )
+    } finally {
+      try {
+        await component?.terminate()
+      } finally {
+        await component?.output?.directory.close()
+        capture.close()
+        await secretFile.close()
+        await secretDirectory.close()
+        await rm(fixture, { recursive: true, force: true })
+        await rm(secretRoot, { recursive: true, force: true })
+      }
+    }
+  }, 15_000)
+  test('preserves real fast-command evidence when coordinator readiness is delayed', async () => {
+    const host = await hostConfiguration()
+    const supervisor = await delayedReadyForwardingSupervisor()
+    const fixture = await createFixture("console.log('fast-command'); process.exitCode = 17;")
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: supervisor.path,
+    })
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      component = await backend.launch(plan(host, fixture, 'delayed-ready-fast-command'))
+      await component.closeInput()
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect({ stdout, stderr }).toEqual({ stdout: 'fast-command\n', stderr: '' })
+      expect(receipt).toMatchObject({
+        exitCode: 17,
+        signal: null,
+        fenced: true,
+        stopReason: 'payload_exit',
+      })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+      expect(await missing(component.owner.owner.ownerStateDirectory)).toBe(true)
+    } finally {
+      await component?.terminate().catch(() => undefined)
+      await rm(fixture, { recursive: true, force: true })
+      await rm(supervisor.root, { recursive: true, force: true })
+      await waitForNoRunCgroups()
+    }
+  }, 15_000)
+  test('projects immutable binary input without a live host tree or writable input paths', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+      let writeDenied = false, createDenied = false;
+      try { writeFileSync('/jig-input/source/data.bin', 'changed'); } catch { writeDenied = true; }
+      try { mkdirSync('/jig-input/source/new'); } catch { createDenied = true; }
+      console.log(JSON.stringify({ bytes: [...readFileSync('/jig-input/source/data.bin')], writeDenied, createDenied }));
+    `)
+    await writeFile(join(fixture, 'data.bin'), new Uint8Array([0, 255, 128]))
+    const capture = privateCaptureAttachments([
+      { name: 'source', directory: fixture, select: ['data.bin'] },
+    ])
+    try {
+      await writeFile(join(fixture, 'data.bin'), 'edited after capture')
+      const component = await host.backend.launch({
+        ...plan(host, fixture, 'captured-input'),
+        inputDirectories: ['/jig-input/source'],
+        capturedInputs: capture.attachments[0]!.files.map((file) => ({
+          ...file,
+          destination: `/jig-input/source/${file.path}`,
+        })),
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true })
+      expect(JSON.parse(stdout)).toEqual({
+        bytes: [0, 255, 128],
+        writeDenied: true,
+        createDenied: true,
+      })
+    } finally {
+      capture.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('projects every captured file at the supported descriptor width', async () => {
+    const host = await hostConfiguration()
+    const path = (index: number) =>
+      `group-${Math.floor(index / 6)}/file-${String(index).padStart(2, '0')}.txt`
+    const fixture = await createFixture(`
+      import { readFileSync } from 'node:fs';
+      console.log(JSON.stringify(Array.from({ length: 24 }, (_, index) =>
+        readFileSync('/jig-input/source/group-' + Math.floor(index / 6) + '/file-' + String(index).padStart(2, '0') + '.txt', 'utf8')
+      )));
+    `)
+    for (let index = 0; index < 4; index++) await mkdir(join(fixture, `group-${index}`))
+    for (let index = 0; index < 24; index++)
+      await writeFile(join(fixture, path(index)), `value-${index}`)
+    const capture = privateCaptureAttachments([
+      {
+        name: 'source',
+        directory: fixture,
+        select: Array.from({ length: 24 }, (_, index) => path(index)),
+      },
+    ])
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      component = await host.backend.launch({
+        ...plan(host, fixture, 'captured-input-width'),
+        output: true,
+        inputDirectories: ['/jig-input/source'],
+        // Scramble source descriptor order so a source may overlap an earlier
+        // child stdio destination. The handoff must preserve every identity.
+        capturedInputs: capture.attachments[0]!.files.map((file) => ({
+          ...file,
+          destination: `/jig-input/source/${file.path}`,
+        })).sort((a, b) => b.fd - a.fd),
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect(stderr).toBe('')
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true })
+      expect(JSON.parse(stdout)).toEqual(Array.from({ length: 24 }, (_, index) => `value-${index}`))
+    } finally {
+      await component?.output?.directory.close()
+      capture.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('retains bounded binary output after the complete payload tree is fenced', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { writeFileSync } from 'node:fs';
+      writeFileSync('/jig-output/result.bin', new Uint8Array([0, 255, 128, 10]));
+    `)
+    let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      component = await host.backend.launch({
+        ...plan(host, fixture, 'retained-output'),
+        output: true,
+      })
+      const [stdout, stderr, receipt] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.enforcement,
+      ])
+      expect({ stdout, stderr }).toEqual({ stdout: '', stderr: '' })
+      expect(receipt).toMatchObject({ exitCode: 0, fenced: true, stopReason: 'payload_exit' })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+      const fd = component.output!.directory.fd
+      expect([...(await readFile(`/proc/self/fd/${fd}/result.bin`))]).toEqual([0, 255, 128, 10])
+      await component.output!.directory.close()
+      expect(await missing(`/proc/self/fd/${fd}`)).toBe(true)
+    } finally {
+      await component?.output?.directory.close()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('preflights and executes one isolated payload', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { dlopen, FFIType } from "bun:ffi";
+      import { chmodSync, existsSync, readFileSync, statSync } from "node:fs";
+      const status = readFileSync("/proc/self/status", "utf8");
+      const nspid = status.split("\\n").find((line) => line.startsWith("NSpid:"));
+      const libc = dlopen("/jig-runtime/lib/libc.so.6", {
+        unshare: { args: [FFIType.i32], returns: FFIType.i32 },
+      });
+      const nestedUserDenied = libc.symbols.unshare(0x10000000) === -1;
+      libc.close();
+      let deviceMutationDenied = false;
+      try { chmodSync("/dev/urandom", 0o777); } catch { deviceMutationDenied = true; }
+      console.log(JSON.stringify({
+        hostOverrideVisible: process.env.JIG_BWRAP_PATH !== undefined,
+        cgroupVisible: existsSync("/sys/fs/cgroup/cgroup.procs"),
+        deviceMutationDenied,
+        nestedUserDenied,
+        networkRoutes: readFileSync("/proc/net/route", "utf8").trim().split("\\n").length,
+        nullMode: statSync("/dev/null").mode & 0o777,
+        urandomMode: statSync("/dev/urandom").mode & 0o777,
+        nspid,
+        uid: process.getuid?.(),
+        gid: process.getgid?.(),
+      }));
+    `)
+    try {
+      const component = await host.backend.launch(plan(host, fixture, 'normal'))
+      await component.closeInput()
+      const [stdout, stderr, completion] = await Promise.all([
+        collect(component.stdout),
+        collect(component.stderr),
+        component.completion,
+      ])
+      expect(stderr).toBe('')
+      expect(completion).toMatchObject({
+        exitCode: 0,
+        signal: null,
+        fenced: true,
+        stopReason: 'payload_exit',
+      })
+      expect(component.envelope.network).toBe('isolated')
+      expect(component.envelope.nestedUserNamespaces).toBe(false)
+      const isolation = JSON.parse(stdout) as { readonly nspid: string }
+      expect(isolation).toMatchObject({
+        hostOverrideVisible: false,
+        cgroupVisible: false,
+        deviceMutationDenied: true,
+        nestedUserDenied: true,
+        networkRoutes: 1,
+        nullMode: 0o666,
+        urandomMode: 0o666,
+        uid: process.getuid?.() ?? 1_000,
+        gid: process.getgid?.() ?? 100,
+      })
+      expect(isolation.nspid.trim().split(/\s+/)).toHaveLength(2)
+      expect((await stat('/dev/urandom')).mode & 0o777).toBe(0o666)
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('executes one FLOW Run/0 component through the rootless envelope', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      import { handle } from "/flow-sdk/src/index.ts";
+      await handle(async (run) => ({ outcome: "done", output: { input: run.input, settings: run.settings } }));
+    `)
+    const sdk = fileURLToPath(new URL('../../flow-sdk', suiteTestUrl))
+    try {
+      const base = plan(host, fixture, 'run-wire')
+      const component = await host.backend.launch({
+        ...base,
+        readOnlyMounts: [...base.readOnlyMounts, { source: sdk, destination: '/flow-sdk' }],
+      })
+      const terminal = await new RunHostSession(component, {
+        input: { request: 'hello' },
+        settings: { mode: 'proof' },
+        attachments: {},
+        scratch: '/tmp/run',
+        deadlineUnixMs: Date.now() + 4_000,
+      }).run()
+      expect(terminal).toMatchObject({
+        status: 'succeeded',
+        result: {
+          outcome: 'done',
+          output: { input: { request: 'hello' }, settings: { mode: 'proof' } },
+        },
+      })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('revalidates one retained authority while its own Run is active', async () => {
+    const host = await hostConfiguration()
+    const waiting = await createFixture('await new Promise(() => {});')
+    const finite = await createFixture("console.log('second');")
+    let first: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
+    try {
+      const before = await host.backend.observeMechanism()
+      first = await host.backend.launch(plan(host, waiting, 'retained-first'))
+      const during = await host.backend.observeMechanism()
+      expect(during.support).toEqual(before.support)
+      expect(during.authority).toEqual(before.authority)
+
+      const second = await host.backend.launch(plan(host, finite, 'retained-second'))
+      await second.closeInput()
+      expect(await second.completion).toMatchObject({ exitCode: 0, fenced: true })
+      expect(await missing(second.cgroup.runCgroup)).toBe(true)
+    } finally {
+      // Retain fixtures/evidence if settlement fails; do not delete the source
+      // of a still-owned process or hide the fencing failure.
+      await first?.terminate()
+      await rm(waiting, { recursive: true, force: true })
+      await rm(finite, { recursive: true, force: true })
+      await waitForNoRunCgroups()
+    }
+  }, 30_000)
+  test('rejects mount aliases into protected host or payload namespaces', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("console.log('unreachable');")
+    try {
+      const base = plan(host, fixture, 'bad-mount')
+      await expect(
+        host.backend.launch({
+          ...base,
+          readOnlyMounts: [{ source: fixture, destination: '/work/../sys' }],
+        }),
+      ).rejects.toThrow('rootless Linux read-only mount is invalid')
+      await expect(
+        host.backend.launch({
+          ...base,
+          readOnlyMounts: [{ source: '/proc', destination: '/host-proc' }],
+        }),
+      ).rejects.toThrow('host pseudo-filesystem cannot enter the rootless sandbox')
+      await waitForNoRunCgroups()
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('rejects changed launch authority under the same support identity', async () => {
+    const host = await hostConfiguration()
+    const sealed = await host.backend.observeMechanism()
+    const changed = Object.freeze({
+      support: sealed.support,
+      authority: Object.freeze({
+        ...sealed.authority,
+        delegatedCgroupInode: String(BigInt(sealed.authority.delegatedCgroupInode) + 1n),
+      }),
+    })
+
+    expect(() => requirePrivateLinuxMechanismUnchanged(sealed, sealed)).not.toThrow()
+    expect(() => requirePrivateLinuxMechanismUnchanged(sealed, changed)).toThrow(
+      'rootless Linux mechanism changed after sealing',
+    )
+  })
+  test('recovers and releases an unadmitted owner on the same boot', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("console.log('unreachable');")
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-same-boot-owner-'))
+    try {
+      const owner = await host.backend.seal(plan(host, fixture, 'same-boot-recovery'), {
+        parent: ownerStateParent,
+        name: 'owner',
+      })
+      const receipt = await host.backend.recoverFence(owner.identity)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'recovered' })
+      await releasePrivateLinuxOwnerState(owner.identity, receipt)
+      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+      await rm(ownerStateParent, { recursive: true, force: true })
+    }
+  })
+})
+describe.serial('private rootless Linux hostile envelope', () => {
+  afterAll(async () => {
+    if (delegatedCgroup === undefined) return
+    const entries = await Array.fromAsync(
+      new Bun.Glob('jig-run-*').scan({ cwd: delegatedCgroup, onlyFiles: false }),
+    )
+    expect(entries).toEqual([])
+    expect(
+      (await readdir(tmpdir()))
+        .filter(rootlessTemporaryEntry)
+        .filter((entry) => !initialRootlessTemporaryState.has(entry)),
+    ).toEqual([])
+    expect(
+      (await readdir('/dev')).filter(
+        (entry) => entry.startsWith('.jig-') && entry.endsWith('-devices'),
+      ),
+    ).toEqual([])
+  })
+  test('enforces cancellation and removes the complete Run', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture('await new Promise(() => {});')
+    try {
+      const component = await host.backend.launch(plan(host, fixture, 'cancel'))
+      await component.terminate()
+      const completion = await component.completion
+      expect(completion).toMatchObject({ fenced: true, stopReason: 'cancelled' })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('cancels a no-output entry awaiting continuation without launching candidate code', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("throw new Error('candidate must not launch');")
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
+    const waitingMarker = join(ownerStateParent, 'gate-waiting')
+    const launchMarker = join(ownerStateParent, 'payload-launch')
+    const supervisor = await heldContinuationSupervisor(waitingMarker, launchMarker)
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: supervisor.path,
+    })
+    const owner = await backend.seal(
+      plan(host, fixture, 'continuation-cancel', { deadlineMs: 8_000 }),
+      { parent: ownerStateParent, name: 'owner' },
+    )
+    const controller = new AbortController()
+    const admission = owner.admit(controller.signal)
+    void admission.catch(() => undefined)
+    let released = false
+    try {
+      await waitForPresent(waitingMarker, 5_000)
+      expect(await readFile(waitingMarker, 'utf8')).toBe('waiting\n')
+      expect(await missing(launchMarker)).toBe(true)
+      controller.abort()
+      await expect(admission).rejects.toThrow()
+      const receipt = await waitForFence(backend, owner.identity, 5_000)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'cancelled' })
+      expect(await missing(launchMarker)).toBe(true)
+      expect(await missing(owner.identity.runCgroup)).toBe(true)
+      await releasePrivateLinuxOwnerState(owner.identity, receipt)
+      released = true
+      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true)
+    } finally {
+      controller.abort()
+      await admission.catch(() => undefined)
+      if (released) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(supervisor.root, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+      }
+      await waitForNoRunCgroups()
+    }
+  }, 20_000)
+  test('coordinator loss fences a no-output entry awaiting continuation without launching candidate code', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("throw new Error('candidate must not launch');")
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
+    const waitingMarker = join(ownerStateParent, 'gate-waiting')
+    const launchMarker = join(ownerStateParent, 'payload-launch')
+    const ownerRecord = join(ownerStateParent, 'sealed-owner.json')
+    const supervisor = await heldContinuationSupervisor(waitingMarker, launchMarker)
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: supervisor.path,
+    })
+    const coordinator = spawn(
+      host.bun,
+      [
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        '--eval',
+        `
+          import { writeFile } from 'node:fs/promises';
+          import { PrivateLinuxCgroupBackend } from ${JSON.stringify(fileURLToPath(new URL('../src/internal/linux-rootless-backend.ts', suiteTestUrl)))};
+          const backend = new PrivateLinuxCgroupBackend(${JSON.stringify({ bunPath: host.bun, bunHostLibraryPath: host.bunHostLibraryPath, supervisorPath: supervisor.path })});
+          const owner = await backend.seal(${JSON.stringify(plan(host, fixture, 'continuation-loss', { deadlineMs: 8_000 }))},
+            ${JSON.stringify({ parent: ownerStateParent, name: 'owner' })});
+          await writeFile(${JSON.stringify(ownerRecord)}, JSON.stringify(owner.identity));
+          await owner.admit();
+          throw new Error('continuation unexpectedly succeeded');
+        `,
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    )
+    const diagnostics = collect(coordinator.stderr!)
+    let released = false
+    try {
+      await waitForPresent(waitingMarker, 5_000)
+      const owner = JSON.parse(
+        await readFile(ownerRecord, 'utf8'),
+      ) as PrivateLinuxSealedOwnerIdentity
+      expect(await readFile(waitingMarker, 'utf8')).toBe('waiting\n')
+      expect(await missing(launchMarker)).toBe(true)
+      coordinator.kill('SIGKILL')
+      await childExit(coordinator)
+      const receipt = await waitForFence(backend, owner, 5_000)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'coordinator_lost' })
+      expect(await missing(launchMarker)).toBe(true)
+      expect(await missing(owner.runCgroup)).toBe(true)
+      await releasePrivateLinuxOwnerState(owner, receipt)
+      released = true
+      expect(await missing(owner.ownerStateDirectory)).toBe(true)
+      expect(await diagnostics).toBe('')
+    } finally {
+      coordinator.kill('SIGKILL')
+      await childExit(coordinator)
+      await diagnostics
+      if (released) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(supervisor.root, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+      }
+      await waitForNoRunCgroups()
+    }
+  }, 20_000)
+  test('enforces aggregate PID limits', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      const children = [];
+      for (let index = 0; index < 128; index += 1) {
+        try {
+          children.push(Bun.spawn([
+            process.execPath,
+            "--no-env-file", "--no-install", "--config=/dev/null",
+            "-e", "await new Promise(() => {})",
+          ], { stdout: "ignore", stderr: "ignore" }));
+        } catch {}
+      }
+      await Bun.sleep(100);
+    `)
+    try {
+      const component = await host.backend.launch(plan(host, fixture, 'pids', { pids: 24 }))
+      const [completion, evidence] = await Promise.all([component.completion, component.evidence])
+      expect(completion.fenced).toBe(true)
+      expect(evidence.pidsEvents.max).toBeGreaterThan(0)
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('enforces aggregate descendant memory limits', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      const children = Array.from({ length: 4 }, () => Bun.spawn([
+        process.execPath,
+        "--no-env-file", "--no-install", "--config=/dev/null",
+        "-e", "const chunks=[]; for (;;) { chunks.push(Buffer.alloc(16*1024*1024, 1)); await Bun.sleep(1); }",
+      ], { stdout: "ignore", stderr: "ignore" }));
+      await Promise.all(children.map((child) => child.exited));
+    `)
+    try {
+      const component = await host.backend.launch(
+        plan(host, fixture, 'memory', {
+          memoryBytes: 192 * 1024 * 1024,
+          pids: 256,
+          cpuQuotaMicros: 100_000,
+          deadlineMs: 8_000,
+        }),
+      )
+      const [completion, evidence] = await Promise.all([component.completion, component.evidence])
+      expect(completion.fenced).toBe(true)
+      expect(evidence.memoryEvents.max).toBeGreaterThan(0)
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('throttles aggregate CPU and independently enforces the wall deadline', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      for (let index = 0; index < 4; index += 1) {
+        Bun.spawn([process.execPath, "--no-env-file", "--no-install", "--config=/dev/null", "-e", "for (;;) {}"], {
+          stdout: "ignore", stderr: "ignore",
+        });
+      }
+      for (;;) {}
+    `)
+    try {
+      const started = Date.now()
+      const component = await host.backend.launch(
+        plan(host, fixture, 'cpu', {
+          cpuQuotaMicros: 10_000,
+          deadlineMs: 2_500,
+        }),
+      )
+      const [completion, evidence] = await Promise.all([component.completion, component.evidence])
+      expect(completion).toMatchObject({ fenced: true, stopReason: 'deadline' })
+      expect(Date.now() - started).toBeLessThan(6_000)
+      expect(evidence.cpuStat.nr_throttled).toBeGreaterThan(0)
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('settles the entry child before publishing a pre-readiness deadline fence', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("console.log('unreachable');")
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
+    const enteredMarker = join(ownerStateParent, 'entry-entered')
+    const settledMarker = join(ownerStateParent, 'entry-settled')
+    const delayedSupervisor = await delayedReadinessSupervisor(enteredMarker, settledMarker).catch(
+      async (error) => {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+        throw error
+      },
+    )
+    const backend = new PrivateLinuxCgroupBackend({
+      bunPath: host.bun,
+      bunHostLibraryPath: host.bunHostLibraryPath,
+      supervisorPath: delayedSupervisor.path,
+    })
+    const launchPlan = plan(host, fixture, 'readiness-deadline', { deadlineMs: 8_000 })
+    const owner = await backend.seal(launchPlan, {
+      parent: ownerStateParent,
+      name: 'deadline-owner',
+    })
+    let released = false
+    try {
+      await expect(owner.admit()).rejects.toThrow()
+      expect(await readFile(enteredMarker, 'utf8')).toBe('entered\n')
+      expect(await readFile(settledMarker, 'utf8')).toBe('settled\n')
+
+      const receipt = await waitForFence(backend, owner.identity, 5_000)
+      expect(receipt).toMatchObject({ fenced: true, stopReason: 'deadline' })
+      expect(await missing(owner.identity.runCgroup)).toBe(true)
+      await releasePrivateLinuxOwnerState(owner.identity, receipt)
+      released = true
+      await waitForNoRunCgroups()
+    } finally {
+      if (released) {
+        await rm(fixture, { recursive: true, force: true })
+        await rm(delayedSupervisor.root, { recursive: true, force: true })
+        await rm(ownerStateParent, { recursive: true, force: true })
+      }
+    }
+  })
+  for (const reason of ['deadline', 'cancelled'] as const) {
+    test(`fences ${reason} during cgroup setup before awaiting admission`, async () => {
+      const host = await hostConfiguration()
+      const fixture = await createFixture("throw new Error('package must not execute');")
+      const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
+      const sourcePath = fileURLToPath(
+        new URL('../src/internal/linux-rootless-supervisor.ts', suiteTestUrl),
+      )
+      const supervisorPath = join(ownerStateParent, 'supervisor.ts')
+      // Interrupt at the first asynchronous setup boundary. The real owner must
+      // still remove its cgroup and persist a fence; no package is admitted.
+      await writeFile(
+        supervisorPath,
+        replaceOnce(
+          await readFile(sourcePath, 'utf8'),
+          '    cgroupCreated = true\n',
+          `    cgroupCreated = true\n    stop(${JSON.stringify(reason)});\n    await Bun.sleep(25);\n`,
+        ),
+      )
+      const backend = new PrivateLinuxCgroupBackend({
+        bunPath: host.bun,
+        bunHostLibraryPath: host.bunHostLibraryPath,
+        supervisorPath,
+      })
+      const owner = await backend.seal(plan(host, fixture, `setup-${reason}`), {
+        parent: ownerStateParent,
+        name: 'setup-owner',
+      })
+      let released = false
+      try {
+        await expect(owner.admit()).rejects.toThrow()
+        const receipt = await waitForFence(backend, owner.identity, 5_000)
+        expect(receipt).toMatchObject({ fenced: true, stopReason: reason, exitCode: null })
+        expect(await missing(owner.identity.runCgroup)).toBe(true)
+        await releasePrivateLinuxOwnerState(owner.identity, receipt)
+        released = true
+        await waitForNoRunCgroups()
+      } finally {
+        if (released) {
+          await rm(fixture, { recursive: true, force: true })
+          await rm(ownerStateParent, { recursive: true, force: true })
+        }
+      }
+    })
+  }
+  test('cancels during prepared admission without starting package code', async () => {
+    const host = await hostConfiguration()
+    const marker = join(await mkdtemp(join(tmpdir(), 'jig-rootless-marker-')), 'ran')
+    const fixture = await createFixture(`await Bun.write(${JSON.stringify(marker)}, "ran");`)
+    const controller = new AbortController()
+    try {
+      const owner = await host.backend.seal(plan(host, fixture, 'startup-cancel'))
+      await expect(owner.admit(controller.signal, async () => controller.abort())).rejects.toThrow(
+        'cancelled before admission',
+      )
+      expect(await missing(marker)).toBe(true)
+      await waitForNoRunCgroups()
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+      await rm(join(marker, '..'), { recursive: true, force: true })
+    }
+  })
+  test('fences orphaned grandchildren on cancellation', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture(`
+      Bun.spawn([
+        process.execPath,
+        "--no-env-file", "--no-install", "--config=/dev/null",
+        "-e", "Bun.spawn([process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', 'await new Promise(() => {})'], {stdout:'ignore',stderr:'ignore'}); await new Promise(() => {})",
+      ], { stdout: "ignore", stderr: "ignore" });
+      await new Promise(() => {});
+    `)
+    try {
+      const component = await host.backend.launch(plan(host, fixture, 'grandchild'))
+      await Bun.sleep(100)
+      await component.terminate()
+      expect(await component.completion).toMatchObject({ fenced: true, stopReason: 'cancelled' })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('settles a cancellation racing payload shutdown', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture('await Bun.sleep(25);')
+    try {
+      const component = await host.backend.launch(plan(host, fixture, 'shutdown-cancel'))
+      await Bun.sleep(20)
+      await component.terminate()
+      expect(await component.completion).toMatchObject({ fenced: true })
+      expect(await missing(component.cgroup.runCgroup)).toBe(true)
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+  test('survives coordinator death and fences its Run', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture('await new Promise(() => {});')
+    const configurationDirectory = await mkdtemp(join(tmpdir(), 'jig-rootless-coordinator-'))
+    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-coordinator-owner-'))
+    const configuration = join(configurationDirectory, 'configuration.json')
+    await writeFile(
+      configuration,
+      JSON.stringify({
+        delegatedCgroup,
+        bunPath: host.bun,
+        bunHostLibraryPath: host.bunHostLibraryPath,
+        bubblewrapPath: await realpath('/usr/bin/bwrap'),
+        mounts: host.mounts,
+        fixture,
+        ownerStateParent,
+        uid: process.getuid?.() ?? 1_000,
+        gid: process.getgid?.() ?? 100,
+      }),
+    )
+    const coordinator = spawn(
+      host.bun,
+      [
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        fileURLToPath(new URL('./fixtures/linux-rootless-coordinator.ts', suiteTestUrl)),
+        configuration,
+      ],
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    )
+    try {
+      const started = JSON.parse(await readLine(coordinator.stdout!)) as {
+        readonly cgroup: string
+        readonly owner: unknown
+      }
+      coordinator.kill('SIGKILL')
+      await childExit(coordinator)
+      await waitForMissing(started.cgroup, 5_000)
+      const receipt = await waitForFence(host.backend, started.owner, 5_000)
+      await releasePrivateLinuxOwnerState(started.owner, receipt)
+    } finally {
+      coordinator.kill('SIGKILL')
+      await rm(fixture, { recursive: true, force: true })
+      await rm(configurationDirectory, { recursive: true, force: true })
+      await rm(ownerStateParent, { recursive: true, force: true })
+    }
+  })
+  test('repeats Runs without cgroup residue', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture("console.log('ok');")
+    try {
+      for (let index = 0; index < 8; index += 1) {
+        const component = await host.backend.launch(plan(host, fixture, `repeat-${index}`))
+        expect(await component.completion).toMatchObject({ exitCode: 0, fenced: true })
+      }
+      await waitForNoRunCgroups()
+    } finally {
+      await rm(fixture, { recursive: true, force: true })
+    }
+  })
+})
+
+if (process.platform !== 'linux' || process.env.JIG_LINUX_ROOTLESS_HOSTILE !== '1')
+  throw Error('This suite requires opted-in rootless Linux qualification')

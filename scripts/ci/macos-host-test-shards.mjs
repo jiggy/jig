@@ -1,7 +1,9 @@
 import { spawnSync } from 'node:child_process'
-import { readdir, writeFile } from 'node:fs/promises'
-import { basename, join, relative, sep } from 'node:path'
+import { readFileSync } from 'node:fs'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { discoverRepositoryTests, filesForTarget } from './suite-inventory.mjs'
 
 export const MAC_HOST_SHARDS = Object.freeze({ x64: 3, arm64: 2 })
 export function macHostShardCount(architecture) {
@@ -9,116 +11,91 @@ export function macHostShardCount(architecture) {
     throw new Error('Mac qualification requires x64 or arm64')
   return MAC_HOST_SHARDS[architecture]
 }
-export const ROOT_TEST = 'packages/jig/test/root-agent-run-lifecycle.test.ts'
-export const PACKAGE_TEST = 'packages/jig/test/package-provider-host.test.ts'
+export const INSTALLED_STARTUP_TEST = 'packages/jig/test/startup/native-agent-startup.test.ts'
 export const NATIVE_PREREQUISITE_TESTS = [
-  'packages/jig/test/macos-process-controls.test.ts',
-  'packages/jig/test/macos-execution.test.ts',
-  'packages/jig/test/macos-descriptor-files.test.ts',
-  'packages/jig/test/macos-descriptor-handoff.test.ts',
-  'packages/jig/test/macos-volume.test.ts',
-  'packages/jig/test/macos-backend-state.test.ts',
-  'packages/jig/test/macos-native-backend.test.ts',
-  'packages/jig/test/macos-guardian.test.ts',
+  'packages/jig/test/macos/macos-process-controls.test.ts',
+  'packages/jig/test/macos/macos-execution.test.ts',
+  'packages/jig/test/macos/macos-descriptor-files.test.ts',
+  'packages/jig/test/macos/macos-descriptor-handoff.test.ts',
+  'packages/jig/test/macos/macos-volume.test.ts',
+  'packages/jig/test/macos/macos-backend-state.test.ts',
+  'packages/jig/test/macos/macos-native-backend.test.ts',
+  'packages/jig/test/macos/macos-guardian.test.ts',
 ]
 
-// Exhaustive, disjoint partitions of the two longest files. Catch-all patterns
-// admit future cases; names select work, while wall-time hints only place it.
-// Intel evidence: macOS hosted candidates runs 37452493021 and 37459864656.
-export const NAMED_TEST_GROUPS = new Map([
-  [
-    ROOT_TEST,
-    [
-      {
-        pattern:
-          '^(?!(?:contained repair file application |private contained Agent Run lifecycle fences |private contained Agent Run lifecycle runs two unchanged packed HTTP Agents through simultaneous deep specialist branches$))',
-        estimatedSeconds: 255,
-      },
-      {
-        pattern:
-          '^private contained Agent Run lifecycle runs two unchanged packed HTTP Agents through simultaneous deep specialist branches$',
-        estimatedSeconds: 167,
-      },
-      {
-        pattern:
-          '^contained repair file application (?!exports (?:batch|mixed-batch) repair evidence )',
-        estimatedSeconds: 220,
-      },
-      {
-        pattern:
-          '^contained repair file application exports (?:batch|mixed-batch) repair evidence ',
-        estimatedSeconds: 235,
-      },
-      {
-        pattern: '^private contained Agent Run lifecycle fences (?!root Agent (?:Run|ACP) )',
-        estimatedSeconds: 235,
-      },
-      {
-        pattern: '^private contained Agent Run lifecycle fences root Agent Run ',
-        estimatedSeconds: 142,
-      },
-      {
-        pattern: '^private contained Agent Run lifecycle fences root Agent ACP ',
-        estimatedSeconds: 130,
-      },
-    ],
-  ],
-  [
-    PACKAGE_TEST,
-    [
-      { pattern: '^installed CLI reviews ', estimatedSeconds: 250 },
-      { pattern: '^(?!installed CLI reviews )', estimatedSeconds: 179 },
-    ],
-  ],
-])
-
-// Advisory Intel timings from the complete hosted qualification. They affect
-// scheduling only; every discovered test file is assigned even without a hint.
+// Advisory case totals from verified complete run 38107858216. Each physical
+// suite runs once in a fresh process; hints change placement, never membership.
+// Split suites sum their original case timings, rounded up to whole seconds.
 const WEIGHTS = new Map([
-  ['run-checkpoint-lifecycle.test.ts', 241],
-  ['http-request-lifecycle.test.ts', 190],
-  ['project-command-lifecycle.test.ts', 192],
-  ['finite-acp-lifecycle.test.ts', 166],
-  ['bun-native-preparation.test.ts', 174],
-  ['project-author-evaluator.test.ts', 86],
-  ['activation-admission-store.test.ts', 57],
-  ['macos-guardian-storage.test.ts', 51],
-  ['contract-generation.test.ts', 32],
-  ['markdown-worker.test.ts', 47],
-  ['activation-plan2.test.ts', 10],
-  ['project-evaluator-child.test.ts', 10],
-  ['file-delivery.test.ts', 10],
-  ['codex-acp-dispatch.test.ts', 7],
-  ['finite-acp-resource.test.ts', 9],
+  ['packages/jig/test/portable/root-agent-fixtures.test.ts', { x64: 2, arm64: 1 }],
+  ['packages/jig/test/portable/factory-observation.test.ts', { x64: 1, arm64: 1 }],
+  ['packages/jig/test/host/root-agent-composition.test.ts', { x64: 153, arm64: 68 }],
+  ['packages/jig/test/host/root-agent-http-composition.test.ts', { x64: 188, arm64: 76 }],
+  ['packages/jig/test/host/root-agent-repair.test.ts', { x64: 243, arm64: 71 }],
+  ['packages/jig/test/host/root-agent-repair-batch.test.ts', { x64: 199, arm64: 69 }],
+  ['packages/jig/test/host/root-agent-fences-run.test.ts', { x64: 103, arm64: 53 }],
+  ['packages/jig/test/host/root-agent-fences-acp.test.ts', { x64: 102, arm64: 54 }],
+  ['packages/jig/test/host/root-agent-fences-specialist.test.ts', { x64: 153, arm64: 83 }],
+  ['packages/jig/test/host/installed-software-factory.test.ts', { x64: 253, arm64: 121 }],
+  ['packages/jig/test/host/package-provider-observation.test.ts', { x64: 29, arm64: 17 }],
+  ['packages/jig/test/host/installed-workspace-provider.test.ts', { x64: 170, arm64: 121 }],
+  ['packages/jig/test/host/installed-package-provider.test.ts', { x64: 115, arm64: 72 }],
+  ['packages/jig/test/host/installed-attachments.test.ts', { x64: 15, arm64: 9 }],
+  ['packages/jig/test/host/run-checkpoint-lifecycle.test.ts', { x64: 203, arm64: 170 }],
+  ['packages/jig/test/host/http-request-lifecycle.test.ts', { x64: 201, arm64: 78 }],
+  ['packages/jig/test/host/project-command-lifecycle.test.ts', { x64: 141, arm64: 65 }],
+  ['packages/jig/test/host/finite-acp-lifecycle.test.ts', { x64: 172, arm64: 71 }],
+  ['packages/jig/test/host/bun-native-preparation.test.ts', { x64: 117, arm64: 67 }],
+  ['packages/jig/test/host/project-author-evaluator.test.ts', { x64: 91, arm64: 61 }],
+  ['packages/jig/test/portable/activation-admission-store.test.ts', { x64: 55, arm64: 41 }],
+  ['packages/jig/test/macos/macos-guardian-storage.test.ts', { x64: 66, arm64: 54 }],
+  ['packages/jig/test/portable/contract-generation.test.ts', { x64: 23, arm64: 8 }],
+  ['packages/jig/test/portable/markdown-worker.test.ts', { x64: 2, arm64: 1 }],
+  ['packages/jig/test/host/markdown-worker.test.ts', { x64: 40, arm64: 16 }],
+  ['packages/jig/test/portable/activation-plan2.test.ts', { x64: 9, arm64: 5 }],
+  ['packages/jig/test/portable/project-evaluator-child.test.ts', { x64: 11, arm64: 11 }],
+  ['packages/jig/test/portable/file-delivery.test.ts', { x64: 10, arm64: 10 }],
+  ['packages/jig/test/macos/file-delivery.test.ts', { x64: 9, arm64: 9 }],
+  ['packages/jig/test/portable/codex-acp-dispatch.test.ts', { x64: 8, arm64: 6 }],
+  ['packages/jig/test/portable/finite-acp-resource.test.ts', { x64: 9, arm64: 9 }],
+  ['packages/display-tui/test/portability.test.ts', { x64: 14, arm64: 14 }],
+  ['packages/jig/test/portable/workspace-progress.test.ts', { x64: 10, arm64: 10 }],
+  ['packages/display-tui/test/native.test.ts', { x64: 15, arm64: 16 }],
 ])
-// Intel's installed-consumer tail costs about 500s in retained qualification.
-// ARM's existing hint balances its faster source and installed work already.
-const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 500, arm64: 384 })
+// Same-run native prerequisite case totals and host-step remainder after group
+// execution. The latter includes the installed consumer and startup witnesses.
+const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze({ x64: 50, arm64: 38 })
+const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 464, arm64: 205 })
+const manifest = JSON.parse(
+  readFileSync(new URL('./affected-manifest.json', import.meta.url), 'utf8'),
+)
 const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
+export const HOST_TEST_DIRECTORIES = Object.freeze([
+  'packages/jig/test',
+  'packages/display-model/test',
+  'packages/display-web/test',
+  'packages/display-tui/test',
+])
 
-export async function discoverHostTests(root) {
-  return discoverTests(root, [
-    'packages/jig/test',
-    'packages/display-model/test',
-    'packages/display-web/test',
-    'packages/display-tui/test',
-  ])
+// Match the filesystem walk when reconstructing the inventory from Git. Hidden
+// directories and dependency copies cannot become an additional owning command.
+export function isHostTestFile(file) {
+  return (
+    HOST_TEST_DIRECTORIES.some((directory) => file.startsWith(`${directory}/`)) &&
+    file.split('/').every((part) => !part.startsWith('.') && part !== 'node_modules') &&
+    TEST_FILE.test(file)
+  )
 }
 
-async function discoverTests(root, directories) {
-  const found = []
-  async function walk(parent) {
-    for (const entry of await readdir(parent, { withFileTypes: true })) {
-      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue
-      const path = join(parent, entry.name)
-      if (entry.isDirectory()) await walk(path)
-      else if (entry.isFile() && TEST_FILE.test(entry.name)) {
-        found.push(relative(root, path).split(sep).join('/'))
-      }
-    }
-  }
-  for (const directory of directories) await walk(join(root, directory))
-  return found.sort()
+export async function discoverHostTests(root) {
+  // Both 24G architectures share the same full-role inventory. Preserve portable
+  // cases on Mac until a separate classification audit proves host neutrality.
+  return filesForTarget(
+    discoverRepositoryTests(root, manifest),
+    'macos-x64',
+    manifest,
+    'macos-24G830',
+  )
 }
 
 export function planMacHostTests(files, architecture) {
@@ -127,11 +104,11 @@ export function planMacHostTests(files, architecture) {
   if (unique.size !== files.length) {
     throw new Error('Mac host test inventory repeats a file')
   }
-  for (const file of NAMED_TEST_GROUPS.keys()) {
-    if (!unique.has(file)) throw new Error(`Mac partitioned test file is missing: ${file}`)
-  }
   for (const file of NATIVE_PREREQUISITE_TESTS) {
     if (!unique.has(file)) throw new Error(`Mac native prerequisite test is missing: ${file}`)
+  }
+  if (!unique.has(INSTALLED_STARTUP_TEST)) {
+    throw new Error(`Mac installed startup test is missing: ${INSTALLED_STARTUP_TEST}`)
   }
   const shards = Array.from({ length: count }, (_, index) => ({
     index,
@@ -140,23 +117,16 @@ export function planMacHostTests(files, architecture) {
     // Include native prerequisites in shard zero and the installed smoke tail
     // in the last shard. These costs must participate in balancing, too.
     estimatedSeconds:
-      (index === 0 ? 60 : 0) + (index === count - 1 ? INSTALLED_CONSUMER_WEIGHTS[architecture] : 0),
+      (index === 0 ? NATIVE_PREREQUISITE_WEIGHTS[architecture] : 0) +
+      (index === count - 1 ? INSTALLED_CONSUMER_WEIGHTS[architecture] : 0),
   }))
   const ordinary = files
-    .filter((file) => !NATIVE_PREREQUISITE_TESTS.includes(file))
-    .flatMap((file) =>
-      (
-        NAMED_TEST_GROUPS.get(file) ?? [
-          { pattern: null, estimatedSeconds: WEIGHTS.get(basename(file)) ?? 2 },
-        ]
-      ).map((group) => ({ file, ...group })),
-    )
-    .sort(
-      (a, b) =>
-        b.estimatedSeconds - a.estimatedSeconds ||
-        a.file.localeCompare(b.file) ||
-        (a.pattern ?? '').localeCompare(b.pattern ?? ''),
-    )
+    .filter((file) => !NATIVE_PREREQUISITE_TESTS.includes(file) && file !== INSTALLED_STARTUP_TEST)
+    .map((file) => ({
+      file,
+      estimatedSeconds: WEIGHTS.get(file)?.[architecture] ?? 2,
+    }))
+    .sort((a, b) => b.estimatedSeconds - a.estimatedSeconds || a.file.localeCompare(b.file))
   for (const group of ordinary) {
     const target = [...shards].sort(
       (a, b) => a.estimatedSeconds - b.estimatedSeconds || a.index - b.index,
@@ -175,12 +145,11 @@ export function planMacHostTests(files, architecture) {
 export function commandsForShard(shard, bun = 'bun') {
   // Each group gets a fresh Bun process. Host ownership tests still run
   // sequentially, while a failure cannot leave JS state for the next group.
-  return shard.groups.map(({ file, pattern }) => [
+  return shard.groups.map(({ file }) => [
     bun,
     'test',
     `./${file}`,
     '--bail=1',
-    ...(pattern ? ['--test-name-pattern', pattern] : []),
     '--timeout',
     '420000',
   ])
@@ -246,7 +215,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
           file: args.find((argument) =>
             /^\.\/packages\/(?:jig|display-(?:model|web|tui))\/test\//.test(argument),
           ),
-          pattern: shard.groups[commandIndex].pattern,
           elapsedMs: Math.round(performance.now() - started),
           status: result.status,
         }),

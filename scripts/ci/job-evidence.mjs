@@ -4,11 +4,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArguments } from './affected-plan.mjs'
 import { regularFile } from './candidate-provenance.mjs'
-import {
-  authorizeExpectedSkips,
-  parseBunTranscript,
-  readMacSkippedCases,
-} from './expected-skips.mjs'
+import { parseBunTranscript, readMacReports } from './test-reports.mjs'
 
 // Counts come from completed tool reports or built files, never from a job's
 // status. The final gate also checks job status and independently rebuilds the plan.
@@ -26,6 +22,7 @@ export async function observedCount({
   hostEvidence,
   repository = process.cwd(),
   pythonTranscript,
+  testFiles,
 }) {
   if (transcriptManifest) {
     const manifest = JSON.parse(await readFile(transcriptManifest, 'utf8'))
@@ -44,11 +41,17 @@ export async function observedCount({
       const text = await readFile(transcriptPath, 'utf8')
       reports.push(parseBunTranscript(text, command))
     }
+    if (reports.some((report) => report.skipped !== 0 || report.filtered !== 0))
+      throw new Error('Selected whole-file execution contains skipped or filtered cases')
+    let count = reports.reduce((sum, report) => sum + report.count, 0)
+    if (junit) {
+      if (manifest.commands.some((command) => command.commandKind !== 'installed-script'))
+        throw new Error('Use one owning test-framework report per command')
+      count += (await observedCount({ junit, pythonTranscript, testFiles })).count
+    }
     return {
-      count: reports.reduce((sum, report) => sum + report.count, 0),
-      skipped: reports.reduce((sum, report) => sum + report.skipped, 0),
-      filtered: reports.reduce((sum, report) => sum + (report.filtered ?? 0), 0),
-      skippedCases: reports.flatMap((report) => report.skippedCases),
+      count,
+      skipped: 0,
       basis: 'test-cases',
     }
   }
@@ -88,6 +91,8 @@ export async function observedCount({
       )
     )
       throw new Error('Failed or cancelled execution report')
+    if (/^(?:\s*\(skip\)|\s*[1-9]\d* skip\b|# skipped [1-9]\d*\b)/m.test(output))
+      throw new Error('Selected execution contains skipped cases')
     const reports = [
       ...[
         ...output.matchAll(
@@ -117,19 +122,48 @@ export async function observedCount({
     ]
     if (!reports.length || reports.some((report) => report.count + report.skipped !== report.total))
       throw new Error('No complete reconciled execution report')
+    if (reports.some((report) => report.skipped !== 0))
+      throw new Error('Selected execution contains skipped cases')
+    if (targetId === 'source-python') {
+      const markers = [...output.matchAll(/^CI Python source file complete: ([^\r\n]+)$/gm)].map(
+        (match) => match[1],
+      )
+      const pythonSummaries = [...output.matchAll(/^Ran (\d+) tests? in [^\n]+\n\nOK\s*$/gm)]
+      if (
+        !Array.isArray(testFiles) ||
+        !testFiles.length ||
+        new Set(testFiles).size !== testFiles.length ||
+        new Set(markers).size !== markers.length ||
+        JSON.stringify([...testFiles].sort()) !== JSON.stringify(markers.sort()) ||
+        pythonSummaries.length !== 4 ||
+        reports.length !== 4 ||
+        pythonSummaries.some((match) => Number(match[1]) <= 0)
+      )
+        throw new Error('Python source proof differs from its exact file inventory or four suites')
+    }
     return {
       count: reports.reduce((sum, report) => sum + report.count, 0),
-      skipped: reports.reduce((sum, report) => sum + report.skipped, 0),
+      skipped: 0,
       basis: 'test-cases',
     }
   }
   if (junit) {
     const program =
-      'import sys,json,xml.etree.ElementTree as E\nr=E.parse(sys.argv[1]).getroot()\nif r.tag not in ("testsuite","testsuites"): raise ValueError("invalid JUnit root")\nc=list(r.iter("testcase"))\nif any(x.find("failure") is not None or x.find("error") is not None for x in c) or any(int(x.get("failures","0")) or int(x.get("errors","0")) for x in r.iter() if x.tag in ("testsuite","testsuites")): raise ValueError("failed test proof")\nif r.get("tests") is not None and int(r.get("tests"))!=len(c): raise ValueError("incomplete JUnit cases")\ns=[dict(x.attrib) for x in c if x.find("skipped") is not None]\nprint(json.dumps({"count":len(c)-len(s),"skipped":len(s),"skippedCases":s}))'
+      'import sys,json,xml.etree.ElementTree as E\nr=E.parse(sys.argv[1]).getroot()\nif r.tag not in ("testsuite","testsuites"): raise ValueError("invalid JUnit root")\nc=list(r.iter("testcase"))\nif any(x.find("failure") is not None or x.find("error") is not None or x.find("skipped") is not None for x in c) or any(int(x.get("failures","0")) or int(x.get("errors","0")) or int(x.get("skipped","0")) for x in r.iter() if x.tag in ("testsuite","testsuites")): raise ValueError("failed or skipped test proof")\nidentities=[(x.get("file",""),x.get("classname",""),x.get("name","")) for x in c]\nif any(not name for _,_,name in identities) or len(set(identities))!=len(identities): raise ValueError("missing or repeated JUnit case identity")\nif r.get("tests") is not None and int(r.get("tests"))!=len(c): raise ValueError("incomplete JUnit cases")\nprint(json.dumps({"count":len(c),"skipped":0,"files":sorted(set(x.get("file","") for x in c))}))'
     const report = {
       ...JSON.parse(execFileSync('python3', ['-c', program, junit], { encoding: 'utf8' })),
       basis: 'test-cases',
     }
+    if (testFiles) {
+      if (
+        !Array.isArray(testFiles) ||
+        !testFiles.length ||
+        new Set(testFiles).size !== testFiles.length ||
+        JSON.stringify([...testFiles].sort()) !== JSON.stringify(report.files)
+      )
+        throw new Error('JUnit files differ from the selected target inventory')
+    }
+    delete report.files
     if (pythonTranscript) {
       const text = await readFile(pythonTranscript, 'utf8')
       if (/^FAILED\b|^OK \(skipped=|^skipped=/m.test(text))
@@ -184,9 +218,10 @@ export async function observedCount({
       agent: ['npm-install-import', 'installed-flow-invalid-input'],
       acp: ['npm-install-import', 'installed-flow-invalid-input'],
       jig: [
+        'display-model-package-smoke',
+        'display-web-package-smoke',
+        'display-tui-package-smoke',
         'package-smoke',
-        'operational-baseline-1',
-        'installed-hostile-baseline',
         'npm-local-install-help',
         'npm-global-install-help',
       ],
@@ -207,12 +242,13 @@ export async function observedCount({
       !Array.isArray(report.errors) ||
       report.errors.length ||
       report.qualified !== true ||
+      report.skipped_reports !== 0 ||
       (source && report.revision !== source) ||
       (targetId && targetId !== `macos-${report.architecture}`)
     )
       throw new Error('Failed or stale host summary')
     if (!hostEvidence || !source || !targetId) throw new Error('Missing owning Mac JUnit evidence')
-    const observed = readMacSkippedCases({
+    const observed = readMacReports({
       repository,
       source,
       targetId,
@@ -234,8 +270,21 @@ export async function writeJobEvidence({
   ...reports
 }) {
   const plan = JSON.parse(await readFile(planPath, 'utf8'))
+  if (
+    reports.skipPolicy !== undefined ||
+    reports.skippedCases !== undefined ||
+    reports.skippedCaseDigest !== undefined
+  )
+    throw new Error('Selected execution cannot declare skip permissions')
   const target = plan.targets.find((item) => item.id === id)
   if (!target?.selected) throw new Error('Execution evidence needs a selected target')
+  if (reports.junit && (!Array.isArray(target.testInventory) || !target.testInventory.length))
+    throw new Error('JUnit execution needs the selected target file inventory')
+  if (
+    id === 'source-python' &&
+    (!reports.transcript || !Array.isArray(target.testInventory) || !target.testInventory.length)
+  )
+    throw new Error('Python source execution needs its selected file inventory and transcript')
   const profiles =
     selectedProfiles ??
     (profile ? [profile] : target.runtimeProfiles.length === 1 ? target.runtimeProfiles : [])
@@ -246,35 +295,27 @@ export async function writeJobEvidence({
     basis,
     skipped = 0,
     filtered = 0,
-    skippedCases = [],
-  } = await observedCount({ ...reports, source: plan.identity.head, targetId: id, profiles })
+  } = await observedCount({
+    ...reports,
+    source: plan.identity.head,
+    targetId: id,
+    profiles,
+    ...(reports.junit || id === 'source-python' ? { testFiles: target.testInventory } : {}),
+  })
+  if (skipped !== 0 || filtered !== 0)
+    throw new Error('Selected execution contains skipped or filtered cases')
   if (!Number.isSafeInteger(count) || count <= 0)
     throw new Error('No observed nonempty execution proof')
   if (profiles.some((item) => !target.runtimeProfiles.includes(item)))
     throw new Error('Unknown execution profile')
-  let skipProof = { observedSkipped: 0 }
-  if (skipped) {
-    if (profiles.length !== 1 || skippedCases.length !== skipped)
-      throw new Error('Unaccounted skipped execution; provide exact expected-skip proof')
-    skipProof = authorizeExpectedSkips({
-      repository: reports.repository,
-      source: plan.identity.head,
-      targetId: id,
-      profile: profiles[0],
-      skipPolicy: reports.skipPolicy,
-      skippedCases,
-    })
-  }
   const result = {
     id,
     status: 'success',
     inventoryDigest: target.inventoryDigest,
     executedCount: count,
-    ...(filtered ? { observedFiltered: filtered } : {}),
     basis,
     unexpectedSkips: 0,
-    ...skipProof,
-    ...(skipped ? { skipPolicy: reports.skipPolicy } : {}),
+    observedSkipped: 0,
     profiles,
     ...(reports.artifacts ? { artifactsVerified: true } : {}),
     ...(reports.residue ? { residueVerified: true } : {}),
@@ -342,8 +383,15 @@ export async function collectJobEvidence({
           row.inventoryDigest !== target.inventoryDigest ||
           !Number.isSafeInteger(row.executedCount) ||
           row.executedCount <= 0 ||
-          (row.observedFiltered !== undefined &&
-            (!Number.isSafeInteger(row.observedFiltered) || row.observedFiltered < 0)),
+          row.observedSkipped !== 0 ||
+          row.unexpectedSkips !== 0 ||
+          (row.observedFiltered !== undefined && row.observedFiltered !== 0) ||
+          row.skipPolicy !== undefined ||
+          row.skippedCases !== undefined ||
+          row.skippedCaseDigest !== undefined ||
+          !Array.isArray(row.profiles) ||
+          !row.profiles.length ||
+          row.profiles.some((profile) => !target.runtimeProfiles.includes(profile)),
       )
     )
       throw new Error(`Missing execution reports: ${target.id}`)
@@ -353,12 +401,9 @@ export async function collectJobEvidence({
     return {
       ...rows[0],
       executedCount: rows.reduce((sum, row) => sum + row.executedCount, 0),
-      ...(rows.some((row) => row.observedFiltered !== undefined)
-        ? { observedFiltered: rows.reduce((sum, row) => sum + (row.observedFiltered ?? 0), 0) }
-        : {}),
       profiles,
-      unexpectedSkips: rows.reduce((sum, row) => sum + row.unexpectedSkips, 0),
-      observedSkipped: rows.reduce((sum, row) => sum + row.observedSkipped, 0),
+      unexpectedSkips: 0,
+      observedSkipped: 0,
       artifactsVerified: rows.every((row) => row.artifactsVerified === true),
       residueVerified: rows.every((row) => row.residueVerified === true),
     }
@@ -384,7 +429,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         '--output',
         '--profile',
         '--profiles',
-        '--skip-policy',
         '--transcript',
         '--transcript-manifest',
         '--host-evidence',
@@ -416,7 +460,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         output: options['--output'],
         profile: options['--profile'],
         profiles: options['--profiles']?.split(','),
-        skipPolicy: options['--skip-policy'],
         transcript: options['--transcript'],
         transcriptManifest: options['--transcript-manifest'],
         hostEvidence: options['--host-evidence'],

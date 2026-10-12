@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { appendFileSync, readFileSync, writeFileSync } from 'node:fs'
 import { extname } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { isRepositoryTestFile, owningSuites, reconcileSuiteInventory } from './suite-inventory.mjs'
 
 export const affectedManifest = JSON.parse(
   readFileSync(new URL('./affected-manifest.json', import.meta.url), 'utf8'),
@@ -22,6 +23,8 @@ const FULL_DECISIONS = Object.freeze({
   npmPackages: ['flow', 'agent', 'acp', 'jig'],
   linux: true,
   macos: true,
+  witnesses: false,
+  sourceTargets: ['source-portable', 'source-protocol', 'source-applications', 'source-python'],
 })
 const AUDIT_ALGORITHM = 'sha256-modulo-v1'
 const AUDIT_DOMAIN = 'jig-ci-full-pr-audit-v1'
@@ -88,6 +91,18 @@ function classifyPath(path, manifest) {
     )
       return 'python'
   }
+  const tests = manifest.pilots?.portableTests
+  if (
+    TEST_FILE.test(path) &&
+    (tests?.roots?.some((root) => path.startsWith(root)) || tests?.files?.includes(path))
+  )
+    return 'portable-tests'
+  const presentation = manifest.pilots?.presentation
+  if (
+    presentation?.roots?.some((root) => path.startsWith(root)) &&
+    presentation.extensions?.includes(extname(path))
+  )
+    return 'presentation'
   return 'full'
 }
 function snapshot(cwd, sha, manifest) {
@@ -192,11 +207,15 @@ function snapshot(cwd, sha, manifest) {
       })
   }
   edges.sort((a, b) => stableJson(a).localeCompare(stableJson(b)))
-  const discoveredTests = files.filter((file) => TEST_FILE.test(file.path)).map((file) => file.path)
+  const discoveredTests = files
+    .filter((file) => isRepositoryTestFile(file.path))
+    .map((file) => file.path)
   const externalInventory = discoveredTests.filter((path) =>
     (manifest.externalTestRoots ?? []).some((root) => path.startsWith(root)),
   )
-  const inventory = discoveredTests.filter((path) => !externalInventory.includes(path))
+  const suiteInventory = reconcileSuiteInventory(files, manifest)
+  const inventory = suiteInventory.tests
+  coverageErrors.push(...suiteInventory.errors)
   const entrypoints = [
     ...new Set([
       ...manifest.targets.flatMap((target) => target.entrypoints),
@@ -205,6 +224,13 @@ function snapshot(cwd, sha, manifest) {
   ]
     .filter((path) => files.some((file) => file.path === path))
     .sort()
+  for (const path of entrypoints) {
+    if (
+      INSTALLED_ENTRYPOINT.test(path) &&
+      !manifest.targets.some((target) => target.entrypoints.includes(path))
+    )
+      coverageErrors.push(`Unowned installed entrypoint: ${path}`)
+  }
   const toolingRecipe = files.some((file) => file.path === 'justfile')
     ? git(cwd, ['show', `${sha}:justfile`])
     : ''
@@ -214,55 +240,31 @@ function snapshot(cwd, sha, manifest) {
     .join('\n')
   for (const path of inventory) {
     const owners = ownersForPath(path)
-    const sourceOwned =
-      manifest.sourceTestRoots.some((root) => path.startsWith(root)) ||
-      path === 'scripts/test_pypi_release.py'
+    const suite = owningSuites(path, manifest)[0]
+    const sourceOwned = suite && suite.id !== 'tooling'
+    for (const profile of suite?.profiles ?? []) {
+      if ((manifest.externalProfiles ?? []).includes(profile)) continue
+      const requiredProfile = profile === 'portable' ? 'portable-linux' : profile
+      if (
+        !manifest.targets.some(
+          (target) =>
+            target.suiteIds.includes(suite.id) && target.inventoryProfile === requiredProfile,
+        )
+      )
+        coverageErrors.push(`Missing complete execution owner for ${requiredProfile}: ${path}`)
+    }
     const toolingOwned =
       /^scripts\/ci\/[^/]+\.test\.mjs$/.test(path) ||
       (path.startsWith('scripts/') && toolingCommands.includes(path))
     if (owners.length === 0 || (!sourceOwned && !toolingOwned))
       coverageErrors.push(`Unowned discovered test: ${path}`)
   }
-  let linuxHostInventory = []
-  const linuxWorkflow = '.github/workflows/linux-host-conformance.yml'
-  if (files.some((file) => file.path === linuxWorkflow)) {
-    const workflow = git(cwd, ['show', `${sha}:${linuxWorkflow}`])
-    linuxHostInventory = [
-      ...new Set(
-        workflow.match(/packages\/jig\/test\/[A-Za-z0-9_./-]+\.test\.[cm]?[jt]sx?/g) ?? [],
-      ),
-    ].sort()
-    const marked = git(
-      cwd,
-      [
-        'grep',
-        '-lz',
-        '--full-name',
-        '-e',
-        'JIG_LINUX_ROOTLESS_HOSTILE',
-        sha,
-        '--',
-        'packages/jig/test/',
-      ],
-      [0, 1],
-    )
-      .split('\0')
-      .filter(Boolean)
-      .map((path) => path.slice(sha.length + 1))
-      .filter((path) => TEST_FILE.test(path))
-    for (const path of marked)
-      if (!linuxHostInventory.includes(path))
-        coverageErrors.push(`Discovered Linux hostile test absent from owning workflow: ${path}`)
-    for (const path of linuxHostInventory)
-      if (!inventory.includes(path))
-        coverageErrors.push(`Linux host inventory references absent test: ${path}`)
-  } else coverageErrors.push('Missing Linux host ownership workflow')
   return {
     files,
     inventory,
     externalInventory,
     entrypoints,
-    linuxHostInventory,
+    suiteOwnership: suiteInventory.ownership,
     coverageErrors,
     graph: { nodes: [...nodes.values()], edges },
     errors: [...errors, ...coverageErrors],
@@ -300,15 +302,16 @@ function closure(owners, graphs) {
   }
   return [...affected].sort()
 }
-function selectedForTarget(id, decisions) {
-  if (id === 'quick-checks') return decisions.quick
-  if (id === 'sites') return decisions.sites
-  if (id === 'source-tests') return decisions.source
-  if (id.startsWith('python-')) return decisions.python
-  if (id === 'npm-candidate') return decisions.candidates
-  if (id === 'linux') return decisions.linux
-  if (id.startsWith('macos-')) return decisions.macos
-  throw new Error(`Unknown target: ${id}`)
+function selectedForTarget(target, decisions) {
+  if (target.selection === 'mandatory') return true
+  if (target.selection === 'sites') return decisions.sites
+  if (target.selection === 'source') return decisions.sourceTargets.includes(target.id)
+  if (target.selection === 'python') return decisions.python
+  if (target.selection === 'candidates') return decisions.candidates
+  if (target.selection === 'full-linux') return decisions.linux
+  if (target.selection === 'full-macos') return decisions.macos
+  if (target.selection === 'witness') return decisions.witnesses
+  throw new Error(`Unknown target selection policy: ${target.id}`)
 }
 
 export function createAffectedPlan({
@@ -414,24 +417,54 @@ export function createAffectedPlan({
     fallbackReasons.push(
       'Python package has a consumer outside the proven source/conformance boundary',
     )
+  if (
+    classes.has('presentation') &&
+    closure(
+      normalizedChanges
+        .filter((change) =>
+          [change.path, change.oldPath]
+            .filter(Boolean)
+            .some((path) => classifyPath(path, manifest) === 'presentation'),
+        )
+        .flatMap((change) => change.owners),
+      [previous?.graph, current.graph],
+    ).some(
+      (owner) =>
+        ![
+          'packages/display-model',
+          'packages/display-web',
+          'packages/display-tui',
+          'packages/jig',
+        ].includes(owner),
+    )
+  )
+    fallbackReasons.push(
+      'Presentation input has a consumer outside its reviewed display/Jig boundary',
+    )
   const uniqueFallbacks = [...new Set(fallbackReasons)].sort()
   const classification = uniqueFallbacks.length
     ? 'full'
     : classes.size === 1
       ? [...classes][0]
-      : 'site-and-python'
+      : [...classes].sort().join('-and-')
+  const sourceTargets = [
+    ...(classes.has('portable-tests') || classes.has('presentation') ? ['source-portable'] : []),
+    ...(classes.has('python') ? ['source-protocol', 'source-python'] : []),
+  ]
   const proposedDecisions =
     classification === 'full'
       ? { ...FULL_DECISIONS }
       : {
           quick: true,
           sites: classes.has('public-site'),
-          source: classes.has('python'),
+          source: sourceTargets.length > 0,
+          sourceTargets,
           python: classes.has('python'),
-          candidates: false,
-          npmPackages: [],
+          candidates: classes.has('presentation'),
+          npmPackages: classes.has('presentation') ? ['jig'] : [],
           linux: false,
           macos: false,
+          witnesses: classes.has('presentation'),
         }
   // Seed the policy audit from the verified PR head, not a workflow run, clock,
   // runner or merge commit that can differ after an unrelated base advance.
@@ -455,52 +488,67 @@ export function createAffectedPlan({
   audit.selected = audit.eligible && audit.bucket === 0
   const decisions = mode === 'shadow' || audit.selected ? { ...FULL_DECISIONS } : proposedDecisions
   const targets = manifest.targets.map((target) => {
-    const testInventory =
-      target.inventoryPolicy === 'linux-host'
-        ? current.linuxHostInventory
-        : current.inventory.filter(
-            (path) =>
-              (target.inventoryRoots.some((root) => path.startsWith(root)) ||
-                target.inventoryInclude?.includes(path)) &&
-              !target.inventoryExclude?.includes(path),
-          )
+    const testInventory = current.inventory.filter((path) => {
+      const suite = manifest.testSuites.find((item) => item.id === current.suiteOwnership[path])
+      return (
+        suite &&
+        (target.suiteIds.includes(suite.id) || target.inventoryInclude?.includes(path)) &&
+        (!target.inventoryProfile || suite.profiles.includes(target.inventoryProfile))
+      )
+    })
     const inventory = [
       ...new Set([
         ...testInventory,
-        ...current.entrypoints.filter(
-          (path) =>
-            target.inventoryRoots.some((root) => path.startsWith(root)) ||
-            target.entrypoints.includes(path),
-        ),
+        ...current.entrypoints.filter((path) => target.entrypoints.includes(path)),
       ]),
     ].sort()
-    const proposedSelected = selectedForTarget(target.id, proposedDecisions)
+    const proposedSelected = selectedForTarget(target, proposedDecisions)
     return {
       id: target.id,
       scope: target.scope,
       kind: target.kind,
-      runtimeProfiles: target.profiles,
-      skipPolicy: target.skipPolicy ?? null,
+      runtimeProfiles:
+        target.selection === 'candidates' && decisions.candidates
+          ? decisions.npmPackages
+          : target.profiles,
+      suiteIds: target.suiteIds,
+      inventoryProfile: target.inventoryProfile ?? null,
+      testInventory,
       inventory,
       inventoryDigest: digest(inventory),
-      selected: selectedForTarget(target.id, decisions),
+      selected: selectedForTarget(target, decisions),
       proposedSelected,
       reasons: target.mandatory
         ? ['Mandatory policy and tooling verification']
-        : proposedSelected
-          ? [`Required by ${classification} input policy`]
-          : audit.selected
-            ? [
-                'Deterministic full PR audit requires fresh execution despite proposed component independence',
-              ]
-            : mode === 'shadow'
+        : target.selection === 'witness' &&
+            !selectedForTarget(target, decisions) &&
+            (decisions.linux || decisions.macos)
+          ? ['Complete same-profile qualification already executes this installed witness']
+          : proposedSelected
+            ? [`Required by ${classification} input policy`]
+            : audit.selected
               ? [
-                  'Shadow mode requires full execution while recording the proposed component omission',
+                  'Deterministic full PR audit requires fresh execution despite proposed component independence',
                 ]
-              : ['Input delta is confined to proven independent component ownership'],
-      omissionReason: proposedSelected
+              : mode === 'shadow'
+                ? [
+                    'Shadow mode requires full execution while recording the proposed component omission',
+                  ]
+                : ['Input delta is confined to proven independent component ownership'],
+      requiresArtifacts:
+        target.requiresArtifacts === true ||
+        [
+          'native-and-installed',
+          'installed-consumer',
+          'candidate-and-consumer',
+          'candidate-build',
+        ].includes(target.kind),
+      requiresResidue: target.requiresResidue === true || target.kind === 'native-and-installed',
+      omissionReason: selectedForTarget(target, decisions)
         ? null
-        : `Policy ${manifest.policyVersion} excludes unrelated ${target.kind} work for ${classification} inputs`,
+        : target.selection === 'witness' && (decisions.linux || decisions.macos)
+          ? `Policy ${manifest.policyVersion} includes this witness in complete same-profile qualification`
+          : `Policy ${manifest.policyVersion} excludes unrelated ${target.kind} work for ${classification} inputs`,
     }
   })
   const plan = {
@@ -528,6 +576,10 @@ export function createAffectedPlan({
       entrypoints: current.entrypoints,
       coverageErrors: current.coverageErrors,
       external: current.externalInventory,
+      embeddedFixtures: current.files
+        .filter((file) => TEST_FILE.test(file.path))
+        .map((file) => file.path)
+        .filter((path) => (manifest.fixtureTestRoots ?? []).some((root) => path.startsWith(root))),
       externalReason:
         'Imported skill toolchains are outside repository CI obligations; their source changes still force full execution',
       added: current.inventory.filter((path) => !(previous?.inventory ?? []).includes(path)),
@@ -560,6 +612,11 @@ export function githubOutputs(plan) {
         String(plan.decisions[key]),
       ]),
     ),
+    ...Object.fromEntries(
+      plan.targets.map((target) => [target.id.replaceAll('-', '_'), String(target.selected)]),
+    ),
+    source_targets: JSON.stringify(plan.decisions.sourceTargets),
+    witnesses: String(plan.decisions.witnesses),
     npm_matrix: JSON.stringify({
       include: plan.decisions.npmPackages.map((packageName) => ({ package: packageName })),
     }),

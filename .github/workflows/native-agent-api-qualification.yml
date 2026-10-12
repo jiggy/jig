@@ -39,13 +39,13 @@ jobs:
             # Native Codex sends no output-token cap. Free routing avoids an
             # unfunded maximum-token reservation without modifying its request.
             model: openrouter/free
-            test-pattern: Responses-compatible endpoint
+            test-file: packages/jig/test/live/root-agent-codex-responses.test.ts
           - client: claude
             model: mistralai/ministral-8b-2512
-            test-pattern: Anthropic-compatible endpoint
+            test-file: packages/jig/test/live/root-agent-claude.test.ts
           - client: pi
             model: mistralai/ministral-8b-2512
-            test-pattern: explicit built-in API provider
+            test-file: packages/jig/test/live/root-agent-pi.test.ts
     steps:
       - name: Check out the tested source revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -112,6 +112,9 @@ jobs:
             printf 'FLOW_SDK_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/flow-sdk")"
             printf 'AGENT_METHOD_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-method")"
             printf 'AGENT_ACP_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/agent-acp")"
+            printf 'DISPLAY_MODEL_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-model")"
+            printf 'DISPLAY_WEB_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-web")"
+            printf 'DISPLAY_TUI_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/display-tui")"
             printf 'JIG_PACKAGE_ARCHIVE=%s\n' "$(one_archive "$artifact_directory/jig")"
             printf 'JIG_CI_ARCHIVE_DIRECTORY=%s\n' "$artifact_directory"
           } >> "$GITHUB_ENV"
@@ -238,7 +241,7 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           JIG_NATIVE_API_CLIENT: ${{ matrix.client }}
           JIG_NATIVE_API_MODEL: ${{ matrix.model }}
-          JIG_NATIVE_API_TEST_PATTERN: ${{ matrix.test-pattern }}
+          JIG_NATIVE_API_TEST_FILE: ${{ matrix.test-file }}
         run: |
           set -euo pipefail
           if [[ -z "${OPENROUTER_API_KEY:-}" ]]; then
@@ -276,15 +279,17 @@ jobs:
             "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
             "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" \
             "USER_UPDATES_PACKAGE_ARCHIVE=$USER_UPDATES_PACKAGE_ARCHIVE" \
+            "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" \
+            "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
+            "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \
             "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" \
             "OPENROUTER_API_KEY=$OPENROUTER_API_KEY" \
             "JIG_NATIVE_API_MODEL=$JIG_NATIVE_API_MODEL" \
             "JIG_NATIVE_API_CLIENT=$JIG_NATIVE_API_CLIENT" \
-            "JIG_NATIVE_API_TEST_PATTERN=$JIG_NATIVE_API_TEST_PATTERN" \
             "${client_environment[@]}" \
-            "$JIG_CI_BUN" test packages/jig/test/root-agent-run-lifecycle.test.ts \
-            --test-name-pattern "$JIG_NATIVE_API_TEST_PATTERN" \
-            --timeout 420000
+            "$JIG_CI_BUN" test "$JIG_NATIVE_API_TEST_FILE" \
+            --timeout 420000 2>&1 | tee "$RUNNER_TEMP/native-api-tests.txt"
+          node --input-type=module -e 'import {readFileSync} from "node:fs"; import {parseBunTranscript} from "./scripts/ci/test-reports.mjs"; parseBunTranscript(readFileSync(process.env.RUNNER_TEMP + "/native-api-tests.txt", "utf8"), {files: [process.env.JIG_NATIVE_API_TEST_FILE]});'
 
       - name: Verify the tested archives are unchanged
         if: always() && steps.archives.outputs.ready == 'true'

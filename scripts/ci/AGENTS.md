@@ -8,59 +8,57 @@ Host preparation never becomes a consumer requirement.
 
 ## Ownership
 
-- `affected-manifest.json` declares component edges, executable input ownership,
-  complete target inventories, runtime profiles and the narrow PR exclusion policy.
-  `affected-plan.mjs` records verified base, PR head and tested merge state, old/new
-  graphs and inventories, change endpoints, decisions and omission reasons. Unknown
-  inputs select full work. Newly discovered unassigned tests prevent qualification.
-  Shadow mode executes every target while retaining proposed exclusions; only
-  public site assets and isolated Python source/tests may omit unrelated PR work.
-  Bundled Jig browser assets and executable guides remain full inputs.
-  The reviewed audit policy selects active PR heads whose domain-separated
-  SHA-256 hash falls in bucket zero modulo five for full fresh execution. Seed
-  only from the verified PR head so all scopes and reruns agree; preserve
-  proposed exclusions for comparison. No invocation may suppress that audit.
-- `affected-gate.mjs` independently reconstructs that plan from Git and current
-  policy, then requires selected execution or the exact authorized omission.
-  Its CI entrypoint binds the checkout, event/base/PR identity and mode/full
-  policy to trusted workflow inputs; retained plan fields cannot redefine them.
-  `job-evidence.mjs` counts completed reports, built pages or verified distributions;
-  it checks source/profile identity, complete profiles, nonempty execution and
-  explicit archive/residue proof. Status alone cannot establish a pass. Retain
-  skipped identities and authorize only the owning profile's reviewed expectations
-  and exact command-specific partition filter; a new skip must not disappear into
-  an aggregate count. Native prerequisites and installed startup must execute.
-  Bun can emit identical labels for distinct parameterized registrations.
-  Repeated skipped labels require exact frozen declaration identity and reviewed
-  multiplicity; ordinary Mac executed groups require the complete reviewed
-  registration count within one owning report. Retain every case and reject
-  extra records, altered identities and repetition across owning commands.
-  Native prerequisite and installed-startup reports retain strict single-instance
-  identity rules. Reporter-supplied lines or ordinals cannot create new identities.
-  Freeze parameterized declaration lines from the qualified Bun JUnit attributes,
-  including multiline registrations whose reported line differs from the call's
-  opening line. The retained Mac CLI report fixes these five exact bindings;
-  neighboring lines still fail and source hashes and multiplicities stay exact.
-  Bun's optional skipped-test recap must reproduce the primary skipped-name
-  multiset exactly and supplies no additional execution records. A filtered-out
-  footer requires the exact reviewed owning filter; every primary pass must match
-  that filter. Reconcile primary pass/skip records, owning files and the completed
-  report. Retain filtered counts separately without giving them execution credit.
-  Bun's GitHub file-group wrappers retain exact repository file identities;
-  reject foreign files, nested, unclosed or orphan groups, mixed header formats
-  and cases outside their owning group before reconciling the report.
-  Mixed portable/host test files require explicit platform-skipped case names;
-  their frozen source blob alone cannot authorize skipping an unconditional case.
-  Mac permits only the thirteen frozen Linux foreground session case names,
-  including the concrete strict/cached registrations. The four portable foreground
-  cases remain mandatory; Linux permits only the exact Agent opt-in case to skip.
+- `affected-manifest.json` declares component edges, whole-file suite roots and
+  applicability profiles. `suite-inventory.mjs` is the single source of file
+  membership for editable local checks and pinned Git CI checks. Unknown or
+  ambiguously owned tests prevent qualification; hidden files, dependency copies
+  and symbolic links cannot establish test execution. Embedded application test
+  fixtures are declared inputs rather than independently registered suites.
+- `affected-plan.mjs` records verified base, exact PR head and tested merge state,
+  old/new dependency graphs, inventories, endpoints and omission reasons. Shared,
+  authority, runtime, harness, build, unknown, main and release inputs select full
+  fresh work. Narrow active PR pilots cover public site assets, independent Python,
+  reviewed pure test-only files and model/web presentation inputs. TUI production
+  and native/loading/input changes remain full. Presentation changes still build
+  and qualify bundled Jig and run fresh Linux, Intel and Apple Silicon installed
+  witnesses. A compact witness never creates a full host qualification receipt.
+  Full host collection owns that same observation file and does not run a redundant
+  compact target. Shadow remains the default until same-revision audits support
+  each omission class. Domain-separated SHA-256 bucket zero modulo five selects
+  active PR heads for full audits; seed only from the exact verified proposal.
+- Source execution keeps one `source-tests` workflow job and workspace, with
+  distinct `source-portable`, `source-protocol`, `source-applications` and
+  `source-python` evidence. Source-only Python stages do not build Jig. Actual
+  Node authoring events retain file identities through `source-node-reporter.mjs`;
+  Python executes every selected file, including nested additions, and emits exact
+  completed-file markers only after successful zero-skip groups. Disposable
+  application reports normalize file paths only after source bytes are verified.
+- `affected-gate.mjs` independently reconstructs the plan from current policy and
+  Git, binds trusted workflow context, and requires actual selected execution or
+  the exact authorized omission. `job-evidence.mjs` counts completed reports,
+  built pages or verified distributions. Status alone cannot establish success.
+  Every selected physical suite requires nonempty execution and zero skipped or
+  filtered cases. Live and platform applicability is decided before registration;
+  selected live suites fail explicitly when prerequisites are absent. Parameterized
+  registrations have unique names; no frozen blob/name/line/multiplicity permissions
+  remain. Native prerequisite and installed-startup reports retain separate exact
+  ownership. Bun's GitHub file groups preserve their repository identity and reject
+  nested, orphan, mixed or unclosed groups and execution outside an owning group.
+  Installed script markers prove completion but contribute zero test-case credit.
 - `build-candidates.mjs` archives clean tracked source and freezes all eight npm
   archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
   resolution and package-owned packing. Preserve generated resolution, actual
   tool identities, inventories and hashes. Build-only receipts carry pending
   qualification; expensive consumer tests run after artifact retention.
   `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
-  FLOW/Agent/Jig installed obligations, without rebuilding release archives.
+  FLOW/Agent/standalone-display/Jig installed obligations, without rebuilding
+  release archives. Display packages qualify through Jig's gate; the four
+  protected publication selectors remain FLOW, HTTP Agent, ACP Agent and Jig.
+  FLOW, HTTP Agent and ACP qualifications do not build Jig. Jig's CI receipt lists
+  only its six actual gates: three standalone display consumers, ordinary Jig
+  package smoke and local/global npm help. Operational and hostile baseline
+  scripts belong exclusively to the complete exact-current-candidate Linux
+  qualification; host publication still requires that full Linux receipt.
 - `candidate-provenance.mjs` validates exact source, producer, build profile,
   archive contents, resolution and hashes, and writes qualification receipts.
   `candidate-transfer.mjs` checks GitHub repository/workflow/event/head identity,
@@ -92,10 +90,10 @@ Host preparation never becomes a consumer requirement.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
-  Intel/Apple Silicon 24G830 profiles and
-  Bun 1.4.2 and real Node 22+ preflight, frozen same-revision archives with
-  digest rechecks, an ordinary npm install on the native architecture,
-  sequential native tests, installed-consumer checks, and
+  Intel/Apple Silicon 24G830 profiles, Bun 1.4.2 and real Node 22+ preflight,
+  frozen same-revision host/model/renderer archives with digest rechecks,
+  an ordinary npm install on the native architecture,
+  sequential native tests, standalone display and installed-Jig consumers, and
   comparison of owned host residue before and after qualification. Its full
   mode remains the self-hosted entrypoint; hosted `--shard` runs one isolated
   portion of the same complete suite: three Intel or two Apple Silicon shards.
@@ -104,31 +102,18 @@ Host preparation never becomes a consumer requirement.
   Hosted qualification consumes `JIG_CI_CANDIDATE_DIRECTORY` after verifying
   provenance and copies its exact archives; ordinary platform source builds
   remain separate. Full self-hosted local mode uses the owning local packers.
-- `macos-host-test-shards.mjs` discovers every Jig and display-package test file.
-  Eight native prerequisite files run once in the dedicated containment step on shard zero;
-  every other file enters hosted qualification. The root Agent lifecycle and
-  package-provider host files use disjoint, exhaustive name partitions with
-  catch-all coverage for future cases. All remaining files enter once. Schedule
-  these groups together using advisory command timings; timing hints affect
-  balance, never membership. Each group runs in a fresh Bun process, sequentially
-  within its shard, to isolate test state. Hosted shards retain their exact
-  architecture/count/group plan, per-test JUnit artifacts (including installed
-  client startup) and per-group command wall times. Balance includes native prerequisites
-  and installed-consumer work, with architecture-specific installed-work hints.
-  Reconcile slow-file and out-of-file estimates
-  against retained command wall times; runner queue order is not guaranteed.
-  Run expensive lifecycle groups before portable
-  checks to expose failures earlier without reducing membership.
-  Bun exits each test process on its first failure so a failed case does not
-  wait for the remaining expensive scenarios before the matrix can stop.
-- `macos-host-summary.py` consumes only retained JSON/JUnit evidence. It
-  requires all exact-revision shard markers, matching plans, complete successful
-  reports and disjoint executed name groups. Nested JUnit cases determine
-  executed coverage; filtered and platform/opt-in skips are reported separately.
-  Packed CLI probes, archive identity and zero-residue proof remain required
-  through the shard completion markers. Optional GitHub job timestamps separate
-  runner wait from job execution; missing timing cannot establish or remove
-  qualification. Summaries and per-shard evidence remain architecture-specific.
+- `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
+  catalog, retaining portable files until a separate audit proves host neutrality.
+  Eight native prerequisite files run once on shard zero and genuine installed
+  startup runs separately on the final shard. Every other selected file runs once
+  in a fresh sequential Bun process, without name filters. Advisory architecture
+  timings affect placement, never membership; balance includes installed tail work.
+- `test-reports.mjs` and `macos-host-summary.py` require exact owning whole-file
+  reports, complete current-revision shard plans and markers, nonempty cases,
+  zero failures/skips/filters and no repeated identities within or across commands.
+  The compact observation JUnit plus installed display marker is separate from this
+  full reader and never yields a full receipt. Optional job timings diagnose queue
+  and execution time without establishing or removing qualification.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
   digest and manifest, then compares any existing exact public npm version's
@@ -194,7 +179,8 @@ Host preparation never becomes a consumer requirement.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
-  Mac file assignment, disjoint lifecycle and package name groups, balanced scheduling
+  Mac file assignment including each display package and future files,
+  whole-file profile assignment and balanced scheduling
   of a representative observed workload including out-of-file costs, exact
   Codex startup/refusal host selection without running native clients, and that every
   Linux hostile test file enters provisioned host conformance.

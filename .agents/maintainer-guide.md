@@ -588,6 +588,10 @@ the affected task; keep working on every other task that can progress. Commit
 stable in-scope work and retain unstable evidence on a separate experimental
 branch only when worth keeping.
 
+Integrate base-branch changes by rebasing the working branch; do not create merge
+commits. For an already published rebased branch, use a force-with-lease bound
+to the verified remote head.
+
 Batch related outcomes into a useful review milestone. Keep distinct stable
 commits where they help review, but do not make every commit a separate PR or
 owner checkpoint. Use `just preflight` before pushing: it builds, runs quick

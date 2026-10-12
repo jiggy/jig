@@ -3,7 +3,9 @@ import { spawnSync } from 'node:child_process'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { discoverHostTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import manifest from './ci/affected-manifest.json'
+import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { discoverRepositoryTests } from './ci/suite-inventory.mjs'
 import {
   compilerEnvironment,
   nativeTestFiles,
@@ -40,18 +42,23 @@ test('native preflight accepts only the existing unprivileged Mac qualification 
 })
 
 test('native inventory includes every discovered Mac file once, prerequisites first', async () => {
-  const files = await discoverHostTests(resolve(import.meta.dir, '..'))
-  const future = 'packages/jig/test/nested/macos-future.test.ts'
+  const files = discoverRepositoryTests(resolve(import.meta.dir, '..'), manifest)
+  const future = 'packages/jig/test/macos/future.test.ts'
   const planned = nativeTestFiles([...files, future])
+  expect(planned).toContain('packages/jig/test/macos-23E224/macos-preferences-observer.test.ts')
   expect(planned.slice(0, NATIVE_PREREQUISITE_TESTS.length)).toEqual(NATIVE_PREREQUISITE_TESTS)
   expect(new Set(planned).size).toBe(planned.length)
   expect([...planned].sort()).toEqual(
-    [...files.filter((file) => /\/macos-/.test(file)), future].sort(),
+    [...files.filter((file) => /\/macos(?:-23E224)?\//.test(file)), future].sort(),
   )
   expect(() =>
     nativeTestFiles(files.filter((file) => file !== NATIVE_PREREQUISITE_TESTS[0])),
   ).toThrow('is missing')
-  expect(() => nativeTestFiles([...files, NATIVE_PREREQUISITE_TESTS[0]])).toThrow('repeats')
+  expect(() => nativeTestFiles([...files, NATIVE_PREREQUISITE_TESTS[0]])).toThrow('Repeated')
+  expect(nativeTestFiles(files, '24G830')).not.toContain(
+    'packages/jig/test/macos-23E224/macos-preferences-observer.test.ts',
+  )
+  expect(() => nativeTestFiles([...files, 'packages/jig/test/unowned.test.ts'])).toThrow('Unowned')
 })
 
 test('preflight preserves tool configuration without inheriting live model opt-ins or credentials', () => {

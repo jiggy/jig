@@ -1,7 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { arch, platform, release } from 'node:os'
-import { basename, isAbsolute, resolve } from 'node:path'
-import { discoverHostTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { isAbsolute, resolve } from 'node:path'
+import manifest from './ci/affected-manifest.json'
+import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { discoverRepositoryTests, suiteTestFiles } from './ci/suite-inventory.mjs'
 
 const repository = resolve(import.meta.dir, '..')
 const timeoutMs = 10 * 60_000
@@ -32,8 +34,13 @@ export function requireMacHost(host: {
   }
 }
 
-export function nativeTestFiles(files: readonly string[]): string[] {
-  const native = files.filter((file) => basename(file).startsWith('macos-'))
+export function nativeTestFiles(files: readonly string[], build = '23E224'): string[] {
+  const native = suiteTestFiles(
+    [...files],
+    ['macos-native', 'macos-observer'],
+    manifest,
+    build === '23E224' ? 'macos-23E224' : 'macos-24G830',
+  )
   if (new Set(native).size !== native.length)
     throw Error('Native preflight inventory repeats a test file')
   for (const prerequisite of NATIVE_PREREQUISITE_TESTS) {
@@ -215,7 +222,12 @@ async function main() {
       bunRevision: Bun.revision,
     })
   }
-  const files = mac ? nativeTestFiles(await discoverHostTests(repository)) : []
+  const files = mac
+    ? nativeTestFiles(
+        discoverRepositoryTests(repository, manifest),
+        capture('/usr/bin/sw_vers', ['-buildVersion']).trim(),
+      )
+    : []
   if (mode === 'all') {
     for (const tool of ['just', 'node', 'jq']) {
       if (!Bun.which(tool))

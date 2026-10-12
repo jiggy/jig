@@ -15,7 +15,6 @@ import { dirname, join, resolve } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { reconcileAffectedEvidence } from './affected-gate.mjs'
 import { affectedManifest, createAffectedPlan, digest, githubOutputs } from './affected-plan.mjs'
-import { authorizeExpectedSkips } from './expected-skips.mjs'
 
 const roots = []
 afterEach(() => {
@@ -58,7 +57,10 @@ function fixture() {
       '{"name":"@jigging/agent-method","dependencies":{"@jigging/flow":"workspace:*"}}',
     'packages/jig/package.json':
       '{"name":"@jigging/jig","dependencies":{"@jigging/agent-method":"workspace:*"}}',
-    'packages/jig/test/lifecycle.test.ts': 'test("cleanup", () => {})',
+    'packages/jig/test/portable/lifecycle.test.ts': 'test("cleanup", () => {})',
+    'packages/jig/test/host/lifecycle.test.ts': 'test("native cleanup",()=>{})',
+    'packages/flow-sdk/test/fixture.test.ts': 'test("protocol",()=>{})',
+    'examples/request-triage/test/fixture.test.ts': 'test("application",()=>{})',
     'packages/jig/src/core.ts': 'export const lifecycle = true',
     'packages/jiggy-flow/pyproject.toml': '[project]\nname = "jiggy-flow"\ndependencies = []\n',
     'packages/jiggy-flow/src/jiggy/flow/runtime.py': 'RUNTIME = 1\n',
@@ -70,7 +72,7 @@ function fixture() {
     'conformance/run-0/python-peer/test_wire.py': 'def test_wire(): pass\n',
     'scripts/ci/tooling.test.mjs': 'test("tooling", () => {})',
     '.github/workflows/linux-host-conformance.yml':
-      'jobs:\n  proof:\n    steps:\n      - run: bun test packages/jig/test/lifecycle.test.ts\n',
+      'jobs:\n  proof:\n    steps:\n      - run: bun test packages/jig/test/portable/lifecycle.test.ts\n',
     'scripts/build-site.sh': '# build both sites\n',
     'scripts/test-release.sh': '# ordinary source gate\n',
     'site/justfile': 'build: \n',
@@ -120,7 +122,11 @@ test('default shadow retains every obligation while reporting bounded site-only 
   commit(f.root)
   const p = plan(f, { mode: 'shadow' })
   assert.equal(p.policy.classification, 'public-site')
-  assert.ok(p.targets.every((target) => target.selected))
+  assert.ok(
+    p.targets.every((target) =>
+      target.kind === 'installed-witness' ? !target.selected : target.selected,
+    ),
+  )
   assert.equal(p.proposedDecisions.source, false)
   assert.equal(p.proposedDecisions.macos, false)
   assert.deepEqual(p.proposedDecisions.npmPackages, [])
@@ -146,10 +152,14 @@ test('a sampled active PR runs every owning scope while retaining the narrow com
   assert.equal(p.proposedDecisions.candidates, false)
   assert.equal(p.proposedDecisions.linux, false)
   assert.equal(p.proposedDecisions.macos, false)
-  assert.ok(p.targets.every((target) => target.selected))
+  assert.ok(
+    p.targets.every((target) =>
+      target.kind === 'installed-witness' ? !target.selected : target.selected,
+    ),
+  )
   assert.ok(
     p.targets
-      .filter((target) => !target.proposedSelected)
+      .filter((target) => !target.proposedSelected && target.selected)
       .every((target) => target.reasons.some((reason) => reason.includes('full PR audit'))),
   )
   assert.deepEqual(plan(f, { prHead }), p)
@@ -238,7 +248,11 @@ test('a freshly reconstructed plan cannot use an unsampled merge ancestor to aut
     assert.equal(forged.policy.classification, 'full')
     assert.equal(forged.identity.prHead, null)
     assert.equal(forged.audit.seed, null)
-    assert.ok(forged.targets.every((target) => target.selected))
+    assert.ok(
+      forged.targets.every((target) =>
+        target.kind === 'installed-witness' ? !target.selected : target.selected,
+      ),
+    )
     const evidence = evidenceFor(forged, 'all')
     for (const result of evidence.results) {
       if (!legitimate.targets.find((target) => target.id === result.id).proposedSelected) {
@@ -269,7 +283,11 @@ test('an unmerged tested PR revision requires its own exact head as an explicit 
   const forged = plan(f, { head, prHead: f.base })
   assert.equal(forged.policy.classification, 'full')
   assert.equal(forged.identity.prHead, null)
-  assert.ok(forged.targets.every((target) => target.selected))
+  assert.ok(
+    forged.targets.every((target) =>
+      target.kind === 'installed-witness' ? !target.selected : target.selected,
+    ),
+  )
 })
 
 test('shadow, non-PR and explicit full overrides retain their full-execution precedence', () => {
@@ -281,12 +299,20 @@ test('shadow, non-PR and explicit full overrides retain their full-execution pre
   assert.equal(shadow.audit.eligible, false)
   assert.equal(shadow.audit.bucket, 0)
   assert.equal(shadow.proposedDecisions.source, false)
-  assert.ok(shadow.targets.every((target) => target.selected))
+  assert.ok(
+    shadow.targets.every((target) =>
+      target.kind === 'installed-witness' ? !target.selected : target.selected,
+    ),
+  )
   for (const options of [{ event: 'push' }, { event: 'workflow_dispatch' }, { forceFull: true }]) {
     const p = plan(f, options)
     assert.equal(p.audit.selected, false)
     assert.equal(p.audit.eligible, false)
-    assert.ok(p.targets.every((target) => target.selected))
+    assert.ok(
+      p.targets.every((target) =>
+        target.kind === 'installed-witness' ? !target.selected : target.selected,
+      ),
+    )
   }
 })
 
@@ -308,13 +334,21 @@ test('missing or unreviewed audit configuration and unresolved PR seeds select f
     assert.equal(p.policy.classification, 'full')
     assert.equal(p.audit.selected, false)
     assert.equal(p.audit.eligible, false)
-    assert.ok(p.targets.every((target) => target.selected))
+    assert.ok(
+      p.targets.every((target) =>
+        target.kind === 'installed-witness' ? !target.selected : target.selected,
+      ),
+    )
   }
   const p = plan(f, { prHead: 'missing-pr-head' })
   assert.equal(p.policy.classification, 'full')
   assert.equal(p.audit.seed, null)
   assert.equal(p.audit.selected, false)
-  assert.ok(p.targets.every((target) => target.selected))
+  assert.ok(
+    p.targets.every((target) =>
+      target.kind === 'installed-witness' ? !target.selected : target.selected,
+    ),
+  )
 })
 
 test('active site additions, deletions and same-boundary renames omit unrelated jobs', () => {
@@ -354,12 +388,107 @@ test('isolated Python source and added/deleted tests retain complete source and 
   assert.ok(p.inventory.removed.includes('packages/jiggy-flow/tests/test_runtime.py'))
   assert.ok(p.graph.affectedOwners.includes('conformance/run-0'))
   assert.ok(p.graph.affectedOwners.includes('packages/jiggy-user-updates'))
-  const source = p.targets.find((target) => target.id === 'source-tests')
+  const source = p.targets.find((target) => target.id === 'source-python')
   assert.ok(source.inventory.includes('packages/jiggy-flow/tests/test_new.py'))
   assert.ok(!source.inventory.includes('packages/jiggy-flow/tests/test_runtime.py'))
   assert.equal(
     p.targets.find((target) => target.id === 'python-installed').runtimeProfiles.length,
     6,
+  )
+})
+
+test('pure test-only changes execute the owning portable source stage without host qualification', () => {
+  const f = fixture()
+  write(f.root, 'packages/jig/test/portable/slot-graph.test.ts', 'test("old pure graph",()=>{})')
+  const base = commit(f.root)
+  write(f.root, 'packages/jig/test/portable/slot-graph.test.ts', 'test("new pure graph",()=>{})')
+  commit(f.root)
+  const p = plan({ ...f, base })
+  assert.equal(p.policy.classification, 'portable-tests')
+  assert.deepEqual(p.decisions.sourceTargets, ['source-portable'])
+  assert.equal(p.decisions.candidates, false)
+  assert.equal(p.decisions.linux, false)
+  assert.equal(p.decisions.macos, false)
+  assert.equal(p.decisions.witnesses, false)
+})
+
+test('model/web presentation changes qualify bundled Jig with all three compact installed witnesses', () => {
+  const f = fixture()
+  for (const name of ['display-model', 'display-web', 'display-tui'])
+    write(
+      f.root,
+      `packages/${name}/package.json`,
+      JSON.stringify({
+        name: `@jigging/${name}`,
+        dependencies: name === 'display-model' ? {} : { '@jigging/display-model': 'workspace:*' },
+      }),
+    )
+  write(
+    f.root,
+    'packages/jig/package.json',
+    JSON.stringify({
+      name: '@jigging/jig',
+      dependencies: {
+        '@jigging/display-web': 'workspace:*',
+        '@jigging/display-tui': 'workspace:*',
+      },
+    }),
+  )
+  write(
+    f.root,
+    'packages/jig/test/host/package-provider-observation.test.ts',
+    'test("actual installed observation",()=>{})',
+  )
+  write(f.root, 'packages/display-model/src/view.ts', 'export const view=1')
+  const base = commit(f.root)
+  write(f.root, 'packages/display-model/src/view.ts', 'export const view=2')
+  commit(f.root)
+  const p = plan({ ...f, base })
+  assert.equal(p.policy.classification, 'presentation')
+  assert.deepEqual(p.decisions.sourceTargets, ['source-portable'])
+  assert.deepEqual(p.decisions.npmPackages, ['jig'])
+  assert.equal(p.decisions.witnesses, true)
+  for (const id of ['linux-witness', 'macos-x64-witness', 'macos-arm64-witness']) {
+    const target = p.targets.find((item) => item.id === id)
+    assert.equal(target.selected, true)
+    assert.deepEqual(target.testInventory, [
+      'packages/jig/test/host/package-provider-observation.test.ts',
+    ])
+    assert.equal(target.requiresArtifacts, true)
+    assert.equal(target.requiresResidue, true)
+  }
+  for (const scope of ['ci', 'linux', 'macos'])
+    assert.equal(
+      reconcileAffectedEvidence(p, evidenceFor(p, scope), { cwd: f.root, scope }).qualified,
+      true,
+    )
+  const changed = evidenceFor(p, 'macos')
+  changed.results.find((item) => item.id === 'macos-x64-witness').residueVerified = false
+  assert.equal(
+    reconcileAffectedEvidence(p, changed, { cwd: f.root, scope: 'macos' }).qualified,
+    false,
+  )
+  write(f.root, 'packages/display-tui/src/native.ts', 'export const native=1')
+  commit(f.root)
+  assert.equal(plan({ ...f, base }).policy.classification, 'full')
+})
+
+test('a new outside consumer blocks a display presentation omission using the old/new graph', () => {
+  const f = fixture()
+  write(f.root, 'packages/display-web/package.json', '{"name":"@jigging/display-web"}')
+  write(
+    f.root,
+    'examples/request-triage/package.json',
+    '{"name":"consumer","dependencies":{"@jigging/display-web":"workspace:*"}}',
+  )
+  write(f.root, 'packages/display-web/src/view.ts', 'export const view=1')
+  const base = commit(f.root)
+  write(f.root, 'packages/display-web/src/view.ts', 'export const view=2')
+  commit(f.root)
+  assert.ok(
+    plan({ ...f, base }).policy.fallbackReasons.some((message) =>
+      message.includes('outside its reviewed'),
+    ),
   )
 })
 
@@ -395,7 +524,7 @@ test('independent site and Python changes compose without dropping either obliga
   write(f.root, 'packages/jiggy-flow/src/jiggy/flow/runtime.py', 'RUNTIME = 2\n')
   commit(f.root)
   const p = plan(f)
-  assert.equal(p.policy.classification, 'site-and-python')
+  assert.equal(p.policy.classification, 'public-site-and-python')
   assert.equal(p.decisions.sites, true)
   assert.equal(p.decisions.source, true)
   assert.equal(p.decisions.python, true)
@@ -408,7 +537,7 @@ test('standalone installed smoke entrypoints enter the source and host inventori
   commit(f.root)
   const p = plan(f)
   assert.ok(p.inventory.entrypoints.includes('packages/jig/test/package-smoke.ts'))
-  for (const id of ['source-tests', 'linux', 'macos-x64', 'macos-arm64'])
+  for (const id of ['source-portable', 'linux', 'macos-x64', 'macos-arm64'])
     assert.ok(
       p.targets
         .find((target) => target.id === id)
@@ -416,32 +545,32 @@ test('standalone installed smoke entrypoints enter the source and host inventori
     )
 })
 
-test('Linux host inventory distinguishes hostile coverage and rejects an unassigned native case', () => {
+test('physical whole-file roles own future files and refuse unclassified registrations', () => {
   const f = fixture()
-  write(f.root, 'packages/jig/test/portable.test.ts', 'test("portable", () => {})')
+  for (const path of [
+    'packages/jig/test/host/future.test.ts',
+    'packages/jig/test/linux-host/future.test.ts',
+    'packages/jig/test/macos/future.test.ts',
+    'packages/display-web/test/nested/future.spec.mjs',
+  ])
+    write(f.root, path, 'test("whole file",()=>{})')
   const base = commit(f.root)
   write(f.root, 'site/theme/style.css', 'body { color: blue }')
   commit(f.root)
   const p = plan({ ...f, base })
   assert.equal(p.policy.classification, 'public-site')
-  assert.ok(
-    !p.targets
-      .find((target) => target.id === 'linux')
-      .inventory.includes('packages/jig/test/portable.test.ts'),
-  )
-  assert.ok(
-    p.targets
-      .find((target) => target.id === 'macos-x64')
-      .inventory.includes('packages/jig/test/portable.test.ts'),
-  )
-  write(
-    f.root,
-    'packages/jig/test/new-host.test.ts',
-    'if (process.env.JIG_LINUX_ROOTLESS_HOSTILE) test("owned", () => {})',
-  )
+  const inventory = (id) => p.targets.find((target) => target.id === id).testInventory
+  assert.ok(inventory('linux').includes('packages/jig/test/host/future.test.ts'))
+  assert.ok(inventory('linux').includes('packages/jig/test/linux-host/future.test.ts'))
+  assert.ok(!inventory('linux').includes('packages/jig/test/macos/future.test.ts'))
+  assert.ok(inventory('macos-x64').includes('packages/jig/test/macos/future.test.ts'))
+  assert.ok(!inventory('macos-x64').includes('packages/jig/test/linux-host/future.test.ts'))
+  for (const id of ['source-portable', 'linux', 'macos-x64', 'macos-arm64'])
+    assert.ok(inventory(id).includes('packages/display-web/test/nested/future.spec.mjs'))
+  write(f.root, 'packages/jig/test/unclassified.test.ts', 'test("unowned",()=>{})')
   commit(f.root)
   assert.ok(
-    plan(f).policy.fallbackReasons.some((reason) => reason.includes('absent from owning workflow')),
+    plan(f).inventory.coverageErrors.some((message) => message.includes('Unowned discovered test')),
   )
 })
 
@@ -506,7 +635,9 @@ test('docs, copied contracts, embedded web, tooling and package resolution metad
     const p = plan(f)
     assert.equal(p.policy.classification, 'full', path)
     assert.ok(
-      p.targets.every((target) => target.selected),
+      p.targets.every((target) =>
+        target.kind === 'installed-witness' ? !target.selected : target.selected,
+      ),
       path,
     )
   }
@@ -575,7 +706,11 @@ test('missing history, empty delta, force-full, push and combined merge events e
   ]) {
     const p = plan(f, options)
     assert.equal(p.policy.classification, 'full')
-    assert.ok(p.targets.every((target) => target.selected))
+    assert.ok(
+      p.targets.every((target) =>
+        target.kind === 'installed-witness' ? !target.selected : target.selected,
+      ),
+    )
   }
 })
 
@@ -644,8 +779,8 @@ test('a self-consistent forged plan cannot omit independently required work', ()
   write(f.root, 'packages/jig/src/core.ts', 'export const lifecycle = false')
   commit(f.root)
   const p = plan(f)
-  p.targets.find((target) => target.id === 'source-tests').selected = false
-  p.targets.find((target) => target.id === 'source-tests').omissionReason = 'invented reason'
+  p.targets.find((target) => target.id === 'source-portable').selected = false
+  p.targets.find((target) => target.id === 'source-portable').omissionReason = 'invented reason'
   p.decisions.source = false
   const { planDigest: oldDigest, ...body } = p
   p.planDigest = digest(body)
@@ -661,22 +796,22 @@ test('missing, cancelled, failed, skipped, empty, stale and wrong-profile select
   const p = plan(f)
   const mutations = [
     (e) => {
-      e.results = e.results.filter((r) => r.id !== 'source-tests')
+      e.results = e.results.filter((r) => r.id !== 'source-portable')
     },
     ...['failure', 'cancelled', 'skipped'].map((status) => (e) => {
-      e.results.find((r) => r.id === 'source-tests').status = status
+      e.results.find((r) => r.id === 'source-portable').status = status
     }),
     (e) => {
-      e.results.find((r) => r.id === 'source-tests').executedCount = 0
+      e.results.find((r) => r.id === 'source-portable').executedCount = 0
     },
     (e) => {
-      e.results.find((r) => r.id === 'source-tests').unexpectedSkips = 1
+      e.results.find((r) => r.id === 'source-portable').unexpectedSkips = 1
     },
     (e) => {
       e.results.find((r) => r.id === 'python-installed').profiles.pop()
     },
     (e) => {
-      e.results.find((r) => r.id === 'source-tests').inventoryDigest = 'wrong'
+      e.results.find((r) => r.id === 'source-portable').inventoryDigest = 'wrong'
     },
     (e) => {
       e.results.find((r) => r.id === 'npm-candidate').artifactsVerified = false
@@ -725,59 +860,46 @@ test('omission requires a policy-derived reason and cannot conceal selected skip
   commit(f.root)
   const p = plan(f)
   const evidence = evidenceFor(p)
-  evidence.results.find((result) => result.id === 'source-tests').omissionReason = 'trust me'
+  evidence.results.find((result) => result.id === 'source-portable').omissionReason = 'trust me'
   assert.equal(reconcileAffectedEvidence(p, evidence, { cwd: f.root }).qualified, false)
 })
 
-test('the independent gate repeats source-bound skip authorization and checks observed totals', () => {
+test('selected suites reject every observed skip, filter and legacy permission payload', () => {
   const f = fixture()
-  const file = 'packages/jig/test/file-input.test.ts'
-  write(f.root, file, readFileSync(resolve(import.meta.dirname, '../..', file)))
+  write(f.root, 'packages/jig/src/core.ts', 'export const lifecycle = false')
   commit(f.root)
   const p = plan(f)
   const e = evidenceFor(p)
-  const row = e.results.find((item) => item.id === 'source-tests')
-  const skipPolicy = p.targets.find((item) => item.id === row.id).skipPolicy
-  Object.assign(
-    row,
-    authorizeExpectedSkips({
-      repository: f.root,
-      source: p.identity.head,
-      targetId: row.id,
-      profile: row.profiles[0],
-      skipPolicy,
-      skippedCases: [
-        { file, classname: '', name: 'Mac capture refuses case variants of private Jig state' },
-      ],
-    }),
-    { skipPolicy },
-  )
   assert.equal(reconcileAffectedEvidence(p, e, { cwd: f.root }).qualified, true)
-  for (const edit of [
-    (item) => {
-      item.skippedCaseDigest = 'forged'
-    },
-    (item) => {
-      item.observedSkipped++
-    },
-    (item) => {
-      item.skippedCases[0].name =
-        'captures selected binary and empty files into sealed anonymous input'
-    },
-    (item) => {
-      delete item.skipPolicy
-    },
-    (item) => {
-      delete item.skippedCases
-    },
+  for (const additions of [
+    { observedSkipped: 1 },
+    { observedFiltered: 1 },
+    { skipPolicy: 'source-platform-opt-in' },
+    { skippedCases: [{ file: 'invented', name: 'invented' }] },
   ]) {
     const changed = structuredClone(e)
-    edit(changed.results.find((item) => item.id === row.id))
+    Object.assign(
+      changed.results.find((item) => item.id === 'source-portable'),
+      additions,
+    )
     assert.equal(reconcileAffectedEvidence(p, changed, { cwd: f.root }).qualified, false)
   }
-  const changed = structuredClone(e)
-  delete changed.results.find((item) => item.id === 'quick-checks').observedSkipped
-  assert.equal(reconcileAffectedEvidence(p, changed, { cwd: f.root }).qualified, false)
+  delete e.results.find((item) => item.id === 'quick-checks').observedSkipped
+  assert.equal(reconcileAffectedEvidence(p, e, { cwd: f.root }).qualified, false)
+})
+
+test('positive report counts cannot qualify an empty selected source inventory', () => {
+  const f = fixture()
+  rmSync(join(f.root, 'packages/flow-sdk/test/fixture.test.ts'))
+  write(f.root, 'packages/jig/src/core.ts', 'export const lifecycle=false')
+  commit(f.root)
+  const p = plan(f)
+  assert.equal(p.targets.find((target) => target.id === 'source-protocol').testInventory.length, 0)
+  assert.ok(
+    reconcileAffectedEvidence(p, evidenceFor(p), { cwd: f.root }).errors.some((message) =>
+      message.includes('empty source test inventory'),
+    ),
+  )
 })
 
 test('CLI emits stable JSON and literal GitHub outputs without treating refs as shell code', () => {
