@@ -64,7 +64,9 @@ Host preparation never becomes a consumer requirement.
   `candidate-transfer.mjs` checks GitHub repository/workflow/event/head identity,
   current run attempt, immutable artifact ID/digest and expiry before safely
   extracting the bundle. PR head metadata differs from its tested merge source.
-  Non-PR audits may acquire trusted main push/schedule/manual producers; release
+  Main-push consumers acquire only main-push CI producers. Scheduled and manual
+  audits may acquire trusted main push/schedule/manual producers. Manual candidate
+  audits are supported on `main`; feature-branch producers are not accepted. Release
   readiness and native Linux lineage require full main-push producers. Missing
   current-attempt artifacts never fall back to older candidates.
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and

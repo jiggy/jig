@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import {
@@ -449,7 +449,7 @@ await handle(async run => {
       )
     }
     const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
-    assertTypedObservation(transcript)
+    assertTypedObservation(transcript, undefined, await realpath(join(project, 'factory-auto')))
     passed = true
   } finally {
     if (passed) await rm(directory, { recursive: true, force: true })

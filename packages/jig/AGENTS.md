@@ -625,7 +625,9 @@ buffer release and output failure independently of recorded execution status.
   with the exact incomplete/provisional explanation; other failures, extra
   settlement claims and fabricated clean endings refuse qualification.
   Accepted Checks and Patches remain model evidence rather than additional
-  plain summaries.
+  plain summaries. Plain assertions separate exactly one quoted Output
+  header bound to the physical packet directory after its inventory and hashes
+  have been verified; words in that path cannot establish observation loss.
   A separate small cold installed consumer requires complete clean reception
   through both automatic display and explicit NDJSON, and declares producer loss
   alongside successful work and verified delivery. Deterministic application tests

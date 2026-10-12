@@ -1,7 +1,8 @@
 import { expect } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
+import { asciiJsonString } from '../../src/cli-usage.js'
 import { type UserUpdate, validateUserUpdate } from '@jigging/user-updates'
 
 export const lostObservation =
@@ -24,7 +25,20 @@ export const factorySummaries = {
 export function assertTypedObservation(
   transcript: string,
   summaries: Readonly<Record<string, readonly [string, string]>> = factorySummaries,
+  writtenOutput?: string,
 ): 'ended' | 'lagged' {
+  // Callers supply this physical destination only after checking its own packet,
+  // complete inventory and bytes. Its quoted path is data, not a loss report.
+  if (writtenOutput !== undefined) {
+    if (!isAbsolute(writtenOutput))
+      throw new Error('Factory observation requires an absolute verified output path')
+    const header = `  Output: ${asciiJsonString(writtenOutput)}`
+    const lines = transcript.split('\n')
+    const outputs = lines.filter((line) => line.startsWith('  Output:'))
+    if (outputs.length !== 1 || outputs[0] !== header || lines.indexOf(header) === lines.length - 1)
+      throw new Error('Factory observation must identify its verified output exactly once')
+    transcript = lines.filter((line) => line !== header).join('\n')
+  }
   if (
     transcript.includes('\u001b') ||
     /Updates unavailable|Updates incomplete|presentation limit|DISCONNECTED|OWNER_CLOSED|INVALID_INPUT|INVALID_RESULT|RESOURCE_EXHAUSTED|PROTOCOL_ERROR|CHANNEL_LOST/.test(

@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -275,6 +275,7 @@ await handle(async run => {
                   ] as const,
                 ]),
               ),
+              await realpath(join(project, destination)),
             ),
           ).toBe(mode === 'clean' ? 'ended' : 'lagged')
           if (mode === 'clean') {

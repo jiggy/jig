@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { PrivateCliProgress } from '../../src/cli-progress.js'
+import { asciiJsonString } from '../../src/cli-usage.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import { PrivateCliUserUpdates } from '../../src/cli-user-updates.js'
 import {
@@ -133,6 +135,96 @@ test('factory automatic observation accepts complete views or exact truthful los
     `${loss}\u001b[31m`,
   ])
     expect(() => assertTypedObservation(altered)).toThrow()
+})
+
+test('factory plain observation binds its written output header without interpreting the path as loss', async () => {
+  const summaries = Object.fromEntries(
+    ['Jobs', 'Checks', 'Patches'].map((title) => [
+      title,
+      [`Witness ${title}: evidence written`, `Witness ${title}: evidence written`] as const,
+    ]),
+  )
+  for (const scenario of [
+    { mode: 'clean', received: 3 },
+    { mode: 'lagged', received: 3 },
+    { mode: 'lagged', received: 0 },
+  ] as const) {
+    // Include loss words in an ordinary path. Only the exact separately bound
+    // output header may contain these words without becoming observation text.
+    const writtenOutput = `/ordinary-consumer/DISCONNECTED/observation incomplete/witness-automatic-${scenario.mode}`
+    const header = `  Output: ${asciiJsonString(writtenOutput)}\n`
+    let transcript = ''
+    const presenter = new PrivateCliProgress(
+      true,
+      (text) => {
+        transcript += text
+      },
+      undefined,
+      false,
+    )
+    try {
+      await presenter.configureDisplay('plain', false)
+      presenter.notice(header, 'info', false)
+      const source = presenter.observe('progress', true)
+      for (const title of ['Jobs', 'Checks', 'Patches'].slice(0, scenario.received))
+        expect(
+          source.accept({
+            kind: 'view',
+            id: title.toLowerCase(),
+            title,
+            summary: summaries[title][1],
+            sections: [],
+          }),
+        ).toBeTrue()
+      await presenter.flush()
+      source.retire(scenario.mode === 'lagged' ? lostObservation : undefined)
+      expect([...presenter.model.views.values()].map((view) => view.value.title)).toEqual(
+        ['Jobs', 'Checks', 'Patches'].slice(0, scenario.received),
+      )
+      for (const view of presenter.model.views.values()) {
+        expect(view.value.summary).toBe(summaries[view.value.title][1])
+        expect(view.ended).toBe(scenario.mode === 'lagged' ? lostObservation : 'Observation ended')
+      }
+      await presenter.settleDisplay({
+        status: 'succeeded',
+        outcome: 'done',
+        delivery: { status: 'written' },
+      })
+      expect(presenter.model.workspace.facts?.execution).toBe('succeeded')
+      expect(presenter.model.workspace.facts?.application).toBe('"done"')
+      expect(assertTypedObservation(transcript, summaries, writtenOutput)).toBe(
+        scenario.mode === 'clean' ? 'ended' : 'lagged',
+      )
+      expect(() => assertTypedObservation(transcript, summaries)).toThrow()
+      expect(() => assertTypedObservation(transcript, summaries, 'relative-output')).toThrow()
+      expect(() =>
+        assertTypedObservation(transcript, summaries, `${writtenOutput}-unrelated`),
+      ).toThrow()
+      for (const altered of [
+        transcript.replace(header, ''),
+        `${transcript.replace(header, '')}${header.trimEnd()}`,
+        transcript.replace(header, `  Output: ${asciiJsonString(`${writtenOutput}-unrelated`)}\n`),
+        `${transcript}${header}`,
+        transcript.replace(header, `  Unrelated: ${asciiJsonString(writtenOutput)}\n`),
+        `${transcript}  Output: ${asciiJsonString(`${writtenOutput}-unrelated`)}\n`,
+        `${transcript}  Flow: Unknown observation LAGGED\n`,
+        `${transcript}  Flow: Unknown observation incomplete\n`,
+        `${transcript}  Flow / Unknown: Observation ended; application reports remain provisional\n`,
+        ...(scenario.received === 0
+          ? []
+          : [
+              transcript.replace(
+                'application reports remain provisional',
+                'application reports are authoritative',
+              ),
+            ]),
+      ])
+        expect(() => assertTypedObservation(altered, summaries, writtenOutput)).toThrow()
+    } finally {
+      await presenter.flush()
+      presenter.close()
+    }
+  }
 })
 
 test('factory explicit observation preserves exact channel ordering and rejects malformed evidence', () => {

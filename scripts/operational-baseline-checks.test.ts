@@ -595,7 +595,7 @@ test('memory proof rejection never renders private owner token data or raw parse
     }
     expect(rejected).toBeInstanceOf(Error)
     expect(rejected!.message).toBe(
-      'Installed memory enforcement proof rejected; inspect the retained private fixture',
+      `Installed memory enforcement proof rejected at ${malformed ? 'allocation' : 'prepared-owner'}; inspect the retained private fixture`,
     )
     expect(rejected!.cause).toBeUndefined()
     expect(Object.hasOwn(rejected!, 'actual')).toBe(false)
@@ -605,3 +605,91 @@ test('memory proof rejection never renders private owner token data or raw parse
     ).not.toContain(secret)
   }
 })
+
+const memoryProofStageFailures: readonly [
+  string,
+  (fixture: ReturnType<typeof memoryProofFixture>) => void,
+][] = [
+  [
+    'run-request',
+    (fixture) => {
+      fixture.row.candidate_revision = 0
+    },
+  ],
+  [
+    'origin-intent',
+    (fixture) => {
+      fixture.row.origin_digest = 'not-a-digest'
+    },
+  ],
+  [
+    'allocation',
+    (fixture) => {
+      fixture.row.allocation_bytes = null
+    },
+  ],
+  [
+    'plan-backing',
+    (fixture) => {
+      mutateMemoryCheckpoint(fixture, 'plan', (value) => {
+        value.effectiveDeadlineUnixMs = 0
+      })
+    },
+  ],
+  [
+    'prepared-owner',
+    (fixture) => {
+      mutateMemoryCheckpoint(fixture, 'prepared', (value) => {
+        memoryRecord(value.prepared).kind = 'not-a-prepared-owner'
+      })
+    },
+  ],
+  [
+    'enforcement-fence',
+    (fixture) => {
+      mutateMemoryCheckpoint(fixture, 'fence', (value) => {
+        memoryRecord(memoryRecord(memoryRecord(value.receipt).evidence).memoryEvents).oom_kill = 0
+      })
+    },
+  ],
+  [
+    'release',
+    (fixture) => {
+      mutateMemoryCheckpoint(fixture, 'release', (value) => {
+        value.packageReleased = false
+      })
+    },
+  ],
+  [
+    'terminal-record',
+    (fixture) => {
+      fixture.row.terminal_bytes = Buffer.from('{invalid')
+    },
+  ],
+  [
+    'command-result',
+    (fixture) => {
+      fixture.command.stderr = 'unrecognized private text'
+    },
+  ],
+]
+
+for (const [stage, change] of memoryProofStageFailures)
+  test(`memory proof rejection identifies only its fixed ${stage} validation stage`, () => {
+    const fixture = memoryProofFixture('descendant')
+    change(fixture)
+    let rejected: Error | undefined
+    try {
+      checkInstalledMemoryProof(fixture)
+    } catch (error) {
+      rejected = error as Error
+    }
+    expect(rejected).toBeInstanceOf(Error)
+    expect(rejected!.message).toBe(
+      `Installed memory enforcement proof rejected at ${stage}; inspect the retained private fixture`,
+    )
+    expect(rejected!.cause).toBeUndefined()
+    expect(Object.hasOwn(rejected!, 'actual')).toBe(false)
+    expect(Object.hasOwn(rejected!, 'expected')).toBe(false)
+    expect(String(rejected)).not.toContain('unrecognized private text')
+  })
