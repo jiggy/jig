@@ -98,7 +98,7 @@ jobs:
         id: "plan"
         env:
           BASE: "${{ github.event.pull_request.base.sha || github.event.before || '' }}"
-          MODE: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && github.event.pull_request.base.repo.full_name == github.repository && github.event.pull_request.base.ref == 'ci-performance-trial-baseline' && 'active' || vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
+          MODE: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && github.event.pull_request.base.repo.full_name == github.repository && github.event.pull_request.base.ref == 'ci-performance-trial-baseline-recovery' && 'active' || vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
           FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
           PR_HEAD: "${{ github.event.pull_request.head.sha || '' }}"
         run: |
@@ -740,7 +740,7 @@ jobs:
         name: "Reconcile selected work and explicit policy omissions"
         env:
           JOB_RESULTS: "${{ toJSON(needs) }}"
-          MODE: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && github.event.pull_request.base.repo.full_name == github.repository && github.event.pull_request.base.ref == 'ci-performance-trial-baseline' && 'active' || vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
+          MODE: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && github.event.pull_request.base.repo.full_name == github.repository && github.event.pull_request.base.ref == 'ci-performance-trial-baseline-recovery' && 'active' || vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
           FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
         run: |
           set -eu

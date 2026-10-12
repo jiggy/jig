@@ -27,6 +27,14 @@ active Run deadline.
 
 Repair leaf proofs use separate successful and unsuccessful whole files. Each retains its original guardian observer, scenario body, fresh consumer and platform-specific timer; neither shares admission, execution or cleanup with the other.
 
+Project Command coordinator-loss recovery keeps a fresh eight-failure batch for
+each of its two bounded reopen attempts. The test spy retains closed causes and
+at most one fixed internal source label with positive line/column from the
+innermost bounded cause chain. Stack inspection is limited to 8 KiB and 32 frames;
+raw messages, stacks, paths, tokens and owner data are never emitted. Diagnostic
+failures cannot replace the original exception or change the sealed-owner crash
+barrier, recovery, cleanup, assertions or limits.
+
 The installed factory's blocked proof and coupled checked/automatic proof use separate fresh consumers through the registration-free `fixtures/installed-software-factory.ts`. Both initially review the blocked peer and remove the editable repair package. The blocked case executes and verifies admitted bytes, worker causes, checkpoint delivery and its complete packet. The checked case restores authored repair source, changes the peer and re-reviews before its explicit and automatic Runs; their complete job evidence and all nine delivered files must agree. Completed-Run/source-edit/re-review/new-generation execution remains independently required by the installed package dependency and full package-smoke consumers. Keep all three factory Runs and their existing limits, result, delivery, observation and cleanup assertions.
 
 `installed-display-smoke.ts` consumes the supplied canonical eight archives without rebuilding. It verifies installed Jig member bytes and actual qualified Bun/Core loading, runs the three standalone display consumers, and shares registration-free installed display checks with `package-smoke.ts`. Real PTYs prove missing-support refusal on Mac or provisioned Linux, saved TUI navigation/immutable preview, Stay-default confirmation followed by observed Leave selection and Enter, and exact terminal restoration. The shared helper requires the Run-refusal profile by default; only the ordinary full package smoke permits a source-Linux omission, with no host proof credit. Saved web checks embedded assets, authentication, immutable capture and explicit Close. Live observations, delivery and interruption belong to `host/package-provider-observation.test.ts`. Compact witnesses remain distinct from full qualification, operational/hostile baselines and cold registry installation.
