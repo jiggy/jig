@@ -309,16 +309,18 @@ async function attached(
   if (candidates.length === 0) return undefined
   const item = candidates[0]!
   const entities = item['system-entities']
-  if (
-    candidates.length !== 1 ||
-    item['owner-uid'] !== process.getuid!() ||
-    item.blocksize !== 512 ||
-    item.blockcount !== allocation.bytes / 512 ||
-    item['image-encrypted'] !== false ||
-    !Array.isArray(entities) ||
-    entities.length !== 1
-  )
-    throw new Error('macOS image attachment does not match its allocation')
+  if (candidates.length !== 1)
+    throw new Error('macOS image attachment count does not match its allocation')
+  if (item['owner-uid'] !== process.getuid!())
+    throw new Error('macOS image attachment owner does not match its allocation')
+  if (item.blocksize !== 512)
+    throw new Error('macOS image attachment sector size does not match its allocation')
+  if (item.blockcount !== allocation.bytes / 512)
+    throw new Error('macOS image attachment sector count does not match its allocation')
+  if (item['image-encrypted'] !== false)
+    throw new Error('macOS image attachment encryption does not match its allocation')
+  if (!Array.isArray(entities) || entities.length !== 1)
+    throw new Error('macOS image attachment entities do not match its allocation')
   const entity = entities[0]
   if (
     entity === null ||

@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
 import { type DisplaySnapshot, displayViewKey } from '@jigging/display-model'
-import { createInlineDisplay } from '../src/inline.js'
-import { createInlineOwner } from '../src/inline-owner.js'
-import { terminalWidth } from '../src/text.js'
-import { rowRecordKey, ViewerModel } from '../src/viewer-model.js'
-import { snapshot } from './fixtures.js'
+import { createInlineDisplay } from '../../src/inline.js'
+import { createInlineOwner } from '../../src/inline-owner.js'
+import { terminalWidth } from '../../src/presentation/text.js'
+import { rowRecordKey, ViewerModel } from '../../src/presentation/viewer-model.js'
+import { snapshot } from '../fixtures.js'
 
 function view(id: string, summary: string, landing = false): DisplaySnapshot['views'][number] {
   return {

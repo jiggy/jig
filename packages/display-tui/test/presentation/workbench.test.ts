@@ -1,15 +1,19 @@
 import { expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
+import { displayDestinations, displayViewKey } from '@jigging/display-model'
 import {
   type Block,
   type Reference,
   type ViewItem,
   validateReportingMessage,
 } from '@jigging/reporting'
-import { viewerDetailParts, viewerFrame, viewerHasContext } from '../src/projection.js'
-import { displayDestinations, displayViewKey } from '@jigging/display-model'
-import { FixtureModel, FixtureKeyboard } from './fixtures.js'
-import { rowRecordKey } from '../src/viewer-model.js'
+import {
+  viewerDetailParts,
+  viewerFrame,
+  viewerHasContext,
+} from '../../src/presentation/projection.js'
+import { rowRecordKey } from '../../src/presentation/viewer-model.js'
+import { FixtureKeyboard, FixtureModel } from '../fixtures.js'
 
 const view = (blocks: Block[], id = 'work', landing = true): ViewItem =>
   validateReportingMessage({

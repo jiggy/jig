@@ -1,4 +1,5 @@
 import { PassThrough, Writable } from 'node:stream'
+import { callObservationSpans, displayDuration } from '@jigging/display-model'
 import type { Reference } from '@jigging/reporting'
 import type {
   BoxRenderable,
@@ -17,23 +18,22 @@ import {
   viewerPreviewState,
   viewerReferences,
   viewerTableColumns,
-} from './projection.js'
-import { callObservationSpans, displayDuration } from '@jigging/display-model'
-import { syntaxHex } from './style.js'
+} from './presentation/projection.js'
+import { syntaxHex } from './presentation/style.js'
 import {
-  type ViewerModel,
-  type ViewerRecord,
-  attentionImportance,
-  observedTime,
-  viewerFactText,
-  viewerFactTone,
-} from './viewer-model.js'
-import {
+  escapeTerminalText,
   terminalWidth,
   truncateTerminalText,
-  escapeTerminalText,
   wrapTerminalText,
-} from './text.js'
+} from './presentation/text.js'
+import {
+  attentionImportance,
+  observedTime,
+  type ViewerModel,
+  type ViewerRecord,
+  viewerFactText,
+  viewerFactTone,
+} from './presentation/viewer-model.js'
 
 type Core = typeof import('@opentui/core')
 const palettes = {

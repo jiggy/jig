@@ -1,6 +1,6 @@
-import type { InlineDisplay, InlineOptions } from './types.js'
-import { ViewerModel } from './viewer-model.js'
 import { createInlineOwner } from './inline-owner.js'
+import { ViewerModel } from './presentation/viewer-model.js'
+import type { InlineDisplay, InlineOptions } from './types.js'
 
 export type { InlineDisplay, InlineOptions } from './types.js'
 /** Non-native semantic inline projection; never reads stdin or emits bytes itself. */

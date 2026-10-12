@@ -6,7 +6,9 @@ import { createHmac, randomBytes } from 'node:crypto'
 import { closeSync, constants } from 'node:fs'
 import {
   access,
+  chmod,
   link,
+  lstat,
   mkdir,
   mkdtemp,
   open,
@@ -122,6 +124,10 @@ test('backing staging retirement rejects aliases, public modes and oversized fil
           mode: kind === 'public' ? 0o644 : 0o600,
           flag: 'wx',
         })
+      if (kind === 'public') {
+        await chmod(pending, 0o644)
+        expect((await lstat(pending)).mode & 0o777).toBe(0o644)
+      }
       await expect(releasePrivateMacosVolume(control, token)).rejects.toThrow('staging is unsafe')
       expect(await readFile(canary, 'utf8')).toBe('keep')
       await unlink(pending)

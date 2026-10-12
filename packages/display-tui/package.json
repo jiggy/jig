@@ -25,12 +25,12 @@
       "import": "./dist/inline.js"
     },
     "./text": {
-      "types": "./dist/text.d.ts",
-      "import": "./dist/text.js"
+      "types": "./dist/presentation/text.d.ts",
+      "import": "./dist/presentation/text.js"
     },
     "./style": {
-      "types": "./dist/style.d.ts",
-      "import": "./dist/style.js"
+      "types": "./dist/presentation/style.d.ts",
+      "import": "./dist/presentation/style.js"
     }
   },
   "files": [

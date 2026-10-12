@@ -77,7 +77,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   repository-owned conservative policy instead of workflow path filters.
   `JIG_CI_SELECTION_MODE` defaults to `shadow`: proposed exclusions are retained
   while every existing target executes freshly. `active` allows bounded
-  model/web changes and reviewed pure test-only inputs to
+  model/web and bounded TUI presentation changes, plus reviewed pure test-only inputs, to
   select the portable source gate and compact real installed witnesses on Linux,
   Intel Mac and Apple Silicon Mac. Python-only changes select protocol and Python
   source stages; mixed Python and presentation changes require both FLOW and Jig

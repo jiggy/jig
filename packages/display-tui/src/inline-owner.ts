@@ -1,7 +1,7 @@
 import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
-import { viewerFrame } from './projection.js'
+import { viewerFrame } from './presentation/projection.js'
+import type { ViewerModel } from './presentation/viewer-model.js'
 import type { InlineDisplay, TuiViewport } from './types.js'
-import type { ViewerModel } from './viewer-model.js'
 
 /** Transfer a private viewer; public inline declarations expose no adapter state. */
 export function createInlineOwner(model: ViewerModel): InlineDisplay {

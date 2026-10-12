@@ -1,18 +1,18 @@
-import { NativeRenderer } from './native.js'
-import { ViewerInput } from './input.js'
-import { ViewerModel } from './viewer-model.js'
-import { createInlineOwner } from './inline-owner.js'
-import type { InlineDisplay, TuiDisplay, TuiOptions, TuiViewport } from './types.js'
 import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
+import { createInlineOwner } from './inline-owner.js'
+import { ViewerInput } from './input.js'
+import { NativeRenderer } from './native.js'
+import { ViewerModel } from './presentation/viewer-model.js'
+import type { InlineDisplay, TuiDisplay, TuiOptions, TuiViewport } from './types.js'
 
 export type {
   InlineDisplay,
+  PreviewIntent,
+  PreviewService,
   TuiDisplay,
   TuiOptions,
   TuiTheme,
   TuiViewport,
-  PreviewIntent,
-  PreviewService,
 } from './types.js'
 
 declare const preparedSupport: unique symbol

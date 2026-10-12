@@ -98,6 +98,7 @@ function fixture(architecture) {
   const files = [
     ...NATIVE_PREREQUISITE_TESTS,
     INSTALLED_STARTUP_TEST,
+    'packages/jig/test/macos/macos-guardian-storage.test.ts',
     'packages/jig/test/host/proof.test.ts',
     'packages/jig/test/host/installed-software-factory.test.ts',
     'packages/jig/test/host/root-agent-repair.test.ts',
@@ -163,6 +164,36 @@ test('both full Mac architecture readers own every report once including native 
         evidenceDirectory: f.evidence,
       }).count,
       f.files.length,
+    )
+  }
+})
+test('full Mac reader rejects reordered plans even when every matching report remains complete', () => {
+  for (const architecture of ['x64', 'arm64']) {
+    const f = fixture(architecture)
+    const shards = planMacHostTests(f.files, architecture)
+    const shard = shards.find((item) => item.groups.length > 1)
+    assert.ok(shard)
+    const directory = join(
+      f.evidence,
+      `macos-prerequisites-${architecture}-${shard.index}-${f.source}`,
+    )
+    const path = join(directory, 'test-plan.json')
+    const plan = JSON.parse(readFileSync(path, 'utf8'))
+    const originalFirst = readFileSync(join(directory, `shard-${shard.index}-group-0.xml`))
+    const originalSecond = readFileSync(join(directory, `shard-${shard.index}-group-1.xml`))
+    ;[plan.groups[0], plan.groups[1]] = [plan.groups[1], plan.groups[0]]
+    writeFileSync(path, JSON.stringify(plan))
+    writeFileSync(join(directory, `shard-${shard.index}-group-0.xml`), originalSecond)
+    writeFileSync(join(directory, `shard-${shard.index}-group-1.xml`), originalFirst)
+    assert.throws(
+      () =>
+        readMacReports({
+          repository: f.root,
+          source: f.source,
+          targetId: `macos-${architecture}`,
+          evidenceDirectory: f.evidence,
+        }),
+      /Mac command plan differs from its pinned source inventory/,
     )
   }
 })

@@ -18,8 +18,12 @@ Host preparation never becomes a consumer requirement.
   old/new dependency graphs, inventories, endpoints and omission reasons. Shared,
   authority, runtime, harness, build, unknown, main and release inputs select full
   fresh work. Narrow active PR pilots cover public site assets, independent Python,
-  reviewed pure test-only files and model/web presentation inputs. TUI production
-  and native/loading/input changes remain full. Presentation changes still build
+  reviewed pure test-only files, model/web presentation and the TUI
+  `src/presentation/` source group. Whole `test/presentation/` companions retain
+  their source owner. The package-owned boundary regression rejects native/input/
+  lifecycle imports, dynamic loading and ambient execution in that source group;
+  it is an ordinary dependency guard, not a JavaScript sandbox. TUI native, input,
+  lifecycle, shared types/fixtures and boundary-check changes remain full. Presentation changes still build
   and qualify bundled Jig and run fresh Linux, Intel and Apple Silicon installed
   witnesses. A compact witness never creates a full host qualification receipt.
   Mixed Python and presentation selection also requires FLOW's installed profile,
@@ -143,6 +147,10 @@ Host preparation never becomes a consumer requirement.
   startup runs separately on the final shard. Every other selected file runs once
   in a fresh sequential Bun process, without name filters. Advisory architecture
   timings affect placement, never membership; balance includes installed tail work.
+  After balancing, each shard runs its `macos-native` whole files before long
+  application scenarios, preserving order within both partitions. This exposes
+  primitive failures early without moving files between runners or changing
+  weights, commands, limits or qualification obligations.
 - `test-reports.mjs` and `macos-host-summary.py` require exact owning whole-file
   reports, complete current-revision shard plans and markers, nonempty cases,
   zero failures/skips/filters and no repeated identities within or across commands.

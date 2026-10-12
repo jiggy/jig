@@ -9,17 +9,20 @@ and portable reporting data without a Jig host or execution owner.
 ## Ownership
 
 - `src/index.ts` owns the public opaque preparation and inspector lifecycle.
-- `src/viewer-model.ts` owns private snapshot hydration and local selection,
+- `src/presentation/viewer-model.ts` owns private snapshot hydration and local selection,
   filtering, sorting, disclosure, tree state and immutable preview intent.
 - `src/input.ts` decodes supplied bytes and owns bounded key/escape state.
 - `src/native.ts` owns private OpenTUI layout, memory cells and bounded encoding.
-- `src/projection.ts` owns hierarchy, detail and compact/inline projection.
+- `src/presentation/projection.ts` owns hierarchy, detail and compact/inline projection.
   Inline is a purpose/actual-branches/activity projection rather than recursively
   dumping interactive sections and row details. Retain unassociated activities,
   deterministic root-view fallback, attention-first bounds and visible overflow;
   handoff retains brief selected context/filter without a second workspace.
-- `src/inline.ts`, `src/text.ts` and `src/style.ts` own non-native public exports.
+- `src/inline.ts`, `src/presentation/text.ts` and `src/presentation/style.ts` own non-native public exports.
 - `src/inline-owner.ts` owns private viewer transfer and inline lifetime.
+- `test/presentation/` owns whole projection, workbench and inline regressions.
+  `test/presentation-boundary.test.ts` checks the source group's dependency and
+  ambient execution boundary using the already-declared TypeScript parser.
 - Package tests own renderer/navigation/input/preview regressions. Jig owns its
   admission, real stdin/signals/restoration, output writer and Run lifetime tests.
 
@@ -77,4 +80,5 @@ and portable reporting data without a Jig host or execution owner.
 
 ## Child DOX Index
 
-- None.
+- [src/presentation/AGENTS.md](src/presentation/AGENTS.md) — Semantic projection,
+  private viewer state and text/style without native or input ownership.
