@@ -4,6 +4,7 @@ import { closeSync } from 'node:fs'
 import {
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   realpath,
@@ -91,6 +92,7 @@ test('inspection retains only verified immutable bytes and closes previews with 
     await writeFile(join(source, 'review.patch'), 'Original checked patch\n')
     await writeFile(join(source, 'large.txt'), 'x' + '🧭'.repeat(20000))
     await writeFile(join(source, 'binary'), Buffer.from([255, 128]))
+    await writeFile(join(source, 'empty'), '')
     const fd = privateOpenFileRoot(source),
       capture = capturePrivateOutput(fd)
     closeSync(fd)
@@ -108,6 +110,22 @@ test('inspection retains only verified immutable bytes and closes previews with 
       expect(large.text.endsWith('🧭')).toBe(true)
       expect(large.bytes).toBe(80001)
       expect(owner.preview('binary')).toBeUndefined()
+      expect(owner.inspectionPreview('binary')).toEqual({
+        state: 'non-text',
+        bytes: 2,
+        clipped: false,
+      })
+      expect(owner.inspectionPreview('empty')).toEqual({
+        state: 'empty',
+        text: '',
+        bytes: 0,
+        clipped: false,
+      })
+      expect(owner.inspectionPreview('missing')).toEqual({
+        state: 'unavailable',
+        bytes: 0,
+        clipped: false,
+      })
       await rm(destination, { recursive: true })
       expect(owner.preview('review.patch')?.text).toContain('Original')
     } finally {
@@ -115,6 +133,70 @@ test('inspection retains only verified immutable bytes and closes previews with 
       capture.close()
     }
     expect(owner.preview('review.patch')).toBeUndefined()
+  }))
+
+test('delivery close joins pending preparation and memoizes exact descriptor cleanup failure', async () =>
+  fixture(async (root) => {
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    const preparing = owner.prepare(join(root, 'pending'), [])
+    const closing = owner.close()
+    expect(owner.close()).toBe(closing)
+    await preparing
+    await closing
+    await expect(owner.prepare(join(root, 'new'), [])).rejects.toThrow('unavailable')
+
+    const failed = new PrivateFileDeliveryOwner(new AbortController().signal)
+    await failed.prepare(join(root, 'failed'), [])
+    const probe = await open(root, 'r')
+    const prototype = Object.getPrototypeOf(probe)
+    await probe.close()
+    let closes = 0
+    const original = prototype.close
+    const failure = spyOn(prototype, 'close').mockImplementation(async function (this: {
+      fd: number
+    }) {
+      closes++
+      // Close once, then report failure. A later close cannot retry a recycled FD.
+      await original.call(this)
+      throw new Error('injected close failure')
+    })
+    try {
+      const first = failed.close()
+      expect(failed.close()).toBe(first)
+      await expect(first).rejects.toThrow('delivery owner cleanup failed')
+      await expect(failed.close()).rejects.toThrow('delivery owner cleanup failed')
+      expect(closes).toBe(1)
+    } finally {
+      failure.mockRestore()
+    }
+  }))
+
+test('delivery close joins original publication without changing its admitted receipt', async () =>
+  fixture(async (root) => {
+    let continuePublication!: () => void
+    const pending = new Promise<void>((resolve) => {
+      continuePublication = resolve
+    })
+    let staged!: () => void
+    const ready = new Promise<void>((resolve) => {
+      staged = resolve
+    })
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal, async () => {
+      staged()
+      await pending
+    })
+    await owner.prepare(join(root, 'packet'), [])
+    const publishing = owner.publish(record, undefined)
+    await ready
+    const closing = owner.close()
+    expect(owner.close()).toBe(closing)
+    await expect(owner.publish(record, undefined)).rejects.toThrow('unavailable')
+    continuePublication()
+    expect(await publishing).toMatchObject({ status: 'written' })
+    await closing
+    expect(JSON.parse(await readFile(join(root, 'packet/result.json'), 'utf8')).status).toBe(
+      'succeeded',
+    )
   }))
 
 test.skipIf(process.platform !== 'darwin')(

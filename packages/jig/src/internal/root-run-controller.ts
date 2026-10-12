@@ -87,7 +87,12 @@ import {
 import { PRIVATE_ROOT_RESOURCE_POLICY } from './root-operation-limits.js'
 import { PrivateRootRunFiles } from './root-run-files.js'
 import { failedPrivateRootTerminal, normalizePrivateRootTerminal } from './root-run-state.js'
-import { type PrivateRunChannelOutput, PrivateRunChannels } from './run-channels.js'
+import {
+  type PrivateRunChannelOutput,
+  PrivateRunChannels,
+  type PrivateRunDiagnosticSource,
+  privateRunDiagnosticObserver,
+} from './run-channels.js'
 
 const PLAN_KIND = 'private-direct-root-plan/1'
 const BACKING_KIND = 'private-direct-root-backing/1'
@@ -1232,7 +1237,12 @@ function operationDispatcher(
     },
     ...(input.channelOutput === undefined
       ? {}
-      : { onDiagnostic: (bytes: Uint8Array) => input.channelOutput!.diagnostic(bytes) }),
+      : {
+          onDiagnostic: privateRunDiagnosticObserver({
+            output: input.channelOutput,
+            emitter: channels.root,
+          }),
+        }),
     call: async (call, signal): Promise<RunHostOperationTerminal> => {
       const route = target.request.slots[call.slot]
       if (route === undefined)
@@ -1256,8 +1266,11 @@ function operationDispatcher(
               ...(input.channelOutput === undefined
                 ? {}
                 : {
-                    onDiagnostic: (bytes: Uint8Array, operations?: readonly string[]) =>
-                      input.channelOutput!.diagnostic(bytes, operations),
+                    onDiagnostic: (
+                      bytes: Uint8Array,
+                      operations?: readonly string[],
+                      source?: PrivateRunDiagnosticSource,
+                    ) => input.channelOutput!.diagnostic(bytes, operations, source),
                     diagnosticPath: [call.operationId],
                   }),
               call,

@@ -45,11 +45,41 @@ authored examples, not independent consumer evidence or promoted Starters.
   same dependency preparation as other consumers, not specially bundled
   application archives or per-Flow setup loops. Test unpublished SDK candidates
   separately from claims about registry availability.
+- Every implemented Flow offers optional domain views through the public
+  reporting package and a complete copied offline descriptor. Keep projections
+  inside the owning package; no sibling Flow or host-private imports. Lists identify
+  work, selection adds context, and typed references lead to evidence. Bound complete
+  encoded items and disclose excerpts/totals; preserve full results. Reports remain
+  provisional until application checks accept them, and blocking failures must be
+  noticed while healthy work continues. TUI and web consume the same declarations.
 - Agents, models, credentials, and execution policy remain operator choices.
   Agent-using applications choose an ordinary provider by contract or exact slot;
-  the operator declares its dependency and configures its resource grants.
+  the operator declares its dependency and configures its resource grants. Simple
+  ACP policies live inline in the ordinary Agent Binding's `native` slot. Use a
+  named JSON grant for intentionally shared or independently managed policy;
+  discover grants only when selected policies need them. Review never edits ACP
+  source. `jig review --agent CLIENT` (`codex`, `claude`, or `pi`) proposes one
+  client for every selected ACP policy through normal qualification and approval, preserving turn allowances
+  and refusing cross-client model pins or incompatible retention. Source stays
+  unchanged: repeat the argument on each review or edit the Binding for a lasting
+  choice. A later review without the argument proposes the source clients again;
+  failed review retains the earlier approved client and code. Normal Run uses
+  approved choices. A selected unavailable ACP resource stops project review,
+  including projects with a ready code entrypoint. Source edits never authorize
+  execution.
+  Every example supplies a complete reviewed entrypoint without output naming.
+  Writable targets receive fresh temporary packets through ordinary host defaults;
+  result-only targets return stdout unless the operator chooses `--out`.
+  First-run guidance explains that operating-system cleanup may remove temporary
+  packets and `--out` selects a new retained location without overwriting results.
   `tested-patch` includes its `npm:` ACP dependency and editable Agent Binding.
   Do not add a source wrapper or repository-only route around that package.
+- A small private Agent reply schema belongs beside its call, inline or as a
+  local constant. Substantial or reused schemas may use ordinary descriptive
+  adjacent files; there is no response-file convention. Preserve explicit dialect,
+  the supported response-schema profile, validation and domain checks. Each Flow
+  owns its reply schema without sibling-Flow imports. Managed projections stay
+  owned by their declaration and explicit regeneration.
 - Label synthetic evidence and keep it distinct from claims about real users.
 
 ## Work Guidance
@@ -79,7 +109,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
-- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/incident-brief/test`
+- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/incident-brief/test examples/software-factory/test`
   after workspace setup. The release gate repeats these application checks
   against the freshly packed SDK.
 - Exercise package boundaries through an admitted Jig Run before claiming

@@ -265,7 +265,7 @@ export async function createProject(
     }
     created.push({ kind: 'directory', path: target })
 
-    for (const name of ['flows', 'bindings'] as const) {
+    for (const name of ['flows', 'bindings']) {
       const path = join(target, name)
       await fileSystem.mkdir(path)
       created.push({ kind: 'directory', path })
@@ -364,6 +364,9 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
         `The ordinary Agent Flow uses your selected ${client} client. Its dependency is`,
         'in `package.json`, its resource grant in `bindings/agent.ts`, and its project',
         'selection in `jig.ts`. Change these ordinary files to adapt the selection.',
+        'Edit `client` in `bindings/agent.ts` to select codex, claude or pi.',
+        'For this approval only, use `jig review --agent CLIENT` without editing source.',
+        'Repeat that argument on later reviews; a bare review uses source choices again.',
         '',
         'Configure the native installation and operator authentication described in',
         'https://jig.md/guide/agents, then run:',

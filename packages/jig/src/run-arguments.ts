@@ -10,6 +10,15 @@ import { npmPackageName } from './project/package-selector.js'
 
 const textEncoder = new TextEncoder()
 
+/** Automatic screen ownership requires terminal input, stdout and stderr. */
+export function privateRunDisplay(
+  display: 'auto' | 'plain' | 'tui' | 'web',
+  interactiveTui: boolean,
+  terminalStdout: boolean,
+): 'auto' | 'plain' | 'tui' | 'web' {
+  return display === 'auto' && interactiveTui && terminalStdout ? 'tui' : display
+}
+
 export function parseRun(
   arguments_: readonly string[],
   allowUnboundSelect = false,
@@ -23,7 +32,7 @@ export function parseRun(
   readonly receive: readonly string[]
   readonly json: boolean
   readonly updates: 'auto' | 'off'
-  readonly display: 'auto' | 'plain' | 'dashboard'
+  readonly display: 'auto' | 'plain' | 'tui' | 'web'
   readonly verification: string | undefined
 } {
   if (arguments_.length < 2)
@@ -37,7 +46,7 @@ export function parseRun(
   let json = false
   let updates: 'auto' | 'off' = 'auto'
   let sawUpdates = false
-  let display: 'auto' | 'plain' | 'dashboard' = 'auto'
+  let display: 'auto' | 'plain' | 'tui' | 'web' = 'auto'
   let sawDisplay = false
   let sawInput = false
   let sawTimeout = false
@@ -71,8 +80,8 @@ export function parseRun(
       )
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
     if (option === '--display') {
-      if (sawDisplay || !['auto', 'plain', 'dashboard'].includes(value))
-        usage('run', '--display accepts auto, plain or dashboard once.')
+      if (sawDisplay || !['auto', 'plain', 'tui', 'web'].includes(value))
+        usage('run', '--display accepts auto, plain, tui or web once.')
       sawDisplay = true
       display = value as typeof display
       continue
@@ -127,7 +136,8 @@ export function parseRun(
       timeoutMs = parseRunTimeout(value)
       continue
     }
-    if (option === '--out' && output === undefined) {
+    if (option === '--out') {
+      if (output !== undefined) usage('run', '--out may only be supplied once.')
       output = value
       continue
     }

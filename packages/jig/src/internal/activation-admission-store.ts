@@ -94,7 +94,12 @@ import {
   isPrivateBranchDepth,
   isPrivateChildFlowAllocation,
 } from './root-operation-limits.js'
-import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
+import {
+  PrivateRootFileInputLimitError,
+  PrivateRootFileMappingError,
+  type PrivateRunFileIdentity,
+  requirePrivateRootFileMapping,
+} from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
   createPrivateRootRunRequest,
@@ -954,11 +959,13 @@ export async function submitPrivateRootRun(input: {
       try {
         requirePrivateRootFileMapping(fileTarget.request, request.files)
         input.identifyFiles?.(fileTarget.request)
-      } catch {
-        invalid(
-          'RUN_ATTACHMENTS_INVALID',
-          'provide the unbound root read attachments and required output destination; captured Binding attachments cannot be overridden, and combined input must fit the file limits',
+      } catch (error) {
+        if (
+          error instanceof PrivateRootFileMappingError ||
+          error instanceof PrivateRootFileInputLimitError
         )
+          throw error
+        invalid('RUN_ATTACHMENTS_INVALID', 'root file mappings are invalid')
       }
     }
     const terminal = rootPreflightTerminal(candidate, request, artifacts)
@@ -2318,6 +2325,8 @@ function rootPreflightTerminal(
       'UNAVAILABLE',
       `the admitted target is unavailable: ${target.disposition.code}`,
       {
+        code: 'RUN_TARGET_UNAVAILABLE',
+        availability: target.disposition as unknown as JsonValue,
         evidenceDigests: target.disposition.evidenceDigests,
       },
     )
@@ -3438,7 +3447,7 @@ export async function inspectPrivateApprovedProject(
   selector?: string,
   checkEnvironment?: PrivateInspectionEnvironmentCheck,
   describeTargets = false,
-  onAdmission?: (digest: string) => void,
+  onAdmission?: (digest: string, writableTargets: readonly string[]) => void,
 ): Promise<JsonValue> {
   let owner: StateOwner
   try {
@@ -3465,12 +3474,13 @@ export async function inspectPrivateApprovedProject(
     )
     requireCandidateRoot(candidate, owner.root)
     owner.database.exec('COMMIT')
-    const targets = candidate.candidate.targets.map(({ request }) => ({
+    const targets = candidate.candidate.targets.map(({ request, disposition }) => ({
       target:
         request.target.kind === 'flow'
           ? flowSelector(request.target.path)
           : `binding:${request.target.id}`,
       package: request.packagePath,
+      availability: disposition.state === 'ready' ? { state: 'ready' } : disposition,
     }))
     const targetIndexes = new Map(targets.map((item, index) => [item.target, index]))
     const selectedIndex = selector === undefined ? undefined : targetIndexes.get(selector)
@@ -3491,17 +3501,27 @@ export async function inspectPrivateApprovedProject(
       }
       return pending
     }
-    const checkWithChildren = async (index: number): Promise<PrivateInspectionState> => {
-      const states = [await check(index)]
-      for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
-        if (route.kind !== 'flow') continue
-        const child = route.target
-        const childSelector =
-          child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
-        const childIndex = targetIndexes.get(childSelector)
-        states.push(childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex))
+    const checkedGraphs = new Map<number, Promise<PrivateInspectionState>>()
+    const checkWithChildren = (index: number): Promise<PrivateInspectionState> => {
+      let pending = checkedGraphs.get(index)
+      if (pending === undefined) {
+        pending = (async () => {
+          const states = [await check(index)]
+          for (const route of Object.values(candidate.candidate.targets[index]!.request.slots)) {
+            if (route.kind !== 'flow') continue
+            const child = route.target
+            const childSelector =
+              child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
+            const childIndex = targetIndexes.get(childSelector)
+            states.push(
+              childIndex === undefined ? 'unchecked' : await checkWithChildren(childIndex),
+            )
+          }
+          return inspectionState(states)
+        })()
+        checkedGraphs.set(index, pending)
       }
-      return inspectionState(states)
+      return pending
     }
     const listed: JsonValue[] = []
     const states: PrivateInspectionState[] = []
@@ -3534,13 +3554,29 @@ export async function inspectPrivateApprovedProject(
       })
     }
     const state = inspectionState(states)
-    onAdmission?.(receipt.admissionDigest)
+    onAdmission?.(
+      receipt.admissionDigest,
+      Object.freeze(
+        targets.flatMap((target, index) =>
+          Object.values(candidate.candidate.targets[index]!.request.attachments).includes(
+            'read-write',
+          )
+            ? [target.target]
+            : [],
+        ),
+      ),
+    )
     const entrypoint =
       candidate.lock.entrypoint === undefined ? {} : { entrypoint: candidate.lock.entrypoint }
+    const agentOrigin =
+      candidate.lock.agentOverride === undefined
+        ? {}
+        : { agentOverride: candidate.lock.agentOverride }
     let result: JsonValue = {
       state,
       revision: candidate.candidate.lockDigest,
       ...entrypoint,
+      ...agentOrigin,
       targets: listed,
     }
     if (selector !== undefined) {
@@ -3561,7 +3597,9 @@ export async function inspectPrivateApprovedProject(
           state,
           revision: candidate.candidate.lockDigest,
           ...entrypoint,
+          ...agentOrigin,
           target: selector,
+          availability: targets[index]!.availability as unknown as JsonValue,
           package: request.packagePath,
           digest: request.package.digest,
           ...(inspected.metadata.name === undefined ? {} : { name: inspected.metadata.name }),
@@ -3577,6 +3615,7 @@ export async function inspectPrivateApprovedProject(
           settings: request.settings,
           slots: request.slots as unknown as JsonValue,
           attachments: request.attachments,
+          boundReadAttachments: Object.keys(request.boundAttachments ?? {}).sort(),
         }
       } finally {
         await captured.dispose()

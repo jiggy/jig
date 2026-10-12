@@ -26,6 +26,7 @@ export async function route(
   const response = await run.call({
     operationId: 'select',
     slot: 'agent',
+    intent: 'Judge applicability among the supplied candidates',
     input: {
       instructions:
         'Select the most suitable candidate for the supplied task from this finite eligible set. ' +

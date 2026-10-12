@@ -16,7 +16,7 @@ patch authority and every merge decision stays with a person.
   failure evidence into ordinary language; optional input labels name jobs for people.
   It names observed work and repeats goals with verified outcomes in the final report.
   `dashboard.ts` composes the portable Jobs, Checks and Patches documents using
-  public user-updates types. Activity is the initial host surface. All three
+  public reporting types. Activity is the initial host surface. All three
   domain views are offered before work and at settlement. Jobs retains goals,
   scope and outcomes, with concise check verdicts and patch references only for
   independently accepted jobs. Its details retain actual-call references,
@@ -35,8 +35,10 @@ patch authority and every merge decision stays with a person.
 - `bindings/` composes one-proposal and checked-correction configurations of
   that specialist with one ordinary Agent and fixed Bun test/CLI grants.
 - `jig.ts` declares the project entrypoint with the factory target, batch/source
-  defaults, output destination and deadline. Ordinary `jig run` exercises the
-  public host defaults; repeat Runs choose a new output without overwriting.
+  defaults and deadline. Ordinary `jig run` exercises the public host defaults;
+  its writable deliverables receive a fresh temporary packet without overwriting.
+  The README and guide explain temporary cleanup and optional retained `--out`
+  destinations.
 - `batch.json` and the named case files own the selected issues and acceptance
   policy. `fixtures/` owns the synthetic comparison projects.
   The shipped batch selects `method` explicitly to avoid unnecessary model routing;
@@ -44,6 +46,10 @@ patch authority and every merge decision stays with a person.
   selection. Omitting `method` requests semantic selection. Verify shipped data
   against the user-input validator.
 - `test/` owns deterministic batch, failure-isolation, and recovery checks.
+
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
+  `jig.ts` supplies that ordinary Agent to the router and repair specialist
+  through the contract-keyed default.
 
 ## Local Contracts
 
@@ -101,7 +107,7 @@ patch authority and every merge decision stays with a person.
   expected nonzero rejection exits may pass exact application assertions. Do not
   print raw stdin, command logs or model reasoning. Final acceptance belongs to
   factory evidence validation, never progress or Agent judgment.
-- The optional `progress` broadcast channel uses the exact canonical user-updates
+- The optional `progress` broadcast channel uses the exact canonical reporting
   profile through its scoped publisher. Root job IDs use a distinct namespace;
   deliberate child phase readers settle before root clears. Notices count jobs
   retained by successful checkpoints, never attempts or acceptance. A complete
@@ -119,6 +125,10 @@ Offer each blocking job outcome as an error notice before checkpoint storage;
 retain the same cause in the ordinary result. Saved-evidence notices follow
 checkpoint acknowledgement. Severity never controls execution or guarantees
 optional observation delivery.
+
+- Standalone repair and router views use the same public profile: Repair/Checks
+  on `updates`, Selection on `progress`. Root Jobs/Checks/Patches retain their
+  independent acceptance and own-publisher reference boundaries.
 
 ## Work Guidance
 

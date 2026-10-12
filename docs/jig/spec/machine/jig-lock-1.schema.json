@@ -4,6 +4,10 @@
   "description": "The portable desired-state value stored as canonical JSON/0 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, exact interface matching, acyclic child-depth, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
   "type": "object",
   "properties": {
+    "agentOverride": {
+      "enum": ["codex", "claude", "pi"],
+      "description": "Explicit review-only client selection that constructed every selected ACP policy. Jig requires at least one such policy and exact agreement. It is retained origin, never a default for future reviews or a Run-time overlay."
+    },
     "packages": {
       "type": "object",
       "description": "Package entries keyed by canonical project-relative package path.",

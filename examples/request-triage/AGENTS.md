@@ -8,7 +8,7 @@ one method contract, using a suggested support queue as the bounded result.
 ## Ownership
 
 - `flows/intake/` owns the unchanged caller; `bindings/` chooses its classifier.
-- `bindings/model.ts` selects the ordinary ACP Agent with an editable Claude Code grant;
+- `bindings/model.ts` selects the ordinary ACP Agent with an inline Claude Code policy;
   the contract-keyed project default supplies it to Agent and mixed classifiers.
 - `flows/code/`, `flows/agent/`, and `flows/mixed/` independently implement the
   same input, result, and outcome contract. Each package remains self-contained.
@@ -16,7 +16,17 @@ one method contract, using a suggested support queue as the bounded result.
   with deterministic Agent substitutes.
 - The [public guide](../../docs/jig/guide/request-triage.md) owns the walkthrough.
 
+- `bindings/model.ts` owns the explicit ACP client/model/turn/session policy.
+  Agent and mixed classifiers each keep their small private response schema
+  beside the call and validate the complete returned queue suggestion.
+
 ## Local Contracts
+
+- `jig.ts` owns the complete default invocation: `binding:intake --input @fixtures/labeled.json --timeout 1m`. Ordinary
+  `jig run` uses reviewed defaults and returns its result on stdout without a
+  packet. The README and guide offer optional `--out` to save the record in a
+  new retained destination; they never promise an automatic `result.json`.
+  Explicit targets bypass defaults; display choices remain operator options.
 
 - `done` returns a suggested `billing`, `technical`, or `manual` queue. Manual
   classification is a valid suggestion. No variant dispatches a business action.
@@ -26,6 +36,12 @@ one method contract, using a suggested support queue as the bounded result.
   propagate without replay. Shared shape does not prove equal behavior.
 - Operators choose Agents and powers. Changing a Binding or implementation
   requires review; the caller never chooses a new target at runtime.
+
+- Package-local `dashboard.ts` projections offer Request through the
+  optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
+  activity and failure notices; pure methods retain their exact results and policy.
+  The existing reporting profile serves terminal and web without display code.
+  Tests validate complete escaped items, provisional meanings and evidence links.
 
 ## Work Guidance
 

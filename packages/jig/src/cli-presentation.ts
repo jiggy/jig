@@ -292,7 +292,7 @@ export function privateCliDiagnostic(
     JIG_TARGET_NOT_FOUND: 'Error: Target is not approved',
     JIG_INSPECTION_UNAVAILABLE: 'Error: Approved snapshot is unavailable',
     JIG_RUN_INPUT_INVALID: 'Error: Run input is invalid',
-    JIG_DASHBOARD_UNAVAILABLE: 'Error: Dashboard support is unavailable',
+    JIG_TUI_UNAVAILABLE: 'Error: TUI support is unavailable',
     JIG_RUN_TARGET_INVALID: 'Error: Run target is invalid',
     JIG_INIT_DESTINATION_EXISTS: 'Error: Project destination already exists',
     JIG_INIT_UNAVAILABLE: 'Error: Project could not be created',

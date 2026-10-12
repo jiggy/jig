@@ -3,7 +3,7 @@ import * as fs from 'node:fs'
 import { link, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { validateUserUpdate } from '@jigging/user-updates'
+import { validateReportingMessage } from '@jigging/reporting'
 import { main, privateCliRequiresHost, privateCliSavedResultInspection } from '../src/cli.js'
 import { PrivateRunModel } from '../src/cli-run-model.js'
 import {
@@ -402,7 +402,7 @@ test('literal saved presentation escapes command-like data and pointers use sele
       expect(text).not.toContain('\u202e')
       expect(Buffer.byteLength(text)).toBeLessThan(32_768)
       const views = privateSavedResultViews(capture)
-      for (const view of views) expect(() => validateUserUpdate(view)).not.toThrow()
+      for (const view of views) expect(() => validateReportingMessage(view)).not.toThrow()
       expect(views.map((v) => v.title)).toEqual(['Recorded result', 'Files', 'Diagnostics'])
     } finally {
       capture.close()
@@ -411,7 +411,7 @@ test('literal saved presentation escapes command-like data and pointers use sele
 
 function diagnosticViewText(capture: ReturnType<typeof privateCaptureSavedResult>) {
   const view = privateSavedResultViews(capture).find((item) => item.id === 'diagnostics')!
-  expect(() => validateUserUpdate(view)).not.toThrow()
+  expect(() => validateReportingMessage(view)).not.toThrow()
   return view.sections
     .flatMap((section) => section.blocks)
     .flatMap((block) => (block.kind === 'report' ? [block.text] : []))
@@ -566,7 +566,7 @@ test('saved results expose separate literal fields and additional evidence, with
     const capture = privateCaptureSavedResult(root)
     try {
       const view = privateSavedResultViews(capture)[0]!
-      expect(() => validateUserUpdate(view)).not.toThrow()
+      expect(() => validateReportingMessage(view)).not.toThrow()
       const block = view.sections[0]!.blocks[0]!
       expect(block.kind).toBe('collection')
       if (block.kind !== 'collection') throw new Error('Expected recorded fields')
@@ -605,7 +605,7 @@ test('recorded field identity and clipped escaped values retain bounded expansio
     const capture = privateCaptureSavedResult(root)
     try {
       const view = privateSavedResultViews(capture)[0]!
-      expect(() => validateUserUpdate(view)).not.toThrow()
+      expect(() => validateReportingMessage(view)).not.toThrow()
       const fields = view.sections[0]!.blocks[0]!
       if (fields.kind !== 'collection') throw new Error('Expected recorded fields')
       const long = fields.rows.find((row) => String(row.cells.field).includes('long-field'))!
@@ -627,7 +627,7 @@ test('recorded multiline expansion preserves trailing spaces and blank lines', a
     const capture = privateCaptureSavedResult(root)
     try {
       const view = privateSavedResultViews(capture)[0]!
-      expect(() => validateUserUpdate(view)).not.toThrow()
+      expect(() => validateReportingMessage(view)).not.toThrow()
       const fields = view.sections[0]!.blocks[0]!
       if (fields.kind !== 'collection') throw new Error('Expected recorded fields')
       const row = fields.rows.find((row) => row.cells.field === '"output" › "evidence"')!

@@ -8,25 +8,25 @@ establishes success.
 
 ## Import one agreement
 
-Declare `@jigging/user-updates` alongside `@jigging/flow` in the Flow package's
+Declare `@jigging/reporting` alongside `@jigging/flow` in the Flow package's
 dependencies. From that package, create a `contracts` directory and import:
 
 ```sh
 mkdir -p contracts
-jig import-contract jig:user-updates contracts/user-updates
+jig import-contract jig:reporting contracts/reporting
 ```
 
 The importer copies exact local descriptor bytes and its license, refuses an
 existing destination, and runs no package code or network request. Other hosts
 can copy the same agreement from the library or its
-[download](https://jig.md/contracts/user-updates.json), with the accompanying
-[MPL-2.0 license](https://jig.md/contracts/user-updates/LICENSE).
+[download](https://jig.md/contracts/reporting.json), with the accompanying
+[MPL-2.0 license](https://jig.md/contracts/reporting/LICENSE).
 
 Add this optional port to `FLOW.contract.json`. If the Flow has no invocation
 descriptor yet, create one with the following contents:
 
 ```json
-{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/user-updates/user-updates.json"}}}
+{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/reporting/reporting.json"}}}
 ```
 
 The name `updates` is local. No named invocation contract for the whole Flow is
@@ -39,13 +39,13 @@ bytes instead of rebuilding a similar model.
 Keep the method's work and checks inside one scope:
 
 ```ts
-import { withUserUpdates } from '@jigging/user-updates'
+import { withReporting } from '@jigging/reporting'
 
-return withUserUpdates(run, 'updates', async updates => {
-  updates.activity('check', 'Checking the proposed result')
+return withReporting(run, 'updates', async reporter => {
+  reporter.activity('check', 'Checking the proposed result')
   const result = await checkProposal()
-  updates.notice('The proposal checks have ended.')
-  updates.clear('check')
+  reporter.notice('The proposal checks have ended.')
+  reporter.clear('check')
   return result
 })
 ```
@@ -57,24 +57,24 @@ not independently send, close, transfer, or wrap it again. Running without an
 observer is allowed.
 Invalid offers still throw when unwired, and offers after scope exit are errors.
 
-Python uses its independently packaged `jiggy-user-updates` helper with the
+Python uses its independently packaged `jiggy-reporting` helper with the
 same descriptor and meanings:
 
 ```python
-from jiggy.user_updates import user_updates
+from jiggy.reporting import reporting
 
-async with user_updates(run, "updates") as updates:
-    updates.activity("check", "Checking the proposed result")
+async with reporting(run, "updates") as reporter:
+    reporter.activity("check", "Checking the proposed result")
     result = await check_proposal()
-    updates.notice("The proposal checks have ended.")
-    updates.clear("check")
+    reporter.notice("The proposal checks have ended.")
+    reporter.clear("check")
     return result
 ```
 
 `notice(text, severity?)` is one complete message; multiline content is allowed.
 Use `info` (default), `warning` or `error` to report importance. For example,
-`updates.notice("Could not start the AI session.", "error")` in TypeScript or
-`updates.notice("Could not start the AI session.", severity="error")` in Python.
+`reporter.notice("Could not start the AI session.", "error")` in TypeScript or
+`reporter.notice("Could not start the AI session.", severity="error")` in Python.
 Jig prominently labels attributed Flow-reported errors. Severity does not change
 ordering, quotas, optional delivery or execution authority. Offer blocking failures
 promptly and retain their reasons in final results independently of observation.
@@ -95,14 +95,14 @@ optional observation;
 original send and close operations still settle, so cleanup can take longer.
 Known observer loss may degrade. Unexpected publisher errors and root cancellation
 remain failures. A body error stays primary with a bounded secondary diagnostic.
-See [exact bounds and lifecycle](../spec/user-updates.md).
+See [exact bounds and lifecycle](../spec/reporting.md).
 
 ## Observe the work
 
 After reviewing the changed source, ordinary `jig run` automatically displays
-exactly one optional canonical output on stderr. Suitable terminals show a bounded
-inline dashboard with the actual invocation tree and application views. Complete
-notices remain in the transcript with Flow attribution. Plain or redirected
+exactly one optional canonical output on stderr. Suitable terminals default to the
+TUI workspace with the actual invocation tree and application views; other terminals
+use plain output. Complete notices retain Flow attribution. Plain or redirected
 stderr shows meaningful label, title and summary changes without repeating counts.
 Stdout remains the ordinary final result. `--updates off` disables automatic
 observation; `--json` also disables it, while host diagnostics remain available.
@@ -113,30 +113,38 @@ project entrypoint; `--updates off` does not cancel that explicit choice. Multip
 canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
 
-Use `jig run --display dashboard` for a terminal workspace. **Activity** collects
+Use `jig run --display tui` for a terminal workspace. **Activity** collects
 current work and the newest notices first; setup stages expand from one entry.
-**Overview** shows actual calls, opening active or problematic branches and
+**Execution** shows actual calls, opening active or problematic branches and
 collapsing returned branches. You can expand them to see their calls.
 Your domain tabs retain their own records and evidence. Routine
 reports stay collapsed, while attributed causes remain visible across tabs. `!`
 opens their full explanation, `d` opens attributed diagnostic text, and `?` shows
 contextual help. Diagnostic text with no structured severity stays unclassified.
 
-Give each child call a short, descriptive `intent` in `run.call(...)`; Overview
+Give each child call a short, descriptive `intent` in `run.call(...)`; Execution
 uses that supplied label. Without it, the graph shows the reviewed slot name.
 Enter on a call shows its original operation ID and host lifecycle.
 
 The terminal renderer is included with Jig. Flows supply semantic reports, facts,
 counts and collections; they do not import a UI library or choose terminal widgets.
-Wide layouts show selected record details beside the list; narrower layouts use
-Enter for full detail. Tab changes views; arrows/j/k selects records. `c` selects
+The workspace groups execution, activity and files separately from your application's
+views. Large terminals show a navigation rail; `v` opens the complete view chooser
+at any size. Compact tables keep records together. A context pane appears on wide
+screens only when it adds information; Enter expands full details. Tab changes
+views; arrows/j/k select records. `c` selects
 a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
 Enter applies it and Escape discards the draft. `r` explicitly selects a reference;
 Enter then opens the chosen record, call or verified immutable file preview.
-Brackets/Page keys scroll details. Escape returns from a local panel before
-leaving; q leaves while live work continues inline. Ctrl-C requests cancellation
+When the selected entry has one distinct artifact reference, its available
+content is previewed directly. Multiple references still require a choice.
+**Delivered files** lists captured evidence independently of application views;
+select a file to read its text or patch. Size and capture limits stay secondary.
+Brackets/Page keys scroll details. Escape returns from a local panel or
+record/call reference jump, and stays at the top level. q asks before leaving,
+with Stay selected; confirmed live exit continues work inline. Ctrl-C requests cancellation
 and waits for cleanup. After execution, cleanup and delivery settle, result
-inspection is read-only and stays open until q, Escape or keyboard Ctrl-C, subject
+inspection is read-only and stays open until you confirm leaving with q or keyboard Ctrl-C, subject
 to any explicit enclosing command limit. Initial input, review, file and runtime
 refusals stay in ordinary output; the workspace opens only once root execution
 begins. Leaving restores your terminal and prints
@@ -145,17 +153,34 @@ retained essential causes before the final result.
 `--receive` keeps exact existing output and takes precedence over the dashboard.
 The workspace needs terminal input/stderr and at least 18 columns/4 rows;
 smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
-Explicit dashboard with NO_COLOR uses screen controls without color. Activity is
+Ordinary `jig run` selects TUI when input and both output streams are suitable
+terminals; otherwise it uses ordinary output. NO_COLOR keeps TUI controls without color. Activity is
 bounded session history; omission is disclosed, and result evidence remains separate.
 Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
 after the dashboard closes, without starting another Run.
+
+Use `jig run --display web` for the same semantic views in a browser. Jig prints
+a private local link after execution starts; open that link yourself. Each tab
+keeps its own selection, filters and expanded evidence. **Activity**, **Execution**,
+domain views, diagnostics and delivered file contents remain available after
+settlement until you choose **Close inspection**. That action closes all viewers
+of this command; during execution, work continues in the ordinary transcript.
+Closing a browser tab alone does not close inspection or cancel work. Terminal
+q/Escape also leaves when Jig owns terminal input; live Ctrl-C still cancels work.
+
+Web needs terminal stderr but accepts piped stdin and redirected Run stdout.
+`--json` and `--receive` keep their ordinary machine behavior and take precedence.
+`--updates off` leaves host observations and files available without receiving
+application views. Reload by opening the original terminal link; the browser
+does not retain its private access capability in storage. Keep the link private.
+See the [local access and lifetime contract](../spec/web-display.md).
 
 ## Give a Flow its own workspace
 
 One declaration and one full snapshot are enough:
 
 ```ts
-const matters = updates.view('matters', {title: 'Document review', landing: true})
+const matters = reporter.view('matters', {title: 'Document review', landing: true})
 matters.update({
   summary: 'Review the supplied documents and retain findings for a person to check.',
   sections: [{blocks: [{
@@ -170,7 +195,7 @@ matters.update({
 
 Use `report`, `facts`, explicit count `progress`, and typed `collection` blocks.
 Compose your domain helper from these ordinary records; no terminal code or host
-adapter is needed. Python exposes the same `updates.view(id, options)` handle
+adapter is needed. Python exposes the same `reporter.view(id, options)` handle
 with `update(snapshot)` and `retire()`.
 
 Every update replaces the whole view atomically. Stable collection/row IDs preserve

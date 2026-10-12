@@ -8,7 +8,16 @@ import { privateCliStderrDiagnostic } from '../cli-presentation.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { requirePrivateCapturedOutput } from './captured-output.js'
 import {
+  PRIVATE_INSPECTION_COMPLETION_MS,
+  PrivateDeliveryAuthorityRetirement,
+  PrivateDeliveryCompletion,
+  PrivateDeliveryInspectionError,
+  privateBoundInspection,
+} from './delivery-inspection.js'
+import {
   type PrivateDeliveryConnection,
+  type PrivateDeliveryInspectionOptions,
+  type PrivateDeliveryInspectionPreview,
   type PrivateDeliveryReceipt,
   PrivateFileDeliveryOwner,
 } from './file-delivery.js'
@@ -24,6 +33,7 @@ import {
   PRIVATE_PRESENTATION_DEADLINE_ENV,
   privateConstrainPresentationDeadline,
   privatePresentationDeadline,
+  privatePresentationNow,
 } from './root-run-timeout-policy.js'
 
 const MARKER = 'JIG_PRIVATE_FILE_OWNER'
@@ -53,6 +63,18 @@ export function privateFileRecovery(): PrivateFileRecovery | undefined {
 const MAX_BYTES = 16 * 1024 * 1024
 export const PRIVATE_FILE_COMMAND_STOP_GRACE_MS = 250
 export const PRIVATE_FILE_COMMAND_SETTLEMENT_MS = 60_000
+export function privateFileCompletionAllowance(lifetimeMs: number | null): number {
+  return lifetimeMs === null ? PRIVATE_INSPECTION_COMPLETION_MS : PRIVATE_FILE_COMMAND_SETTLEMENT_MS
+}
+export function privateFileCompletionBudget(
+  environment: Readonly<NodeJS.ProcessEnv>,
+  lifetimeMs: number | null,
+): PrivateDeliveryCompletion {
+  return new PrivateDeliveryCompletion(
+    privatePresentationDeadline(environment),
+    privateFileCompletionAllowance(lifetimeMs),
+  )
+}
 type Marker =
   | { readonly platform: 'linux'; readonly socket: string; readonly token: string }
   | {
@@ -133,8 +155,77 @@ export async function privateOwnFileCommand(
   let checkpoints: PrivateRunCheckpoints | undefined
   let recovery: PrivateFileRecovery | undefined
   let projectFd: number | undefined
+  let serverClose: Promise<void> | undefined
+  let serverSettlement: Promise<void> | undefined
+  let acknowledgedRetirement = false
+  let presentationDeadline = privatePresentationDeadline(process.env)
+  // Ordinary bounded commands retain their existing crash-recovery settlement
+  // allowance. Authenticated retirement always tightens it to twenty seconds.
+  const completionBudget = privateFileCompletionBudget(process.env, lifetimeMs)
+  const completionDeadline = (requestedDeadline?: number) =>
+    completionBudget.start(requestedDeadline)
+  const stopAdmissions = () => {
+    if (serverClose) return
+    let failure: unknown
+    try {
+      native?.beforeServerClose()
+    } catch (error) {
+      failure = error
+    }
+    // Closing the listener is immediate. Its callback waits for this request's
+    // spent socket, so authority retirement must not await it before the ACK.
+    serverClose = new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()))
+    })
+    void serverClose.catch(() => {
+      cleanupFailed = true
+    })
+    if (failure) throw failure
+  }
+  const retirement = new PrivateDeliveryAuthorityRetirement(async () => {
+    completionDeadline()
+    const failures: unknown[] = []
+    try {
+      if (publication) await completionBudget.join(publication)
+    } catch (error) {
+      // An uncertain original publication never authorizes fallback or a late
+      // ACK. Independent endpoint release still runs within the same allowance.
+      cancellation.abort()
+      coordinatorLost.abort()
+      failures.push(error)
+    }
+    const checkpointOwner = checkpoints,
+      heldProject = projectFd
+    checkpoints = undefined
+    projectFd = undefined
+    recovery = undefined
+    try {
+      checkpointOwner?.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      if (heldProject !== undefined) closeSync(heldProject)
+    } catch (error) {
+      failures.push(error)
+    }
+    try {
+      stopAdmissions()
+    } catch (error) {
+      failures.push(error)
+    }
+    const closed = await Promise.allSettled(
+      [owner.close(), native?.close({ deadline: completionDeadline() })].map((operation) =>
+        completionBudget.join(operation ?? Promise.resolve()),
+      ),
+    )
+    failures.push(
+      ...closed.filter((result) => result.status === 'rejected').map((result) => result.reason),
+    )
+    if (failures.length) throw new AggregateError(failures, 'file authority retirement failed')
+  })
   const server = createServer((socket) => {
-    if (connection !== undefined) {
+    if (retirement.retiring || connection !== undefined) {
       socket.destroy()
       return
     }
@@ -150,6 +241,7 @@ export async function privateOwnFileCommand(
     }
     connection = socket
     const lost = () => {
+      if (acknowledgedRetirement) return
       coordinatorLost.abort()
       cancellation.abort()
     }
@@ -160,7 +252,35 @@ export async function privateOwnFileCommand(
         const request = value as Record<string, JsonValue>
         if (request.token !== selected.token) throw new Error('file owner authentication failed')
         try {
-          if (request.type === 'prepare') {
+          if (retirement.retiring && request.type !== 'retire')
+            throw new Error('file authority retired')
+          if (request.type === 'retire') {
+            retirement.fence()
+            completionDeadline(privatePresentationNow() + PRIVATE_INSPECTION_COMPLETION_MS)
+            if (!Number.isSafeInteger(request.deadline))
+              throw new Error('invalid retirement deadline')
+            const deadline = completionDeadline(Number(request.deadline))
+            const options = { deadline, signal: coordinatorLost.signal }
+            // Observe this task while the retirement bound is live; rejoining
+            // its success after indefinite inspection must not invent expiry.
+            void completionBudget.join(task!).catch(() => {
+              cleanupFailed = true
+            })
+            await retirement.retire(options)
+            const completion = socketCompletion(socket)
+            await privateBoundInspection(
+              sendAcknowledgment(socket, { ok: true, retired: true }),
+              options,
+            )
+            acknowledgedRetirement = true
+            // Authority is spent. Only bounded channel completion remains.
+            socket.end()
+            socket.resume()
+            await privateBoundInspection(completion, options)
+            serverSettlement ??= privateBoundInspection(serverClose!, options)
+            await serverSettlement
+            break
+          } else if (request.type === 'prepare') {
             if (typeof request.destination !== 'string')
               throw new Error('invalid delivery preparation')
             if (native !== undefined) {
@@ -279,27 +399,28 @@ export async function privateOwnFileCommand(
             if (typeof request.path !== 'string' || !publication)
               throw new Error('preview unavailable')
             await publication
-            const preview = owner.preview(request.path)
+            const preview = owner.inspectionPreview(request.path)
             send(socket, {
               ok: true,
-              preview: preview === undefined ? null : preview,
+              preview,
             } as unknown as JsonValue)
           } else if (request.type === 'cancel') {
             cancellation.abort()
           } else throw new Error('invalid file owner request')
         } catch {
+          if (request.type === 'retire') {
+            cleanupFailed = true
+            socket.destroy()
+            break
+          }
           send(socket, { ok: false })
           if (request.type !== 'checkpoint' && request.type !== 'preview') cancellation.abort()
         }
       }
-    })()
-      .catch(() => {
-        cancellation.abort()
-        socket.destroy()
-      })
-      .finally(async () => {
-        await publication
-      })
+    })().catch(() => {
+      cancellation.abort()
+      socket.destroy()
+    })
   })
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject)
@@ -307,13 +428,16 @@ export async function privateOwnFileCommand(
   })
     .then(() => native?.controlReady())
     .catch(async (error) => {
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-      await native?.close()
+      const deadline = completionDeadline()
+      await Promise.allSettled([
+        completionBudget.join(new Promise<void>((resolve) => server.close(() => resolve()))),
+        completionBudget.join(native?.close({ deadline }) ?? Promise.resolve()),
+      ])
       throw error
     })
   // Interactive inspection has no default command cap. An explicit outer
   // constraint remains inherited, and cancellation still owns bounded teardown.
-  const presentationDeadline =
+  presentationDeadline =
     lifetimeMs === null
       ? privatePresentationDeadline(process.env)
       : privateConstrainPresentationDeadline(process.env, lifetimeMs)
@@ -364,18 +488,45 @@ export async function privateOwnFileCommand(
   let exit: { exitCode: number | null; signal: NodeJS.Signals | null }
   try {
     exit = await completion
+    completionDeadline()
     cancellation.abort()
     coordinatorLost.abort()
     connection?.destroy()
-    await task
-    if (recovery !== undefined && checkpoints !== undefined && publication === undefined) {
+    try {
+      if (task) await completionBudget.join(task)
+    } catch {
+      cleanupFailed = true
+      retirement.fence()
+    }
+    if (
+      !retirement.retiring &&
+      recovery !== undefined &&
+      checkpoints !== undefined &&
+      publication === undefined
+    ) {
+      const recoveryDeadline = completionDeadline()
+      const recoveryCancellation = new AbortController()
+      const recoveryTimer = setTimeout(
+        () => recoveryCancellation.abort(),
+        Math.max(0, recoveryDeadline - privatePresentationNow()),
+      )
       try {
-        const recovered = await recoverCommand(command, arguments_, recovery, presentationDeadline)
+        if (privatePresentationNow() >= recoveryDeadline)
+          throw new PrivateDeliveryInspectionError('DEADLINE_EXCEEDED')
+        const recovered = await recoverCommand(
+          command,
+          arguments_,
+          recovery,
+          Math.min(presentationDeadline ?? Infinity, recoveryDeadline),
+          recoveryDeadline,
+        )
         const record = checkpointRecord(
           { ...recovered, ...checkpoints.identity } as JsonValue,
           checkpoints,
         )
-        const receipt = await owner.publish(record, undefined, checkpoints.latest, true)
+        const receipt = await completionBudget.join(
+          owner.publish(record, undefined, checkpoints.latest, true, recoveryCancellation.signal),
+        )
         process.stdout.write(
           `${Buffer.from(canonicalJson({ ...(record as Record<string, JsonValue>), delivery: receipt } as unknown as JsonValue)).toString()}\n`,
         )
@@ -396,6 +547,8 @@ export async function privateOwnFileCommand(
           ),
         )
         recoveryFailed = true
+      } finally {
+        clearTimeout(recoveryTimer)
       }
     }
   } finally {
@@ -403,22 +556,22 @@ export async function privateOwnFileCommand(
     clearTimeout(escalation)
     signal?.removeEventListener('abort', interrupt)
     connection?.destroy()
-    await task
-    checkpoints?.close()
-    if (projectFd !== undefined) closeSync(projectFd)
+    const cleanupDeadline = completionDeadline()
     try {
-      await owner.close()
+      if (task) await completionBudget.join(task)
+    } catch {
+      cleanupFailed = true
+      retirement.fence()
+    }
+    try {
+      await retirement.retire({ deadline: cleanupDeadline })
     } catch {
       cleanupFailed = true
     }
     try {
-      native?.beforeServerClose()
-    } catch {
-      cleanupFailed = true
-    }
-    await new Promise<void>((resolve) => server.close(() => resolve()))
-    try {
-      await native?.close()
+      stopAdmissions()
+      serverSettlement ??= privateBoundInspection(serverClose!, { deadline: cleanupDeadline })
+      await serverSettlement
     } catch {
       cleanupFailed = true
     }
@@ -444,9 +597,6 @@ export async function privateConnectFileOwner(): Promise<
   if (selected === undefined) return undefined
   delete process.env[MARKER]
   const socket = connect(address(selected))
-  const cancellation = new AbortController()
-  socket.on('error', () => cancellation.abort())
-  socket.once('close', () => cancellation.abort())
   const connectionTimer = setTimeout(
     () => socket.destroy(new Error('file owner connection timed out')),
     5000,
@@ -467,26 +617,89 @@ export async function privateConnectFileOwner(): Promise<
       throw error
     }
   }
+  return privateFileDeliveryConnection(socket, selected)
+}
+
+/** Private transport seam; native callers authenticate the peer before entry. */
+export function privateFileDeliveryConnection(
+  socket: Socket,
+  selected: Marker,
+): PrivateDeliveryConnection & { close(): void; readonly signal: AbortSignal } {
+  const cancellation = new AbortController()
+  let intentionallyRetired = false
+  let retiring = false
+  let retirement: Promise<void> | undefined
+  const lost = () => {
+    if (!intentionallyRetired) cancellation.abort()
+  }
+  socket.on('error', lost)
+  socket.once('close', lost)
   const iterator = messages(socket)[Symbol.asyncIterator]()
   let destination: string | undefined
   let checkpoint: import('./private-run-checkpoint.js').RetainedRunCheckpoint | null | undefined
   let inspection = false
-  const request = async (fields: Record<string, JsonValue>): Promise<Record<string, JsonValue>> => {
-    send(socket, {
-      ...fields,
-      token: selected.token,
-      ...(selected.platform === 'linux' ? { pid: process.pid } : {}),
-    })
-    const next = await iterator.next()
-    if (
-      !next.done &&
-      (next.value as Record<string, JsonValue>).ok === false &&
-      fields.type === 'checkpoint'
+  let pending: Promise<Record<string, JsonValue>> | undefined
+  const request = (
+    fields: Record<string, JsonValue>,
+    allowRetire = false,
+  ): Promise<Record<string, JsonValue>> => {
+    if ((retiring && !allowRetire) || pending)
+      return Promise.reject(new Error('file delivery boundary unavailable'))
+    const operation = (async () => {
+      send(socket, {
+        ...fields,
+        token: selected.token,
+        ...(selected.platform === 'linux' ? { pid: process.pid } : {}),
+      })
+      const next = await iterator.next()
+      if (
+        !next.done &&
+        (next.value as Record<string, JsonValue>).ok === false &&
+        fields.type === 'checkpoint'
+      )
+        throw new PrivateCheckpointRejected('checkpoint replacement was rejected')
+      if (next.done || (next.value as Record<string, JsonValue>).ok !== true)
+        throw new Error('file delivery boundary rejected the request')
+      return next.value as Record<string, JsonValue>
+    })()
+    pending = operation
+    void operation.then(
+      () => {
+        if (pending === operation) pending = undefined
+      },
+      () => {
+        if (pending === operation) pending = undefined
+      },
     )
-      throw new PrivateCheckpointRejected('checkpoint replacement was rejected')
-    if (next.done || (next.value as Record<string, JsonValue>).ok !== true)
-      throw new Error('file delivery boundary rejected the request')
-    return next.value as Record<string, JsonValue>
+    return operation
+  }
+  const inspectionPreview = async (
+    path: string,
+    options?: PrivateDeliveryInspectionOptions,
+  ): Promise<PrivateDeliveryInspectionPreview> => {
+    if (!inspection) return { state: 'unavailable', bytes: 0, clipped: false }
+    const operation = request({ type: 'preview', path })
+    const reply = options ? await privateBoundInspection(operation, options) : await operation
+    const preview = reply.preview as Record<string, JsonValue> | null
+    if (
+      !preview ||
+      !['text', 'empty', 'non-text', 'unavailable'].includes(String(preview.state)) ||
+      !Number.isSafeInteger(preview.bytes) ||
+      Number(preview.bytes) < 0 ||
+      Number(preview.bytes) > 16 * 1024 * 1024 ||
+      typeof preview.clipped !== 'boolean' ||
+      (preview.state === 'text' || preview.state === 'empty') !==
+        (typeof preview.text === 'string') ||
+      (typeof preview.text === 'string' && Buffer.byteLength(preview.text) > 65536) ||
+      (preview.state === 'empty' && (preview.bytes !== 0 || preview.text !== '' || preview.clipped))
+    )
+      throw new Error('Invalid preview response')
+    return {
+      state: preview.state as PrivateDeliveryInspectionPreview['state'],
+      ...(typeof preview.text === 'string' ? { text: preview.text } : {}),
+      bytes: Number(preview.bytes),
+      clipped: preview.clipped,
+    }
   }
   return {
     enableInspection() {
@@ -494,19 +707,39 @@ export async function privateConnectFileOwner(): Promise<
     },
     async preview(path) {
       if (!inspection) return undefined
-      const reply = await request({ type: 'preview', path })
-      if (reply.preview === null) return undefined
-      const preview = reply.preview as Record<string, JsonValue>
-      if (
-        typeof preview.text !== 'string' ||
-        Buffer.byteLength(preview.text) > 65536 ||
-        !Number.isSafeInteger(preview.bytes) ||
-        Number(preview.bytes) < 0 ||
-        Number(preview.bytes) > 16 * 1024 * 1024 ||
-        typeof preview.clipped !== 'boolean'
-      )
-        throw new Error('Invalid preview response')
-      return { text: preview.text, bytes: Number(preview.bytes), clipped: preview.clipped }
+      const preview = await inspectionPreview(path)
+      return preview.text === undefined
+        ? undefined
+        : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
+    },
+    inspectionPreview,
+    retire(options) {
+      if (retirement) return retirement
+      retiring = true
+      retirement = (async () => {
+        try {
+          if (pending)
+            await privateBoundInspection(
+              pending.catch(() => undefined),
+              options,
+            )
+          const reply = await privateBoundInspection(
+            request({ type: 'retire', deadline: options.deadline }, true),
+            options,
+          )
+          if (reply.retired !== true) throw new PrivateDeliveryInspectionError('RETIREMENT_FAILED')
+          // Only receipt of the valid timely ACK disarms command interruption.
+          intentionallyRetired = true
+          const completion = socketCompletion(socket)
+          socket.end()
+          socket.resume()
+          await privateBoundInspection(completion, options)
+        } catch (error) {
+          socket.destroy()
+          throw error
+        }
+      })()
+      return retirement
     },
     get checkpoint() {
       return checkpoint
@@ -620,6 +853,7 @@ async function recoverCommand(
   args: readonly string[],
   recovery: PrivateFileRecovery,
   inheritedPresentationDeadline: number | undefined,
+  completionDeadline: number,
 ): Promise<Record<string, JsonValue>> {
   const presentationDeadline = privateConstrainPresentationDeadline(
     {
@@ -652,7 +886,10 @@ async function recoverCommand(
     }
   })
   child.stderr.resume()
-  const timer = setTimeout(() => child.kill('SIGKILL'), 30_000)
+  const timer = setTimeout(
+    () => child.kill('SIGKILL'),
+    Math.max(0, Math.min(30_000, completionDeadline - privatePresentationNow())),
+  )
   try {
     const code = await new Promise<number | null>((resolve, reject) => {
       child.once('error', reject)
@@ -676,6 +913,27 @@ async function recoverCommand(
 function send(socket: Socket, value: JsonValue): void {
   const bytes = canonicalJson(value)
   socket.write(Buffer.concat([bytes, Buffer.from('\n')]))
+}
+function sendAcknowledgment(socket: Socket, value: JsonValue): Promise<void> {
+  return new Promise((resolve, reject) => {
+    socket.write(Buffer.concat([canonicalJson(value), Buffer.from('\n')]), (error) =>
+      error ? reject(error) : resolve(),
+    )
+  })
+}
+function socketCompletion(socket: Socket): Promise<void> {
+  if (socket.closed) return Promise.resolve()
+  return new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      socket.removeListener('close', closed)
+      socket.removeListener('error', failed)
+      error ? reject(error) : resolve()
+    }
+    const closed = () => finish()
+    const failed = (error: Error) => finish(error)
+    socket.once('close', closed)
+    socket.once('error', failed)
+  })
 }
 async function* messages(socket: Socket): AsyncGenerator<JsonValue> {
   let chunks: Buffer[] = [],

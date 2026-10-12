@@ -7,9 +7,18 @@ import {
   type PrivateAcpAgentProvider,
   type PrivateAcpReadOnlyMount,
 } from './acp-agent-provider.js'
-import { checkAcpSetup, configuredAcpModel, PrivateAcpSetupError } from './acp-setup-diagnostics.js'
+import {
+  checkAcpSetup,
+  configuredAcpModel,
+  isExpectedAcpRefusal,
+  markExpectedAcpRefusal,
+  PrivateAcpSetupError,
+} from './acp-setup-diagnostics.js'
 import { privateMacosKernelPlatform } from './macos-process-controls.js'
-import { resolvePrivateNativeAgentExecutable } from './native-agent-executable.js'
+import {
+  PrivateNativeAgentExecutableUnavailableError,
+  resolvePrivateNativeAgentExecutable,
+} from './native-agent-executable.js'
 import { inspectPrivateNativeAgentRuntime } from './native-agent-runtime.js'
 
 const CODEX_CLIENT = 'openai-codex'
@@ -28,7 +37,14 @@ const MAX_BASE_URL_CHARACTERS = 4_096
 const encoder = new TextEncoder()
 
 export class PrivateCodexLoginUnavailableError extends Error {}
-export class PrivateCodexExecutableUnavailableError extends Error {}
+export class PrivateCodexExecutableUnavailableError extends Error {
+  constructor(
+    message?: string,
+    readonly overrideRejected = false,
+  ) {
+    super(message)
+  }
+}
 export class PrivateCodexSandboxUnavailableError extends Error {}
 export class PrivateCodexRuntimeUnavailableError extends Error {}
 const decoder = new TextDecoder('utf-8', { fatal: true })
@@ -106,7 +122,11 @@ export async function openPrivateCodexAgentProvider(
     )
   } catch (error) {
     if (error instanceof PrivateAcpSetupError) throw error
-    throw new PrivateCodexExecutableUnavailableError('the native Codex executable is unavailable')
+    const refusal = new PrivateCodexExecutableUnavailableError(
+      'the native Codex executable is unavailable',
+      error instanceof PrivateNativeAgentExecutableUnavailableError && error.overrideRejected,
+    )
+    throw isExpectedAcpRefusal(error) ? markExpectedAcpRefusal(refusal) : refusal
   }
   let runtime: Awaited<ReturnType<typeof inspectPrivateNativeAgentRuntime>>
   try {

@@ -1,0 +1,45 @@
+# Reporting contract
+
+Report progress, messages and application views from a Flow. The same declarations
+work in terminal and web displays. This optional agreement lets different callers understand those messages
+without adopting the Flow's application policy or Jig's terminal implementation.
+
+The [canonical descriptor](https://jig.md/contracts/reporting.json) defines
+five closed messages: `notice`, `activity`, `clear`, `view` and `retire-view`. Its provisional
+identity is `https://jig.md/contracts/reporting`, version `0.1.0`. Identity,
+version and digest are checked offline; this page is never fetched at Run time.
+The descriptor is owned by the portable `@jigging/reporting` library and is
+distributed under [MPL-2.0](https://jig.md/contracts/reporting/LICENSE).
+Copy its license with the agreement. This does not change Jig's software license.
+
+Create the `contracts` parent directory, then run
+`jig import-contract jig:reporting contracts/reporting` from a
+Flow package whose `contracts` directory already exists. Add an optional send
+port referencing `./contracts/reporting/reporting.json`. The local port
+name is your choice; a named invocation contract for the entire Flow is unnecessary.
+Other hosts can use the identical local descriptor from the library or download.
+
+Use the [scoped publisher](../guide/channels.md) for TypeScript or Python to
+validate messages and own optional publication cleanup. Activity replaces a
+slot's complete state, including optional counts. Clear and every source ending
+remove its transient state. Accepted complete notices retain presenter ownership
+through ordinary retirement; output loss still prevents delivery guarantees.
+Neither counts, 100%, clear nor EOF establish execution success.
+
+Views compose literal reports, facts, measured progress and typed collections.
+Stable record IDs preserve navigation. Scoped references address current records,
+actual own calls or verified delivered files; previews use immutable capture.
+Whole snapshots replace atomically. EOF freezes views with ended context, and
+retired IDs cannot revive. Applications keep essential evidence in results/files.
+
+Jig can display one exact optional port on stderr, using plain text when redirected.
+`jig run --display tui` supplies tabs, record details, filtering and previews;
+`--display plain` selects nonanimated summaries. Explicit `--receive`
+retains normal stdout channel records. `--json` preserves machine output and disables
+automatic application observation; `--updates off` disables automatic application
+observation while keeping host-only inspection available. See [reporting policy](../spec/reporting.md) for exact
+selection, bounds, rendering and lifetime rules.
+
+A notice may declare `severity`: `info`, `warning` or `error` (default info).
+This is Flow-reported importance, without changing optional delivery or execution
+authority. Report blocking problems promptly and retain their reasons in results.

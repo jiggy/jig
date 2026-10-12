@@ -14,33 +14,39 @@ See the [installation guide](./index.md) for supported hosts.
 
 ## Try it
 
-The example declares the ordinary ACP Agent dependency and includes
-`bindings/agent.ts`. [Choose your client](./agents.md) there; Pi is an example
-choice, not a Jig preference. The `defaultProviders` map selects that Binding
+The example declares the ordinary ACP Agent dependency and keeps its inline
+policy in `bindings/agent.ts`. [Choose your client](./agents.md#switching) there,
+or explicitly propose one for the current review; Pi is an example choice,
+not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
 `flows/project/logs-cases.json`.
-Download the example directory, then install its pinned public dependencies
-without lifecycle scripts:
-
-```sh
-bun install --ignore-scripts
-```
-
-Keep the resulting lock so later reviews use the same resolution. Run from the
-example directory:
+Download the example directory. Review prepares its ordinary declared dependencies;
+the resolution flag permits dependency-selected network requests before approval.
+A selected ACP prerequisite failure stops review before new approval. Repair
+the selected client or make a deliberate selection, then review again. Policy
+source remains editable; review never writes a correction. Run from the example directory:
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:repair --input @issue.json --attach source=fixtures/log-report --out repair-result --timeout 5m
+jig run
 ```
 
-Add `--receive progress` to observe the current phase (`baseline`, `proposal`,
+The entrypoint supplies `issue.json`, the read-only fixture and a five-minute deadline.
+Its writable deliverables receive a fresh packet directory in operating-system
+temporary storage, reported on stderr. Repeating `jig run` leaves earlier packets
+intact, but the operating system may clear temporary storage. Use
+`jig run --out ./repair-result` for a retained location that does not already
+exist; Jig never overwrites a packet. Open `result.json` in the reported destination.
+
+The optional `updates` channel carries the semantic views; the independent `progress`
+channel retains closed phase records. Add `--receive progress` to observe the current
+phase (`baseline`, `proposal`,
 `check`, or `finished`) and proposal number. Redirected stdout then contains
 NDJSON. A phase message reports activity; the terminal record and command
 evidence establish the result. Progress is transient and does not preserve
 partial patches.
 
-Open `repair-result/files/summary.txt`. A `review.patch` appears beside it
+Open `files/summary.txt` inside the reported destination. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
 outside the selected source. Candidate commands do not install dependencies.
 
@@ -52,6 +58,20 @@ requires changes in two source files.
 Selected text reaches your configured Agent provider. Choose source and a
 provider suitable for your data. Ctrl-C cancels owned work; it cannot retract
 a remote request already received, and unsuccessful calls may incur charges.
+
+## Follow the work
+
+**Repair** retains the requested goal and editable scope. **Checks** separates the
+original failure from each proposal's repository and independent acceptance checks.
+Worker reports stay provisional until the project caller validates identities and
+recomputes the verdicts. **Evidence** links to the complete `goal.txt`, summaries and
+retained proposals; only an accepted candidate earns `review.patch`. Selecting a
+delivered file shows its content. The reusable specialist offers Repair and Checks
+without claiming that its caller has accepted a patch.
+
+Use `--display web` for the same views through the private browser link printed after
+work starts. Completed inspection waits for explicit exit. The host’s graph and blocking
+causes remain separate from application reports; plain and JSON output remain available.
 
 ## From a reproduced failure to a tested patch
 
@@ -81,6 +101,7 @@ Passing a finite case set is not proof of general correctness.
 
 | File | Meaning |
 | --- | --- |
+| `files/goal.txt` | Complete original repair request, including any displayed excerpt. |
 | `files/review.patch` | A patch backed by reproduced failure and passing candidate checks. Still requires human review. |
 | `files/proposal-N.patch` | Each validated proposal, including unsuccessful attempts. |
 | `files/summary.txt` | Review-ready or unsuccessful, with the method's reason. |
@@ -155,7 +176,7 @@ Add this to the repair specialist Binding in `bindings/specialist.ts`:
 settings: { restoreCorrections: true },
 ```
 
-In the selected Agent Binding, explicitly grant native retention:
+In the Agent Binding's `bindings/agent.ts`, explicitly grant native retention:
 
 ```ts
 slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } },

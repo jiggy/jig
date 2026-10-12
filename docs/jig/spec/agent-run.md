@@ -277,6 +277,16 @@ separate requirements; the descriptor alone establishes neither.
 
 ## Structured-output profile
 
+`responseSchema` is private call input describing the requested Agent reply,
+not a Jig project declaration or the Flow's complete public result contract.
+A small one-call schema may be inline or a local constant; substantial or reused
+schemas may live in ordinary descriptive package-local files. Placement creates
+no required filename, directory or `FLOW.response.json` declaration and does not
+change validation or the profile below. Optional managed `@agentResponse`
+projections follow [contract authoring](contract-authoring.md) ownership and
+explicit generation. Shared models require genuinely shared constraints;
+public and Agent schemas remain distinct when their profiles differ.
+
 The alpha accepts one bounded recursive structured-output profile. Its root is
 a nonempty closed object with the FLOW Schema/0 `$schema` identifier. Every
 object:

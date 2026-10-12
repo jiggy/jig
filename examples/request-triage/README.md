@@ -10,16 +10,35 @@ same intake Flow with different classifiers. The caller always invokes its
 | `agent` | Ask one operator-selected Agent | Interpret the message |
 | `mixed` | Recognize prefixes, then ask an Agent when absent | Interpret the message |
 
-After [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages),
-check the [Agent configuration](../../docs/jig/guide/agents.md) in
-`bindings/model.ts`. This example selects Claude Code; install and authenticate it, or
-edit the grant to select your client. The project default supplies that Agent
-to both intelligent classifiers. Run from this directory on a
-[supported host](../../docs/jig/guide/index.md#supported-host):
+With Jig installed on a [supported host](https://jig.md/guide/), run from this
+directory. Configure and authenticate the client selected in `bindings/model.ts`
+through [Choose an Agent](https://jig.md/guide/agents); the included inline policy
+selects Claude Code as an example. The default code classifier calls no Agent,
+but review also checks this project's selected Agent and mixed alternatives.
+An unavailable selected client stops project review before new approval.
 
 ```sh
-jig review
-jig run binding:intake --input @fixtures/labeled.json
+jig review --allow-resolution-network
+jig run
+```
+
+Review prepares the ordinary declared dependencies. Inspect and approve its exact
+proposal. The entrypoint selects `fixtures/labeled.json` and a one-minute deadline.
+This result-only Flow returns its queue suggestion on stdout; no packet directory
+is created by default. Add `--json` for the complete machine record, or use
+`jig run --out ./triage-result` to save `result.json` in a retained location.
+That directory must not already exist; Jig never overwrites an earlier result.
+
+The shared project route supplies that Agent to both intelligent classifiers.
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
+
+```sh
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m
 jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```
@@ -37,6 +56,19 @@ it. Their result shapes match even when their judgments do not.
 `limit` return a reason. Execution errors propagate without automatic retry.
 The example sends no messages, issues no refunds, and performs no queue writes.
 Its labels and Agent suggestions are untrusted input to any consequential policy.
+
+## Follow the work
+
+The **Request** view shows the supplied message, the selected procedure and the
+suggested queue. Each classifier offers the same view when called independently.
+**Execution** follows the actual classifier and Agent calls; `manual` remains a valid
+suggestion, with no business action dispatched.
+
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 Read the [complete walkthrough](../../docs/jig/guide/request-triage.md) for the
 caller, contract, review boundary, and where application checks belong.

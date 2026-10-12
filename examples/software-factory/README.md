@@ -10,10 +10,12 @@ whether to apply, merge, or release any patch.
 
 ## Run the supplied issue set
 
-Run `bun install` in this project, select and authenticate an Agent in
-`bindings/agent.ts`, then inspect `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
-the two named case files under `flows/factory/`. The supplied Binding uses
-native ACP Codex. For an HTTP Agent route instead, follow the package and
+With Jig installed on a [supported host](https://jig.md/guide/), configure and
+authenticate a native client through [Choose an Agent](https://jig.md/guide/agents).
+The inline native policy in `bindings/agent.ts` selects Codex as an example.
+Edit that Binding and review again for a lasting client preference. Inspect
+`batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
+the two named case files under `flows/factory/`. For an HTTP Agent route, follow the package and
 Binding setup in the [Agent method guide](../../docs/jig/guide/agent-method.md).
 From this directory:
 
@@ -22,18 +24,30 @@ jig review --allow-resolution-network
 jig run
 ```
 
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
+
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
-`fixtures` source tree, an eight-minute deadline, and `factory-result` for output.
-For another batch or a repeat Run, override the input and choose a new output:
+`fixtures` source tree and an eight-minute deadline. Jig chooses a fresh packet
+directory in operating-system temporary storage for its writable deliverables
+and reports it on stderr. Repeating `jig run` leaves earlier packets intact, but
+the operating system may clear temporary storage. Use `jig run --out ./factory-result`
+to choose a retained location that does not already exist. For another batch,
+override the input:
 
 ```sh
-jig run --input @batch.json --out factory-result-2
+jig run --input @another-batch.json
 ```
 
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-Open `factory-result/files/summary.txt`, then inspect each job directory and
+Open `files/summary.txt` inside the reported destination, then inspect each job directory and
 `result.json`. A job receives `review.patch` only after its original reproduced
 the issue and its candidate passed both the fixed repository command and every
 independent case. An unsuccessful peer remains explicit and does not erase a
@@ -50,14 +64,29 @@ For a settled unsuccessful proposal, inspect its command evidence and proposal
 patches; these are not accepted patches to apply. A healthy job's `review.patch`
 remains available even when the batch outcome is `blocked`.
 The factory identifies jobs by their optional `label` (or their `id`).
-Use `jig run --display dashboard` for a workspace that starts in **Activity**.
+Use `jig run --display tui` for a workspace that starts in **Activity**.
 **Jobs** contains goals, editable source files, reviewed approach and outcomes;
 **Checks** contains repository tests and independent acceptance cases;
-**Patches** contains checked candidates for human review. **Overview** shows
+**Patches** contains checked candidates for human review. **Execution** shows
 the actual calls. Select a record and press Enter for details; `!` opens a
 blocking cause, and `r` selects an evidence reference. Press `q` during work
 to continue in the ordinary transcript. The read-only completed inspector stays
 open until you close it, subject to any explicit enclosing command limit.
+Use `--display web` for the same semantic views in a browser. Open the private link
+printed after execution starts; **Delivered files** shows verified patch and goal
+contents. The standalone repair specialist offers **Repair** and **Checks** through its
+optional `updates` channel; the reusable router offers **Selection** through `progress`.
+The factory continues to use its private repair-phase protocol to relay current work,
+without forwarding a child's artifact namespace.
+
+Reopen the final evidence without starting work:
+
+```sh
+jig inspect --result DESTINATION --display web
+```
+
+`DESTINATION` above is the actual packet directory reported by Jig. Saved inspection shows recorded results, verified files and diagnostics. Packets do not retain the live domain views or invocation graph.
+
 During work it identifies the command slot or case being run, then reports the
 observed repository-command status and passing or mismatched acceptance cases.
 Collected command invocations and a procedural next step explain why it requests
@@ -73,7 +102,7 @@ Long goals may show a marked excerpt. Each job's exact original request is
 saved in `files/<job>/goal.txt`; Jobs offers its reference after verified packet
 delivery. Complete `issue`, editable paths and verified acceptance-case IDs
 also remain in `result.json`. Checkpoints include request files only for settled jobs.
-The standard [user-updates contract](../../docs/jig/contracts/user-updates.md)
+The standard [reporting contract](../../docs/jig/contracts/reporting.md)
 shows current job activity on terminal stderr.
 Use `--receive progress --json` for explicit machine records, or `--updates off`
 to turn automatic observation off. The scoped publisher bounds observation work;

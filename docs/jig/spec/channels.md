@@ -109,7 +109,7 @@ permits bounded fragmented protocol exchanges without increasing message size,
 receiver buffers, or pending-send capacity. These bounds participate in the
 reviewed launch identity; changed policy requires renewed admission.
 
-Automatic [user updates](user-updates.md) use a separate CLI-only lifetime
+Automatic [reporting](reporting.md) use a separate CLI-only lifetime
 pool for the unique exact optional port: one source/receiver, 32 KiB per item,
 4 MiB source traffic, receiver buffer 16 items/256 KiB, and one pending send/32 KiB.
 These limits participate in the same reviewed launch identity. Disposal does not

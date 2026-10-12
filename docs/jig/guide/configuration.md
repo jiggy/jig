@@ -33,7 +33,8 @@ before they appear. Unsupported or unreadable approval produces no suggestions.
 | --- | --- |
 | Startup verification | `--verification` on `run`, `review`, or `inspect`; `JIG_VERIFICATION` for a shell default |
 | Terminal appearance | `JIG_THEME`, `NO_COLOR`, and your terminal environment |
-| Agent client, model, and credentials | An ordinary Agent Binding and operator credentials; see [Agent settings](#agent-settings) |
+| Agent client, model, and credentials | Inline policy in an ordinary Agent Binding and operator credentials; see [Agent settings](#agent-settings) |
+| ACP client for one reviewed proposal | `review --agent codex\|claude\|pi`; source stays unchanged and later reviews start from source again |
 | Flows, Bindings, and application settings | `jig.ts`; see [Project settings](#project-settings) |
 | Application starting point and default Run arguments | `entrypoint` in `jig.ts`; see [Project entrypoint](#project-entrypoint) |
 | Input, deadline, and output for one Run | Command arguments; see [Per-command options](#per-command-options) |
@@ -49,7 +50,7 @@ Give your application a starting point in `jig.ts` by copying the part of a
 working command after `jig run`:
 
 ```ts
-entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --timeout 8m",
 ```
 
 A target alone, such as `entrypoint: "binding:factory"`, is also valid. After
@@ -63,8 +64,14 @@ review. Changing the entrypoint itself does. Use quotes around arguments contain
 spaces. Jig parses arguments without shell execution or variable expansion.
 `jig inspect` shows the approved entrypoint.
 
-A fixed output directory must not already exist. Choose a new `--out` for the
-next Run; Jig never replaces an earlier result. See the
+When the selected target declares writable deliverables and `--out` is omitted,
+Jig chooses a fresh packet directory in operating-system temporary storage and
+reports the destination on stderr. The operating system may clear that storage.
+Use `--out DIR` to choose a retained location; it replaces any declared output
+default. The directory must not already exist and needs an existing supported
+parent outside input roots. Jig never replaces an earlier result. Result-only
+targets stay stdout-only unless you supply `--out` to save their execution record.
+See the
 [complete argument and override rules](../spec/project-sdk.md#project-entrypoint).
 
 ## Startup verification
@@ -119,7 +126,7 @@ for the guarantees and limits.
 | Setting | Values and behavior |
 | --- | --- |
 | `JIG_THEME` | `one-dark` (default), `one-light`, or `macchiato`; unknown values use One Dark |
-| `NO_COLOR` | Any present value, including an empty value, disables colors and automatic inline animation; an explicitly selected dashboard keeps keyboard navigation and screen controls without color |
+| `NO_COLOR` | Any present value, including an empty value, disables colors and automatic inline animation; TUI keeps keyboard navigation and screen controls without color |
 | `TERM=dumb` | Selects plain output without animation |
 | `COLORTERM` | `truecolor` or `24bit` enables truecolor accents; otherwise Jig uses 256-color accents when `TERM` contains `256color`, or basic terminal colors |
 
@@ -146,6 +153,15 @@ settings select API/model behavior within the grant's endpoint and body policy.
 Rotating a credential alone does not change admitted meaning. Changes to client,
 endpoint, model policy or installation require review.
 
+Simple ACP policies are inline in their Binding. Use named policies for actual
+reuse or independent management. `jig review --agent codex|claude|pi` explicitly
+proposes one client in every selected ACP policy for that review only. A value
+is required. Review and inspection show the effective approved choice and its
+argument origin; Run uses that approval without a client flag. Repeat the
+argument on a later review, or edit source for a persistent choice. A cross-client
+model pin, incompatible native retention or no selected ACP policies refuses the
+request. All other policy and authority checks still apply.
+
 See [Choose an Agent](./agents.md) for the current supported clients, grant
 examples and credential settings. Jig does not infer a provider from credentials
 or remember an implicit project-wide Agent choice.
@@ -168,9 +184,10 @@ examples, and [execution policy](../spec/project-policy.md) for enforced limits.
 | `--input JSON` or `--input @FILE` | `run` | Supply JSON input; omitted input is `{}` |
 | `--timeout 2m` | `run` | Set the Run deadline within the supported limits |
 | `--receive CHANNEL` | `run` | Receive a declared output channel; see [live progress](./channels.md) |
-| `--display MODE` | `run` | Select auto inline, plain, or a read-only keyboard dashboard; operator-only |
+| `--display MODE` | `run` | Select `auto` (TUI in suitable interactive terminals, ordinary output otherwise), `plain`, `tui`, or `web`; operator-only |
 | `--json` | `run` | Emit machine-readable JSON or NDJSON even in a terminal; redirected stdout already uses this format |
-| `--details` | `review` | Include unchanged policy as context in the review diff |
+| `--details` | `review` | Include unchanged policy and retained observed setup facts as context; performs no additional checks |
+| `--agent codex\|claude\|pi` | `review` | Propose only the client field in every selected ACP policy before qualification; source unchanged, no remembered preference |
 | `--yes` | `review` | Approve the displayed revision without an interactive prompt; does not grant resource-authority changes or resolution-network permission |
 | `--allow-authority-changes` | `review` | Explicitly approve changed resource delegation alongside the revision |
 | `--generate-contracts` | `review` | Compile managed TypeSpec contracts before separate execution approval |

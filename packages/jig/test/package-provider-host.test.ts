@@ -122,7 +122,7 @@ hostTest(
       await writeFile(join(project, 'package.json'), JSON.stringify(manifest))
       for (const [name, variable] of [
         ['flow-sdk', 'FLOW_SDK_PACKAGE_ARCHIVE'],
-        ['user-updates', 'USER_UPDATES_PACKAGE_ARCHIVE'],
+        ['reporting', 'REPORTING_PACKAGE_ARCHIVE'],
         ['agent-method', 'AGENT_METHOD_PACKAGE_ARCHIVE'],
         ['agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'],
       ] as const) {
@@ -169,6 +169,8 @@ hostTest(
         [
           installed,
           'run',
+          '--out',
+          'factory-result',
           '--receive',
           'progress',
           '--json',
@@ -340,9 +342,21 @@ await handle(async run => {
         outcome: 'done',
         delivery: { status: 'written' },
       })
+      expect(plain.output.jobs.every((job) => job.ready === true)).toBe(true)
+      expect(plain.output.summary).toContain('2 of 2 jobs produced a checked patch for review.')
       const transcript = await readFile(join(evidence, `${sequence}.stderr`), 'utf8')
-      for (const title of ['Jobs', 'Checks', 'Patches']) expect(transcript).toContain(title)
-      expect(transcript).toContain('Observation ended')
+      expect(transcript).toContain('Flow: Jobs')
+      // Automatic observations are best-effort. A lagged stream must disclose
+      // its loss; it cannot promise the final view or a clean observation end.
+      if (transcript.includes('(LAGGED)')) {
+        expect(transcript).toContain('Live progress stopped before all updates were delivered')
+        expect(transcript).toContain('Live observation is incomplete; inspect the final result')
+        expect(transcript).toContain('application reports remain provisional')
+        expect(transcript).not.toContain('Observation ended')
+      } else {
+        expect(transcript).toContain('2 independently checked patches')
+        expect(transcript).toContain('Observation ended')
+      }
       expect(transcript).not.toContain('\u001b')
       passed = true
     } finally {

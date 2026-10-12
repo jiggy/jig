@@ -4,6 +4,7 @@
   "type": "module",
   "dependencies": {
     "@jigging/flow": "0.1.0-alpha.13",
-    "csv-parse": "6.1.0"
+    "csv-parse": "6.1.0",
+    "@jigging/reporting": "0.1.0-alpha.1"
   }
 }

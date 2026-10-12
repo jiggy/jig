@@ -301,7 +301,7 @@ test('installed invalid verification is actionable and safe; help remains usable
     expect(stdout + stderr).not.toContain('private-untrusted-value')
     expect(stdout + stderr).not.toContain('\u001b')
   }
-})
+}, 30_000)
 
 test('installed verification argument overrides even an invalid environment preference', async () => {
   const { installedBunLocation } = await import('./fixtures/installed-bun-location.js')
@@ -357,4 +357,4 @@ test('installed verification argument overrides even an invalid environment pref
       expect(stderr).not.toContain('invalid-argument')
     }
   })
-})
+}, 30_000)

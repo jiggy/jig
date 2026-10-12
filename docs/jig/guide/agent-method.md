@@ -66,6 +66,23 @@ instructions and schema guidance, has its own 1 MiB bound.
 Structured schemas use the [bounded profile](../spec/agent-run.md#structured-output-profile)
 and at most 256 KiB of canonical JSON/0.
 
+Keep a small response schema used by one call beside that call, inline or as a
+local `responseSchema` constant. Extract a substantial or reused shape into an
+ordinary adjacent file with a descriptive name, such as
+`charge-assessment.schema.json`. It describes the Agent's requested reply, not
+the Flow's complete public result. There is no required schemas directory or
+`FLOW.response.json` declaration. Keep its explicit dialect, supported profile
+and independent result/domain checks intact. Dynamic choices, such as an enum of
+eligible routes, remain ordinary code. A schema import does not authorize a
+cross-Flow dependency.
+
+When related interfaces actually share constraints, optional
+[`@agentResponse` generation](contracts.md#one-model-related-outputs) can reduce
+repeated declarations. Distinct public and Agent shapes stay distinct when their
+constraints differ. Change managed projections through their source declaration
+and explicit regeneration; placement advice does not permit moving or deleting
+owned outputs behind the authoring tool.
+
 For Jig, declare `@jigging/agent-method` in the project's `package.json`
 dependencies. Use `workspace:*` for source in your Bun workspace or a selected
 published version with its Bun lock. Configure its ordinary Binding:

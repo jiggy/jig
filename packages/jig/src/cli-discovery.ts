@@ -1,5 +1,8 @@
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
 import type { JsonValue } from './json.js'
+import { parseRunTargetSelector } from './project/author.js'
+import { entrypointWords } from './project/entrypoint.js'
+import { flowSelector } from './project/package-selector.js'
 
 function record(value: JsonValue | undefined): Record<string, JsonValue> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -11,15 +14,20 @@ export function cliShellWord(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`
 }
 
-export function approvedTargets(snapshot: JsonValue): { target: string; description: string }[] {
+export function approvedTargets(
+  snapshot: JsonValue,
+  readyOnly = false,
+): { target: string; description: string; available: boolean }[] {
   const targets = record(snapshot).targets
   if (!Array.isArray(targets)) return []
   return targets.flatMap((value) => {
     const item = record(value)
-    return typeof item.target === 'string'
+    const available = record(item.availability).state !== 'unavailable'
+    return typeof item.target === 'string' && (!readyOnly || available)
       ? [
           {
             target: item.target,
+            available,
             description: typeof item.description === 'string' ? item.description : '',
           },
         ]
@@ -30,14 +38,31 @@ export function approvedTargets(snapshot: JsonValue): { target: string; descript
 /** Guidance is derived from the retained interface, never a fabricated valid input. */
 export function invocationGuide(snapshot: JsonValue): string {
   const item = record(snapshot)
+  const origin =
+    typeof item.agentOverride === 'string'
+      ? `Approved Agent choice: --agent ${JSON.stringify(item.agentOverride)}. Retained effective clients run with this revision. A new bare review uses source choices.\n\n`
+      : ''
   if (typeof item.target !== 'string') {
     const targets = approvedTargets(snapshot)
+    const defaultTarget =
+      typeof item.entrypoint === 'string'
+        ? parseRunTargetSelector(entrypointWords(item.entrypoint)[0]!, 'entrypoint')
+        : undefined
+    const defaultSelector =
+      defaultTarget?.kind === 'flow'
+        ? flowSelector(defaultTarget.path)
+        : defaultTarget?.kind === 'binding'
+          ? `binding:${defaultTarget.id}`
+          : undefined
+    const defaultUnavailable = targets.some(
+      ({ target, available }) => !available && target === defaultSelector,
+    )
     return targets.length === 0
       ? ''
-      : `${typeof item.entrypoint === 'string' ? `Project entrypoint\n\n  ${JSON.stringify(item.entrypoint)}\n\nStart this application with jig run. Supplied options override its defaults.\n\n` : ''}Approved targets\n\n${targets
+      : `${origin}${typeof item.entrypoint === 'string' ? `Project entrypoint\n\n  ${JSON.stringify(item.entrypoint)}\n\n${defaultUnavailable ? 'The default target is unavailable. Correct its retained cause and review again, or invoke a ready alternative explicitly.' : 'Start this application with jig run. Supplied options override its defaults.'}\n\n` : ''}Approved targets\n\n${targets
           .map(
-            ({ target, description }) =>
-              `  ${JSON.stringify(target)}${description ? ` — ${JSON.stringify(description)}` : ''}`,
+            ({ target, description, available }) =>
+              `  ${JSON.stringify(target)} — ${available ? 'ready' : 'unavailable'}${description ? ` — ${JSON.stringify(description)}` : ''}`,
           )
           .join(
             '\n',
@@ -47,7 +72,16 @@ export function invocationGuide(snapshot: JsonValue): string {
   const schema = record(input)
   const fields = record(schema.properties)
   const required = Array.isArray(schema.required) ? schema.required : []
-  const lines = [`How to invoke ${JSON.stringify(item.target)}`, '']
+  const lines = [origin.trimEnd(), `How to invoke ${JSON.stringify(item.target)}`, ''].filter(
+    (line, index) => line !== '' || index > 0,
+  )
+  if (record(item.availability).state === 'unavailable')
+    lines.push(
+      '  This target was approved as unavailable. Correct the retained cause below and review again before running:',
+      '',
+      '  $ jig review',
+      '',
+    )
   if (typeof item.description === 'string') lines.push(`  ${JSON.stringify(item.description)}`, '')
   if (input !== undefined) {
     lines.push(
@@ -64,14 +98,21 @@ export function invocationGuide(snapshot: JsonValue): string {
   }
   const command = ['jig run', cliShellWord(item.target)]
   if (input !== undefined) command.push('--input @input.json')
+  const boundReads = Array.isArray(item.boundReadAttachments) ? item.boundReadAttachments : []
   for (const [name, mode] of Object.entries(record(item.attachments))) {
-    if (mode === 'read') command.push('--attach', cliShellWord(`${name}=./${name}-input`))
-    else if (mode === 'read-write') command.push('--out ./result-packet')
+    if (mode === 'read' && !boundReads.includes(name))
+      command.push('--attach', cliShellWord(`${name}=./${name}-input`))
   }
-  if (Object.keys(record(item.attachments)).length > 0)
+  if (Object.values(record(item.attachments)).includes('read-write'))
     lines.push(
-      '  File paths below are placeholders. Choose input directories and a new output destination outside them.',
+      '  File outputs: Jig saves a fresh temporary packet and reports its path. Temporary storage may be cleared; use --out DIR to keep a packet in a chosen new directory outside input roots.',
     )
+  if (boundReads.length > 0)
+    lines.push(
+      `  Reviewed read attachments are already supplied: ${boundReads.map((name) => JSON.stringify(name)).join(', ')}. Do not override them.`,
+    )
+  if (Object.keys(record(item.attachments)).length > 0)
+    lines.push('  Input paths below are placeholders. Choose the directories to share.')
   const outputs = Object.entries(record(record(item.contract).channels)).filter(
     ([, value]) => record(value).direction === 'send',
   )
@@ -108,7 +149,7 @@ export function completionScript(shell: string): string | undefined {
   const commands = 'init new review run inspect completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
-    '--help --input --attach --select --out --receive --updates --timeout --verification --json'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -121,17 +162,21 @@ export function completionScript(shell: string): string | undefined {
   local reply
   if (( COMP_CWORD == 1 )); then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
+  elif [[ "$prev" == --agent && ( "$command" == review || "$command" == init ) ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude pi' -- "$cur")
   elif [[ "$prev" == --verification ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
   elif [[ "$prev" == --updates && "$command" == run ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'off' -- "$cur")
   elif [[ "$prev" == --display && "$command" == inspect ]]; then
-    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'plain dashboard' -- "$cur")
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'plain tui web' -- "$cur")
+  elif [[ "$prev" == --display && "$command" == run ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'auto plain tui web' -- "$cur")
   elif [[ "$cur" == -* ]]; then
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
-      review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification';;
+      review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
       inspect) opts='--help --json --verification --result --display';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;
@@ -158,16 +203,20 @@ _jig() {
   local -a choices
   if (( CURRENT == 2 )); then
     choices=(${commands} --help --version)
+  elif [[ "$words[CURRENT-1]" == --agent && ( "$words[2]" == review || "$words[2]" == init ) ]]; then
+    choices=(codex claude pi)
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
     choices=(cached strict fast)
   elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
     choices=(off)
   elif [[ "$words[CURRENT-1]" == --display && "$words[2]" == inspect ]]; then
-    choices=(plain dashboard)
+    choices=(plain tui web)
+  elif [[ "$words[CURRENT-1]" == --display && "$words[2]" == run ]]; then
+    choices=(auto plain tui web)
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
-      review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification);;
+      review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
       inspect) choices=(--help --json --verification --result --display);;
       init) choices=(--help --bare --agent);;
       import-contract) choices=(--help --list);;
@@ -194,11 +243,13 @@ complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion
 complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
-complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain dashboard'
+complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
+complete -c jig -n '__fish_seen_subcommand_from run' -l display -r -a 'auto plain tui web'
 complete -c jig -n '__fish_seen_subcommand_from run' -l updates -r -a off
 complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
+complete -c jig -n '__fish_seen_subcommand_from review' -l agent -r -a 'codex claude pi'
 ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'generate-contracts'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
 `
   return undefined

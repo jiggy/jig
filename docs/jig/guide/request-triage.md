@@ -1,6 +1,7 @@
 ---
 title: One caller, three implementations
-description: Run the same caller with a code classifier, an Agent classifier, and a method combining both. Learn the shared contract and the review boundary.
+description: Run the same caller with a code classifier, an Agent classifier, and a
+method combining both. Learn the shared contract and the review boundary.
 ---
 
 # One caller. Code, Agent, or both.
@@ -42,6 +43,7 @@ export async function triage(
   return run.call({
     operationId: 'classify-request',
     slot: 'classifier',
+    intent: 'Suggest a support queue',
     input: run.input,
   })
 }
@@ -70,20 +72,33 @@ it does not require the caller to manage an Agent conversation.
 
 ## Run all three
 
-Follow [installation and supported-host setup](./index.md), then prepare the
-checkout using [workspace setup](./dependencies.md#local-workspace-packages).
-Check the [Agent](./agents.md) selected in `bindings/model.ts` before review.
-The example declares the ordinary ACP package and selects Claude Code; install and
-authenticate Claude Code or edit the client grant. Its contract-keyed project default
-supplies that Agent to the Agent and mixed classifiers.
-The checked-in example includes those packages even when you select the code
-Binding; the code classifier itself makes no Agent call.
-
-From `examples/request-triage`:
+Follow [installation and supported-host setup](./index.md), then run from a copy
+of the example directory. Configure the selected client in `bindings/model.ts`
+through [Choose an Agent](./agents.md). Claude Code is an editable example choice.
+The default code classifier calls no Agent, but review checks this project's
+selected Agent and mixed alternatives too; their ACP prerequisites must be ready
+before this complete project can be approved:
 
 ```sh
-jig review
-jig run binding:intake --input @fixtures/labeled.json
+jig review --allow-resolution-network
+jig run
+```
+
+Review prepares the ordinary declared dependencies. The reviewed entrypoint
+supplies the labeled fixture and a one-minute deadline. These result-only targets
+return the queue suggestion on stdout without creating a packet directory.
+Add `--json` for the complete machine record, or use `jig run --out ./triage-result`
+to save `result.json` in a retained location. The directory must not already
+exist; Jig never overwrites an earlier result.
+
+The Agent and mixed classifiers use the inline policy in `bindings/model.ts`.
+Edit it for a lasting client choice, or explicitly propose one client for every
+selected ACP policy with `jig review --agent codex`. Review shows the effective
+choice before approval and leaves source unchanged. Repeat the argument on later
+reviews or edit source to persist it. Missing selected ACP prerequisites stop
+review, even when the default code target needs no Agent call.
+
+```sh
 jig run binding:agent --input @fixtures/labeled.json --timeout 2m
 jig run binding:mixed --input @fixtures/labeled.json --timeout 2m
 ```
@@ -101,6 +116,17 @@ Code and mixed return `done` with `{"queue":"billing"}`. The Agent is asked to
 suggest the same queue, but can choose differently or return `blocked` or
 `limit`. Inspect the method's outcome as well as the CLI's execution status.
 The page does not claim identical classification behavior.
+
+## Follow the work
+
+The **Request** view shows the supplied message, the selected procedure and the
+suggested queue. Each classifier offers the same view when called independently.
+**Execution** follows the actual classifier and Agent calls; `manual` remains a valid
+suggestion, with no business action dispatched.
+
+Use `--display web` for the same views through the private browser link printed after
+work starts. Completed inspection waits for explicit exit. The host’s graph and blocking
+causes remain separate from application reports; plain and JSON output remain available.
 
 ## Change the implementation, keep the caller
 

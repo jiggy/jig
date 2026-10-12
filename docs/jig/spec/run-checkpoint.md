@@ -26,8 +26,10 @@ Declare the attachment in the package’s `FLOW.contract.json`:
 }
 ```
 
-The operator reviews this exact package and invokes it with `--out`. This
-profile is root-only; an attachment-less or child invocation cannot acquire
+The operator reviews this exact package and invokes it. Its writable attachment
+receives a temporary packet destination when `--out` is omitted; use `--out` for
+a chosen retained location. Operating-system cleanup may remove temporary packets.
+This profile is root-only; an attachment-less or child invocation cannot acquire
 the native invocation. The Flow selects neither a host path nor another Run.
 
 ```ts

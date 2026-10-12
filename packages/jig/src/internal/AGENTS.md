@@ -52,6 +52,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   commands omit only the default command envelope; finite explicit constraints
   and bounded setup, Run, cancellation and cleanup owners remain enforced. The
   scalar only constrains presentation; it never grants execution authority.
+  Eligible web inspection also omits the default presentation envelope. Its
+  outer file owner seeds one completion budget before joining pending work:
+  twenty seconds for authenticated retirement or uncapped inspector exit,
+  preserving the inbound inherited minimum captured before generating the
+  child's presentation deadline. A local presentation deadline leaves its
+  closing reserve available to owner cleanup. Legacy finite-envelope exit retains its
+  existing sixty-second settlement allowance. Memoize task/publication joins
+  and cleanup failure; no finally path may wait outside that allowance or reset
+  it. A stalled publication fences fallback and still attempts independent
+  endpoint/descriptor release. Confirm retirement before indefinite inspection.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
   Darwin resolves system ancestor aliases only for SQLite's visible filename;
@@ -151,6 +161,32 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Recheck the selected parent and exact staging identity before exclusive
   publication; a moved parent cannot redirect writes or cleanup. Invalid final
   files retain the known execution terminal and never authorize replay.
+  Its memoized close joins original prepare/publication, consumes held references
+  before cleanup and closes the destination parent even if staging cleanup fails.
+  The same failure remains observable on racing or repeated close; never retry
+  a recycled descriptor. `RootRunFiles` similarly consumes output once and fences
+  further projection, checkpoint and retention after close begins.
+- `delivery-inspection.ts` transfers only verified receipt-selected excerpts to
+  a pure presentation map before indefinite live-result inspection. One total
+  20-second completion bound includes serial previews, retirement ACK and spent
+  channel completion, clamped by the inherited presentation deadline. At most
+  the first ten seconds are for previews; tighter constraints reserve half the
+  remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 64 KiB
+  each and 4 MiB aggregate text, with distinct empty/non-text/unavailable/clipped
+  metadata. Late or failed previews stay unavailable; they do not retract a
+  known publication. The map never reopens a destination or invokes file RPC.
+  Capture/retirement errors are closed command-cleanup failures, separate from
+  known execution and delivery facts; callers must not fabricate unknown work.
+  Authenticated `file-command.ts` retirement irreversibly fences every authority
+  verb and checkpoint recovery/fallback, including no-publication. Join original
+  operations, then close checkpoint, project read descriptor, delivery owner and
+  native endpoints through one failure-preserving close. Begin listener shutdown
+  without awaiting the ACK socket's own close cycle. ACK follows authoritative
+  release only; the client disarms disconnect cancellation only on that timely
+  ACK, then joins spent-channel completion under the same bound. Silence, loss,
+  late ACK and mere close never establish retirement. Completed bounded close
+  promises remain completed during operator-controlled inspection; later exit
+  must not reapply their already elapsed transfer deadline.
 - `saved-result.ts` captures operator-selected local result packets for
   `inspect --result`, without a project, approval, provider, verification setting
   or execution owner. Recorded facts and diagnostic paths are unauthenticated
@@ -181,6 +217,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   messages carry counts and inert manifests, never PID/FD claims as authority.
   Keep command cancellation, settlement grace and final escalation unchanged.
   Remove only exact private endpoints after the coordinator and publication settle.
+  Native endpoint close is memoized and consumes receiver references before
+  cleanup; racing paths join its actual completion and retain its failure.
   Reconstruct transferred output into a fresh immutable backing only after
   authenticating the live received bundle and validating its complete bounded
   manifest, anonymous-file identity, offsets and hashes. Include empty-directory
@@ -478,12 +516,37 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `private-acp-resources.ts` captures operator configuration before project
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review; launch revalidates their
-  bytes and authentication. Unavailable clients do not block unrelated targets.
+  bytes and authentication. SDK unavailable clients retain per-target readiness;
+  CLI review's typed selected-ACP refusal stops before avoidable target preparation.
   Reject native destinations under sandbox-reserved paths during selection with
   the closed location diagnostic; share sealing's path predicate. Preflight
   neither mounts files nor replaces launch-time validation.
   Cache selected configurations by client and granted model together; a grant
   model does not change authentication mode or mutate the operator snapshot.
+- `project-resource-qualification.ts` qualifies exact selected ACP grants before
+  avoidable execution preparation, then propagates refusal through captured Flow
+  routes. It never chooses a substitute. `resource-qualification-evidence.ts`
+  binds closed client/slot causes to exact requests, policies and unavailable
+  child dispositions; admission checks the witness and refuses ready parents of
+  unavailable children. A closed display diagnostic is not expected-refusal
+  provenance: direct known predicates may mark it, wrappers default to fatal.
+  Abort, corruption, arbitrary I/O, owner faults and unconfirmed cleanup cannot
+  become per-target availability. The private `review-agent-setup.ts` report
+  carries at most 1 MiB of read-only policy, captured location and recipient facts,
+  with omitted counts and a reserved primary blocker. Authoritative typed refusal
+  survives omission of every presentation row. Known rejected executable overrides
+  survive native and Codex error wrapping only as a closed field-name fact; private
+  qualification uses a WeakSet on current failure objects so persisted readiness
+  causes and evidence identities stay unchanged. Honest ready/default-target facts
+  guide successful non-ACP feature-limited review; never use them as the ACP gate.
+  No source-edit bytes, root edit
+  identity, publication owner or correction loop belongs in this report.
+  `project-session-controller.ts` invokes `onAgentReadiness` after selected-resource
+  qualification and before avoidable target execution preparation. The CLI throws
+  its private `ProjectAdministrationError` with fixed
+  `JIG_REVIEW_AGENT_UNAVAILABLE` marker here and catches only that typed marker
+  with observed ACP refusal; SDK plan/apply semantics stay
+  unchanged. Arbitrary failures and cleanup uncertainty keep their own diagnostics.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering;
   raw exceptions, private paths and credentials never become recovery text.
@@ -492,9 +555,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   clients, choose another installation, or change containment authority.
   Codex helper discovery and runtime inspection preserve the sandbox stage,
   distinct from inspection of the selected client's installation.
-  Planning locates the selected client at
-  the captured Binding declaration and resource slot, when known; executable
-  discovery failures do not imply a particular missing path or accept shell aliases.
+  Planning locates a verified client literal in immutable captured Binding or
+  named-policy source; imported/computed selections use verified context or an
+  honest captured file/slot fallback. The bounded lexical recognizer is owned by
+  `src/project/agent-source-location.ts` under the package instructions. Never
+  infer literal provenance from equal evaluated values or text matches.
+  Executable discovery failures do not imply
+  an absent installation: preserve rejected override facts without its value,
+  retain selected-client repair and detect alternatives passively.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `native-agent-turn-policy.ts` owns Jig's default and allowed
   turn range for grant validation, controller dispatch and finite ACP enforcement.
@@ -548,6 +616,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Command reports retain aggregate-bounded diagnostics with host-assigned call
   paths, independently of root-process stderr. Settled root notifications let
   interrupted commands report known terminals without reopening closed authority.
+- Read-only target inspection projects `boundReadAttachments` as retained names
+  only, so invocation templates omit captured reads without reopening live
+  Binding paths or exposing private file projection handles.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner
   rows and independent supervision survive coordinator loss without replay.
@@ -622,14 +693,24 @@ child calls, project commands, delegated HTTP, and Agent providers.
   recipe and observation digests with an authentic current environment. The shared
   identity calculation returns inert hashes, never an executable recipe; unknown
   or changed environments retain the selection. This display proof changes no
-  approval, persistence or launch revalidation.
+  approval, persistence or launch revalidation. An explicit review client operand
+  always retains authored/effective selection context, even when policy is unchanged.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
   `project-feature-qualification.ts` qualifies the selected graph from captured
   support/requirement metadata, without preparing execution or choosing alternatives.
   Feature-refusal evidence pins the caller and selected provider requests, including
   their retained package bytes; live source edits cannot alter that evidence.
   Admission independently checks each feature-refusal disposition and its evidence;
-  unrelated targets remain usable. Empty recipe sets use inert host support identity.
+  unrelated targets retain their own readiness. Empty recipe sets use inert host
+  support identity. Explicit review `agentOverride` is captured before qualification
+  and changes only `client` in every selected normalized ACP policy. Bind it into
+  capture identity and the ordinary effective lock; strict decoding requires a
+  fixed supported client, nonzero selected ACP policies and agreement of all slots.
+  Cross-client pinned models, incompatible retention and zero selections refuse;
+  preserve these three closed refusal codes through the candidate diagnostic
+  boundary with their project-relative location. Same-client policy still qualifies.
+  Inspection reports retained origin, Run never
+  substitutes it, and later review never inherits it from lock or admission.
   An explicit typed route must match its provider's offered contract; it cannot
   fall back or turn a claimed native descriptor into package-held authority.
   Project defaults resolve ordinary routes before admission, including direct
@@ -793,8 +874,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   neither general nor client-specific temporary files may fall back to host `/tmp`.
 - Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
   through closed diagnostic codes and project-relative locations, never raw
-  provider or worker messages. Missing Agent support affects only targets
-  which require it.
+  provider or worker messages. SDK missing Agent support affects only selected
+  targets and their dependents; CLI review refuses any observed typed selected ACP
+  prerequisite before preparing target execution, unchanged success or admission.
   Missing root writable authority for Run Checkpoint retains
   `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate and directs the
   caller to its invocation attachment declaration; do not hide it as `INTERNAL`.
@@ -862,6 +944,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   artifacts. Before package code starts, the trusted inner launcher rechecks
   every projected file's byte count and digest against the admitted identity.
   Child and Agent contexts receive no attachment or destination authority.
+  The admitted-interface mapping check precedes root allocation. Its closed
+  failure projects only bounded declared/supplied names for missing reads,
+  invalid mappings, bound overrides and missing writable destinations; combined
+  retained/per-run file-limit evidence remains separately typed. Never infer
+  paths, source freshness or no-dispatch evidence from arbitrary errors.
 - Reviewed Binding read selections reuse the bounded file capture controls and
   retained artifact store. Bind source, manifest and tree identity to the exact
   configuration; revalidate at admission and project retained bytes at execution,
@@ -968,8 +1055,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - `installation-verification.ts` owns command-scoped operator policy and the
   bounded installation cache. The installed CLI resolves `--verification` over
   `JIG_VERIFICATION`, falling back to cached, before opening the command scope.
-  Pass prepared command arguments and their selected admission through file-owner
-  and delegation reexecution. Root submission rejects changed approval before
+  Pass prepared command arguments, the private preparation-complete marker and
+  their optional selected admission through file-owner and delegation reexecution.
+  The retained inspection callback exposes only owned canonical writable-target
+  selectors with that same admission, without public DTOs or package recapture.
+  Select omitted writable output once under the canonical OS-temporary parent
+  before file-owner selection; preserve no-output/unreviewed decisions too.
+  Keep anchored exclusions, publication and packet retention with the delivery owner.
+  Root submission rejects changed approval before
   allocation; the private admission marker can only constrain, never grant, execution.
   Entrypoint defaults and interactive target choices survive reexecution; preserve the effective verification policy through delegation,
   file delivery and recovery. Strict
@@ -1015,7 +1108,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `execution-backend.test.ts` rejects mismatched owner allocations before dispatch.
   Native and installed-consumer qualification still establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
-  `bun test packages/jig`.
+  `bun test packages/jig`. Resource qualification and CLI setup/approval tests
+  verify fail-fast typed refusal independent of bounded diagnostics and unchanged
+  SDK target readiness. Project linking/capture and lock tests verify all-selected
+  client construction, preserved source/other policy, capture identity and strict
+  retained `agentOverride` origin.
 - `workspace-progress.test.ts` covers operator-controlled inspection, private
   deadline minima, trusted dispatch versus initial refusal, effective machine
   modes, queued screen entry/restoration, phase-aware interruption, escaped cause batching and full
@@ -1099,6 +1196,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   forged/closed snapshots, cancelled retention, collisions, parent replacement
   and complete staging cleanup. Independent command transport cases additionally
   require their platform's qualified process ownership and descriptor transfer.
+  `delivery-inspection.test.ts` covers serial excerpt/aggregate limits, inherited
+  deadline minima and preview cutoff, empty/no-publication retirement, pure map
+  release, pending operation joins, ACK loss/late completion, expected versus
+  accidental disconnect, and memoized descriptor-close failure with private
+  streams/clocks. These portable cases do not establish actual native peer
+  authentication, endpoint release, parent recovery fencing or installed browser
+  composition; those remain platform/installed qualification gates.
   `execution-output.test.ts` verifies fencing/release/cleanup order, capture
   refusal, missing collectors and cleanup failure. Native guardian input evidence
   exercises that same retention path after image removal. Session collectors

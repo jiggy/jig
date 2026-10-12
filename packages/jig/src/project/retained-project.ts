@@ -5,6 +5,10 @@ import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import { privateDomainDigest } from '../internal/identity.js'
 import { privateProfileSpan } from '../internal/private-profile.js'
 import type { JsonValue } from '../json.js'
+import {
+  type PrivateAgentSourceLocation,
+  privateAgentSourceLocations,
+} from './agent-source-location.js'
 import type { BindingDefinition, JigDefinition } from './author.js'
 import {
   type EvaluatedAuthorDeclaration,
@@ -26,7 +30,7 @@ import {
   type PrepareCapturedFlow,
 } from './flow-source.js'
 import { captureGrantSource } from './grant-source.js'
-import type { GrantPolicy } from './grants.js'
+import type { AcpGrant, GrantPolicy } from './grants.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
 import { npmPackageName } from './package-selector.js'
 import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
@@ -43,12 +47,14 @@ export interface PrivateRetainedProjectOptions {
   readonly projectRoot: string
   readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
+  readonly agentOverride?: AcpGrant['client']
 }
 
 export interface PrivateRetainedOpenedProjectOptions {
   readonly projectRoot: PrivateProjectRoot
   readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
+  readonly agentOverride?: AcpGrant['client']
   readonly prepareFlow?: PrepareCapturedFlow
   readonly dependencyFlows?: (selectors: readonly string[]) => Promise<CapturedFlowSource>
 }
@@ -62,6 +68,7 @@ export interface RetainedBindingDeclaration {
 
 export interface PrivateRetainedPackageProject {
   readonly captureDigest: string
+  readonly agentOverride?: AcpGrant['client']
   readonly root: {
     readonly device: string
     readonly inode: string
@@ -72,6 +79,10 @@ export interface PrivateRetainedPackageProject {
   readonly bindingSource: readonly DeclarationSourceObservation[]
   readonly grantSource: readonly DeclarationSourceObservation[]
   readonly grants: Readonly<Record<string, GrantPolicy>>
+  readonly grantFiles: Readonly<Record<string, PrivateAgentSourceLocation>>
+  readonly agentSources: Readonly<
+    Record<string, Readonly<Record<string, PrivateAgentSourceLocation>>>
+  >
   readonly flows: readonly RetainedFlowInput[]
   readonly bindings: readonly RetainedBindingDeclaration[]
   readonly linked: PackageProjectValue
@@ -258,12 +269,33 @@ export async function retainOpenedPackageProject(
         })),
       },
       PRIVATE_ACTIVATION_TARGET_LIMIT,
+      options.agentOverride,
     )
+    const agentSources: Record<
+      string,
+      Readonly<Record<string, PrivateAgentSourceLocation>>
+    > = Object.create(null)
+    for (const binding of bindings) {
+      const clients: Record<string, string> = Object.create(null)
+      for (const [slot, selection] of Object.entries(binding.evaluation.value.slots)) {
+        const policy =
+          typeof selection === 'string'
+            ? grantSource.grants[selection.startsWith('grant:') ? selection.slice(6) : selection]
+            : selection
+        if (policy?.kind === 'acp') clients[slot] = policy.client
+      }
+      agentSources[binding.id] = privateAgentSourceLocations(
+        binding.sourcePath,
+        closure.read(binding.sourcePath),
+        clients,
+      )
+    }
     const rootIdentity = Object.freeze({
       device: root.information.dev.toString(),
       inode: root.information.ino.toString(),
     })
     const captureDigest = digestCapture({
+      ...(options.agentOverride === undefined ? {} : { agentOverride: options.agentOverride }),
       root: rootIdentity,
       declarationArtifact,
       project,
@@ -276,6 +308,7 @@ export async function retainOpenedPackageProject(
     })
     const value = Object.freeze({
       captureDigest,
+      ...(options.agentOverride === undefined ? {} : { agentOverride: options.agentOverride }),
       root: rootIdentity,
       declarationArtifact,
       project,
@@ -283,6 +316,8 @@ export async function retainOpenedPackageProject(
       bindingSource: bindingSource.observations,
       grantSource: grantSource.observations,
       grants: grantSource.grants,
+      grantFiles: grantSource.files,
+      agentSources: Object.freeze(agentSources),
       flows: retainedFlows,
       bindings: Object.freeze(bindings),
       linked,
@@ -361,6 +396,7 @@ function assertBootstrapPreserved(
 }
 
 function digestCapture(input: {
+  readonly agentOverride?: AcpGrant['client']
   readonly root: { readonly device: string; readonly inode: string }
   readonly declarationArtifact: RetainedAuthorClosure
   readonly project: EvaluatedAuthorDeclaration<JigDefinition>
@@ -372,6 +408,7 @@ function digestCapture(input: {
   readonly bindings: readonly RetainedBindingDeclaration[]
 }): string {
   const value = {
+    ...(input.agentOverride === undefined ? {} : { agentOverride: input.agentOverride }),
     root: input.root,
     declarationArtifact: input.declarationArtifact,
     project: evaluationIdentity(input.project),

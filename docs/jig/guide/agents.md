@@ -105,9 +105,14 @@ import { defineBinding } from '@jigging/jig'
 
 export default defineBinding({
   package: 'npm:@jigging/agent-acp',
-  slots: { native: { kind: 'acp', client: 'codex' } }, // choose codex, claude, or pi
+  slots: { native: { kind: 'acp', client: 'codex' } },
 })
 ```
+
+A simple native policy belongs directly in its Binding. Use a
+[named grant](../spec/grants.md#reuse-a-named-policy-when-useful) when several
+Bindings intentionally share one policy or it has a separate management owner.
+No grants directory is required for inline policy.
 
 Use the same project default shown above. `client` is required; Codex is only
 the concrete choice in this example, not a product default or recommendation.
@@ -225,10 +230,67 @@ prompts. One-shot calls require neither change.
 
 ## Switching
 
-Choose the new Binding configuration or replace its Flow package, then run `jig review` again.
-Client, endpoint, model, and executable changes affect the admitted execution
-identity. Use the same selection for the subsequent `jig run`; rotating only
-a credential does not require another review.
+For a lasting project choice, edit the ordinary Binding source. The diagnostic
+identifies the captured Binding and its `native` slot, or the named JSON policy
+selected by a slot such as `native: 'grant:agent'`. Simple policies are inline:
+
+```ts
+slots: { native: { kind: 'acp', client: 'codex' } },
+```
+
+Choose `codex`, `claude`, or `pi`, keep the turn limits and required conversation
+features, and configure the client's authentication. A model pin belongs to the
+chosen client; replace it deliberately or omit it to use that client's default.
+Codex-only `retainSessions` must remain with Codex or be deliberately removed
+when the application no longer needs native retention. Then review and approve
+the changed selection before running:
+
+```sh
+jig review
+jig run
+```
+
+You can also propose one client for the current review without editing source:
+
+```sh
+jig review --agent codex
+jig run
+```
+
+`review --agent` requires one value: `codex`, `claude`, or `pi`. It changes only
+`client` in every selected ACP policy, including inline, named/shared and
+computed policies. Review shows the source client, effective client, argument
+origin and affected recipients before normal approval. The approved lock and
+`jig inspect` retain the effective choice; Run uses that exact approval without
+another flag. HTTP Agents and ordinary package/provider routes are unaffected.
+
+Turn limits and other policy fields remain intact. An actual cross-client
+change with a pinned model or incompatible native retention refuses the whole
+request; Jig does not clear or translate either field. The argument also refuses
+when no ACP resources are selected. A same-client choice still undergoes the
+normal prerequisite checks. New or changed resource authority requires the same
+explicit approval as a source edit; `--yes` alone does not grant it.
+
+The argument is not remembered for the next review. Repeat it when reviewing
+later code edits, or edit the Binding for persistence. A later bare `jig review`
+uses its newly captured source client again and explains that proposed change.
+If that review fails, the earlier approved code and client remain together;
+newly edited code is not authorized with the old client.
+
+When a selected client prerequisite fails, the entire CLI review stops before
+new approval, even if another code target is ready or an input might avoid the
+Agent branch. Review gives the known cause and selected policy location. For an
+executable failure it may list passively detected alternatives; detection does
+not prove authentication, native readiness or compatibility. Repair the selected
+installation or its path override, or make a deliberate client change, then
+retry. Review never starts a Flow or calls a model, and it never writes ACP policy.
+`--details` expands retained observed facts and identifies incomplete checks.
+See [review failure recovery](results.md#agent-setup-failures-during-review).
+
+Choose a different ordinary Agent package in its Binding when switching between
+native ACP and HTTP access. Client, endpoint, model and executable changes affect
+admitted execution identity. Rotating only a credential does not require another
+review.
 
 To use API access, select the ordinary Agent Binding in project defaults.
 A missing or incompatible selection fails; Jig does not silently choose

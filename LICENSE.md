@@ -11,7 +11,7 @@ retain their existing licenses; this notice does not revoke those grants.
 
 | Field | Jig adoption |
 | --- | --- |
-| Software | Jig: original material in `packages/jig/**` and `docs/jig/spec/**`, excluding separately identified third-party material; the corresponding installed `@jigging/jig` distribution |
+| Software | Jig: original material in `packages/jig/**`, `packages/display-model/**`, `packages/display-web/**`, `packages/display-tui/**` and `docs/jig/spec/**`, excluding separately identified third-party material; the corresponding installed `@jigging/jig`, `@jigging/display-model`, `@jigging/display-web` and `@jigging/display-tui` distributions |
 | Licensor | Victor Duarte, professionally known as zvictor, personally; correspondence: c/o Pereirinhos s.r.o., Mateja Bela 8769/30, 010 15 Žilina, Slovakia |
 | Seller | Pereirinhos s.r.o., IČO 53427599, DIČ 2121379700, VAT ID SK2121379700; registered seat: Mateja Bela 8769/30, 010 15 Žilina, Slovakia. The company is authorized to sell and administer Jig company licenses on the Licensor's behalf; ownership remains with the Licensor. |
 | Licensing and notices | `licensing@jig.md`; postal notices use the Licensor correspondence address above |

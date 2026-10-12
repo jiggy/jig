@@ -160,6 +160,23 @@ A Flow is a direct Run target only when it:
 
 Direct eligibility is structural. Host execution support is planned
 separately, so an eligible target can still be unavailable on this host.
+SDK planning represents a recognized ACP prerequisite refusal as selected-target
+unavailability and propagates it through the exact selected Flow routes, including
+mixed implementations whose particular input might avoid the Agent branch.
+Unrelated targets retain their own readiness. CLI `jig review` nevertheless
+refuses the complete review on any observed typed selected ACP prerequisite,
+before apply or otherwise unchanged success; it does not approve the ready
+subset. This CLI policy leaves SDK per-target plan/apply semantics intact and
+does not broaden refusal to unrelated feature qualification failures.
+There is no alternate-client fallback.
+Refusal retains a closed client/slot cause bound to the captured request and
+policy, or an exact selected dependency cause bound to that child's retained
+refusal. Admission validates this evidence and cannot admit a ready parent of an
+unavailable child. Arbitrary errors, interrupted qualification, integrity faults
+and unconfirmed cleanup fail planning rather than becoming optional availability.
+Installing a missing client does not change a retained unavailable target; a new
+exact review must qualify and approve it.
+
 An unsatisfied requirement, including an incompatible ordinary default, removes
 the automatic direct target; the package can still be configured through a
 valid explicit Binding. A direct Flow may call other reviewed Flow or Binding
@@ -169,7 +186,7 @@ resource grants at the declared invocation slots. Packages requiring those
 resources are invoked through configured Bindings, not direct targets.
 
 [Run Checkpoint](run-checkpoint.md) requires a root writable attachment and
-the installed command's `--out` owner. Its accepted aggregate survives later
+the installed command's file-delivery owner. Its accepted aggregate survives later
 execution interruption under that invocation's bounded retention contract.
 
 Jig qualifies `FLOW.ts` through installed Bun and `FLOW.md` through the
@@ -616,9 +633,13 @@ One planning attempt:
 2. evaluates and retains its inert project and Binding values;
 3. captures and retains every selected Package/0 tree;
 4. links packages, settings, resolved defaults, exact slots, and the complete
-   direct-Flow and Binding target graph;
-5. selects one exact installed-host recipe for every target;
-6. derives the complete portable lock; and
+   direct-Flow and Binding target graph, applying an explicit review client
+   selection to selected normalized ACP policies when requested;
+5. qualifies the selected graph and effective resource policies; CLI review
+   stops on an observed typed selected ACP prerequisite before avoidable target
+   execution preparation, while SDK planning retains per-target readiness;
+6. selects exact installed-host recipes for ready targets and derives the
+   complete portable lock; and
 7. publishes one retained candidate and human-readable review.
 
 Planning is Run-admission-neutral, not free of authority or side effects. It
@@ -627,10 +648,16 @@ exercise explicitly granted resolution networking before final approval.
 It does not mutate user source or the visible lock, admit execution authority,
 or run package code.
 
-If any target has no exact supported recipe, this alpha planning operation
-returns `UNAVAILABLE` and publishes no applicable Plan. Missing or invalid
-native configuration for a target with an ACP grant includes
-`PROJECT_ACP_UNAVAILABLE` and a project-relative package location.
+SDK planning retains closed expected ACP prerequisite refusals as per-target
+unavailability, as defined above. Other unsupported recipe failures, interrupted
+qualification, integrity faults and unconfirmed cleanup fail planning with no
+applicable Plan. Missing or invalid native configuration supplies its known
+`PROJECT_ACP_<CLIENT>_<STAGE>` cause, or `PROJECT_ACP_UNAVAILABLE` when unclassified.
+The CLI stops the complete review on an observed typed selected ACP prerequisite
+before apply or otherwise unchanged success, independently of report truncation.
+It identifies the captured policy selection with verified locations or an honest
+Binding/slot fallback; it does not label a provider's executable Flow as the
+client declaration. Failure preserves the previous complete admission.
 Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
 and its project-relative `package.json` location. These diagnostics include
 fixed guidance, not credentials, raw provider errors, or installer output.
@@ -676,6 +703,54 @@ users do not need to copy or manage it. If publication commits but its response
 is lost, replanning the same unchanged content rediscovers the same retained
 meaning without admitting it.
 
+### Review client selection
+
+The CLI's explicit `jig review --agent codex|claude|pi` argument requires one
+supported value. Validate authored declarations normally, then change only
+`client` in every selected normalized ACP resource policy before qualification.
+Inline, named/shared and computed policies use the same construction boundary.
+The source closure remains unchanged. HTTP-backed Agents, Flow/package/provider
+routes and unselected policies are unaffected; no Agent is created.
+
+This operand is part of retained candidate meaning wherever authenticity and
+reuse require it. Effective requests, qualification, execution recipes, lock,
+admission and inspection MUST agree on the selected client and complete policy.
+Review identifies source versus effective clients, argument origin and affected
+recipients before normal approval. The ordinary lock retains effective slot
+policies and optional top-level
+`agentOverride`, whose value is exactly `codex`, `claude` or `pi`. Its presence
+requires at least one selected ACP policy and every selected ACP policy must
+use that client. Inspection's approved snapshot includes this retained
+`agentOverride` beside the effective slots; human output explains its
+review-argument origin. Neither view guesses origin from current source
+differences. The operand is also bound into retained capture identity; replay
+or reuse cannot pair another argument with the captured proposal.
+
+A same-client choice preserves every field and still qualifies. An actual
+cross-client change with an authored model pin or incompatible `retainSessions`
+refuses the entire request. Never clear, translate or infer model/retention
+policy, and preserve `maxTurns`. A pinned-model refusal states the operand's
+restriction, not an unproved claim about model compatibility or native setup.
+Refuse an inapplicable request when no ACP resources are selected. Global scope
+includes mixed source clients; there are no per-slot exceptions, force modes,
+automatic alternatives or partial semantic success.
+
+The operand does not grant execution, resolution networking, contract generation
+or new resource authority. Existing approval, `--yes` restrictions, generation,
+verification, preparation and cleanup remain unchanged. Run has no client operand
+and consumes only the complete admitted policy without substitution.
+
+Each later review uses newly captured source and its explicit arguments again.
+No client preference is inherited from lock, admission or environment. Repeating
+`--agent` proposes that selection again; editing the Binding persists a project
+choice. A bare review explains a proposed source-derived client change before
+approval or in its refusal. If it fails, the earlier approved code and client
+remain together: newly edited code is not admitted with the earlier client.
+Apply reopens the retained candidate and never reevaluates source or reconstructs
+this selection. Replay and exact reuse retain the same operand and effective
+meaning. Captured source locations remain source locations; an overridden Pi
+literal cannot become an originating Codex literal.
+
 ## 7. Lock and local admission
 
 `jig.lock` is the one portable desired-state lock. It records only:
@@ -685,13 +760,17 @@ meaning without admitting it.
 - direct-target eligibility, invocation requirements, and effective ordinary
   routes for direct Flows;
 - Binding package choices, settings, and effective slots;
-- resolved slot grant policies and reviewed attachment source paths, tree
-  digests and file manifests.
+- resolved effective slot grant policies;
+- optional `agentOverride` recording an explicit review-client selection; and
+- reviewed attachment source paths, tree digests and file manifests.
 
 Lock slot values are closed target identities: `{ "kind": "flow", "path":
 "flows/research" }` or `{ "kind": "binding", "id": "critic" }`,
 or resolved grants `{ "kind": "grant", "policy": { ... }, "name": "optional-name" }`. The lock
-retains the selected Binding's configuration in its own Binding entry.
+retains the selected Binding's configuration in its own Binding entry. Optional
+top-level `agentOverride` is reviewed origin, not a default for later reviews;
+the strict lock decoder requires at least one selected ACP slot and agreement
+of every selected ACP slot with that client.
 
 Only a package with `directRun: true` may contain `slots`. This optional map
 is present only when nonempty and contains only Flow or Binding identities
@@ -892,8 +971,21 @@ host-only code. Neither the refusal nor subsequent review replays the failed Run
 ### Root file Runs
 
 The installed command accepts `--input JSON|@FILE`, repeated `--attach NAME=DIR`
-and `--select NAME=FILE`, and one `--out DIR`. Parsing performs no file reads;
-acquisition happens once, preserving caller-relative paths through reexecution.
+and `--select NAME=FILE`, and optional `--out DIR`.
+Parsing performs no file reads; acquisition happens once, preserving
+caller-relative paths through reexecution. An explicit `--out` replaces an
+entrypoint output default and keeps its exact destination.
+When the effective invocation has no `--out`, a retained approved target with
+a read-write attachment receives one fresh absolute packet destination beneath
+the canonical operating-system temporary directory. Result-only targets keep
+stdout-only output; unknown targets and unreviewed projects receive no fabricated
+file requirements. The selection uses the same retained admission as submission,
+including unavailable writable targets, without evaluating visible source or
+probing Agent readiness. Output and no-output decisions are made before file
+ownership or host-delegation reexecution and remain unchanged through all owners.
+Selection neither reserves a directory nor grants filesystem authority.
+An invalid temporary parent refuses before dispatch with guidance to choose
+`--out`; no alternative path or target is selected automatically.
 An ordinary quoted JSON string beginning with `@` is still an inline value.
 
 Every declared read attachment not supplied by the selected Binding requires
@@ -901,7 +993,14 @@ exactly one mapping. Selectors name
 exact regular files relative to that root; without selectors Jig enumerates
 its bounded tree. Unknown or duplicate mappings/selectors fail before dispatch.
 Review requires no invocation paths. The declared writable attachment requires
-`--out`; with no writable attachment, `--out` publishes only the host record.
+a destination, selected implicitly when `--out` is omitted; with no writable
+attachment, an explicit `--out` publishes only the host record. The authoritative
+admitted-interface check precedes root Run allocation. A closed bounded failure
+identifies missing unbound reads, names
+that cannot map an unbound read, attempted bound overrides, and writable names
+missing a destination. Combined retained and per-run file limits remain
+independently enforced. Diagnostics contain declared/supplied attachment names
+and fixed text, never guessed fixture paths or source freshness.
 
 Capture preserves binary and empty file bytes, omits empty directories, and
 rejects symlinks, multiply linked files, special files, traversal, malformed
@@ -953,6 +1052,14 @@ state. A separate command owner owns destination staging before allocation,
 survives coordinator failure, and removes unpublished staging without another
 invocation. Output storage, its bounded read buffer, and destination copies
 remain bounded after the Run execution owner is removed; see the security ceilings.
+The same checks apply to an implicit temporary destination, including for an
+unavailable writable target before its retained refusal. A collision or invalid parent,
+protected path or input-root overlap refuses before dispatch. There is no
+automatic name retry after work starts. Stderr reports the selected destination,
+including in machine-output mode; JSON/NDJSON framing and the existing
+`delivery.destination` field are preserved. Written packets remain after command
+or inspection exit. Operating-system cleanup may remove temporary packets;
+`--out` selects a chosen retained location without overwrite behavior.
 
 Publication uses one no-replace atomic directory rename. Directories have mode
 `0700`, files `0600`; empty directories and source permissions are not preserved.
@@ -1125,7 +1232,7 @@ absolute `JIG_BWRAP_PATH` in the host environment. An explicit selection must
 pass the same executable, feature, retained-identity, and revalidation checks;
 failure never selects another executable. Neither project input nor ambient
 `PATH` selects those containment tools. Native Agent clients use the separate
-[operator executable discovery rules](agent-run.md#alpha-host-implementations).
+[operator executable discovery rules](finite-acp.md#native-client-profiles).
 The selection is not exposed to Flow code.
 NixOS uses its system-managed nix-ld link to select the real glibc
 loader. Runtime support is still authenticated and mounted file by file;
@@ -1144,6 +1251,9 @@ weaken them.
 - Renaming is one removal plus one addition in the same candidate.
 - Formatting changes which preserve normalized project meaning need no new
   admission.
+- An explicit review client selection belongs to that retained proposal, not a
+  source edit or remembered preference. A later review without it uses source
+  again; failure retains the previous complete code and client.
 
 Runtime dispatch always uses an immutable admitted generation. It never reads
 the live discovery directories to decide what to execute.
@@ -1199,3 +1309,14 @@ The direct-alpha project implementation must prove at least:
     receive no defaults. Review retains effective direct-Flow and Binding
     routes, rejects invalid or over-deep graphs, and source edits cannot
     change an admitted Run's implementation or authority.
+19. CLI review refuses every observed typed selected ACP prerequisite before apply
+    or unchanged success, even with ready code targets, `--yes`, redirected output
+    or a saturated issue report. It retains prior complete approval and SDK
+    per-target readiness, starts no Flow/model call, and never rewrites ACP source.
+20. Explicit review client selection changes only `client` in all selected normalized
+    ACP policies before qualification; source, other fields and authority checks
+    remain intact. Candidate/capture identity, lock, recipes and inspection agree
+    on effective policy and retained origin. Pinned cross-client models,
+    incompatible retention and zero selected ACP policies refuse atomically.
+    A same-client choice qualifies; later bare review uses source again, and a
+    failed later review retains the earlier code and client together.

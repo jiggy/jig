@@ -60,8 +60,8 @@ const expectedInstalledFiles = [
   'libexec/markdown-runtime.js',
   'libexec/http-request-worker.js',
   'libexec/flow.LICENSE',
-  'libexec/contracts/user-updates/user-updates.json',
-  'libexec/contracts/user-updates/LICENSE',
+  'libexec/contracts/reporting/reporting.json',
+  'libexec/contracts/reporting/LICENSE',
   ...['agent-run', 'project-command', 'http-request', 'run-checkpoint', 'finite-acp'].flatMap(
     (name) => [`libexec/contracts/${name}/contract.json`, `libexec/contracts/${name}/LICENSE`],
   ),
@@ -256,6 +256,53 @@ console.log(path);
       "import { defineJig } from '@jigging/jig';\nconsole.log(typeof defineJig);\n",
     )
     assert.equal((await run([runtime, authoringCheck], consumer)).stdout, 'function\n')
+    // Linux delegation is checked before renderer preparation. Ordinary source
+    // CI has no execution envelope; require this Run proof on the provisioned
+    // host instead of mistaking SANDBOX_UNAVAILABLE for a renderer failure.
+    if (process.platform === 'darwin' || process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') {
+      const tuiRefusal = await run(
+        [
+          process.env.PYTHON ?? 'python3',
+          join(import.meta.dir, 'fixtures/installed-tui-refusal.py'),
+          command,
+        ],
+        consumer,
+        {},
+        45_000,
+      )
+      assert.equal(JSON.parse(tuiRefusal.stdout).passed, true)
+      assert.equal(tuiRefusal.stderr, '')
+    } else {
+      console.log('Skipped installed TUI Run refusal: requires the provisioned Linux host gate.')
+    }
+    // Saved inspection needs terminal stdout as well as terminal stderr. The
+    // test-only PTY owner keeps the capability in memory and emits sanitized
+    // evidence; no project, execution host or native renderer is involved.
+    const web = await run(
+      [
+        process.env.PYTHON ?? 'python3',
+        join(import.meta.dir, 'fixtures/installed-saved-web.py'),
+        command,
+        join(consumer, 'saved-web-packet'),
+      ],
+      consumer,
+      {},
+      90_000,
+    )
+    assert.deepEqual(JSON.parse(web.stdout), {
+      passed: true,
+      checks: [
+        'embedded-assets',
+        'bearer-required',
+        'recorded-capture',
+        'immutable-previews',
+        'exact-origin-close',
+        'piped-input',
+        'joined-exit',
+        'capability-redaction',
+      ],
+    })
+    assert.equal(web.stderr, '')
   } finally {
     await rename(hiddenRenderer, rendererDirectory)
   }
@@ -327,20 +374,20 @@ console.log(path);
   assert.equal(targets.stdout, '')
   assert.equal(targets.stderr, '')
   await assert.rejects(stat(ambientMarker), { code: 'ENOENT' })
-  await run([command, 'import-contract', 'jig:user-updates', 'imported-updates'], consumer)
+  await run([command, 'import-contract', 'jig:reporting', 'imported-updates'], consumer)
   assert.deepEqual(
-    await readFile(join(consumer, 'imported-updates/user-updates.json')),
-    await readFile(join(installed, 'libexec/contracts/user-updates/user-updates.json')),
+    await readFile(join(consumer, 'imported-updates/reporting.json')),
+    await readFile(join(installed, 'libexec/contracts/reporting/reporting.json')),
   )
   assert.deepEqual(
     await readFile(join(consumer, 'imported-updates/LICENSE')),
-    await readFile(join(installed, 'libexec/contracts/user-updates/LICENSE')),
+    await readFile(join(installed, 'libexec/contracts/reporting/LICENSE')),
   )
   await assert.rejects(
-    run([command, 'import-contract', 'jig:user-updates', 'imported-updates'], consumer),
+    run([command, 'import-contract', 'jig:reporting', 'imported-updates'], consumer),
   )
   const catalog = await run([command, 'import-contract', '--list'], consumer)
-  assert(catalog.stdout.includes('jig:user-updates'))
+  assert(catalog.stdout.includes('jig:reporting'))
   for (const name of [
     'agent-run',
     'project-command',
@@ -633,7 +680,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
   ) {
     const sdkArchive = process.env.FLOW_SDK_PACKAGE_ARCHIVE
-    const updatesArchive = process.env.USER_UPDATES_PACKAGE_ARCHIVE
+    const updatesArchive = process.env.REPORTING_PACKAGE_ARCHIVE
     assert(
       sdkArchive && updatesArchive,
       'The installed updates host probe needs both frozen public archives',
@@ -664,12 +711,12 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
         type: 'module',
         dependencies: {
           '@jigging/flow': 'workspace:*',
-          '@jigging/user-updates': 'workspace:*',
+          '@jigging/reporting': 'workspace:*',
         },
       }),
     )
     await run(
-      [command, 'import-contract', 'jig:user-updates', 'flows/hello/contracts/user-updates'],
+      [command, 'import-contract', 'jig:reporting', 'flows/hello/contracts/reporting'],
       project,
     )
     await writeFile(
@@ -681,7 +728,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
           updates: {
             direction: 'send',
             required: false,
-            contract: './contracts/user-updates/user-updates.json',
+            contract: './contracts/reporting/reporting.json',
           },
         },
       }),
@@ -690,8 +737,8 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
       join(flow, 'FLOW.ts'),
       [
         'import { handle, OperationError } from "@jigging/flow";',
-        'import { withUserUpdates } from "@jigging/user-updates";',
-        'await handle(run => withUserUpdates(run, "updates", async updates => {',
+        'import { withReporting } from "@jigging/reporting";',
+        'await handle(run => withReporting(run, "updates", async updates => {',
         '  updates.notice("Checking invoices\\nVerification remains pending.");',
         '  const count = run.input.allocations;',
         '  for (let n = 0; n < count; n++) { const pair = await run.channel(); await pair.send.close(); await pair.receive.close(); }',

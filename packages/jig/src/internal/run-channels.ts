@@ -1,4 +1,4 @@
-import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import { REPORTING_CONTRACT } from '@jigging/reporting'
 import type { RootRunStatus } from '../administration/root.js'
 import {
   CHANNEL_CONTRACT_BYTES,
@@ -7,7 +7,7 @@ import {
   requireChannelReference,
 } from '../channel-contract.js'
 import type { PrivateCallEvent } from '../cli-run-model.js'
-import type { PrivateUserUpdateSource } from '../cli-user-updates.js'
+import type { PrivateReportingSource } from '../cli-reporting.js'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -21,6 +21,12 @@ import {
   type ResolvedChannelContract,
 } from '../run/channels.js'
 
+/** Actual host-owned stderr emitter and, when known, its invoking caller operation. */
+export type PrivateRunDiagnosticSource = Readonly<{
+  emitter: string
+  call?: Readonly<{ publisher: string; operationId: string }>
+}>
+
 /** Command-local presentation. Its callbacks confer no execution authority. */
 export interface PrivateRunChannelOutput {
   readonly receive: readonly string[]
@@ -28,13 +34,45 @@ export interface PrivateRunChannelOutput {
   dispatched?(): void
   call?(event: PrivateCallEvent): void
   readonly updates?: {
-    open(port: string): PrivateUserUpdateSource
+    open(port: string): PrivateReportingSource
     ambiguous(ports: readonly string[]): void
   }
   record(value: JsonValue): Promise<void>
-  diagnostic(bytes: Uint8Array, operations?: readonly string[]): void
+  diagnostic(
+    bytes: Uint8Array,
+    operations?: readonly string[],
+    source?: PrivateRunDiagnosticSource,
+  ): void
   /** Command-local observation of an authoritative settled root, including during close. */
   terminal?(status: Extract<RootRunStatus, { state: 'terminal' }>): void
+}
+
+/** Bind process observations without treating stderr bytes as accepted semantic reports. */
+export function privateRunDiagnosticObserver(
+  input: Readonly<{
+    output: Pick<PrivateRunChannelOutput, 'diagnostic'>
+    emitter?: Pick<ChannelParticipant, 'id'>
+    call?: Readonly<{ caller: Pick<ChannelParticipant, 'id'>; operationId: string }>
+    operations?: readonly string[]
+  }>,
+): (bytes: Uint8Array) => void {
+  const source: PrivateRunDiagnosticSource | undefined =
+    input.emitter === undefined
+      ? undefined
+      : Object.freeze({
+          emitter: input.emitter.id,
+          ...(input.call === undefined
+            ? {}
+            : {
+                call: Object.freeze({
+                  publisher: input.call.caller.id,
+                  operationId: input.call.operationId,
+                }),
+              }),
+        })
+  const operations =
+    input.operations === undefined ? undefined : Object.freeze([...input.operations])
+  return (bytes) => input.output.diagnostic(bytes, operations, source)
 }
 
 export type PrivateChannelContractCache = Map<string, Promise<ResolvedChannelContract>>
@@ -73,7 +111,7 @@ export class PrivateRunChannels {
     )
     const cli = broker.participant('command', { resolveContract })
     const references: Record<string, string> = Object.create(null)
-    const readers: { name: string; endpoint: string; updates?: PrivateUserUpdateSource }[] = []
+    const readers: { name: string; endpoint: string; updates?: PrivateReportingSource }[] = []
     let context: PrivateRunChannels | undefined
     try {
       const selected = output?.receive ?? []
@@ -96,7 +134,7 @@ export class PrivateRunChannels {
         readers.push({ name, endpoint: receiver.endpoint })
       }
       if (selected.length === 0 && output?.updates !== undefined) {
-        const expected = USER_UPDATES_CONTRACT
+        const expected = REPORTING_CONTRACT
         const matches = Object.entries(declarations).filter(
           ([, port]) =>
             port.direction === 'send' &&
@@ -148,7 +186,7 @@ export class PrivateRunChannels {
 
   private async drain(
     cli: ChannelParticipant,
-    reader: { name: string; endpoint: string; updates?: PrivateUserUpdateSource },
+    reader: { name: string; endpoint: string; updates?: PrivateReportingSource },
     output: PrivateRunChannelOutput,
   ): Promise<void> {
     try {

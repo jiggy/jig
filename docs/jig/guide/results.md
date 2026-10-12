@@ -21,10 +21,21 @@ arguments. Without an entrypoint, terminals offer a numbered chooser and scripts
 must supply a target. Press Enter to cancel the chooser. Both paths run the
 approved revision, not unreviewed edits.
 
+Targets declaring writable deliverables receive a fresh packet destination in
+operating-system temporary storage when `--out` is omitted. Jig reports the path
+on stderr, including in machine-output mode. Temporary packets remain after exit,
+but the operating system may clear them. Use `--out DIRECTORY` for a chosen
+retained location that does not already exist; Jig never overwrites a packet.
+Result-only targets return stdout without creating a packet by default, and can
+use `--out` to save their execution record too.
+
 Use `jig inspect` to list targets in the last approved revision. Use
 `jig inspect binding:repair` (or an exact `flow:` target) to read its invocation
 contract, settings schema, configured settings, resolved slots, resource grants,
 and attachments. The contract includes input, outcomes and channels.
+An approved review client selection appears as effective ACP policies and retained
+`agentOverride` origin. It is not inferred from current source and does not become
+a preference for a later review.
 `--json` or redirected stdout returns JSON.
 The terminal view starts with invocation guidance: required input fields,
 placeholder file paths, and channel requirements. Replace the placeholders
@@ -66,7 +77,7 @@ in `result.json` when delivery succeeds.
 Diagnostics already printed live are counted in the final summary rather than
 printed again. A null checkpoint means no progress was retained and is omitted
 from the terminal view; the machine record keeps that exact value.
-In an explicit dashboard, diagnostic text retained in a collapsed Activity entry
+In a TUI, diagnostic text retained in a collapsed Activity entry
 may not have been read. Its complete bounded final evidence remains visible.
 The [workspace controls](channels.md#observe-the-work) explain expandable reports,
 attributed causes and read-only result inspection. Closing that
@@ -81,7 +92,7 @@ carries diagnostics and, on a terminal, elapsed status and cancellation updates.
 Piped stdout remains machine-readable. Interactive terminals show one active
 status line and use color for headings and outcomes. Set `NO_COLOR=1` or
 `TERM=dumb` for plain output without animation; redirected streams are always
-plain. An explicitly selected eligible dashboard with NO_COLOR uses screen
+plain. An explicitly selected eligible TUI with NO_COLOR uses screen
 controls without color. Errors put the explanation and next action before the diagnostic code.
 The [CLI experience contract](../spec/cli-experience.md) defines these guarantees. Ctrl-C requests cancellation; wait for cleanup before starting new
 work. An interruption or uncertain result is not permission to blindly retry.
@@ -100,11 +111,12 @@ is an Agent answer or proof that the application achieved its objective.
 ### Reopen a saved result
 
 ```sh
-jig inspect --result ./result-packet --display dashboard
+jig inspect --result ./result-packet --display tui
+jig inspect --result ./result-packet --display web
 ```
 
 This opens **Recorded result**, **Files** and **Diagnostics** without starting a
-Run, reading project authority or contacting providers. Omit `--display dashboard`
+Run, reading project authority or contacting providers. Omit `--display`
 for a plain report. `--json` or redirected stdout returns the decoded report
 unchanged. The directory you select supplies the evidence; a recorded destination
 inside `result.json` does not redirect inspection elsewhere.
@@ -114,9 +126,15 @@ File previews use immutable captured bytes checked against the saved manifest;
 matching digests establish consistency with that manifest. Missing or mismatched
 files are reported, while already verified previews remain available. Live Flow
 tabs and call history are not retained in current packets and are not reconstructed.
-The inspector stays open until `q`, Escape or keyboard Ctrl-C, subject to any
+The TUI inspector asks before leaving with `q` or keyboard Ctrl-C, with **Stay**
+selected. Escape returns within the TUI. Inspection remains subject to any
 explicit enclosing command limit. Input/output failure or external interruption
 also closes it and releases its retained evidence.
+For web, open the private link printed on terminal stderr and choose **Close
+inspection** to leave. Browser disconnection does not cancel or close it.
+Selecting a captured file shows its contents; empty, non-text, unavailable and
+clipped files have distinct explanations. Expanded search covers the retained
+excerpt, not bytes outside it. Saved values keep their recorded provenance.
 
 Exit 0 means the saved report and files were read consistently, even if that report
 records a failed Run. Exit 1 means invalid or unavailable evidence, incomplete
@@ -165,22 +183,50 @@ provider response while the Flow's own result contract is unchanged.
 
 Execution completion is different from task success: a method can execute
 correctly and return an application outcome such as `blocked`. Inspect the
-outcome, output, and exit status. With `--out`, also inspect the separate
-delivery status. Existing output directories are never replaced; choose a new
-destination for another Run.
+outcome, output, and exit status. When a packet destination is selected, also
+inspect the separate delivery status. Existing output directories are never
+replaced. An explicit `--out` must name a new destination for another Run;
+omitted output on a writable target selects a fresh temporary destination.
 
 ### Agent setup failures during review
 
-Review names the selected Agent, explains the known setup failure, and points to
-the Binding declaration and resource slot that selected it. For example, a
-Codex executable error points to the grant selecting `client: 'codex'`.
-Select an installed client through `CODEX_PATH` or operator `PATH`; Codex's
-supported npm and Volta layouts resolve to their native executable without
-running the launcher. Shell aliases and functions are not executables.
-An unsupported wrapper requires selecting the underlying native file.
-An explicit override must be an
-absolute executable file and does not fall back to `PATH`. Change the resource
-grant if you intended to use another client, then review again.
+A selected ACP prerequisite failure stops the entire `jig review` before new
+approval, including an otherwise unchanged review. This applies in terminals,
+scripts and `--yes` use, even when a code target is ready or an input might avoid
+the selected Agent branch. An unselected missing client does not block review.
+Any earlier approved code and client remain unchanged; Run still performs its
+normal admission and environment checks.
+
+The error identifies the known cause, selected client and affected Binding/slot.
+Its location refers to the captured source: a verified client literal when
+known, selection context for a computed expression, or the Binding file and
+logical slot when no exact client line is known. Named policies point to their
+captured JSON file and identify affected recipients. The next review captures
+your edits afresh.
+
+Repair the selected client's installation or exported path override. A rejected
+`CODEX_PATH`, `CLAUDE_PATH` or `PI_PATH` is an override problem, not proof that the
+client is uninstalled; an explicit override does not fall back to `PATH`.
+Codex's supported npm and Volta layouts resolve to their native executable
+without running the launcher. Shell aliases and functions are not executables.
+An unsupported wrapper needs its underlying native file; helper and other setup
+failures have their own repair guidance.
+
+Executable failures may list passively detected supported alternatives, labelled
+as executable detection only. They do not establish authentication, qualification
+or compatibility. To change clients permanently, edit the named policy or inline
+Binding shown by the diagnostic and review again. You may instead use an explicit
+[`jig review --agent codex`](agents.md#switching) proposal for every selected ACP
+policy. Preserve turn limits and choose model/retention changes deliberately.
+No interactive correction or automatic source write occurs. Retry guidance does
+not add networking or authority approval on your behalf.
+
+Review checks prerequisites without starting a Flow or calling a model. It may
+have prepared dependencies or performed separately requested contract generation
+before failure. No new approval is recorded. `--details` expands the retained
+observed report, discloses its bounds and identifies checks that did not finish;
+it does not run extra checks. `jig review --json` is unsupported. Run and inspection
+keep their existing machine-output options.
 
 `--allow-resolution-network` produces one warning covering dependency preparation
 for the entire review. Per-package progress still identifies which package is

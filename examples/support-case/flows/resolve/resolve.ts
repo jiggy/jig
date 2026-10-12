@@ -1,5 +1,5 @@
 import type { RunContext, RunResult } from '@jigging/flow'
-import { type Account, type Proposal, decide } from './policy.ts'
+import { type Account, decide, type Proposal } from './policy.ts'
 
 export async function resolve(
   run: Pick<RunContext, 'input' | 'call' | 'signal'>,
@@ -14,6 +14,7 @@ export async function resolve(
   const assessment = await run.call({
     operationId: 'assess-case',
     slot: 'assessment',
+    intent: 'Interpret the disputed charge before policy checks',
     input: run.input,
   })
   run.signal.throwIfAborted()

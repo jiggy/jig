@@ -1,0 +1,39 @@
+@default:
+    just --list
+
+# Build declared prerequisites through their owning recipes and consume exports.
+@build: verify-build-bun clean
+    just --justfile ../display-model/justfile build
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+    cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .
+    mkdir -p LICENSES
+    cp ../../LICENSES/Apache-2.0.txt ../../LICENSES/CC-BY-4.0.txt ../../LICENSES/Community-Spec-1.0.md ../../LICENSES/MPL-2.0.txt LICENSES/
+
+clean:
+    #!/usr/bin/env bun
+    import { rm } from 'node:fs/promises';
+    for (const path of ['dist', 'LICENSE.md', 'PRICING.md', 'LICENSES.md', 'LICENSES']) {
+      await rm(path, { recursive: true, force: true });
+    }
+
+verify-build-bun:
+    #!/usr/bin/env bun
+    const expected = process.platform === 'darwin'
+      ? ['1.4.2', '744846f844374847c902b5e7fd59b4342a51ef99']
+      : ['1.3.3', '274e01c737e85f8142070a9745b43a2ba09fce4c'];
+    if (Bun.version !== expected[0] || Bun.revision !== expected[1]) {
+      throw new Error(`The terminal display must be built with qualified ${process.platform} Bun ${expected[0]} revision ${expected[1]}`);
+    }
+
+[positional-arguments]
+@test *args:
+    bun test "$@"
+
+@check: build test
+
+[positional-arguments]
+@pack *args: build
+    bun pm pack --ignore-scripts "$@"
+
+@test-package:
+    bun test/package-smoke.ts

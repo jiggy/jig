@@ -75,7 +75,7 @@ entrypoint: "binding:factory",
 ```
 
 ```ts
-entrypoint: "binding:factory --input @batch.json --attach source=fixtures --out factory-result --timeout 8m",
+entrypoint: "binding:factory --input @batch.json --attach source=fixtures --timeout 8m",
 ```
 
 The string is bounded to 16,384 characters and 512 argument words. Jig tokenizes
@@ -101,16 +101,29 @@ Explicit options replace corresponding defaults: `--input` replaces the entire
 JSON value or file reference, `--receive` replaces the channel set, and file
 mappings replace by attachment name. `--select` replaces that attachment's whole
 selection set. Replacing `--attach` clears its default selections unless explicit
-selections are also supplied. Duplicate options within either source remain
-errors. An explicit target bypasses all entrypoint defaults, even when it names
+selections are also supplied. An explicit `--out` replaces the declared output
+destination; duplicates within either source remain errors. An explicit target
+bypasses all entrypoint defaults, even when it names
 the same target. Without an entrypoint, terminals offer a chooser and scripts
 require an exact target. An invalid or unavailable entrypoint never falls back.
 
 Declaration paths resolve from the project; explicit CLI paths resolve from the
 calling directory. Job file contents are captured at invocation, while Binding
 attachments remain review-pinned and cannot be overridden. Existing output
-paths are never overwritten: a fixed `--out` needs a new destination on repeat
-Runs. Entry point changes are reviewed and retained with the exact project
+paths are never overwritten: `--out DIR` needs a new destination on repeat Runs.
+When the effective invocation omits `--out`, a retained approved target declaring
+a read-write attachment receives a fresh packet destination in canonical
+operating-system temporary storage. Result-only targets remain stdout-only.
+Unknown targets and unreviewed projects receive no invented file requirements.
+Destination selection precedes command-owner reexecution and stays unchanged
+through submission, including the decision to omit output. Selection creates no
+reservation or file authority. Ordinary anchored-parent, protected-path,
+input-root exclusion and no-replace publication checks remain authoritative;
+a collision or invalid destination refuses before dispatch without retrying work.
+Jig reports the actual destination on stderr and in the existing machine
+`delivery.destination` field. Temporary packets remain after command exit, but
+the operating system may clear them. Use `--out` for a chosen retained location.
+Entry point changes are reviewed and retained with the exact project
 revision. `jig inspect` exposes that approved string; unreviewed edits do not
 change execution. Selection and submission must use the same admission.
 
@@ -239,10 +252,12 @@ Resource policies are inline by default:
 slots: {
   tests: { kind: 'command', test: ['test/project.test.ts'] },
   reference: { kind: 'http', url: 'https://docs.example.org/reference', method: 'GET' },
+  native: { kind: 'acp', client: 'codex' },
 }
 ```
 
-For reuse, select `reference: 'grant:documents'` and include
+For intentional policy reuse or independent management, select
+`reference: 'grant:documents'` and include
 `grants: discover('./grants')` in `jig.ts`. The filename
 `grants/documents.json` supplies the policy name; its object uses exactly the
 same grammar as an inline grant. Each selected slot must declare the exact
@@ -250,7 +265,11 @@ supported contract for its resource kind. HTTP, Project Command, and Finite ACP
 use the ordinary Binding slot limit of eight total; selecting a resource does
 not increase execution capacity.
 [Grants](grants.md) owns capture limits and explicit authority approval.
-Parent permissions are never inherited.
+Parent permissions are never inherited. A simple ACP policy needs no separate
+grant file. The explicit review-only `--agent` argument may propose another
+client in all selected normalized ACP policies without changing declarations;
+[project policy](project-policy.md#review-client-selection) defines its retained
+meaning and refusal rules. It adds no Binding field or Run override.
 
 `attachments` optionally binds declared read attachments to project-relative
 directories, for example `attachments: { decoder: "./tools/base64" }`.

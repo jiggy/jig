@@ -1,3 +1,4 @@
+import type { AcpGrant } from '../project/grants.js'
 import type { PrivateInspectionEnvironmentCheck } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentity } from './bun-direct-run.js'
 import {
@@ -13,6 +14,7 @@ import {
 import { PrivateLinuxCgroupBackend } from './linux-rootless-backend.js'
 import { PrivateMacosBackend } from './macos-native-backend.js'
 import { openPrivateAcpResources } from './private-acp-resources.js'
+import { privateDetectedAgentAlternatives } from './project-resource-qualification.js'
 import type { PrivateProjectSessionHost } from './project-session-controller.js'
 import { PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS } from './root-run-timeout-policy.js'
 
@@ -87,6 +89,8 @@ export async function openPrivateInstalledBunHost(
     backend,
     installedBunSupport,
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
+    detectAgentAlternatives: (selected: readonly AcpGrant['client'][]) =>
+      privateDetectedAgentAlternatives(operatorEnvironment, projectDirectory, selected),
     acpResources: openPrivateAcpResources(
       installedBunSupport,
       operatorEnvironment,

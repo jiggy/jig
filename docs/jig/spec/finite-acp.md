@@ -31,8 +31,11 @@ defineBinding({
 
 The host qualifies that exact client using operator configuration captured
 before project loading. Review identifies the recipient, client, model,
-authentication mode and executable. No global Agent selection, guessed slot
-name or Flow-authored environment creates this authority. Changed runtime
+authentication mode and executable. The explicit review-only `--agent` operand
+may construct an effective client for every selected ACP policy under
+[project policy](project-policy.md#review-client-selection), with source and
+argument origin visible. No ambient global Agent selection, guessed slot name
+or Flow-authored environment creates this authority. Changed runtime
 identity requires renewed review; the launch still revalidates its artifacts.
 
 An optional grant `model` selects the model for this recipient, overriding the
@@ -536,7 +539,10 @@ a query or a fragment. Endpoint selection does not disable TLS certificate
 verification.
 
 If the selected client, executable support, credential, or model is missing or
-invalid, reviewing a native-grant target reports it unavailable. A known setup
+invalid, SDK qualification records that native-grant target as unavailable.
+CLI review refuses the complete project before new approval or otherwise
+unchanged success on any observed typed selected ACP prerequisite, even when
+unrelated targets are ready. A known setup
 failure uses `PROJECT_ACP_<CLIENT>_<STAGE>`, with client `CODEX`,
 `CLAUDE` or `PI`. Stages distinguish `EXECUTABLE` discovery, `INSTALLATION`
 support, Codex `SANDBOX` support, `LOGIN` subscription authentication, `API`
@@ -545,8 +551,10 @@ unavailable `PREFERENCES` observation from unsupported `MANAGED_POLICY`.
 The CLI gives client-specific
 corrections without publishing raw exceptions or secret values. Unclassified
 failures remain `PROJECT_ACP_UNAVAILABLE`; the host does not guess their cause.
-A target without native requirements in an already admitted generation remains runnable
-because its recipe does not depend on the Agent implementation.
+A failed review preserves the earlier approved code and client together.
+A target without native requirements in that already admitted generation remains
+subject to normal Run admission/environment checks; its recipe does not depend
+on the Agent implementation.
 
 `jig review` authenticates and admits the selected local configuration. It does
 not send a remote health-check request, so `ready` does not assert that a model

@@ -7,32 +7,47 @@ The importer calls the same mapping slot in all three configurations.
 
 ## Try it
 
-Complete [workspace setup](https://jig.md/guide/dependencies#local-workspace-packages)
-and [Agent configuration](https://jig.md/guide/agents) on a
-[supported host](https://jig.md/guide/). From this directory:
+With Jig installed on a [supported host](https://jig.md/guide/), run from this
+directory. Configure and authenticate the client selected in `bindings/model.ts`
+through [Choose an Agent](https://jig.md/guide/agents); the included inline policy
+selects Codex as an example. The default known-format preview calls no Agent,
+but review also checks this project's selected Agent and mixed alternatives.
+An unavailable selected client stops project review before new approval.
 
 ```sh
 jig review --allow-resolution-network
-jig run binding:code --input '{}' --attach source=fixtures/known --out preview-known
+jig run
 ```
 
 The CSV parser is an ordinary declared dependency. The resolution flag permits
 fresh dependency resolution during this review; inspect and approve the result.
-The project includes an ordinary Agent dependency and `bindings/model.ts`, where
-you select the native client and grant its authority. Review that configuration
-even when this particular run uses only code. The known-format path makes no Agent calls.
+The reviewed entrypoint supplies the fixture, read attachment and one-minute deadline.
+Because this Flow writes deliverables, Jig chooses a fresh packet directory in
+operating-system temporary storage and reports it on stderr. Repeating `jig run`
+leaves earlier packets intact. The operating system may clear temporary storage;
+use `jig run --out ./preview-result` to choose a retained location. That directory
+must not already exist; Jig never overwrites an earlier result.
 
-Open `preview-known/files/preview.json`. Ada and Mei have accepted contact
+Open `files/preview.json` inside the reported destination. Ada and Mei have accepted contact
 records. Grace's invalid email appears in `rejected`, with CSV record number 3.
-`preview-known/result.json` contains the execution result. These are synthetic
+`result.json` in that destination contains the execution result. These are synthetic
 contacts, and no database records are created.
+
+To propose a different installed client for this review, use
+`jig review --agent CLIENT --allow-resolution-network`, where `CLIENT` is
+`codex`, `claude`, or `pi`. Review shows the effective client before approval;
+it leaves the Binding unchanged. Repeat `--agent CLIENT` on later reviews, or
+edit the Binding for a lasting choice. Without the argument, later review
+proposes the source client again. Normal `jig run` uses the approved client and
+code; failed review keeps the previous approval.
+Mixed still requires its Agent route even when a particular input takes its code branch.
 
 Now use different headings and a different column order:
 
 ```sh
-jig run binding:code --input '{}' --attach source=fixtures/unfamiliar --out preview-unknown
-jig run binding:agent --input '{}' --attach source=fixtures/unfamiliar --out preview-agent --timeout 2m
-jig run binding:mixed --input '{}' --attach source=fixtures/unfamiliar --out preview-mixed --timeout 2m
+jig run binding:code --input '{}' --attach source=fixtures/unfamiliar
+jig run binding:agent --input '{}' --attach source=fixtures/unfamiliar --timeout 2m
+jig run binding:mixed --input '{}' --attach source=fixtures/unfamiliar --timeout 2m
 ```
 
 Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
@@ -40,7 +55,24 @@ Code returns `needs_mapping`. The Agent is asked to interpret `Organisation`,
 `{"name":2,"email":1,"organization":0}`. Its answer may differ or it may abstain.
 Mixed recognizes the known format in code and invokes the Agent only for
 unfamiliar headings. Try `binding:mixed` with `fixtures/known` to take
-the direct code path. Every output destination must be new.
+the direct code path. Each invocation receives its own temporary packet unless
+you choose a new destination with `--out DIR`.
+
+## Follow the work
+
+**Mapping** shows the headings and proposed column indices. **Contacts** shows accepted
+preview records; **Rejected rows** explains exclusions. Lists show up to twelve records
+with explicit totals and marked text excerpts; the complete returned output and
+`preview.json` retain every record. Select the delivered preview reference to read its
+content. The mapper and converter also offer domain views when invoked independently.
+`needs_mapping` and rejected rows remain distinct from a completed import: no database
+is changed.
+
+Add `--display tui` for a terminal workspace or `--display web` for the same
+views in a browser. Open the private link printed after execution starts. The completed inspector
+stays open until you explicitly close it; leaving a live display does not cancel work.
+Blocking causes remain reachable from every view. Plain output and `--json` remain
+available.
 
 ## Follow the composition
 
@@ -80,7 +112,7 @@ Inspect the mapping and preview before using them.
 `fixtures/malformed` has duplicate headings and fails before calling a mapper:
 
 ```sh
-jig run binding:code --input '{}' --attach source=fixtures/malformed --out preview-malformed
+jig run binding:code --input '{}' --attach source=fixtures/malformed
 ```
 
 ## Know what the result means

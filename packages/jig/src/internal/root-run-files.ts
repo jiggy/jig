@@ -1,4 +1,5 @@
 import { posix } from 'node:path'
+import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
 import { PRIVATE_OUTPUT_PATH, type PrivateExecutionIntent } from './execution-intent.js'
@@ -12,10 +13,7 @@ import {
   sha256,
 } from './file-input.js'
 import { privateDomainDigest } from './identity.js'
-import {
-  parseRunCheckpointInput,
-  RUN_CHECKPOINT_CONTRACT_DIGEST,
-} from './private-run-checkpoint.js'
+import { parseRunCheckpointInput } from './private-run-checkpoint.js'
 
 export interface PrivateRunFileIdentity {
   readonly attachments: readonly {
@@ -32,6 +30,46 @@ export const PRIVATE_EMPTY_FILE_IDENTITY: PrivateRunFileIdentity = Object.freeze
   attachments: Object.freeze([]),
   output: null,
 })
+
+export interface PrivateRootFileMappingFailure {
+  readonly missingReads: readonly string[]
+  readonly unknownNames: readonly string[]
+  readonly boundOverrides: readonly string[]
+  readonly missingWritableDestination: readonly string[]
+}
+
+/** Closed admitted-interface facts, without source paths or arbitrary exception text. */
+export class PrivateRootFileMappingError extends CheckError {
+  readonly fileMapping: PrivateRootFileMappingFailure
+
+  constructor(failure: PrivateRootFileMappingFailure) {
+    super(
+      'invalid',
+      'RUN_ATTACHMENTS_INVALID',
+      'root file mappings do not match the admitted target',
+    )
+    const names = (values: readonly string[]) => {
+      if (values.length > 8) throw new TypeError('file mapping diagnostic exceeds its name bound')
+      return Object.freeze([...new Set(values.map(privateAttachmentName))].sort())
+    }
+    this.fileMapping = Object.freeze({
+      missingReads: names(failure.missingReads),
+      unknownNames: names(failure.unknownNames),
+      boundOverrides: names(failure.boundOverrides),
+      missingWritableDestination: names(failure.missingWritableDestination),
+    })
+  }
+}
+
+export class PrivateRootFileInputLimitError extends CheckError {
+  constructor() {
+    super(
+      'invalid',
+      'RUN_ATTACHMENTS_INVALID',
+      'combined retained and per-run inputs exceed the 64-file/8-MiB limit',
+    )
+  }
+}
 
 export function normalizePrivateRunFileIdentity(value: unknown): PrivateRunFileIdentity {
   const root = object(value, ['attachments', 'output'])
@@ -77,12 +115,10 @@ export function normalizePrivateRunFileIdentity(value: unknown): PrivateRunFileI
       return Object.freeze({ name, files: Object.freeze(files) })
     })
     .sort((a, b) => (a.name < b.name ? -1 : 1))
-  if (
-    new Set(attachments.map((item) => item.name)).size !== attachments.length ||
-    bytes > PRIVATE_FILE_LIMITS.bytes ||
-    count > PRIVATE_FILE_LIMITS.files
-  )
-    throw new TypeError('root input file limits exceeded')
+  if (new Set(attachments.map((item) => item.name)).size !== attachments.length)
+    throw new TypeError('duplicate root attachment name')
+  if (bytes > PRIVATE_FILE_LIMITS.bytes || count > PRIVATE_FILE_LIMITS.files)
+    throw new PrivateRootFileInputLimitError()
   return Object.freeze({
     attachments: Object.freeze(attachments),
     output: root.output as string | null,
@@ -110,8 +146,23 @@ export function requirePrivateRootFileMapping(
     .map(([name]) => name)
     .sort()
   const supplied = identity.attachments.map((item) => item.name)
-  if (expected.join('\0') !== supplied.join('\0'))
-    throw new TypeError('provide exactly the read attachments declared by the admitted root target')
+  const expectedNames = new Set(expected),
+    suppliedNames = new Set(supplied)
+  const failure = {
+    missingReads: expected.filter((name) => !suppliedNames.has(name)),
+    unknownNames: supplied.filter(
+      (name) => !expectedNames.has(name) && !Object.hasOwn(request.boundAttachments ?? {}, name),
+    ),
+    boundOverrides: supplied.filter((name) => Object.hasOwn(request.boundAttachments ?? {}, name)),
+    missingWritableDestination:
+      identity.output === null
+        ? Object.entries(request.attachments)
+            .filter(([, access]) => access === 'read-write')
+            .map(([name]) => name)
+        : [],
+  }
+  if (Object.values(failure).some((names) => names.length > 0))
+    throw new PrivateRootFileMappingError(failure)
   normalizePrivateRunFileIdentity({
     attachments: [
       ...identity.attachments,
@@ -122,8 +173,6 @@ export function requirePrivateRootFileMapping(
     ],
     output: identity.output,
   })
-  if (Object.values(request.attachments).includes('read-write') && identity.output === null)
-    throw new TypeError('the admitted root target requires --out for its writable attachment')
 }
 
 /** Invocation-local descriptors. Identity alone can never recreate this authority. */
@@ -131,6 +180,7 @@ export class PrivateRootRunFiles {
   readonly identity: PrivateRunFileIdentity
   #runId: string | undefined
   #output: PrivateExecutionOutput | undefined
+  #close: Promise<void> | undefined
   #checkpointBound = false
   #outputAttachments: readonly string[] = []
   #method:
@@ -164,6 +214,7 @@ export class PrivateRootRunFiles {
       Record<string, { readonly path: string; readonly access: 'read' | 'read-write' }>
     >
   } {
+    if (this.#close) throw new Error('Run file owner retired')
     if (
       (this.#runId !== undefined && this.#runId !== runId) ||
       !Buffer.from(canonicalJson(identity as unknown as JsonValue)).equals(
@@ -236,7 +287,7 @@ export class PrivateRootRunFiles {
     })
   }
   retainOutput(handle: PrivateExecutionOutput | undefined): void {
-    if (this.#output !== undefined) throw new Error('output already has an owner')
+    if (this.#close || this.#output !== undefined) throw new Error('output owner unavailable')
     this.#output = handle
   }
   get output(): PrivateExecutionOutput | undefined {
@@ -255,6 +306,7 @@ export class PrivateRootRunFiles {
     project: string,
     epoch: number,
   ): Promise<void> {
+    if (this.#close) throw new Error('Run file owner retired')
     if (
       !Object.values(request.slots).some(
         (route) => route.kind === 'native' && route.native === 'run-checkpoint',
@@ -284,12 +336,16 @@ export class PrivateRootRunFiles {
     this.#checkpointBound = true
   }
   async saveCheckpoint(value: unknown) {
+    if (this.#close) throw new Error('Run file owner retired')
     if (!this.#checkpointBound || this.delivery?.saveCheckpoint === undefined)
       throw new Error('checkpoint owner unavailable')
     return await this.delivery.saveCheckpoint(parseRunCheckpointInput(value))
   }
-  async close(): Promise<void> {
-    await closePrivateExecutionOutput(this.#output)
+  close(): Promise<void> {
+    if (this.#close) return this.#close
+    const output = this.#output
     this.#output = undefined
+    this.#close = closePrivateExecutionOutput(output)
+    return this.#close
   }
 }

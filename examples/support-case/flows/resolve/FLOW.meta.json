@@ -1,4 +1,5 @@
 {
   "name": "support-case-resolution",
-  "description": "Check a disputed charge against supplied records and a fixed credit policy."
+  "description": "Check a disputed charge against supplied records and a fixed credit policy.",
+  "uses": { "assessment": {} }
 }

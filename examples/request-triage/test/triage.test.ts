@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'bun:test'
 import type { JsonValue, RunContext } from '@jigging/flow'
-import { triage as intake } from '../flows/intake/triage'
-import { triage as code } from '../flows/code/triage'
 import { triage as agent } from '../flows/agent/triage'
+import { triage as code } from '../flows/code/triage'
+import { triage as intake } from '../flows/intake/triage'
 import { triage as mixed } from '../flows/mixed/triage'
 
 describe('one caller, three classifier implementations', () => {
@@ -13,7 +13,12 @@ describe('one caller, three classifier implementations', () => {
       const input = { message: '[billing] Please explain this invoice.' }
       const call: RunContext['call'] = async (request) => {
         children++
-        expect(request).toEqual({ operationId: 'classify-request', slot: 'classifier', input })
+        expect(request).toEqual({
+          operationId: 'classify-request',
+          slot: 'classifier',
+          intent: 'Suggest a support queue',
+          input,
+        })
         return implementation({
           input: request.input,
           call: async () => {

@@ -38,6 +38,11 @@ operator's fixed commands and application-owned acceptance cases.
   current proposal number. This evidence comes from execution, independently of
   optional progress delivery; never flatten or invent command verdicts.
 
+- `dashboard.ts` owns optional standalone Repair and Checks views on the
+  canonical `updates` channel. Their command verdicts stay provisional for callers;
+  call references name only this publisher’s operations. The private `progress`
+  protocol and factory relay remain separate.
+
 ## Work Guidance
 
 - Keep this Flow editable and fully owned by the software-factory project.

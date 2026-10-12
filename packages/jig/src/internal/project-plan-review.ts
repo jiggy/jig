@@ -3,6 +3,7 @@ import { privateCliValueFields } from '../cli-value-presentation.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { flowSelector } from '../project/package-selector.js'
 import { privateAcpAgentRuntime, requirePrivateAcpAgentProvider } from './acp-agent-provider.js'
+import { ACP_SETUP_CAUSES, ACP_SETUP_HINTS } from './acp-setup-diagnostics.js'
 import type { PrivateActivationReviewPlan } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentityWithCurrentEnvironment } from './bun-direct-run.js'
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
@@ -55,7 +56,9 @@ export function renderPrivateProjectPlanReview(
   const render = (includeUnchanged: boolean): string => {
     const summary = new BoundedAsciiWriter(maximumBytes)
     summary.write('Review changes before approval\n\n')
-    summary.write('Approval permits these exact methods, settings and invocation routes to run.\n')
+    summary.write(
+      'Approval permits ready targets with these exact methods, settings and invocation routes to run.\n',
+    )
     summary.write('It does not execute a Flow. Declining keeps your previous approval.\n\n')
     if (grants.length !== 0) {
       summary.write('Resource delegation changes (recipient, exact policy):\n')
@@ -169,7 +172,16 @@ export function renderPrivateProjectPlanReview(
           includeUnchanged,
         ),
     )
-    summary.write('Targets after approval:\n')
+    const readyCount = proposed.targets.filter(
+      (target) => target.availability.state === 'ready',
+    ).length
+    summary.write(
+      `Targets after approval: ${readyCount} ready, ${proposed.targets.length - readyCount} unavailable.\n`,
+    )
+    if (readyCount === 0)
+      summary.write(
+        '  No targets can run under this revision. Fix the reported prerequisites and review again.\n',
+      )
     if (featureMismatches.length > 0) {
       summary.write(
         '  Required features are missing on these selected routes (their dependents are unavailable too):\n',
@@ -178,10 +190,33 @@ export function renderPrivateProjectPlanReview(
     }
     if (proposed.targets.length === 0)
       summary.write('  None. Add a Flow under flows/ and review again.\n')
+    const originalTargets = new Map(
+      plan.proposed.targets.map((entry) => [targetKey(entry.request.target), entry]),
+    )
     for (const target of proposed.targets) {
       summary.write('  ')
       writeAsciiJsonString(summary, targetKey(target.target))
       summary.write(` - ${target.availability.state}\n`)
+      const original = originalTargets.get(targetKey(target.target))!
+      if (
+        original.disposition.state === 'unavailable' &&
+        original.disposition.code === 'RUNTIME_UNAVAILABLE'
+      ) {
+        const cause = original.disposition.cause
+        if (cause?.kind === 'acp') {
+          summary.write('    Slot ')
+          writeAsciiJsonString(summary, cause.slot)
+          summary.write(
+            `: ${ACP_SETUP_CAUSES[cause.diagnostic]}\n    ${ACP_SETUP_HINTS[cause.diagnostic]}\n`,
+          )
+        } else if (cause?.kind === 'dependency') {
+          summary.write('    Selected dependency ')
+          writeAsciiJsonString(summary, targetKey(cause.target))
+          summary.write(' at slot ')
+          writeAsciiJsonString(summary, cause.slot)
+          summary.write(' is unavailable.\n')
+        }
+      }
     }
     if (!includeUnchanged)
       summary.write(
@@ -452,6 +487,7 @@ function projectCandidate(
         : {
             state: 'unavailable' as const,
             code: disposition.code,
+            ...(disposition.cause === undefined ? {} : { cause: disposition.cause }),
             ...(disposition.code === 'FEATURE_UNAVAILABLE'
               ? {
                   hint: 'A selected dependency does not declare all required features. Review uses.requires and select a matching implementation; grants do not supply feature support.',

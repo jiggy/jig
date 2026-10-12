@@ -140,7 +140,7 @@ try {
     assert.match(unchanged.stdout, /^Project ready\n/)
     assert.match(unchanged.stdout, /The exact reviewed revision is approved/)
     assert.match(unchanged.stdout, /No Flow was started/)
-    assert.match(unchanged.stdout, /Next, choose or run an approved target:/)
+    assert.match(unchanged.stdout, /Start the application or choose a ready target:/)
     assert.match(unchanged.stdout, /^  \$ jig run$/m)
     assert.match(unchanged.stdout, /^  \$ jig run --help$/m)
     assert.doesNotMatch(
@@ -596,7 +596,9 @@ async function exerciseWorkspace(jig: string, consumer: string, archive: string)
     [2],
     120_000,
   )
-  assert.match(missing.stderr, /complete jig review/)
+  assert.equal(missing.stdout, '')
+  assert.match(missing.stderr, /No Flow was started/)
+  assert.match(missing.stderr, /complete jig review/i)
   assert.match(missing.stderr, /Diagnostic code: ADMISSION_MISSING/)
   // Reproduce the consumer's archived CLI devDependency refusal. Identify
   // the ancestor manifest, not the selected Flow's package.json; do not

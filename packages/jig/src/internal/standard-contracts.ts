@@ -1,4 +1,4 @@
-import { USER_UPDATES_CONTRACT } from '@jigging/user-updates'
+import { REPORTING_CONTRACT } from '@jigging/reporting'
 import publicUpdates from '../../../../docs/jig/spec/contracts/acp-public-updates.json' with {
   type: 'json',
 }
@@ -56,11 +56,11 @@ export const JIG_STANDARD_CONTRACTS = Object.freeze(
       description: 'Observe the public updates supplied by an AI client.',
     },
     {
-      name: 'user-updates',
+      name: 'reporting',
       kind: 'channel',
-      file: 'user-updates.json',
-      digest: USER_UPDATES_CONTRACT.digest,
-      description: 'Report complete messages and current activity while a Flow works.',
+      file: 'reporting.json',
+      digest: REPORTING_CONTRACT.digest,
+      description: 'Report progress, messages and application views while a Flow works.',
     },
   ].map((entry) => Object.freeze(entry)),
 )

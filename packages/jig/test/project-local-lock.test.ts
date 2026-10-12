@@ -35,8 +35,208 @@ const agentRunContract = await readFile(
   new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
   'utf8',
 )
+const finiteAcpFiles = Object.fromEntries(
+  await Promise.all(
+    ['contract.json', 'requests.json', 'responses.json'].map(async (name) => [
+      `contracts/finite-acp/${name}`,
+      await readFile(
+        new URL(`../../../docs/jig/spec/contracts/finite-acp/${name}`, import.meta.url),
+        'utf8',
+      ),
+    ]),
+  ),
+)
 
 describe('private package-project portable lock projection', () => {
+  test('retains effective ACP policy and explicit review origin in canonical lock and request identity', async () => {
+    await withFlows(nativeLockTrees(), (flows) => {
+      const input = {
+        flows,
+        bindings: [
+          binding('bindings/inline.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'pi', maxTurns: 3 } },
+          }),
+          binding('bindings/named.ts', {
+            package: 'flows/native',
+            slots: { native: 'grant:shared' },
+          }),
+          binding('bindings/shared.ts', {
+            package: 'flows/native',
+            slots: { native: 'grant:shared' },
+          }),
+        ],
+        grants: { shared: { kind: 'acp' as const, client: 'claude' as const, maxTurns: 2 } },
+      }
+      const authored = linkPackageProject(input)
+      const effective = linkPackageProject(input, undefined, 'codex')
+      const lock = createPrivateProjectLocalLock(effective, 'codex')
+      const encoded = encodePrivateProjectLocalLock(lock)
+      const decoded = decodePrivateProjectLocalLock(encoded)
+      expect(decoded).toEqual(lock)
+      expect(decoded.agentOverride).toBe('codex')
+      expect(encodePrivateProjectLocalLock(decoded)).toEqual(encoded)
+      expect(privateProjectLocalLockDigest(decoded)).toBe(privateProjectLocalLockDigest(lock))
+      expect(privateProjectLocalLockDigest(lock)).not.toBe(
+        privateProjectLocalLockDigest(createPrivateProjectLocalLock(authored)),
+      )
+      for (const [id, selected] of Object.entries(decoded.bindings)) {
+        const policy = { kind: 'acp', client: 'codex', maxTurns: id === 'inline' ? 3 : 2 }
+        expect(selected.slots.native).toEqual({
+          kind: 'grant',
+          policy,
+          ...(id === 'inline' ? {} : { name: 'shared' }),
+        })
+        const request = buildPrivateActivationRequests(effective).find(
+          (value) => value.target.kind === 'binding' && value.target.id === id,
+        )!
+        expect(request.slots.native).toMatchObject({
+          kind: 'native',
+          native: 'finite-acp',
+          grant: policy,
+        })
+        expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request)
+        const old = buildPrivateActivationRequests(authored).find(
+          (value) => value.target.kind === 'binding' && value.target.id === id,
+        )!
+        expect(request.digest).not.toBe(old.digest)
+        expect(() =>
+          restorePrivateActivationRequest({
+            ...request,
+            slots: {
+              ...request.slots,
+              native: { ...request.slots.native, grant: { ...policy, client: 'pi' } },
+            },
+          }),
+        ).toThrow()
+      }
+      expect(createPrivateProjectLocalLock(linkPackageProject(input)).agentOverride).toBeUndefined()
+      expect(linkPackageProject(input)).toEqual(authored)
+      expect(() => createPrivateProjectLocalLock(effective, 'pi')).toThrow(
+        'agree with every selected ACP policy',
+      )
+      expect(() => createPrivateProjectLocalLock(effective, 'unknown' as never)).toThrow(
+        'must be codex, claude or pi',
+      )
+    })
+  })
+
+  test('same-client origin is retained explicitly and never inferred from effective client values', async () => {
+    await withFlows(nativeLockTrees(), (flows) => {
+      const project = linkPackageProject(
+        {
+          flows,
+          bindings: [
+            binding('bindings/native.ts', {
+              package: 'flows/native',
+              slots: {
+                native: {
+                  kind: 'acp',
+                  client: 'codex',
+                  model: 'pinned-model',
+                  maxTurns: 4,
+                  retainSessions: true,
+                },
+              },
+            }),
+          ],
+        },
+        undefined,
+        'codex',
+      )
+      const explicit = createPrivateProjectLocalLock(project, 'codex')
+      const omitted = createPrivateProjectLocalLock(project)
+      expect(explicit.bindings).toEqual(omitted.bindings)
+      expect(privateProjectLocalLockDigest(explicit)).not.toBe(
+        privateProjectLocalLockDigest(omitted),
+      )
+      expect(
+        decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(explicit)).agentOverride,
+      ).toBe('codex')
+      expect(
+        decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(omitted)).agentOverride,
+      ).toBeUndefined()
+      expect(explicit.bindings.native!.slots.native).toEqual({
+        kind: 'grant',
+        policy: {
+          kind: 'acp',
+          client: 'codex',
+          model: 'pinned-model',
+          maxTurns: 4,
+          retainSessions: true,
+        },
+      })
+    })
+  })
+
+  test('strict origin decoding refuses malformed operands, mismatched policies and zero selected ACP', async () => {
+    await withFlows(nativeLockTrees(), (flows) => {
+      const project = linkPackageProject({
+        flows,
+        bindings: [
+          binding('bindings/first.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
+          }),
+          binding('bindings/second.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'codex', maxTurns: 3 } },
+          }),
+        ],
+      })
+      const base = createPrivateProjectLocalLock(project, 'codex')
+      for (const malformed of [null, false, 1, {}, [], '', 'unknown', 'CodeX', 'codex\n'])
+        expectInvalid(
+          base,
+          (value) => {
+            value.agentOverride = malformed
+          },
+          'must be codex, claude or pi',
+        )
+      expectInvalid(
+        base,
+        (value) => {
+          value.agentOverride = 'pi'
+        },
+        'agree with every selected ACP policy',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.second.slots.native.policy.client = 'pi'
+        },
+        'agree with every selected ACP policy',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.agentOrigin = 'codex'
+        },
+        'must contain exactly',
+      )
+      const zero = { packages: {}, bindings: {}, agentOverride: 'codex' }
+      expect(() => decodePrivateProjectLocalLock(lockBytes(zero))).toThrow(
+        'agree with every selected ACP policy',
+      )
+      const ordinary = linkPackageProject({ flows: [], bindings: [] })
+      expect(() => createPrivateProjectLocalLock(ordinary, 'codex')).toThrow(
+        'agree with every selected ACP policy',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          for (const selected of Object.values(value.bindings) as any[])
+            selected.slots.native.policy = {
+              kind: 'http',
+              url: 'https://example.org/',
+              method: 'GET',
+            }
+        },
+        'agree with every selected ACP policy',
+      )
+    })
+  })
+
   test('retains implementation support claims for review without deriving authority', async () => {
     for (const supports of [undefined, [], ['sessions', 'conversation']]) {
       await withFlows(
@@ -799,6 +999,19 @@ function projectTrees(): Record<string, Record<string, string>> {
     'flows/backup': {
       'FLOW.meta.json': metadata({ name: 'backup', description: 'Backup.' }),
       'FLOW.ts': 'export {};\n',
+    },
+  }
+}
+
+function nativeLockTrees(): Record<string, Record<string, string>> {
+  return {
+    'flows/native': {
+      'FLOW.meta.json': metadata({
+        name: 'native',
+        uses: { native: { contract: './contracts/finite-acp/contract.json' } },
+      }),
+      'FLOW.ts': 'export {};\n',
+      ...finiteAcpFiles,
     },
   }
 }

@@ -167,12 +167,12 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
     test -s "$staging/contracts/acp-public-updates.html"
     cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
-    test -s "$staging/contracts/user-updates.html"
-    cp -- "$repository/packages/user-updates/src/user-updates.json" "$staging/contracts/user-updates.json"
-    cmp -- "$repository/packages/user-updates/src/user-updates.json" "$staging/contracts/user-updates.json"
-    mkdir -p -- "$staging/contracts/user-updates"
-    cp -- "$repository/packages/user-updates/LICENSE" "$staging/contracts/user-updates/LICENSE"
-    cmp -- "$repository/packages/user-updates/LICENSE" "$staging/contracts/user-updates/LICENSE"
+    test -s "$staging/contracts/reporting.html"
+    cp -- "$repository/packages/reporting/src/reporting.json" "$staging/contracts/reporting.json"
+    cmp -- "$repository/packages/reporting/src/reporting.json" "$staging/contracts/reporting.json"
+    mkdir -p -- "$staging/contracts/reporting"
+    cp -- "$repository/packages/reporting/LICENSE" "$staging/contracts/reporting/LICENSE"
+    cmp -- "$repository/packages/reporting/LICENSE" "$staging/contracts/reporting/LICENSE"
     ;;
 esac
 

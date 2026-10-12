@@ -21,9 +21,13 @@ below. Neither establishes general repair reliability or comparative advantage.
 
 ## Run the supplied batch
 
-In a copy of the example, run `bun install`, inspect `batch.json`, the Agent,
-single-pass and checked-correction Bindings, and the two named case files. The supplied Binding selects native
-Codex through ACP. To use an HTTP Agent method instead, follow the package and
+In a copy of the example, inspect `batch.json`, the Agent, single-pass and
+checked-correction Bindings, and the two named case files. Configure a supported
+client through [Choose an Agent](./agents.md). The inline policy in
+`bindings/agent.ts` selects native Codex through ACP as an example choice. Edit
+that Binding for a lasting choice, or explicitly propose another client during
+review. A selected ACP prerequisite failure stops review before new approval;
+review never rewrites policy. Review prepares the ordinary declared dependencies. To use an HTTP Agent method instead, follow the package and
 Binding setup in [Reuse the Agent method](agent-method.md#invoke-the-ordinary-flow),
 including its optional [OpenAI-compatible gateway route](agent-method.md#use-an-openai-compatible-gateway).
 Then authenticate the selected Agent:
@@ -34,46 +38,58 @@ jig run
 ```
 
 The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
-`fixtures` source tree, an eight-minute deadline, and `factory-result` for output.
-For another batch or a repeat Run, override the input and choose a new output:
+`fixtures` source tree and an eight-minute deadline. Jig chooses a fresh packet
+directory in operating-system temporary storage for its writable deliverables
+and reports it on stderr. Repeating `jig run` leaves earlier packets intact, but
+the operating system may clear temporary storage. Use `jig run --out ./factory-result`
+to choose a retained location that does not already exist. For another batch,
+override its input:
 
 ```sh
-jig run --input @batch.json --out factory-result-2
+jig run --input @another-batch.json
 ```
 
 Existing results are never overwritten. Explicitly naming a target bypasses
 entrypoint defaults; supply that invocation's arguments in full.
 
-The standard [user-updates contract](../contracts/user-updates.md) supplies three
+The standard [reporting contract](../contracts/reporting.md) supplies three
 factory views: **Jobs** shows requested goals, source scope, reviewed approach and
 outcomes; **Checks** shows repository tests and independent acceptance
 cases; **Patches** shows independently checked patch packets and evidence links.
-**Activity** follows current work and check reports. **Overview** shows the actual
+**Activity** follows current work and check reports. **Execution** shows the actual
 call tree, distinguishing baseline checks from checks of each proposed repair.
 Jobs pairs concise outcomes, verified checks and patch references with each job's
 goal and evidence. Wide terminals show the selected job's details beside the list.
 Blocking causes remain in the attention bar; press `!` to read the complete cause.
-Use `jig run --display dashboard` to switch views, select a job, inspect its
+Use `jig run --display tui` to switch views, select a job, inspect its
 details, and use `r` to select a verified file preview after packet delivery.
+Use `jig run --display web` to open the same Jobs, Checks and Patches views in a
+browser through the private link printed after execution starts. **Delivered
+files** lets you read each checked patch and its evidence once delivery is
+verified. A job with several evidence references offers an explicit choice;
+the display does not guess which file you meant. No Flow changes are required.
 Jobs includes the exact original request file; long displayed goals explicitly
 identify excerpts. Complete requests also remain in the supplied input and
 `result.json`.
 The completed inspector selects Jobs unless you already chose a view. It stays
 read-only until you leave, subject to any explicit enclosing command deadline.
 Execution, cleanup and delivery have already settled.
-Press `q` to close it; during work, `q` continues in the ordinary transcript.
-Escape closes the current panel before leaving the dashboard. Ordinary `jig run`
-shows an inline projection and exits with the final report; `--display plain`
+Press `q` to ask before leaving the TUI, with Stay selected; during work,
+confirmed exit continues in the ordinary transcript. Escape returns within the
+TUI. Ordinary `jig run` selects TUI in suitable interactive terminals; otherwise
+it shows ordinary output and exits with the final report. `--display plain`
 emits a simple transcript.
 The final application output gives a brief report of each job and public failure
 causes, while full evidence remains in `result.json`.
 Reopen the saved evidence later without starting work:
 
 ```sh
-jig inspect --result ./factory-result --display dashboard
+jig inspect --result DESTINATION --display tui
+jig inspect --result DESTINATION --display web
 ```
 
-This shows the recorded result, verified saved files and diagnostics. Current
+Replace `DESTINATION` with the packet directory reported by Jig. This shows the
+recorded result, verified saved files and diagnostics. Current
 packets do not retain the live factory tabs or call graph.
 Add `--receive progress --json` for explicit machine records, or
 `--updates off` to disable automatic observation. Rapid phase replacements and
@@ -95,7 +111,7 @@ materialization stops before worker dispatch.
 
 ## Review the packet
 
-Start with `factory-result/files/summary.txt`, then inspect each job directory
+Start with `<reported destination>/files/summary.txt`, then inspect each job directory
 and the host-owned `result.json`.
 
 - `review.patch` means that job reproduced its defect and the final candidate
@@ -155,6 +171,11 @@ For example, a job may include `"method": "p1"` to require one proposal, or
 `"method": "p2"` to allow a checked correction. Unknown method IDs fail input
 validation before any Agent call. The final and checkpoint evidence records
 whether the choice was explicit or automatic and the exact selected slot.
+
+The standalone repair also publishes Repair and Checks on its optional `updates`
+channel; their reports remain provisional for a caller. The router publishes Selection
+on `progress`, showing task, eligible candidates and a validated choice or abstention.
+Both use the same portable profile as the factory’s views.
 
 The [Semantic Router source package](https://github.com/jiggy/jig/tree/main/examples/software-factory/flows/router)
 is independently reusable. It accepts only task text and a bounded candidate list,

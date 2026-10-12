@@ -80,6 +80,24 @@ and 1 MiB total. Files must be singly linked. Each Binding permits at most eight
 slots of each resource kind within its 256-slot bound. Multiple slots do not
 increase concurrent effect capacity, root reservations or deadlines.
 
+Use a named policy for intentional reuse across Bindings or an independently
+managed policy responsibility. A simple ACP policy is inline by default; a
+grants directory is not mandatory. Edit the selected source policy to make a
+lasting client change. An edit never changes an admitted generation.
+
+The explicit `jig review --agent codex|claude|pi` argument constructs a proposed
+effective client for every selected normalized ACP policy before qualification.
+It changes only `client` and leaves inline, named/shared and computed source
+unchanged. The candidate, lock, review and inspection retain the effective policy
+and argument origin. Cross-client changes with a model pin or incompatible native
+retention refuse the complete request, and a request with no selected ACP policy
+is inapplicable. Same-client selection preserves all fields and still qualifies.
+A later review starts from captured source and its own arguments, without a
+remembered client preference. [Project policy](project-policy.md#review-client-selection)
+owns exact construction and retained identity; the
+[CLI contract](cli-experience.md#agent-setup-during-review) owns failure guidance.
+Review never rewrites a grant or silently substitutes a provider.
+
 ## Review and admission
 
 `jig review` shows changes to recipients and effective policies, including
@@ -113,8 +131,13 @@ another admission. Source edits are not live revocation. Cancel existing work
 to settle its owned effects; already accepted remote effects cannot be undone.
 The operator environment supplies secret bytes when the host command starts.
 Secrets never enter Binding values, lock files, admission records, Flow input
-or public review. Missing selected credentials make that target unavailable;
-rotating secret bytes alone does not change public policy identity.
+or public review. Missing selected credentials prevent use of that resource;
+rotating secret bytes alone does not change public policy identity. ACP
+prerequisite qualification retains SDK per-target readiness, but any observed
+typed selected ACP prerequisite refusal stops CLI review before apply or
+unchanged success. Earlier admission remains intact. Arbitrary, integrity and
+cleanup failures retain their existing fatal semantics; bounded presentation
+cannot erase an authoritative refusal.
 
 FLOW's interface remains `run.call`: grant storage, approval and enforcement
 are Jig responsibilities. This profile does not add arbitrary process grants,

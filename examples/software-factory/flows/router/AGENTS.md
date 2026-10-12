@@ -36,6 +36,10 @@ without acquiring authority to execute the candidate.
 - Consumers validate complete results and exact membership before invoking their
   application-owned map. The router result alone never authorizes dispatch.
 
+- `dashboard.ts` offers Selection on optional canonical `progress`: task,
+  bounded eligible candidates and validated selection/abstention. Candidate details
+  expand descriptions; membership and UI selection cannot grant dispatch authority.
+
 ## Work Guidance
 
 - Candidate changes belong in caller data and exact project wiring, not the prompt.

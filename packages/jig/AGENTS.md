@@ -20,6 +20,14 @@ admitted FLOW packages.
   closed descriptor operations on Linux and qualified Darwin. Workspace capture
   preserves declared source/dependency selection and raw-name validation;
   filesystem capture does not independently qualify Bun installation or execution.
+- `src/project/agent-source-location.ts` owns the private captured-source lexical
+  recognizer for ACP diagnostics: at most 1 MiB of TypeScript or 32 KiB of JSON,
+  32,768 tokens and nesting depth 64. Locations use one-based lines and
+  Unicode-scalar columns. Only proven direct ordinary literals receive client
+  locations. Selection context also requires the trusted ordinary import and a
+  complete single-argument default call; unsupported, ambiguous or bounded-out
+  input uses an unlocated file/slot fallback. Never evaluate or reread source, or add an
+  AST, editor or compiler dependency to obtain these facts.
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
   caches longest paths per immutable candidate; repeated routes must not expand
@@ -170,8 +178,9 @@ admitted FLOW packages.
 - Default `init` writes a greeting Flow with a string input and a world fallback; `--bare` writes only the
   skeleton. Neither installs, networks, approves, or executes. Generated
   packages use the same dependency review as consumer-authored packages. The
-  Optional `--agent` selection writes a declared ACP package dependency, visible
-  Binding grant and contract-keyed default. It chooses no client implicitly and
+  optional `--agent` selection writes a declared ACP package dependency, an
+  inline native grant in its Binding and a contract-keyed default. It chooses no
+  client implicitly and
   does not inspect installations or authentication. Generated package versions
   are checked against their manifests. The greeting names the exact tested SDK version; its regression checks the SDK
   manifest so a moving npm tag cannot silently select a different wire contract.
@@ -183,6 +192,16 @@ admitted FLOW packages.
   reports Jig runtime verification, operator resource configuration, and
   project-state recovery separately. Capturing configuration does not verify a
   native client; only targets selecting an ACP grant trigger that verification.
+  SDK expected trusted setup refusals retain unavailable exact targets and their
+  selected dependents; unrelated targets keep their own readiness. CLI review
+  stops any observed typed selected ACP prerequisite before avoidable target
+  execution preparation, unchanged success or apply. Its readiness callback throws one
+  fixed private typed refusal; only that exact marker receives setup rendering.
+  Arbitrary integrity, I/O, cancellation and cleanup faults retain their own
+  failure, never classification from display codes or truncated issue rows.
+  Inspection discloses retained availability separately from environment freshness;
+  chooser selects ready routes only. Installing a client requires renewed review
+  before an unavailable retained route can run.
   Review also separates source capture, per-package dependency capture,
   preparation/reuse and review retention, with stage-local timing. Prepared
   workspace artifact reuse stays within the approving Jig project.
@@ -196,6 +215,8 @@ admitted FLOW packages.
   acquire execution authority, resolve dependencies, contact providers, recover
   or write state. Credential reads stay private; matching identities do not
   establish source freshness, launch readiness or remote availability.
+  Approved effective ACP policy and optional retained `agentOverride` identify
+  review-argument origin without live-source inference or a later review default.
   Schema type diagnostics retain only closed expected/received JSON types, not
   rejected values. Human Run output leads with host facts before arbitrary results.
 - Manifest-policy diagnostics identify a closed cause and JSON field without
@@ -208,7 +229,17 @@ admitted FLOW packages.
 - Project `entrypoint` is a target plus optional Run-argument string, retained
   in semantic identity, lock, review and inspection. `run-arguments.ts` owns shared
   CLI validation; `project/entrypoint.ts` owns bounded shell-free tokenization,
-  project-relative defaults and explicit-option overrides. Explicit targets
+  project-relative defaults and explicit-option overrides. Omitted `--out` for
+  an approved writable target selects one fresh OS-temporary packet destination
+  before owner/delegation reexecution; result-only omission stays stdout-only.
+  Use the read-only retained inventory and admission digest from the same snapshot,
+  never source evaluation or example heuristics. A private preparation-complete
+  marker preserves both output and no-output decisions through all installed
+  owners and main; existing approval pins cannot be replaced. Ordinary anchored
+  validation and no-replace delivery remain authoritative. Published temporary
+  packets survive command/inspection exit, subject to OS cleanup. Report the exact destination on stderr for explicit
+  and default invocations, including redirected stdout; keep operator paths
+  out of browser observation snapshots. Explicit targets
   bypass defaults. Job files are captured per Run; Binding resources stay pinned.
   Resolve before delivery/delegation and carry the selected admission through
   reexecution to the submission compare-and-set. Operator verification and
@@ -228,7 +259,24 @@ admitted FLOW packages.
   override them. Keep this root-only profile and its bounds synchronized with
   `docs/jig/spec/project-policy.md`.
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
-  named JSON policies.
+  named JSON policies for meaningful reuse or independent management.
+  `src/cli-review-agent-setup.ts` renders bounded read-only captured policy facts:
+  verified client literals, selection context or honest file/slot fallback,
+  known causes, passive executable alternatives and manual recovery. It never
+  writes policy, recaptures after an edit or acquires publication authority.
+  Put repair and one exact retry before detailed accounting. Default output
+  discloses omissions and unchecked resources when present; complete report
+  accounting belongs under `--details`. Executable recovery can suggest adding
+  or replacing `--agent` for a detected client, with global scope and repeated
+  review explained; never promise that other policies or authentication qualify.
+  Explicit `review --agent codex|claude|pi` requires a value and changes only the
+  client of every selected normalized ACP policy before qualification. Retain
+  the operand in capture identity and ordinary lock `agentOverride`; the strict
+  decoder requires nonzero selected ACP policies agreeing with it. Source stays
+  unchanged; Run uses approved meaning and a later bare review uses source again.
+  Cross-client model pins, incompatible retention and no selected ACP policy
+  refuse the whole request; same-client selection still qualifies. Keep other
+  fields, authority opt-ins and previous approved code/client together on failure.
   An ACP grant may pin a recipient-specific model; this changes approval and
   runtime identity without changing operator authentication or client selection.
   `docs/jig/spec/grants.md` owns capture, reuse and recipient-scoped approval.
@@ -259,7 +307,7 @@ admitted FLOW packages.
 - Before any public CLI output change, read and apply
   [the CLI experience contract](../../docs/jig/spec/cli-experience.md).
   `src/cli-presentation.ts` and `src/cli-progress.ts` own shared human
-  presentation; `src/cli-user-updates.ts` owns scoped Flow activity state and
+  presentation; `src/cli-reporting.ts` owns scoped Flow activity state and
   untrusted attributed notices within that presenter. Stopping and terminal host
   states fence repaint callbacks; accepted complete notices retain order. The
   automatic profile uses one separate command-only broker allocation, preserving
@@ -277,16 +325,20 @@ admitted FLOW packages.
   output, then check cancellation. The question and answer share one line without
   intervening stages or notices.
   Readiness status words carry green/amber emphasis without claiming execution.
+  Noninteractive auto inline uses a compact root-summary/actual-branches/current-activity
+  projection with attention first and visible overflow. Plain selects root landing
+  or first retained root summary once and prints a changed summary at settlement,
+  preserving ended/incomplete context rather than replaying every view.
   In auto/plain, activity phase changes append separate attributed indented lines; only host
   waiting owns a transient line. Clear events silently retire their slots;
   printed phases remain history, and application notices own job outcomes.
   Complete notices have one Flow-attributed first line and indented continuation
   lines; escape every payload line without recognizing it as host prose.
-  Explicit dashboard instead owns one alternate screen after trusted root execution
+  Effective TUI owns one alternate screen after trusted root execution
   admission, keeping initial input/review/runtime refusals in ordinary output,
   retaining typed host/Flow/diagnostic entries inside bounded Activity. Fixed shell,
-  responsive selected-record details, labelled collection cards, collapsed detail,
-  newest-first Activity with expandable setup, actual collapsible Overview and contextual
+  responsive meaningful context, dense aligned collection rows, expanded evidence,
+  newest-first Activity with expandable setup, actual collapsible Execution and contextual
   keys serve progressive disclosure without terminal author callbacks. Attention
   remains attributed and reachable from every view. Diagnostic reports have a
   separate literal panel; unknown severity stays unknown. Freeze execution elapsed
@@ -308,7 +360,9 @@ admitted FLOW packages.
   in `--details`. Keep the changed fact, environment uncertainty and approval
   consequence visible in compact reviews. Omit repeated ACP selections only
   after proving unchanged runtime identity under identical recipient routes;
-  unknown comparisons remain visible, and details always show selections.
+  unknown comparisons remain visible, and details always show selections. An
+  explicit review client operand retains its authored/effective selection summary
+  even for same-client or unchanged review.
   Dim executable paths and unchanged context; omit review categories with no
   changes from the ordinary summary. Changed-record labels and their identifiers
   use bold amber: they identify work requiring attention, not secondary metadata.
@@ -354,8 +408,13 @@ admitted FLOW packages.
   network notice once per review before preparation, retaining package progress.
 
 - Agent selection belongs to ordinary dependencies, Bindings and resource grants,
-  never inferred from credentials or a preferred vendor. Selection remains
+  or an explicitly retained review client operand, never inferred from credentials
+  or a preferred vendor. Selection remains
   distinct from authority approval; the optional init picker only authors files.
+  Client prerequisite errors explain both repairing the selected installation
+  and editing the slot's inline or named ACP grant to use another supported client,
+  followed by renewed review. Unresolved child Flow errors explain its provider
+  or Binding configuration instead of reporting only a machine code.
 
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
@@ -372,70 +431,93 @@ admitted FLOW packages.
 
 ## Verification
 
-Run presentation uses one bounded renderer-neutral model and one stderr writer.
-`src/cli-opentui.ts` owns native terminal panes and cell drawing. OpenTUI Core
-and its Tree-sitter peer are required exact npm dependencies, external to the
-CLI bundle; only an eligible explicit dashboard lazily loads and verifies native
-support before execution. Flows and public SDKs remain display-neutral. Core
-renders to memory using inert streams; Jig owns real input, signals, screen
-restoration and the bounded writer. Encode only published captured spans, charge
-SGR and UTF-8 bytes to the existing frame ceiling, disclose clipping, and fence
-pending native cell reads before destruction. Normal panes require 50x14; compact
-text preserves cause and controls down to 18x4.
-Pane caches include resolved reference labels and selected details, so host call
-settlement and verified delivery refresh existing views without another Flow
-report. Unchanged captured cells do not produce another terminal frame.
-Lists own brief identity/observation; selected parts add context and evidence.
-Keep the typed detail projection shared with compact text. Native cards show
-three declared columns, with other fields and authored details reachable beside
-them; full expansion retains all fields. Facts expand into typed fields. Do not
-open duplicate panes for entries with no additional detail. Call previews explain
-lifecycle and readable UTC time; exact slot/operation identity requires expansion.
-Color navigation, labels, typed values and host states independently. Returned
-calls stay secondary, never green domain success. Recorded field navigation and
-lexical value colors remain literal local claims without privileged output keys.
-Encode empty native spans with bounded erase/cursor controls and reuse unchanged
-styles. Render exit rows before body rows so genuine byte overflow retains controls;
-do not raise the ceiling to accommodate empty pane backgrounds.
-Keep host calls keyed by actual publisher instance plus original own operation ID;
-accepted-send publisher identity stays private sideband through pending sends.
-View documents cannot supply source ancestry or host status. Admission is atomic,
-retirement/EOF fence callbacks, and navigation follows stable identities. Optional
-tree/transcript overflow discloses incompleteness without canceling domain work;
-actual output disconnection retains the existing cancellation owner. Full safe
-causes settle through the single bounded writer before final stdout; dashboard
-commits them after screen restoration in awaited 32 KiB batches, charged by
-complete escaped representation. Serialize auto/plain final view summaries
-within the same output ceiling; actually entered fullscreen omits summary replay.
+Run presentation retains one admitted observation accumulator and one bounded
+stderr writer. `src/cli-display-projection.ts` adapts accepted host facts into
+readonly snapshots from `@jigging/display-model`; `src/cli-recorded-role.ts`
+assigns reserved recorded roles only at the host adapter. Publisher/call
+correspondence, opaque display identities, transcript receipt accounting and
+immutable captured excerpt access stay private to Jig. Authored names never
+choose host status or roles.
 
-`--display` is operator-only. Auto borrows no input; explicit inspection owns and
-restores raw/flowing stdin and cannot keep a finite command alive after exit.
-Inspection has no local idle or absolute expiry. q, contextual Escape and settled
-keyboard Ctrl-C close it; input/output loss and external interruption still close
-and restore it. Any explicit inherited presentation constraint remains a minimum
-across enclosing owners, with a 45-second closing reserve for finite command
-timers. Only an eligible interactive effective dashboard omits the default file
-and delegation command envelope; machine modes and setup/cleanup owners retain
-their bounds. Run timeouts and explicit enforcement timers remain unchanged.
-Verify mixed-block traversal, draft filter/reference/attention modes, exact size
-cutoffs, per-surface identity, escaped attention admission, nearly-timeout batched
-exit, phase-aware signals and screen restoration on setup/output exceptions.
-Trusted root admission, rather than Flow views or elapsed time, starts screen
-entry; the CLI joins entry before settlement. Early host/call/diagnostic evidence
-remains in the model. Post-settlement inspection owns no execution/channel
-lifetime. Select immutable delivery capture before publication. Its artifact
-resolver uses verified delivery and one immutable bounded capture, never mutable
-destination reads. Test redirected stdout, idle stdin, split/batched keys,
-post-settlement Ctrl-C, narrow/Unicode frames, reference/scroll identity and late
-preview settlement. `test/dashboard.test.ts` covers model/renderer/input bounds;
-installed factory and file-delivery tests cover composition and immutable capture.
+`@jigging/display-web` owns browser rendering, client generations, navigation
+and fixed self-contained assets. `src/cli-web.ts` retains loopback HTTP, bearer
+capabilities, CSP, transport bounds and presentation lifetime. Read the current
+`docs/jig/spec/web-display.md` before changing this boundary. Prepare without
+advertising before admission, join trusted-dispatch activation and keep capability
+publication outside journals/diagnostics. Machine precedence decides before
+listener preparation. Import fixed asset bytes through the package's declared
+asset export and bundle them into installed CLI identity; web must not initialize
+native TUI support or read checkout-relative assets. Browser fetches keep
+memory-only authorization, exact authority/origin checks and inert text.
+Failed projection retains its independent reserve; stale bodies disable
+references while current causes and Close remain available.
+
+After project/execution cleanup, transfer receipt-selected excerpts and
+irreversibly retire delivery authority under the one finite completion allowance,
+then close local input/output capture before indefinite inspection. Preserve known
+terminal/delivery on retirement failure and reuse bounded close promises; no
+finally path resets their deadline. Initiate forced native connection cancellation
+before discarding response queues and join it after disposing subscriptions and
+buffers. Blocked-stream expiry retains admission until abort/cancel acknowledgement.
+Closing inspection releases preview waiters; late bytes cannot restore it.
+
+`@jigging/display-tui` owns private viewer state, key/escape decoding, responsive
+panes, inline rendering and bounded terminal frames. Jig imports its public
+`prepareTui`/`createTui`/`createInlineDisplay` surface and keeps real input,
+signals, screen restoration, the single output writer, command constraints and
+phase-aware interruption decisions in `src/cli-tui-input.ts` and
+`src/cli-progress.ts`. Core and Tree-sitter remain required exact external
+runtime dependencies. Only eligible TUI preparation loads native support before execution. Automatic
+selection falls back on unavailable support; explicit TUI maps it to
+`JIG_TUI_UNAVAILABLE`.
+Frames and escaped attention representations remain charged to existing byte
+ceilings. Package DTOs never carry the admitted host model or execution powers.
+
+`--display` is operator-only. Auto selects TUI only with suitable terminal input,
+stdout and stderr; ordinary fallback borrows no input. Effective TUI owns and
+restores raw/flowing stdin. Inspection has no local idle or absolute expiry.
+q, keyboard Ctrl-D and settled keyboard Ctrl-C request exit confirmation with
+Stay selected; contextual Escape returns within the TUI and stays at the top level. Input/output loss and
+external interruption still close and restore it. Explicit inherited presentation
+constraints remain a minimum across enclosing owners, with a 45-second closing
+reserve for finite command timers. Only eligible effective `tui` or `web` omits
+the default file/delegation command envelope. Machine modes and setup/cleanup
+owners retain their bounds; Run timeouts and explicit enforcement timers stay
+unchanged. Trusted root admission starts screen entry and the CLI joins it before
+settlement. Early host stages, call observations and diagnostics remain visible.
+Post-settlement inspection owns no execution/channel lifetime.
+
+Select immutable delivery capture before publication. Preview suppliers receive
+only artifact identity and capture generation, never mutable destinations or
+arbitrary paths. Navigation is renderer-local and cannot mutate host observations.
+Auto/plain commit complete essential causes outside redraw. Entered TUI restores
+the screen, then commits retained causes in awaited bounded batches before final
+stdout, without replaying view summaries. Output disconnection retains the Run's
+existing cancellation owner.
+
+Renderer/model navigation, hierarchy, preview fencing and maximum-view checks
+belong to their package suites; see their owning `AGENTS.md` files. Jig's
+`test/dashboard.test.ts`, `test/cli-tui-input.test.ts`,
+`test/workspace-progress.test.ts`, `test/cli-display-observations.test.ts`,
+`test/cli-web*.test.ts` and installed tests retain host admission, attribution,
+receipt, transport, lifetime, terminal restoration, JSON and immutable-capture
+proof. Frozen standalone package consumers and frozen
+installed Jig runs are distinct gates; source mocks and design approval qualify
+neither installed behavior nor newcomer usability.
+`test/cli-review-agent-setup.test.ts` and `test/project-resource-qualification.test.ts`
+check bounded read-only setup facts, shared recipients, preserved policy, honest
+captured locations and authoritative refusal despite report omission. CLI checks
+refusal before avoidable target execution preparation, unchanged success and apply,
+with prior approval/source preserved. Linking/capture and lock tests cover the explicit
+review operand, all-selected-ACP rules, exact identity and retained origin;
+ordinary authority, generation and cleanup checks remain independent.
 `inspect --result` bypasses project/environment acquisition and reads only the
 selected descriptor-confined packet. Its fixed views label all evidence recorded,
 never reconstruct live views or authority, and preserve exact decoded JSON.
 Qualify partial file capture, framing/byte/path limits, link refusal, interruption,
 buffer release and output failure independently of recorded execution status.
 
-- `just jig::check` builds and runs package tests, then automatically runs all
+- `just jig::check` builds and runs Jig and display-package source tests, then runs all
   discovered Mac-specific regression files on an exact supported native Mac.
   Root `just preflight` also includes quick tooling and the other portable
   packages. The native pass needs ordinary local launchd/disk-image access;
@@ -465,6 +547,18 @@ buffer release and output failure independently of recorded execution status.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
   uses retained local text, without a Bread checkout or network lookup.
+  Its `test/package-smoke.ts` hides the installed Core dependency and uses
+  `test/fixtures/installed-tui-refusal.py` with real terminal stdin/stderr to
+  require a nonzero `JIG_TUI_UNAVAILABLE` refusal before dispatch, the no-Flow
+  explanation, no alternate-screen entry and unchanged terminal attributes,
+  measured by a retained PTY session owner before that session exits. This Run
+  proof requires Mac or the provisioned `JIG_LINUX_ROOTLESS_HOSTILE=1` host;
+  ordinary Linux source CI reports it skipped because delegation prerequisites
+  precede renderer preparation.
+  The same hidden-Core phase unconditionally checks help, public authoring and
+  embedded browser inspection independently of native support. Positive installed TUI navigation,
+  captured previews and restoration require separate frozen-candidate evidence
+  on an available qualified native host; refusal alone cannot qualify them.
 - Trust-boundary changes require the provisioned host-conformance workflow.
 - Mac Codex preference qualification uses `macos-preferences-observer.test.ts`
   and `macos-preferences-boundary.test.ts` with `JIG_MACOS_PROCESS_TEST=1`.
@@ -505,7 +599,10 @@ buffer release and output failure independently of recorded execution status.
   delivery without native clients or model calls. A second reviewed peer returns
   deterministic repairs through the public structured Agent result. Verify final
   Jobs, Checks and Patches snapshots, independent acceptance, exact delivered patch
-  references, and complete ended summaries in automatic plain display.
+  references, and complete ended summaries in automatic plain display when
+  observation ends cleanly. A best-effort `LAGGED` stream must disclose incomplete
+  observation without a clean ending; the checked terminal result and packet
+  remain required independently of that optional stream.
   The sequential host gate includes this consumer; it does not qualify model behavior.
 - With `JIG_LINUX_ROOTLESS_HOSTILE=1`, `test/package-smoke.ts` also qualifies
   inline/named command grants through the installed public CLI and complete
@@ -532,7 +629,8 @@ buffer release and output failure independently of recorded execution status.
   The credential-free command environment retains `XDG_RUNTIME_DIR` and
   `DBUS_SESSION_BUS_ADDRESS` for the existing Linux user-service host.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
-  `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
+  `REPORTING_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
+  `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged
   candidate artifacts; otherwise they pack already-built packages without
   rebuilding during execution. The native Codex immediate-interruption
   qualification separately installs the frozen Jig candidate and published
