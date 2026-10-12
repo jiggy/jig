@@ -64,6 +64,24 @@ operational baselines, and public-site assembly.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
   containment and binary-safe file Runs, invalid output, resource limits,
   failure suppression, publication collisions and execution-residue checks.
+  Its memory probe retains the fixed 256 MiB aggregate ceiling, 320 MiB touched
+  child allocation and 60-second command bound. Host-side read-only inspection
+  binds exactly one fresh memory Run to its canonical durable checkpoints,
+  prepared Linux owner, positive `memory.events` max/oom/oom_kill counters,
+  confirmed fence, complete release and admitted CLI terminal. It permits a
+  nonzero child status with a successful parent or an accurately failed SIGKILL
+  parent only with that same exhaustion proof; a bare kill or unrelated failure
+  never qualifies. The counters prove an OOM kill in this Run, not its exact
+  victim. The numerical ceiling remains owned by the exact installed candidate;
+  durable evidence contains counters, not a replacement limit policy. It passes
+  no private state or helpers to the consumer.
+  `installed-memory-proof.ts` owns pure integrity and outcome checks exercised
+  by the quick operational-baseline checks. Logged evidence contains only Run
+  and receipt digests, counters and settlement facts, never owner tokens. Proof
+  rejections use a closed message without rendering private values or causes.
+  Like the operational baseline, it always checks live residue, removes only
+  successful fixtures and retains failed private state plus the bounded memory
+  command transcript through `finishOperationalBaseline`.
 - `profile-installed-startup.ts` is an opt-in diagnostic on the selected Ubuntu
   24.04 x86-64 and exact Intel/Apple Silicon Mac hosts, using the exact frozen Jig and FLOW SDK archives and a deterministic
   three-Flow conversation. It excludes package/fixture setup, records one warmup

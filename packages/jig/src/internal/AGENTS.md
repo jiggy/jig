@@ -1284,6 +1284,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   remains a private test seam;
   raw messages and unreadable message getters cannot become evidence. These
   codes change neither the public terminal nor recovery authority.
+  The same exact-message classifier recognizes six fixed native output
+  collection, cleanup, missing-capture, deadline and finite-file-profile causes.
+  Nested secret canaries and message near-matches must remain absent from its
+  bounded class/code projection. Contained repair host tests observe guardian
+  recovery per invocation and wrap only the existing snapshot-ready await with
+  a fixed `output-capture` failure phase, then rethrow the same error even if
+  observation fails. Capture, delivery and cleanup limits and outcomes stay
+  unchanged; successful diagnostic reruns do not explain an earlier failure.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
   two/three-minute fixture budgets; production defaults remain unchanged.

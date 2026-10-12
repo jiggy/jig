@@ -31,7 +31,10 @@ import {
   type RunCheckpointIdentity,
   type RunCheckpointInput,
 } from '../src/internal/private-run-checkpoint.js'
-import { openPrivateProjectSession } from '../src/internal/project-session-controller.js'
+import {
+  closedTestErrorCauses,
+  openPrivateProjectSession,
+} from '../src/internal/project-session-controller.js'
 import { checkPackageDirectory } from '../src/package/inspect.js'
 import {
   fixtureHost,
@@ -66,6 +69,24 @@ function guardianLifecycleTest(name: string, run: () => Promise<void>, timeoutMs
       ),
     timeoutMs,
   )
+}
+
+async function repairOutputCapture(
+  ready: Extract<PrivateExecutionOutput, { kind: 'snapshot' }>['ready'],
+) {
+  try {
+    return await ready
+  } catch (error) {
+    try {
+      console.error(
+        'repair-output-capture-failure',
+        JSON.stringify({ phase: 'output-capture', causes: closedTestErrorCauses(error) }),
+      )
+    } catch {
+      // Optional closed evidence cannot replace the original capture failure.
+    }
+    throw error
+  }
 }
 
 test('contact-import variants are valid current FLOW packages', async () => {
@@ -311,7 +332,7 @@ test('constructs the repair application with unchanged sources and ordinary work
 
 proofDescribe('contained repair file application', () => {
   for (const scenario of ['successful', 'unsuccessful', 'batch', 'mixed-batch'] as const) {
-    test(
+    guardianLifecycleTest(
       `exports ${scenario} repair evidence through a JSON leaf and real contained commands`,
       async () => {
         const root = await mkdtemp(join(temporaryRoot, 'jig-repair-file-proof-'))
@@ -450,7 +471,7 @@ proofDescribe('contained repair file application', () => {
                       ? undefined
                       : output.kind === 'linux-directory'
                         ? { kind: 'linux-directory', fd: output.directory.fd }
-                        : { kind: 'snapshot', capture: await output.ready },
+                        : { kind: 'snapshot', capture: await repairOutputCapture(output.ready) },
                     checkpoints?.latest ?? undefined,
                     true,
                   ),
