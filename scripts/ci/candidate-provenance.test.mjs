@@ -198,6 +198,7 @@ const artifact = (id, name, run) => ({
 })
 const run = (id, workflowPath, { headSha = source, event = 'push', attempt = 1 } = {}) => ({
   id,
+  created_at: new Date(Date.UTC(2026, 0, 1, 0, 0, id)).toISOString(),
   path: workflowPath,
   run_attempt: attempt,
   repository: { full_name: repository },
@@ -511,16 +512,31 @@ function readinessFixture() {
     receiptSha256: candidate.receiptSha256,
   }
   const clone = (value) => structuredClone(value)
+  const requests = []
   const client = {
     api: async (path) => {
+      requests.push(path)
       const url = new URL(`https://api.github.com/${path}`)
       const workflowMatch = /\/actions\/workflows\/([^/]+)\/runs$/.exec(url.pathname)
-      if (workflowMatch)
+      if (workflowMatch) {
+        const created = url.searchParams.get('created')
+        const values = [...runs.values()]
+          .filter(
+            (entry) =>
+              entry.path.endsWith(`/${workflowMatch[1]}`) &&
+              ['branch', 'event', 'head_sha'].every((key) => {
+                const value = url.searchParams.get(key)
+                return value === null || value === entry[key === 'branch' ? 'head_branch' : key]
+              }) &&
+              (created === null || Date.parse(entry.created_at) >= Date.parse(created.slice(2))),
+          )
+          .sort((a, b) => b.id - a.id)
+        const page = Number(url.searchParams.get('page') ?? 1)
+        const size = Number(url.searchParams.get('per_page') ?? 100)
         return {
-          workflow_runs: clone(
-            [...runs.values()].filter((entry) => entry.path.endsWith(`/${workflowMatch[1]}`)),
-          ),
+          workflow_runs: clone(values.slice((page - 1) * size, page * size)),
         }
+      }
       const jobsMatch = /\/actions\/runs\/(\d+)\/attempts\/(\d+)\/jobs$/.exec(url.pathname)
       if (jobsMatch) return { jobs: clone(jobs.get(Number(jobsMatch[1])) ?? []) }
       const artifactsMatch = /\/actions\/runs\/(\d+)\/artifacts$/.exec(url.pathname)
@@ -540,6 +556,7 @@ function readinessFixture() {
     receipts,
     jobs,
     canonicalReceipt,
+    requests,
     check: (options = {}) =>
       releaseReadiness({ client, repository, sourceRevision: source, ...options }),
   }
@@ -588,6 +605,109 @@ test('duplicate and out-of-order completion events re-evaluate the same full pre
     const result = await fixture.check({ sourceRevision: undefined, triggerRunId })
     assert.equal(result.readyFlow, true)
     assert.equal(result.readyHost, true)
+  }
+})
+
+test('native discovery excludes more than a thousand historical runs before its CI producer', async () => {
+  const fixture = readinessFixture()
+  for (let id = 10_000; id < 11_001; id++) {
+    const historical = run(id, '.github/workflows/native-agent-api-qualification.yml', {
+      headSha: workflowHead,
+      event: 'workflow_run',
+    })
+    historical.created_at = '2025-12-31T00:00:00Z'
+    fixture.runs.set(id, historical)
+  }
+  // The inclusive lower boundary must retain a run in the producer's same second.
+  fixture.runs.get(400).created_at = fixture.runs.get(100).created_at
+  const result = await fixture.check()
+  assert.equal(result.readyFlow, true)
+  assert.equal(result.readyHost, true)
+  const queries = fixture.requests
+    .filter((path) => path.includes('/workflows/native-agent-api-qualification.yml/runs'))
+    .map((path) => new URL(`https://api.github.com/${path}`))
+  assert.equal(queries.length, 2)
+  const descendant = queries.find((url) => url.searchParams.get('event') === 'workflow_run')
+  const manual = queries.find((url) => url.searchParams.get('event') === 'workflow_dispatch')
+  assert.equal(descendant.searchParams.get('created'), `>=${fixture.runs.get(100).created_at}`)
+  assert.ok(descendant.search.includes('created=%3E%3D'))
+  assert.equal(descendant.searchParams.get('head_sha'), null)
+  assert.equal(descendant.searchParams.get('status'), null)
+  assert.equal(manual.searchParams.get('head_sha'), source)
+  assert.equal(manual.searchParams.get('created'), null)
+  assert.ok(fixture.requests.every((path) => !/\/runs\/1\d{4}\/artifacts/.test(path)))
+})
+
+test('older descendant reruns remain discoverable after a newer same-source CI producer', async () => {
+  const fixture = readinessFixture()
+  const earlier = run(90, producer.workflowPath)
+  earlier.created_at = '2025-12-30T00:00:00Z'
+  fixture.runs.set(90, earlier)
+  fixture.runs.get(400).created_at = '2025-12-31T00:00:00Z'
+  const result = await fixture.check()
+  assert.equal(result.readyFlow, true)
+  assert.equal(result.readyHost, true)
+  const query = fixture.requests.find((path) => path.includes('created=%3E%3D'))
+  assert.equal(
+    new URL(`https://api.github.com/${query}`).searchParams.get('created'),
+    `>=${earlier.created_at}`,
+  )
+})
+
+test('a queued manual native run can acquire current evidence after its creation', async () => {
+  const fixture = readinessFixture()
+  const native = fixture.runs.get(400)
+  native.created_at = '2025-12-31T00:00:00Z'
+  native.event = 'workflow_dispatch'
+  native.head_sha = source
+  for (const receipt of [4000, 4001, 4002]) {
+    fixture.receipts.get(receipt).consumer.event = native.event
+    fixture.receipts.get(receipt).consumer.headSha = source
+  }
+  for (const artifact of fixture.artifacts.get(400)) artifact.workflow_run.head_sha = source
+  const result = await fixture.check()
+  assert.equal(result.readyFlow, true)
+  assert.equal(result.readyHost, true)
+  assert.equal(result.hostSnapshot.runs.at(-1).runId, 400)
+})
+
+test('native discovery retains the pagination bound for a crowded current creation window', async () => {
+  const fixture = readinessFixture()
+  for (let id = 10_000; id < 11_000; id++) {
+    const recent = run(id, '.github/workflows/native-agent-api-qualification.yml', {
+      headSha: workflowHead,
+      event: 'workflow_run',
+    })
+    recent.created_at = fixture.runs.get(100).created_at
+    fixture.runs.set(id, recent)
+  }
+  const result = await fixture.check()
+  assert.equal(result.readyFlow, true)
+  assert.equal(result.readyHost, false)
+  assert.match(result.reasons.join(' '), /pagination limit exceeded/)
+})
+
+test('missing or invalid CI creation time refuses host discovery without blocking FLOW', async () => {
+  for (const value of [
+    undefined,
+    null,
+    '',
+    'invalid',
+    123,
+    '2026-02-30T00:00:00Z',
+    '2099-01-01T00:00:00Z',
+  ]) {
+    const fixture = readinessFixture()
+    fixture.runs.get(100).created_at = value
+    const result = await fixture.check()
+    assert.equal(result.readyFlow, true)
+    assert.equal(result.readyHost, false)
+    assert.match(result.reasons.join(' '), /valid CI creation time/)
+    assert.ok(
+      fixture.requests.every(
+        (path) => !path.includes('/workflows/native-agent-api-qualification.yml/runs'),
+      ),
+    )
   }
 })
 

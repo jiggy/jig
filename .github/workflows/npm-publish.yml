@@ -177,7 +177,12 @@ jobs:
               if (latest?.id !== expected.runId || latest.run_attempt !== expected.runAttempt)
                 throw new Error('A newer source qualification superseded authorization');
             } else {
-              const runs = list(`repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs`, 'workflow_runs');
+              const created = Date.parse(current.created_at);
+              if (typeof current.created_at !== 'string' || !Number.isFinite(created) || created > Date.now() ||
+                  new Date(created).toISOString().replace('.000Z', 'Z') !== current.created_at.replace('.000Z', 'Z'))
+                throw new Error('Missing valid native qualification creation time');
+              const query = new URLSearchParams({ created: `>=${current.created_at}` });
+              const runs = list(`repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs?${query}`, 'workflow_runs');
               for (const run of runs) {
                 if (run.id <= expected.runId || run.path !== expected.workflowPath || run.head_branch !== 'main' ||
                     run.repository?.full_name !== repository || run.head_repository?.full_name !== repository ||

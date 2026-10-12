@@ -212,6 +212,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   readiness after approvals and queueing and before registry mutations. FLOW
   and host mutation queues are independent; waiting for host qualification holds
   no runner or registry mutation lock.
+  The protected publisher searches native supersession from the live authorized
+  native run's validated creation time inclusively; newer IDs created in the same
+  second remain visible. Keep current-attempt checks and bounded pagination:
+  unrelated older history cannot block publication, and incomplete current
+  history cannot authorize it. Readiness separately preserves same-source native
+  reruns and manual runs created before protected approval or acquisition.
 
 ## Verification
 

@@ -76,6 +76,12 @@ Host preparation never becomes a consumer requirement.
   cannot qualify them. FLOW readiness remains independent of host failures.
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
+  Native descendant discovery bounds creation history at the earliest verified
+  main-push CI run for the exact source, preserving older reruns that acquire a
+  newer producer. Manual native runs use a separate exact-source/main/dispatch
+  query because protected queues can precede candidate acquisition. Union run
+  IDs before the unchanged newest-match and receipt checks. Validate creation
+  timestamps, keep inclusive boundaries and refuse incomplete bounded pagination.
 - `python-readiness.mjs` independently binds a main-push CI run's current attempt,
   Python builder, six installed interpreter/OS profiles, source suite and final
   gate to the original SDK artifact ID/digest, source-bound receipt and archive
