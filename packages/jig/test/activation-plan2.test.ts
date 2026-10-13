@@ -206,6 +206,150 @@ describe('private Candidate/5', () => {
     )
   })
 
+  test('checks complete child maps against retained caller and child interfaces in Candidate and Plan decoding', () => {
+    const original = encodePrivateActivationCandidateV5(
+      slottedCandidateFixture({ work: { kind: 'flow', path: 'flows/bug' } }),
+    )
+    const candidate = json(original.candidate)
+    const lock = json(original.lock)
+    const caller = candidate.targets.find(
+      ({ request }: any) => request.target.kind === 'binding',
+    ).request
+    const child = candidate.targets.find(
+      ({ request }: any) => request.packagePath === 'flows/bug',
+    ).request
+    caller.attachments = { source: 'read', deliverables: 'read-write' }
+    for (const { request } of candidate.targets)
+      if (request.packagePath === caller.packagePath) request.attachments = caller.attachments
+    child.attachments = { source: 'read', deliverables: 'read-write' }
+    const mapping = {
+      source: { from: 'source' },
+      deliverables: { into: 'deliverables', directory: 'copies' },
+    }
+    caller.slots.work.attachments = mapping
+    lock.bindings.router.slots.work = {
+      kind: 'route',
+      target: caller.slots.work.target,
+      attachments: mapping,
+    }
+    const encode = (value: any, lockValue: any) => {
+      for (const { request } of value.targets) request.digest = requestDigest(request)
+      const lockBytes = withLf(canonicalJson(lockValue))
+      value.lockDigest = privateProjectLocalLockDigest(decodePrivateProjectLocalLock(lockBytes))
+      value.activationMeaningDigest = activationMeaningDigest(
+        value.observedSemanticDigest,
+        value.targets,
+      )
+      return { candidate: withLf(canonicalJson(value)), lock: lockBytes }
+    }
+    const valid = decodePrivateActivationCandidateV5(encode(candidate, lock))
+    const plan = createPrivateActivationPlanV2({
+      candidate: valid,
+      candidateRevision: 1,
+      baseGeneration: null,
+      lockMode: 'update',
+      observedLock: { state: 'absent' },
+      operation: 'admission',
+    })
+    expect(decodePrivateActivationPlanV2(encodePrivateActivationPlanV2(plan))).toEqual(plan)
+
+    const malformed: readonly [string, (caller: any, child: any, mapping: any) => void][] = [
+      [
+        'read attachment route',
+        (_caller, _child, map) => {
+          map.source.from = 'missing'
+        },
+      ],
+      [
+        'write attachment route',
+        (_caller, _child, map) => {
+          map.deliverables.into = 'missing'
+        },
+      ],
+      [
+        'read attachment route',
+        (_caller, _child, map) => {
+          map.source.from = 'deliverables'
+        },
+      ],
+      [
+        'write attachment route',
+        (_caller, _child, map) => {
+          map.deliverables.into = 'source'
+        },
+      ],
+      [
+        'attachment route requires declared',
+        (_caller, selected) => {
+          selected.attachments.source = 'read-write'
+          selected.attachments.deliverables = 'read'
+        },
+      ],
+      [
+        'write attachment route',
+        (_caller, selected) => {
+          selected.attachments.deliverables = 'read'
+        },
+      ],
+      [
+        'every declared child port',
+        (_caller, selected) => {
+          selected.attachments.extra = 'read'
+        },
+      ],
+      [
+        'every declared child port',
+        (_caller, selected) => {
+          delete selected.attachments.source
+        },
+      ],
+    ]
+    for (const [message, change] of malformed) {
+      const changed = structuredClone(candidate)
+      const changedLock = structuredClone(lock)
+      const changedCaller = changed.targets.find(
+        ({ request }: any) => request.target.kind === 'binding',
+      ).request
+      const changedChild = changed.targets.find(
+        ({ request }: any) => request.packagePath === 'flows/bug',
+      ).request
+      change(changedCaller, changedChild, changedCaller.slots.work.attachments)
+      changedLock.bindings.router.slots.work.attachments = changedCaller.slots.work.attachments
+      const encoded = encode(changed, changedLock)
+      // The lock is intentionally inert: package interfaces belong to retained targets.
+      expect(decodePrivateProjectLocalLock(encoded.lock).bindings.router).toBeDefined()
+      expect(() => decodePrivateActivationCandidateV5(encoded)).toThrow(message)
+      const changedPlan = json(encodePrivateActivationPlanV2(plan))
+      changedPlan.activationMeaningDigest = changed.activationMeaningDigest
+      changedPlan.proposed = {
+        lock: changedLock,
+        lockDigest: changed.lockDigest,
+        targets: changed.targets,
+      }
+      expectInvalidPlan(changedPlan, message)
+    }
+
+    const unmapped = structuredClone(candidate)
+    const unmappedLock = structuredClone(lock)
+    const unmappedCaller = unmapped.targets.find(
+      ({ request }: any) => request.target.kind === 'binding',
+    ).request
+    delete unmappedCaller.slots.work.attachments
+    unmappedLock.bindings.router.slots.work = unmappedCaller.slots.work.target
+    expect(() => decodePrivateActivationCandidateV5(encode(unmapped, unmappedLock))).toThrow(
+      'attachment-bearing child requires a complete static attachment map',
+    )
+
+    const inconsistent = structuredClone(candidate)
+    inconsistent.targets.find(
+      ({ request }: any) =>
+        request.target.kind === 'flow' && request.packagePath === 'flows/router',
+    ).request.attachments = {}
+    expect(() => decodePrivateActivationCandidateV5(encode(inconsistent, lock))).toThrow(
+      'activation targets disagree on their package attachment interface',
+    )
+  })
+
   test('rejects an invalid kind and every uncommitted final meaning', () => {
     const valid = encodePrivateActivationCandidateV5(candidateFixture())
     const candidate = json(valid.candidate)
@@ -604,19 +748,23 @@ describe('private Plan/2', () => {
     }
   })
 
-  test('rejects an aggregate Plan that exceeds JSON/0 although each lock fits', () => {
-    const candidate = candidateFixture(['flows/run'], 8_000)
-    expect(() =>
-      createPrivateActivationPlanV2({
-        candidate,
-        candidateRevision: 1,
-        baseGeneration: null,
-        lockMode: 'locked',
-        observedLock: { state: 'present', lock: candidate.lock },
-        operation: 'admission',
-      }),
-    ).toThrow('maximum encoded bytes exceeded')
-  }, process.platform === 'darwin' ? 90_000 : 30_000)
+  test(
+    'rejects an aggregate Plan that exceeds JSON/0 although each lock fits',
+    () => {
+      const candidate = candidateFixture(['flows/run'], 8_000)
+      expect(() =>
+        createPrivateActivationPlanV2({
+          candidate,
+          candidateRevision: 1,
+          baseGeneration: null,
+          lockMode: 'locked',
+          observedLock: { state: 'present', lock: candidate.lock },
+          operation: 'admission',
+        }),
+      ).toThrow('maximum encoded bytes exceeded')
+    },
+    process.platform === 'darwin' ? 90_000 : 30_000,
+  )
 })
 
 function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPackages = 0) {

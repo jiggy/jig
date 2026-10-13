@@ -431,7 +431,9 @@ per-invocation overrides into settings.
 
 `slots` is an optional map of at most 256 LocalName keys to exact
 `flow:<project-relative-path>` or `binding:<LocalName>` selectors, inline grants,
-or `grant:<LocalName>` selections. Omission
+or `grant:<LocalName>` selections. A child route may instead be
+`{ target, attachments }`, where `target` is the same exact selector and
+`attachments` is the complete static map described below. Omission
 normalizes the declaration to `{}` before project defaults are resolved. A
 Flow selector must identify a direct Flow target, using empty settings and its
 own resolved routes. A Binding selector uses that Binding's own validated settings.
@@ -441,8 +443,8 @@ ordinary [Agent Run](agent-run.md) invocation, and a configured
 Binding may also use [Project Command](project-command.md) or
 [HTTP Request](http-request.md) or [Finite ACP](finite-acp.md). Slots cannot select the parent's own package, directly
 or through a Binding; unknown targets, cycles, paths exceeding the root resource budget,
-unqualified execution profiles, and packages requiring attachments reject the
-candidate. Plain package paths are not slot selectors. Linking captures each
+unqualified execution profiles, and attachment-bearing children without complete
+explicit mappings reject the candidate. Plain package paths are not slot selectors. Linking captures each
 target identity, and apply admits the complete relation and target
 configuration in the same immutable generation.
 In the example, `binding:critic` is a separate declaration selecting a
@@ -490,8 +492,8 @@ execution. No feature requirement is needed for ordinary one-shot calls.
 Attachment declarations participate in root eligibility and review without
 invocation paths. A direct root or configured Binding receives its declared
 attachments through the [root file profile](#root-file-runs). Child relations
-to attachment-bearing packages reject the candidate; they do not inherit
-parent file access. Unsupported declaration counts reject the project candidate.
+use complete reviewed mappings under the [child file profile](#child-file-runs);
+there is no implicit inheritance of parent file access. Unsupported declaration counts reject the project candidate.
 
 Bindings contain no runtime command, environment map, package-manager policy,
 or generic permission bag.
@@ -575,6 +577,45 @@ HTTP, finite ACP and command calls share the existing exclusive effect capacity.
 Root and child Bindings receive only their own grants. Grant slots do not
 introduce nested Flow routes or additional execution capacity.
 
+### Child file runs
+
+A mapped slot supplies every child attachment: `{ from: "source" }` borrows the
+immediate caller's complete immutable read view; `{ into: "deliverables",
+directory: "copies" }` gives the child its own initially empty writable output
+and imports its accepted files into that one new caller folder. Maps are static,
+complete, direction checked and included in the admitted relation. A writable
+folder is a single LocalName; sibling routes cannot select the same folder.
+Unmapped attachment-bearing children, independent retained resources on a
+mapped child Binding, output-to-read mappings and runtime file selectors are
+invalid. `run.call()` and its result remain ordinary Run/0 JSON.
+
+Every invocation keeps its own output backing and limits. After the child's
+result is accepted and all writers and descendants are fenced, Jig validates
+and streams its bounded final tree into private staging on the caller's
+original filesystem. Child output descriptors, package materialization and
+native ownership are settled before the native caller owner performs one
+no-replace directory rename. The live caller cannot inspect private staging.
+A normal successful reply requires confirmed stage and descriptor retirement.
+The caller's accepted final output still has the ordinary 64-file/16-MiB and
+256-entry profile, including imported files and their folder prefixes.
+
+A folder already present refuses before dispatch or prevents the final rename
+without overwriting caller content. Two sibling calls retain independent
+stages and the existing aggregate budget; there is no import queue. Each
+caller remembers busy, committed and unavailable destinations through its
+lifetime, even after child-row removal or deletion of the visible folder.
+Confirmed precommit absence permits a new operation. Committed folders cannot
+be reused by another operation. Unconfirmed import or cleanup ends the caller;
+Jig never rolls back possibly committed files or automatically replays work.
+Recovery fences the interrupted caller and does not resume its program.
+
+The existing native owner arbitrates accepted cancellation and the original
+child and caller deadlines with commit. Cancellation accepted before commit
+prevents publication. A cancellation arriving after commit has won can leave a
+complete folder with a cancelled or uncertain call result. It does not retract
+the folder or change the accepted root terminal, checkpoint or existing packet.
+Final root file delivery remains separately qualified under the root profile.
+
 ### Reviewed Binding attachments
 
 A Binding may supply `attachments: { decoder: "tools/base64" }`. Each LocalName
@@ -604,7 +645,9 @@ Only that root Binding receives the captured bytes through ordinary
 already-bound name fails rather than overriding it. Bound and per-run inputs
 share the 64-file/8-MiB execution budget. Both use sealed descriptors and the
 same read-only input projection, without source modes or live host paths.
-Children and native Agent/command scopes receive none of these attachments.
+Children receive a selected immutable read view only through an explicit
+reviewed mapping from their immediate caller. Native Agent/command scopes
+receive no attachment authority.
 
 These trees can contain data or self-contained code/tool bundles. A script may
 use installed Bun; a native bundle must supply its own compatible closure.
@@ -858,10 +901,11 @@ there is no argument or response channel for target selection, settings,
 attachments, or host authority.
 
 Each child starts in a fresh Run/0 context with its own scratch directory,
-the selected target's own settings and slots, and empty attachments.
+the selected target's own settings and slots, and only explicitly mapped attachments.
 A direct Flow child has empty settings and its own reviewed routes resolved
 from project defaults and qualified native requirements. Parent settings,
-routes, grants and attachments are not inherited. Its effective deadline is the earlier of its
+routes and grants are not inherited; attachment mappings select only the
+immediate caller's declared views. Its effective deadline is the earlier of its
 own direct-Run ceiling and the parent's deadline, so it can never outlive or
 widen the parent deadline.
 
@@ -1293,7 +1337,8 @@ The direct-alpha project implementation must prove at least:
     supervised limit overshoot rather than claiming hard quotas.
 14. Repeated Runs leave no process, owner state, scratch, or private-device residue.
 15. Direct-Flow and Binding child calls resolve only exact same-generation Flow
-    or bounded Binding targets, receive their own admitted settings and routes and empty attachments,
+    or bounded Binding targets, receive their own admitted settings and routes
+    and only explicitly mapped attachments,
     cannot exceed the parent deadline, and leave no separately addressable
     child history.
 16. One exact Agent Run invocation receives only explicitly supplied Skill

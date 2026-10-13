@@ -12,6 +12,10 @@ import {
   privateFilePath,
   sha256,
 } from './file-input.js'
+import {
+  createPrivateRootFlowFileContext,
+  type PrivateFlowFileContext,
+} from './flow-file-context.js'
 import { privateDomainDigest } from './identity.js'
 import { parseRunCheckpointInput } from './private-run-checkpoint.js'
 
@@ -209,6 +213,7 @@ export class PrivateRootRunFiles {
     identity: PrivateRunFileIdentity,
     bound: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[] = [],
   ): {
+    readonly context: PrivateFlowFileContext
     readonly plan: Pick<PrivateExecutionIntent, 'capturedInputs' | 'inputDirectories' | 'output'>
     readonly attachments: Readonly<
       Record<string, { readonly path: string; readonly access: 'read' | 'read-write' }>
@@ -252,6 +257,10 @@ export class PrivateRootRunFiles {
       ]),
     )
     return {
+      context: createPrivateRootFlowFileContext({
+        declarations: request.attachments,
+        captured: [...this.captured, ...bound],
+      }),
       plan: {
         capturedInputs: [...this.captured, ...bound].flatMap((item) =>
           item.files.map((file) => ({

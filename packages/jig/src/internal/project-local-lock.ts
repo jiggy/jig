@@ -5,8 +5,13 @@ import {
   type JsonObject,
   type JsonValue,
 } from '../json.js'
+import {
+  normalizeBindingAttachmentMap,
+  type ProjectSlotTarget,
+  validateDistinctBindingAttachmentDirectories,
+} from '../project/attachment-routes.js'
 import { parseProjectEntrypoint } from '../project/entrypoint.js'
-import { type AcpGrant, type GrantedSlot, grantName, normalizeGrant } from '../project/grants.js'
+import { type AcpGrant, grantName, normalizeGrant } from '../project/grants.js'
 import {
   type InvocationRequirement,
   normalizeInvocationRequirement,
@@ -42,7 +47,7 @@ export interface PrivateLockPackage {
 export interface PrivateLockBinding {
   readonly packagePath: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>
+  readonly slots: Readonly<Record<string, ProjectSlotTarget>>
   readonly attachments?: BoundAttachments
 }
 
@@ -200,7 +205,7 @@ function normalizePackages(value: unknown): PrivateProjectLocalLock['packages'] 
       slots !== undefined &&
       (!item.directRun ||
         Object.keys(slots).length === 0 ||
-        Object.values(slots).some((slot) => slot.kind === 'grant'))
+        Object.values(slots).some((slot) => slot.kind === 'grant' || slot.kind === 'route'))
     )
       throw new TypeError('package slots must be nonempty ordinary routes of a direct Flow')
     output[path] = Object.freeze({
@@ -303,9 +308,12 @@ function validateReferences(
     const selected = packages[binding.packagePath]
     if (selected === undefined) throw new TypeError(`Binding ${id} selects an unknown package`)
     resolveInvocationSlots(selected.uses, binding.slots)
-    for (const [name, identity] of Object.entries(binding.slots)) {
-      if (identity.kind === 'grant') continue
+    for (const [name, selected] of Object.entries(binding.slots)) {
+      if (selected.kind === 'grant') continue
+      const identity = selected.kind === 'route' ? selected.target : selected
       const childBinding = identity.kind === 'binding' ? bindings[identity.id] : undefined
+      if (selected.kind === 'route' && Object.keys(childBinding?.attachments ?? {}).length !== 0)
+        throw new TypeError('mapped child Binding cannot own independently retained attachments')
       const path = identity.kind === 'flow' ? identity.path : childBinding?.packagePath
       if (path === undefined) {
         throw new TypeError(`Binding ${id} slot ${name} selects an unknown Binding`)
@@ -330,15 +338,28 @@ function validateReferences(
 function normalizeSlots(
   value: unknown,
   label: string,
-): Readonly<Record<string, RunTargetIdentity | GrantedSlot>> {
+): Readonly<Record<string, ProjectSlotTarget>> {
   const input = object(value, `${label} slots`)
   const names = Object.keys(input)
   if (names.length > 256) throw new TypeError(`${label} slots exceed 256 entries`)
-  const output: Record<string, RunTargetIdentity | GrantedSlot> = Object.create(null)
+  const output: Record<string, ProjectSlotTarget> = Object.create(null)
   for (const name of names.sort()) {
     localName(name, `${label} slot`)
     const target = object(input[name], `${label} slot ${name}`)
-    if (target.kind === 'grant') {
+    if (target.kind === 'route') {
+      exactObject(target, ['kind', 'target', 'attachments'], `${label} slot ${name}`)
+      const identity = object(target.target, `${label} mapped slot target`)
+      if (identity.kind !== 'flow' && identity.kind !== 'binding')
+        throw new TypeError('mapped routes must select an ordinary Flow or Binding')
+      const normalized = normalizeSlots({ [name]: identity }, label)[name]!
+      if (normalized.kind !== 'flow' && normalized.kind !== 'binding')
+        throw new TypeError('mapped route target is not ordinary')
+      output[name] = Object.freeze({
+        kind: 'route',
+        target: normalized,
+        attachments: normalizeBindingAttachmentMap(target.attachments),
+      })
+    } else if (target.kind === 'grant') {
       exactObject(
         target,
         ['kind', 'policy', ...(Object.hasOwn(target, 'name') ? ['name'] : [])],
@@ -369,6 +390,13 @@ function normalizeSlots(
       throw new TypeError(`${label} slot ${name} must select a Flow or Binding target`)
     }
   }
+  validateDistinctBindingAttachmentDirectories(
+    Object.fromEntries(
+      Object.entries(output).flatMap(([name, slot]) =>
+        slot.kind === 'route' ? [[name, slot.attachments]] : [],
+      ),
+    ),
+  )
   return Object.freeze(output)
 }
 

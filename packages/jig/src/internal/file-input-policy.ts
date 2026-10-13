@@ -15,6 +15,8 @@ export const PRIVATE_CAPTURE_LIMITS = Object.freeze({
   output: 16 * 1024 * 1024,
 })
 export type PrivateCapturePurpose = keyof typeof PRIVATE_CAPTURE_LIMITS
+/** Capture/import borrows one bounded buffer, never another complete file tree. */
+export const PRIVATE_CAPTURE_CHUNK_BYTES = 64 * 1024
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const protectedParts = new Set(['.jig'])
 // biome-ignore lint/suspicious/noControlCharactersInRegex: The file boundary must reject control characters.

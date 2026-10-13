@@ -1,8 +1,8 @@
 import { isContractId, isContractVersion } from '../contract-identity.js'
 import {
+  FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
-  FINITE_ACP_CONTRACT_DIGEST,
 } from '../internal/private-finite-acp-contract.js'
 import {
   HTTP_REQUEST_CONTRACT_DIGEST,
@@ -20,8 +20,14 @@ import {
   RUN_CHECKPOINT_CONTRACT_VERSION,
 } from '../internal/private-run-checkpoint.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import {
+  normalizeBindingAttachmentMap,
+  type ProjectSlotTarget,
+  validateDistinctBindingAttachmentDirectories,
+} from './attachment-routes.js'
+import type { BindingAttachmentMap } from './author.js'
 import { validateGrantPolicy } from './grant-validation.js'
-import { type GrantedSlot, type GrantPolicy, normalizeGrant } from './grants.js'
+import { type GrantPolicy, normalizeGrant } from './grants.js'
 import type { RunTargetIdentity } from './package-project.js'
 import { normalizeProjectPath } from './paths.js'
 
@@ -39,6 +45,7 @@ export type InvocationSlot =
   | {
       readonly kind: 'flow'
       readonly target: RunTargetIdentity
+      readonly attachments?: BindingAttachmentMap
       readonly contract?: InvocationIdentity
     }
   | {
@@ -121,7 +128,7 @@ export function defaultInvocationSlots(
 /** Resolve retained ordinary routes and explicit grants, with implicit root checkpoint only. */
 export function resolveInvocationSlots(
   uses: Readonly<Record<string, InvocationRequirement>>,
-  targets: Readonly<Record<string, RunTargetIdentity | GrantedSlot>>,
+  targets: Readonly<Record<string, ProjectSlotTarget>>,
 ): InvocationSlots {
   const slots: Record<string, InvocationSlot> = Object.create(null)
   for (const [name, target] of Object.entries(targets)) {
@@ -140,7 +147,10 @@ export function resolveInvocationSlots(
     }
     slots[name] = Object.freeze({
       kind: 'flow',
-      target,
+      target: target.kind === 'route' ? target.target : target,
+      ...(target.kind === 'route'
+        ? { attachments: normalizeBindingAttachmentMap(target.attachments) }
+        : {}),
       ...(requirement?.id === undefined
         ? {}
         : {
@@ -257,7 +267,12 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
         ...(grant === undefined ? {} : { grant }),
       })
     } else if (slot.kind === 'flow') {
-      exact(slot, ['kind', 'target', ...(Object.hasOwn(slot, 'contract') ? ['contract'] : [])])
+      exact(slot, [
+        'kind',
+        'target',
+        ...(Object.hasOwn(slot, 'contract') ? ['contract'] : []),
+        ...(Object.hasOwn(slot, 'attachments') ? ['attachments'] : []),
+      ])
       const target = object(slot.target)
       let identity: RunTargetIdentity
       if (target.kind === 'flow') {
@@ -277,10 +292,20 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       output[name] = Object.freeze({
         kind: 'flow',
         target: identity,
+        ...(slot.attachments === undefined
+          ? {}
+          : { attachments: normalizeBindingAttachmentMap(slot.attachments) }),
         ...(contract === undefined ? {} : { contract }),
       })
     } else throw new TypeError(`slot ${name} has an unknown implementation kind`)
   }
+  validateDistinctBindingAttachmentDirectories(
+    Object.fromEntries(
+      Object.entries(output).flatMap(([name, slot]) =>
+        slot.kind === 'flow' && slot.attachments !== undefined ? [[name, slot.attachments]] : [],
+      ),
+    ),
+  )
   for (const native of ['http-request', 'project-command', 'finite-acp']) {
     if (
       Object.values(output).filter((slot) => slot.kind === 'native' && slot.native === native)

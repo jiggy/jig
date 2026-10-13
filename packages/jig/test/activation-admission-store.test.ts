@@ -2539,6 +2539,44 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 
+  test('invented retained attachment declarations refuse admission before lock or authority mutation', async () => {
+    const fixture = await createFixture('ready')
+    try {
+      const { digest: _requestDigest, ...request } = fixture.candidate.candidate.targets[0]!.request
+      const targets = [
+        {
+          ...fixture.candidate.candidate.targets[0]!,
+          request: activationRequest({ ...request, attachments: { invented: 'read' } }),
+        },
+      ]
+      const candidate = decodePrivateActivationCandidateV5({
+        candidate: json1({
+          ...fixture.candidate.candidate,
+          targets,
+          activationMeaningDigest: activationMeaning(
+            fixture.candidate.candidate.observedSemanticDigest,
+            targets,
+          ),
+        } as unknown as JsonValue),
+        lock: encodePrivateProjectLocalLock(fixture.candidate.lock),
+      })
+      insertCandidateRow(fixture.database, 2, candidate, true)
+      const plan = seedPlan(fixture, candidate, {
+        baseGeneration: null,
+        observedLock: 'absent',
+        operation: 'admission',
+      })
+      const before = activationAuthoritySnapshot(fixture.database)
+      await expect(applyPlan(fixture, plan)).rejects.toMatchObject({
+        code: 'ADMISSION_ARTIFACT_MISMATCH',
+      })
+      expect(activationAuthoritySnapshot(fixture.database)).toEqual(before)
+      await expect(stat(join(fixture.root, 'jig.lock'))).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await fixture.dispose()
+    }
+  })
+
   test('missing execution Package fails before Candidate, Plan, or admission mutation', async () => {
     const fixture = await createFixture('ready')
     try {

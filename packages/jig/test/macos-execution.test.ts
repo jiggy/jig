@@ -16,6 +16,35 @@ const native = test.skipIf(
   process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1',
 )
 
+async function terminalJoinFailureFixture(directory: string): Promise<string> {
+  const sourceUrl = new URL('./fixtures/macos-exec-owner.ts', import.meta.url)
+  const source = await readFile(sourceUrl, 'utf8')
+  const point = 'Promise.all([exited, framesEnded]),'
+  expect(source.split(point)).toHaveLength(2)
+  const fixture = join(directory, 'held-terminal.ts')
+  await writeFile(
+    fixture,
+    source
+      .replace(point, 'Promise.all([exited, new Promise<void>(() => {})]),')
+      .replaceAll(
+        "from '../../src/internal/",
+        `from '${fileURLToPath(new URL('../src/internal/', import.meta.url))}`,
+      ),
+  )
+  return fixture
+}
+
+test('constructs Mac launcher terminal-join failure while retaining the actual owner and native producer', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-macos-exec-fixture-')))
+  try {
+    const fixture = await terminalJoinFailureFixture(directory)
+    const built = await Bun.build({ entrypoints: [fixture], target: 'bun', write: false })
+    expect(built.success, String(built.logs)).toBe(true)
+  } finally {
+    await rm(directory, { recursive: true })
+  }
+})
+
 native(
   'fresh recovery authenticates durable ownership and fences descendants after guardian loss',
   async () => {
@@ -135,6 +164,7 @@ native(
 native(
   'native launcher holds admission, closes handoffs and applies isolation before executing',
   async () => {
+    const deadline = performance.now() + 30_000
     const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-macos-exec-build-')))
     const launcher = join(directory, 'macos-exec')
     const payload = join(directory, 'payload')
@@ -143,6 +173,8 @@ native(
         [new URL('../support/macos-exec.c', import.meta.url), launcher],
         [new URL('./fixtures/macos-exec-payload.c', import.meta.url), payload],
       ] as const) {
+        const remaining = Math.floor(deadline - performance.now())
+        if (remaining <= 0) throw new Error('native launcher fixture preparation deadline elapsed')
         const build = spawnSync(
           '/usr/bin/clang',
           [
@@ -155,7 +187,7 @@ native(
             '-o',
             output,
           ],
-          { encoding: 'utf8', timeout: 15_000 },
+          { encoding: 'utf8', timeout: Math.min(15_000, remaining) },
         )
         expect({ status: build.status, errors: build.stderr }).toEqual({ status: 0, errors: '' })
       }
@@ -163,7 +195,36 @@ native(
         fileURLToPath(new URL('./fixtures/macos-exec-owner.ts', import.meta.url)),
         [launcher, payload],
         { empty: true, passed: true },
+        undefined,
+        deadline,
       )
+      const heldTerminal = await terminalJoinFailureFixture(directory)
+      let observed = false
+      await expect(
+        runMacosFixture(
+          heldTerminal,
+          [launcher, payload],
+          { empty: true, passed: true },
+          async (state) => {
+            let phase = ''
+            while (performance.now() < deadline) {
+              phase = await readFile(join(state, 'phase'), 'utf8').catch(() => '')
+              if (phase.endsWith('empty\n')) break
+              await Bun.sleep(20)
+            }
+            expect(phase).toContain('refused:gate\n')
+            expect(phase).toContain('refused:exit\n')
+            expect(phase).toContain('refused:frames-ended\n')
+            expect(phase).toContain('cleanup\nempty\n')
+            expect(await readFile(join(state, 'err'), 'utf8')).toContain(
+              'refused: native terminal join expired',
+            )
+            observed = true
+          },
+          deadline,
+        ),
+      ).rejects.toBeInstanceOf(Error)
+      expect(observed).toBe(true)
     } finally {
       await rm(directory, { recursive: true, force: true })
     }

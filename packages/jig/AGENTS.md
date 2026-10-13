@@ -8,6 +8,17 @@ admitted FLOW packages.
 ## Ownership
 
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
+- `src/project/author.ts` also owns shipped static attachment-route data types.
+  `attachment-routes.ts` validates their closed maps and distinct output folders
+  during authoring and inert lock decoding, and exact caller/child ports during
+  linking and Candidate/5 or Plan/2 decoding. Admission rechecks each target's
+  declared interface against its verified retained package bytes; the portable
+  lock does not duplicate package attachment declarations.
+  Keep the authoring closure pure and import-free after bundling; declaration
+  values use enumerable data descriptors like `author-value.ts`. Proxy
+  reflection runs only under the existing authoring realm when evaluating
+  project code; retained JSON is revalidated before file authority is supplied.
+  Native execution qualification remains separate from this review data.
 - The CLI, package/project capture, invocation contracts, Run host, and
   administration objects are package-owned implementation.
 - `src/package/capture.ts` snapshots through held directory descriptors and
@@ -543,6 +554,13 @@ buffer release and output failure independently of recorded execution status.
   typed preparation causes together with fenced completion and cleanup.
   Resource-accounting changes also require `macos-execution.test.ts` and
   `macos-process-controls.test.ts` to preserve native enforcement and ownership.
+  The raw-launcher proof anchors its work deadline before compilation/setup and
+  reserves time for exact launchd cleanup inside the outer test deadline. Bound
+  each native exit/control-end join; preserve failure and per-mode phase/stderr
+  evidence rather than waiting beyond the helper's closing allowance. The
+  unrelated sentinel must outlive fixture work and is killed/joined separately.
+  After validating the raw launcher's actual crash exit/control receipt, the
+  fixture's coalition owner fences remaining work before confirming emptiness.
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
@@ -612,9 +630,16 @@ buffer release and output failure independently of recorded execution status.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
-  Its trusted npm installation accepts `JIG_NPM` and uses the selected absolute
+  Its trusted npm installation has a 120-second fixture allowance, accepts
+  `JIG_NPM` and uses the selected absolute
   `JIG_AUTHORING_NODE_PATH` directory for npm's interpreter when the host PATH
   excludes runner tool-cache binaries. This does not change Run authority.
+- The installed smoke also runs `test/installed-mapped-files.ts` with frozen
+  Jig and FLOW SDK archives on the selected native test host. Its ordinary
+  project invokes a file Flow directly, then maps concurrent siblings and a
+  nested child through the public CLI and SDK. Check binary and empty-file
+  delivery, immutable source preservation, and live complete imports before
+  each call returns; final packet rules remain independent.
 - The same installed smoke runs `test/installed-conversation-adoption.ts` in
   a fresh ordinary project using the frozen Jig/SDK/method archives, public
   `new --use` and `import-contract`, and the unchanged public conversation

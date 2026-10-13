@@ -481,6 +481,85 @@ describe('private project Plan review', () => {
     expect(availabilityReview).toContain('Changed: "flow:flows/bug"')
   })
 
+  test('shows exact child attachment maps and marks map or selected child changes as target changes', () => {
+    const parentDigest = `sha256:${'a'.repeat(64)}`
+    const oldChildDigest = `sha256:${'b'.repeat(64)}`
+    const newChildDigest = `sha256:${'c'.repeat(64)}`
+    const candidate = (directory: string, childDigest = oldChildDigest) => {
+      const target = { kind: 'flow' as const, path: 'flows/copy' }
+      const attachments = { source: { from: 'source' }, files: { into: 'files', directory } }
+      const filePorts = { source: 'read', files: 'read-write' }
+      const lock = {
+        packages: {
+          'flows/copy': { digest: childDigest, directRun: true, uses: {} },
+          'flows/root': { digest: parentDigest, directRun: true, uses: { child: {} } },
+        },
+        bindings: {
+          root: {
+            packagePath: 'flows/root',
+            settings: {},
+            slots: { child: { target, attachments } },
+          },
+        },
+      }
+      const request = (packagePath: string, digest: string) => ({
+        mode: 'run',
+        packagePath,
+        package: { digest },
+        entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
+        settings: {},
+        attachments: filePorts,
+      })
+      return {
+        lock,
+        candidate: {
+          targets: [
+            {
+              request: {
+                ...request('flows/root', parentDigest),
+                target: { kind: 'binding', id: 'root' },
+                slots: { child: { kind: 'flow', target, attachments } },
+              },
+              disposition: { state: 'ready' },
+            },
+            {
+              request: { ...request('flows/copy', childDigest), target, slots: {} },
+              disposition: { state: 'ready' },
+            },
+          ],
+        },
+      }
+    }
+    const base = reviewPlan('admission', `sha256:${'d'.repeat(64)}`)
+    const render = (
+      current: ReturnType<typeof candidate> | null,
+      proposed: ReturnType<typeof candidate>,
+    ) =>
+      renderPrivateProjectPlanReview({
+        baseCandidate: current,
+        plan: {
+          ...base,
+          proposed: { ...base.proposed, lock: proposed.lock, targets: proposed.candidate.targets },
+        },
+      } as unknown as PrivateActivationReviewPlan)
+    const current = candidate('copies')
+    const initial = render(null, current)
+    for (const field of ['"from": "source"', '"into": "files"', '"directory": "copies"']) {
+      expect(initial.text).toContain(field)
+      expect(initial.details).toContain(field)
+    }
+    expect(initial.text).toContain('Child file access requires reviewed attachment maps')
+    const moved = render(current, candidate('new-copies'))
+    expect(moved.text).toContain('Changed: "root"')
+    expect(moved.text).toContain('Changed: "binding:root"')
+    expect(moved.details).toMatch(/^- +"directory": "copies"$/m)
+    expect(moved.details).toMatch(/^\+ +"directory": "new-copies"$/m)
+    const childChanged = render(current, candidate('copies', newChildDigest))
+    expect(childChanged.details).toContain('Changed: "flow:flows/copy"')
+    expect(childChanged.details).toContain('Changed: "binding:root"')
+    expect(childChanged.details).not.toContain('Changed: "root"')
+  })
+
   test("marks a parent affected by its selected Binding's settings and availability", () => {
     const digest = `sha256:${'a'.repeat(64)}`
     const candidate = (style: string, ready: boolean) => {

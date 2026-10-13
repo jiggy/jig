@@ -1,5 +1,6 @@
 import { type StdioOptions, spawn, spawnSync } from 'node:child_process'
 import {
+  appendFileSync,
   closeSync,
   existsSync,
   mkdtempSync,
@@ -15,7 +16,11 @@ import { acquirePrivateMacosCoalition } from '../../src/internal/macos-process-c
 import { privateMacosSandboxProfile } from '../../src/internal/macos-sandbox-profile.js'
 
 const [launcher, payload, directory] = process.argv.slice(2) as [string, string, string]
+const phase = (value: string) =>
+  appendFileSync(join(directory, 'phase'), `${value}\n`, { mode: 0o600 })
+phase('starting')
 const owner = acquirePrivateMacosCoalition()
+phase('coalition-acquired')
 const scratch = realpathSync(mkdtempSync(`${directory}-data-`))
 const forbidden = join(directory, 'host-only')
 writeFileSync(forbidden, 'synthetic-private-value')
@@ -28,6 +33,7 @@ const { text: profile, bootstrap } = privateMacosSandboxProfile({
 })
 let failed: unknown
 try {
+  phase('positive-controls')
   const inherited = openSync(forbidden, 'r')
   try {
     const descriptors: StdioOptions = Array.from({ length: 201 }, () => 'ignore')
@@ -48,6 +54,7 @@ try {
   })
   if (environmentControl.status !== 0) throw new Error('environment positive control failed')
   for (const mode of ['refused', 'admitted', 'crash']) {
+    phase(`${mode}:spawn`)
     const admitted = mode !== 'refused'
     const marker = join(scratch, mode)
     const inherited = openSync(forbidden, 'r')
@@ -81,7 +88,14 @@ try {
     const configuration = child.stdio[3] as Writable
     const gate = child.stdio[4] as Writable
     const ready = child.stdio[5] as Readable
-    const framesEnded = new Promise<void>((resolve) => ready.once('end', resolve))
+    const framesEnded = new Promise<void>((resolve, reject) => {
+      ready.once('end', resolve)
+      ready.once('error', reject)
+      ready.once('close', () => {
+        if (!ready.readableEnded) reject(new Error('native control stream closed before end'))
+      })
+    })
+    void framesEnded.catch(() => undefined)
     configuration.end(profile)
     let frame = Buffer.alloc(0)
     await new Promise<void>((resolve, reject) => {
@@ -102,13 +116,36 @@ try {
     })
     if (frame.length !== 16 || frame.readUInt32LE(0) !== 0x4a49474d || frame.readUInt32LE(12) !== 0)
       throw new Error('invalid private readiness')
+    phase(`${mode}:ready`)
     await Bun.sleep(50)
     if (existsSync(marker)) throw new Error('unadmitted native code executed')
     const sample = owner.sample()
     if (!sample.complete || sample.active !== 3n) throw new Error('pre-exec owner is incomplete')
     gate.end(admitted ? 'A' : 'X')
-    const code = await exited
-    await framesEnded
+    phase(`${mode}:gate`)
+    void exited.then(
+      () => phase(`${mode}:exit`),
+      () => {},
+    )
+    void framesEnded.then(
+      () => phase(`${mode}:frames-ended`),
+      () => {},
+    )
+    let terminalTimer: ReturnType<typeof setTimeout> | undefined
+    let code: number | null
+    try {
+      ;[code] = await Promise.race([
+        Promise.all([exited, framesEnded]),
+        new Promise<never>((_, reject) => {
+          terminalTimer = setTimeout(
+            () => reject(new Error(`${mode}: native terminal join expired`)),
+            10_000,
+          )
+        }),
+      ])
+    } finally {
+      clearTimeout(terminalTimer)
+    }
     if (
       code !== 0 ||
       frame.length !== 32 ||
@@ -123,14 +160,19 @@ try {
     if (existsSync(marker) !== (mode === 'admitted')) throw new Error('admission result mismatch')
     if (mode === 'admitted' && readFileSync(marker, 'utf8') !== 'executed')
       throw new Error('invalid payload result')
+    // The raw launcher reports its entry's actual termination. This fixture
+    // owns and fences any remaining coalition work after the deliberate crash.
+    if (mode === 'crash') owner.signalMembers('kill')
     const settledBy = performance.now() + 3000
     while (!owner.empty() && performance.now() < settledBy) await Bun.sleep(20)
     if (!owner.empty()) throw new Error('launcher left descendants')
+    phase(`${mode}:empty`)
   }
 } catch (error) {
   failed = error
   console.error(error)
 } finally {
+  phase('cleanup')
   owner.signalMembers('kill')
   const end = performance.now() + 3000
   while (!owner.empty() && performance.now() < end) await Bun.sleep(20)
@@ -144,5 +186,6 @@ if (!owner.empty()) {
   throw new Error('owned cleanup is unconfirmed')
 }
 rmSync(scratch, { recursive: true })
+phase('empty')
 console.log(JSON.stringify({ empty: true, passed: failed === undefined }))
 if (failed !== undefined) throw failed

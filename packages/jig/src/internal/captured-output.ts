@@ -1,10 +1,15 @@
-import { closeSync, fstatSync, readSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { closeSync, constants, fstatSync } from 'node:fs'
 import {
-  capturePrivateBytes,
+  capturePrivateOutputByteStream,
   type PrivateCapturedBytes,
   readPrivateCapturedBytes,
   requirePrivateCapturedBytes,
 } from './captured-bytes.js'
+import {
+  privateDescriptorByteChunks,
+  privateDescriptorByteDigest,
+} from './descriptor-byte-stream.js'
 import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
   PRIVATE_FILE_LIMITS,
@@ -12,7 +17,6 @@ import {
   privateFilePath,
   privateInputDirectory,
   privateOpenAt,
-  privateReadRegularFile,
   sha256,
 } from './file-input.js'
 import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
@@ -44,18 +48,23 @@ export class PrivateOutputProfileError extends Error {
   }
 }
 
-/** Caller must first prove all writers fenced. Copy through that held directory
- * into anonymous immutable bytes, so storage can be released before publication. */
-export function capturePrivateOutput(
+export interface PrivateOutputManifest {
+  readonly files: readonly PrivateOutputFile[]
+  readonly directories: readonly string[]
+  readonly bytes: number
+}
+
+/** Bounded evidence from a held tree after writer fencing; creates no byte copy. */
+export function inspectPrivateOutput(
   directory: number,
   signal?: AbortSignal,
-): PrivateCapturedOutput {
+): PrivateOutputManifest {
   if (!Number.isSafeInteger(directory) || directory < 0 || !fstatSync(directory).isDirectory())
     throw new TypeError('output capture requires an owned directory')
   const end = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
   let bytes = 0,
     entries = 0
-  const contents: { path: string; data: Buffer }[] = [],
+  const paths: string[] = [],
     directories: string[] = []
   const check = () => {
     signal?.throwIfAborted()
@@ -78,18 +87,9 @@ export function capturePrivateOutput(
           directories.push(path)
           visit(path)
         } else {
-          if (
-            contents.length >= PRIVATE_FILE_LIMITS.files ||
-            contents.some((file) => file.path === path)
-          )
+          if (paths.length >= PRIVATE_FILE_LIMITS.files || paths.includes(path))
             throw new PrivateOutputProfileError()
-          const data = privateReadRegularFile(
-            directory,
-            path,
-            PRIVATE_CAPTURE_LIMITS.output - bytes,
-          )
-          bytes += data.length
-          contents.push({ path, data })
+          paths.push(path)
         }
       }
     } finally {
@@ -102,34 +102,50 @@ export function capturePrivateOutput(
   }
   try {
     visit('')
-    contents.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    paths.sort()
     directories.sort()
-    let offset = 0
-    const files = Object.freeze(
-      contents.map(({ path, data }) => {
-        const file = Object.freeze({ path, offset, bytes: data.length, digest: sha256(data) })
-        offset += data.length
-        return file
-      }),
-    )
-    check()
-    const data = Buffer.concat(
-      contents.map((file) => file.data),
-      bytes,
-    )
-    let backing: PrivateCapturedBytes<'output'>
-    try {
-      backing = capturePrivateBytes(data, 'output')
-    } finally {
-      data.fill(0)
-    }
-    try {
+    const files: PrivateOutputFile[] = []
+    for (const path of paths) {
       check()
-    } catch (error) {
-      backing.close()
-      throw error
+      const fd = privateOpenAt(directory, path, constants.O_RDONLY | constants.O_NONBLOCK)
+      try {
+        const before = fstatSync(fd, { bigint: true })
+        if (!before.isFile() || before.nlink !== 1n) throw new PrivateFileInputError('linked')
+        if (before.size < 0n || before.size > BigInt(PRIVATE_CAPTURE_LIMITS.output - bytes))
+          throw new PrivateOutputProfileError()
+        const size = Number(before.size)
+        const hash = createHash('sha256')
+        for (const chunk of privateDescriptorByteChunks(fd, size)) {
+          check()
+          hash.update(chunk)
+        }
+        const after = fstatSync(fd, { bigint: true })
+        if (
+          after.size !== before.size ||
+          after.mtimeNs !== before.mtimeNs ||
+          after.ctimeNs !== before.ctimeNs ||
+          after.nlink !== 1n
+        )
+          throw new PrivateFileInputError('changed')
+        files.push(
+          Object.freeze({
+            path,
+            offset: bytes,
+            bytes: size,
+            digest: `sha256:${hash.digest('hex')}`,
+          }),
+        )
+        bytes += size
+      } finally {
+        closeSync(fd)
+      }
     }
-    return mint(backing, files, Object.freeze(directories))
+    check()
+    return Object.freeze({
+      files: Object.freeze(files),
+      directories: Object.freeze(directories),
+      bytes,
+    })
   } catch (error) {
     if (
       error instanceof PrivateFileInputError &&
@@ -137,8 +153,62 @@ export function capturePrivateOutput(
     )
       throw new PrivateOutputProfileError(error)
     throw error
+  }
+}
+
+/** Caller must first prove all writers fenced. The immutable snapshot permits
+ * its original native backing to retire before ordinary packet publication. */
+export function capturePrivateOutput(
+  directory: number,
+  signal?: AbortSignal,
+): PrivateCapturedOutput {
+  const deadline = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
+  const check = () => {
+    signal?.throwIfAborted()
+    if (performance.now() >= deadline) throw new Error('output capture deadline exceeded')
+  }
+  const manifest = inspectPrivateOutput(directory, signal)
+  function* contents() {
+    for (const file of manifest.files) {
+      check()
+      yield* privateOutputFileChunks(directory, file, check)
+    }
+  }
+  const backing = capturePrivateOutputByteStream(contents())
+  return mint(backing, manifest.files, manifest.directories)
+}
+
+/** A second pass rechecks every byte while a caller writes to its private stage.
+ * The caller keeps the original backing fenced and owns failure cleanup. */
+export function* privateOutputFileChunks(
+  directory: number,
+  file: Pick<PrivateOutputFile, 'path' | 'bytes' | 'digest'>,
+  check: () => void,
+): Generator<Buffer> {
+  const fd = privateOpenAt(directory, file.path, constants.O_RDONLY | constants.O_NONBLOCK)
+  try {
+    const before = fstatSync(fd, { bigint: true })
+    if (!before.isFile() || before.nlink !== 1n || before.size !== BigInt(file.bytes))
+      throw new Error('output file identity changed')
+    const hash = createHash('sha256')
+    for (const chunk of privateDescriptorByteChunks(fd, file.bytes)) {
+      check()
+      hash.update(chunk)
+      yield chunk
+    }
+    const after = fstatSync(fd, { bigint: true })
+    if (
+      before.dev !== after.dev ||
+      before.ino !== after.ino ||
+      after.nlink !== 1n ||
+      before.size !== after.size ||
+      before.mtimeNs !== after.mtimeNs ||
+      before.ctimeNs !== after.ctimeNs ||
+      `sha256:${hash.digest('hex')}` !== file.digest
+    )
+      throw new Error('output file changed after validation')
   } finally {
-    for (const file of contents) file.data.fill(0)
+    closeSync(fd)
   }
 }
 
@@ -222,13 +292,13 @@ export function capturePrivateTransferredOutput(
   const before = fstatSync(fd, { bigint: true })
   if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(identity.bytes))
     throw new Error('transferred output is not the declared anonymous file')
-  const bytes = Buffer.alloc(identity.bytes)
+  if (
+    privateDescriptorByteDigest(fd, identity.bytes) !== identity.digest ||
+    files.some((file) => privateDescriptorByteDigest(fd, file.bytes, file.offset) !== file.digest)
+  )
+    throw new Error('transferred output identity changed')
+  const capture = capturePrivateOutputByteStream(privateDescriptorByteChunks(fd, identity.bytes))
   try {
-    for (let offset = 0; offset < bytes.length; ) {
-      const count = readSync(fd, bytes, offset, bytes.length - offset, offset)
-      if (!count) throw new Error('transferred output ended early')
-      offset += count
-    }
     const after = fstatSync(fd, { bigint: true })
     if (
       before.dev !== after.dev ||
@@ -237,19 +307,13 @@ export function capturePrivateTransferredOutput(
       after.nlink !== 0n ||
       before.mtimeNs !== after.mtimeNs ||
       before.ctimeNs !== after.ctimeNs ||
-      sha256(bytes) !== identity.digest ||
-      files.some(
-        (file) => sha256(bytes.subarray(file.offset, file.offset + file.bytes)) !== file.digest,
-      )
+      capture.digest !== identity.digest
     )
       throw new Error('transferred output identity changed')
-    return mint(
-      capturePrivateBytes(bytes, 'output'),
-      Object.freeze(files),
-      Object.freeze(directories),
-    )
-  } finally {
-    bytes.fill(0)
+    return mint(capture, Object.freeze(files), Object.freeze(directories))
+  } catch (error) {
+    capture.close()
+    throw error
   }
 }
 

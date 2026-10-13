@@ -1,5 +1,43 @@
 import type { FileHandle } from 'node:fs/promises'
 import type { PrivateCapturedOutput } from './captured-output.js'
+import { PrivateFileImportUnconfirmedError } from './execution-file-import.js'
+
+const closingDirectories = new WeakMap<FileHandle, Promise<void>>()
+const retainedDirectories = new Set<FileHandle>()
+const closingCaptures = new WeakMap<PrivateCapturedOutput, Promise<void>>()
+const retainedCaptures = new Set<PrivateCapturedOutput>()
+
+function closeDirectory(directory: FileHandle): Promise<void> {
+  const existing = closingDirectories.get(directory)
+  if (existing !== undefined) return existing
+  retainedDirectories.add(directory)
+  const closing = (async () => {
+    try {
+      await directory.close()
+    } catch (cause) {
+      throw new PrivateFileImportUnconfirmedError(cause)
+    }
+    retainedDirectories.delete(directory)
+  })()
+  closingDirectories.set(directory, closing)
+  return closing
+}
+
+function closeCapture(capture: PrivateCapturedOutput): Promise<void> {
+  const existing = closingCaptures.get(capture)
+  if (existing !== undefined) return existing
+  retainedCaptures.add(capture)
+  const closing = (async () => {
+    try {
+      capture.close()
+    } catch (cause) {
+      throw new PrivateFileImportUnconfirmedError(cause)
+    }
+    retainedCaptures.delete(capture)
+  })()
+  closingCaptures.set(capture, closing)
+  return closing
+}
 
 /** Closed native storage lifetimes. Read only after execution enforcement settles. */
 export type PrivateExecutionOutput =
@@ -21,11 +59,12 @@ export async function resolvePrivateExecutionOutput(
   return output.kind === 'linux-directory' ? output.directory : output.ready
 }
 
-export async function closePrivateExecutionOutput(output?: PrivateExecutionOutput): Promise<void> {
-  if (output === undefined) return
-  if (output.kind === 'linux-directory') return output.directory.close()
+export function closePrivateExecutionOutput(output?: PrivateExecutionOutput): Promise<void> {
+  if (output === undefined) return Promise.resolve()
+  if (output.kind === 'linux-directory') return closeDirectory(output.directory)
   // A rejected capture owns no snapshot. Its collection failure is separate
   // from cleanup; the backend must independently settle storage before completion.
-  const capture = await output.ready.catch(() => undefined)
-  capture?.close()
+  return output.ready
+    .catch(() => undefined)
+    .then((capture) => (capture === undefined ? undefined : closeCapture(capture)))
 }

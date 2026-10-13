@@ -1,8 +1,10 @@
-import { closeSync, fstatSync, readFileSync, statfsSync, writeSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { closeSync, fstatSync, openSync, readFileSync, statfsSync, writeSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, posix, resolve } from 'node:path'
 import { getSystemErrorName } from 'node:util'
 import {
+  PRIVATE_CAPTURE_CHUNK_BYTES,
   PRIVATE_CAPTURE_LIMITS,
   PRIVATE_FILE_LIMITS,
   PrivateFileInputError,
@@ -150,6 +152,46 @@ export function privateLinuxSealedBytes(bytes: Uint8Array): number {
     throw error
   }
 }
+/** Only host-generated, synchronously borrowed chunks enter this sealed backing. */
+export function privateLinuxSealedByteStream(
+  chunks: Iterable<Uint8Array>,
+  maximumBytes: number,
+): Readonly<{ fd: number; bytes: number; digest: string }> {
+  if (
+    !Number.isSafeInteger(maximumBytes) ||
+    maximumBytes < 0 ||
+    maximumBytes > PRIVATE_CAPTURE_LIMITS.output
+  )
+    throw new TypeError('invalid captured byte limit')
+  const { ffi, symbols } = calls()
+  const name = cString('jig-output')
+  const fd = result(symbols.memfd_create!(ffi.ptr(name), 3))
+  try {
+    let bytes = 0
+    const hash = createHash('sha256')
+    for (const chunk of chunks) {
+      if (
+        !(chunk instanceof Uint8Array) ||
+        chunk.byteLength > PRIVATE_CAPTURE_CHUNK_BYTES ||
+        bytes + chunk.byteLength > maximumBytes
+      )
+        throw new TypeError('captured stream exceeds its byte limit')
+      let written = 0
+      while (written < chunk.byteLength) {
+        const count = writeSync(fd, chunk, written, chunk.byteLength - written, bytes + written)
+        if (count <= 0) throw new Error('captured output write made no progress')
+        written += count
+      }
+      hash.update(chunk)
+      bytes += chunk.byteLength
+    }
+    result(symbols.fcntl!(fd, 1033, CLOSED_SEALS))
+    return Object.freeze({ fd, bytes, digest: `sha256:${hash.digest('hex')}` })
+  } catch (error) {
+    closeSync(fd)
+    throw error
+  }
+}
 export function privateVerifyLinuxSealedFile(
   fd: number,
   bytes: number,
@@ -176,9 +218,43 @@ export function privateVerifyLinuxSealedFile(
   )
     throw new TypeError('captured input descriptor changed')
 }
-/** Keep spawn's source descriptors above all destination slots to avoid remapping collisions. */
+/** Each launch reads the same sealed backing through its own file position. */
 export function privateDuplicateInputForStdio(fd: number, minimum: number): number {
   if (!Number.isSafeInteger(fd) || fd < 0 || !Number.isSafeInteger(minimum) || minimum < 6)
     throw new TypeError('invalid captured input descriptor handoff')
-  return result(calls().symbols.fcntl!(fd, F_DUPFD_CLOEXEC, minimum))
+  const original = fstatSync(fd, { bigint: true })
+  if (
+    !original.isFile() ||
+    original.nlink !== 0n ||
+    (result(calls().symbols.fcntl!(fd, 1034, 0)) & CLOSED_SEALS) !== CLOSED_SEALS
+  )
+    throw new TypeError('captured input descriptor changed')
+  // dup shares an open-file-description offset. Bubblewrap's --file consumes
+  // that offset, so borrowing it again would supply EOF to a child or sibling.
+  const reader = openSync(`/proc/self/fd/${fd}`, O_CLOEXEC)
+  let duplicate: number
+  try {
+    const reopened = fstatSync(reader, { bigint: true })
+    if (
+      !reopened.isFile() ||
+      reopened.dev !== original.dev ||
+      reopened.ino !== original.ino ||
+      reopened.size !== original.size ||
+      reopened.nlink !== 0n ||
+      (result(calls().symbols.fcntl!(reader, 1034, 0)) & CLOSED_SEALS) !== CLOSED_SEALS
+    )
+      throw new TypeError('captured input descriptor changed')
+    // Keep spawn sources above destination slots to avoid remapping collisions.
+    duplicate = result(calls().symbols.fcntl!(reader, F_DUPFD_CLOEXEC, minimum))
+  } catch (error) {
+    closeSync(reader)
+    throw error
+  }
+  try {
+    closeSync(reader)
+  } catch (error) {
+    closeSync(duplicate)
+    throw error
+  }
+  return duplicate
 }

@@ -7,6 +7,7 @@ import {
   PrivateDeliveryInspectionError,
   privateCaptureDeliveryInspection,
 } from '../src/internal/delivery-inspection.js'
+import { PrivateFileImportUnconfirmedError } from '../src/internal/execution-file-import.js'
 import {
   privateFileCompletionAllowance,
   privateFileCompletionBudget,
@@ -488,9 +489,12 @@ test('RootRunFiles concurrent and repeated closes consume one descriptor and pre
   expect(files.output).toBeUndefined()
   expect(files.close()).toBe(first)
   expect(() => files.retainOutput(undefined)).toThrow('unavailable')
-  result.reject(new Error('descriptor close failed'))
-  expect(await rejection).toMatchObject({ message: 'descriptor close failed' })
-  await expect(files.close()).rejects.toThrow('descriptor close failed')
+  const failure = new Error('descriptor close failed')
+  result.reject(failure)
+  const uncertain = await rejection
+  expect(uncertain).toBeInstanceOf(PrivateFileImportUnconfirmedError)
+  expect((uncertain as PrivateFileImportUnconfirmedError).cause).toBe(failure)
+  expect(await files.close().catch((error) => error)).toBe(uncertain)
   expect(closes).toBe(1)
 })
 

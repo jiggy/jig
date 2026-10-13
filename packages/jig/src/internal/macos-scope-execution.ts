@@ -51,6 +51,8 @@ export interface PrivateMacosScopeExecution {
   readonly version: number
   readonly completion: Promise<PrivateMacosScopeResult>
   admit(): void
+  acceptsOutputImport(): boolean
+  outputImportRefusal(): string | null
   stop(reason: 'cancelled' | 'coordinator_lost'): void
 }
 
@@ -386,12 +388,25 @@ export async function preparePrivateMacosScope(input: {
         )
       }),
     ])
+    const sameRoot = owner.retainMember(identity.pid, identity.version)
+    const outputImportRefusal = () => {
+      if (!admitted) return 'not-admitted'
+      if (reason !== undefined) return 'scope-stopped'
+      if (rootExited) return 'root-exited'
+      if (performance.now() >= hardDeadline) return 'deadline'
+      if (!sameRoot()) return 'root-identity'
+      return null
+    }
     return Object.freeze({
       stdin,
       stdout,
       stderr,
       ...identity,
       completion,
+      acceptsOutputImport() {
+        return outputImportRefusal() === null
+      },
+      outputImportRefusal,
       admit() {
         if (performance.now() >= hardDeadline) stop('deadline')
         if (admitted || reason !== undefined || !owner.contains(identity.pid, identity.version))

@@ -23,6 +23,7 @@ export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): Priva
     ...(intent.network === undefined ? {} : { network: intent.network }),
     ...(intent.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     ...(intent.output === undefined ? {} : { output: intent.output }),
+    ...(intent.outputImports === undefined ? {} : { outputImports: intent.outputImports }),
     ...(intent.capturedInputs === undefined ? {} : { capturedInputs: intent.capturedInputs }),
     ...(intent.inputDirectories === undefined ? {} : { inputDirectories: intent.inputDirectories }),
   }
@@ -122,6 +123,7 @@ export function privateMacosExecutionPlan(
             mountPath: data,
             bytes: intent.storageBytes,
             collect: intent.output ? ('output' as const) : null,
+            ...(intent.outputImports === undefined ? {} : { imports: intent.outputImports }),
           },
         }
       : {}),

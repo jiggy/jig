@@ -48,7 +48,7 @@ use-case and orchestration hypotheses.
 - `guide/files.md` explains per-run files and review-pinned Binding resources,
   their shared read attachment interface, automatic temporary packets for
   writable targets, stdout-only result targets, explicit retained destinations,
-  actionable admitted file mappings, retention and root-only limits.
+  actionable admitted file mappings, retention and static child file mappings.
 - `guide/agent-method.md` explains the reusable method's pure library and
   published ordinary Agent Run artifact, reviewed-source adoption, explicit
   caller context, local private response-schema placement and independent

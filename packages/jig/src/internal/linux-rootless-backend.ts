@@ -23,12 +23,21 @@ import { fileURLToPath } from 'node:url'
 import { types as utilTypes } from 'node:util'
 
 import type { JsonValue } from '../json.js'
+import {
+  type PrivateFileImportTarget,
+  PrivateFileImportUnconfirmedError,
+} from './execution-file-import.js'
 import { PRIVATE_OUTPUT_PATH } from './execution-intent.js'
+import { closePrivateExecutionOutput } from './execution-output.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { PRIVATE_FILE_LIMITS } from './file-input-policy.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
+import {
+  createPrivateLinuxFileImportTarget,
+  type PrivateLinuxImportOwner,
+} from './linux-file-import.js'
 import { privateDuplicateInputForStdio, privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
   acquirePrivateRootlessLinux,
@@ -37,6 +46,10 @@ import {
   revalidatePrivateRootlessLinux,
 } from './linux-rootless-acquisition.js'
 import { privateProfileSpan } from './private-profile.js'
+import {
+  type PrivateReadInputAlias,
+  planPrivateReadInputProjection,
+} from './read-input-projection.js'
 
 const RUN_ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 const OWNER_NAME = /^[a-z0-9][a-z0-9-]{0,63}$/
@@ -97,6 +110,7 @@ export interface PrivateLinuxLaunchPlan {
   readonly nestedUserNamespaces?: boolean
   /** One bounded anonymous output mount; its retained descriptor is host-only. */
   readonly output?: boolean
+  readonly outputImports?: boolean
   readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
   readonly inputDirectories?: readonly string[]
 }
@@ -112,8 +126,10 @@ interface SealedLaunchPlan
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
+  readonly outputImports: boolean
   readonly capturedInputs: readonly SealedInput[]
   readonly inputDirectories: readonly string[]
+  readonly inputAliases: readonly PrivateReadInputAlias[]
 }
 
 export interface PrivateLinuxCgroupBackendOptions {
@@ -283,6 +299,7 @@ interface SupervisorReady {
   readonly payloadPid: number
   readonly supervisorPid: number
   readonly outputFd?: number
+  readonly outputBackingFd?: number
 }
 
 interface SupervisorTerminal {
@@ -316,6 +333,7 @@ type FinalRecord = SupervisorTerminal | RecoveredFinal
 export type PrivateLinuxComponentProcess = PrivateExecutionProcess & {
   /** Read only after enforcement settles. Close after collection, including failure. */
   readonly output?: { readonly kind: 'linux-directory'; readonly directory: FileHandle }
+  readonly outputImport?: PrivateFileImportTarget
   readonly owner: PrivateLinuxPreparedOwnerIdentity
   readonly cgroup: {
     readonly runCgroup: string
@@ -612,6 +630,8 @@ export class PrivateLinuxCgroupBackend {
     let control: Socket | undefined
     let preparedReached = false
     let outputDirectory: FileHandle | undefined
+    let outputBacking: FileHandle | undefined
+    let outputImport: PrivateFileImportTarget | undefined
     try {
       await listen(server, controlPath)
       const accepted = acceptOne(server, this.#options.startupTimeoutMs)
@@ -698,6 +718,16 @@ export class PrivateLinuxCgroupBackend {
         ) {
           throw new Error('output handoff is not an anonymous tmpfs directory')
         }
+        if (data.sealedPlan.outputImports) {
+          if (!safePositiveInteger(ready.outputBackingFd))
+            throw new Error('missing original output backing handoff')
+          outputBacking = await open(
+            `/proc/${ready.supervisorPid}/fd/${ready.outputBackingFd}`,
+            0x10000,
+          )
+        } else if (ready.outputBackingFd !== undefined) {
+          throw new Error('unexpected original output backing handoff')
+        }
       } else if (ready.outputFd !== undefined) {
         throw new Error('unexpected output handoff')
       }
@@ -706,10 +736,22 @@ export class PrivateLinuxCgroupBackend {
 
       let inputClosed = false
       let terminationRequested = false
-      const terminal = waitForTerminal(messages, closed).then((message) => {
+      let nativeRunning = true
+      const imports = createPrivateLinuxImportReplies({
+        running: () => nativeRunning,
+        timeoutMs: data.identity.cleanupTimeoutMs,
+        write: (value) => writeControl(control!, value),
+        retire: () => {
+          terminationRequested = true
+          cancel()
+        },
+      })
+      const terminal = waitForTerminal(messages, closed, imports.receive).then((message) => {
+        nativeRunning = false
         requireTerminalMessage(message, preparedMessage, data)
         return message
       })
+      void terminal.then(() => imports.reject('native import owner ended'), imports.reject)
       const enforcement = terminal
         .then(async (message) => {
           const final = await readFinal(data.prepared)
@@ -740,6 +782,7 @@ export class PrivateLinuxCgroupBackend {
           throw asFenceUnconfirmed(error)
         })
         .finally(() => {
+          nativeRunning = false
           signal?.removeEventListener('abort', cancel)
           control?.destroy()
         })
@@ -752,7 +795,56 @@ export class PrivateLinuxCgroupBackend {
             stopReason: receipt.stopReason,
           }),
       )
+      if (outputBacking !== undefined && outputDirectory !== undefined) {
+        const owner: PrivateLinuxImportOwner = {
+          async begin(value) {
+            const outcome = await imports.request('import-begin', { ...value })
+            if (outcome !== 'staged' && outcome !== 'absent')
+              throw new PrivateFileImportUnconfirmedError('invalid native import begin outcome')
+            return outcome
+          },
+          cancel(name) {
+            writeControlBestEffort(control, { type: 'import-cancel', name })
+          },
+          async commit(name) {
+            // No command was sent: a confirmed original fence proves noncommit.
+            if (!nativeRunning || imports.retired) {
+              await enforcement
+              return 'absent'
+            }
+            const outcome = await imports.request('import-commit', { name })
+            if (outcome !== 'committed' && outcome !== 'absent')
+              throw new PrivateFileImportUnconfirmedError('invalid native import commit outcome')
+            return outcome
+          },
+          async end(name) {
+            try {
+              if (!nativeRunning || imports.retired) {
+                await enforcement
+                return
+              }
+              const outcome = await imports.request('import-end', { name })
+              if (outcome !== 'closed')
+                throw new PrivateFileImportUnconfirmedError('invalid native import end outcome')
+            } catch (error) {
+              if (nativeRunning && !imports.retired) throw error
+              // The existing final fence includes closure of every native-held stage FD.
+              await enforcement
+            }
+          },
+        }
+        outputImport = createPrivateLinuxFileImportTarget({
+          backing: outputBacking,
+          owner,
+          publicDirectory: outputDirectory,
+          deadlineUnixMs: data.sealedPlan.limits.deadlineUnixMs,
+          signal,
+          alive: () => nativeRunning && !terminationRequested,
+        })
+        outputBacking = undefined
+      }
       return Object.freeze({
+        ...(outputImport === undefined ? {} : { outputImport }),
         ...(outputDirectory === undefined
           ? {}
           : {
@@ -792,10 +884,28 @@ export class PrivateLinuxCgroupBackend {
         },
       })
     } catch (error) {
-      await outputDirectory?.close()
       writeControlBestEffort(control, { type: 'cancel' })
       supervisor?.stdin.end()
       control?.end()
+      const localCloses = await Promise.allSettled([
+        outputImport?.close(),
+        closePrivateExecutionOutput(
+          outputBacking === undefined
+            ? undefined
+            : {
+                kind: 'linux-directory',
+                directory: outputBacking,
+              },
+        ),
+        closePrivateExecutionOutput(
+          outputDirectory === undefined
+            ? undefined
+            : {
+                kind: 'linux-directory',
+                directory: outputDirectory,
+              },
+        ),
+      ])
       const closed = supervisor === undefined ? undefined : childCloseIfNeeded(supervisor)
       if (closed !== undefined) {
         await withTimeout(
@@ -818,6 +928,16 @@ export class PrivateLinuxCgroupBackend {
         await releasePrivateLinuxOwnerState(data.identity, fence)
         await rmdir(data.automaticOwnerStateParent)
       }
+      const localFailures = localCloses
+        .filter((result) => result.status === 'rejected')
+        .map((result) => (result as PromiseRejectedResult).reason)
+      if (localFailures.length !== 0)
+        throw asFenceUnconfirmed(
+          new AggregateError(
+            [error, ...localFailures],
+            'native output custody close did not settle',
+          ),
+        )
       if (preparedReached || fence.stopReason === 'recovered') throw error
       throw asFenceUnconfirmed(error)
     }
@@ -1522,6 +1642,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     network: data.sealedPlan.network,
     nestedUserNamespaces: data.sealedPlan.nestedUserNamespaces,
     output: data.sealedPlan.output,
+    outputImports: data.sealedPlan.outputImports,
     capturedInputs: data.sealedPlan.capturedInputs.map((file, index) => ({
       fd: 6 + index,
       destination: file.destination,
@@ -1529,6 +1650,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
       digest: file.digest,
     })),
     inputDirectories: data.sealedPlan.inputDirectories,
+    inputAliases: data.sealedPlan.inputAliases,
     bunPath: data.mechanism.support.trustedCoordinatorBunPath,
     bunHostLibraryPath: data.mechanism.support.trustedCoordinatorLibraryPath,
     bubblewrapPath: data.mechanism.support.trustedBubblewrapPath,
@@ -1688,8 +1810,11 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     throw new TypeError('rootless Linux nested-user-namespace policy is invalid')
   }
   const output = value.output ?? false
+  const outputImports = value.outputImports ?? false
   if (
     typeof output !== 'boolean' ||
+    typeof outputImports !== 'boolean' ||
+    (outputImports && (!output || value.nestedUserNamespaces === true)) ||
     (output &&
       mounts.some(
         ({ destination }) =>
@@ -1698,11 +1823,25 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   ) {
     throw new TypeError('rootless Linux output projection is invalid')
   }
-  const capturedInputs = [...(value.capturedInputs ?? [])].map((file) => ({
-    ...requirePrivateCapturedInput(file.input),
-    destination: file.destination,
-  }))
   const inputDirectories = [...(value.inputDirectories ?? [])]
+  const requestedInputs = [...(value.capturedInputs ?? [])]
+  if (
+    requestedInputs.some(
+      (file) => !canonicalAbsolute(file.destination) || !file.destination.startsWith('/jig-input/'),
+    )
+  )
+    throw new TypeError('invalid captured input destination')
+  const projection = planPrivateReadInputProjection({
+    files: requestedInputs.map((file) => ({
+      path: file.destination.replace(/^\/jig-input\//, ''),
+      input: file.input,
+    })),
+    directories: inputDirectories.map((path) => path.replace(/^\/jig-input\//, '')),
+  })
+  const capturedInputs = projection.files.map((file) => ({
+    ...requirePrivateCapturedInput(file.input),
+    destination: `/jig-input/${file.path}`,
+  }))
   if (
     capturedInputs.length > PRIVATE_FILE_LIMITS.files ||
     inputDirectories.length > 8 ||
@@ -1739,8 +1878,10 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     network,
     nestedUserNamespaces,
     output,
+    outputImports,
     capturedInputs: Object.freeze(capturedInputs.map((file) => Object.freeze({ ...file }))),
     inputDirectories: Object.freeze(inputDirectories),
+    inputAliases: projection.aliases,
   })
 }
 
@@ -2517,13 +2658,109 @@ export async function readPrivateSupervisorMessage(
   ])
 }
 
+type ImportRequest = 'import-begin' | 'import-commit' | 'import-end'
+const IMPORT_OUTCOMES = {
+  'import-begin': ['staged', 'absent'],
+  'import-commit': ['committed', 'absent'],
+  'import-end': ['closed'],
+} as const
+
+/** Existing Backend wire bookkeeping; this test seam grants no native authority. */
+export function createPrivateLinuxImportReplies(input: {
+  readonly running: () => boolean
+  readonly timeoutMs: number
+  readonly write: (value: unknown) => void
+  readonly retire: () => void
+}) {
+  const pending = new Map<
+    string,
+    {
+      readonly type: ImportRequest
+      readonly resolve: (outcome: string) => void
+      readonly reject: (cause: unknown) => void
+    }
+  >()
+  const abandoned = new Map<string, ImportRequest>()
+  let retired = false
+  return {
+    get retired() {
+      return retired
+    },
+    async request(type: ImportRequest, value: Record<string, unknown>): Promise<string> {
+      // Two stages have only begin/commit/end. Keep bounded IDs for queued
+      // replies after a waiter fails, without preventing their cleanup RPCs.
+      if (pending.size + abandoned.size >= 6 && !retired) {
+        retired = true
+        input.retire()
+      }
+      if (retired || !input.running() || pending.size >= 2)
+        throw new PrivateFileImportUnconfirmedError('native import owner is unavailable')
+      const id = randomBytes(12).toString('hex')
+      const reply = new Promise<string>((resolve, reject) =>
+        pending.set(id, { type, resolve, reject }),
+      )
+      // A write can queue bytes and still report backpressure before we await.
+      void reply.catch(() => undefined)
+      try {
+        input.write({ ...value, type, id })
+        return await withTimeout(reply, input.timeoutMs, 'native import reply')
+      } catch (cause) {
+        throw new PrivateFileImportUnconfirmedError(cause)
+      } finally {
+        if (pending.delete(id)) abandoned.set(id, type)
+      }
+    },
+    receive(value: unknown): void {
+      if (value === null || typeof value !== 'object' || Array.isArray(value))
+        throw new PrivateFileImportUnconfirmedError('invalid native import reply')
+      const reply = value as Record<string, unknown>
+      const keys = reply.outcome === 'error' ? 'error,id,outcome,type' : 'id,outcome,type'
+      if (
+        Object.keys(reply).sort().join() !== keys ||
+        reply.type !== 'import-reply' ||
+        typeof reply.id !== 'string' ||
+        !NONCE.test(reply.id) ||
+        typeof reply.outcome !== 'string' ||
+        (reply.outcome === 'error' && typeof reply.error !== 'string')
+      )
+        throw new PrivateFileImportUnconfirmedError('invalid native import reply identity')
+      const waiting = pending.get(reply.id)
+      const type = waiting?.type ?? abandoned.get(reply.id)
+      if (type === undefined)
+        throw new PrivateFileImportUnconfirmedError('unsolicited native import reply')
+      if (
+        reply.outcome !== 'error' &&
+        !(IMPORT_OUTCOMES[type] as readonly string[]).includes(reply.outcome)
+      )
+        throw new PrivateFileImportUnconfirmedError('invalid native import reply outcome')
+      if (waiting === undefined) {
+        abandoned.delete(reply.id)
+        return
+      }
+      pending.delete(reply.id)
+      if (reply.outcome === 'error')
+        waiting.reject(new PrivateFileImportUnconfirmedError(reply.error))
+      else waiting.resolve(reply.outcome)
+    },
+    reject(cause: unknown): void {
+      for (const waiting of pending.values())
+        waiting.reject(new PrivateFileImportUnconfirmedError(cause))
+      pending.clear()
+      abandoned.clear()
+    },
+  }
+}
+
 async function waitForTerminal(
   iterator: AsyncIterator<unknown>,
   closed: Promise<{ readonly code: number | null; readonly signal: string | null }>,
+  importReply?: (value: unknown) => void,
 ): Promise<SupervisorTerminal> {
   for (;;) {
     const value = await readPrivateSupervisorMessage(iterator, closed)
     if (dataType(value) === 'terminal') return normalizeFinal(value) as SupervisorTerminal
+    if (dataType(value) === 'import-reply' && importReply !== undefined) importReply(value)
+    else throw new Error('unexpected rootless supervisor control reply')
   }
 }
 

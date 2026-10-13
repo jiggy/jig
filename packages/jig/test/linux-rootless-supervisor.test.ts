@@ -249,7 +249,9 @@ interface Configuration {
   readonly readOnlyMounts: readonly []
   readonly capturedInputs: readonly []
   readonly inputDirectories: readonly []
+  readonly inputAliases: readonly []
   readonly output: false
+  readonly outputImports: false
   readonly command: readonly [string, ...string[]]
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated'
@@ -302,7 +304,9 @@ async function fixtureFor(runId: string): Promise<Fixture> {
     readOnlyMounts: [],
     capturedInputs: [],
     inputDirectories: [],
+    inputAliases: [],
     output: false,
+    outputImports: false,
     command: [bunPath, ...POLICY, '-e', `await Bun.write(${JSON.stringify(marker)}, "ran")`],
     environment: {},
     network: 'isolated',

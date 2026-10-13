@@ -1,5 +1,9 @@
 import type { JsonObject } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
+import {
+  normalizeBindingAttachmentMap,
+  validateDistinctBindingAttachmentDirectories,
+} from './attachment-routes.js'
 import { expectJsonObject, snapshotJson, snapshotJsonObject } from './author-value.js'
 import { type GrantInput, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
 import { flowSelector, normalizeFlowPackage, npmPackageName } from './package-selector.js'
@@ -10,7 +14,7 @@ import {
 } from './paths.js'
 
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const GLOB_CHARACTERS = /[*?\[\]{}]/
+const GLOB_CHARACTERS = /[*?[\]{}]/
 
 export interface DiscoverySource {
   readonly kind: 'discover'
@@ -53,18 +57,29 @@ export interface BindingRef {
 
 export type RunTargetRef = FlowRef | BindingRef
 
+/** Static reviewed names only. These values never authorize filesystem access. */
+export type BindingAttachmentMapping =
+  | { readonly from: string }
+  | { readonly into: string; readonly directory: string }
+export type BindingAttachmentMap = Readonly<Record<string, BindingAttachmentMapping>>
+export interface BindingAttachmentRoute {
+  readonly target: string
+  readonly attachments: BindingAttachmentMap
+}
+export type BindingAttachmentInterface = Readonly<Record<string, 'read' | 'read-write'>>
+
 export interface PackageBindingDefinition {
   readonly kind: 'package'
   readonly package: string
   readonly settings: JsonObject
-  readonly slots: Readonly<Record<string, string | GrantPolicy>>
+  readonly slots: Readonly<Record<string, string | GrantPolicy | BindingAttachmentRoute>>
   readonly attachments?: Readonly<Record<string, string>>
 }
 
 export interface PackageBindingInput {
   readonly package: string
   readonly settings?: JsonObject
-  readonly slots?: Readonly<Record<string, string | GrantInput>>
+  readonly slots?: Readonly<Record<string, string | GrantInput | BindingAttachmentRoute>>
   readonly attachments?: Readonly<Record<string, string>>
 }
 
@@ -226,16 +241,28 @@ export function normalizeBindingAttachments(value: unknown): Readonly<Record<str
   return Object.freeze(output)
 }
 
-function normalizeFlowSlots(value: unknown): Readonly<Record<string, string | GrantPolicy>> {
+function normalizeFlowSlots(
+  value: unknown,
+): Readonly<Record<string, string | GrantPolicy | BindingAttachmentRoute>> {
   const input = snapshotJsonObject(value, 'slots')
   if (Object.keys(input).length > 256) {
     throw new TypeError('slots exceed 256 entries')
   }
-  const output: Record<string, string | GrantPolicy> = Object.create(null)
+  const output: Record<string, string | GrantPolicy | BindingAttachmentRoute> = Object.create(null)
   for (const name of Object.keys(input).sort(compareUtf8)) {
     validateLocalName(name, 'slot name')
     const value = input[name]
     if (typeof value !== 'string') {
+      const record = expectJsonObject(value, `slot ${name}`)
+      if (Object.hasOwn(record, 'target') || Object.hasOwn(record, 'attachments')) {
+        assertClosedObject(record, ['target', 'attachments'], `slot ${name} attachment route`)
+        const target = parseRunTargetSelector(record.target, `slot ${name} attachment route target`)
+        output[name] = Object.freeze({
+          target: target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`,
+          attachments: normalizeBindingAttachmentMap(record.attachments),
+        })
+        continue
+      }
       output[name] = normalizeGrant(value)
       continue
     }
@@ -246,6 +273,13 @@ function normalizeFlowSlots(value: unknown): Readonly<Record<string, string | Gr
     const target = parseRunTargetSelector(value, `slot ${name}`)
     output[name] = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
   }
+  validateDistinctBindingAttachmentDirectories(
+    Object.fromEntries(
+      Object.entries(output).flatMap(([name, value]) =>
+        typeof value === 'object' && 'attachments' in value ? [[name, value.attachments]] : [],
+      ),
+    ),
+  )
   return Object.freeze(output)
 }
 

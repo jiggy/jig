@@ -15,6 +15,7 @@ export async function runMacosFixture(
   args: string[],
   expected: object,
   afterStart?: (directory: string) => Promise<void>,
+  deadline = performance.now() + 60_000,
 ) {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-macos-process-test-')))
   const domain = `user/${process.getuid?.()}`
@@ -23,11 +24,13 @@ export async function runMacosFixture(
   const output = join(directory, 'out')
   const errorOutput = join(directory, 'err')
   const plist = join(directory, 'job.plist')
-  const outside = spawn('/bin/sleep', ['15'], { env: environment, stdio: 'ignore' })
+  const outside = spawn('/bin/sleep', ['120'], { env: environment, stdio: 'ignore' })
   const outsideExited = new Promise<void>((resolve) => outside.once('exit', () => resolve()))
   let settled = false
   let registered = false
   try {
+    if (performance.now() >= deadline)
+      throw new Error('native fixture preparation deadline elapsed')
     await writeFile(
       plist,
       `<?xml version="1.0"?><plist version="1.0"><dict>
@@ -45,15 +48,20 @@ export async function runMacosFixture(
     expect(start.status).toBe(0)
     registered = true
     await afterStart?.(directory)
-    const end = performance.now() + 60_000
     let text = ''
-    while (performance.now() < end) {
+    while (performance.now() < deadline) {
       text = await readFile(output, 'utf8').catch(() => '')
       if (text.includes('"empty":true')) break
       await Bun.sleep(50)
     }
     settled = text.includes('"empty":true')
     const errors = await readFile(errorOutput, 'utf8').catch(() => '')
+    if (text !== `${JSON.stringify(expected)}\n` || errors !== '') {
+      const phase = (await readFile(join(directory, 'phase'), 'utf8').catch(() => '')).slice(-4096)
+      console.error(
+        JSON.stringify({ fixture, phase, stdout: text.slice(-4096), stderr: errors.slice(-4096) }),
+      )
+    }
     expect({ text, errors }).toEqual({
       text: `${JSON.stringify(expected)}\n`,
       errors: '',

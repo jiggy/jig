@@ -5117,6 +5117,19 @@ async function reacquireCandidateArtifacts(
       }
       requirePackageProjection(path, expected, inspected)
     }
+    for (const { request } of candidate.candidate.targets) {
+      const inspected = inspections.get(request.package.digest)!
+      if (
+        !sameBytes(
+          canonicalJson(request.attachments),
+          canonicalJson(inspected.invocation?.attachments ?? {}),
+        )
+      )
+        invalid(
+          'ADMISSION_ARTIFACT_MISMATCH',
+          `stored Package/0 ${request.packagePath} no longer matches its candidate attachment interface`,
+        )
+    }
     for (const binding of Object.values(candidate.lock.bindings)) {
       for (const expected of Object.values(binding.attachments ?? {}))
         await verifyBoundAttachment(captures.get(expected.digest)!, expected)

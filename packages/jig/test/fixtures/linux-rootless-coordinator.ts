@@ -15,6 +15,9 @@ interface Configuration {
   readonly ownerStateParent: string
   readonly uid: number
   readonly gid: number
+  readonly outputImports?: boolean
+  readonly supervisorPath?: string
+  readonly reportSealed?: boolean
 }
 
 const path = process.argv[2]
@@ -23,9 +26,13 @@ const configuration = JSON.parse(await readFile(path, 'utf8')) as Configuration
 const backend = new PrivateLinuxCgroupBackend({
   bunPath: configuration.bunPath,
   bunHostLibraryPath: configuration.bunHostLibraryPath,
+  ...(configuration.supervisorPath === undefined
+    ? {}
+    : { supervisorPath: configuration.supervisorPath }),
 })
 const plan = {
   runId: 'coordinator-loss',
+  ...(configuration.outputImports ? { output: true, outputImports: true } : {}),
   limits: {
     memoryBytes: 256 * 1024 * 1024,
     pids: 64,
@@ -51,6 +58,8 @@ const allocation = await planPrivateLinuxOwnerStateAllocation({
   name: 'coordinator-loss',
 })
 const owner = await backend.seal(plan, allocation)
+if (configuration.reportSealed)
+  console.log(JSON.stringify({ cgroup: owner.identity.runCgroup, owner: owner.identity }))
 const component = await owner.admit()
 
 console.log(JSON.stringify({ cgroup: component.cgroup.runCgroup, owner: component.owner }))
