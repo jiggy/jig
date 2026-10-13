@@ -297,6 +297,15 @@
       {
         "file": "packages/jig/test/bun-native-preparation.test.ts",
         "blob": "98d75c9bb628f9a5a64aaa8d0729faf119eab4b7",
+        "caseMultiplicities": [
+          {
+            "classname": "private contained Bun dependency preparation",
+            "name": "recovers preparation after coordinator loss (resolve=%s)",
+            "line": "336",
+            "maxOccurrences": 2,
+            "targets": ["source-tests", "macos-x64", "macos-arm64"]
+          }
+        ],
         "sourcePatterns": ["^private contained Bun dependency preparation "],
         "macosPatterns": [
           "^private contained Bun dependency preparation recovers preparation after coordinator loss \\(resolve=(?:false|true)\\)$"
@@ -396,6 +405,15 @@
       {
         "file": "packages/jig/test/project-author-evaluator.test.ts",
         "blob": "72a44def4601a66e2530a48ba6773d7b9a00f151",
+        "caseMultiplicities": [
+          {
+            "classname": "finite isolated author declaration batches",
+            "name": "blocking guest execution is fenced at the entry deadline (batch: %s)",
+            "line": "97",
+            "maxOccurrences": 2,
+            "targets": ["source-tests"]
+          }
+        ],
         "sourcePatterns": ["^finite isolated author declaration batches "],
         "macosPatterns": [],
         "linuxPatterns": []
@@ -515,5 +533,139 @@
         "linuxPatterns": []
       }
     ]
-  }
+  },
+  "macosExecutedCaseMultiplicities": [
+    {
+      "file": "packages/jig/test/user-updates.test.ts",
+      "blob": "8de2311061ac70fae9ec086133475f2f7861b3be",
+      "cases": [
+        {
+          "classname": "",
+          "name": "queued activity clear/reuse keeps only current appearances and sibling state (animated=%s)",
+          "line": "238",
+          "occurrences": 2
+        },
+        {
+          "classname": "",
+          "name": "two cleared jobs retain phase history and show blocking notices without anonymous endings (animated=%s)",
+          "line": "277",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/bun-native-preparation-policy.test.ts",
+      "blob": "62644560d9cc10ec9b735ed32b3bfc57a9a96eaf",
+      "cases": [
+        {
+          "classname": "private Bun preparation policy",
+          "name": "binds native lock version %s without admitting other source kinds",
+          "line": "35",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/bun-native-preparation-budget.test.ts",
+      "blob": "975b2a116b4ef13750dfb42aa1c913aee1f91e91",
+      "cases": [
+        {
+          "classname": "private aggregate Bun preparation budget",
+          "name": "rejects invalid metadata size without consuming budget: %s",
+          "line": "77",
+          "occurrences": 5
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/linux-rootless-supervisor.test.ts",
+      "blob": "38568e9223ffb303aa292821b598473618d12e1e",
+      "cases": [
+        {
+          "classname": "private owned core-dump observation",
+          "name": "refuses malformed or oversized kernel observations",
+          "line": "92",
+          "occurrences": 3
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/dependency-flows.test.ts",
+      "blob": "84ef84c53b514a772b77e733e3788fd9e4251fa4",
+      "cases": [
+        {
+          "classname": "",
+          "name": "workspace dependency supplies immutable Flow bytes (root application: %s)",
+          "line": "115",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/macos-agent-runtime.test.ts",
+      "blob": "d7dcf0e010bdc41ecb123df9ebcec02a4752054c",
+      "cases": [
+        {
+          "classname": "bounded static Mach-O metadata",
+          "name": "reads universal metadata (wide=%s little=%s)",
+          "line": "51",
+          "occurrences": 4
+        },
+        {
+          "classname": "bounded static Mach-O metadata",
+          "name": "accepts baseline LIB64 metadata (universal=%s)",
+          "line": "77",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/cli.test.ts",
+      "blob": "3adb1b72093c5e43371d3c9d84e305a1d4619543",
+      "cases": [
+        {
+          "classname": "finite Jig project commands",
+          "name": "resolution permission is separate from execution approval (yes=%s)",
+          "line": "1247",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "rejects vague, duplicate or misplaced contract generation: \"review\"",
+          "line": "1375",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "attributed live diagnostics are retained without human replay (human: %s)",
+          "line": "1598",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "a rejected live record closes work and reports cleanup failure: %s",
+          "line": "1673",
+          "occurrences": 2
+        },
+        {
+          "classname": "finite Jig project commands",
+          "name": "interruption without a terminal preserves cleanup uncertainty (human: %s)",
+          "line": "2129",
+          "occurrences": 2
+        }
+      ]
+    },
+    {
+      "file": "packages/jig/test/project-author-evaluator.test.ts",
+      "blob": "72a44def4601a66e2530a48ba6773d7b9a00f151",
+      "cases": [
+        {
+          "classname": "finite isolated author declaration batches",
+          "name": "blocking guest execution is fenced at the entry deadline (batch: %s)",
+          "line": "97",
+          "occurrences": 2
+        }
+      ]
+    }
+  ]
 }
