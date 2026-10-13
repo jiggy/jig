@@ -215,12 +215,60 @@ export function parseBunTranscript(text, { files, filter, commandKind = 'ordinar
   if (!files.length) throw new Error('Bun transcript requires its owning command files')
   const expectedFiles = new Set(files.map(repositoryPath))
   if (expectedFiles.size !== files.length) throw new Error('Bun command repeats an owning file')
+  let owningFilter
+  if (filter !== undefined) {
+    const filterFile = repositoryPath(filter?.file)
+    if (
+      expectedFiles.size !== 1 ||
+      !expectedFiles.has(filterFile) ||
+      !(
+        approvedFilter('linux', filterFile, filter.pattern) ||
+        approvedFilter('macos-x64', filterFile, filter.pattern)
+      )
+    )
+      throw new Error('Bun command requires its exact reviewed owning filter')
+    owningFilter = new RegExp(filter.pattern)
+  }
+  const summaries = [
+    ...output.matchAll(
+      /^\s*(\d+) pass\s*\n(?:\s*(\d+) skip\s*\n)?(?:\s*(\d+) filtered out\s*\n)?\s*0 fail\s*\n(?:\s*\d+ expect\(\) calls\s*\n)?Ran (\d+) tests? across (\d+) files?\./gm,
+    ),
+  ]
+  if (summaries.length !== 1)
+    throw new Error('Bun command requires one completed successful report')
+  const summary = summaries[0]
+  const count = Number(summary[1])
+  const skipped = Number(summary[2] ?? 0)
+  const filtered = Number(summary[3] ?? 0)
+  if (!Number.isSafeInteger(filtered)) throw new Error('Invalid Bun filtered-out case count')
+  if (summary[3] !== undefined && !owningFilter)
+    throw new Error('Bun filtered-out cases require their reviewed owning filter')
+  if (
+    !/^\s*(?:\[\d+(?:\.\d+)?(?:ms|s)\])?\s*$/u.test(
+      output.slice(summary.index + summary[0].length),
+    ) ||
+    /^(?:\(fail\)|\s*[1-9]\d* fail\b|error:|# (?:fail|cancelled) [1-9]\d*\b|FAILED\b)/m.test(output)
+  )
+    throw new Error('Failed, incomplete or repeated Bun execution report')
   const skippedCases = []
+  const primarySkipNames = []
   const observedFiles = new Set()
+  let executed = 0
+  let recap
   let file
-  for (const line of output.split('\n')) {
+  // Bun 1.3.3 can repeat its primary skipped records in a terminal recap.
+  // Verify that exact multiset without granting a second execution identity.
+  for (const line of output.slice(0, summary.index).split('\n')) {
+    const recapHeader = /^(\d+) tests? skipped:$/u.exec(line)
+    if (recapHeader) {
+      if (recap || Number(recapHeader[1]) <= 0)
+        throw new Error('Bun skipped-case recap is empty or repeated')
+      recap = { count: Number(recapHeader[1]), names: [] }
+      continue
+    }
     const header = /^(.+\.(?:[cm]?[jt]sx?)):$/u.exec(line)
     if (header) {
+      if (recap) throw new Error('Bun execution continues after its skipped-case recap')
       file = repositoryPath(header[1])
       if (!expectedFiles.has(file))
         throw new Error('Bun report file does not match its owning command')
@@ -228,7 +276,12 @@ export function parseBunTranscript(text, { files, filter, commandKind = 'ordinar
     }
     const skip = /^\(skip\) (.+)$/u.exec(line)
     if (skip) {
+      if (recap) {
+        recap.names.push(skip[1])
+        continue
+      }
       if (!file) throw new Error('Bun skipped case is missing its file header')
+      primarySkipNames.push(skip[1])
       const parts = skip[1].split(' > ')
       const name = parts.pop()
       skippedCases.push({
@@ -238,26 +291,37 @@ export function parseBunTranscript(text, { files, filter, commandKind = 'ordinar
         commandKind,
         ...(filter ? { filter } : {}),
       })
+      continue
     }
-    if (
-      /^\(fail\)|^\s*[1-9]\d* fail\b|^error:|^# (?:fail|cancelled) [1-9]\d*\b|^FAILED\b/.test(line)
-    )
-      throw new Error('Failed or cancelled Bun execution report')
+    const pass = /^\(pass\) (.+)$/u.exec(line)
+    if (pass) {
+      if (recap) throw new Error('Bun execution continues after its skipped-case recap')
+      if (!file) throw new Error('Bun passed case is missing its file header')
+      const name = pass[1].replace(/ \[\d+(?:\.\d+)?(?:ms|s)\]$/u, '')
+      if (owningFilter && !owningFilter.test(name.split(' > ').join(' ')))
+        throw new Error('Bun executed case lies outside its reviewed owning filter')
+      executed++
+    } else if (recap && line.trim())
+      throw new Error('Bun skipped-case recap contains an unexpected record')
   }
-  const summaries = [
-    ...output.matchAll(
-      /^\s*(\d+) pass\s*\n(?:\s*(\d+) skip\s*\n)?\s*0 fail\s*\n(?:\s*\d+ expect\(\) calls\s*\n)?Ran (\d+) tests? across \d+ files?\./gm,
-    ),
-  ]
-  if (summaries.length !== 1)
-    throw new Error('Bun command requires one completed successful report')
-  const count = Number(summaries[0][1])
-  const skipped = Number(summaries[0][2] ?? 0)
   if (observedFiles.size !== expectedFiles.size)
     throw new Error('Bun owning command omits a declared test file')
-  if (count + skipped !== Number(summaries[0][3]) || skipped !== skippedCases.length)
+  if (
+    // Filtered-out registrations did not execute and are excluded from Ran.
+    count + skipped !== Number(summary[4]) ||
+    Number(summary[5]) !== expectedFiles.size ||
+    count !== executed ||
+    skipped !== skippedCases.length
+  )
     throw new Error('Bun skipped case identities do not reconcile with its report')
-  return { count, skipped, skippedCases, basis: 'test-cases' }
+  if (
+    recap &&
+    (recap.count !== skipped ||
+      recap.names.length !== skipped ||
+      stableJson([...recap.names].sort()) !== stableJson([...primarySkipNames].sort()))
+  )
+    throw new Error('Bun skipped-case recap differs from its owning execution identities')
+  return { count, skipped, filtered, skippedCases, basis: 'test-cases' }
 }
 
 function parseJUnit(path) {
