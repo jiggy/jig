@@ -5,8 +5,6 @@ The caller owns the temporary directory and hides OpenTUI for this invocation.
 Python is test tooling only; no product source, private API or browser is loaded.
 """
 
-import base64
-import struct
 import errno
 import hashlib
 from html.parser import HTMLParser
@@ -28,7 +26,7 @@ HTTP_LIMIT = 8 * 1024 * 1024
 LINK = re.compile(rb"http://127\.0\.0\.1:(\d+)/#cap=([A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])")
 CHECKS = [
     "embedded-assets", "bearer-required", "recorded-capture",
-    "immutable-previews", "captured-svg-image", "exact-origin-close", "piped-input",
+    "immutable-previews", "captured-svg-fallback", "exact-origin-close", "piped-input",
     "joined-exit", "capability-redaction",
 ]
 
@@ -246,21 +244,18 @@ def main():
             require(preview["artifactId"] == entry["id"])
             require(preview["captureGeneration"] == capture["generation"])
             require(preview["provenance"] == "recorded-capture" and preview["bytes"] == len(data))
-            state = "image" if name == "chart.svg" else "non-text" if name == "binary.dat" else "empty" if not data else "text"
+            state = "non-text" if name == "binary.dat" else "empty" if not data else "text"
             require(entry["state"] == state and preview["state"] == state)
             require(entry["clipped"] == (name == "long.txt") and preview["clipped"] == (name == "long.txt"))
-            if state == "image":
-                phase = "captured-svg-image"
-                image = preview["image"]
-                png = base64.b64decode(image["base64"], validate=True)
-                require(len(png) <= 1024 * 1024 and image["mime"] == "image/png")
-                require(png[:8] == b"\x89PNG\r\n\x1a\n")
-                require(struct.unpack(">II", png[16:24]) == (image["width"], image["height"]) == (1024, 512))
-                require("text" not in preview)
-            elif state == "non-text":
+            if state == "non-text":
                 require("text" not in preview)
             else:
-                require(preview["text"] == data[:65536].decode("utf-8"))
+                require(preview["text"] == data[:4096].decode("utf-8"))
+                require("image" not in preview)
+                if name == "chart.svg":
+                    # Unqualified image decoding preserves captured SVG text.
+                    phase = "captured-svg-fallback"
+                    require(preview["text"] == data.decode("utf-8"))
         require(owner.process.poll() is None)
 
         phase = "exact-origin-close"
