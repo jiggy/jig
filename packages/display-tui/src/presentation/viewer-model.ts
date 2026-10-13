@@ -1,4 +1,17 @@
 import { validDisplayImage, type DisplayImagePreview } from '@jigging/display-model'
+import {
+  attentionImportance,
+  type DisplayAttribution,
+  type DisplayCallState,
+  type DisplayFact,
+  type DisplaySnapshot,
+  type DisplaySnapshotEnvelope,
+  displayDestinations,
+  displayViewKey,
+  type RecordedViewRole,
+  recordReferences,
+  validateDisplaySnapshot,
+} from '@jigging/display-model'
 import type {
   Block,
   Collection,
@@ -7,20 +20,7 @@ import type {
   ReportingMessage,
   ViewItem,
 } from '@jigging/reporting'
-import {
-  attentionImportance,
-  displayDestinations,
-  displayViewKey,
-  recordReferences,
-  validateDisplaySnapshot,
-  type DisplayAttribution,
-  type DisplayCallState,
-  type DisplayFact,
-  type DisplaySnapshot,
-  type DisplaySnapshotEnvelope,
-  type RecordedViewRole,
-} from '@jigging/display-model'
-import type { PreviewService, TuiOptions, TuiTheme } from './types.js'
+import type { PreviewService, TuiOptions, TuiTheme } from '../types.js'
 
 export { attentionImportance, recordReferences }
 export const rowRecordKey = (collection: string, row?: string): string =>

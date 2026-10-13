@@ -16,7 +16,7 @@ import {
   NATIVE_PREREQUISITE_TESTS,
   planMacHostTests,
 } from './macos-host-test-shards.mjs'
-import { discoverRepositoryTests, filesForTarget } from './suite-inventory.mjs'
+import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
 test('current full Mac role assignment owns every selected file once without name partitions', async () => {
   const root = resolve(import.meta.dirname, '../..')
@@ -44,6 +44,14 @@ test('current full Mac role assignment owns every selected file once without nam
   )
   for (const arch of ['x64', 'arm64']) {
     const shards = planMacHostTests(files, arch)
+    const primitives = new Set(
+      suiteTestFiles(files, ['macos-native'], affectedManifest, 'macos-24G830'),
+    )
+    for (const shard of shards) {
+      const firstOther = shard.groups.findIndex(({ file }) => !primitives.has(file))
+      if (firstOther >= 0)
+        assert.ok(shard.groups.slice(firstOther).every(({ file }) => !primitives.has(file)))
+    }
     const groups = shards.flatMap((shard) => shard.groups)
     for (const file of files)
       assert.equal(
@@ -65,6 +73,61 @@ test('current full Mac role assignment owns every selected file once without nam
         ),
       )
     assert.throws(() => planMacHostTests([...files, files[0]], arch))
+  }
+})
+
+test('primitive priority preserves existing LPT memberships and budgets and includes future native files', () => {
+  const checkpoint = 'packages/jig/test/host/run-checkpoint-lifecycle.test.ts'
+  const workspace = 'packages/jig/test/host/installed-workspace-provider.test.ts'
+  const factory = 'packages/jig/test/host/installed-software-factory.test.ts'
+  const specialist = 'packages/jig/test/host/root-agent-fences-specialist.test.ts'
+  const storage = 'packages/jig/test/macos/macos-guardian-storage.test.ts'
+  const future = 'packages/jig/test/macos/future-primitive.test.ts'
+  const portable = 'packages/jig/test/portable/plain.test.ts'
+  const files = [
+    ...NATIVE_PREREQUISITE_TESTS,
+    INSTALLED_STARTUP_TEST,
+    checkpoint,
+    workspace,
+    factory,
+    specialist,
+    storage,
+    future,
+    portable,
+  ]
+  const expected = {
+    x64: [
+      { seconds: 491, files: [checkpoint, workspace] },
+      { seconds: 487, files: [specialist, factory, future, portable] },
+      { seconds: 506, files: [storage] },
+    ],
+    arm64: [
+      { seconds: 402, files: [checkpoint, workspace, specialist, future, portable] },
+      { seconds: 401, files: [factory, storage] },
+    ],
+  }
+  for (const arch of ['x64', 'arm64']) {
+    const shards = planMacHostTests(files, arch)
+    assert.deepEqual(planMacHostTests([...files].reverse(), arch), shards)
+    for (const shard of shards) {
+      const baseline = expected[arch][shard.index]
+      assert.equal(shard.estimatedSeconds, baseline.seconds)
+      assert.deepEqual(shard.groups.map(({ file }) => file).sort(), [...baseline.files].sort())
+      assert.deepEqual(
+        commandsForShard(shard).map((command) => command.slice(0, 2)),
+        Array(shard.groups.length).fill(['bun', 'test']),
+      )
+      assert.ok(
+        commandsForShard(shard).every(
+          (command) => command.slice(3).join(' ') === '--bail=1 --timeout 420000',
+        ),
+      )
+      if (baseline.files.includes(future)) {
+        assert.equal(shard.groups[0].file, future)
+        assert.equal(shard.groups[0].estimatedSeconds, 2)
+      }
+      if (baseline.files.includes(storage)) assert.equal(shard.groups[0].file, storage)
+    }
   }
 })
 

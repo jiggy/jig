@@ -438,7 +438,11 @@
   ],
   "pilots": {
     "portableTests": {
-      "roots": ["packages/display-model/test/", "packages/display-web/test/"],
+      "roots": [
+        "packages/display-model/test/",
+        "packages/display-web/test/",
+        "packages/display-tui/test/presentation/"
+      ],
       "files": [
         "packages/jig/test/portable/normalization-15.1.test.ts",
         "packages/jig/test/portable/execution-intent.test.ts",
@@ -449,7 +453,11 @@
       ]
     },
     "presentation": {
-      "roots": ["packages/display-model/src/", "packages/display-web/src/"],
+      "roots": [
+        "packages/display-model/src/",
+        "packages/display-web/src/",
+        "packages/display-tui/src/presentation/"
+      ],
       "extensions": [".ts", ".css", ".html"]
     }
   }

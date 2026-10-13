@@ -541,7 +541,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   existing root host-test observer. Never forward native exception messages or
   arbitrary error codes across this channel. Exact storage-recovery refusal
   messages have fixed labels for directory, journal, backing, allocation and
-  recovery-tool fencing boundaries. Only the enumerated filesystem errno and
+  recovery-tool fencing boundaries. Live image mapping refusals distinguish fixed
+  count, owner, sector size/count, encryption and entity-shape labels without
+  exposing rejected metadata. The exact predicates and subsequent authenticated
+  backing requirement stay mandatory. Only the enumerated filesystem errno and
   Node/DOM abort shapes become fixed categories; unknown or unreadable fields
   stay OTHER. These labels diagnose refusal and never authorize recovery or
   imply its cause was established by a successful rerun.

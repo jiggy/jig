@@ -37,7 +37,7 @@ test('guardian failure transport keeps only closed steps and causes', () => {
   expect(normalizePrivateMacosGuardianFailure(null)).toBeNull()
   expect(JSON.stringify(failure)).not.toContain('private-token')
   for (const [message, cause] of [
-    ['macOS image attachment does not match its allocation', 'VOLUME_IMAGE'],
+    ['macOS image attachment owner does not match its allocation', 'VOLUME_IMAGE_OWNER'],
     ['macOS volume device does not match its allocation', 'VOLUME_DEVICE'],
   ]) {
     const evidence = privateMacosGuardianFailure('storage-recovery', new Error(message))
@@ -335,4 +335,68 @@ test('new recovery diagnostics preserve the original result or exact thrown erro
       },
     ),
   ).toBe('unchanged original result')
+})
+
+test('image mapping subcauses retain exact closed transport and never replace the original error', async () => {
+  const refusals = [
+    ['macOS image attachment count does not match its allocation', 'VOLUME_IMAGE_COUNT'],
+    ['macOS image attachment owner does not match its allocation', 'VOLUME_IMAGE_OWNER'],
+    [
+      'macOS image attachment sector size does not match its allocation',
+      'VOLUME_IMAGE_SECTOR_SIZE',
+    ],
+    [
+      'macOS image attachment sector count does not match its allocation',
+      'VOLUME_IMAGE_SECTOR_COUNT',
+    ],
+    ['macOS image attachment encryption does not match its allocation', 'VOLUME_IMAGE_ENCRYPTION'],
+    ['macOS image attachment entities do not match its allocation', 'VOLUME_IMAGE_ENTITIES'],
+  ] as const
+  for (const [message, cause] of refusals) {
+    const original = Object.assign(
+      new Error(message, { cause: new Error('image-secret-token /private/image-path') }),
+      { path: '/private/control', device: '/dev/private-disk', metadata: 'image-secret-token' },
+    )
+    const failure = privateMacosGuardianFailure('storage-recovery', original)
+    expect(failure).toEqual({ step: 'storage-recovery', cause })
+    expect(Object.isFrozen(failure)).toBe(true)
+    expect(Object.keys(failure).sort()).toEqual(['cause', 'step'])
+    const encoded = JSON.stringify(failure)
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(encoded))).toEqual(failure)
+    expect(encoded).not.toMatch(/image-secret-token|private|device|metadata/)
+    expect(encoded).not.toContain(message)
+    for (const near of [
+      message + ' image-secret-token',
+      'private ' + message,
+      message.toUpperCase(),
+    ])
+      expect(privateMacosGuardianFailure('storage-recovery', new Error(near)).cause).toBe('OTHER')
+    for (const near of [cause + ' image-secret-token', cause.toLowerCase(), cause + '/private'])
+      expect(() =>
+        normalizePrivateMacosGuardianFailure({ step: 'storage-recovery', cause: near }),
+      ).toThrow('invalid macOS guardian response')
+    const events: PrivateMacosGuardianRecoveryDiagnostic[] = []
+    withPrivateMacosGuardianDiagnostics(
+      (event) => events.push(event),
+      () => reportPrivateMacosGuardianRecovery('admitted', 'validate', original),
+    )
+    expect(events).toEqual([{ phase: 'admitted', step: 'validate', cause }])
+    expect(Object.isFrozen(events[0])).toBe(true)
+    expect(JSON.stringify(events)).not.toMatch(/image-secret-token|private|device|metadata/)
+    let caught: unknown
+    try {
+      await withPrivateMacosGuardianDiagnostics(
+        () => {
+          throw new Error('image-secret-token observer failure')
+        },
+        async () => {
+          reportPrivateMacosGuardianRecovery('admitted', 'validate', original)
+          throw original
+        },
+      )
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBe(original)
+  }
 })

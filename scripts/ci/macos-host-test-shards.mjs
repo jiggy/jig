@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { discoverRepositoryTests, filesForTarget } from './suite-inventory.mjs'
+import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
 export const MAC_HOST_SHARDS = Object.freeze({ x64: 3, arm64: 2 })
 export function macHostShardCount(architecture) {
@@ -130,8 +130,14 @@ export function planMacHostTests(files, architecture) {
     target.groups.push(group)
     target.estimatedSeconds += group.estimatedSeconds
   }
-  // Keep the expensive containment cases first so failures do not wait behind
-  // unrelated portable checks. Assignment remains exhaustive and deterministic.
+  // Expose primitive failures before long application scenarios without changing
+  // LPT membership, weights or the order within either partition.
+  const primitives = new Set(suiteTestFiles(files, ['macos-native'], manifest, 'macos-24G830'))
+  for (const shard of shards)
+    shard.groups = [
+      ...shard.groups.filter(({ file }) => primitives.has(file)),
+      ...shard.groups.filter(({ file }) => !primitives.has(file)),
+    ]
   if (shards.some((shard) => shard.groups.length === 0)) {
     throw new Error('Mac host test inventory leaves an empty shard')
   }

@@ -1,4 +1,4 @@
-import type { TuiTheme } from './types.js'
+import type { TuiTheme } from '../types.js'
 
 export function heading(
   text: string,

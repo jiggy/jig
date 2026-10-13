@@ -2,10 +2,10 @@ import { expect, test } from 'bun:test'
 import { EventEmitter } from 'node:events'
 import { displayViewKey } from '@jigging/display-model'
 import { type Reference, type ViewItem, validateReportingMessage } from '@jigging/reporting'
-import { viewerDetailParts, viewerFrame } from '../src/projection.js'
-import { escapeTerminalText, terminalWidth, wrapTerminalText } from '../src/text.js'
-import { callRecordKey, rowRecordKey } from '../src/viewer-model.js'
-import { FixtureKeyboard, FixtureModel, waitFor } from './fixtures.js'
+import { viewerDetailParts, viewerFrame } from '../../src/presentation/projection.js'
+import { escapeTerminalText, terminalWidth, wrapTerminalText } from '../../src/presentation/text.js'
+import { callRecordKey, rowRecordKey } from '../../src/presentation/viewer-model.js'
+import { FixtureKeyboard, FixtureModel, waitFor } from '../fixtures.js'
 
 const v = (id = 'jobs', rows = ['a', 'b', 'c']): ViewItem =>
   validateReportingMessage({

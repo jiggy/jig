@@ -1268,3 +1268,166 @@ test('CLI emits stable JSON and literal GitHub outputs without treating refs as 
   assert.throws(() => readFileSync(join(f.root, 'should-not-exist')))
   assert.throws(() => plan(f, { mode: 'implicit-active' }))
 })
+
+function tuiPresentationFixture() {
+  const f = fixture()
+  for (const name of ['display-model', 'reporting', 'display-tui'])
+    write(
+      f.root,
+      `packages/${name}/package.json`,
+      JSON.stringify({
+        name: `@jigging/${name}`,
+        dependencies:
+          name === 'display-tui'
+            ? {
+                '@jigging/display-model': 'workspace:*',
+                '@jigging/reporting': 'workspace:*',
+              }
+            : {},
+      }),
+    )
+  write(
+    f.root,
+    'packages/jig/package.json',
+    JSON.stringify({
+      name: '@jigging/jig',
+      dependencies: { '@jigging/display-tui': 'workspace:*' },
+    }),
+  )
+  for (const name of ['projection', 'viewer-model', 'text', 'style'])
+    write(f.root, `packages/display-tui/src/presentation/${name}.ts`, 'export const value = 1\n')
+  for (const name of ['presentation', 'workbench', 'inline'])
+    write(
+      f.root,
+      `packages/display-tui/test/presentation/${name}.test.ts`,
+      'test("original presentation",()=>{})\n',
+    )
+  write(
+    f.root,
+    'packages/display-tui/test/presentation-boundary.test.ts',
+    'test("boundary",()=>{})\n',
+  )
+  write(
+    f.root,
+    'packages/jig/test/host/package-provider-observation.test.ts',
+    'test("installed observation",()=>{})\n',
+  )
+  return { ...f, base: commit(f.root) }
+}
+
+test('the physical TUI presentation component selects source and all three fresh installed witnesses', () => {
+  for (const name of ['projection', 'viewer-model', 'text', 'style']) {
+    const f = tuiPresentationFixture()
+    write(f.root, `packages/display-tui/src/presentation/${name}.ts`, 'export const value = 2\n')
+    write(
+      f.root,
+      'packages/display-tui/test/presentation/presentation.test.ts',
+      'test("new presentation",()=>{})\n',
+    )
+    commit(f.root)
+    const p = plan(f)
+    assert.equal(p.policy.classification, 'portable-tests-and-presentation', name)
+    assert.deepEqual(p.decisions.sourceTargets, ['source-portable'])
+    assert.deepEqual(p.decisions.npmPackages, ['jig'])
+    assert.equal(p.decisions.linux, false)
+    assert.equal(p.decisions.macos, false)
+    const source = p.targets.find((target) => target.id === 'source-portable')
+    for (const file of [
+      'presentation/presentation.test.ts',
+      'presentation/workbench.test.ts',
+      'presentation/inline.test.ts',
+      'presentation-boundary.test.ts',
+    ])
+      assert.ok(source.testInventory.includes(`packages/display-tui/test/${file}`))
+    for (const scope of ['ci', 'linux', 'macos'])
+      assert.equal(
+        reconcileAffectedEvidence(p, evidenceFor(p, scope), { cwd: f.root, scope }).qualified,
+        true,
+      )
+    for (const id of ['linux-witness', 'macos-x64-witness', 'macos-arm64-witness']) {
+      const target = p.targets.find((target) => target.id === id)
+      assert.equal(target.selected, true)
+      assert.equal(target.requiresArtifacts, true)
+      assert.equal(target.requiresResidue, true)
+      const missing = evidenceFor(p, target.scope)
+      missing.results = missing.results.filter((result) => result.id !== id)
+      assert.equal(
+        reconcileAffectedEvidence(p, missing, { cwd: f.root, scope: target.scope }).qualified,
+        false,
+      )
+    }
+    const sampled = plan(f, { mode: 'shadow' })
+    assert.equal(sampled.decisions.linux, true)
+    assert.equal(sampled.decisions.macos, true)
+    assert.equal(plan(f, { forceFull: true }).decisions.macos, true)
+  }
+})
+
+test('TUI native, input, lifecycle, shared fixtures and the boundary guard retain full ownership', () => {
+  for (const path of [
+    'packages/display-tui/src/native.ts',
+    'packages/display-tui/src/input.ts',
+    'packages/display-tui/src/index.ts',
+    'packages/display-tui/src/inline-owner.ts',
+    'packages/display-tui/src/inline.ts',
+    'packages/display-tui/src/types.ts',
+    'packages/display-tui/test/fixtures.ts',
+    'packages/display-tui/test/native.test.ts',
+    'packages/display-tui/test/portability.test.ts',
+    'packages/display-tui/test/presentation-boundary.test.ts',
+    'packages/display-tui/src/presentation-neighbor/unknown.ts',
+  ]) {
+    const f = tuiPresentationFixture()
+    write(f.root, path, 'export const original = 1\n')
+    const base = commit(f.root)
+    write(f.root, path, 'export const original = 2\n')
+    write(f.root, 'packages/display-tui/src/presentation/text.ts', 'export const value = 2\n')
+    commit(f.root)
+    const p = plan({ ...f, base })
+    assert.equal(p.policy.classification, 'full', path)
+    assert.equal(p.decisions.linux, true, path)
+    assert.equal(p.decisions.macos, true, path)
+  }
+})
+
+test('foreign presentation consumers and renamed native endpoints cannot inherit the TUI omission', () => {
+  const f = tuiPresentationFixture()
+  write(
+    f.root,
+    'examples/request-triage/package.json',
+    JSON.stringify({
+      name: 'foreign-consumer',
+      dependencies: { '@jigging/display-tui': 'workspace:*' },
+    }),
+  )
+  const base = commit(f.root)
+  write(f.root, 'packages/display-tui/src/presentation/text.ts', 'export const value = 2\n')
+  commit(f.root)
+  const p = plan({ ...f, base })
+  assert.equal(p.policy.classification, 'full')
+  assert.ok(p.policy.fallbackReasons.some((reason) => reason.includes('outside its reviewed')))
+  const renamed = tuiPresentationFixture()
+  git(
+    renamed.root,
+    'mv',
+    'packages/display-tui/src/presentation/text.ts',
+    'packages/display-tui/src/native.ts',
+  )
+  commit(renamed.root)
+  assert.equal(plan(renamed).policy.classification, 'full')
+})
+
+test('self-consistent forged TUI source omissions cannot replace reconstructed execution ownership', () => {
+  const f = tuiPresentationFixture()
+  write(f.root, 'packages/display-tui/src/presentation/text.ts', 'export const value = 2\n')
+  commit(f.root)
+  const p = plan(f)
+  const source = p.targets.find((target) => target.id === 'source-portable')
+  source.selected = false
+  source.omissionReason = 'invented presentation permission'
+  p.decisions.source = false
+  p.decisions.sourceTargets = []
+  delete p.planDigest
+  p.planDigest = digest(p)
+  assert.equal(reconcileAffectedEvidence(p, evidenceFor(p), { cwd: f.root }).qualified, false)
+})
