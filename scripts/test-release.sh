@@ -147,7 +147,7 @@ for application in photo-organiser tested-patch software-factory support-case co
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "$application_source/package.json" "$application_copy/"
-  for member in flows test fixtures issue.json input.json batch.json; do
+  for member in flows test fixtures grants issue.json input.json batch.json; do
     if [ -e "$application_source/$member" ]; then
       bun --no-env-file -e '
         import { cp } from "node:fs/promises";
@@ -212,9 +212,16 @@ done
   set -- --target source-applications --profile "$source_profile"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "${GITHUB_SHA:?Missing tested source}"; fi
   "$FLOW_NODE" scripts/ci/suite-inventory.mjs "$@" > "$release_tmp/source-applications.files"
-  "$FLOW_NODE" --input-type=module -e 'import{readFileSync,writeFileSync}from"node:fs";import{resolve}from"node:path";const files=readFileSync(process.argv[1],"utf8").trim().split("\n");writeFileSync(process.argv[3],JSON.stringify(files.map(source=>({source,copy:resolve(process.argv[2],source.replace(/^examples\//,""))}))));' "$release_tmp/source-applications.files" "$release_tmp" "$release_tmp/application-map.json"
+  "$FLOW_NODE" --input-type=module -e 'import{readFileSync,writeFileSync}from"node:fs";import{resolve}from"node:path";const files=readFileSync(process.argv[1],"utf8").trim().split("\n");writeFileSync(process.argv[3],JSON.stringify(files.map(source=>({source,copy:resolve(process.argv[2],source.replace(/^(?:examples\/|packages\/jig\/test\/fixtures\/)/,""))}))));' "$release_tmp/source-applications.files" "$release_tmp" "$release_tmp/application-map.json"
   set --
-  while IFS= read -r test_file; do set -- "$@" "$release_tmp/${test_file#examples/}"; done < "$release_tmp/source-applications.files"
+  while IFS= read -r test_file; do
+    case "$test_file" in
+      examples/*) copied_file=${test_file#examples/} ;;
+      packages/jig/test/fixtures/incident-brief/*) copied_file=${test_file#packages/jig/test/fixtures/} ;;
+      *) echo "Unknown application source" >&2; exit 1 ;;
+    esac
+    set -- "$@" "$release_tmp/$copied_file"
+  done < "$release_tmp/source-applications.files"
   bun test "$@" --reporter=junit "--reporter-outfile=$report_directory/source-applications.xml"
   set -- --report "$report_directory/source-applications.xml" --mapping "$release_tmp/application-map.json" --repository "$PWD"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "$GITHUB_SHA"; fi

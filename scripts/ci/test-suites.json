@@ -97,10 +97,10 @@
       "roots": [
         "examples/tested-patch/",
         "examples/software-factory/",
-        "examples/request-triage/",
+        "examples/photo-organiser/",
         "examples/support-case/",
         "examples/contact-import/",
-        "examples/incident-brief/"
+        "packages/jig/test/fixtures/incident-brief/"
       ],
       "profiles": ["portable", "portable-linux"]
     },

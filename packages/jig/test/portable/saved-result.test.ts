@@ -6,16 +6,16 @@ import { link, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from '
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
-import { main, privateCliRequiresHost, privateCliSavedResultInspection } from "../../src/cli.js"
-import { PrivateRunModel } from "../../src/cli-run-model.js"
+import { main, privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
+import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
   privateSavedResultPlain,
   privateSavedResultViews,
-} from "../../src/cli-saved-result-presentation.js"
-import { sha256 } from "../../src/internal/file-input.js"
-import { privateCaptureSavedResult } from "../../src/internal/saved-result.js"
-import { canonicalJson, JSON_1_LIMITS, type JsonValue } from "../../src/json.js"
-import { settleTestCommand } from ".././fixtures/bounded-command.js"
+} from '../../src/cli-saved-result-presentation.js'
+import { sha256 } from '../../src/internal/file-input.js'
+import { privateCaptureSavedResult } from '../../src/internal/saved-result.js'
+import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
+import { settleTestCommand } from '.././fixtures/bounded-command.js'
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-saved-result-')))
   try {
@@ -643,4 +643,3 @@ test('an unavailable image renderer preserves immutable SVG text after the origi
       capture.close()
     }
   }))
-

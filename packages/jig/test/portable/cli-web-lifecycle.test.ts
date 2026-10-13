@@ -4,10 +4,10 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { WebAssets } from '@jigging/display-model'
-import { main, privateCliCommandLifetimeMs } from "../../src/cli.js"
-import { PrivateCliProgress } from "../../src/cli-progress.js"
-import { PrivateWebDisplay } from "../../src/cli-web.js"
-import { PrivateWebInput } from "../../src/cli-web-input.js"
+import { main, privateCliCommandLifetimeMs } from '../../src/cli.js'
+import { PrivateCliProgress } from '../../src/cli-progress.js'
+import { PrivateWebDisplay } from '../../src/cli-web.js'
+import { PrivateWebInput } from '../../src/cli-web-input.js'
 const assets: WebAssets = {
   '/': { body: '<!doctype html><title>Test inspector</title>', contentType: 'text/html' },
   '/assets/app.js': { body: '/* inert test shell */', contentType: 'text/javascript' },
@@ -458,4 +458,3 @@ test('live close preserves work; retirement and presentation failures preserve k
     }
   }
 })
-

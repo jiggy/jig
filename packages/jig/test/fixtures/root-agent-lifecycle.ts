@@ -114,6 +114,7 @@ export async function writeInstalledFixture(root: string): Promise<PrivateInstal
   const source = installedBunLocation.releaseRoot
   const files = [
     'libexec/installed-cli.js',
+    'libexec/image-preview-worker.js',
     'libexec/markdown-runtime.js',
     'libexec/linux-rootless-supervisor.js',
     'libexec/macos-native-supervisor.js',
@@ -1109,6 +1110,10 @@ export async function qualifyRepairScenario(
             checkpoints = new PrivateRunCheckpoints(identity)
           },
           saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
+          retire: async () => {
+            checkpoints?.close()
+            await owner.close()
+          },
           prepare: (directory: string, roots: readonly number[]) => owner.prepare(directory, roots),
           publish: async (
             record: import('../../src/json.js').JsonValue,

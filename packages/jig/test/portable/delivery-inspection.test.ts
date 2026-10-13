@@ -6,24 +6,24 @@ import {
   PrivateDeliveryCompletion,
   PrivateDeliveryInspectionError,
   privateCaptureDeliveryInspection,
-} from "../../src/internal/delivery-inspection.js"
-import { PrivateFileImportUnconfirmedError } from "../../src/internal/execution-file-import.js"
+} from '../../src/internal/delivery-inspection.js'
+import { PrivateFileImportUnconfirmedError } from '../../src/internal/execution-file-import.js'
 import {
   privateFileCompletionAllowance,
   privateFileCompletionBudget,
   privateFileDeliveryConnection,
-} from "../../src/internal/file-command.js"
+} from '../../src/internal/file-command.js'
 import type {
   PrivateDeliveryConnection,
   PrivateDeliveryReceipt,
-} from "../../src/internal/file-delivery.js"
-import { PrivateRootRunFiles } from "../../src/internal/root-run-files.js"
+} from '../../src/internal/file-delivery.js'
+import { PrivateRootRunFiles } from '../../src/internal/root-run-files.js'
 import {
   PRIVATE_PRESENTATION_DEADLINE_ENV,
   privateConstrainPresentationDeadline,
   privatePresentationNow,
-} from "../../src/internal/root-run-timeout-policy.js"
-import { canonicalJson, type JsonValue } from "../../src/json.js"
+} from '../../src/internal/root-run-timeout-policy.js'
+import { canonicalJson, type JsonValue } from '../../src/json.js'
 const bound = (ms = 1000) => ({ deadline: privatePresentationNow() + ms })
 const receipt = (files: readonly { path: string; bytes: number }[]): PrivateDeliveryReceipt => ({
   status: 'written',
@@ -645,4 +645,3 @@ test('image transfer retires authority and rejects non-raster or oversized previ
   ).rejects.toThrow('INVALID_CAPTURE')
   expect(retired).toBeTrue()
 })
-

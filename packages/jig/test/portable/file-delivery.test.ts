@@ -17,16 +17,16 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { capturePrivateOutput } from "../../src/internal/captured-output.js"
+import { capturePrivateOutput } from '../../src/internal/captured-output.js'
 import {
   PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
   privateOwnFileCommand,
-} from "../../src/internal/file-command.js"
-import { PrivateFileDeliveryOwner } from "../../src/internal/file-delivery.js"
-import { privateOpenFileRoot } from "../../src/internal/file-input.js"
-import { PrivateRunCheckpoints } from "../../src/internal/private-run-checkpoint.js"
-import { privatePresentationNow } from "../../src/internal/root-run-timeout-policy.js"
-import { fixture, record, fixturePid, waitUntilStopped } from ".././file-delivery.fixture.js"
+} from '../../src/internal/file-command.js'
+import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
+import { privateOpenFileRoot } from '../../src/internal/file-input.js'
+import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint.js'
+import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
+import { fixture, record, fixturePid, waitUntilStopped } from '.././file-delivery.fixture.js'
 
 test('packet streaming cannot renew time already spent in its native delivery phase', async () =>
   fixture(async (root) => {
@@ -754,4 +754,3 @@ test('retained terminal publication still removes staging when its coordinator i
       await owner.close()
     }
   }))
-

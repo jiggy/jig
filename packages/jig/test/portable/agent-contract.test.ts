@@ -1,16 +1,16 @@
 import { beforeAll, describe, expect, test } from 'bun:test'
-import { parseChannelContract } from "../../src/channel-contract.js"
+import { parseChannelContract } from '../../src/channel-contract.js'
 import {
   type ParsedInvocationContract,
   parseInvocationContract,
-} from "../../src/invocation-contract.js"
+} from '../../src/invocation-contract.js'
 import {
   AGENT_RUN_CONTRACT_DIGEST,
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
-} from ".././fixtures/agent-contract.js"
+} from '.././fixtures/agent-contract.js'
 const contractPath = new URL(
-  "../../../../docs/jig/spec/contracts/agent-run/contract.json",
+  '../../../../docs/jig/spec/contracts/agent-run/contract.json',
   import.meta.url,
 )
 let contract: ParsedInvocationContract
@@ -35,7 +35,7 @@ beforeAll(async () => {
   )
 })
 describe('ordinary Agent Run contract', () => {
-test('accepts explicit session requests and final receipts without admitting them to turn commands', async () => {
+  test('accepts explicit session requests and final receipts without admitting them to turn commands', async () => {
     const reference = '013579ab-cdef-4567-89ab-0123456789ab'
     const input = contract.schemas.get('/input')!
     const result = contract.schemas.get('/result')!
@@ -86,7 +86,7 @@ test('accepts explicit session requests and final receipts without admitting the
       }),
     ).toThrow()
   })
-test('publishes and exact-matches the current Jig-owned descriptor', () => {
+  test('publishes and exact-matches the current Jig-owned descriptor', () => {
     expect(contract.descriptor.id).toBe(AGENT_RUN_CONTRACT_ID)
     expect(contract.descriptor.version).toBe(AGENT_RUN_CONTRACT_VERSION)
     expect(contract.digest).toBe(AGENT_RUN_CONTRACT_DIGEST)
@@ -118,22 +118,22 @@ test('publishes and exact-matches the current Jig-owned descriptor', () => {
       },
     })
   })
-test('ordinary methods declare implemented features and consumers require only their complete method', async () => {
+  test('ordinary methods declare implemented features and consumers require only their complete method', async () => {
     const metadata = async (path: string) => Bun.file(new URL(path, import.meta.url)).json()
-    expect((await metadata('../../agent-method/FLOW.meta.json')).supports).toEqual([])
-    expect((await metadata('../../agent-acp/FLOW.meta.json')).supports).toEqual([
+    expect((await metadata('../../../agent-method/FLOW.meta.json')).supports).toEqual([])
+    expect((await metadata('../../../agent-acp/FLOW.meta.json')).supports).toEqual([
       'events',
       'conversation',
       'sessions',
     ])
-    const worker = await metadata('./fixtures/incident-brief/flows/worker/FLOW.meta.json')
+    const worker = await metadata('../fixtures/incident-brief/flows/worker/FLOW.meta.json')
     expect(worker.uses.agent.requires).toEqual(['conversation'])
-    const repair = await metadata('../../../examples/tested-patch/flows/repair/FLOW.meta.json')
+    const repair = await metadata('../../../../examples/tested-patch/flows/repair/FLOW.meta.json')
     expect(repair.uses.agent.requires).toBeUndefined()
   })
-test('authored Agent consumers retain the complete exact optional channel contract', async () => {
+  test('authored Agent consumers retain the complete exact optional channel contract', async () => {
     const profileBytes = await Bun.file(
-      new URL("../../../../docs/jig/spec/contracts/acp-public-updates.json", import.meta.url),
+      new URL('../../../../docs/jig/spec/contracts/acp-public-updates.json', import.meta.url),
     ).bytes()
     const profile = parseChannelContract(profileBytes)
     expect(profile.descriptor.id).toBe('https://jig.md/contracts/acp-public-updates')
@@ -148,12 +148,12 @@ test('authored Agent consumers retain the complete exact optional channel contra
       }),
     ).toThrow()
     const method = parseInvocationContract(
-      await Bun.file(new URL("../../../agent-method/FLOW.contract.json", import.meta.url)).bytes(),
+      await Bun.file(new URL('../../../agent-method/FLOW.contract.json', import.meta.url)).bytes(),
       'FLOW.contract.json',
-      await channels(new URL("../../../agent-method/FLOW.contract.json", import.meta.url)),
+      await channels(new URL('../../../agent-method/FLOW.contract.json', import.meta.url)),
     )
     expect(method.digest).toBe(contract.digest)
-    const acp = new URL("../../../agent-acp/FLOW.contract.json", import.meta.url)
+    const acp = new URL('../../../agent-acp/FLOW.contract.json', import.meta.url)
     expect(
       parseInvocationContract(
         await Bun.file(acp).bytes(),
@@ -162,11 +162,11 @@ test('authored Agent consumers retain the complete exact optional channel contra
       ).digest,
     ).toBe(contract.digest)
     for (const flow of [
-      '../../../examples/contact-import/flows/map-agent',
-      '../../../examples/contact-import/flows/map-mixed',
-      '../../../examples/tested-patch/flows/repair',
-      '../../../examples/support-case/flows/assess',
-      './fixtures/incident-brief/flows/worker',
+      '../../../../examples/contact-import/flows/map-agent',
+      '../../../../examples/contact-import/flows/map-mixed',
+      '../../../../examples/tested-patch/flows/repair',
+      '../../../../examples/support-case/flows/assess',
+      '../fixtures/incident-brief/flows/worker',
     ]) {
       const base = new URL(`${flow}/contracts/`, import.meta.url)
       const consumerContract = parseInvocationContract(
@@ -181,4 +181,3 @@ test('authored Agent consumers retain the complete exact optional channel contra
     }
   })
 })
-

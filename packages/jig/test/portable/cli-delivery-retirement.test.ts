@@ -1,9 +1,7 @@
+import { dirname as suiteDirname } from 'node:path'
+const suiteTestRoot = suiteDirname(import.meta.dir)
 import { beforeAll, expect, test } from 'bun:test'
 import { resolve } from 'node:path'
-
-// One isolated sequential process avoids reloading the full product per case.
-// Local joins complete or remain refused before the next main call; pending
-// collections stay unknown and never produce an output capability.
 type Result = {
   scenario: string
   display: string
@@ -23,6 +21,11 @@ type Result = {
   error: string
 }
 let results: Result[]
+function run(scenario: string, display = 'plain'): Result {
+  const result = results.find((item) => item.scenario === scenario && item.display === display)
+  if (result === undefined) throw new Error('missing controlled case')
+  return result
+}
 beforeAll(async () => {
   const child = Bun.spawn(
     [
@@ -30,7 +33,7 @@ beforeAll(async () => {
       '--no-env-file',
       '--no-install',
       '--config=/dev/null',
-      resolve(import.meta.dir, 'fixtures/cli-delivery-retirement.ts'),
+      resolve(suiteTestRoot, 'fixtures/cli-delivery-retirement.ts'),
       'all',
     ],
     { stdout: 'pipe', stderr: 'pipe', stdin: 'ignore' },
@@ -52,12 +55,6 @@ beforeAll(async () => {
     await child.exited
   }
 }, 25_000)
-function run(scenario: string, display = 'plain'): Result {
-  const result = results.find((item) => item.scenario === scenario && item.display === display)
-  if (result === undefined) throw new Error('missing controlled case')
-  return result
-}
-
 for (const display of ['plain', 'json', 'tui', 'web']) {
   test(`known settled ${display} retires before local close and final output`, () => {
     const result = run('success', display)
@@ -109,7 +106,6 @@ for (const display of ['plain', 'json', 'tui', 'web']) {
     })
   }
 }
-
 for (const display of ['plain', 'web']) {
   for (const scenario of ['record-only', 'failed', 'lost', 'invalid-files', 'cancelled']) {
     test(`confirmed ${display} ${scenario} spends authority while preserving its own decision`, () => {
@@ -145,7 +141,6 @@ for (const display of ['plain', 'web']) {
     expect(JSON.parse(missing.output).delivery.status).toBe('written')
   })
 }
-
 for (const scenario of ['capture-close-failure', 'retire-and-capture-failure']) {
   test(`${scenario} reports local failure separately and never resets the first failed close`, () => {
     const result = run(scenario)
@@ -160,7 +155,6 @@ for (const scenario of ['capture-close-failure', 'retire-and-capture-failure']) 
     } else expect(result.error).not.toContain('JIG_DELIVERY_CLEANUP_FAILED')
   })
 }
-
 test('unknown local-close failure retains the primary observation error and original loss path', () => {
   const result = run('primary-and-close-failure')
   expect(result.code).toBe(2)
@@ -171,7 +165,6 @@ test('unknown local-close failure retains the primary observation error and orig
   expect(result.transportUnretired).toBe(true)
   expect(result.output).toBe('')
 })
-
 test('a later report error joins timely completed retirement without another operation', () => {
   const result = run('late-report-failure')
   expect(result.code).toBe(2)
@@ -181,7 +174,6 @@ test('a later report error joins timely completed retirement without another ope
   expect(result.error).toContain('controlled primary report failure')
   expect(result.error).not.toContain('JIG_DELIVERY_CLEANUP_FAILED')
 })
-
 test('finalization preserves the genuine presentation minimum and refuses an expired end', () => {
   const tight = run('tight-deadline')
   expect(tight.code).toBe(0)
@@ -191,7 +183,6 @@ test('finalization preserves the genuine presentation minimum and refuses an exp
   expect(expired.observedDeadline).toBe(expired.presentationDeadline)
   expect(expired.error).toContain('JIG_DELIVERY_CLEANUP_FAILED')
 })
-
 for (const display of ['plain', 'web']) {
   for (const output of ['snapshot', 'linux-directory']) {
     for (const fault of ['observation-failure', 'project-close-failure']) {

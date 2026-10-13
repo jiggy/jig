@@ -3,12 +3,12 @@ import { EventEmitter } from 'node:events'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { RootAdministrationError } from "../../src/administration/root.js"
-import { main, privateCliCommandLifetimeMs } from "../../src/cli.js"
-import { privateRunDisplay } from "../../src/run-arguments.js"
-import { CliDiagnostic } from "../../src/cli-usage.js"
-import { PrivateCliProgress, type PrivateProgressLifetime } from "../../src/cli-progress.js"
-import { privateAttentionReceipt } from "../../src/cli-run-model.js"
+import { RootAdministrationError } from '../../src/administration/root.js'
+import { main, privateCliCommandLifetimeMs } from '../../src/cli.js'
+import { privateRunDisplay } from '../../src/run-arguments.js'
+import { CliDiagnostic } from '../../src/cli-usage.js'
+import { PrivateCliProgress, type PrivateProgressLifetime } from '../../src/cli-progress.js'
+import { privateAttentionReceipt } from '../../src/cli-run-model.js'
 import {
   PRIVATE_PRESENTATION_CLOSE_RESERVE_MS,
   PRIVATE_PRESENTATION_DEADLINE_ENV,
@@ -16,7 +16,7 @@ import {
   privatePresentationDeadline,
   privatePresentationNow,
   privateRootlessCommandLifetime,
-} from "../../src/internal/root-run-timeout-policy.js"
+} from '../../src/internal/root-run-timeout-policy.js'
 class Input extends EventEmitter {
   isRaw = false
   readableFlowing: boolean | null = null
@@ -657,13 +657,13 @@ test('an expanded-report failure keeps its known terminal open until the operato
   expect(input.isRaw).toBeFalse()
 })
 describe('private presentation deadline', () => {
-test('an expired constraint retains its meaning across owned Bun reexecution', async () => {
+  test('an expired constraint retains its meaning across owned Bun reexecution', async () => {
     const deadline = privateConstrainPresentationDeadline(
       {},
       PRIVATE_PRESENTATION_CLOSE_RESERVE_MS + 75,
     )
     await pause(150)
-    const moduleUrl = new URL("../../src/internal/root-run-timeout-policy.ts", import.meta.url).href
+    const moduleUrl = new URL('../../src/internal/root-run-timeout-policy.ts', import.meta.url).href
     const child = Bun.spawn(
       [
         process.execPath,
@@ -697,7 +697,7 @@ console.log(JSON.stringify({ now: privatePresentationNow(), inherited: privatePr
       await child.exited
     }
   })
-test('enclosing timers seed the earliest close bound once and preserve inherited time', () => {
+  test('enclosing timers seed the earliest close bound once and preserve inherited time', () => {
     expect(PRIVATE_PRESENTATION_CLOSE_RESERVE_MS).toBe(45_000)
     const first = privateConstrainPresentationDeadline({}, 330_000, 1_000)
     expect(first).toBe(286_000)
@@ -707,13 +707,13 @@ test('enclosing timers seed the earliest close bound once and preserve inherited
     expect(privateConstrainPresentationDeadline(environment, 30_000, 100_000)).toBe(85_000)
     expect(privateRootlessCommandLifetime(30_000)).toBe(330_000)
   })
-test('invalid or missing private values confer no presentation allowance', () => {
+  test('invalid or missing private values confer no presentation allowance', () => {
     for (const text of ['', '-1', '1.5', 'NaN', 'Infinity', '01', '9007199254740992', ' 1'])
       expect(
         privatePresentationDeadline({ [PRIVATE_PRESENTATION_DEADLINE_ENV]: text }),
       ).toBeUndefined()
   })
-test('the host clock is monotonic and a shorter file-owner deadline dominates delegation', () => {
+  test('the host clock is monotonic and a shorter file-owner deadline dominates delegation', () => {
     const before = privatePresentationNow(),
       after = privatePresentationNow()
     expect(after).toBeGreaterThanOrEqual(before)
@@ -728,7 +728,7 @@ test('the host clock is monotonic and a shorter file-owner deadline dominates de
   })
 })
 describe('one command-owned workspace', () => {
-test('closing during native construction disposes the late owner before any screen entry', async () => {
+  test('closing during native construction disposes the late owner before any screen entry', async () => {
     for (const reason of ['abort', 'close']) {
       const input = new Input()
       const controller = new AbortController()
@@ -779,7 +779,7 @@ test('closing during native construction disposes the late owner before any scre
       }
     }
   })
-test('an empty initial observation renders without a malformed snapshot warning', async () => {
+  test('an empty initial observation renders without a malformed snapshot warning', async () => {
     const input = new Input()
     let text = ''
     const progress = workspace(
@@ -800,7 +800,7 @@ test('an empty initial observation renders without a malformed snapshot warning'
       await progress.flush()
     }
   })
-test('settled inspection has no idle or absolute cap; an explicit command deadline remains fixed', async () => {
+  test('settled inspection has no idle or absolute cap; an explicit command deadline remains fixed', async () => {
     for (const inherited of [undefined, 90_000]) {
       let now = 100
       const input = new Input()
@@ -832,7 +832,7 @@ test('settled inspection has no idle or absolute cap; an explicit command deadli
       }
     }
   })
-test('a queued key cannot evade an expired explicit enclosing deadline', async () => {
+  test('a queued key cannot evade an expired explicit enclosing deadline', async () => {
     let now = 100
     const input = new Input()
     const progress = workspace(async () => {}, { now: () => now, deadline: 60_100 })
@@ -854,7 +854,7 @@ test('a queued key cannot evade an expired explicit enclosing deadline', async (
       await progress.flush()
     }
   })
-test('standalone Linux inspection owns recorded data only and closes keyboard Ctrl-C without a cancellation signal', async () => {
+  test('standalone Linux inspection owns recorded data only and closes keyboard Ctrl-C without a cancellation signal', async () => {
     const input = new Input()
     let signals = 0
     const interrupted = () => {
@@ -889,7 +889,7 @@ test('standalone Linux inspection owns recorded data only and closes keyboard Ct
       await progress.flush()
     }
   })
-test('a physical zero-column terminal is not replaced with an eighty-column workspace', async () => {
+  test('a physical zero-column terminal is not replaced with an eighty-column workspace', async () => {
     const descriptor = Object.getOwnPropertyDescriptor(process.stderr, 'columns')
     let text = ''
     const input = new Input()
@@ -918,7 +918,7 @@ test('a physical zero-column terminal is not replaced with an eighty-column work
       else delete (process.stderr as any).columns
     }
   })
-test('an already expired enclosing command deadline skips entry and cannot restart at settlement', async () => {
+  test('an already expired enclosing command deadline skips entry and cannot restart at settlement', async () => {
     let text = ''
     const input = new Input()
     const progress = workspace(
@@ -936,7 +936,7 @@ test('an already expired enclosing command deadline skips entry and cannot resta
     progress.close()
     await progress.flush()
   })
-test('interruption racing entry awaits restoration and never acquires stranded input', async () => {
+  test('interruption racing entry awaits restoration and never acquires stranded input', async () => {
     const chunks: string[] = [],
       input = new Input(),
       stop = new AbortController()
@@ -967,7 +967,7 @@ test('interruption racing entry awaits restoration and never acquires stranded i
     progress.close()
     await progress.flush()
   })
-test('live batched Ctrl-C requests cancellation once and EOF only leaves', async () => {
+  test('live batched Ctrl-C requests cancellation once and EOF only leaves', async () => {
     for (const eof of [false, true]) {
       const input = new Input(),
         stop = new AbortController()
@@ -994,7 +994,7 @@ test('live batched Ctrl-C requests cancellation once and EOF only leaves', async
       }
     }
   })
-test('awaits screen entry before input ownership and restores before complete receipts', async () => {
+  test('awaits screen entry before input ownership and restores before complete receipts', async () => {
     const chunks: string[] = []
     let release!: () => void
     let first = true
@@ -1048,7 +1048,7 @@ test('awaits screen entry before input ownership and restores before complete re
     progress.close()
     await progress.flush()
   })
-test('raw setup failure restores mutated input and uses ordinary fallback', async () => {
+  test('raw setup failure restores mutated input and uses ordinary fallback', async () => {
     let text = ''
     const input = new Input()
     input.throwRaw = true
@@ -1065,7 +1065,7 @@ test('raw setup failure restores mutated input and uses ordinary fallback', asyn
     progress.close()
     await progress.flush()
   })
-test('input snapshot failure explains fallback before any screen or raw acquisition', async () => {
+  test('input snapshot failure explains fallback before any screen or raw acquisition', async () => {
     let text = ''
     const input = new Input()
     input.isPaused = () => {
@@ -1083,7 +1083,7 @@ test('input snapshot failure explains fallback before any screen or raw acquisit
     progress.close()
     await progress.flush()
   })
-test('live lifetime expiry leaves input and continues work without cancellation or reentry', async () => {
+  test('live lifetime expiry leaves input and continues work without cancellation or reentry', async () => {
     let now = 100,
       text = ''
     const stop = new AbortController(),
@@ -1107,7 +1107,7 @@ test('live lifetime expiry leaves input and continues work without cancellation 
     progress.close()
     await progress.flush()
   })
-test('without an enclosing deadline, settled results wait for operator exit', async () => {
+  test('without an enclosing deadline, settled results wait for operator exit', async () => {
     let text = ''
     const input = new Input(),
       stop = new AbortController()
@@ -1134,7 +1134,7 @@ test('without an enclosing deadline, settled results wait for operator exit', as
     progress.close()
     await progress.flush()
   })
-test('settled keyboard Ctrl-C leaves without cancellation; external abort preserves frozen facts', async () => {
+  test('settled keyboard Ctrl-C leaves without cancellation; external abort preserves frozen facts', async () => {
     for (const external of [false, true]) {
       let text = '',
         signals = 0
@@ -1170,7 +1170,7 @@ test('settled keyboard Ctrl-C leaves without cancellation; external abort preser
       }
     }
   })
-test('output loss synchronously releases input and cannot commit undelivered receipts', async () => {
+  test('output loss synchronously releases input and cannot commit undelivered receipts', async () => {
     let fail = false
     const cause = new Error('output gone'),
       input = new Input()
@@ -1188,7 +1188,7 @@ test('output loss synchronously releases input and cannot commit undelivered rec
     progress.close()
     await expect(progress.flush()).rejects.toBe(cause)
   })
-test('complete maximum escaped causes drain in awaited 32KiB batches', async () => {
+  test('complete maximum escaped causes drain in awaited 32KiB batches', async () => {
     const chunks: string[] = []
     let inFlight = 0,
       maximum = 0
@@ -1239,7 +1239,7 @@ test('complete maximum escaped causes drain in awaited 32KiB batches', async () 
     progress.close()
     await progress.flush()
   })
-test('resize below minimum restores the terminal once without drawing imaginary rows', async () => {
+  test('resize below minimum restores the terminal once without drawing imaginary rows', async () => {
     let columns = 80,
       rows = 24,
       text = ''
@@ -1268,7 +1268,7 @@ test('resize below minimum restores the terminal once without drawing imaginary 
   })
 })
 test('fullscreen final reporting preserves full bounded diagnostics and frozen signal outcomes', async () => {
-  const { main } = await import("../../src/cli.js")
+  const { main } = await import('../../src/cli.js')
   for (const human of [false, true])
     for (const external of [false, true]) {
       const input = new Input(),
@@ -1381,4 +1381,3 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
       }
     }
 })
-

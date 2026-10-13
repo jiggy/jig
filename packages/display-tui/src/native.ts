@@ -1,5 +1,4 @@
 import { PassThrough, Writable } from 'node:stream'
-import { callObservationSpans, displayDuration } from '@jigging/display-model'
 import type { Reference } from '@jigging/reporting'
 import type {
   BoxRenderable,
