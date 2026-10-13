@@ -148,11 +148,10 @@ test('PRs retain complete coverage and keep quick checks independent of candidat
     'prerequisites',
     'qualified-architecture',
   ])
-  expect(
-    mac.jobs['affected-macos'].steps.some((step: any) =>
-      step.run?.includes('host-scope.mjs --scope macos --results'),
-    ),
-  ).toBeTrue()
+  const macGate = mac.jobs['affected-macos'].steps.find((step: any) =>
+    step.run?.includes('host-scope.mjs --scope macos --results'),
+  )
+  expect(macGate.env.JOB_RESULTS).toBe('${{ toJSON(needs) }}')
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
@@ -598,11 +597,10 @@ test('Linux host scope preserves complete qualification and always reports its f
   const affected = workflow.jobs['affected-linux']
   expect(affected.if).toBe('always()')
   expect(affected.needs).toEqual(['scope', 'host-artifacts', 'host-suite', 'rootless-linux'])
-  expect(
-    affected.steps.some((step: any) =>
-      step.run?.includes('host-scope.mjs --scope linux --results'),
-    ),
-  ).toBeTrue()
+  const linuxGate = affected.steps.find((step: any) =>
+    step.run?.includes('host-scope.mjs --scope linux --results'),
+  )
+  expect(linuxGate.env.JOB_RESULTS).toBe('${{ toJSON(needs) }}')
   const fixture = await linuxCommandFixture(workflow)
   try {
     const sourceCommands = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'].flatMap(
@@ -772,43 +770,6 @@ for (const scenario of linuxAggregateScenarios) {
     }
   })
 }
-
-test('protected host checks require complete Linux and both Mac architectures', async () => {
-  const linux = Bun.YAML.parse(
-    await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
-  ) as any
-  const mac = Bun.YAML.parse(
-    await Bun.file(join(root, '.github/workflows/macos-hosted-candidates.yml')).text(),
-  ) as any
-  for (const [workflow, name, needs, results] of [
-    [linux, 'affected-linux', ['rootless-linux'], { HOST_RESULT: 'success' }],
-    [
-      mac,
-      'affected-macos',
-      ['prerequisites', 'qualified-architecture'],
-      { SHARDS_RESULT: 'success', ARCHITECTURES_RESULT: 'success' },
-    ],
-  ] as const) {
-    const check = workflow.jobs[name]
-    expect(check.name).toBe(name)
-    expect(check.if).toBe('always()')
-    expect(check.needs).toEqual(needs)
-    const step = check.steps[0]
-    for (const dependency of needs) {
-      expect(Object.values(step.env)).toContain(`\${{ needs.${dependency}.result }}`)
-    }
-    for (const [key, value] of Object.entries(step.env)) {
-      expect(value).toMatch(/^\$\{\{ needs\.[a-z-]+\.result \}\}$/)
-      for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
-        const child = spawnSync('/bin/sh', ['-c', step.run], {
-          env: { ...results, [key]: result },
-        })
-        expect(child.status, `${name}: ${key}=${result}`).toBe(result === 'success' ? 0 : 1)
-      }
-    }
-    expect(Object.keys(step.env)).toEqual(Object.keys(results))
-  }
-})
 
 test('native API qualification is automatic, exact-revision, and scoped to supported clients', async () => {
   const host = Bun.YAML.parse(
