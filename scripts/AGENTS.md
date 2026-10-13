@@ -84,7 +84,8 @@ operational baselines, and public-site assembly.
   `installed-memory-proof.ts` owns pure integrity and outcome checks exercised
   by the quick operational-baseline checks. Logged evidence contains only Run
   and receipt digests, counters and settlement facts, never owner tokens. Proof
-  rejections use a closed message without rendering private values or causes.
+  rejections name only a closed validation stage and never render private values
+  or causes.
   Like the operational baseline, it always checks live residue, removes only
   successful fixtures and retains failed private state plus the bounded memory
   command transcript through `finishOperationalBaseline`.

@@ -3,6 +3,16 @@ import { createHash } from 'node:crypto'
 import { posix } from 'node:path'
 
 type RecordValue = Record<string, unknown>
+type MemoryProofStage =
+  | 'run-request'
+  | 'origin-intent'
+  | 'allocation'
+  | 'plan-backing'
+  | 'prepared-owner'
+  | 'enforcement-fence'
+  | 'release'
+  | 'terminal-record'
+  | 'command-result'
 
 export function selectFreshInstalledRun(
   beforeRunIds: readonly string[],
@@ -27,22 +37,32 @@ export function selectFreshInstalledRun(
 export function checkInstalledMemoryProof(
   input: Parameters<typeof validateMemoryProof>[0],
 ): RecordValue {
+  let stage: MemoryProofStage = 'run-request'
   try {
-    return validateMemoryProof(input)
+    return validateMemoryProof(input, (next) => {
+      stage = next
+    })
   } catch {
-    // Private checkpoints can contain owner tokens; errors must never render their values.
+    // Only literal stages cross this boundary; private values and causes stay private.
     throw new Error(
-      'Installed memory enforcement proof rejected; inspect the retained private fixture',
+      `Installed memory enforcement proof rejected at ${stage}; inspect the retained private fixture`,
     )
   }
 }
 
-function validateMemoryProof(input: {
-  readonly row: RecordValue
-  readonly beforeRunIds: readonly string[]
-  readonly project: { readonly path: string; readonly device: string; readonly inode: string }
-  readonly command: { readonly exitCode: number; readonly stdout: string; readonly stderr: string }
-}): RecordValue {
+function validateMemoryProof(
+  input: {
+    readonly row: RecordValue
+    readonly beforeRunIds: readonly string[]
+    readonly project: { readonly path: string; readonly device: string; readonly inode: string }
+    readonly command: {
+      readonly exitCode: number
+      readonly stdout: string
+      readonly stderr: string
+    }
+  },
+  setStage: (stage: MemoryProofStage) => void,
+): RecordValue {
   const { row, project, command } = input
   digest(row.run_id)
   assert.equal(input.beforeRunIds.includes(row.run_id as string), false, 'memory Run is stale')
@@ -57,6 +77,7 @@ function validateMemoryProof(input: {
   assert.deepEqual(request.input, {})
   assert.deepEqual(request.files, { attachments: [], output: null })
   positive(request.deadlineUnixMs)
+  setStage('origin-intent')
   const origin = fact(
     row.origin_bytes,
     row.origin_digest,
@@ -99,6 +120,7 @@ function validateMemoryProof(input: {
   assert.equal(intent.requestDigest, domain('JIG-Private-Root-Request/1', request))
   assert.equal(intent.deadlineUnixMs, request.deadlineUnixMs)
 
+  setStage('allocation')
   const allocation = fact(
     row.allocation_bytes,
     row.allocation_digest,
@@ -132,6 +154,7 @@ function validateMemoryProof(input: {
     assert.equal(envelope.allocationDigest, row.allocation_digest)
     checkpoints[name] = record(envelope.value)
   }
+  setStage('plan-backing')
   const plan = checkpoints.plan!
   exact(plan, [
     'kind',
@@ -180,6 +203,7 @@ function validateMemoryProof(input: {
     canonical(lease.allocation) === canonical(packageAllocation),
     'backing belongs to a different package allocation',
   )
+  setStage('prepared-owner')
   const sandbox = checkpoints.sandbox!
   exact(sandbox, ['kind', 'owner'])
   assert.equal(sandbox.kind, 'private-direct-root-sandbox/1')
@@ -274,6 +298,7 @@ function validateMemoryProof(input: {
   )
   assert.equal(preparedOwner.digest, domain('JIG-Rootless-Linux-Prepared-Owner/1', owner))
 
+  setStage('enforcement-fence')
   const fence = checkpoints.fence!
   exact(fence, ['kind', 'receipt'])
   assert.equal(fence.kind, 'private-direct-root-fence/1')
@@ -294,6 +319,7 @@ function validateMemoryProof(input: {
   const memory = record(evidence.memoryEvents)
   for (const key of ['max', 'oom', 'oom_kill']) positive(memory[key])
 
+  setStage('release')
   const release = checkpoints.release!
   exact(release, [
     'kind',
@@ -323,6 +349,7 @@ function validateMemoryProof(input: {
   assert.equal(ownerRelease.directoryDevice, owner.ownerStateDevice)
   assert.equal(ownerRelease.directoryInode, owner.ownerStateInode)
   assert.equal(ownerRelease.released, true)
+  setStage('terminal-record')
   const terminal = fact(row.terminal_bytes, row.terminal_digest, 'JIG-Private-Root-Terminal/1')
   assert.deepEqual(checkpoints.provisional, terminal)
   assert.deepEqual(checkpoints.admitted, terminal)
@@ -332,6 +359,7 @@ function validateMemoryProof(input: {
     terminal.status === 'succeeded'
       ? { status: 'succeeded', ...record(terminal.result), diagnostics }
       : terminal
+  setStage('command-result')
   assert.deepEqual(JSON.parse(command.stdout), publicTerminal)
   let terminalShape: 'parent-succeeded' | 'parent-sigkill'
   if (terminal.status === 'succeeded') {

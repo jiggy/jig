@@ -275,8 +275,11 @@ test('invalid CSV fails before any child work', async () =>
     expect(await Bun.file(out).exists()).toBe(false)
   }))
 
-for (const method of [agent, mixed])
-  test('an Agent abstention becomes a null public mapping', async () => {
+for (const [name, method] of [
+  ['map-agent', agent],
+  ['map-mixed', mixed],
+] as const)
+  test(`an Agent abstention becomes a null public mapping (${name})`, async () => {
     expect(
       await method({
         input: { headers: ['Unclear heading'] },
