@@ -80,3 +80,46 @@ export function checkProposal(photos: Photo[], proposal: unknown): RenamedPhoto[
     firstPhoto.destination.localeCompare(secondPhoto.destination),
   )
 }
+
+/** Accept child metadata only when it describes the collection already checked here. */
+export function checkCopiedPhotos(expectedPhotos: RenamedPhoto[], output: unknown): void {
+  if (!isRecord(output) || !hasExactlyFields(output, ['count', 'photos', 'manifest'])) {
+    throw new TypeError('The copy Flow must return its count, photos and manifest.')
+  }
+  if (output.count !== expectedPhotos.length || output.manifest !== 'manifest.csv') {
+    throw new TypeError('The copy Flow returned an incomplete collection or unexpected manifest.')
+  }
+  if (!Array.isArray(output.photos) || output.photos.length !== expectedPhotos.length) {
+    throw new TypeError('The copy Flow must account for every checked photo.')
+  }
+
+  const fields = ['id', 'file', 'date', 'caption', 'event', 'destination'] as const
+  const remainingPhotos = new Map(expectedPhotos.map((photo) => [photo.id, photo]))
+  for (const returnedPhoto of output.photos) {
+    if (!isRecord(returnedPhoto) || !hasExactlyFields(returnedPhoto, [...fields])) {
+      throw new TypeError('The copy Flow returned invalid photo metadata.')
+    }
+    if (typeof returnedPhoto.id !== 'string') {
+      throw new TypeError('The copy Flow omitted a photo ID.')
+    }
+    const expectedPhoto = remainingPhotos.get(returnedPhoto.id)
+    if (expectedPhoto === undefined) {
+      throw new TypeError('The copy Flow repeated or introduced a photo ID.')
+    }
+    for (const field of fields) {
+      if (returnedPhoto[field] !== expectedPhoto[field]) {
+        throw new TypeError('The copied collection differs from the accepted photo plan.')
+      }
+    }
+    remainingPhotos.delete(expectedPhoto.id)
+  }
+}
+
+export function checkContactSheetOutput(expectedCount: number, output: unknown): void {
+  if (!isRecord(output) || !hasExactlyFields(output, ['count', 'contactSheet'])) {
+    throw new TypeError('The contact-sheet Flow must return its count and sheet path.')
+  }
+  if (output.count !== expectedCount || output.contactSheet !== 'contact-sheet.svg') {
+    throw new TypeError('The contact sheet does not describe the complete checked collection.')
+  }
+}

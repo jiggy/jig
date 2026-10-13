@@ -115,7 +115,7 @@ async function runCase(scenario: string, display: string) {
             output: { evidence: 'original result' },
             diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
           }
-  let recoveryBound = false
+  let transportSelected = false
   let retired = false
   let retires = 0
   let previews = 0
@@ -138,10 +138,6 @@ async function runCase(scenario: string, display: string) {
   const delivery = {
     async prepare() {
       events.push('prepare')
-    },
-    async bindRootRecovery() {
-      recoveryBound = true
-      events.push('recovery-bound')
     },
     async publish(record: JsonValue) {
       events.push('publish')
@@ -183,7 +179,7 @@ async function runCase(scenario: string, display: string) {
             events.push('retirement-ack')
             await Promise.resolve()
             retired = true
-            recoveryBound = false
+            transportSelected = false
             events.push('spent-channel-joined')
           },
         }),
@@ -212,7 +208,9 @@ async function runCase(scenario: string, display: string) {
           ...(scenario === 'no-delivery' ? {} : { delivery }),
           async acquire(_project, options) {
             events.push('acquire')
-            if (options?.files !== undefined) await options.files.bindRootRecovery(runId, root, 1)
+            // The controlled transport starts with its source-exit path selected.
+            // Only a confirmed retire changes that selection in this fixture.
+            transportSelected = scenario !== 'no-delivery'
             if (scenario.startsWith('pending-')) {
               // This unresolved original collection issues no native output cap.
               // Its close remains unknown when the existing local bound ends.
@@ -223,8 +221,8 @@ async function runCase(scenario: string, display: string) {
                 })
               else
                 options!.files!.retainOutput({
-                  kind: 'macos-directory',
-                  ready: new Promise(() => {}),
+                  kind: 'linux-directory',
+                  directory: { close: () => new Promise(() => {}) } as any,
                 })
             }
             if (scenario === 'blocked-setup')
@@ -292,10 +290,10 @@ async function runCase(scenario: string, display: string) {
         capturedInputRootClosed = true
       }
     }
-    // The original transport's unchanged selector is corroborated separately.
-    // This controlled transport retains its binding when main makes no retire.
+    // This controlled transport remains selected when main makes no retire.
+    // Native source-exit handling is covered by the separate command tests.
     events.push('source-exit')
-    const originalRecoveryStillSelected = recoveryBound && !retired
+    const transportUnretired = transportSelected && !retired
     return {
       scenario,
       display,
@@ -310,7 +308,7 @@ async function runCase(scenario: string, display: string) {
       capturedInputRootClosed,
       presentationDeadline,
       observedDeadline,
-      originalRecoveryStillSelected,
+      transportUnretired,
       output,
       error,
     }
@@ -354,7 +352,7 @@ for (const scenario of [
 ])
   cases.push({ scenario, display: 'plain' })
 for (const display of ['plain', 'web']) {
-  for (const output of ['snapshot', 'macos']) {
+  for (const output of ['snapshot', 'linux-directory']) {
     for (const fault of ['observation-failure', 'project-close-failure'])
       cases.push({ scenario: `pending-${output}-${fault}`, display })
   }

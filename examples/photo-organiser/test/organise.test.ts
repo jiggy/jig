@@ -1,16 +1,18 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assertResponseSchema, prepareAgent } from '@jigging/agent-method'
 import type { Attachment, JsonValue, RunContext } from '@jigging/flow'
 import { REPORTING_CONTRACT, validateReportingMessage } from '@jigging/reporting'
-import { organisePhotos } from '../flows/organise/method.ts'
-import { readCatalogue } from '../flows/organise/catalogue.ts'
-import { checkProposal, type RenamedPhoto } from '../flows/organise/plan.ts'
-import { photosView } from '../flows/organise/view.ts'
+import { createPhotoContactSheet } from '../flows/contact-sheet/method.ts'
+import { copyPhotos } from '../flows/copy-photos/method.ts'
 import { groupPhotos } from '../flows/group/method.ts'
 import responseSchema from '../flows/group/proposal.schema.json'
+import { readCatalogue } from '../flows/organise/catalogue.ts'
+import { organisePhotos } from '../flows/organise/method.ts'
+import { checkProposal, type RenamedPhoto } from '../flows/organise/plan.ts'
+import { photosView } from '../flows/organise/view.ts'
 
 type TestOrganiserRun = {
   input: JsonValue
@@ -24,7 +26,9 @@ const catalogue = readCatalogue(
 )
 
 test('all photo Flows carry the exact licensed public reporting contract', async () => {
-  const descriptor = await readFile(new URL(import.meta.resolve('@jigging/reporting/reporting.json')))
+  const descriptor = await readFile(
+    new URL(import.meta.resolve('@jigging/reporting/reporting.json')),
+  )
   const license = await readFile(new URL(import.meta.resolve('@jigging/reporting/LICENSE')))
 
   for (const flow of ['organise', 'group', 'copy-photos', 'contact-sheet']) {
@@ -59,15 +63,43 @@ async function withRun(assertion: (run: TestOrganiserRun, outputFolder: string) 
       photos: { path: outputFolder, access: 'read-write' },
     },
     call: async (request) => {
-      expect(request.slot).toBe('group')
-      return groupPhotos({
+      if (request.slot === 'group') {
+        return groupPhotos({
+          input: request.input,
+          signal: run.signal,
+          call: async () => ({
+            outcome: 'done',
+            output: { structured: proposal },
+          }),
+        })
+      }
+
+      // Application composition only: run the real leaf methods in separate
+      // temporary folders, then model the reviewed folder visibility after await.
+      // Native isolation, import and cleanup require an admitted Jig Run.
+      const childFolder = join(root, request.slot)
+      await mkdir(childFolder)
+      const source = run.attachments.source
+      if (source === undefined) {
+        throw new Error('The file-method fixture needs its source attachment.')
+      }
+      const childRun = {
         input: request.input,
-        signal: new AbortController().signal,
-        call: async () => ({
-          outcome: 'done',
-          output: { structured: proposal },
-        }),
-      })
+        signal: run.signal,
+        attachments: {
+          source,
+          files: { path: childFolder, access: 'read-write' as const },
+        },
+      }
+      if (request.slot === 'copy-photos') {
+        const result = await copyPhotos(childRun)
+        await rename(childFolder, join(outputFolder, 'copies'))
+        return result
+      }
+      expect(request.slot).toBe('contact-sheet')
+      const result = await createPhotoContactSheet(childRun)
+      await rename(childFolder, join(outputFolder, 'overview'))
+      return result
     },
   }
   try {
@@ -87,14 +119,110 @@ test('checked copies preserve original bytes, group files and deliver a visible 
         await readFile(join(run.attachments.source!.path, photo.file)),
       )
     }
-    expect(await readFile(join(outputFolder, 'manifest.csv'), 'utf8')).toContain(
+    expect(result.output).toMatchObject({
+      manifest: 'copies/manifest.csv',
+      contactSheet: 'overview/contact-sheet.svg',
+    })
+    expect(photosView(rows, true).sections[0]?.blocks[1]).toMatchObject({
+      references: [
+        { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
+        { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
+      ],
+    })
+    expect(await readFile(join(outputFolder, 'copies/manifest.csv'), 'utf8')).toContain(
       'id,original,event,date,copy',
     )
-    const sheet = await readFile(join(outputFolder, 'contact-sheet.svg'), 'utf8')
+    const sheet = await readFile(join(outputFolder, 'overview/contact-sheet.svg'), 'utf8')
     expect(sheet.match(/<image /g)).toHaveLength(24)
     expect(sheet).toContain('Original order and names')
     expect(sheet).toContain('Grouped copies')
   }))
+
+test('file Flows receive checked assignments only, after grouping, with no runtime paths', async () =>
+  withRun(async (run) => {
+    const originalCall = run.call
+    const slots: string[] = []
+    run.call = async (request) => {
+      slots.push(request.slot)
+      if (request.slot !== 'group') {
+        const input = request.input as { assignments: { id: string; event: string }[] }
+        expect(Object.keys(input)).toEqual(['assignments'])
+        expect(input.assignments).toHaveLength(12)
+        for (const assignment of input.assignments) {
+          expect(Object.keys(assignment)).toEqual(['id', 'event'])
+        }
+      }
+      return originalCall(request)
+    }
+    expect((await organisePhotos(run)).outcome).toBe('done')
+    expect(slots).toEqual(['group', 'copy-photos', 'contact-sheet'])
+  }))
+
+test('copy metadata can be reordered without changing the accepted collection', async () =>
+  withRun(async (run) => {
+    const originalCall = run.call
+    run.call = async (request) => {
+      const result = await originalCall(request)
+      if (request.slot === 'copy-photos') {
+        const output = result.output as { photos: RenamedPhoto[] }
+        output.photos.reverse()
+      }
+      return result
+    }
+    const result = await organisePhotos(run)
+    expect(result.outcome).toBe('done')
+    expect((result.output as { photos: RenamedPhoto[] }).photos.map((photo) => photo.id)).toEqual(
+      checkProposal(catalogue, proposal).map((photo) => photo.id),
+    )
+  }))
+
+for (const slot of ['copy-photos', 'contact-sheet']) {
+  for (const failure of ['throw', 'cancel', 'incomplete', 'unexpected-outcome', 'changed-path']) {
+    test(`${slot} ${failure} prevents a completed collection without replay`, async () =>
+      withRun(async (run) => {
+        const originalCall = run.call
+        const calls: string[] = []
+        const cancellation = new AbortController()
+        run.signal = cancellation.signal
+        run.call = async (request) => {
+          calls.push(request.slot)
+          if (request.slot !== slot) {
+            return originalCall(request)
+          }
+          if (failure === 'throw') {
+            throw new Error('uncertain file Flow dispatch')
+          }
+          if (failure === 'cancel') {
+            cancellation.abort()
+            return { outcome: 'done', output: {} }
+          }
+          if (failure === 'unexpected-outcome') {
+            return { outcome: 'blocked', output: { reason: 'cannot proceed' } }
+          }
+          const count = failure === 'incomplete' ? 11 : 12
+          if (slot === 'copy-photos') {
+            const photos = checkProposal(catalogue, proposal)
+            if (failure === 'changed-path') {
+              const firstPhoto = photos[0]
+              if (firstPhoto === undefined) {
+                throw new Error('The fixture needs at least one photo.')
+              }
+              firstPhoto.destination = 'unreviewed/image.svg'
+            }
+            return { outcome: 'done', output: { count, photos, manifest: 'manifest.csv' } }
+          }
+          const contactSheet =
+            failure === 'changed-path' ? '../unreviewed.svg' : 'contact-sheet.svg'
+          return { outcome: 'done', output: { count, contactSheet } }
+        }
+        await expect(organisePhotos(run)).rejects.toThrow()
+        expect(calls.filter((calledSlot) => calledSlot === slot)).toHaveLength(1)
+        if (slot === 'copy-photos') {
+          expect(calls).toEqual(['group', 'copy-photos'])
+        }
+      }))
+  }
+}
 for (const [name, invalidProposal] of [
   ['duplicate IDs', { assignments: proposal.assignments.map(() => proposal.assignments[0]!) }],
   ['missing photo', { assignments: proposal.assignments.slice(1) }],
@@ -240,8 +368,11 @@ test('the emitted request passes the actual ACP Agent preparation and schema pro
   withRun(async (run) => {
     assertResponseSchema(responseSchema)
     let prepared = false
+    const originalCall = run.call
     run.call = async (request) => {
-      expect(request.slot).toBe('group')
+      if (request.slot !== 'group') {
+        return originalCall(request)
+      }
       expect(JSON.stringify(request.input)).not.toContain('.svg')
       return groupPhotos({
         input: request.input,

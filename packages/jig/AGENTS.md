@@ -463,11 +463,16 @@ memory-only authorization, exact authority/origin checks and inert text.
 Failed projection retains its independent reserve; stale bodies disable
 references while current causes and Close remain available.
 
-After project/execution cleanup, transfer receipt-selected excerpts and
-irreversibly retire delivery authority under the one finite completion allowance,
-then close local input/output capture before indefinite inspection. Preserve known
-terminal/delivery on retirement failure and reuse bounded close promises; no
-finally path resets their deadline. Initiate forced native connection cancellation
+After a known terminal and confirmed project closure, every display mode retires
+delivery authority under one finite completion end, preserving the presentation
+minimum. Dashboards transfer receipt-selected excerpts first; plain/JSON retires
+directly. Close local captures before command success or indefinite inspection.
+Unknown execution or failed project closure retains original source-exit recovery;
+local closure uses only the existing presentation end. Preserve the first
+finalization promise, its deadline and failure, known execution/delivery and the
+primary error. `cli-delivery-retirement.test.ts` checks these choices with controlled
+host and transport faults; it does not qualify native retirement.
+Initiate forced native connection cancellation
 before discarding response queues and join it after disposing subscriptions and
 buffers. Blocked-stream expiry retains admission until abort/cancel acknowledgement.
 Closing inspection releases preview waiters; late bytes cannot restore it.
@@ -501,6 +506,10 @@ Post-settlement inspection owns no execution/channel lifetime.
 Select immutable delivery capture before publication. Preview suppliers receive
 only artifact identity and capture generation, never mutable destinations or
 arbitrary paths. Navigation is renderer-local and cannot mutate host observations.
+`image-preview-policy.ts` owns bounded raster preview data. The bundled image
+worker and pinned renderer/font bytes participate in installed support identity.
+Production file-image decoding remains unavailable until independent fencing
+can interrupt Wasm on the qualified Bun profiles; text and saved-file access remain usable.
 Auto/plain commit complete essential causes outside redraw. Entered TUI restores
 the screen, then commits retained causes in awaited bounded batches before final
 stdout, without replaying view summaries. Output disconnection retains the Run's
@@ -665,7 +674,7 @@ buffer release and output failure independently of recorded execution status.
   versions; the CLI must come from `JIG_PACKAGE_ARCHIVE`, so fixes can qualify
   before publication. Published conversation dependencies remain separately
   identified; this is installed candidate evidence, not a registry publication proof.
-  `finite-acp-lifecycle.test.ts` also runs the unchanged incident-brief application
+  `finite-acp-lifecycle.test.ts` also runs the private incident-brief fixture
   with packed dependencies and a deterministic native peer. It checks two
   branches, predecessor settlement, one successor and residue, not model quality.
   Failed handoff fixtures retain bounded phase/dispatch timing with their results;
@@ -679,6 +688,8 @@ buffer release and output failure independently of recorded execution status.
 
 ## Child DOX Index
 
+- [test/fixtures/incident-brief/AGENTS.md](test/fixtures/incident-brief/AGENTS.md) —
+  Private conversation handoff and sibling settlement evidence.
 - [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
   Mac pre-exec boundary; installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,

@@ -1,8 +1,7 @@
 import type { RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
 import { capturePhotos } from './catalogue.ts'
-import { checkProposal } from './plan.ts'
-import { deliverPhotos } from './delivery.ts'
+import { checkContactSheetOutput, checkCopiedPhotos, checkProposal } from './plan.ts'
 import { photosView } from './view.ts'
 
 export async function organisePhotos(
@@ -21,10 +20,10 @@ export async function organisePhotos(
   // 1. Read and check all source files before requesting an Agent proposal.
   updates?.activity('organise', 'Reading photos and captions')
   run.signal.throwIfAborted()
-  const { photos, images } = await capturePhotos(sourceAttachment.path, run.signal)
+  const { photos } = await capturePhotos(sourceAttachment.path, run.signal)
   run.signal.throwIfAborted()
 
-  // 2. Pass captions to the grouping Flow; keep filenames and images here.
+  // 2. Pass captions to the grouping Flow, without filenames or image bytes.
   const captions = photos.map((photo) => ({
     id: photo.id,
     date: photo.date,
@@ -57,8 +56,43 @@ export async function organisePhotos(
   // 3. Accept the complete proposal before creating any output files.
   updates?.activity('organise', 'Checking every assignment and destination')
   const renamedPhotos = checkProposal(photos, groupingResponse.output)
-  await deliverPhotos(outputAttachment.path, photos, renamedPhotos, images, run.signal)
-  view?.update(photosView(renamedPhotos, true))
+  const assignments = renamedPhotos.map((photo) => ({ id: photo.id, event: photo.event }))
+
+  // 4. Each file Flow rechecks the originals and assignments at its own boundary.
+  // The Binding supplies the immutable source and imports each completed folder.
+  updates?.activity('organise', 'Preparing checked photo copies and the manifest')
+  const copyResponse = await run.call({
+    operationId: 'copy-photos',
+    slot: 'copy-photos',
+    intent: 'Copy the originals into checked event folders without changing their bytes',
+    input: { assignments },
+  })
+  run.signal.throwIfAborted()
+  if (copyResponse.outcome !== 'done') {
+    throw new TypeError('The copy Flow did not complete the checked collection.')
+  }
+  checkCopiedPhotos(renamedPhotos, copyResponse.output)
+
+  updates?.activity('organise', 'Creating the before-and-after contact sheet')
+  const sheetResponse = await run.call({
+    operationId: 'create-contact-sheet',
+    slot: 'contact-sheet',
+    intent: 'Show the original collection beside its checked grouping',
+    input: { assignments },
+  })
+  run.signal.throwIfAborted()
+  if (sheetResponse.outcome !== 'done') {
+    throw new TypeError('The contact-sheet Flow did not complete the overview.')
+  }
+  checkContactSheetOutput(renamedPhotos.length, sheetResponse.output)
+
+  // Child results use their own output-relative paths. The application adds the
+  // fixed import prefixes declared in bindings/organise.ts for its final result.
+  const deliveredPhotos = renamedPhotos.map((photo) => ({
+    ...photo,
+    destination: `copies/${photo.destination}`,
+  }))
+  view?.update(photosView(deliveredPhotos, true))
 
   const eventGroups = [...new Set(renamedPhotos.map((photo) => photo.event))]
   return {
@@ -67,9 +101,9 @@ export async function organisePhotos(
       status: 'organised',
       count: renamedPhotos.length,
       groups: eventGroups,
-      photos: renamedPhotos,
-      manifest: 'manifest.csv',
-      contactSheet: 'contact-sheet.svg',
+      photos: deliveredPhotos,
+      manifest: 'copies/manifest.csv',
+      contactSheet: 'overview/contact-sheet.svg',
     },
   }
 }

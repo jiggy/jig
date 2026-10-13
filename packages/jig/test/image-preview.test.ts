@@ -11,7 +11,7 @@ import {
   privateValidImagePreview,
 } from '../src/internal/image-preview-policy.js'
 import { validDisplayImage } from '@jigging/display-model'
-import { createContactSheet } from '../../../examples/photo-organiser/flows/organise/contact-sheet.js'
+import { createContactSheet } from '../../../examples/photo-organiser/flows/contact-sheet/rendering.js'
 
 const svg = (body: string, dimensions = 'width="32" height="16"') =>
   Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" ${dimensions}>${body}</svg>`)

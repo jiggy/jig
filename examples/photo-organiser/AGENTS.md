@@ -8,9 +8,8 @@ while application checks and operator authority control file effects.
 ## Ownership
 
 - `flows/organise` owns the short coordinating method, `catalogue.ts` source capture,
-  `plan.ts` acceptance/path checks, `delivery.ts` copied images/CSV, `contact-sheet.ts` readable SVG rendering,
-  and `view.ts` Photo box projection. It currently performs file delivery locally;
-  composition with the independent file methods awaits qualified mapped child routes.
+  `plan.ts` proposal/child-result acceptance and path checks, and `view.ts` Photo box
+  projection. It calls grouping and both independent file Flows; it writes no files.
 - `flows/group` owns the caption-only grouping contract, one Agent call and its
   provisional grouping view in `view.ts`. It returns assignments or an explicit cause;
   it neither imports the organiser nor acquires file access.
@@ -20,7 +19,8 @@ while application checks and operator authority control file effects.
 - `flows/contact-sheet` owns independent catalogue/image and assignment validation,
   readable SVG rendering and its optional public sheet view. It uses original
   bytes through the same two attachment modes, without reading copied output.
-- `bindings`, `grants` and `jig.ts` select the ordinary ACP provider, explicit operator grant and reviewed default entrypoint.
+- `bindings`, `grants` and `jig.ts` select the ordinary ACP provider, explicit
+  operator grant, complete child attachment maps and reviewed default entrypoint.
 - `fixtures/photos` owns twelve visually distinct labelled synthetic illustrations
   and caption/date sidecars. Invalid proposals are constructed in tests.
 - `test` owns deterministic application and channel checks. `README.md` owns the user walkthrough.
@@ -34,9 +34,11 @@ while application checks and operator authority control file effects.
 - Each file method accepts only complete `{assignments: [{id, event}]}` input,
   rechecks every original and derived destination, and returns paths relative to
   its own `files` attachment. Caller assertions and supplied paths are rejected.
-- Independent file methods remain ordinary standalone root Flows. Their presence
-  does not enable child attachments or prove admitted host execution; the existing
-  organiser remains composed with grouping only until the platform gate is qualified.
+- `bindings/organise.ts` lends `source` to each file Flow and maps its `files`
+  output into `photos/copies` or `photos/overview`. The coordinator checks both
+  complete results and adds these fixed prefixes to final paths and references.
+  Leaf paths and manifest rows remain relative to the leaf output. Independent
+  file methods keep the same contracts when called as standalone root Flows.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary packet. Retained `--out` paths must be new.
 - TUI and web share the exact public reporting contract and artifact references.
   Each Flow uses `withReporting`/`Reporter` from `@jigging/reporting` and carries
@@ -56,10 +58,9 @@ while application checks and operator authority control file effects.
   and each independent file method owns its own `assignments.ts` boundary checks.
 
 - Follow the examples' high-modularity standard: give each cohesive capability
-  a focused, independently callable Flow. The copy and sheet capabilities now
-  have independent packages; their coordinator-local modules remain until the
-  public mapped-child execution gate permits integration. Keep mechanical helpers
-  inside their owning Flow and never import another Flow's private source.
+  a focused, independently callable Flow. Grouping, copying and rendering have
+  separate packages with their own checks. Keep mechanical helpers inside their
+  owning Flow and never import another Flow's private source.
 
 - Keep the before/after result obvious, and distinguish filename checks from semantic grouping quality.
 - Keep transient plans and verification receipts in `.tmp/`.
@@ -67,6 +68,10 @@ while application checks and operator authority control file effects.
 ## Verification
 
 - `bun test examples/photo-organiser/test` includes the public Agent preparation validator, so substitutes cannot bypass response-schema compatibility.
+- `test/organise.test.ts` checks four-Flow application composition, exact mapped
+  prefixes, child-result acceptance and failure/cancellation without replay. Its
+  deterministic call seam executes the real leaf methods in separate temporary
+  folders and models import visibility; it does not issue native authority.
 - `test/file-methods.test.ts` checks independent copy/sheet results, byte preservation,
   input/source rejection before writes, cancellation, exclusive creation and the
   exact optional public views. Those application checks do not establish native

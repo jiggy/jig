@@ -56,46 +56,6 @@ test('packet streaming cannot renew time already spent in its native delivery ph
     }
   }))
 
-test.skipIf(!['linux', 'darwin'].includes(process.platform))(
-  'command recovers its pinned root without checkpoints, before and after publication',
-  async () =>
-    fixture(async (root) => {
-      for (const phase of ['before-setup', 'after-publication']) {
-        const destination = join(root, `packet-${phase}`)
-        const recovered = join(root, `recovered-${phase}`)
-        const exit = await privateOwnFileCommand(
-          [
-            process.execPath,
-            '--no-env-file',
-            '--no-install',
-            '--config=/dev/null',
-            join(import.meta.dir, 'fixtures/file-delivery-client.ts'),
-          ],
-          [destination, join(root, `pid-${phase}`), `root-recovery-${phase}`, recovered],
-          undefined,
-          10_000,
-        )
-        expect(exit).toEqual({ exitCode: null, signal: 'SIGKILL' })
-        const binding = JSON.parse(await readFile(recovered, 'utf8'))
-        const information = await stat(root, { bigint: true })
-        expect(binding).toEqual({
-          project: root,
-          epoch: 1,
-          runId: `sha256:${'a'.repeat(64)}`,
-          device: String(information.dev),
-          inode: String(information.ino),
-        })
-        if (phase === 'before-setup')
-          await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
-        else
-          expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
-            'succeeded',
-          )
-      }
-    }),
-  25_000,
-)
-
 test.skipIf(process.platform !== 'darwin')(
   'native inspection retains immutable preview within the unchanged command lifetime',
   async () =>

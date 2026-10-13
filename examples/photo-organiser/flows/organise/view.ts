@@ -12,10 +12,10 @@ export function photosView(photos: RenamedPhoto[] = [], accepted = false): ViewS
     summary = `${photos.length} checked copies prepared. Full images and contact sheet are in the result packet.`
     explanation = {
       kind: 'report',
-      text: 'Open contact-sheet.svg from the result packet to see before and after. The Agent groups captions without interpreting pixels.',
+      text: 'Open overview/contact-sheet.svg from the result packet to see before and after. The Agent groups captions without interpreting pixels.',
       references: [
-        { kind: 'artifact', attachment: 'photos', path: 'contact-sheet.svg' },
-        { kind: 'artifact', attachment: 'photos', path: 'manifest.csv' },
+        { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
+        { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
       ],
     }
   }

@@ -156,15 +156,15 @@ actual evidence. The independent host file inventory does not attribute its
 bytes to an unavailable authored reference.
 
 Capture retains at most 64 files /16 MiB under the existing confined file policy.
-Live settled inspection transfers at most 64 previews /16 MiB of encoded
-content. Text excerpts remain at most 64 KiB each /4 MiB total. One active
-browser preview contains one text excerpt or one raster image. PNG and JPEG
-previews are at most 1 MiB of decoded file bytes, 4096 pixels per side and
-4 megapixels; encoded JSON replies are at most 2 MiB. Dimensions must match
-captured image headers. SVGs up to 1 MiB are rasterised to PNG at 1024 pixels
-wide within those limits, using bundled fonts. External references and entities are unavailable. At most 64 embedded PNG/JPEG
-or nested SVG images are allowed, with at most four nesting levels and
-4 megapixels of aggregate embedded raster data.
+Live settled inspection transfers at most 64 previews with 512 KiB aggregate
+retained content. Text excerpts remain at most 4 KiB each, charged as UTF-16
+storage. One active browser preview contains one text excerpt or one validated
+raster image. Production file-image decoding remains unavailable until its
+execution owner can independently enforce cancellation; saved files remain usable
+outside the display. The private renderer candidate accepts at most 64 KiB of
+PNG/JPEG or SVG source and returns PNG within 384 by 1024 pixels and 64 KiB.
+External references and entities are refused; its bundled fonts supply text.
+Candidate rendering tests do not establish execution-lifetime qualification.
 The browser renders validated raster data in an image element, never authored
 SVG markup, and retains no image object URL or file/network access.
 Empty, image, non-text, unavailable and clipped evidence are distinct states. Content is primary;

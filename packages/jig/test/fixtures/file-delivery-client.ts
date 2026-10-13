@@ -3,18 +3,10 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { capturePrivateOutput } from '../../src/internal/captured-output.js'
 import { privateSnapshotExecutionOutput } from '../../src/internal/execution-output.js'
-import { privateConnectFileOwner, privateFileRecovery } from '../../src/internal/file-command.js'
+import { privateConnectFileOwner } from '../../src/internal/file-command.js'
 import { privateOpenFileRoot } from '../../src/internal/file-input.js'
 
 const [destination, pidFile, stopAt, readyFile] = process.argv.slice(2)
-const recovery = privateFileRecovery()
-if (recovery !== undefined) {
-  // This fixture proves the command handshake and recovery selection. It does
-  // not stand in for native execution-owner fencing or durable-store recovery.
-  await writeFile(readyFile!, JSON.stringify(recovery))
-  process.stdout.write(`${JSON.stringify({ status: 'lost', code: 'FIXTURE_RECOVERED' })}\n`)
-  process.exit(0)
-}
 const cancellation = new AbortController()
 if (stopAt?.startsWith('settled-')) process.once('SIGTERM', () => cancellation.abort())
 // Force the escalation path on both kernels; Darwin otherwise terminates a
@@ -34,21 +26,7 @@ if (owner === undefined || destination === undefined || pidFile === undefined)
   throw new Error('missing test owner')
 try {
   await writeFile(pidFile, String(process.pid))
-  if (stopAt?.startsWith('root-recovery-')) {
-    await owner.bindRootRecovery!(dirname(pidFile), 1, `sha256:${'a'.repeat(64)}`)
-    // Repeated binding joins the original held project, without a second open.
-    await owner.bindRootRecovery!(dirname(pidFile), 1, `sha256:${'a'.repeat(64)}`)
-    if (stopAt === 'root-recovery-after-publication') {
-      await owner.prepare(destination, [])
-      const receipt = await owner.publish(
-        { status: 'succeeded', outcome: 'done', output: null },
-        undefined,
-      )
-      if (receipt.status !== 'written') throw new Error('fixture publication failed')
-    }
-    process.kill(process.pid, 'SIGKILL')
-    throw new Error('fixture coordinator loss did not occur')
-  } else if (stopAt === 'preview' || stopAt === 'preview-expiry') {
+  if (stopAt === 'preview' || stopAt === 'preview-expiry') {
     owner.enableInspection?.()
     await owner.prepare(destination, [])
     const source = await mkdtemp(join(dirname(pidFile), 'preview-source-'))

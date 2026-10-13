@@ -18,7 +18,7 @@ type Result = {
   capturedInputRootClosed: boolean
   presentationDeadline?: number
   observedDeadline?: number
-  originalRecoveryStillSelected: boolean
+  transportUnretired: boolean
   output: string
   error: string
 }
@@ -86,13 +86,13 @@ for (const display of ['plain', 'json', 'tui', 'web']) {
     'observation-failure',
     'blocked-setup',
   ]) {
-    test(`${display} ${scenario} keeps original recovery binding without a first retire`, () => {
+    test(`${display} ${scenario} keeps its original transport without a first retire`, () => {
       const result = run(scenario, display)
       expect(result.code).not.toBe(0)
       expect(result.retires).toBe(0)
       expect(result.previews).toBe(0)
-      expect(result.originalRecoveryStillSelected).toBe(true)
-      expect(result.events).toContain('recovery-bound')
+      expect(result.transportUnretired).toBe(true)
+      expect(result.events).toContain('acquire')
       expect(result.events).toContain('workspace-close')
       expect(result.fileCloses).toBe(1)
       expect(result.captureCloses).toBe(1)
@@ -168,7 +168,7 @@ test('unknown local-close failure retains the primary observation error and orig
   expect(result.captureCloses).toBe(1)
   expect(result.error).toContain('controlled primary observation failure')
   expect(result.error).toContain('JIG_RUN_CLEANUP_FAILED')
-  expect(result.originalRecoveryStillSelected).toBe(true)
+  expect(result.transportUnretired).toBe(true)
   expect(result.output).toBe('')
 })
 
@@ -193,7 +193,7 @@ test('finalization preserves the genuine presentation minimum and refuses an exp
 })
 
 for (const display of ['plain', 'web']) {
-  for (const output of ['snapshot', 'macos']) {
+  for (const output of ['snapshot', 'linux-directory']) {
     for (const fault of ['observation-failure', 'project-close-failure']) {
       test(`${display} unsettled ${output} after ${fault} uses only its enclosing end and releases captures`, () => {
         const result = run(`pending-${output}-${fault}`, display)
@@ -205,7 +205,7 @@ for (const display of ['plain', 'web']) {
         expect(result.capturedInputFiles).toBe(1)
         expect(result.capturedInputRootClosed).toBe(true)
         expect(result.fileCloses).toBe(1)
-        expect(result.originalRecoveryStillSelected).toBe(true)
+        expect(result.transportUnretired).toBe(true)
         expect(result.error).toContain('JIG_RUN_CLEANUP_FAILED')
         if (fault === 'observation-failure') {
           expect(result.error).toContain('controlled primary observation failure')

@@ -26,11 +26,11 @@ approve the selected Agent and powers. The default entrypoint supplies the sourc
 fixture and a two-minute deadline. Jig creates a fresh temporary result packet and
 prints its location. Inside its `files` directory you will find:
 
-- `contact-sheet.svg`: all twelve originals beside the grouped, renamed copies.
-- `manifest.csv`: each original filename, event, date and destination.
-- One folder per event, containing byte-for-byte copies of the source images.
+- `overview/contact-sheet.svg`: all twelve originals beside the grouped, renamed copies.
+- `copies/manifest.csv`: each original filename, event, date and destination.
+- One folder per event inside `copies`, containing byte-for-byte copies of the source images.
 
-Open `contact-sheet.svg` in your browser or image viewer. Event labels are Agent
+Open `overview/contact-sheet.svg` in your browser or image viewer. Event labels are Agent
 choices; they may differ between runs. Code checks completeness and safe filenames,
 not whether the chosen events correctly interpret every caption.
 
@@ -46,9 +46,9 @@ That destination must be new. Jig never overwrites an earlier result.
 
 Add `--display tui` or `--display web` to see **Photo box**, a complete list of
 original filenames and checked destinations with artifact references.
-Open `contact-sheet.svg` from the result packet in a browser or image viewer to
+Open `overview/contact-sheet.svg` from the result packet in a browser or image viewer to
 see before and after. Shared image previews are awaiting runtime qualification.
-`manifest.csv` offers a coloured table or raw text in the browser, and coloured
+`copies/manifest.csv` offers a coloured table or raw text in the browser, and coloured
 columns in the TUI.
 
 Each Flow uses `withReporting` from `@jigging/reporting` for its optional
@@ -91,30 +91,40 @@ Keep those captions appropriate for that provider.
 
 ## What keeps the operation bounded
 
-Two Flows compose through `run.call()`:
+Four focused application Flows compose through `run.call()`:
 
 ```text
-organise → group → configured Agent
+organise
+  ├─ group → configured Agent
+  ├─ copy-photos → copies/
+  └─ contact-sheet → overview/
 ```
 
-`flows/organise` captures the source, asks the grouping Flow for a proposal,
-checks every assignment and writes the accepted copies. `flows/group` receives
-only IDs, dates and captions, calls the ordinary Agent method once, and returns
+`flows/organise` reads and checks every source image before asking the grouping
+Flow for a proposal. It accepts every assignment before calling either file Flow,
+then checks their complete results before reporting a finished collection.
+`flows/group` receives only IDs, dates and captions, calls the ordinary Agent method once, and returns
 provisional assignments. Its contract declares no file attachments. The
-`bindings/organise.ts` and `bindings/group.ts` files make this composition
-explicit, so you can replace grouping without changing file handling.
+`bindings/organise.ts` maps the immutable `source` view to each file Flow and its
+independent `files` output into a different folder of the organiser's `photos`
+attachment. After each call completes and cleanup settles, Jig imports the whole
+child folder without overwriting caller files. `bindings/group.ts` selects the
+configured Agent. These declarations make each responsibility explicit.
 
-Inside the organiser, `method.ts` is the short procedure. `catalogue.ts` captures
-and checks source files, `plan.ts` checks assignments and derives safe paths,
-`delivery.ts` writes copies and the CSV, `contact-sheet.ts` renders the SVG,
-and `view.ts` projects
-the results for inspection. These modules describe the current implementation.
-`flows/copy-photos` and `flows/contact-sheet` also expose those capabilities as
-independently callable Flows, each with its own validation, contract and optional
-view. The organiser keeps its local file modules until mapped child attachments
-are qualified; its current Binding composition calls grouping only. The separate
-file methods do not enable that host gate or establish admitted execution.
-Small mechanical helpers remain ordinary modules inside their owning Flow.
+Inside the organiser, `method.ts` coordinates calls. `catalogue.ts` checks the
+source, `plan.ts` accepts assignments and checks child result metadata, and
+`view.ts` projects the completed collection for inspection. The organiser writes
+no photo files itself.
+
+`flows/copy-photos` owns byte-preserving copies and the CSV. `flows/contact-sheet`
+renders the SVG independently from the original images. Both receive only checked
+`{assignments: [{id, event}]}` data, revalidate all originals and assignments, and
+remain independently callable root Flows with their own contracts and optional
+views. Their returned paths stay relative to their own `files` attachments;
+the organiser adds the `copies/` and `overview/` prefixes to its final paths and
+artifact references. The manifest describes paths relative to its `copies` folder.
+Small mechanical helpers remain ordinary modules inside their owning Flow;
+no Flow imports another Flow's private implementation.
 
 `flows/group/proposal.schema.json` is passed to the Agent as `responseSchema`.
 It requests an answer shaped like this:
@@ -136,11 +146,13 @@ attachment and cannot choose output paths. Code derives names from dates,
 normalized event labels and stable IDs.
 
 Every known photo must appear exactly once. Unknown, duplicate or missing IDs,
-unsafe labels and conflicting normalized group names fail before output writes.
-All source images are captured before the Agent call. Writes use exclusive creation;
-execution failures, cancellation and partial output never become a completed result.
-The full proposal must validate before any copies are written. No retry or silent
-fallback follows `blocked`, `limit`, uncertain dispatch or cancellation.
+unsafe labels and conflicting normalized group names fail before either file call.
+All source images are checked before the Agent call. Each file Flow rechecks them
+and writes with exclusive creation. A failed file call or inconsistent result
+prevents the organiser from reporting a complete collection; a failed root exports
+no partial photo files. The full proposal must validate before any copies are
+written. No retry or silent fallback follows `blocked`, `limit`, uncertain dispatch
+or cancellation.
 
 The tests construct duplicate, missing and unknown ID proposals, and prove that
 invalid proposals create no files. Deterministic substitutes establish those
@@ -153,6 +165,8 @@ bun test examples/photo-organiser/test
 ```
 
 The tests validate the emitted request with the same public Agent preparation
-used by ACP, then cover copied bytes, complete contact-sheet contents, invalid proposals,
-source validation, cancellation and ordinary reporting declarations. Installed
+used by ACP, then cover composed leaf calls, copied bytes, contact-sheet contents,
+invalid proposals, inconsistent child results, source validation, cancellation
+and ordinary reporting declarations. The test call seam models folder visibility
+with temporary folders; it does not prove native imports. Installed
 host execution and live Agent quality require separate evidence.
