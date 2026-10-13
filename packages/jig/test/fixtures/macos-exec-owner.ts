@@ -160,6 +160,9 @@ try {
     if (existsSync(marker) !== (mode === 'admitted')) throw new Error('admission result mismatch')
     if (mode === 'admitted' && readFileSync(marker, 'utf8') !== 'executed')
       throw new Error('invalid payload result')
+    // The raw launcher reports its entry's actual termination. This fixture
+    // owns and fences any remaining coalition work after the deliberate crash.
+    if (mode === 'crash') owner.signalMembers('kill')
     const settledBy = performance.now() + 3000
     while (!owner.empty() && performance.now() < settledBy) await Bun.sleep(20)
     if (!owner.empty()) throw new Error('launcher left descendants')

@@ -556,6 +556,8 @@ buffer release and output failure independently of recorded execution status.
   each native exit/control-end join; preserve failure and per-mode phase/stderr
   evidence rather than waiting beyond the helper's closing allowance. The
   unrelated sentinel must outlive fixture work and is killed/joined separately.
+  After validating the raw launcher's actual crash exit/control receipt, the
+  fixture's coalition owner fences remaining work before confirming emptiness.
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
