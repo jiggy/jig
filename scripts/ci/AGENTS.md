@@ -59,6 +59,13 @@ Host preparation never becomes a consumer requirement.
   cannot qualify them. FLOW readiness remains independent of host failures.
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
+- `python-readiness.mjs` independently binds a main-push CI run's current attempt,
+  Python builder, six installed interpreter/OS profiles, source suite and final
+  gate to the original SDK artifact ID/digest, source-bound receipt and archive
+  hashes. Build-only receipts require this fresh execution before publication.
+  Python has no Jig host prerequisite. Protected publication revalidates the
+  fixed snapshot after queueing and verifies every pending archive before OIDC
+  mutation; SDK acquisition and post-publication checks use immutable IDs.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
