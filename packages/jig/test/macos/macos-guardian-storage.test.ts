@@ -28,55 +28,65 @@ import {
   preparationFailures,
 } from '.././macos-guardian-storage.fixture.js'
 
-test('recovery expiry during final drain refuses success and preserves retry evidence', async () => {
-  const root = await mkdtemp('/private/tmp/jig-recovery-drain-')
-  const owner = join(root, 'owner')
-  const storage = join(owner, 'storage')
-  const mount = join(root, 'data')
-  const token = randomBytes(32).toString('hex')
-  const supervisor = join(root, 'expiring-supervisor.ts')
-  const sourceUrl = new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl)
-  const source = await readFile(sourceUrl, 'utf8')
-  const drain = '      const fencedBy = performance.now() + 5000\n      while (!owner.empty()) {'
-  expect(source.split(drain)).toHaveLength(2)
-  // Force the operation timer to expire inside a delayed final drain, after real
-  // storage cleanup. Keep the actual guardian, timer callback and receipt path.
-  await writeFile(
-    supervisor,
-    source.replaceAll("from './", `from '${fileURLToPath(new URL('.', sourceUrl))}`).replace(
-      drain,
-      `      clearTimeout(timer)
-      timer = setTimeout(() => stop('cancelled'), 1)
-      const drainUntil = performance.now() + 50
-      const fencedBy = performance.now() + 5000
-      while (!owner.empty() || performance.now() < drainUntil) {`,
-    ),
-  )
-  await mkdir(storage, { recursive: true, mode: 0o700 })
-  await mkdir(mount, { mode: 0o700 })
-  try {
-    const volume = await createPrivateMacosVolume(storage, token, mount, 16 * 1024 * 1024)
-    await volume.directory.close()
-    await expect(
-      recoverPrivateMacosGuardian(owner, token, 5000, {
-        bun: process.execPath,
-        supervisor,
-      }),
-    ).rejects.toMatchObject({
-      message: 'macOS storage recovery is unconfirmed',
-      cause: { code: 'MACOS_GUARDIAN_STORAGE_RECOVERY_OTHER' },
-    })
-    expect(await exists(join(storage, 'volume.json'))).toBe(true)
-    expect(await exists(join(owner, 'recovery/owner.json'))).toBe(true)
-    expect(await exists(mount)).toBe(false)
-    expect(await exists(join(storage, 'volume.dmg'))).toBe(false)
-  } finally {
-    // An ordinary new guardian must prove recovery before journals can retire.
-    await recoverPrivateMacosGuardian(owner, token, 5000)
-    await releasePrivateMacosGuardian(owner, token)
-    await rm(root, { recursive: true })
-  }
-}, 45_000)
+for (const recordedExpiry of [true, false]) {
+  test(recordedExpiry
+    ? 'recovery expiry during final drain refuses success and preserves retry evidence'
+    : 'recovery cancellation during final drain preserves retry evidence without deadline attribution', async () => {
+    const root = await mkdtemp('/private/tmp/jig-recovery-drain-')
+    const owner = join(root, 'owner')
+    const storage = join(owner, 'storage')
+    const mount = join(root, 'data')
+    const token = randomBytes(32).toString('hex')
+    const supervisor = join(root, 'expiring-supervisor.ts')
+    const sourceUrl = new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl)
+    const source = await readFile(sourceUrl, 'utf8')
+    const drain = '      const fencedBy = performance.now() + 5000\n      while (!owner.empty()) {'
+    expect(source.split(drain)).toHaveLength(2)
+    // Exercise the recorded expiry flag separately from ordinary cancellation
+    // inside a delayed final drain after real storage cleanup. The actual guardian,
+    // stop callback, error transport and authenticated retry path remain in use.
+    await writeFile(
+      supervisor,
+      source.replaceAll("from './", `from '${fileURLToPath(new URL('.', sourceUrl))}`).replace(
+        drain,
+        `      clearTimeout(timer)
+          timer = setTimeout(() => stop('cancelled', ${recordedExpiry}), 1)
+          const drainUntil = performance.now() + 50
+          const fencedBy = performance.now() + 5000
+          while (!owner.empty() || performance.now() < drainUntil) {`,
+      ),
+    )
+    await mkdir(storage, { recursive: true, mode: 0o700 })
+    await mkdir(mount, { mode: 0o700 })
+    try {
+      const volume = await createPrivateMacosVolume(storage, token, mount, 16 * 1024 * 1024)
+      await volume.directory.close()
+      await expect(
+        recoverPrivateMacosGuardian(owner, token, 5000, {
+          bun: process.execPath,
+          supervisor,
+        }),
+      ).rejects.toMatchObject({
+        message: 'macOS storage recovery is unconfirmed',
+        cause: recordedExpiry
+          ? {
+              code: 'EXECUTION_PREPARATION_DEADLINE',
+              cause: { code: 'MACOS_GUARDIAN_STORAGE_RECOVERY_OPERATION_DEADLINE' },
+            }
+          : { code: 'MACOS_GUARDIAN_STORAGE_RECOVERY_ABORTED' },
+      })
+      expect(await exists(join(storage, 'volume.json'))).toBe(true)
+      expect(await exists(join(owner, 'recovery/owner.json'))).toBe(true)
+      expect(await exists(mount)).toBe(false)
+      expect(await exists(join(storage, 'volume.dmg'))).toBe(false)
+    } finally {
+      // An ordinary new guardian must prove recovery before journals can retire.
+      await recoverPrivateMacosGuardian(owner, token, 5000)
+      await releasePrivateMacosGuardian(owner, token)
+      await rm(root, { recursive: true })
+    }
+  }, 45_000)
+}
 test('guardian preparation failures retain a closed step and cause after fenced cleanup', async () => {
   const build = await mkdtemp('/private/tmp/jig-preparation-failure-')
   const launcher = join(build, 'macos-exec')

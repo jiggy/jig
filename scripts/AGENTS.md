@@ -27,7 +27,10 @@ operational baselines, and public-site assembly.
   unprivileged Mac with qualified Bun. It uses the hosted prerequisite order,
   excludes ambient credentials and live-client opt-ins, checks ownership residue,
   and stops at the first failure. Other hosts report portable-only coverage;
-  unsupported Macs refuse before building. This is not full host qualification.
+  unsupported Macs refuse before building. Its ownership snapshot includes both
+  explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` mounts. These
+  observations establish no cleanup, detach or deletion authority. This is not
+  full host qualification.
   The full local command checks Just, Node and jq availability before building.
   Before local tests, resolve and verify the selected real Node 22+ executable,
   supplying compiler paths even when PATH uses a version-manager shim.

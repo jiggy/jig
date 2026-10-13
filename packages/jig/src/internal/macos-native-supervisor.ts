@@ -540,7 +540,7 @@ async function supervise(
   } catch (error) {
     const failure = privateMacosGuardianFailure(
       failureStep,
-      configuration?.type === 'start' && execution === undefined && preparationDeadlineExpired
+      execution === undefined && preparationDeadlineExpired
         ? new Error('macOS guardian operation deadline expired', { cause: error })
         : error,
     )

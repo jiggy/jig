@@ -177,17 +177,17 @@ function capture(command: string, args: string[]) {
   return result.stdout
 }
 
-function snapshot() {
+export function macosOwnershipSnapshot(read = capture) {
   return [
-    ...capture('/bin/launchctl', ['list'])
+    ...read('/bin/launchctl', ['list'])
       .split('\n')
       .filter((line) => /\borg\.jig\./.test(line))
       .map((line) => `job ${line.trim().split(/\s+/).at(-1)}`),
-    ...capture('/sbin/mount', [])
+    ...read('/sbin/mount', [])
       .split('\n')
-      .filter((line) => line.includes('jig-'))
+      .filter((line) => line.includes('jig-') || line.includes(' on /Volumes/Jig-'))
       .map((line) => `mount ${line}`),
-    ...capture('/bin/ps', ['-axo', 'pid=,command='])
+    ...read('/bin/ps', ['-axo', 'pid=,command='])
       .split('\n')
       .filter((line) => /macos-native-supervisor|macos-exec|\/jig-guardian-/.test(line))
       .map((line) => `process ${line.trim().split(/\s+/)[0]}`),
@@ -255,7 +255,7 @@ async function main() {
     )
     return 0
   }
-  return runNativeTests(files, environment, execute, snapshot, console.log)
+  return runNativeTests(files, environment, execute, macosOwnershipSnapshot, console.log)
 }
 
 if (import.meta.main) {

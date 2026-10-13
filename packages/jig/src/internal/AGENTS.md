@@ -539,7 +539,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   closed failure step and cause, or null on ordinary completion. Validate both
   against fixed names before reporting a pre-readiness error code through the
   existing root host-test observer. Never forward native exception messages or
-  arbitrary error codes across this channel. Project Command qualification logs these
+  arbitrary error codes across this channel. Exact storage-recovery refusal
+  messages have fixed labels for directory, journal, backing, allocation and
+  recovery-tool fencing boundaries. Only the enumerated filesystem errno and
+  Node/DOM abort shapes become fixed categories; unknown or unreadable fields
+  stay OTHER. These labels diagnose refusal and never authorize recovery or
+  imply its cause was established by a successful rerun.
+  Project Command qualification logs these
   events. Portable tests cover redaction and scope isolation; the native
   guardian-loss test verifies reporting and recovery with a throwing observer.
   Agent lifecycle fault qualification scopes the same closed recovery observer
@@ -549,7 +555,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Native injected storage and scope-preparation failures verify the returned
   diagnostic after actual fencing and storage cleanup.
   Before payload readiness, the guardian's own operation timer records expiry
-  only when it was the first stop cause. Transport that closed cause after
+  only when it was the first stop cause, for both payload setup and the
+  recovery-only guardian. Abort-shaped errors alone remain ABORTED and never
+  establish operation expiry. Transport the recorded closed cause after
   fenced cleanup; cancellation, lost control and tool failure do not become
   deadlines. Unconfirmed cleanup still overrides the preparation diagnostic.
   Ordinary tests compile the same injected guardian constructions so source

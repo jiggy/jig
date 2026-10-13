@@ -136,7 +136,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 ## Work Guidance
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.
-- Preserve zero-residue checks around provisioned Jig host tests.
+- Preserve zero-residue checks around provisioned Jig host tests. Mac snapshots
+  retain explicit lowercase `jig-` paths and automatic `/Volumes/Jig-` volume
+  names; the self-hosted workflow uses the same qualifier. These are observations,
+  not process, mount or filesystem cleanup authority.
 - Acquire the original canonical CI bundle once, then run the complete Linux suite in independent
   shards on separately provisioned hosts. Every shard rechecks the frozen
   archive hashes, performs zero-residue verification, and contributes to the
@@ -196,6 +199,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Three Intel
   and two Apple Silicon shards fit the observed five-slot capacity, with
   `max-parallel: 5`; actual runner availability still determines start times.
+  Before full native allocation, the existing Ubuntu acquisition job waits up
+  to 600 seconds for the exact canonical CI producer's current-attempt
+  `Quick development checks` success, within its 15-minute job budget. Compact
+  acquisition keeps its 300-second poll without this prerequisite. No test or
+  profile is omitted, and FLOW/Python qualification remains independent. Measure
+  queue effects separately; this head start does not guarantee Python Mac work
+  has completed or establish faster native execution.
   Each isolated shard checks the exact kernel/build, native Bun,
   process prerequisites, ordinary build, frozen archive identity and ownership
   residue. The deterministic test plan covers every discovered Jig and display test file;

@@ -141,3 +141,198 @@ test('a broken observer cannot replace execution or recovery results', async () 
     ),
   ).toBe('original result')
 })
+
+test('storage recovery literal refusals survive the exact private transport without raw causes', () => {
+  const refusals = [
+    ['macOS volume capacity is outside its finite profile', 'VOLUME_CAPACITY'],
+    ['macOS volume requires a canonical private path', 'VOLUME_PATH'],
+    ['macOS volume directory is aliased', 'VOLUME_DIRECTORY_ALIAS'],
+    ['macOS volume directory is not private', 'VOLUME_DIRECTORY_PRIVATE'],
+    ['macOS volume directory identity changed', 'VOLUME_DIRECTORY_IDENTITY'],
+    ['invalid macOS volume ownership token', 'VOLUME_TOKEN'],
+    ['macOS volume journal is unsafe', 'VOLUME_JOURNAL_UNSAFE'],
+    ['macOS volume journal changed', 'VOLUME_JOURNAL_CHANGED'],
+    ['macOS volume ownership authentication failed', 'VOLUME_AUTHENTICATION'],
+    ['invalid macOS volume allocation', 'VOLUME_ALLOCATION'],
+    ['macOS image inventory is invalid', 'VOLUME_INVENTORY'],
+    ['macOS volume control directory changed', 'VOLUME_CONTROL_IDENTITY'],
+    ['macOS volume backing journal is invalid', 'VOLUME_BACKING_JOURNAL'],
+    ['macOS volume backing identity changed', 'VOLUME_BACKING_IDENTITY'],
+    ['macOS attached image has no authenticated backing', 'VOLUME_ATTACHED_BACKING_MISSING'],
+    ['macOS volume backing changed before detach', 'VOLUME_BACKING_DETACH_IDENTITY'],
+    ['macOS volume mount allocation changed', 'VOLUME_MOUNT_IDENTITY'],
+    ['macOS volume backing changed before removal', 'VOLUME_BACKING_REMOVE_IDENTITY'],
+    ['macOS recovery tools are not fenced', 'RECOVERY_TOOLS_UNFENCED'],
+  ] as const
+  for (const [message, cause] of refusals) {
+    const original = Object.assign(
+      new Error(message, { cause: new Error('secret-token private-path') }),
+      {
+        privateValue: 'credential-canary',
+      },
+    )
+    const failure = privateMacosGuardianFailure('storage-recovery', original)
+    expect(failure).toEqual({ step: 'storage-recovery', cause })
+    expect(Object.isFrozen(failure)).toBe(true)
+    expect(Object.keys(failure).sort()).toEqual(['cause', 'step'])
+    const encoded = JSON.stringify(failure)
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(encoded))).toEqual(failure)
+    expect(encoded).not.toContain(message)
+    expect(encoded).not.toContain('secret-token')
+    expect(encoded).not.toContain('private-path')
+    expect(encoded).not.toContain('credential-canary')
+    for (const near of [
+      message + ' secret-token',
+      'private-path ' + message,
+      message.toUpperCase(),
+    ])
+      expect(privateMacosGuardianFailure('storage-recovery', new Error(near)).cause).toBe('OTHER')
+  }
+})
+
+test('filesystem and abort evidence uses only fixed categories, never arbitrary native fields', () => {
+  const categories = [
+    ['ENOENT', 'FILESYSTEM_MISSING'],
+    ['EBUSY', 'FILESYSTEM_BUSY'],
+    ['ENOTEMPTY', 'FILESYSTEM_NOT_EMPTY'],
+    ['EIO', 'FILESYSTEM_IO'],
+    ['EACCES', 'FILESYSTEM_ACCESS'],
+    ['EPERM', 'FILESYSTEM_PERMISSION'],
+    ['ENOSPC', 'FILESYSTEM_FULL'],
+    ['EROFS', 'FILESYSTEM_READ_ONLY'],
+  ] as const
+  for (const [code, cause] of categories) {
+    const error = Object.assign(
+      new Error('credential-canary /private/owner/token', {
+        cause: new Error('private nested data'),
+      }),
+      {
+        code,
+        errno: -999,
+        path: '/private/secret',
+        syscall: 'secret-syscall',
+        name: 'private-class',
+      },
+    )
+    const failure = privateMacosGuardianFailure('storage-recovery', error)
+    expect(failure).toEqual({ step: 'storage-recovery', cause })
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(JSON.stringify(failure)))).toEqual(
+      failure,
+    )
+    expect(JSON.stringify(failure)).not.toMatch(/credential|private|secret|999/)
+  }
+  for (const error of [
+    Object.assign(new Error('private Node abort'), { name: 'AbortError', code: 'ABORT_ERR' }),
+    new DOMException('private DOM abort', 'AbortError'),
+  ]) {
+    const failure = privateMacosGuardianFailure('storage-recovery', error)
+    expect(failure).toEqual({ step: 'storage-recovery', cause: 'ABORTED' })
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(JSON.stringify(failure)))).toEqual(
+      failure,
+    )
+    expect(JSON.stringify(failure)).not.toMatch(/private|Node|DOM/)
+  }
+  for (const code of [
+    'SECRET_CANARY',
+    'ENOENT ',
+    'enoent',
+    'ABORT_ERR',
+    'AbortError',
+    -2,
+    null,
+    ['ENOENT'],
+  ])
+    expect(
+      privateMacosGuardianFailure('storage-recovery', Object.assign(new Error('private'), { code }))
+        .cause,
+    ).toBe('OTHER')
+  for (const error of [
+    Object.assign(new Error('private'), { name: 'AbortError' }),
+    new DOMException('private', 'TimeoutError'),
+    { code: 'ENOENT', name: 'AbortError', message: 'private' },
+    'private',
+  ])
+    expect(privateMacosGuardianFailure('storage-recovery', error).cause).toBe('OTHER')
+  // Exact owning errors take precedence over a nested or unrelated native code.
+  expect(
+    privateMacosGuardianFailure(
+      'storage-recovery',
+      Object.assign(new Error('macOS attached image has no authenticated backing'), {
+        code: 'ENOENT',
+      }),
+    ).cause,
+  ).toBe('VOLUME_ATTACHED_BACKING_MISSING')
+})
+
+test('unknown and unreadable diagnostic fields cannot widen the closed recovery vocabulary', () => {
+  for (const field of ['message', 'code', 'name']) {
+    const error = Object.defineProperty(new Error('unknown private failure'), field, {
+      get() {
+        throw new Error('private getter must not escape')
+      },
+    })
+    expect(privateMacosGuardianFailure('storage-recovery', error)).toEqual({
+      step: 'storage-recovery',
+      cause: 'OTHER',
+    })
+  }
+  for (const cause of [
+    'FILESYSTEM_MISSING secret-token',
+    'filesystem_missing',
+    'ABORTED ',
+    'VOLUME_BACKING_IDENTITY/private-token',
+    'EIO',
+    ['ABORTED'],
+  ])
+    expect(() => normalizePrivateMacosGuardianFailure({ step: 'storage-recovery', cause })).toThrow(
+      'invalid macOS guardian response',
+    )
+  expect(() =>
+    normalizePrivateMacosGuardianFailure({
+      step: 'storage-recovery',
+      cause: 'FILESYSTEM_IO',
+      path: 'private-token',
+    }),
+  ).toThrow('invalid macOS guardian response')
+})
+
+test('new recovery diagnostics preserve the original result or exact thrown error with a broken observer', async () => {
+  const events: PrivateMacosGuardianRecoveryDiagnostic[] = []
+  const original = Object.assign(new Error('private original failure'), { code: 'EBUSY' })
+  await withPrivateMacosGuardianDiagnostics(
+    (event) => events.push(event),
+    async () => {
+      reportPrivateMacosGuardianRecovery('admitted', 'terminal-cleanup', original)
+    },
+  )
+  expect(events).toEqual([
+    { phase: 'admitted', step: 'terminal-cleanup', cause: 'FILESYSTEM_BUSY' },
+  ])
+  expect(Object.isFrozen(events[0])).toBe(true)
+  let caught: unknown
+  try {
+    await withPrivateMacosGuardianDiagnostics(
+      () => {
+        throw new Error('private observer')
+      },
+      async () => {
+        reportPrivateMacosGuardianRecovery('admitted', 'terminal-cleanup', original)
+        throw original
+      },
+    )
+  } catch (error) {
+    caught = error
+  }
+  expect(caught).toBe(original)
+  expect(
+    await withPrivateMacosGuardianDiagnostics(
+      () => {
+        throw new Error('private observer')
+      },
+      async () => {
+        reportPrivateMacosGuardianRecovery('admitted', 'terminal-cleanup', original)
+        return 'unchanged original result'
+      },
+    ),
+  ).toBe('unchanged original result')
+})

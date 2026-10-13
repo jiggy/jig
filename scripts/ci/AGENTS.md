@@ -91,6 +91,13 @@ Host preparation never becomes a consumer requirement.
   audits are supported on `main`; feature-branch producers are not accepted. Release
   readiness and native Linux lineage require full main-push producers. Missing
   current-attempt artifacts never fall back to older candidates.
+  Full hosted Mac acquisition alone opts into `--after-quick true`: the existing
+  loop waits for one successful `Quick development checks` job bound to that
+  exact producer run, attempt and head before allocating native shards. Pending
+  or missing work waits within 600 seconds; failed, skipped, duplicate, stale or
+  completed-but-missing proof refuses. Default and compact acquisition keep
+  their 300-second maximum without this prerequisite. This scheduling pilot does
+  not change FLOW/Python readiness or prove that their Mac jobs have finished.
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
   native obligations after completion events. Qualification receipts bind the
   original CI candidate; native receipts additionally bind the exact full Linux
@@ -119,7 +126,10 @@ Host preparation never becomes a consumer requirement.
   ordinary native npm installation through the same fresh full Jig package-smoke
   consumer that verifies the matching optional runtime and CLI, sequential native
   tests, standalone display consumers, and
-  comparison of owned host residue before and after qualification. Its full
+  comparison of owned host residue before and after qualification. Mount
+  evidence includes explicit lowercase `jig-` paths and automatic `/Volumes/Jig-`
+  native volumes, including duplicate-name suffixes. Observed paths never
+  authorize cleanup or detachment. Its full
   mode remains the self-hosted entrypoint; hosted `--shard` runs one isolated
   portion of the same complete suite: three Intel or two Apple Silicon shards.
   Shard zero runs native prerequisites and the final shard runs installed
