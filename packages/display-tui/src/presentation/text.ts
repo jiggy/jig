@@ -16,7 +16,7 @@ const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' })
 export function truncateTerminalText(text: string, columns: number, byteLimit = 4096): string {
   columns = Math.max(0, columns)
   if (terminalWidth(text) <= columns && Buffer.byteLength(text) <= byteLimit) return text
-  const suffix = columns < 3 ? '.'.repeat(columns) : '...'
+  const suffix = '.'.repeat(Math.min(3, columns, Math.max(0, byteLimit)))
   let result = '',
     cells = 0,
     bytes = Buffer.byteLength(suffix)
