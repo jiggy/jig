@@ -116,8 +116,9 @@ Host preparation never becomes a consumer requirement.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
   Intel/Apple Silicon 24G830 profiles, Bun 1.4.2 and real Node 22+ preflight,
   frozen same-revision host/model/renderer archives with digest rechecks,
-  an ordinary npm install on the native architecture,
-  sequential native tests, standalone display and installed-Jig consumers, and
+  ordinary native npm installation through the same fresh full Jig package-smoke
+  consumer that verifies the matching optional runtime and CLI, sequential native
+  tests, standalone display consumers, and
   comparison of owned host residue before and after qualification. Its full
   mode remains the self-hosted entrypoint; hosted `--shard` runs one isolated
   portion of the same complete suite: three Intel or two Apple Silicon shards.
