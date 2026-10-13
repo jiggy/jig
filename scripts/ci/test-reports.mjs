@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   INSTALLED_STARTUP_TEST,
   macHostShardCount,
@@ -9,7 +10,7 @@ import {
 } from './macos-host-test-shards.mjs'
 import { filesForTarget, gitRepositoryTests } from './suite-inventory.mjs'
 
-const manifest = JSON.parse(readFileSync(new URL('./affected-manifest.json', import.meta.url)))
+const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
 const installedScripts = new Map([
   ...[
     'packages/jig/test/package-smoke.ts',
@@ -19,10 +20,6 @@ const installedScripts = new Map([
     'scripts/test-operational-baseline.ts',
     'scripts/test-installed-hostile-baseline.ts',
   ].map((file) => [file, `CI installed script complete: ${file}`]),
-  [
-    'packages/jig/test/installed-display-smoke.ts',
-    'Installed display witness passed with unchanged frozen archives.',
-  ],
 ])
 function stableJson(value) {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`
@@ -167,6 +164,7 @@ export function readMacReports({
   source,
   targetId,
   evidenceDirectory,
+  detailed = false,
 }) {
   if (!/^macos-(?:x64|arm64)$/.test(targetId ?? '') || !/^[0-9a-f]{40,64}$/.test(source ?? ''))
     throw new Error('Invalid Mac report source/profile identity')
@@ -175,7 +173,9 @@ export function readMacReports({
   const shards = planMacHostTests(files, architecture)
   const identities = new Set()
   let count = 0
+  const rows = []
   for (const shard of shards) {
+    const initialCount = count
     const directory = join(
       evidenceDirectory,
       `macos-prerequisites-${architecture}-${shard.index}-${source}`,
@@ -220,6 +220,44 @@ export function readMacReports({
       if (stableJson([...observed].sort()) !== stableJson([...report.files].sort()))
         throw new Error('Mac owning report omits a planned file')
     }
+    rows.push({
+      shard: shard.index,
+      executed: count - initialCount,
+      skipped_reports: 0,
+      failures: 0,
+    })
   }
+  if (detailed)
+    return {
+      architecture,
+      revision: source,
+      qualified: true,
+      executed: count,
+      skipped_reports: 0,
+      failures: 0,
+      errors: [],
+      shards: rows,
+    }
   return { count, skipped: 0, filtered: 0, skippedCases: [], basis: 'test-cases' }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    const [architecture, source, evidenceDirectory] = process.argv.slice(2)
+    if (process.argv.length !== 5)
+      throw new Error('Expected architecture, source and Mac evidence directory')
+    console.log(
+      JSON.stringify(
+        readMacReports({
+          source,
+          targetId: `macos-${architecture}`,
+          evidenceDirectory,
+          detailed: true,
+        }),
+      ),
+    )
+  } catch (error) {
+    console.error(error.message)
+    process.exitCode = 1
+  }
 }

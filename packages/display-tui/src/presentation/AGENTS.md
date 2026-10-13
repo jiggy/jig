@@ -23,9 +23,7 @@ input, native allocation and output remain with their existing owners.
   Qualified `globalThis.Bun.stringWidth(text)` is the sole ambient value access.
 - Preserve supplied provenance, clipping, unavailable relationships, escaped
   text, bounded frames and cancellation of obsolete preview intent.
-- The package-owned boundary test is a dependency regression check, not a
-  sandbox or proof that arbitrary JavaScript is pure. New native, input or
-  lifecycle responsibility belongs outside this group and qualifies full CI.
+- Native, input and lifecycle responsibilities stay with the parent package.
 
 ## Work Guidance
 
@@ -34,8 +32,7 @@ input, native allocation and output remain with their existing owners.
 ## Verification
 
 - Existing package `just build`, `just test` and frozen ordinary `test-package`.
-- Whole presentation tests and the boundary regression run in source/full-host
-  inventories; compact installed witnesses never create full host receipts.
+- Whole presentation tests run in source and full host inventories.
 
 ## Child DOX Index
 

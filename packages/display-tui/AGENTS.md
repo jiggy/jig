@@ -21,8 +21,6 @@ and portable reporting data without a Jig host or execution owner.
 - `src/inline.ts`, `src/presentation/text.ts` and `src/presentation/style.ts` own non-native public exports.
 - `src/inline-owner.ts` owns private viewer transfer and inline lifetime.
 - `test/presentation/` owns whole projection, workbench and inline regressions.
-  `test/presentation-boundary.test.ts` checks the source group's dependency and
-  ambient execution boundary using the already-declared TypeScript parser.
 - Package tests own renderer/navigation/input/preview regressions. Jig owns its
   admission, real stdin/signals/restoration, output writer and Run lifetime tests.
 

@@ -596,8 +596,7 @@ buffer release and output failure independently of recorded execution status.
   provisioned `JIG_LINUX_ROOTLESS_HOSTILE=1` host. The retained PTY session owner
   measures restoration before exit. Ordinary Linux source CI proves only the
   applicable non-Run checks because delegation precedes renderer preparation;
-  that omission grants no host proof. The compact installed-display witness
-  keeps the helper's strict default and refuses a missing Run-proof profile.
+  that omission grants no host proof. Full native consumers require the Run-proof profile.
   Help, public authoring and embedded saved browser inspection remain
   unconditional under hidden Core. After restoration, positive saved TUI
   navigation checks immutable preview, fresh Stay-default exit confirmation,
@@ -731,7 +730,7 @@ buffer release and output failure independently of recorded execution status.
 
 ## Child DOX Index
 
-- [test/AGENTS.md](test/AGENTS.md) — Whole-file suite applicability, installed witnesses, live prerequisites and evidence.
+- [test/AGENTS.md](test/AGENTS.md) — Whole-file suite applicability, installed consumers, live prerequisites and evidence.
 
 - [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
   Mac pre-exec boundary; installed-platform promotion remains package-owned.

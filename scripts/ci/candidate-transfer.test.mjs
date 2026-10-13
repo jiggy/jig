@@ -262,11 +262,11 @@ test('an explicit producer ID cannot substitute audit bytes into push qualificat
   })
 })
 
-test('scheduled and manual audits still acquire exact current main audit candidates', async () => {
-  for (const event of ['schedule', 'workflow_dispatch']) {
+test('manual qualification acquires exact current main candidates', async () => {
+  for (const event of ['workflow_dispatch']) {
     await withFixture([run(100), run(101, event)], async (fixture) => {
       const expected = await acquisitionExpectation(source, env(event))
-      assert.deepEqual(expected.allowedEvents, ['push', 'schedule', 'workflow_dispatch'])
+      assert.deepEqual(expected.allowedEvents, ['push', 'workflow_dispatch'])
       const acquired = await acquireCandidate({
         destination: join(fixture.temporary, 'download'),
         sourceRevision: source,
@@ -278,7 +278,7 @@ test('scheduled and manual audits still acquire exact current main audit candida
       assert.equal(acquired.runId, 101)
       assert.equal(acquired.artifactId, 1010)
       assert.equal(acquired.receiptSha256, fixture.byRun.get(101).receipt.receiptSha256)
-      assert.deepEqual(fixture.requestedEvents.sort(), ['push', 'schedule', 'workflow_dispatch'])
+      assert.deepEqual(fixture.requestedEvents.sort(), ['push', 'workflow_dispatch'])
       assert.deepEqual(fixture.downloaded, [1010])
     })
   }
@@ -308,9 +308,9 @@ test('a pending newest push attempt cannot fall back to an older push or newer a
 })
 
 test('audit producer acceptance remains main-only and rejects source, fork and workflow drift', async () => {
-  for (const event of ['schedule', 'workflow_dispatch']) {
+  for (const event of ['workflow_dispatch']) {
     const expected = await acquisitionExpectation(source, env(event))
-    for (const producerEvent of ['push', 'schedule', 'workflow_dispatch']) {
+    for (const producerEvent of ['push', 'workflow_dispatch']) {
       assert.doesNotThrow(() => validateWorkflowRun(run(100, producerEvent), expected))
       for (const changes of [
         { head_branch: 'feature' },
@@ -600,7 +600,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('the actual Mac acquisition step opts in only for full native allocation', async () => {
+test('the actual Mac acquisition step waits for Quick before complete native allocation', async () => {
   const workflow = await readFile(
     new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
     'utf8',
@@ -610,7 +610,7 @@ test('the actual Mac acquisition step opts in only for full native allocation', 
   const end = workflow.indexOf('      -\n', start)
   assert.ok(end > start)
   const step = workflow.slice(start, end)
-  assert.match(step, /AFTER_QUICK: "\$\{\{ needs\.plan\.outputs\.macos == 'true' \}\}"/)
+  assert.doesNotMatch(step, /AFTER_QUICK|needs\.plan/)
   const commands = step.split('        run: |\n')[1]
   assert.ok(commands)
   const shell = commands
@@ -629,30 +629,27 @@ test('the actual Mac acquisition step opts in only for full native allocation', 
     await writeFile(join(bin, 'node'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURED_ARGUMENTS"\n', {
       mode: 0o700,
     })
-    for (const [afterQuick, options] of [
-      ['true', ['--after-quick', 'true', '--timeout-seconds', '600']],
-      ['false', ['--timeout-seconds', '300']],
-    ]) {
-      execFileSync('/bin/sh', ['-c', shell], {
-        env: {
-          PATH: `${bin}:/usr/bin:/bin`,
-          AFTER_QUICK: afterQuick,
-          RUNNER_TEMP: temporary,
-          GITHUB_SHA: source,
-          CAPTURED_ARGUMENTS: captured,
-        },
-        timeout: 5000,
-        stdio: 'pipe',
-      })
-      assert.deepEqual((await readFile(captured, 'utf8')).trimEnd().split('\n'), [
-        'scripts/ci/candidate-transfer.mjs',
-        'acquire',
-        join(temporary, 'macos-host-artifacts'),
-        '--source',
-        source,
-        ...options,
-      ])
-    }
+    execFileSync('/bin/sh', ['-c', shell], {
+      env: {
+        PATH: `${bin}:/usr/bin:/bin`,
+        RUNNER_TEMP: temporary,
+        GITHUB_SHA: source,
+        CAPTURED_ARGUMENTS: captured,
+      },
+      timeout: 5000,
+      stdio: 'pipe',
+    })
+    assert.deepEqual((await readFile(captured, 'utf8')).trimEnd().split('\n'), [
+      'scripts/ci/candidate-transfer.mjs',
+      'acquire',
+      join(temporary, 'macos-host-artifacts'),
+      '--source',
+      source,
+      '--after-quick',
+      'true',
+      '--timeout-seconds',
+      '600',
+    ])
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }

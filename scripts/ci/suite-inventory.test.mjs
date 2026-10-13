@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
-import { affectedManifest } from './affected-plan.mjs'
+
+const affectedManifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
+
 import {
   discoverRepositoryTests,
   filesForTarget,
@@ -73,8 +75,8 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
   assert.ok(filesFor('macos-x64', 'macos-23E224').includes(files[4]))
   assert.ok(!filesFor('macos-x64').includes(files[6]))
   assert.ok(filesFor('macos-x64').includes(files[7]))
-  for (const target of ['linux-witness', 'macos-x64-witness', 'macos-arm64-witness'])
-    assert.deepEqual(filesFor(target), [files[5]])
+  assert.ok(filesFor('linux').includes(files[5]))
+  assert.ok(filesFor('macos-x64').includes(files[5]))
 })
 
 test('Reporting additions retain distinct JavaScript and Python source owners', () => {

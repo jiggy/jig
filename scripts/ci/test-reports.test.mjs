@@ -66,8 +66,8 @@ test('GitHub group structure cannot conceal ownership, after-close cases or skip
     assert.throws(() => parseBunTranscript(text, { files: [file] }))
 })
 test('installed scripts contribute no cases and require one exact declared completion marker', () => {
-  const script = 'packages/jig/test/installed-display-smoke.ts'
-  const marker = 'Installed display witness passed with unchanged frozen archives.'
+  const script = 'packages/jig/test/package-smoke.ts'
+  const marker = 'CI installed script complete: packages/jig/test/package-smoke.ts'
   assert.equal(
     parseBunTranscript(marker + '\n', { files: [script], commandKind: 'installed-script' }).count,
     0,
@@ -77,7 +77,7 @@ test('installed scripts contribute no cases and require one exact declared compl
     marker + '\n' + marker,
     marker + '\n 1 fail',
     marker + '\n 1 skip',
-    marker + '\nCI installed script complete: packages/jig/test/package-smoke.ts',
+    marker + '\nCI installed script complete: packages/display-model/test/package-smoke.ts',
   ])
     assert.throws(() =>
       parseBunTranscript(text, { files: [script], commandKind: 'installed-script' }),

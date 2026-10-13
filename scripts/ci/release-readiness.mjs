@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { appendFile, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -25,19 +26,23 @@ const WORKFLOWS = Object.freeze({
   native: '.github/workflows/native-agent-api-qualification.yml',
 })
 
+const catalog = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url), 'utf8'))
+export const PYTHON_INSTALLED_JOBS = Object.freeze(
+  catalog.targets
+    .find((target) => target.id === 'python-installed')
+    .profiles.map((profile) => {
+      const [os, python] = profile.split('/python-')
+      return `Python ${python} on ${os}`
+    }),
+)
+
 export const CI_QUALIFICATION_JOBS = Object.freeze([
-  'Plan affected work',
   'Quick development checks',
   'Build public sites',
   'Source and package tests',
   'Build Python SDK artifacts',
   'test',
-  'Python 3.11 on ubuntu-24.04',
-  'Python 3.12 on ubuntu-24.04',
-  'Python 3.13 on ubuntu-24.04',
-  'Python 3.14 on ubuntu-24.04',
-  'Python 3.14 on macos-14',
-  'Python 3.13 on windows-2022',
+  ...PYTHON_INSTALLED_JOBS,
   ...['flow', 'agent', 'acp', 'jig'].map((kind) => `Build ${kind} release candidate`),
 ])
 export const LINUX_QUALIFICATION_JOBS = Object.freeze([

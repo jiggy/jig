@@ -119,13 +119,13 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
   requireRevision(sourceRevision)
   const context = await githubContext({ env, sourceRevision })
   const pr = context.event === 'pull_request'
-  const audit = ['schedule', 'workflow_dispatch'].includes(context.event)
+  const manual = context.event === 'workflow_dispatch'
   return {
     repository: context.repository,
     workflowPath: '.github/workflows/ci.yml',
     event: pr ? 'pull_request' : 'push',
     headBranch: pr ? context.headBranch : 'main',
-    ...(audit ? { allowedEvents: ['push', 'schedule', 'workflow_dispatch'] } : {}),
+    ...(manual ? { allowedEvents: ['push', 'workflow_dispatch'] } : {}),
     headRepository: pr ? context.headRepository : context.repository,
     headSha: pr ? context.headSha : sourceRevision,
   }

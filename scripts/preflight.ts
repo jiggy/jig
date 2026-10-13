@@ -1,9 +1,9 @@
 import { spawnSync } from 'node:child_process'
 import { arch, platform, release } from 'node:os'
 import { isAbsolute, resolve } from 'node:path'
-import manifest from './ci/affected-manifest.json'
 import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
 import { discoverRepositoryTests, suiteTestFiles } from './ci/suite-inventory.mjs'
+import manifest from './ci/test-suites.json'
 
 const repository = resolve(import.meta.dir, '..')
 const timeoutMs = 10 * 60_000

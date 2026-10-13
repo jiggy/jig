@@ -62,9 +62,7 @@ const WEIGHTS = new Map([
 // The latter includes genuine-client startup and all four installed consumers.
 const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze({ x64: 59, arm64: 36 })
 const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 450, arm64: 250 })
-const manifest = JSON.parse(
-  readFileSync(new URL('./affected-manifest.json', import.meta.url), 'utf8'),
-)
+const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url), 'utf8'))
 const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
 export const HOST_TEST_DIRECTORIES = Object.freeze([
   'packages/jig/test',

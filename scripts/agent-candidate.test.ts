@@ -31,7 +31,7 @@ async function linuxCommandFixture(workflow: any) {
       await writeFile(join(directory, file), '// Source inventory fixture.\n')
     }
     await mkdir(join(directory, 'scripts/ci'), { recursive: true })
-    for (const file of ['suite-inventory.mjs', 'affected-manifest.json'])
+    for (const file of ['suite-inventory.mjs', 'test-suites.json'])
       await copyFile(join(root, 'scripts/ci', file), join(directory, 'scripts/ci', file))
     for (const args of [
       ['init', '--quiet'],
@@ -117,7 +117,7 @@ test('the source gate refuses missing prerequisites before starting builds', asy
   }
 })
 
-test('PRs plan work before allocation and keep quick checks independent of candidate qualification', async () => {
+test('PRs retain complete coverage and keep quick checks independent of candidate qualification', async () => {
   const load = async (file: string) =>
     Bun.YAML.parse(await Bun.file(join(root, '.github/workflows', file)).text()) as any
   const mac = await load('macos-hosted-candidates.yml')
@@ -125,20 +125,34 @@ test('PRs plan work before allocation and keep quick checks independent of candi
   expect(Object.hasOwn(workflowTriggers(mac), 'pull_request')).toBeTrue()
   expect(workflowTriggers(mac).pull_request?.paths).toBeUndefined()
   expect(workflowTriggers(ci).pull_request?.paths).toBeUndefined()
-  for (const workflow of [ci, mac]) {
-    expect(workflow.jobs.plan).toBeDefined()
-    const planner = workflow.jobs.plan.steps.find((step: any) =>
-      step.run?.includes('affected-plan.mjs'),
-    )
-    expect(planner.env.MODE).toContain("|| 'shadow'")
-    expect(planner.run).toContain('--base')
-    expect(planner.run).toContain('--head')
-    expect(
-      workflow.jobs.plan.steps.find((step: any) => step.uses?.startsWith('actions/checkout')).with[
-        'fetch-depth'
-      ],
-    ).toBe(0)
-  }
+  expect(ci.jobs.plan).toBeUndefined()
+  expect(mac.jobs.plan).toBeUndefined()
+  expect(mac.jobs['installed-witness']).toBeUndefined()
+  expect(workflowTriggers(mac).schedule).toBeUndefined()
+  const scope = mac.jobs.scope
+  expect(scope.outputs.required).toBe('${{ steps.scope.outputs.required }}')
+  expect(scope.steps.find((step: any) => step.run?.includes('host-scope.mjs')).run).toContain(
+    '--scope macos --github-output "$GITHUB_OUTPUT"',
+  )
+  expect(
+    scope.steps.find((step: any) => step.uses?.startsWith('actions/checkout')).with['fetch-depth'],
+  ).toBe(0)
+  expect(mac.jobs['host-artifacts'].if).toBe("${{ needs.scope.outputs.required == 'true' }}")
+  expect(mac.jobs.prerequisites.if).toBe("${{ needs.scope.outputs.required == 'true' }}")
+  expect(mac.jobs['qualified-architecture'].if).toContain('always()')
+  expect(mac.jobs['qualified-architecture'].if).toContain("needs.scope.result == 'success'")
+  expect(mac.jobs['affected-macos'].if).toBe('always()')
+  expect(mac.jobs['affected-macos'].needs).toEqual([
+    'scope',
+    'host-artifacts',
+    'prerequisites',
+    'qualified-architecture',
+  ])
+  expect(
+    mac.jobs['affected-macos'].steps.some((step: any) =>
+      step.run?.includes('host-scope.mjs --scope macos --results'),
+    ),
+  ).toBeTrue()
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
@@ -173,11 +187,13 @@ test('PRs plan work before allocation and keep quick checks independent of candi
     ).if,
   ).toBe('matrix.installed')
   expect(mac.concurrency['cancel-in-progress']).toContain("github.ref != 'refs/heads/main'")
-  expect(ci.jobs['quick-checks'].needs).toBe('plan')
-  expect(ci.jobs['sites'].needs).toBe('plan')
-  expect(ci.jobs['candidate-build'].needs).toBe('plan')
-  expect(ci.jobs['npm-candidate'].needs).toEqual(['plan', 'candidate-build'])
-  expect(ci.jobs['npm-candidate'].strategy.matrix).toContain('needs.plan.outputs.npm_matrix')
+  expect(ci.jobs['quick-checks'].needs).toBeUndefined()
+  expect(ci.jobs['sites'].needs).toBeUndefined()
+  expect(ci.jobs['candidate-build'].needs).toBeUndefined()
+  expect(ci.jobs['npm-candidate'].needs).toEqual(['candidate-build'])
+  expect(ci.jobs['npm-candidate'].strategy.matrix).toEqual({
+    package: ['flow', 'agent', 'acp', 'jig'],
+  })
   expect(
     ci.jobs['quick-checks'].steps.some((step: any) => step.run?.includes('just test-tooling')),
   ).toBeTrue()
@@ -204,7 +220,6 @@ test('PRs plan work before allocation and keep quick checks independent of candi
   expect(ci.jobs.test.if).toBe('always()')
   expect(new Set(ci.jobs.test.needs)).toEqual(
     new Set([
-      'plan',
       'quick-checks',
       'sites',
       'source-tests',
@@ -214,7 +229,7 @@ test('PRs plan work before allocation and keep quick checks independent of candi
       'npm-candidate',
     ]),
   )
-  const aggregate = ci.jobs.test.steps.find((step: any) => step.run?.includes('affected-gate.mjs'))
+  const aggregate = ci.jobs.test.steps.find((step: any) => step.run?.includes('--scope ci'))
   expect(aggregate.env.JOB_RESULTS).toBe('${{ toJSON(needs) }}')
   expect(aggregate.run).toContain('job-evidence.mjs')
   expect(aggregate.run).toContain('--scope ci')
@@ -227,58 +242,48 @@ test('PRs plan work before allocation and keep quick checks independent of candi
   expect(sourceInputs.run).toContain('--producer-run "$GITHUB_RUN_ID"')
   expect(sourceInputs.run).toContain('CI_CANDIDATE_BUNDLE')
   const source = ci.jobs['source-tests']
-  expect(source.if).toContain("needs.python-build.result == 'skipped'")
-  expect(ci.jobs.plan.outputs.source_targets).toContain('steps.plan.outputs.source_targets')
-  for (const name of ['source_portable', 'source_protocol', 'source_applications', 'source_python'])
-    expect(ci.jobs.plan.outputs[name]).toContain(`steps.plan.outputs.${name}`)
+  expect(source.if).toBeUndefined()
+  expect(source.needs).toEqual(['candidate-build', 'python-build'])
   const execute = source.steps.find((step: any) => step.run?.includes('scripts/test-release.sh'))
-  expect(execute.run).toContain('--targets "$JIG_CI_SOURCE_TARGETS" --profile portable-linux')
+  expect(execute.run).toContain('scripts/test-release.sh --profile portable-linux')
   expect(execute.env.JIG_CI_SOURCE_REPORT_DIRECTORY).toContain('/source-reports')
   for (const step of source.steps.filter((step: any) => step.with?.name?.startsWith('python-')))
-    expect(step.if).toContain("source_python == 'true'")
+    expect(step.if).toBeUndefined()
   expect(
-    source.steps.find((step: any) => step.name === 'Record each selected source stage').run,
+    source.steps.find((step: any) => step.name === 'Record each completed source stage').run,
   ).toContain('writeJobEvidence')
-  expect(aggregate.run).toContain('target.selected?n["source-tests"].result:"skipped"')
+  expect(aggregate.run).toContain("job.result !== 'success'")
 })
 
-test('the actual source evidence program records only selected stage reports and the aggregate maps job outcomes', async () => {
+test('the actual source evidence program records every stage and refuses unsuccessful aggregate jobs', async () => {
   const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text()) as any
+  const { executionInventory } = await import('./ci/job-evidence.mjs')
+  const { targets } = executionInventory({ repository: root, scope: 'ci' })
+  const stages = ['source-portable', 'source-protocol', 'source-applications', 'source-python']
+  const sourceTargets = targets.filter((target: any) => stages.includes(target.id))
   const directory = await mkdtemp(join(tmpdir(), 'source-stage-recording-'))
   try {
-    await mkdir(join(directory, 'plan'))
     await mkdir(join(directory, 'source-reports'))
-    const stages = ['source-portable', 'source-protocol', 'source-applications', 'source-python']
-    const pythonFiles = [
-      'sdk/test_a.py',
-      'sdk/test_b.py',
-      'updates/test_c.py',
-      'scripts/test_release.py',
-    ]
-    const targets = stages.map((id) => ({
-      id,
-      selected: id === 'source-portable' || id === 'source-python',
-      runtimeProfiles: ['source-profile'],
-      testInventory:
-        id === 'source-python' ? pythonFiles : ['packages/jig/test/portable/example.test.ts'],
-      inventoryDigest: 'inventory',
-    }))
-    await Bun.write(
-      join(directory, 'plan/plan.json'),
-      JSON.stringify({ identity: { head: 'a'.repeat(40) }, planDigest: 'plan', targets }),
-    )
-    await Bun.write(
-      join(directory, 'source-reports/source-portable.xml'),
-      '<testsuites tests="1"><testcase file="packages/jig/test/portable/example.test.ts" classname="suite" name="executed"/></testsuites>',
-    )
-    await Bun.write(
-      join(directory, 'source-reports/source-python.txt'),
-      pythonFiles
-        .map((file) => `Ran 1 test in 0.01s\n\nOK\nCI Python source file complete: ${file}\n`)
-        .join(''),
-    )
+    for (const target of sourceTargets) {
+      if (target.id === 'source-python') {
+        await Bun.write(
+          join(directory, `source-reports/${target.id}.txt`),
+          'Ran 1 test in 0.01s\n\nOK\n'.repeat(4) +
+            target.testInventory
+              .map((file: string) => `CI Python source file complete: ${file}\n`)
+              .join(''),
+        )
+      } else {
+        await Bun.write(
+          join(directory, `source-reports/${target.id}.xml`),
+          `<testsuites tests="${target.testInventory.length}">${target.testInventory
+            .map((file: string) => `<testcase file="${file}" classname="suite" name="executed"/>`)
+            .join('')}</testsuites>`,
+        )
+      }
+    }
     const writer = ci.jobs['source-tests'].steps.find(
-      (step: any) => step.name === 'Record each selected source stage',
+      (step: any) => step.name === 'Record each completed source stage',
     )
     const execute = spawnSync('/bin/bash', ['-c', writer.run], {
       cwd: root,
@@ -286,40 +291,44 @@ test('the actual source evidence program records only selected stage reports and
       encoding: 'utf8',
     })
     expect(execute.status, execute.stderr).toBe(0)
-    expect((await readdir(join(directory, 'source-evidence'))).sort()).toEqual([
-      'source-portable.json',
-      'source-python.json',
-    ])
-    for (const id of ['source-portable', 'source-python']) {
-      const receipt = await Bun.file(join(directory, 'source-evidence', `${id}.json`)).json()
-      expect(receipt.results[0].id).toBe(id)
-      expect(receipt.results[0].observedSkipped).toBe(0)
-      expect(receipt.results[0].executedCount).toBe(id === 'source-python' ? 4 : 1)
-    }
-    const aggregate = ci.jobs.test.steps.find((step: any) =>
-      step.run?.includes('affected-gate.mjs'),
+    expect((await readdir(join(directory, 'source-evidence'))).sort()).toEqual(
+      stages.map((id) => `${id}.json`).sort(),
     )
+    for (const target of sourceTargets) {
+      const receipt = await Bun.file(join(directory, 'source-evidence', `${target.id}.json`)).json()
+      expect(receipt.results[0].id).toBe(target.id)
+      expect(receipt.results[0].observedSkipped).toBe(0)
+      expect(receipt.results[0].executedCount).toBe(
+        target.id === 'source-python' ? 4 : target.testInventory.length,
+      )
+    }
+    const aggregate = ci.jobs.test.steps.find((step: any) => step.run?.includes('--scope ci'))
     const program = aggregate.run
       .split('\n')
-      .find((line: string) => line.includes('JSON.parse(process.env.JOB_RESULTS)'))
-    for (const result of ['success', 'failure', 'cancelled']) {
+      .filter((line: string) => !line.includes('job-evidence.mjs'))
+      .join('\n')
+    for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+      await rm(join(directory, 'results.json'), { force: true })
       const mapped = spawnSync('/bin/bash', ['-c', program], {
         cwd: root,
         env: {
           ...process.env,
           RUNNER_TEMP: directory,
           JOB_RESULTS: JSON.stringify({
-            plan: { result: 'success' },
-            'candidate-build': { result: 'skipped' },
+            'candidate-build': { result: 'success' },
             'source-tests': { result },
           }),
         },
         encoding: 'utf8',
       })
-      expect(mapped.status, mapped.stderr).toBe(0)
-      const actual = await Bun.file(join(directory, 'results.json')).json()
-      for (const target of targets)
-        expect(actual[target.id]).toBe(target.selected ? result : 'skipped')
+      if (result === 'success') {
+        expect(mapped.status, mapped.stderr).toBe(0)
+        const actual = await Bun.file(join(directory, 'results.json')).json()
+        for (const id of stages) expect(actual[id]).toBe('success')
+      } else {
+        expect(mapped.status).not.toBe(0)
+        expect(await Bun.file(join(directory, 'results.json')).exists()).toBeFalse()
+      }
     }
   } finally {
     await rm(directory, { recursive: true, force: true })
@@ -403,7 +412,7 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   ) as any
   const candidate = ci.jobs['npm-candidate']
   const { publish_host: publish, authorize, tag_host: tag } = workflow.jobs
-  expect(candidate.strategy.matrix).toContain('needs.plan.outputs.npm_matrix')
+  expect(candidate.strategy.matrix).toEqual({ package: ['flow', 'agent', 'acp', 'jig'] })
   expect(ci.permissions).toEqual({ contents: 'read' })
   expect(publish.permissions).toEqual({ actions: 'read', 'id-token': 'write' })
   expect(publish.needs).toContain('authorize')
@@ -476,18 +485,24 @@ test('Python publication reuses the exact CI-qualified candidate', async () => {
   }
 })
 
-test('Linux full and compact routes preserve distinct qualification obligations', async () => {
+test('Linux host scope preserves complete qualification and always reports its final check', async () => {
   const workflow = Bun.YAML.parse(
     await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
   ) as any
   const artifacts = workflow.jobs['host-artifacts']
   const suites = workflow.jobs['host-suite']
   const aggregate = workflow.jobs['rootless-linux']
-  const witness = workflow.jobs['linux-witness']
+  const scope = workflow.jobs.scope
+  expect(workflow.jobs.plan).toBeUndefined()
+  expect(workflow.jobs['linux-witness']).toBeUndefined()
   expect(workflowTriggers(workflow).pull_request?.paths).toBeUndefined()
-  expect(artifacts.if).toContain("needs.plan.outputs.linux == 'true'")
-  expect(artifacts.if).toContain("needs.plan.outputs.linux_witness == 'true'")
-  expect(suites.if).toBe("${{ needs.plan.outputs.linux == 'true' }}")
+  expect(workflowTriggers(workflow).schedule).toBeUndefined()
+  expect(scope.outputs.required).toBe('${{ steps.scope.outputs.required }}')
+  expect(scope.steps.find((step: any) => step.run?.includes('host-scope.mjs')).run).toContain(
+    '--scope linux --github-output "$GITHUB_OUTPUT"',
+  )
+  expect(artifacts.if).toBe("${{ needs.scope.outputs.required == 'true' }}")
+  expect(suites.if).toBe("${{ needs.scope.outputs.required == 'true' }}")
   expect(suites.needs).toContain('host-artifacts')
   expect(
     artifacts.steps.some((step: any) => step.run?.includes('candidate-transfer.mjs')),
@@ -559,7 +574,8 @@ test('Linux full and compact routes preserve distinct qualification obligations'
   )
   expect(aggregate.name).toBe('rootless-linux')
   expect(aggregate.if).toContain('always()')
-  expect(aggregate.if).toContain('needs.plan.outputs.linux')
+  expect(aggregate.if).toContain("needs.scope.outputs.required == 'true'")
+  expect(aggregate.if).toContain("needs.scope.result == 'success'")
   expect(aggregate.needs).toContain('host-artifacts')
   expect(aggregate.needs).toContain('host-suite')
   const shardGate = aggregate.steps.find((step: any) => step.env?.ARTIFACT_RESULT !== undefined)
@@ -578,19 +594,15 @@ test('Linux full and compact routes preserve distinct qualification obligations'
   expect(proof.run.indexOf('job-evidence.mjs')).toBeLessThan(
     proof.run.indexOf('candidate-provenance.mjs qualification'),
   )
-  expect(witness.if).toBe("${{ needs.plan.outputs.linux_witness == 'true' }}")
-  expect(witness.steps.some((step: any) => step.run?.includes('just --justfile'))).toBeFalse()
-  const witnessRuns = witness.steps.map((step: any) => step.run ?? '').join('\n')
-  expect(witnessRuns).toContain('packages/jig/test/host/package-provider-observation.test.ts')
-  expect(witnessRuns).toContain('packages/jig/test/installed-display-smoke.ts')
-  expect(witnessRuns).toContain('--junit')
-  expect(witnessRuns).toContain('--transcript-manifest')
-  expect(witnessRuns).toContain('--id linux-witness')
-  expect(witnessRuns).not.toContain('candidate-provenance.mjs qualification')
-  expect(witnessRuns).not.toContain('QUALIFICATION.json')
+  expect(proof.run).not.toContain('--plan')
   const affected = workflow.jobs['affected-linux']
-  expect(affected.needs).toContain('linux-witness')
-  expect(affected.steps.some((step: any) => step.run?.includes('--scope linux'))).toBeTrue()
+  expect(affected.if).toBe('always()')
+  expect(affected.needs).toEqual(['scope', 'host-artifacts', 'host-suite', 'rootless-linux'])
+  expect(
+    affected.steps.some((step: any) =>
+      step.run?.includes('host-scope.mjs --scope linux --results'),
+    ),
+  ).toBeTrue()
   const fixture = await linuxCommandFixture(workflow)
   try {
     const sourceCommands = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'].flatMap(

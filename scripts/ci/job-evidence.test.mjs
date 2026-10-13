@@ -4,7 +4,12 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
-import { collectJobEvidence, observedCount, writeJobEvidence } from './job-evidence.mjs'
+import {
+  collectJobEvidence,
+  executionInventory,
+  observedCount,
+  writeJobEvidence,
+} from './job-evidence.mjs'
 
 const source = '1'.repeat(40)
 const helper = resolve(import.meta.dirname, 'job-evidence.mjs')
@@ -15,37 +20,6 @@ const bunReport =
 const pythonReport =
   'test_example (consumer.Test) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.010s\n\nOK\n'
 const sourceProfile = 'ubuntu-24.04/bun-1.3.3/node-24/python-3.13'
-const target = (
-  id = 'quick-checks',
-  profiles = ['ubuntu-24.04/node-24/bun-1.3.3'],
-  selected = true,
-) => ({
-  id,
-  scope: 'ci',
-  selected,
-  runtimeProfiles: profiles,
-  inventoryDigest: `inventory-${id}`,
-  omissionReason: selected ? null : 'proven isolated ownership',
-})
-const plan = (targets = [target()]) => ({
-  schemaVersion: 1,
-  planDigest: 'plan-identity',
-  identity: { head: source },
-  targets,
-})
-const row = (t, profile = t.runtimeProfiles[0]) => ({
-  id: t.id,
-  status: 'success',
-  inventoryDigest: t.inventoryDigest,
-  executedCount: 3,
-  basis: 'test-cases',
-  unexpectedSkips: 0,
-  observedSkipped: 0,
-  profiles: [profile],
-  artifactsVerified: true,
-  residueVerified: true,
-})
-const report = (results) => ({ schemaVersion: 1, source, planDigest: 'plan-identity', results })
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'jig-job-evidence-'))
   t.after(() => rm(root, { recursive: true, force: true }))
@@ -62,6 +36,91 @@ const xml = (cases) =>
 const testcase = (name, child = '') =>
   `<testcase name="${name}" classname="suite" file="packages/jig/test/portable.test.ts" line="1">${child}</testcase>`
 
+test('full source Python proof requires its exact files and four positive suites', async (t) => {
+  const f = await fixture(t)
+  const files = [
+    'packages/jiggy-flow/tests/test_one.py',
+    'packages/jiggy-reporting/tests/test_two.py',
+  ]
+  const text =
+    pythonReport.repeat(4) +
+    files.map((file) => `CI Python source file complete: ${file}\n`).join('')
+  const transcript = await f.put('python.txt', text)
+  assert.equal(
+    (await observedCount({ transcript, targetId: 'source-python', testFiles: files })).count,
+    12,
+  )
+  for (const bad of [
+    text.replace(files[0], 'foreign.py'),
+    text + `CI Python source file complete: ${files[0]}\n`,
+    pythonReport.repeat(4),
+    text.replace('OK\n', 'FAILED (failures=1)\n'),
+  ]) {
+    await f.put('python.txt', bad)
+    await assert.rejects(() =>
+      observedCount({ transcript, targetId: 'source-python', testFiles: files }),
+    )
+  }
+})
+
+test('full evidence writer binds current source and refuses unknown profiles or replacement', async (t) => {
+  const f = await fixture(t)
+  const transcript = await f.put('quick.txt', nodeReport)
+  const output = join(f.root, 'quick.json')
+  await writeJobEvidence({ id: 'quick-checks', transcript, output })
+  assert.equal((await f.json('quick.json')).source, executionInventory().source)
+  await assert.rejects(() => writeJobEvidence({ id: 'quick-checks', transcript, output }), /EEXIST/)
+  await assert.rejects(() => writeJobEvidence({ id: 'unknown', transcript, output }), /Unknown/)
+  for (const profiles of [['flow', 'flow'], ['unknown']])
+    await assert.rejects(() => writeJobEvidence({ id: 'sites', profiles, transcript, output }))
+})
+
+test('full aggregate refuses missing, stale, skipped, cancelled and duplicate profile evidence', async (t) => {
+  const f = await fixture(t)
+  const inventory = executionInventory({ scope: 'ci' })
+  const statuses = Object.fromEntries(inventory.targets.map((target) => [target.id, 'success']))
+  const resultsPath = await f.put('statuses.json', statuses)
+  const rows = inventory.targets.flatMap((target) =>
+    target.runtimeProfiles.map((profile) => ({
+      id: target.id,
+      status: 'success',
+      inventoryDigest: target.inventoryDigest,
+      executedCount: 1,
+      basis: 'test-cases',
+      unexpectedSkips: 0,
+      observedSkipped: 0,
+      profiles: [profile],
+      artifactsVerified: true,
+      residueVerified: true,
+    })),
+  )
+  const report = { schemaVersion: 1, source: inventory.source, results: rows }
+  const collect = (output) =>
+    collectJobEvidence({
+      directory: join(f.root, 'reports'),
+      resultsPath,
+      output: join(f.root, output),
+    })
+  await f.put('reports/proof.json', report)
+  await collect('complete.json')
+  assert.equal((await f.json('complete.json')).results.length, inventory.targets.length)
+  for (const changed of [
+    { ...report, source: '2'.repeat(40) },
+    { ...report, results: rows.slice(1) },
+    { ...report, results: [...rows, rows[0]] },
+    { ...report, results: [{ ...rows[0], executedCount: 0 }, ...rows.slice(1)] },
+    { ...report, results: [{ ...rows[0], observedSkipped: 1 }, ...rows.slice(1)] },
+  ]) {
+    await f.put('reports/proof.json', changed)
+    await assert.rejects(() => collect('refused.json'))
+  }
+  await f.put('reports/proof.json', report)
+  for (const state of ['failure', 'cancelled', 'skipped']) {
+    await f.put('statuses.json', { ...statuses, [inventory.targets[0].id]: state })
+    await assert.rejects(() => collect('refused.json'), /did not succeed/)
+  }
+})
+
 test('mixed successful Node, Bun and Python reports count cases, not job statuses', async (t) => {
   const f = await fixture(t)
   const transcript = await f.put('full.txt', nodeReport + bunReport + pythonReport)
@@ -69,92 +128,6 @@ test('mixed successful Node, Bun and Python reports count cases, not job statuse
   assert.equal(observed.count, 7)
   assert.equal(observed.skipped, 0)
   assert.equal(observed.basis, 'test-cases')
-})
-
-test('Python source proof binds all selected files exactly once and all four positive suites', async (t) => {
-  const f = await fixture(t)
-  const files = [
-    'packages/jiggy-flow/tests/test_one.py',
-    'packages/jiggy-reporting/tests/test_two.py',
-    'packages/jiggy-flow/tests/test_three.py',
-  ]
-  const t1 = { ...target('source-python', [sourceProfile]), testInventory: files }
-  const planPath = await f.put('plan.json', plan([t1]))
-  const markers = files.map((file) => `CI Python source file complete: ${file}\n`).join('')
-  const valid = pythonReport.repeat(4) + markers
-  const transcript = await f.put('python-source.txt', valid)
-  await writeJobEvidence({ planPath, id: t1.id, transcript, output: join(f.root, 'valid.json') })
-  assert.equal((await f.json('valid.json')).results[0].executedCount, 12)
-  for (const [label, text] of [
-    ['missing', valid.replace(`CI Python source file complete: ${files[0]}\n`, '')],
-    ['duplicate', valid + `CI Python source file complete: ${files[0]}\n`],
-    ['foreign', valid.replace(files[0], 'packages/foreign/tests/test_one.py')],
-    ['old-unbound', pythonReport.repeat(4)],
-    ['short', pythonReport.repeat(3) + markers],
-    ['extra', pythonReport.repeat(5) + markers],
-    ['empty-suite', valid.replace('Ran 3 tests', 'Ran 0 tests')],
-    ['skipped', valid.replace('OK\n', 'OK (skipped=1)\n')],
-    ['failed', valid.replace('OK\n', 'FAILED (failures=1)\n')],
-  ]) {
-    const bad = await f.put(`${label}.txt`, text)
-    await assert.rejects(() =>
-      writeJobEvidence({
-        planPath,
-        id: t1.id,
-        transcript: bad,
-        output: join(f.root, `${label}.json`),
-      }),
-    )
-  }
-  const absentInventory = await f.put(
-    'absent-inventory.json',
-    plan([target('source-python', [sourceProfile])]),
-  )
-  await assert.rejects(
-    () =>
-      writeJobEvidence({
-        planPath: absentInventory,
-        id: t1.id,
-        transcript,
-        output: join(f.root, 'absent.json'),
-      }),
-    /file inventory/,
-  )
-})
-
-test('Windows CRLF installed Python reporting works with no python3 executable', async (t) => {
-  const f = await fixture(t)
-  const installed = target('python-installed', [
-    'windows-2022/python-3.13',
-    'ubuntu-24.04/python-3.14',
-  ])
-  const planPath = await f.put('plan.json', plan([installed]))
-  const transcript = await f.put(
-    'windows.txt',
-    (pythonReport + pythonReport.replace('Ran 3 tests', 'Ran 5 tests')).replaceAll('\n', '\r\n'),
-  )
-  execFileSync(
-    process.execPath,
-    [
-      helper,
-      '--plan',
-      planPath,
-      '--id',
-      'python-installed',
-      '--profile',
-      'windows-2022/python-3.13',
-      '--transcript',
-      transcript,
-      '--artifacts',
-      '--output',
-      join(f.root, 'windows.json'),
-    ],
-    { env: { ...process.env, PATH: '/no-python-executable' }, stdio: ['ignore', 'pipe', 'pipe'] },
-  )
-  const result = (await f.json('windows.json')).results[0]
-  assert.equal(result.executedCount, 8)
-  assert.deepEqual(result.profiles, ['windows-2022/python-3.13'])
-  assert.equal(result.artifactsVerified, true)
 })
 
 test('failed or cancelled Node, Bun and unittest reports fail despite positive pass counts', async (t) => {
@@ -168,55 +141,6 @@ test('failed or cancelled Node, Bun and unittest reports fail despite positive p
     const transcript = await f.put(`failed-${i}.txt`, text)
     await assert.rejects(() => observedCount({ transcript }))
   }
-})
-
-test('terminal completion is required; orphan pass or Ran lines cannot prove execution', async (t) => {
-  const f = await fixture(t)
-  const planPath = await f.put('plan.json', plan())
-  for (const [i, text] of ['# pass 3\n', ' 3 pass\n', 'Ran 3 tests in 0.1s\n'].entries()) {
-    const transcript = await f.put(`partial-${i}.txt`, text)
-    await assert.rejects(() =>
-      writeJobEvidence({
-        planPath,
-        id: 'quick-checks',
-        transcript,
-        output: join(f.root, `partial-${i}.json`),
-      }),
-    )
-  }
-})
-
-test('zero or all-skipped reports cannot produce successful selected evidence', async (t) => {
-  const f = await fixture(t)
-  const planPath = await f.put('plan.json', plan())
-  for (const [i, text] of [
-    nodeReport.replaceAll('3', '0'),
-    nodeReport.replace('# pass 3', '# pass 0').replace('# skipped 0', '# skipped 3'),
-  ].entries()) {
-    const transcript = await f.put(`zero-${i}.txt`, text)
-    await assert.rejects(
-      () =>
-        writeJobEvidence({
-          planPath,
-          id: 'quick-checks',
-          transcript,
-          output: join(f.root, `zero-${i}.json`),
-        }),
-      /nonempty|skipped/,
-    )
-  }
-})
-
-test('unittest skips cannot produce selected installed consumer evidence', async (t) => {
-  const f = await fixture(t)
-  const t1 = target('python-installed', ['windows-2022/python-3.13'])
-  const planPath = await f.put('plan.json', plan([t1]))
-  const transcript = await f.put('skipped.txt', pythonReport.replace('OK\n', 'OK (skipped=1)\n'))
-  await assert.rejects(() => observedCount({ transcript }), /skipped/)
-  await assert.rejects(
-    () => writeJobEvidence({ planPath, id: t1.id, transcript, output: join(f.root, 'proof.json') }),
-    /skipped/,
-  )
 })
 
 test('nested JUnit counts passed cases and refuses every skipped registration', async (t) => {
@@ -264,27 +188,6 @@ test('JUnit case identity cannot receive duplicate credit through a changed repo
   assert.equal((await observedCount({ junit: distinct })).count, 2)
 })
 
-test('a policy label cannot authorize a newly skipped portable JUnit case', async (t) => {
-  const f = await fixture(t)
-  const sourceTarget = target('source-portable', [sourceProfile])
-  const planPath = await f.put('plan.json', plan([sourceTarget]))
-  const junit = await f.put(
-    'skips.xml',
-    xml(testcase('runs') + testcase('new portable regression', '<skipped/>')),
-  )
-  for (const skipPolicy of [undefined, 'source-platform-opt-in', 'accept-all-skips'])
-    await assert.rejects(() =>
-      writeJobEvidence({
-        planPath,
-        id: 'source-portable',
-        junit,
-        skipPolicy,
-        repository: f.root,
-        output: join(f.root, `${skipPolicy}.json`),
-      }),
-    )
-})
-
 test('source evidence observes complete Python suites and rejects prerequisite skips outside Bun JUnit', async (t) => {
   const f = await fixture(t)
   const junit = await f.put('source.xml', xml(testcase('runs')))
@@ -298,23 +201,6 @@ test('source evidence observes complete Python suites and rejects prerequisite s
     await f.put('source.txt', text)
     await assert.rejects(() => observedCount({ junit, pythonTranscript }))
   }
-})
-
-test('multi-profile targets require observed explicit profiles and reject unknown or repeated profiles', async (t) => {
-  const f = await fixture(t)
-  const sites = target('sites', ['flow', 'jig'])
-  const planPath = await f.put('plan.json', plan([sites]))
-  const transcript = await f.put('full.txt', nodeReport)
-  for (const profiles of [undefined, ['flow', 'flow'], ['flow', 'unrecognized']])
-    await assert.rejects(() =>
-      writeJobEvidence({
-        planPath,
-        id: 'sites',
-        profiles,
-        transcript,
-        output: join(f.root, 'proof.json'),
-      }),
-    )
 })
 
 test('site proof requires nonempty HTML from each explicitly claimed site', async (t) => {
@@ -398,36 +284,6 @@ test('Jig candidate evidence requires its six installed gates and refuses credit
     skipped: 0,
     basis: 'qualified-artifacts',
   })
-  const jig = target('npm-candidate', ['jig'])
-  const planPath = await f.put('plan.json', plan([jig]))
-  const output = join(f.root, 'evidence/jig.json')
-  await mkdir(dirname(output))
-  await writeJobEvidence({
-    planPath,
-    id: jig.id,
-    output,
-    qualification,
-    profile: 'jig',
-    artifacts: true,
-  })
-  const evidence = await f.json('evidence/jig.json')
-  assert.equal(evidence.source, source)
-  assert.equal(evidence.planDigest, 'plan-identity')
-  assert.equal(evidence.results[0].executedCount, 6)
-  assert.deepEqual(evidence.results[0].profiles, ['jig'])
-  assert.equal(evidence.results[0].artifactsVerified, true)
-  const resultsPath = await f.put('statuses.json', { [jig.id]: 'success' })
-  await collectJobEvidence({
-    planPath,
-    directory: dirname(output),
-    resultsPath,
-    output: join(f.root, 'collected.json'),
-  })
-  assert.deepEqual(await f.json('collected.json'), {
-    ...evidence,
-    results: [{ ...evidence.results[0], residueVerified: false }],
-  })
-
   const refused = [
     gates.slice(3),
     ...gates.map((_, index) => gates.filter((__, candidate) => candidate !== index)),
@@ -453,7 +309,7 @@ test('Jig candidate evidence requires its six installed gates and refuses credit
   }
 })
 
-test('Mac summary needs qualified true, matching source/architecture, and actual owning JUnit evidence', async (t) => {
+test('Mac summary requires completed source-bound canonical validation', async (t) => {
   const f = await fixture(t)
   const good = {
     qualified: true,
@@ -463,12 +319,13 @@ test('Mac summary needs qualified true, matching source/architecture, and actual
     errors: [],
     executed: 2,
     skipped_reports: 0,
+    shards: [
+      { shard: 0, executed: 1, failures: 0, skipped_reports: 0 },
+      { shard: 1, executed: 1, failures: 0, skipped_reports: 0 },
+    ],
   }
   const summary = await f.put('summary.json', good)
-  await assert.rejects(
-    () => observedCount({ summary, source, targetId: 'macos-x64' }),
-    /owning Mac/,
-  )
+  assert.equal((await observedCount({ summary, source, targetId: 'macos-x64' })).count, 2)
   for (const changed of [
     { ...good, qualified: false },
     { ...good, qualified: undefined },
@@ -516,43 +373,6 @@ test('per-command Bun manifests require complete distinct whole files without sk
   await assert.rejects(() => observedCount({ transcriptManifest }), /skipped/)
 })
 
-test('retained filtered Bun reports cannot qualify a selected whole-file execution', async (t) => {
-  const f = await fixture(t)
-  const file = 'packages/jig/test/package-provider-host.test.ts'
-  const patterns = ['^packed project dependencies ', '^(?!packed project dependencies )']
-  for (const name of ['packed', 'ordinary'])
-    await f.put(
-      `logs/${name}.txt`,
-      await readFile(
-        new URL(`./fixtures/bun-1.3.3-linux/provider-${name}.txt`, import.meta.url),
-        'utf8',
-      ),
-    )
-  const commands = ['packed', 'ordinary'].map((name, index) => ({
-    transcript: `${name}.txt`,
-    files: [file],
-    filter: { file, pattern: patterns[index] },
-  }))
-  const transcriptManifest = await f.put('logs/manifest.json', { schemaVersion: 1, commands })
-  await assert.rejects(() => observedCount({ transcriptManifest }), /without filters/)
-  const planPath = await f.put('plan.json', plan())
-  await assert.rejects(
-    () =>
-      writeJobEvidence({
-        planPath,
-        id: 'quick-checks',
-        transcriptManifest,
-        output: join(f.root, 'evidence.json'),
-      }),
-    /without filters/,
-  )
-  await f.put('logs/manifest.json', {
-    schemaVersion: 1,
-    commands: [{ transcript: commands[0].transcript, files: [file] }],
-  })
-  await assert.rejects(() => observedCount({ transcriptManifest }), /filtered/)
-})
-
 test('transcript manifests refuse path escape, links and relabeling tests as installed scripts', async (t) => {
   const f = await fixture(t)
   await f.put('outside.txt', bunReport)
@@ -595,192 +415,4 @@ test('installed-script records preserve completion without inventing passes and 
     await f.put('logs/script.txt', output)
     await assert.rejects(() => observedCount({ transcriptManifest }))
   }
-})
-
-test('partial display witness requires its exact script completion and real zero-skip observation cases', async (t) => {
-  const f = await fixture(t)
-  const selected = target('linux-witness', ['ubuntu-24.04/bun-1.3.3/node-24/python-3.13'])
-  selected.testInventory = ['packages/jig/test/host/package-provider-observation.test.ts']
-  const planPath = await f.put('plan.json', plan([selected]))
-  const marker = 'Installed display witness passed with unchanged frozen archives.'
-  const script = 'packages/jig/test/installed-display-smoke.ts'
-  await f.put('logs/display.txt', `${marker}\n`)
-  const command = { transcript: 'display.txt', files: [script], commandKind: 'installed-script' }
-  const transcriptManifest = await f.put('logs/manifest.json', {
-    schemaVersion: 1,
-    commands: [command],
-  })
-  const observation = (name, child = '') =>
-    testcase(name, child).replace('packages/jig/test/portable.test.ts', selected.testInventory[0])
-  const junit = await f.put(
-    'observation.xml',
-    xml(observation('real four-mode installed observation')),
-  )
-  assert.equal((await observedCount({ transcriptManifest })).count, 0)
-  assert.equal((await observedCount({ transcriptManifest, junit })).count, 1)
-  await writeJobEvidence({
-    planPath,
-    id: selected.id,
-    junit,
-    transcriptManifest,
-    artifacts: true,
-    residue: true,
-    output: join(f.root, 'witness.json'),
-  })
-  const proof = (await f.json('witness.json')).results[0]
-  assert.equal(proof.executedCount, 1)
-  assert.equal(proof.observedSkipped, 0)
-  assert.equal(proof.artifactsVerified, true)
-  assert.equal(proof.residueVerified, true)
-  await assert.rejects(
-    () =>
-      writeJobEvidence({
-        planPath,
-        id: selected.id,
-        transcriptManifest,
-        output: join(f.root, 'script-only.json'),
-      }),
-    /nonempty/,
-  )
-  for (const output of [
-    `${marker}\n${marker}\n`,
-    'CI installed script complete: packages/jig/test/package-smoke.ts\n',
-    `${marker}\n(skip) skipped display\n`,
-  ]) {
-    await f.put('logs/display.txt', output)
-    await assert.rejects(() => observedCount({ transcriptManifest, junit }))
-  }
-  await f.put('logs/display.txt', `${marker}\n`)
-  await f.put('observation.xml', xml(observation('not executed', '<skipped/>')))
-  await assert.rejects(() => observedCount({ transcriptManifest, junit }))
-  await f.put('observation.xml', xml(testcase('foreign positive report')))
-  await assert.rejects(
-    () =>
-      writeJobEvidence({
-        planPath,
-        id: selected.id,
-        junit,
-        transcriptManifest,
-        output: join(f.root, 'foreign.json'),
-      }),
-    /selected target inventory/,
-  )
-  await f.put('observation.xml', xml(observation('real observation')))
-  await f.put('logs/tests.txt', bunReport)
-  await f.put('logs/manifest.json', {
-    schemaVersion: 1,
-    commands: [{ transcript: 'tests.txt', files: ['packages/jig/test/file-input.test.ts'] }],
-  })
-  await assert.rejects(() => observedCount({ transcriptManifest, junit }), /one owning/)
-})
-
-test('writer refuses omitted targets and overwriting evidence from a prior attempt', async (t) => {
-  const f = await fixture(t)
-  const planPath = await f.put(
-    'plan.json',
-    plan([target(), target('sites', ['flow', 'jig'], false)]),
-  )
-  const transcript = await f.put('full.txt', nodeReport)
-  await assert.rejects(
-    () =>
-      writeJobEvidence({ planPath, id: 'sites', transcript, output: join(f.root, 'sites.json') }),
-    /selected target/,
-  )
-  const output = join(f.root, 'quick.json')
-  await writeJobEvidence({ planPath, id: 'quick-checks', transcript, output })
-  await assert.rejects(
-    () => writeJobEvidence({ planPath, id: 'quick-checks', transcript, output }),
-    /EEXIST/,
-  )
-})
-
-test('collection reconciles actual profile rows and explicit authorized omissions', async (t) => {
-  const f = await fixture(t)
-  const selected = target('python-installed', [
-    'windows-2022/python-3.13',
-    'ubuntu-24.04/python-3.14',
-  ])
-  const omitted = target('sites', ['flow', 'jig'], false)
-  const planPath = await f.put('plan.json', plan([selected, omitted]))
-  const resultsPath = await f.put('results.json', {
-    'python-installed': 'success',
-    sites: 'skipped',
-  })
-  await f.put('reports/windows/report.json', report([row(selected, selected.runtimeProfiles[0])]))
-  await f.put('reports/linux/report.json', report([row(selected, selected.runtimeProfiles[1])]))
-  const output = join(f.root, 'collected.json')
-  await collectJobEvidence({ planPath, directory: join(f.root, 'reports'), resultsPath, output })
-  const evidence = await f.json('collected.json')
-  assert.equal(evidence.results[0].executedCount, 6)
-  assert.equal(evidence.results[0].observedFiltered, undefined)
-  assert.equal(evidence.results[0].observedSkipped, 0)
-  assert.deepEqual(evidence.results[0].profiles.sort(), [...selected.runtimeProfiles].sort())
-  assert.deepEqual(evidence.results[1], {
-    id: 'sites',
-    status: 'skipped',
-    omissionReason: omitted.omissionReason,
-  })
-})
-
-test('collection rejects missing, failed, cancelled, stale, empty and duplicate profile proof', async (t) => {
-  const f = await fixture(t)
-  const selected = target()
-  const planPath = await f.put('plan.json', plan([selected]))
-  const resultsPath = await f.put('results.json', { 'quick-checks': 'success' })
-  await mkdir(join(f.root, 'reports'))
-  const collect = () =>
-    collectJobEvidence({
-      planPath,
-      directory: join(f.root, 'reports'),
-      resultsPath,
-      output: join(f.root, 'collected.json'),
-    })
-  await assert.rejects(collect, /Missing execution reports/)
-  const good = report([row(selected)])
-  for (const changed of [
-    { ...good, source: '2'.repeat(40) },
-    { ...good, planDigest: 'stale' },
-    { ...good, schemaVersion: 2 },
-    report([{ ...row(selected), executedCount: 0 }]),
-    ...[1, -1, null, undefined, '0'].map((observedSkipped) =>
-      report([{ ...row(selected), observedSkipped }]),
-    ),
-    report([{ ...row(selected), unexpectedSkips: 1 }]),
-    report([{ ...row(selected), observedFiltered: 1 }]),
-    report([{ ...row(selected), skipPolicy: 'source-platform-opt-in' }]),
-    report([{ ...row(selected), skippedCases: [] }]),
-    report([{ ...row(selected), skippedCaseDigest: 'legacy-proof' }]),
-    report([{ ...row(selected), profiles: [] }]),
-    report([{ ...row(selected), profiles: ['foreign-profile'] }]),
-    report([{ ...row(selected), status: 'skipped' }]),
-    report([row(selected), row(selected)]),
-    report([{ ...row(selected), id: 'unknown' }]),
-  ]) {
-    await f.put('reports/proof.json', changed)
-    await assert.rejects(collect)
-  }
-  await f.put('reports/proof.json', good)
-  for (const status of ['failure', 'cancelled', 'skipped', undefined]) {
-    await f.put('results.json', { 'quick-checks': status })
-    await assert.rejects(collect, /did not succeed/)
-  }
-})
-
-test('an omitted target requires a skipped job status alongside successful selected proof', async (t) => {
-  const f = await fixture(t)
-  const selected = target()
-  const omitted = target('sites', ['flow', 'jig'], false)
-  const planPath = await f.put('plan.json', plan([selected, omitted]))
-  await f.put('reports/quick.json', report([row(selected)]))
-  const resultsPath = await f.put('results.json', { 'quick-checks': 'success', sites: 'success' })
-  await assert.rejects(
-    () =>
-      collectJobEvidence({
-        planPath,
-        resultsPath,
-        directory: join(f.root, 'reports'),
-        output: join(f.root, 'proof.json'),
-      }),
-    /Unexpected execution/,
-  )
 })

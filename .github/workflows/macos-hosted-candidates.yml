@@ -1,4 +1,4 @@
-# Plan before runner allocation; compact witnesses never claim full host qualification.
+# Complete host qualification within the established PR scope; final checks always report.
 name: "macOS hosted candidates"
 "on":
   pull_request: null
@@ -11,36 +11,18 @@ name: "macOS hosted candidates"
   push:
     branches:
       - "main"
-  schedule:
-    -
-      cron: "16 3 * * 0"
 permissions:
   contents: "read"
 concurrency:
   group: "macos-hosted-${{ github.ref }}"
   cancel-in-progress: "${{ github.ref != 'refs/heads/main' }}"
 jobs:
-  plan:
-    name: "Plan affected work"
+  scope:
+    name: "Determine macos host scope"
     runs-on: "ubuntu-24.04"
     timeout-minutes: 5
     outputs:
-      quick: "${{ steps.plan.outputs.quick }}"
-      sites: "${{ steps.plan.outputs.sites }}"
-      source: "${{ steps.plan.outputs.source }}"
-      python: "${{ steps.plan.outputs.python }}"
-      candidates: "${{ steps.plan.outputs.candidates }}"
-      linux: "${{ steps.plan.outputs.linux }}"
-      macos: "${{ steps.plan.outputs.macos }}"
-      npm_matrix: "${{ steps.plan.outputs.npm_matrix }}"
-      classification: "${{ steps.plan.outputs.classification }}"
-      mode: "${{ steps.plan.outputs.mode }}"
-      plan_digest: "${{ steps.plan.outputs.plan_digest }}"
-      macos_x64: "${{ steps.plan.outputs.macos_x64 }}"
-      macos_arm64: "${{ steps.plan.outputs.macos_arm64 }}"
-      macos_x64_witness: "${{ steps.plan.outputs.macos_x64_witness }}"
-      macos_arm64_witness: "${{ steps.plan.outputs.macos_arm64_witness }}"
-      witnesses: "${{ steps.plan.outputs.witnesses }}"
+      required: "${{ steps.scope.outputs.required }}"
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -52,32 +34,13 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Compute conservative dependency plan"
-        id: "plan"
-        env:
-          BASE: "${{ github.event.pull_request.base.sha || github.event.before || '' }}"
-          MODE: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && github.event.pull_request.base.repo.full_name == github.repository && github.event.pull_request.base.ref == 'ci-performance-trial-baseline-recovery' && 'active' || vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
-          FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
-          PR_HEAD: "${{ github.event.pull_request.head.sha || '' }}"
-        run: |
-          set -eu
-          set -- --head "$GITHUB_SHA" --event "$GITHUB_EVENT_NAME" --mode "$MODE" --output "$RUNNER_TEMP/plan.json" --github-output "$GITHUB_OUTPUT"
-          if [ -n "$BASE" ]; then set -- "$@" --base "$BASE"; fi
-          if [ -n "$PR_HEAD" ]; then set -- "$@" --pr-head "$PR_HEAD"; fi
-          if [ "$FORCE" = true ]; then set -- "$@" --force-full; fi
-          node scripts/ci/affected-plan.mjs "$@" > "$RUNNER_TEMP/plan-display.json"
-      -
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/plan.json"
-          retention-days: 7
-          if-no-files-found: "error"
-          overwrite: true
+        name: "Determine whether complete host qualification is required"
+        id: "scope"
+        run: 'node scripts/ci/host-scope.mjs --scope macos --github-output "$GITHUB_OUTPUT"'
   host-artifacts:
     name: "Acquire canonical macos host artifacts"
-    needs: "plan"
-    if: "${{ needs.plan.outputs.macos == 'true' || needs.plan.outputs.witnesses == 'true' }}"
+    needs: "scope"
+    if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
     timeout-minutes: 15
     permissions:
@@ -96,12 +59,9 @@ jobs:
         name: "Acquire the exact canonical CI candidates"
         env:
           GH_TOKEN: "${{ github.token }}"
-          AFTER_QUICK: "${{ needs.plan.outputs.macos == 'true' }}"
         run: |
           set -eu
-          set -- --timeout-seconds 300
-          if [ "$AFTER_QUICK" = true ]; then set -- --after-quick true --timeout-seconds 600; fi
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" "$@"
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --timeout-seconds 600
       -
         name: "Retain exact macos host artifacts"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
@@ -257,14 +217,14 @@ jobs:
           if-no-files-found: "ignore"
           retention-days: 7
     needs:
-      - "plan"
+      - "scope"
       - "host-artifacts"
-    if: "${{ needs.plan.outputs.macos == 'true' }}"
+    if: "${{ needs.scope.outputs.required == 'true' }}"
   qualified-architecture:
     name: "Native host qualification — ${{ matrix.arch }}"
-    if: "${{ always() && needs.plan.result == 'success' && needs.plan.outputs.macos == 'true' }}"
+    if: "${{ always() && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}"
     needs:
-      - "plan"
+      - "scope"
       - "host-artifacts"
       - "prerequisites"
     runs-on: "ubuntu-24.04"
@@ -291,11 +251,6 @@ jobs:
         uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
         with:
           node-version: "24"
-      -
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          name: "macos-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/affected-plan"
       -
         name: "Download this architecture's shard evidence"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
@@ -373,7 +328,7 @@ jobs:
         run: |
           set -eu
           mkdir "$RUNNER_TEMP/macos-qualification"
-          node scripts/ci/job-evidence.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" --id "macos-$ARCHITECTURE" --summary "$RUNNER_TEMP/mac-summary.json" --host-evidence "$RUNNER_TEMP/macos-evidence" --artifacts --residue --output "$RUNNER_TEMP/macos-observed.json"
+          node scripts/ci/job-evidence.mjs --id "macos-$ARCHITECTURE" --summary "$RUNNER_TEMP/mac-summary.json" --artifacts --residue --output "$RUNNER_TEMP/macos-observed.json"
           node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/macos-host-artifacts" "$RUNNER_TEMP/macos-qualification/QUALIFICATION.json" --kind macos --profile "$ARCHITECTURE"
       -
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
@@ -389,132 +344,14 @@ jobs:
           path: "${{ runner.temp }}/macos-observed.json"
           retention-days: 7
           if-no-files-found: "error"
-  installed-witness:
-    name: "Native installed witness — ${{ matrix.arch }}"
-    needs:
-      - "plan"
-      - "host-artifacts"
-    if: "${{ needs.plan.outputs.witnesses == 'true' }}"
-    runs-on: "${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}"
-    timeout-minutes: 20
-    strategy:
-      fail-fast: true
-      max-parallel: 2
-      matrix:
-        arch:
-          - "x64"
-          - "arm64"
-    steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-      -
-        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
-        with:
-          bun-version: "1.4.2"
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
-        with:
-          just-version: "1.43.1"
-      -
-        name: "Record exact host and verify native process prerequisites"
-        env:
-          EXPECTED_ARCH: "${{ matrix.arch }}"
-        run: |
-          set -o pipefail
-          mkdir -p "$RUNNER_TEMP/mac-evidence"
-          git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
-          uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
-          sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
-          xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
-          bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
-          bun scripts/ci/probe-macos-host.ts | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
-      -
-        name: "Install build dependencies without lifecycle scripts"
-        run: "bun install --ignore-scripts"
-      -
-        name: "Build the source-test workspace packages"
-        run: "just --justfile packages/jig/justfile build"
-      -
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-host-artifacts"
-      -
-        name: "Verify exact canonical publication archives"
-        run: |
-          set -eu
-          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
-          printf 'JIG_CI_CANDIDATE_DIRECTORY=%s\n' "$RUNNER_TEMP/macos-host-artifacts" >> "$GITHUB_ENV"
-          cp "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/mac-evidence/CANDIDATE.json"
-          cp "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/mac-evidence/ARTIFACT.json"
-      -
-        name: "Read the exact source plan"
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          name: "macos-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/affected-plan"
-      -
-        name: "Run the compact installed observation and display witness"
-        env:
-          JIG_MACOS_TEST_TIMINGS_DIRECTORY: "${{ runner.temp }}/mac-evidence"
-        run: |
-          set -o pipefail
-          scripts/ci/qualify-macos-host.sh --witness 2>&1 | tee "$RUNNER_TEMP/mac-evidence/witness.txt"
-      -
-        name: "Verify canonical candidate metadata is unchanged"
-        if: "always()"
-        run: |
-          set -eu
-          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
-          cmp "$RUNNER_TEMP/mac-evidence/CANDIDATE.json" "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json"
-          cmp "$RUNNER_TEMP/mac-evidence/ARTIFACT.json" "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json"
-      -
-        name: "Record the exact installed witness scope"
-        env:
-          ARCHITECTURE: "${{ matrix.arch }}"
-        run: |
-          set -eu
-          expected="$GITHUB_SHA $ARCHITECTURE witness"
-          test "$(cat "$RUNNER_TEMP/mac-evidence/witness.complete")" = "$expected"
-          node scripts/ci/job-evidence.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" \
-            --id "macos-$ARCHITECTURE-witness" --profile "macos-24G830/$ARCHITECTURE/bun-1.4.2" \
-            --junit "$RUNNER_TEMP/mac-evidence/observation.xml" \
-            --transcript-manifest "$RUNNER_TEMP/mac-evidence/transcript-manifest.json" \
-            --artifacts --residue --output "$RUNNER_TEMP/mac-witness-observed.json"
-      -
-        name: "Retain observed witness execution"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-witness-observed-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/mac-witness-observed.json"
-          if-no-files-found: "error"
-          retention-days: 7
-      -
-        name: "Retain bounded installed witness evidence"
-        if: "always()"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-witness-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: |
-            ${{ runner.temp }}/mac-evidence/*.txt
-            ${{ runner.temp }}/mac-evidence/*.json
-            ${{ runner.temp }}/mac-evidence/*.xml
-            ${{ runner.temp }}/mac-evidence/*.complete
-          if-no-files-found: "error"
-          retention-days: 7
   affected-macos:
     name: "affected-macos"
     if: "always()"
     needs:
-      - "plan"
+      - "scope"
+      - "host-artifacts"
+      - "prerequisites"
       - "qualified-architecture"
-      - "installed-witness"
     runs-on: "ubuntu-24.04"
     timeout-minutes: 5
     steps:
@@ -528,49 +365,38 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Require the source plan"
+        name: "Revalidate host scope and every required job result"
         env:
-          PLAN_RESULT: "${{ needs.plan.result }}"
-        run: "test \"$PLAN_RESULT\" = success"
+          JOB_RESULTS: "${{ toJSON(needs) }}"
+        run: |
+          set -eu
+          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify(Object.fromEntries(Object.entries(jobs).map(([id,job])=>[id,job.result]))));' "$RUNNER_TEMP/host-job-results.json"
+          node scripts/ci/host-scope.mjs --scope macos --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
       -
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          name: "macos-plan-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/affected-plan"
-      -
-        name: "Download observed execution evidence"
-        if: "${{ needs.plan.outputs.macos == 'true' }}"
+        name: "Download complete observed execution evidence"
+        if: "${{ needs.scope.outputs.required == 'true' }}"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           pattern: "macos-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/observed-evidence"
           merge-multiple: false
       -
-        name: "Download observed installed witness execution"
-        if: "${{ needs.plan.outputs.witnesses == 'true' }}"
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          pattern: "macos-witness-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/observed-evidence"
-          merge-multiple: false
-      -
-        name: "Reconcile selected work and explicit policy omissions"
+        name: "Require complete observed host qualification"
+        if: "${{ needs.scope.outputs.required == 'true' }}"
         env:
           JOB_RESULTS: "${{ toJSON(needs) }}"
-          MODE: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && github.event.pull_request.base.repo.full_name == github.repository && github.event.pull_request.base.ref == 'ci-performance-trial-baseline-recovery' && 'active' || vars.JIG_CI_SELECTION_MODE || 'shadow' }}"
-          FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
         run: |
           set -eu
-          mkdir -p "$RUNNER_TEMP/observed-evidence"
-          node -e 'const fs=require("node:fs"); const jobs=JSON.parse(process.env.JOB_RESULTS); fs.writeFileSync(process.argv[1], JSON.stringify({"macos-x64":jobs["qualified-architecture"].result,"macos-arm64":jobs["qualified-architecture"].result,"macos-x64-witness":jobs["installed-witness"].result,"macos-arm64-witness":jobs["installed-witness"].result}));' "$RUNNER_TEMP/host-job-results.json"
-          node scripts/ci/job-evidence.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-job-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
-          node scripts/ci/affected-gate.mjs --plan "$RUNNER_TEMP/affected-plan/plan.json" --evidence "$RUNNER_TEMP/host-evidence.json" --scope macos > "$RUNNER_TEMP/affected-report.json"
+          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"macos-x64":jobs["qualified-architecture"].result,"macos-arm64":jobs["qualified-architecture"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
+          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
       -
-        name: "Retain affected-work reconciliation"
+        name: "Retain host scope and complete qualification reconciliation"
         if: "always()"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "macos-affected-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/affected-report.json"
+          path: |
+            ${{ runner.temp }}/affected-report.json
+            ${{ runner.temp }}/host-evidence.json
           retention-days: 7
           if-no-files-found: "ignore"

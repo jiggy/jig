@@ -16,18 +16,13 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
-import { requireJobs } from './release-readiness.mjs'
+import { PYTHON_INSTALLED_JOBS, requireJobs } from './release-readiness.mjs'
 
 export const PYTHON_QUALIFICATION_JOBS = Object.freeze([
   'Build Python SDK artifacts',
   'Source and package tests',
   'test',
-  'Python 3.11 on ubuntu-24.04',
-  'Python 3.12 on ubuntu-24.04',
-  'Python 3.13 on ubuntu-24.04',
-  'Python 3.14 on ubuntu-24.04',
-  'Python 3.14 on macos-14',
-  'Python 3.13 on windows-2022',
+  ...PYTHON_INSTALLED_JOBS,
 ])
 const WORKFLOW = '.github/workflows/ci.yml'
 const HASH = /^[0-9a-f]{64}$/

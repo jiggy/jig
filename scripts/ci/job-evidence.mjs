@@ -1,13 +1,15 @@
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parseArguments } from './affected-plan.mjs'
 import { regularFile } from './candidate-provenance.mjs'
-import { parseBunTranscript, readMacReports } from './test-reports.mjs'
+import { filesForTarget, gitRepositoryTests } from './suite-inventory.mjs'
+import { parseBunTranscript } from './test-reports.mjs'
 
-// Counts come from completed tool reports or built files, never from a job's
-// status. The final gate also checks job status and independently rebuilds the plan.
+// Counts come from completed reports or built files. The aggregate binds them
+// to the current full inventory and requires every job and runtime profile.
 export async function observedCount({
   transcript,
   junit,
@@ -19,7 +21,6 @@ export async function observedCount({
   targetId,
   profiles,
   transcriptManifest,
-  hostEvidence,
   repository = process.cwd(),
   pythonTranscript,
   testFiles,
@@ -247,49 +248,73 @@ export async function observedCount({
       (targetId && targetId !== `macos-${report.architecture}`)
     )
       throw new Error('Failed or stale host summary')
-    if (!hostEvidence || !source || !targetId) throw new Error('Missing owning Mac JUnit evidence')
-    const observed = readMacReports({
-      repository,
-      source,
-      targetId,
-      evidenceDirectory: hostEvidence,
-    })
-    if (observed.count !== report.executed || observed.skipped !== report.skipped_reports)
-      throw new Error('Mac summary differs from owning execution reports')
-    return observed
+    if (
+      !Number.isSafeInteger(report.executed) ||
+      report.executed <= 0 ||
+      !Array.isArray(report.shards) ||
+      !report.shards.length ||
+      report.shards.some(
+        (row) =>
+          row.failures !== 0 ||
+          row.skipped_reports !== 0 ||
+          !Number.isSafeInteger(row.executed) ||
+          row.executed <= 0,
+      ) ||
+      report.shards.reduce((sum, row) => sum + row.executed, 0) !== report.executed
+    )
+      throw new Error('Incomplete validated Mac summary')
+    return { count: report.executed, skipped: 0, basis: 'test-cases' }
   }
   throw new Error('Provide an observed execution report')
 }
 
+const catalog = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
+const sha = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
+
+export function executionInventory({ repository = process.cwd(), scope } = {}) {
+  const source = execFileSync('git', ['-C', repository, 'rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    timeout: 10000,
+  }).trim()
+  if (!/^[0-9a-f]{40}$/.test(source)) throw new Error('Missing exact execution source')
+  if (scope && !['ci', 'linux', 'macos'].includes(scope)) throw new Error('Unknown execution scope')
+  const files = gitRepositoryTests(repository, source)
+  const targets = catalog.targets
+    .filter((target) => !scope || target.scope === scope)
+    .map((target) => {
+      const testInventory = filesForTarget(files, target.id, catalog)
+      return {
+        ...target,
+        runtimeProfiles: target.profiles,
+        testInventory,
+        inventoryDigest: sha({ id: target.id, profiles: target.profiles, testInventory }),
+      }
+    })
+  return { source, targets }
+}
+
 export async function writeJobEvidence({
-  planPath,
   id,
   output,
   profile,
   profiles: selectedProfiles,
+  repository,
   ...reports
 }) {
-  const plan = JSON.parse(await readFile(planPath, 'utf8'))
-  if (
-    reports.skipPolicy !== undefined ||
-    reports.skippedCases !== undefined ||
-    reports.skippedCaseDigest !== undefined
-  )
-    throw new Error('Selected execution cannot declare skip permissions')
-  const target = plan.targets.find((item) => item.id === id)
-  if (!target?.selected) throw new Error('Execution evidence needs a selected target')
-  if (reports.junit && (!Array.isArray(target.testInventory) || !target.testInventory.length))
-    throw new Error('JUnit execution needs the selected target file inventory')
-  if (
-    id === 'source-python' &&
-    (!reports.transcript || !Array.isArray(target.testInventory) || !target.testInventory.length)
-  )
-    throw new Error('Python source execution needs its selected file inventory and transcript')
+  const { source, targets } = executionInventory({ repository })
+  const target = targets.find((target) => target.id === id)
+  if (!target) throw new Error('Unknown execution target')
   const profiles =
     selectedProfiles ??
     (profile ? [profile] : target.runtimeProfiles.length === 1 ? target.runtimeProfiles : [])
-  if (!profiles.length || new Set(profiles).size !== profiles.length)
-    throw new Error('Declare each observed execution profile explicitly')
+  if (
+    !profiles.length ||
+    new Set(profiles).size !== profiles.length ||
+    profiles.some((profile) => !target.runtimeProfiles.includes(profile))
+  )
+    throw new Error('Declare each known execution profile exactly once')
+  if ((reports.junit || id === 'source-python') && !target.testInventory.length)
+    throw new Error('Execution requires a nonempty full file inventory')
   const {
     count,
     basis,
@@ -297,17 +322,14 @@ export async function writeJobEvidence({
     filtered = 0,
   } = await observedCount({
     ...reports,
-    source: plan.identity.head,
+    source,
     targetId: id,
     profiles,
+    repository,
     ...(reports.junit || id === 'source-python' ? { testFiles: target.testInventory } : {}),
   })
-  if (skipped !== 0 || filtered !== 0)
-    throw new Error('Selected execution contains skipped or filtered cases')
-  if (!Number.isSafeInteger(count) || count <= 0)
-    throw new Error('No observed nonempty execution proof')
-  if (profiles.some((item) => !target.runtimeProfiles.includes(item)))
-    throw new Error('Unknown execution profile')
+  if (skipped !== 0 || filtered !== 0 || !Number.isSafeInteger(count) || count <= 0)
+    throw new Error('No complete positive zero-skip execution proof')
   const result = {
     id,
     status: 'success',
@@ -322,59 +344,43 @@ export async function writeJobEvidence({
   }
   await writeFile(
     output,
-    `${JSON.stringify(
-      {
-        schemaVersion: 1,
-        planDigest: plan.planDigest,
-        source: plan.identity.head,
-        results: [result],
-      },
-      null,
-      2,
-    )}\n`,
+    JSON.stringify({ schemaVersion: 1, source, results: [result] }, null, 2) + '\n',
     { flag: 'wx' },
   )
 }
 
 export async function collectJobEvidence({
-  planPath,
   directory,
   resultsPath,
   output,
   scope = 'ci',
+  repository,
 }) {
-  const plan = JSON.parse(await readFile(planPath, 'utf8'))
+  const { source, targets } = executionInventory({ repository, scope })
   const statuses = JSON.parse(await readFile(resultsPath, 'utf8'))
-  const targets = plan.targets.filter((target) => target.scope === scope)
   const reports = []
   async function walk(path) {
     for (const entry of await readdir(path, { withFileTypes: true })) {
       if (entry.isDirectory()) await walk(join(path, entry.name))
       else if (entry.isFile() && entry.name.endsWith('.json'))
         reports.push(JSON.parse(await readFile(join(path, entry.name), 'utf8')))
+      else if (entry.isSymbolicLink()) throw new Error('Execution evidence cannot contain links')
     }
   }
   await walk(directory)
+  for (const report of reports) {
+    if (
+      report.schemaVersion !== 1 ||
+      report.source !== source ||
+      !Array.isArray(report.results) ||
+      report.results.some((row) => !targets.some((target) => target.id === row.id))
+    )
+      throw new Error('Stale or malformed job evidence')
+  }
   const results = targets.map((target) => {
-    if (!target.selected) {
-      if (statuses[target.id] !== 'skipped')
-        throw new Error(`Unexpected execution for omitted target ${target.id}`)
-      return { id: target.id, status: 'skipped', omissionReason: target.omissionReason }
-    }
     if (statuses[target.id] !== 'success')
       throw new Error(`Required job did not succeed: ${target.id}`)
-    const rows = reports.flatMap((report) => {
-      if (
-        report.schemaVersion !== 1 ||
-        !Array.isArray(report.results) ||
-        report.planDigest !== plan.planDigest ||
-        report.source !== plan.identity.head
-      )
-        throw new Error('Stale or malformed job evidence')
-      if (report.results.some((row) => !targets.some((item) => item.id === row.id)))
-        throw new Error('Unexpected execution report target')
-      return report.results.filter((row) => row.id === target.id)
-    })
+    const rows = reports.flatMap((report) => report.results.filter((row) => row.id === target.id))
     if (
       !rows.length ||
       rows.some(
@@ -391,63 +397,67 @@ export async function collectJobEvidence({
           row.skippedCaseDigest !== undefined ||
           !Array.isArray(row.profiles) ||
           !row.profiles.length ||
-          row.profiles.some((profile) => !target.runtimeProfiles.includes(profile)),
+          !['test-cases', 'built-pages', 'qualified-artifacts'].includes(row.basis) ||
+          row.profiles.some((profile) => !target.runtimeProfiles.includes(profile)) ||
+          (target.requiresArtifacts && row.artifactsVerified !== true) ||
+          (target.requiresResidue && row.residueVerified !== true),
       )
     )
-      throw new Error(`Missing execution reports: ${target.id}`)
+      throw new Error(`Missing complete execution reports: ${target.id}`)
     const profiles = rows.flatMap((row) => row.profiles)
-    if (new Set(profiles).size !== profiles.length)
-      throw new Error(`Repeated execution profile: ${target.id}`)
+    if (
+      new Set(profiles).size !== profiles.length ||
+      JSON.stringify([...profiles].sort()) !== JSON.stringify([...target.runtimeProfiles].sort())
+    )
+      throw new Error(`Incomplete or repeated execution profile: ${target.id}`)
     return {
       ...rows[0],
       executedCount: rows.reduce((sum, row) => sum + row.executedCount, 0),
       profiles,
-      unexpectedSkips: 0,
-      observedSkipped: 0,
-      artifactsVerified: rows.every((row) => row.artifactsVerified === true),
-      residueVerified: rows.every((row) => row.residueVerified === true),
     }
   })
-  await writeFile(
-    output,
-    `${JSON.stringify(
-      { schemaVersion: 1, planDigest: plan.planDigest, source: plan.identity.head, results },
-      null,
-      2,
-    )}\n`,
-    { flag: 'wx' },
-  )
+  await writeFile(output, JSON.stringify({ schemaVersion: 1, source, results }, null, 2) + '\n', {
+    flag: 'wx',
+  })
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const options = parseArguments(
-      process.argv.slice(2),
-      [
-        '--plan',
-        '--id',
-        '--output',
-        '--profile',
-        '--profiles',
-        '--transcript',
-        '--transcript-manifest',
-        '--host-evidence',
-        '--python-transcript',
-        '--junit',
-        '--pages',
-        '--qualification',
-        '--summary',
-        '--archives',
-        '--directory',
-        '--results',
-        '--scope',
-      ],
-      ['--artifacts', '--residue'],
-    )
-    if (!options['--plan'] || !options['--output']) throw new Error('Provide --plan and --output')
+    const values = new Set([
+      '--id',
+      '--output',
+      '--profile',
+      '--profiles',
+      '--transcript',
+      '--transcript-manifest',
+      '--python-transcript',
+      '--junit',
+      '--pages',
+      '--qualification',
+      '--summary',
+      '--archives',
+      '--directory',
+      '--results',
+      '--scope',
+    ])
+    const flags = new Set(['--artifacts', '--residue']),
+      options = {}
+    for (let index = 2; index < process.argv.length; index++) {
+      const key = process.argv[index]
+      if (options[key] !== undefined || (!values.has(key) && !flags.has(key)))
+        throw new Error('Unknown or repeated execution option')
+      if (flags.has(key)) options[key] = true
+      else {
+        const value = process.argv[++index]
+        if (!value || value.startsWith('--')) throw new Error('Missing execution option value')
+        options[key] = value
+      }
+    }
+    if (!options['--output']) throw new Error('Provide --output')
+    if (process.env.GITHUB_SHA && executionInventory().source !== process.env.GITHUB_SHA)
+      throw new Error('Checkout differs from workflow source')
     if (options['--directory'])
       await collectJobEvidence({
-        planPath: options['--plan'],
         directory: options['--directory'],
         resultsPath: options['--results'],
         output: options['--output'],
@@ -455,14 +465,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       })
     else
       await writeJobEvidence({
-        planPath: options['--plan'],
         id: options['--id'],
         output: options['--output'],
         profile: options['--profile'],
         profiles: options['--profiles']?.split(','),
         transcript: options['--transcript'],
         transcriptManifest: options['--transcript-manifest'],
-        hostEvidence: options['--host-evidence'],
         pythonTranscript: options['--python-transcript'],
         junit: options['--junit'],
         pages: options['--pages'],

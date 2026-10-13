@@ -3,42 +3,13 @@
 import json
 import re
 import sys
+import subprocess
 from datetime import datetime
 from pathlib import Path
-from xml.etree import ElementTree as ET
 
 
 def read_json(path):
     return json.loads(path.read_text())
-
-
-def test_counts(path):
-    root = ET.parse(path).getroot()
-    if root.tag not in ("testsuites", "testsuite"):
-        raise ValueError("invalid JUnit root")
-    cases = list(root.iter("testcase"))
-    if root.get("tests") is not None and int(root.get("tests")) != len(cases):
-        raise ValueError("incomplete owning JUnit cases")
-    if any(
-        int(suite.get("failures", "0")) or int(suite.get("errors", "0")) or int(suite.get("skipped", "0"))
-        for suite in root.iter()
-        if suite.tag in ("testsuite", "testsuites")
-    ):
-        raise ValueError("failed or skipped owning suite")
-    executed = [c for c in cases if c.find("skipped") is None]
-    failures = sum(c.find("failure") is not None or c.find("error") is not None for c in cases)
-    files = {c.get("file") for c in cases}
-    if None in files or "" in files or any(not c.get("name") for c in cases):
-        raise ValueError("missing testcase file")
-    return (
-        {
-            "executed": len(executed),
-            "skipped_reports": len(cases) - len(executed),
-            "failures": failures,
-        },
-        [(c.get("file"), c.get("classname", ""), c.get("name")) for c in executed],
-        files,
-    )
 
 
 def duration(start, end):
@@ -53,18 +24,17 @@ def summarize(architecture, revision, count, evidence, jobs):
         raise ValueError("invalid architecture or revision")
     if type(count) is not int or count not in (2, 3):
         raise ValueError("invalid shard count")
-    report = {
-        "architecture": architecture,
-        "revision": revision,
-        "qualified": False,
-        "executed": 0,
-        "skipped_reports": 0,
-        "failures": 0,
-        "errors": [],
-        "shards": [],
-        "timing_available": False,
-    }
-    errors = report["errors"]
+    # One source-pinned validator owns every report, marker and command inventory.
+    # This module only projects its validated facts and optional runner timing.
+    result = subprocess.run(
+        ["node", str(Path(__file__).with_name("test-reports.mjs")), architecture, revision, str(evidence)],
+        capture_output=True, text=True, timeout=120,
+    )
+    if result.returncode:
+        raise ValueError("complete source-pinned Mac evidence was refused")
+    report = json.loads(result.stdout)
+    if len(report["shards"]) != count:
+        raise ValueError("wrong architecture shard count")
     # The API is optional diagnostic evidence. It cannot establish qualification.
     timings = {}
     if isinstance(jobs, list):
@@ -84,86 +54,8 @@ def summarize(architecture, revision, count, evidence, jobs):
                 except (KeyError, TypeError, ValueError):
                     pass
     report["timing_available"] = len(timings) == count
-    seen_cases = set()
-    for shard in range(count):
-        directory = evidence / f"macos-prerequisites-{architecture}-{shard}-{revision}"
-        row = {
-            "shard": shard,
-            "executed": 0,
-            "skipped_reports": 0,
-            "failures": 0,
-            "timing": timings.get(shard),
-        }
-        report["shards"].append(row)
-        try:
-            marker = (directory / f"shard-{shard}.complete").read_text().strip()
-            if marker != f"{revision} {architecture} {shard}":
-                errors.append(f"Shard {shard}: wrong revision or architecture marker")
-        except (OSError, UnicodeError):
-            errors.append(f"Shard {shard}: missing completion marker")
-        try:
-            plan = read_json(directory / "test-plan.json")
-            if (
-                plan["architecture"] != architecture
-                or type(plan["shard"]) is not int
-                or plan["shard"] != shard
-                or type(plan["shardCount"]) is not int
-                or plan["shardCount"] != count
-                or plan["installed"] is not (shard == count - 1)
-            ):
-                raise ValueError("plan identity")
-            groups = plan["groups"]
-            native = plan["nativeFiles"]
-            if not isinstance(groups, list) or not groups or not isinstance(native, list):
-                raise ValueError("plan groups")
-            if bool(native) != (shard == 0):
-                raise ValueError("native prerequisite plan")
-            if any(
-                not isinstance(group, dict)
-                or not isinstance(group.get("file"), str)
-                or not group["file"]
-                or "pattern" in group
-                for group in groups
-            ):
-                raise ValueError("plan file")
-            if len({group["file"] for group in groups}) != len(groups):
-                raise ValueError("repeated whole-file group")
-            if any(not isinstance(file, str) or not file for file in native):
-                raise ValueError("native file")
-            paths = [
-                (directory / f"shard-{shard}-group-{i}.xml", {group["file"]})
-                for i, group in enumerate(groups)
-            ]
-            if native:
-                paths.append((directory / "native-tests.xml", set(native)))
-            if plan["installed"]:
-                paths.append((
-                    directory / "installed-startup.xml",
-                    {"packages/jig/test/startup/native-agent-startup.test.ts"},
-                ))
-        except (OSError, ValueError, KeyError, TypeError):
-            errors.append(f"Shard {shard}: missing or invalid test plan")
-            continue
-        for path, expected_files in paths:
-            try:
-                counts, cases, files = test_counts(path)
-                if files != expected_files:
-                    raise ValueError("testcase file does not match plan")
-                if not counts["executed"]:
-                    raise ValueError("owning whole-file proof is empty")
-                if len(set(cases)) != len(cases) or set(cases) & seen_cases:
-                    errors.append(f"Shard {shard}: repeated execution within or across test groups")
-                seen_cases.update(cases)
-                for key in counts:
-                    row[key] += counts[key]
-                    report[key] += counts[key]
-            except (OSError, ET.ParseError, ValueError):
-                errors.append(f"Shard {shard}: missing or invalid {path.name}")
-        if row["failures"]:
-            errors.append(f"Shard {shard}: failed test cases")
-        if row["skipped_reports"]:
-            errors.append(f"Shard {shard}: selected whole-file cases were skipped")
-    report["qualified"] = not errors
+    for row in report["shards"]:
+        row["timing"] = timings.get(row["shard"])
     return report
 
 
@@ -194,7 +86,12 @@ if __name__ == "__main__":
         jobs = read_json(Path(jobs_path))
     except (OSError, ValueError):
         jobs = None
-    report = summarize(architecture, revision, int(count), Path(evidence), jobs)
+    try:
+        report = summarize(architecture, revision, int(count), Path(evidence), jobs)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.TimeoutExpired):
+        report = {"architecture": architecture, "revision": revision, "qualified": False,
+                  "executed": 0, "skipped_reports": 0, "failures": 0, "errors": ["Complete source-pinned Mac evidence refused"],
+                  "shards": [], "timing_available": False}
     Path(output).write_text(json.dumps(report, indent=2) + "\n")
     print(markdown(report))
     sys.exit(0 if report["qualified"] else 1)

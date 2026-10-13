@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
+import { readFileSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
-import { affectedManifest } from './affected-plan.mjs'
+
+const affectedManifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
+
 import {
   commandsForShard,
   discoverHostTests,
@@ -431,7 +434,7 @@ test('Linux whole-file roles own all hostile and display work while startup rema
     'utf8',
   )
   const start = workflow.indexOf('\n  host-suite:\n')
-  const end = workflow.indexOf('\n  linux-witness:\n', start)
+  const end = workflow.indexOf('\n  rootless-linux:\n', start)
   assert.ok(start >= 0 && end > start)
   const shard = workflow.slice(start, end)
   const steps = shard.split(/\n {6}-\n/)

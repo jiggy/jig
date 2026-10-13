@@ -14,7 +14,7 @@
 
 ## Execution contracts
 
-`scripts/ci/affected-manifest.json` owns whole-file applicability. The shared suite inventory refuses unknown or ambiguous files. Select suites before execution; selected suites must execute positively with zero skipped or filtered cases. Missing native flags, exact host prerequisites or live inputs fail the selected suite. Parameterized cases have explicit unique registration names; do not add name-pattern partitions or frozen line/name skip exceptions.
+`scripts/ci/test-suites.json` owns whole-file applicability. The shared suite inventory refuses unknown or ambiguous files. Select suites before execution; selected suites must execute positively with zero skipped or filtered cases. Missing native flags, exact host prerequisites or live inputs fail the selected suite. Parameterized cases have explicit unique registration names; do not add name-pattern partitions or frozen line/name skip exceptions.
 
 Each independent native backend fixture Run plan receives a fresh absolute deadline for
 its existing duration when constructed. A plan spread from a completed Run must
@@ -27,7 +27,7 @@ It verifies the original clock function is restored before durable-state checks
 and cleanup. The executor remains mocked; native timers and ownership receive no
 clock substitution.
 
-`just jig::test` selects the ordinary source profile. `just jig::check` and root `just preflight` add the qualified Mac regression pass. Complete hosted qualification also runs shared lifecycle suites, fresh installed consumers and genuine offline clients. Partial display witnesses never replace that evidence.
+`just jig::test` selects the ordinary source profile. `just jig::check` and root `just preflight` add the qualified Mac regression pass. Complete hosted qualification also runs shared lifecycle suites, fresh installed consumers and genuine offline clients.
 
 `host/markdown-worker.test.ts` exercises only the installed CLI and its packed worker. Its fresh temporary root owns consumers and failure evidence; it does not build a second source worker. Source-worker compilation and direct protocol exchanges belong to `portable/markdown-worker.test.ts`.
 
@@ -43,7 +43,7 @@ barrier, recovery, cleanup, assertions or limits.
 
 The installed factory's blocked proof and coupled checked/automatic proof use separate fresh consumers through the registration-free `fixtures/installed-software-factory.ts`. Both initially review the blocked peer and remove the editable repair package. The blocked case executes and verifies admitted bytes, worker causes, checkpoint delivery and its complete packet. The checked case restores authored repair source, changes the peer and re-reviews before its explicit and automatic Runs; their complete job evidence and all nine delivered files must agree. Completed-Run/source-edit/re-review/new-generation execution remains independently required by the installed package dependency and full package-smoke consumers. Keep all three factory Runs and their existing limits, result, delivery, observation and cleanup assertions.
 
-`installed-display-smoke.ts` consumes the supplied canonical eight archives without rebuilding. It verifies installed Jig member bytes and actual qualified Bun/Core loading, runs the three standalone display consumers, and shares registration-free installed display checks with `package-smoke.ts`. Real PTYs prove missing-support refusal on Mac or provisioned Linux, saved TUI navigation/immutable preview, Stay-default confirmation followed by observed Leave selection and Enter, and exact terminal restoration. The shared helper requires the Run-refusal profile by default; only the ordinary full package smoke permits a source-Linux omission, with no host proof credit. Saved web checks embedded assets, authentication, immutable capture and explicit Close. Live observations, delivery and interruption belong to `host/package-provider-observation.test.ts`. Compact witnesses remain distinct from full qualification, operational/hostile baselines and cold registry installation.
+`package-smoke.ts` consumes the canonical archives and shares registration-free display checks through `fixtures/installed-display.ts`. Real PTYs prove unsupported Run refusal on native hosts, saved TUI navigation and immutable preview, Stay-default confirmation followed by observed Leave selection and Enter, and exact terminal restoration. Saved web checks cover bundled assets, authentication, immutable capture and explicit Close. Source-Linux refusal omissions earn no native proof. Live observations, delivery and interruption remain in `host/package-provider-observation.test.ts`.
 
 Root Agent live suites select one exact client/input contract per file. Codex subscription requires its native executable and CODEX_HOME; Codex Responses requires the executable, model and OpenRouter key; Claude and Pi require their own executable, API model/provider and key. The protected native API workflow selects only its matching file. Restoration is an independent explicit opt-in.
 

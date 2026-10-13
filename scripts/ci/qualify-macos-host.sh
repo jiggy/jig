@@ -8,7 +8,6 @@ case "$#" in
   0) ;;
   1)
     if [[ "$1" == --preflight ]]; then mode=preflight
-    elif [[ "$1" == --witness ]]; then mode=witness
     else echo 'Unexpected qualification arguments' >&2; exit 2
     fi
     ;;
@@ -64,16 +63,6 @@ if [[ -n "${JIG_CI_CANDIDATE_DIRECTORY:-}" ]]; then
   candidate_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
     "$JIG_CI_CANDIDATE_DIRECTORY" --source "$source_revision")
 fi
-if [[ "$mode" == witness ]]; then
-  if [[ -z "$candidate_receipt" ]]; then
-    echo 'Installed witnesses require the exact canonical candidate; local repacking cannot qualify.' >&2
-    exit 2
-  fi
-  if [[ "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" != /* || ! -d "$JIG_MACOS_TEST_TIMINGS_DIRECTORY" ]]; then
-    echo 'Installed witnesses require an absolute existing evidence directory.' >&2
-    exit 2
-  fi
-fi
 if [[ "$mode" == preflight ]]; then exit 0; fi
 # Host qualification has no live API phase.
 unset OPENAI_API_KEY ANTHROPIC_API_KEY OPENROUTER_API_KEY PI_API_KEY
@@ -105,9 +94,6 @@ finish() {
     status=1
   fi
   if [[ "$status" == 0 ]]; then
-    if [[ "$mode" == witness ]]; then
-      printf '%s %s witness\n' "$source_revision" "$architecture" > "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/witness.complete"
-    fi
     rm -rf "$scratch"
   else
     echo "Qualification evidence retained at $scratch" >&2
@@ -158,18 +144,7 @@ export JIG_MACOS_PROCESS_TEST=1
 # Keep resource ownership tests sequential within each disposable host. The
 # hosted matrix distributes every file and all root lifecycle cases across
 # independent machines; the self-hosted qualification still runs them all.
-if [[ "$mode" == witness ]]; then
-  # Compact evidence proves current installed observation and saved display on
-  # this profile. It does not qualify the complete native authority families.
-  bun test packages/jig/test/host/package-provider-observation.test.ts --bail=1 --timeout 420000 \
-    --reporter=junit --reporter-outfile="$JIG_MACOS_TEST_TIMINGS_DIRECTORY/observation.xml" 2>&1 | \
-    tee "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/observation.txt"
-  bun packages/jig/test/installed-display-smoke.ts 2>&1 | \
-    tee "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/installed-display.txt"
-  cat > "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/transcript-manifest.json" <<'JSON'
-{"schemaVersion":1,"commands":[{"transcript":"installed-display.txt","files":["packages/jig/test/installed-display-smoke.ts"],"commandKind":"installed-script"}]}
-JSON
-elif [[ "$mode" == shard ]]; then
+if [[ "$mode" == shard ]]; then
   node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
   mapfile_path="$scratch/full-suite-files.txt"

@@ -959,16 +959,16 @@ test('native acquisition verifies current Linux proof and receives its original 
   })
 })
 
-test('scheduled audit acquisition accepts main producers while release readiness still requires main push', async () => {
+test('manual acquisition accepts main producers while release readiness still requires main push', async () => {
   const expected = await acquisitionExpectation(source, {
     GITHUB_REPOSITORY: repository,
     GITHUB_SHA: source,
     GITHUB_REF: 'refs/heads/main',
-    GITHUB_EVENT_NAME: 'schedule',
+    GITHUB_EVENT_NAME: 'workflow_dispatch',
   })
-  assert.deepEqual(expected.allowedEvents, ['push', 'schedule', 'workflow_dispatch'])
+  assert.deepEqual(expected.allowedEvents, ['push', 'workflow_dispatch'])
   assert.doesNotThrow(() =>
-    validateWorkflowRun(run(100, producer.workflowPath, { event: 'schedule' }), expected),
+    validateWorkflowRun(run(100, producer.workflowPath, { event: 'workflow_dispatch' }), expected),
   )
   assert.throws(
     () =>

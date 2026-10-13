@@ -48,10 +48,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   of the longer source suite. Candidate jobs retain their archives, then check
   exact public registry bytes read-only so a reused version fails before merge.
   This does not replace publication's complete group preflight and rechecks.
-  Preserve `test` as a fail-closed aggregate of the independently reconstructed
-  plan and observed execution. Selected jobs must finish successfully with
-  nonempty proof and complete profiles; only reconstructed policy omissions may
-  skip jobs. Main, manual and weekly audit events always select full coverage.
+  Preserve `test` as a fail-closed aggregate of every CI job and its observed full inventory. Each job must finish successfully with nonempty proof and complete profiles. Main and manual runs require complete host coverage.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
   dependency order. FLOW publishes after its successful main-push CI run;
   the Agent/Jig group additionally requires same-revision host and native gates.
@@ -73,57 +70,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   SDK npm publication and source tagging are independent of those Jig gates;
   Python also uses its own CI-qualified artifacts. Each group preflights its own
   archives before mutation. A host failure cannot block FLOW publication.
-- CI, Linux and hosted Mac always plan each PR; runner allocation follows the
-  repository-owned conservative policy instead of workflow path filters.
-  `JIG_CI_SELECTION_MODE` defaults to `shadow`: proposed exclusions are retained
-  while every existing target executes freshly. Broader site, Python, pure-test
-  and model/web classifications remain advisory and execute full work even in
-  active mode. Active omissions require a modified source leaf among the four
-  existing TUI presentation files, with only its three reviewed whole test
-  companions and an optional canonical Jig root-version counter increment.
-  All other inputs remain full. The [CI policy owner](../scripts/ci/AGENTS.md)
-  defines the exact file, Git-mode, raw-byte and version bounds. Four source
-  targets share one workspace/job. Linux source CI uses two fixed lanes after
-  shared builds: portable beside sequential protocol, applications and Python.
-  Both lanes must settle before workspace cleanup and archive revalidation;
-  local execution remains serial. Source CI delegates installed Jig/display/FLOW
-  smoke checks to the required candidate profiles using the same frozen bundle.
-  Unknown, shared, authority, runtime, TUI native/input, build,
-  harness, contract, license and pricing changes select full work.
-  `JIG_CI_FORCE_FULL=true` overrides exclusions.
-  Active PR selection deterministically samples about 20% of PR head revisions
-  for full fresh execution. CI and both host workflows use the same verified
-  PR head and reviewed hash policy, retaining the narrower proposal for audit
-  comparison; reruns and unrelated merge-base advances cannot change sampling.
-  Keep shadow mode until representative same-revision audits and seeded failures
-  show no missed regression, including resolution of relevant known failures.
-  Before activating exclusions, require `test`, `affected-linux` and
-  `affected-macos` in merge policy. The existing full Linux and architecture
-  checks remain complete release evidence and never claim an omitted full pass.
-  Sampled PR and weekly Sunday full audits supplement full main checks; include
-  their cost when measuring savings. Do not cache passing results or
-  native/consumer execution.
-- Compact witness jobs use one Linux and one runner per Mac architecture,
-  fresh canonical archives, actual installed display/observation checks and
-  distinct partial execution evidence. They never emit full host qualification
-  receipts. Full/audit runs omit these redundant partial jobs.
-- Linux compact witness jobs build only Flow and Reporting for their source
-  observation validator; installed consumers use the untouched canonical eight
-  archives.
-- A temporary eligible-PR trial sets `active` only for this repository's own
-  `alpha` pull request to the immutable `ci-performance-trial-baseline-recovery` base.
-  Each plan and its final independent gate use the same predicate. FORCE,
-  verified-head sampling, ordinary jobs and publication rules remain unchanged.
-  Record the full policy baseline SHA/tree, then one genuine presentation change,
-  regression and constrained Jig prerelease counter increment. Require fresh `test`, `affected-linux` and `affected-macos`
-  proof for three complete timing repetitions and one same-head forced-full
-  comparator. Retain failures, queues and every job's setup and execution work.
-  Three repeats of one head are not independent sampler draws. A sampled-full
-  head stays full; never amend or search seeds. The comparator is one observed
-  cost reference; audit-inclusive expected cost is modeled. This trial cannot
-  qualify main publication or justify unrelated exclusions. Close its unmerged
-  PR and remove this override before merging the delivery PR. Historical
-  temporary-audit evidence remains outside the production pipeline.
+- CI runs its complete fixed source, site, Python and npm profiles. Source targets share one workspace, with portable checks beside sequential protocol, applications and Python after shared builds. Local execution remains serial; both lanes settle before cleanup and archive revalidation. Installed smoke checks use the canonical candidate profiles.
+- Host workflows always report `affected-linux` and `affected-macos` for PRs. A small verified-Git scope check can omit native jobs for independent site, non-specification documentation or Python changes. The shared Reporting descriptor, source, build, workflow, specifications, mixed and uncertain changes run complete hosts. Main and manual runs are always complete. An omission records its source and reason and creates no qualification receipt. Final gates reconstruct scope and reject any missing, failed or cancelled required job. Keep these checks and `test` in merge policy. There are no selection modes, temporary benchmark predicates, compact witness jobs or scheduled audit runs.
 
 - Model and web/TUI display packages enter dependency ownership, source and host
   test inventories, and frozen standalone artifact gates. Their JavaScript/assets
@@ -220,8 +168,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `max-parallel: 5`; actual runner availability still determines start times.
   Before full native allocation, the existing Ubuntu acquisition job waits up
   to 600 seconds for the exact canonical CI producer's current-attempt
-  `Quick development checks` success, within its 15-minute job budget. Compact
-  acquisition keeps its 300-second poll without this prerequisite. No test or
+  `Quick development checks` success, within its 15-minute job budget. No test or
   profile is omitted, and FLOW/Python qualification remains independent. Measure
   queue effects separately; this head start does not guarantee Python Mac work
   has completed or establish faster native execution.
@@ -251,9 +198,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   startup reports. Declare Intel shards first, with installed-consumer work
   first; declaration order is not runner priority. Fail fast
   after a shard fails; cancelled shards cannot qualify.
-  Plan every PR and run every main push and weekly full audit. Conservative
-  exclusions allocate fewer runners only after shadow validation. Manual dispatch remains available
-  for diagnostics. Cancel superseded PR/feature runs, but retain main-push
+  Reconstruct native scope for every PR and run complete hosts for every main push. Manual dispatch remains available for full diagnostics. Cancel superseded PR/feature runs, but retain main-push
   qualification. PR results do not qualify a different merged revision.
 - Release completion events from CI, Linux, hosted Mac and native Agent workflows
   each run a short read-only readiness check. Duplicate and out-of-order events

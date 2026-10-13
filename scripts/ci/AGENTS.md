@@ -2,51 +2,14 @@
 
 ## Purpose
 
-Owns conservative dependency selection, immutable candidate provenance, observed
+Owns whole-file suite coverage, immutable candidate provenance, observed
 CI evidence and release readiness, plus disposable Linux and native Mac proof.
 Host preparation never becomes a consumer requirement.
 
 ## Ownership
 
-- `affected-manifest.json` declares component edges, whole-file suite roots and
-  applicability profiles. `suite-inventory.mjs` is the single source of file
-  membership for editable local checks and pinned Git CI checks. Unknown or
-  ambiguously owned tests prevent qualification; hidden files, dependency copies
-  and symbolic links cannot establish test execution. Embedded application test
-  fixtures are declared inputs rather than independently registered suites.
-- `affected-plan.mjs` records verified base, exact PR head and tested merge state,
-  old/new dependency graphs, inventories, endpoints and omission reasons. Shared,
-  authority, runtime, harness, build, unknown, main and release inputs select full
-  fresh work. Broad site, Python, pure-test and display classifications remain
-  advisory: their `proposedDecisions` never authorize execution omissions. Active
-  omissions are confined to existing regular modifications of the four TUI
-  `src/presentation/` leaves (`projection.ts`, `viewer-model.ts`, `text.ts`,
-  `style.ts`), optionally with its three existing whole test companions
-  (`presentation.test.ts`, `workbench.test.ts`, `inline.test.ts`). At least one
-  source leaf must change; every input must have no rename endpoint and Git mode
-  `100644` in both snapshots. Other files, mixed guidance, test-only deltas,
-  additions, deletions, renames, executable modes and links execute full work.
-  A paired `packages/jig/package.json` may advance only its top-level alpha/next
-  counter by one with unchanged core and channel. Read at most 64 KiB from each
-  raw Git blob; require exact canonical two-space JSON plus LF and equality after
-  replacing only the root version. Malformed, noncanonical or other metadata
-  edits remain full. Fresh canonical archives, Jig's installed qualifier, registry
-  collision checks and full main/release qualification remain unchanged.
-  The package-owned boundary regression rejects native/input/lifecycle imports,
-  dynamic loading and ambient execution in the source group; it is an ordinary
-  dependency guard, not a JavaScript sandbox. TUI native, input, lifecycle,
-  shared types/fixtures and boundary-check changes remain full. Narrow TUI work
-  builds and qualifies bundled Jig and runs fresh Linux, Intel and Apple Silicon
-  installed witnesses. A compact witness never creates a full host receipt.
-  Advisory mixed Python/presentation proposals retain FLOW's installed profile
-  for delegated protocol smoke. `guidanceFiles` retains the six reviewed
-  instruction-only classifications; a new build, pack or test reader removes its
-  guidance input from that set. These classifications currently execute full work.
-  Full host collection owns the same observation file without a redundant compact
-  target. Shadow remains the default; representative controls, missed-fault checks
-  and same-revision full/compact measurements must precede activation. Main,
-  manual, forced execution and domain-separated SHA-256 bucket zero modulo five
-  retain full fresh work; seed only from the exact verified PR proposal.
+- `test-suites.json` declares whole-file roots, applicability and fixed full execution targets. `suite-inventory.mjs` supplies local and pinned-Git membership, rejecting unknown, ambiguous or linked tests. Every applicable file belongs to one physical suite; fixtures declare inputs without registering independent cases.
+- `host-scope.mjs` avoids native allocation only for a verified two-parent PR merge whose entire delta is independent site files, non-specification documentation, Python SDK/reporting files, or reviewed root/agent guidance. The shared Reporting descriptor remains a native input. Source, build, workflow, specification, mixed, unknown or unverifiable inputs require complete Linux and both Mac architectures. Main and manual execution are always full. Final `affected-linux` and `affected-macos` checks independently reconstruct this decision and require either every native job's success or every job's explicit omission. An omitted PR creates no host qualification receipt. No selection modes, result reuse, compact witnesses or recurring audit jobs exist.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and
   `source-python` evidence. Linux CI opts into two fixed lanes only after shared
@@ -61,18 +24,7 @@ Host preparation never becomes a consumer requirement.
   Python executes every selected file, including nested additions, and emits exact
   completed-file markers only after successful zero-skip groups. Disposable
   application reports normalize file paths only after source bytes are verified.
-- `affected-gate.mjs` independently reconstructs the plan from current policy and
-  Git, binds trusted workflow context, and requires actual selected execution or
-  the exact authorized omission. `job-evidence.mjs` counts completed reports,
-  built pages or verified distributions. Status alone cannot establish success.
-  Every selected physical suite requires nonempty execution and zero skipped or
-  filtered cases. Live and platform applicability is decided before registration;
-  selected live suites fail explicitly when prerequisites are absent. Parameterized
-  registrations have unique names; no frozen blob/name/line/multiplicity permissions
-  remain. Native prerequisite and installed-startup reports retain separate exact
-  ownership. Bun's GitHub file groups preserve their repository identity and reject
-  nested, orphan, mixed or unclosed groups and execution outside an owning group.
-  Installed script markers prove completion but contribute zero test-case credit.
+- `job-evidence.mjs` binds completed reports to the current Git source, full file inventory and runtime profiles. Every fixed target must have positive zero-skip/zero-filter proof and a successful owning job. Aggregates reject missing, duplicate, stale or incomplete profile rows and require archive and native-residue attestations for their owners. Source inventory comes from the checkout, never a supplied selection plan. Installed completion markers carry no test-case credit.
 - `build-candidates.mjs` archives clean tracked source and freezes all eight npm
   archives on qualified native Linux x64 Bun 1.3.3/Just 1.43.1 using normal workspace
   resolution and package-owned packing. Preserve generated resolution, actual
@@ -98,17 +50,14 @@ Host preparation never becomes a consumer requirement.
   `candidate-transfer.mjs` checks GitHub repository/workflow/event/head identity,
   current run attempt, immutable artifact ID/digest and expiry before safely
   extracting the bundle. PR head metadata differs from its tested merge source.
-  Main-push consumers acquire only main-push CI producers. Scheduled and manual
-  audits may acquire trusted main push/schedule/manual producers. Manual candidate
-  audits are supported on `main`; feature-branch producers are not accepted. Release
+  Main-push consumers acquire only main-push CI producers. Manual qualification may acquire trusted main push/manual producers on `main`; feature-branch producers are not accepted. Release
   readiness and native Linux lineage require full main-push producers. Missing
   current-attempt artifacts never fall back to older candidates.
   Full hosted Mac acquisition alone opts into `--after-quick true`: the existing
   loop waits for one successful `Quick development checks` job bound to that
   exact producer run, attempt and head before allocating native shards. Pending
   or missing work waits within 600 seconds; failed, skipped, duplicate, stale or
-  completed-but-missing proof refuses. Default and compact acquisition keep
-  their 300-second maximum without this prerequisite. This scheduling pilot does
+  completed-but-missing proof refuses. Other acquisition uses the existing 300-second maximum without this prerequisite. This scheduling pilot does
   not change FLOW/Python readiness or prove that their Mac jobs have finished.
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
   native obligations after completion events. Qualification receipts bind the
@@ -164,12 +113,7 @@ Host preparation never becomes a consumer requirement.
   application scenarios, preserving order within both partitions. This exposes
   primitive failures early without moving files between runners or changing
   weights, commands, limits or qualification obligations.
-- `test-reports.mjs` and `macos-host-summary.py` require exact owning whole-file
-  reports, complete current-revision shard plans and markers, nonempty cases,
-  zero failures/skips/filters and no repeated identities within or across commands.
-  The compact observation JUnit plus installed display marker is separate from this
-  full reader and never yields a full receipt. Optional job timings diagnose queue
-  and execution time without establishing or removing qualification.
+- `test-reports.mjs` is the canonical Mac report validator. It reconstructs the complete source-pinned shard plan and reads every owning report and completion marker once, refusing missing, failed, skipped, filtered or repeated execution. `macos-host-summary.py` projects those validated counts and optional job timing into the human summary; it does not implement another XML or plan validator. Timing cannot grant or remove qualification. The evidence writer consumes that owning summary without reparsing Mac reports.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
   digest and manifest, then compares any existing exact public npm version's
@@ -189,12 +133,7 @@ Host preparation never becomes a consumer requirement.
 
 ## Local Contracts
 
-- Keep selected tests fresh. Do not reuse passing results, cold consumer
-  installations, native containment, cleanup or live client qualification.
-  Main, manual and weekly audits select complete coverage. Keep default shadow
-  mode until representative same-revision full audits and adversarial fixtures
-  support each prospective omission. An unresolved reproducible missed failure
-  disables the affected exclusion; the full override remains immediately available.
+- Execute all selected physical suites freshly. Never reuse passing results, consumer installations, native execution, cleanup or live-client qualification. Main and manual runs require complete coverage; native jobs omitted for an independent PR cannot qualify publication.
 - Canonical artifacts use `candidates-SHA-rRUN-aATTEMPT`; host shard evidence and
   qualification artifacts also include run and attempt. Every host shard compares
   the canonical candidate metadata and unchanged archives after execution. Full
@@ -226,8 +165,7 @@ Host preparation never becomes a consumer requirement.
 
 ## Verification
 
-- `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for renames,
-  deletions, discovery, shared inputs, merge state and forged omissions; archive/API
+- `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite discovery, exact PR merge state, independent input scope and failed or forged host-job results; archive/API
   fixtures cover source/run/attempt/profile/digest drift, forks, expiry, reruns,
   descendant SHA drift and failed host gates beside independent FLOW readiness.
 - Inspect every workflow's permissions, executable modes, profile inventory,

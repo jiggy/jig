@@ -210,7 +210,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       options[key] = value
     }
     const root = resolve(options['--root'] ?? process.cwd())
-    const manifest = JSON.parse(readFileSync(new URL('./affected-manifest.json', import.meta.url)))
+    const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
     const files = options['--revision']
       ? gitRepositoryTests(root, options['--revision'])
       : discoverRepositoryTests(root, manifest)

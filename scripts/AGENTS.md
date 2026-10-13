@@ -144,7 +144,7 @@ operational baselines, and public-site assembly.
   original staging inode, never another builder's output.
 - `pypi-release.py` performs read-only registry reconciliation, staging missing
   distributions and refusing conflicting bytes; it never uploads or rebuilds.
-- `ci/` owns dependency planning, canonical candidate provenance and transfer,
+- `ci/` owns whole-suite inventories, native PR scope, canonical candidate provenance and transfer,
   observed execution evidence, release readiness, and disposable CI-host proof.
 - `generate-unicode-normalization.py` verifies the exact Unicode 15.1 source
   digests before generating Jig's canonical normalization tables and official
@@ -212,7 +212,7 @@ operational baselines, and public-site assembly.
   independent FLOW publication and host-group preflight refusal.
   Controlled registry/API emulators use the test runner's Bun to avoid repeated
   mock interpreter startup; the real publisher still performs its Node checks.
-- `node --test scripts/ci/*.test.mjs` checks conservative selection, artifact
+- `node --test scripts/ci/*.test.mjs` checks complete suite execution, verified native PR scope, artifact
   and run/attempt lineage, fresh qualification, and fail-closed release readiness
   using disposable Git repositories, archives and controlled API responses.
 - `bun test scripts/development-shell.test.ts` exercises the actual shell hook's
@@ -243,5 +243,5 @@ operational baselines, and public-site assembly.
 
 ## Child DOX Index
 
-- [ci/AGENTS.md](ci/AGENTS.md) — Conservative CI planning, canonical candidates,
+- [ci/AGENTS.md](ci/AGENTS.md) — Whole-suite inventories, native PR scope, canonical candidates,
   release readiness, observed proof, disposable Linux hosts and native Macs.

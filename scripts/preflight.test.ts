@@ -3,9 +3,9 @@ import { spawnSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import manifest from './ci/affected-manifest.json'
 import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
 import { discoverRepositoryTests } from './ci/suite-inventory.mjs'
+import manifest from './ci/test-suites.json'
 import {
   compilerEnvironment,
   macosOwnershipSnapshot,
