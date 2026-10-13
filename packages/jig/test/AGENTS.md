@@ -21,6 +21,13 @@ its existing duration when constructed. A plan spread from a completed Run must
 not carry that spent deadline into another fresh owner. Never reset a sealed or
 active Run deadline.
 
+The finite ACP lifecycle crash bound starts at the authenticated peer dispatch,
+immediately before its deliberate signal or exit, and ends when the CLI settles.
+Use the observer's monotonic clock and require an actual, unique dispatch for each
+fault. Admission and materialization remain inside the existing command and case
+budgets; they do not consume the separate twenty-second crash-settlement limit.
+Keep terminal failure, absence of cancellation/deadline expiry and residue checks.
+
 The portable pending-status controller case advances only its observed monotonic
 clock after two mocked reacquisitions, crossing the unchanged 30-second cutoff.
 It verifies the original clock function is restored before durable-state checks

@@ -39,6 +39,7 @@ describe.serial('ordinary packed ACP Agent with a finite resource', () => {
     const release = join(root, 'release')
     const key = 'synthetic-finite-acp-only-key'
     const events: any[] = []
+    const crashDispatchTimes = new Map<string, number>()
     let cancellation: AbortController | undefined
     const before = await cgroups()
     const server = Bun.serve({
@@ -49,6 +50,10 @@ describe.serial('ordinary packed ACP Agent with a finite resource', () => {
         expect(request.headers.get('authorization')).toBe(`Bearer ${key}`)
         const event = (await request.json()) as any
         events.push(event)
+        if (event.scenario === 'signal' || event.scenario === 'exit') {
+          expect(crashDispatchTimes.has(event.scenario)).toBe(false)
+          crashDispatchTimes.set(event.scenario, performance.now())
+        }
         if (event.scenario === 'slow') setTimeout(() => cancellation?.abort(), 100)
         return new Response('recorded')
       },
@@ -152,7 +157,6 @@ describe.serial('ordinary packed ACP Agent with a finite resource', () => {
           required: ['decision'],
           additionalProperties: false,
         }
-        const started = Date.now()
         const code = await main(
           [
             'run',
@@ -167,6 +171,7 @@ describe.serial('ordinary packed ACP Agent with a finite resource', () => {
           ],
           { ...options, signal: cancellation.signal },
         )
+        const settledAt = performance.now()
         const records = stdout
           .trim()
           .split('\n')
@@ -202,7 +207,11 @@ describe.serial('ordinary packed ACP Agent with a finite resource', () => {
           expect(terminal.result.status).toBe('failed')
           if (scenario === 'signal' || scenario === 'exit') {
             expect(cancellation.signal.aborted).toBe(false)
-            expect(Date.now() - started).toBeLessThan(20_000)
+            // The peer records dispatch immediately before injecting its fault.
+            // Admission and materialization precede the crash being measured.
+            const dispatchedAt = crashDispatchTimes.get(scenario)
+            expect(dispatchedAt, scenario).toBeDefined()
+            expect(settledAt - dispatchedAt!, scenario).toBeLessThan(20_000)
             expect(terminal.result.code).not.toBe('DEADLINE_EXCEEDED')
           }
         }
