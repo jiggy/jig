@@ -3,7 +3,12 @@ import { EventEmitter } from 'node:events'
 import { displayViewKey } from '@jigging/display-model'
 import { type Reference, type ViewItem, validateReportingMessage } from '@jigging/reporting'
 import { viewerDetailParts, viewerFrame } from '../../src/presentation/projection.js'
-import { escapeTerminalText, terminalWidth, wrapTerminalText } from '../../src/presentation/text.js'
+import {
+  escapeTerminalText,
+  terminalWidth,
+  truncateTerminalText,
+  wrapTerminalText,
+} from '../../src/presentation/text.js'
 import { callRecordKey, rowRecordKey } from '../../src/presentation/viewer-model.js'
 import { FixtureKeyboard, FixtureModel, waitFor } from '../fixtures.js'
 
@@ -58,6 +63,27 @@ class Input extends EventEmitter {
     return this
   }
 }
+
+test('terminal truncation charges its marker to the supplied cell and byte ceilings', () => {
+  const cases = [
+    ['abcdef', 20, 0, ''],
+    ['abcdef', 20, 1, '.'],
+    ['abcdef', 20, 2, '..'],
+    ['abc', 3, 3, 'abc'],
+    ['🙂', 2, 4, '🙂'],
+    ['🙂', 20, 2, '..'],
+    ['🙂', 1, 4, '.'],
+    ['abcdef', 0, 4096, ''],
+  ] as const
+  for (const [input, columns, bytes, expected] of cases) {
+    const value = truncateTerminalText(input, columns, bytes)
+    expect(value).toBe(expected)
+    expect(terminalWidth(value)).toBeLessThanOrEqual(columns)
+    expect(Buffer.byteLength(value)).toBeLessThanOrEqual(bytes)
+  }
+  expect(truncateTerminalText('abcdef', 4)).toBe('a...')
+  expect(truncateTerminalText('🙂', 2)).toBe('🙂')
+})
 
 test('selection survives unselected retirement and follows preceding surviving visible row', () => {
   const model = new FixtureModel()
