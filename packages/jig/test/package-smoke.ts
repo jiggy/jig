@@ -6,7 +6,6 @@ import {
   readdir,
   readFile,
   realpath,
-  rename,
   rm,
   stat,
   symlink,
@@ -15,6 +14,11 @@ import {
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
+import {
+  checkInstalledDisplay,
+  expectedInstalledFiles,
+  installedRuntime,
+} from './fixtures/installed-display.js'
 import { checkInstalledConversation } from './installed-conversation-adoption.js'
 import { checkInstalledMappedFiles } from './installed-mapped-files.js'
 

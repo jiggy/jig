@@ -45,7 +45,10 @@ function fixture() {
       '{"name":"@jigging/agent-method","dependencies":{"@jigging/flow":"workspace:*"}}',
     'packages/jig/package.json':
       '{"name":"@jigging/jig","dependencies":{"@jigging/agent-method":"workspace:*"}}',
-    'packages/jig/test/lifecycle.test.ts': 'test("cleanup", () => {})',
+    'packages/jig/test/portable/lifecycle.test.ts': 'test("cleanup", () => {})',
+    'packages/jig/test/host/lifecycle.test.ts': 'test("native cleanup",()=>{})',
+    'packages/flow-sdk/test/fixture.test.ts': 'test("protocol",()=>{})',
+    'examples/request-triage/test/fixture.test.ts': 'test("application",()=>{})',
     'packages/jig/src/core.ts': 'export const lifecycle = true',
     'packages/jiggy-flow/pyproject.toml': '[project]\nname = "jiggy-flow"\ndependencies = []\n',
     'packages/jiggy-flow/src/jiggy/flow/runtime.py': 'RUNTIME = 1\n',
@@ -57,7 +60,7 @@ function fixture() {
     'conformance/run-0/python-peer/test_wire.py': 'def test_wire(): pass\n',
     'scripts/ci/tooling.test.mjs': 'test("tooling", () => {})',
     '.github/workflows/linux-host-conformance.yml':
-      'jobs:\n  proof:\n    steps:\n      - run: bun test packages/jig/test/lifecycle.test.ts\n',
+      'jobs:\n  proof:\n    steps:\n      - run: bun test packages/jig/test/portable/lifecycle.test.ts\n',
     'scripts/build-site.sh': '# build both sites\n',
     'scripts/test-release.sh': '# ordinary source gate\n',
     'site/justfile': 'build:\n',

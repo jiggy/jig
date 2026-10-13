@@ -102,7 +102,7 @@ admitted FLOW packages.
 - Optional Codex session retention stays below the ordinary Agent boundary:
   reviewed grants, exact recipient scope, single-use protected history, clean
   native exit, fencing and cleanup precede a new receipt. The opt-in
-  `native-session-restoration.test.ts` uses installed archives and at most two
+  `test/live/native-session-restoration.test.ts` uses installed archives and at most two
   subscription model calls with synthetic input; `JIG_NATIVE_AGENT_RESTORE=1`,
   `JIG_RESTORE_ARCHIVES`, `JIG_CODEX_STARTUP_PATH` and `JIG_RESTORE_MODEL` select
   that explicit test.
@@ -523,14 +523,14 @@ existing cancellation owner.
 
 Renderer/model navigation, hierarchy, preview fencing and maximum-view checks
 belong to their package suites; see their owning `AGENTS.md` files. Jig's
-`test/dashboard.test.ts`, `test/cli-tui-input.test.ts`,
-`test/workspace-progress.test.ts`, `test/cli-display-observations.test.ts`,
-`test/cli-web*.test.ts` and installed tests retain host admission, attribution,
+`test/portable/dashboard.test.ts`, `test/portable/cli-tui-input.test.ts`,
+`test/portable/workspace-progress.test.ts`, `test/portable/cli-display-observations.test.ts`,
+`test/portable/cli-web*.test.ts` and installed tests retain host admission, attribution,
 receipt, transport, lifetime, terminal restoration, JSON and immutable-capture
 proof. Frozen standalone package consumers and frozen
 installed Jig runs are distinct gates; source mocks and design approval qualify
 neither installed behavior nor newcomer usability.
-`test/cli-review-agent-setup.test.ts` and `test/project-resource-qualification.test.ts`
+`test/portable/cli-review-agent-setup.test.ts` and `test/portable/project-resource-qualification.test.ts`
 check bounded read-only setup facts, shared recipients, preserved policy, honest
 captured locations and authoritative refusal despite report omission. CLI checks
 refusal before avoidable target execution preparation, unchanged success and apply,
@@ -554,25 +554,27 @@ buffer release and output failure independently of recorded execution status.
 - Package/project path NFC uses pinned Unicode 15.1 canonical decomposition,
   combining classes and composition data, independently of host ICU. Keep
   case folding and normalization at the same contract version. The official
-  normalization conformance vectors in `test/normalization-15.1.test.ts` and
+  normalization conformance vectors in `test/portable/normalization-15.1.test.ts` and
   path/workspace-preparation tests verify this boundary. Regenerate tables and
   vectors with `scripts/generate-unicode-normalization.py` and its exact hashed
   Unicode 15.1 inputs; the generator refuses changed data before writing.
 
-- `bun test packages/jig`
+- `just jig::test`
 - `just jig::check`
 - Changes to Mac guardian admission, readiness, cancellation, resource accounting
-  or diagnostic transport require the complete `macos-guardian*.test.ts` group with
-  `JIG_MACOS_PROCESS_TEST=1` on a qualified Mac. Direct ordinary `bun test` skips
-  native cases; `jig::check` adds the native regression pass. Run existing
+  or diagnostic transport require the complete `test/macos/macos-guardian*.test.ts`
+  group with `JIG_MACOS_PROCESS_TEST=1` on a qualified Mac. Ordinary source
+  execution selects portable suites; native suites fail missing
+  prerequisites. `jig::check` adds the native regression pass. Run existing
   consumers alongside new injected cases; verify
   typed preparation causes together with fenced completion and cleanup.
   Guardian storage modes register distinct sequential tests with fresh compiled
   fixtures, owners, tokens and mounts. Each mode retains its own 150-second test
   timer and unchanged compilation, operation and recovery limits; do not combine
   independent modes under a shared timer or reuse successful execution evidence.
-  Resource-accounting changes also require `macos-execution.test.ts` and
-  `macos-process-controls.test.ts` to preserve native enforcement and ownership.
+  Resource-accounting changes also require `test/macos/macos-execution.test.ts`
+  and `test/macos/macos-process-controls.test.ts` to preserve native enforcement
+  and ownership.
   The raw-launcher proof anchors its work deadline before compilation/setup and
   reserves time for exact launchd cleanup inside the outer test deadline. Bound
   each native exit/control-end join; preserve failure and per-mode phase/stderr
@@ -584,39 +586,42 @@ buffer release and output failure independently of recorded execution status.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
   uses retained local text, without a Bread checkout or network lookup.
-  Its `test/package-smoke.ts` hides the installed Core dependency and uses
-  `test/fixtures/installed-tui-refusal.py` with real terminal stdin/stderr to
-  require a nonzero `JIG_TUI_UNAVAILABLE` refusal before dispatch, the no-Flow
-  explanation, no alternate-screen entry and unchanged terminal attributes,
-  measured by a retained PTY session owner before that session exits. This Run
-  proof requires Mac or the provisioned `JIG_LINUX_ROOTLESS_HOSTILE=1` host;
-  ordinary Linux source CI reports it skipped because delegation prerequisites
-  precede renderer preparation.
-  The same hidden-Core phase unconditionally checks help, public authoring and
-  embedded browser inspection independently of native support. Positive installed TUI navigation,
-  captured previews and restoration require separate frozen-candidate evidence
-  on an available qualified native host; refusal alone cannot qualify them.
+  Its `test/package-smoke.ts` shares registration-free installed display checks
+  in `test/fixtures/installed-display.ts`. Hidden Core requires a nonzero
+  `JIG_TUI_UNAVAILABLE` Run refusal before dispatch, the no-Flow explanation,
+  no alternate-screen entry and unchanged terminal attributes on Mac or the
+  provisioned `JIG_LINUX_ROOTLESS_HOSTILE=1` host. The retained PTY session owner
+  measures restoration before exit. Ordinary Linux source CI proves only the
+  applicable non-Run checks because delegation precedes renderer preparation;
+  that omission grants no host proof. The compact installed-display witness
+  keeps the helper's strict default and refuses a missing Run-proof profile.
+  Help, public authoring and embedded saved browser inspection remain
+  unconditional under hidden Core. After restoration, positive saved TUI
+  navigation checks immutable preview, fresh Stay-default exit confirmation,
+  rendered Leave selection before Enter, joined closure and exact screen/input
+  restoration. Refusal alone cannot qualify these positive behaviors.
 - Trust-boundary changes require the provisioned host-conformance workflow.
-- Mac Codex preference qualification uses `macos-preferences-observer.test.ts`
-  and `macos-preferences-boundary.test.ts` with `JIG_MACOS_PROCESS_TEST=1`.
+- Mac Codex preference qualification uses
+  `test/macos-23E224/macos-preferences-observer.test.ts` and
+  `test/macos/macos-preferences-boundary.test.ts` with `JIG_MACOS_PROCESS_TEST=1`.
   The actual-observer positive and injected-policy cases require native Intel
   23E224 without configured Codex MDM. They prove closed decisions, inherited
   sandbox refusal and parent-loss expiry, not installed MDM consumption. The
   raw boundary test checks populated synthetic preferences, read-only counters,
   inherited rights and cleanup. Genuine startup is qualified separately by
-  `native-agent-startup.test.ts`; other Mac profiles must explicitly refuse
+  `test/startup/native-agent-startup.test.ts`; other Mac profiles must explicitly refuse
   Codex selection while retaining their independent client checks.
-- CLI acceptance: `bun test packages/jig/test/cli.test.ts packages/jig/test/cli-presentation.test.ts packages/jig/test/cli-run-presentation.test.ts packages/jig/test/cli-value-presentation.test.ts packages/jig/test/cli-output.test.ts packages/jig/test/project-plan-review.test.ts`.
+- CLI acceptance: `bun test packages/jig/test/portable/cli.test.ts packages/jig/test/portable/cli-presentation.test.ts packages/jig/test/portable/cli-run-presentation.test.ts packages/jig/test/portable/cli-value-presentation.test.ts packages/jig/test/portable/cli-output.test.ts packages/jig/test/portable/project-plan-review.test.ts`.
   Check rendered success, failure, waits, cancellation, uncertain cleanup,
   plain/redirected output, narrow widths, and light/dark terminal palettes.
   Preserve byte-exact machine records and complete changed review policy.
-- `test/markdown-worker.test.ts` checks installed Markdown's Agent-admission
+- `test/host/markdown-worker.test.ts` checks installed Markdown's Agent-admission
   requirement and Agent-free code execution with the complete packed FLOW SDK
   in an ordinary declared workspace. It honors
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`; otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics
   under the selected temporary root for investigation.
-- `test/package-provider-host.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1` or
+- `test/host/installed-*.test.ts` and `test/host/package-provider-observation.test.ts`, under `JIG_LINUX_ROOTLESS_HOSTILE=1` or
   `JIG_MACOS_PROCESS_TEST=1`,
   exercises public installed review, inspection and direct/Binding/child invocation
   of an ordinary declared workspace dependency, including admitted-byte pinning.
@@ -641,9 +646,13 @@ buffer release and output failure independently of recorded execution status.
   result packets, complete job and acceptance evidence, and exact delivered
   file inventories, sizes and hashes. The heavy automatic plain run likewise
   verifies its own packet, both accepted repairs and all nine delivered files.
-  Clean automatic display requires all three final summaries; LAGGED freezes
-  only the known views actually accepted, with its exact incomplete explanation.
-  Other failures and fabricated clean endings refuse qualification.
+  Automatic plain display selects the first Jobs root purpose and prints only
+  changed root meaning at settlement, with exact ended/provisional context.
+  Declared LAGGED may retain no root or only its known observed Jobs meaning,
+  with the exact incomplete/provisional explanation; other failures, extra
+  settlement claims and fabricated clean endings refuse qualification.
+  Accepted Checks and Patches remain model evidence rather than additional
+  plain summaries.
   A separate small cold installed consumer requires complete clean reception
   through both automatic display and explicit NDJSON, and declares producer loss
   alongside successful work and verified delivery. Deterministic application tests
@@ -717,8 +726,8 @@ buffer release and output failure independently of recorded execution status.
 
 ## Child DOX Index
 
-- [test/fixtures/incident-brief/AGENTS.md](test/fixtures/incident-brief/AGENTS.md) —
-  Private conversation handoff and sibling settlement evidence.
+- [test/AGENTS.md](test/AGENTS.md) — Whole-file suite applicability, installed witnesses, live prerequisites and evidence.
+
 - [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
   Mac pre-exec boundary; installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,

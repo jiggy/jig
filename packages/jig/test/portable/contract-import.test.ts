@@ -1,0 +1,465 @@
+const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
+
+import { afterEach, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { REPORTING_CONTRACT } from '@jigging/reporting'
+import { parseChannelContract } from '../../src/channel-contract.js'
+import { main, privateCliRequiresHost } from '../../src/cli.js'
+import { importContract } from '../../src/internal/contract-import.js'
+import { JIG_STANDARD_CONTRACTS } from '../../src/internal/standard-contracts.js'
+import { parseInvocationContract } from '../../src/invocation-contract.js'
+import { checkPackageDirectory } from '../../src/package/inspect.js'
+import { createFlow, createProject } from '../../src/project-init.js'
+
+const roots: string[] = []
+const agreement = JSON.stringify({
+  $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
+  id: 'https://example.org/events',
+  version: '1.0.0',
+  semantics: 'Selected progress.',
+  item: true,
+})
+const descriptor = JSON.stringify({
+  $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+  id: 'https://example.org/work',
+  version: '1.0.0',
+  channels: { events: { direction: 'send', contract: './contracts/events.json' } },
+})
+async function fixture() {
+  const root = await mkdtemp(join(tmpdir(), 'jig-contract-import-'))
+  roots.push(root)
+  await mkdir(join(root, 'source/contracts'), { recursive: true })
+  await writeFile(join(root, 'source/FLOW.contract.json'), descriptor)
+  await writeFile(join(root, 'source/contracts/events.json'), agreement)
+  await writeFile(join(root, 'source/FLOW.ts'), 'throw new Error("must not execute")')
+  await symlink('/does-not-exist', join(root, 'source/unrelated'))
+  return root
+}
+afterEach(async () => {
+  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
+})
+test('standalone channel imports preserve exact bytes without dummy invocations', async () => {
+  const root = await fixture()
+  const result = await importContract(
+    join(root, 'source/contracts/events.json'),
+    join(root, 'standalone'),
+  )
+  expect(result).toMatchObject({
+    kind: 'channel',
+    files: 1,
+    digest: parseChannelContract(Buffer.from(agreement)).digest,
+  })
+  expect(await readFile(join(root, 'standalone/events.json'), 'utf8')).toBe(agreement)
+})
+test('Jig standard import is offline, exact and licensed; collision never replaces files', async () => {
+  const root = await fixture()
+  let output = ''
+  expect(
+    await main(['import-contract', 'jig:reporting', 'updates'], {
+      currentDirectory: root,
+      writeOutput(text) {
+        output += text
+      },
+      host: {
+        async acquire() {
+          throw new Error('must not acquire host')
+        },
+      },
+    }),
+  ).toBe(0)
+  const bytes = await readFile(join(root, 'updates/reporting.json'))
+  expect(parseChannelContract(bytes).digest).toBe(REPORTING_CONTRACT.digest)
+  expect(
+    bytes.equals(await readFile(new URL('../../reporting/src/reporting.json', suiteTestUrl))),
+  ).toBe(true)
+  expect(await readFile(join(root, 'updates/LICENSE'), 'utf8')).toContain(
+    'Mozilla Public License Version 2.0',
+  )
+  expect(output).toContain('optional channel declaration')
+  await expect(importContract('jig:reporting', join(root, 'updates'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_EXISTS',
+  })
+  expect((await readdir(join(root, 'updates'))).sort()).toEqual(['LICENSE', 'reporting.json'])
+  await expect(importContract('jig:unknown', join(root, 'unknown'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_SOURCE',
+  })
+})
+test('one offline catalog covers Jig invocation and channel agreements with exact closures', async () => {
+  const root = await fixture()
+  let catalog = ''
+  expect(privateCliRequiresHost(['import-contract', '--list'])).toBe(false)
+  expect(
+    await main(['import-contract', '--list'], {
+      currentDirectory: root,
+      writeOutput: (text) => {
+        catalog += text
+      },
+      host: {
+        async acquire() {
+          throw new Error('Catalog must not acquire a host')
+        },
+      },
+    }),
+  ).toBe(0)
+  for (const entry of JIG_STANDARD_CONTRACTS) {
+    expect(catalog).toContain(`jig:${entry.name} (${entry.kind})`)
+    const imported = await importContract(`jig:${entry.name}`, join(root, entry.name))
+    expect(imported.digest).toBe(entry.digest)
+    expect(imported.kind).toBe(entry.kind)
+    expect(await readFile(join(root, entry.name, 'LICENSE'), 'utf8')).not.toBe('')
+    const source =
+      entry.name === 'reporting'
+        ? new URL('../../reporting/src/reporting.json', suiteTestUrl)
+        : entry.name === 'acp-public-updates'
+          ? new URL('../../../docs/jig/spec/contracts/acp-public-updates.json', suiteTestUrl)
+          : new URL(`../../../docs/jig/spec/contracts/${entry.name}/contract.json`, suiteTestUrl)
+    expect(await readFile(imported.descriptor)).toEqual(await readFile(source))
+    if (entry.name === 'agent-run') {
+      expect(imported.files).toBe(5)
+      expect(await readFile(join(root, entry.name, 'contracts/agent-commands.json'))).toEqual(
+        await readFile(
+          new URL(
+            '../../../docs/jig/spec/contracts/agent-run/contracts/agent-commands.json',
+            suiteTestUrl,
+          ),
+        ),
+      )
+    }
+  }
+})
+test('an altered installed agreement is rejected before writing a destination', async () => {
+  const root = await fixture()
+  await mkdir(join(root, 'standard/reporting'), { recursive: true })
+  const profile = JSON.parse(
+    await readFile(new URL('../../reporting/src/reporting.json', suiteTestUrl), 'utf8'),
+  )
+  profile.semantics += ' altered'
+  await writeFile(join(root, 'standard/reporting/reporting.json'), JSON.stringify(profile))
+  await writeFile(join(root, 'standard/reporting/LICENSE'), 'retained license')
+  await expect(
+    importContract('jig:reporting', join(root, 'copied'), undefined, join(root, 'standard')),
+  ).rejects.toMatchObject({ code: 'CONTRACT_IMPORT_SOURCE' })
+  expect(await readdir(root)).toEqual(['source', 'standard'])
+})
+test('new wires selected complete contract closures as ordinary source without evaluating code', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await writeFile(join(project, 'jig.ts'), 'throw new Error("must not evaluate")')
+  await mkdir(join(project, 'node_modules/@example'), { recursive: true })
+  await symlink(join(root, 'source'), join(project, 'node_modules/@example/work'))
+  let output = ''
+  expect(
+    await main(
+      [
+        'new',
+        'workshop',
+        '--use',
+        'draft=npm:@example/work',
+        '--use',
+        'review=../source/FLOW.contract.json',
+      ],
+      {
+        currentDirectory: project,
+        writeOutput: (text) => {
+          output += text
+        },
+        host: {
+          async acquire() {
+            throw new Error('must not acquire host')
+          },
+        },
+      },
+    ),
+  ).toBe(0)
+  expect(output).toContain('Created Flow')
+  const flow = join(project, 'flows/workshop')
+  expect(JSON.parse(await readFile(join(flow, 'FLOW.meta.json'), 'utf8')).uses).toEqual({
+    draft: { contract: './contracts/draft/FLOW.contract.json' },
+    review: { contract: './contracts/review/FLOW.contract.json' },
+  })
+  for (const slot of ['draft', 'review']) {
+    expect(await readFile(join(flow, `contracts/${slot}/FLOW.contract.json`), 'utf8')).toBe(
+      descriptor,
+    )
+    expect(await readFile(join(flow, `contracts/${slot}/contracts/events.json`), 'utf8')).toBe(
+      agreement,
+    )
+    expect((await readdir(join(flow, `contracts/${slot}`))).sort()).toEqual([
+      'FLOW.contract.json',
+      'contracts',
+    ])
+  }
+  expect((await checkPackageDirectory(flow)).entrypoint.path).toBe('FLOW.ts')
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+  expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('must not evaluate')
+  expect(await readdir(join(project, 'flows'))).toEqual(['workshop'])
+})
+test('new removes unpublished source if a later contract fails; collisions preserve existing source', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await expect(
+    createFlow(project, 'workshop', [
+      { slot: 'draft', source: '../source/FLOW.contract.json' },
+      { slot: 'review', source: 'missing.json' },
+    ]),
+  ).rejects.toThrow('package has no missing.json')
+  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+  await createFlow(project, 'workshop')
+  const before = await readFile(join(project, 'flows/workshop/FLOW.meta.json'), 'utf8')
+  await expect(
+    createFlow(project, 'workshop', [{ slot: 'draft', source: '../source/FLOW.contract.json' }]),
+  ).rejects.toMatchObject({ code: 'JIG_NEW_EXISTS' })
+  expect(await readFile(join(project, 'flows/workshop/FLOW.meta.json'), 'utf8')).toBe(before)
+})
+for (const [suiteCaseIndex, suiteCaseValue] of [
+  { args: ['new', 'worker', '--use'], exit: 2 },
+  { args: ['new', 'worker', '--use', 'agent'], exit: 2 },
+  { args: ['new', 'worker', '--use', 'agent='], exit: 2 },
+  { args: ['new', 'worker', '--uses', 'agent=source.json'], exit: 2 },
+  { args: ['new', 'worker', '--use', '../escape=source.json'], exit: 1 },
+  { args: ['new', 'worker', '--use', 'agent\n=source.json'], exit: 1 },
+  { args: ['new', 'worker\n'], exit: 1 },
+  { args: ['new', 'worker', '--use', 'agent=source.json', '--use', 'agent=other.json'], exit: 1 },
+].entries()) {
+  test('invalid new grammar writes nothing: %j' + ` (case ${suiteCaseIndex + 1})`, () =>
+    Reflect.apply(
+      async ({ args, exit }) => {
+        const root = await fixture()
+        const project = join(root, 'project')
+        await createProject(project, undefined, true)
+        expect(
+          await main(args, {
+            currentDirectory: project,
+            writeError() {},
+            host: {
+              async acquire() {
+                throw new Error('must not acquire host')
+              },
+            },
+          }),
+        ).toBe(exit)
+        expect(await readdir(join(project, 'flows'))).toEqual([])
+        expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+      },
+      undefined,
+      Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
+    ),
+  )
+}
+test('new pre-cancellation creates nothing and does not acquire execution authority', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  await expect(
+    createFlow(
+      project,
+      'worker',
+      [{ slot: 'agent', source: '../source/FLOW.contract.json' }],
+      AbortSignal.abort(),
+    ),
+  ).rejects.toThrow()
+  expect(await readdir(join(project, 'flows'))).toEqual([])
+  expect(privateCliRequiresHost(['new', 'worker', '--use', 'agent=source.json'])).toBe(false)
+})
+test('concurrent new publication never replaces the winning complete Flow', async () => {
+  const root = await fixture()
+  const project = join(root, 'project')
+  await createProject(project, undefined, true)
+  const results = await Promise.allSettled([
+    createFlow(project, 'worker', [{ slot: 'first', source: '../source/FLOW.contract.json' }]),
+    createFlow(project, 'worker', [{ slot: 'second', source: '../source/FLOW.contract.json' }]),
+  ])
+  expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+  expect(results.find((result) => result.status === 'rejected')).toMatchObject({
+    reason: { code: 'JIG_NEW_EXISTS' },
+  })
+  const flow = join(project, 'flows/worker')
+  const metadata = JSON.parse(await readFile(join(flow, 'FLOW.meta.json'), 'utf8'))
+  expect(Object.keys(metadata.uses)).toHaveLength(1)
+  expect(await readdir(join(flow, 'contracts'))).toEqual(Object.keys(metadata.uses))
+  expect((await checkPackageDirectory(flow)).entrypoint.path).toBe('FLOW.ts')
+  expect((await readdir(project)).filter((name) => name.startsWith('.jig-new-'))).toEqual([])
+})
+test('imports an exact complete closure from an installed-style symlink without code or unrelated files', async () => {
+  const root = await fixture()
+  await symlink('source', join(root, 'installed'))
+  const result = await importContract(
+    join(root, 'installed/FLOW.contract.json'),
+    join(root, 'copied'),
+  )
+  expect((await readdir(join(root, 'copied'))).sort()).toEqual(['FLOW.contract.json', 'contracts'])
+  expect(await readFile(join(root, 'copied/FLOW.contract.json'), 'utf8')).toBe(descriptor)
+  expect(await readFile(join(root, 'copied/contracts/events.json'), 'utf8')).toBe(agreement)
+  expect(result).toMatchObject({
+    files: 2,
+    digest: parseInvocationContract(
+      Buffer.from(descriptor),
+      'FLOW.contract.json',
+      new Map([['contracts/events.json', Buffer.from(agreement)]]),
+    ).digest,
+  })
+})
+for (const [suiteCaseIndex, suiteCaseValue] of ['project root', 'member-local'].entries()) {
+  test(
+    'npm selector imports from a %s installation without a physical path' +
+      ` (case ${suiteCaseIndex + 1})`,
+    () =>
+      Reflect.apply(
+        async (layout) => {
+          const root = await fixture()
+          const member = join(root, 'flows/worker')
+          const installedAt = layout === 'project root' ? root : member
+          await mkdir(join(member, 'contracts'), { recursive: true })
+          await mkdir(join(installedAt, 'node_modules/@jigging'), { recursive: true })
+          await symlink(
+            join(root, 'source'),
+            join(installedAt, 'node_modules/@jigging/agent-method'),
+          )
+          let output = ''
+          const code = await main(
+            ['import-contract', 'npm:@jigging/agent-method', 'flows/worker/contracts/agent-run'],
+            {
+              currentDirectory: root,
+              writeOutput: (text) => {
+                output += text
+              },
+              host: {
+                async acquire() {
+                  throw new Error('must not acquire host')
+                },
+              },
+            },
+          )
+          expect(code).toBe(0)
+          expect(output).toContain('Imported 2 contract files')
+          expect(
+            await readFile(join(member, 'contracts/agent-run/FLOW.contract.json'), 'utf8'),
+          ).toBe(descriptor)
+          expect(
+            await readFile(join(member, 'contracts/agent-run/contracts/events.json'), 'utf8'),
+          ).toBe(agreement)
+        },
+        undefined,
+        Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
+      ),
+  )
+}
+test('nearest installed package wins and a missing descriptor does not fall back', async () => {
+  const root = await fixture()
+  const member = join(root, 'flows/worker')
+  await mkdir(join(member, 'contracts'), { recursive: true })
+  await mkdir(join(root, 'node_modules/@jigging'), { recursive: true })
+  await symlink(join(root, 'source'), join(root, 'node_modules/@jigging/agent-method'))
+  await mkdir(join(member, 'node_modules/@jigging/agent-method'), { recursive: true })
+  await expect(
+    importContract('npm:@jigging/agent-method', join(member, 'contracts/agent-run')),
+  ).rejects.toThrow('package has no FLOW.contract.json')
+  expect(await readdir(join(member, 'contracts'))).toEqual([])
+})
+test('missing installed package and malformed selectors remain actionable', async () => {
+  const root = await fixture()
+  await expect(importContract('npm:@jigging/missing', join(root, 'copied'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_PACKAGE',
+    path: 'npm:@jigging/missing',
+  })
+  await expect(importContract('npm:../source', join(root, 'copied'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_SOURCE',
+  })
+  expect(await readdir(root)).toEqual(['source'])
+})
+test('collisions never replace an existing destination, including an empty directory', async () => {
+  const root = await fixture()
+  await mkdir(join(root, 'copied'))
+  await expect(
+    importContract(join(root, 'source/FLOW.contract.json'), join(root, 'copied')),
+  ).rejects.toMatchObject({ code: 'CONTRACT_IMPORT_EXISTS' })
+  expect(await readdir(join(root, 'copied'))).toEqual([])
+  expect((await readdir(root)).filter((name) => name.startsWith('.jig-contract-'))).toEqual([])
+})
+for (const invalid of ['missing', 'symlink', 'schema', 'traversal']) {
+  test(`invalid ${invalid} closure leaves no destination`, async () => {
+    const root = await fixture()
+    const path = join(root, 'source/contracts/events.json')
+    if (invalid === 'missing' || invalid === 'symlink') await rm(path)
+    if (invalid === 'symlink') await symlink('../FLOW.contract.json', path)
+    if (invalid === 'schema') await writeFile(path, '{}')
+    if (invalid === 'traversal')
+      await writeFile(
+        join(root, 'source/FLOW.contract.json'),
+        descriptor.replace('./contracts/events.json', '../outside.json'),
+      )
+    await expect(
+      importContract(join(root, 'source/FLOW.contract.json'), join(root, 'copied')),
+    ).rejects.toThrow()
+    expect(await readdir(root)).toEqual(['source'])
+  })
+}
+test('pre-cancelled imports create nothing and the CLI needs no execution host', async () => {
+  const root = await fixture()
+  await expect(
+    importContract(
+      join(root, 'source/FLOW.contract.json'),
+      join(root, 'copied'),
+      AbortSignal.abort(),
+    ),
+  ).rejects.toThrow()
+  expect(await readdir(root)).toEqual(['source'])
+  expect(privateCliRequiresHost(['import-contract', 'a.json', 'new'])).toBe(false)
+  let output = ''
+  const code = await main(['import-contract', 'source/FLOW.contract.json', 'copied'], {
+    currentDirectory: root,
+    writeOutput: (text) => {
+      output += text
+    },
+    host: {
+      async acquire() {
+        throw new Error('must not acquire host')
+      },
+    },
+  })
+  expect(code).toBe(0)
+  expect(output).toContain('Imported 2 contract files')
+})
+test('unreadable source and destination errors identify the responsible location', async () => {
+  const root = await fixture()
+  const missing = join(root, 'missing/FLOW.contract.json')
+  await expect(importContract(missing, join(root, 'copied'))).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_UNAVAILABLE',
+    path: missing,
+    message: expect.stringContaining('source bundle'),
+  })
+  const destination = join(root, 'missing/copied')
+  await expect(
+    importContract(join(root, 'source/FLOW.contract.json'), destination),
+  ).rejects.toMatchObject({
+    code: 'CONTRACT_IMPORT_UNAVAILABLE',
+    path: destination,
+    message: expect.stringContaining('destination'),
+  })
+  expect(await readdir(root)).toEqual(['source'])
+})
+test('CLI import errors show escaped locations without acquiring a host', async () => {
+  const root = await fixture()
+  let diagnostics = ''
+  const code = await main(['import-contract', 'missing\u001b/FLOW.contract.json', 'copied'], {
+    currentDirectory: root,
+    writeError: (text) => {
+      diagnostics += text
+    },
+    host: {
+      async acquire() {
+        throw new Error('must not acquire host')
+      },
+    },
+  })
+  expect(code).toBe(2)
+  expect(diagnostics).toContain('Location:')
+  expect(diagnostics).toContain('missing\\u001b/FLOW.contract.json')
+  expect(diagnostics).toContain('existing descriptor file')
+  expect(diagnostics).not.toContain('\u001b')
+})

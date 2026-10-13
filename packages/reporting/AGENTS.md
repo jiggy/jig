@@ -46,6 +46,8 @@ and must preserve the profile's byte accounting in both runtimes.
 `just build`, `bun test`, packed Node consumer, and the matching Python publisher
 must establish lifecycle, identity and boundedness separately. Public availability
 must state the tested runtimes; approval of a design is not qualification.
+Parameterized source cases register distinct names so whole-file CI reports
+can reject duplicate execution records without name or line exception tables.
 
 The final best-effort drain allows 4000 ms from body exit; individual send wait
 remains 500 ms. Drained/unwired scopes add no waiting period. Neither allowance

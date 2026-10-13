@@ -56,6 +56,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   the Agent/Jig group additionally requires same-revision host and native gates.
   Both groups use the isolated trusted publisher in `npm-publish.yml`. First
   publication requires each package's npm setup.
+  Installed FLOW/Agent/ACP qualification installs its required tooling without
+  building Jig. Only Jig's candidate builds its source-test workspace. Its CI
+  receipt records standalone display and packed CLI smokes plus ordinary local
+  and global npm checks; operational and hostile baselines execute once in
+  Linux's installed-evidence shard and remain required for host publication.
 - Before any npm mutation, inspect every archive, exact registry version and
   channel tag in the selected release group. Existing versions require byte identity even if a
   newer tag exists; absent older versions are superseded without publication,
@@ -69,10 +74,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - CI, Linux and hosted Mac always plan each PR; runner allocation follows the
   repository-owned conservative policy instead of workflow path filters.
   `JIG_CI_SELECTION_MODE` defaults to `shadow`: proposed exclusions are retained
-  while every existing target executes freshly. `active` allows only public site
-  assets and isolated Python implementation/tests; Python retains the full source
-  gate. Shared, unknown, build, harness, contract, license, pricing and bundled
-  web changes select full work. `JIG_CI_FORCE_FULL=true` overrides exclusions.
+  while every existing target executes freshly. `active` allows bounded
+  model/web changes and reviewed pure test-only inputs to
+  select the portable source gate and compact real installed witnesses on Linux,
+  Intel Mac and Apple Silicon Mac. Python-only changes select protocol and Python
+  source stages; public site assets select their site. Four source targets share
+  one workspace/job. Unknown, shared, authority, runtime, TUI native/input, build,
+  harness, contract, license and pricing changes select full work.
+  `JIG_CI_FORCE_FULL=true` overrides exclusions.
   Active PR selection deterministically samples about 20% of PR head revisions
   for full fresh execution. CI and both host workflows use the same verified
   PR head and reviewed hash policy, retaining the narrower proposal for audit
@@ -85,9 +94,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Sampled PR and weekly Sunday full audits supplement full main checks; include
   their cost when measuring savings. Do not cache passing results or
   native/consumer execution.
-- Model and web/TUI display packages enter the Jig source-test inventories and
-  frozen standalone artifact gates. Their JavaScript/assets are bundled into
-  Jig; the protected publisher's package selection is unchanged.
+- Compact witness jobs use one Linux and one runner per Mac architecture,
+  fresh canonical archives, actual installed display/observation checks and
+  distinct partial execution evidence. They never emit full host qualification
+  receipts. Full/audit runs omit these redundant partial jobs.
+- Model and web/TUI display packages enter dependency ownership, source and host
+  test inventories, and frozen standalone artifact gates. Their JavaScript/assets
+  are bundled into Jig; protected publisher package selection remains unchanged.
 - Jig GitHub release notes link the matching tagged
   source archive and build instructions; npm remains the runnable distribution.
 - Python publication qualifies the exact retained wheel/sdist on its supported
@@ -122,9 +135,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   aggregate `rootless-linux` check; a skipped, cancelled, or failed shard must
   prevent that aggregate from succeeding.
 - Linux package-lifecycle runs preparation, retained progress, finite ACP,
-  Markdown and public workspace-dependency proof. Its packed dependency-reuse
-  case runs once in its dedicated step; the remaining provider cases use the
-  complementary name pattern. Installed-evidence runs complete packed CLI
+  Markdown and public workspace-dependency proof in whole physical suite files.
+  The shared catalog assigns each file once across the three source shards;
+  no test-name filter or skipped case supplies passing evidence.
+  Installed-evidence runs complete packed CLI
   composition, operational and hostile baselines on a separate proof host,
   plus standalone display consumers against the frozen archives. Supply an
   absolute `FLOW_NODE` for the model/browser consumers' independent Node checks.
@@ -149,8 +163,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Build the current FLOW SDK before host fixtures that exercise SDK-authored
   Flows; a Jig-only installation does not produce the SDK's generated output.
 - Host conformance includes Agent method and contract-authoring source changes.
-  Consume the built SDK, reporting, HTTP Agent, ACP Agent, display model/web/TUI
-  and Jig archives from the canonical producer. Pass `AGENT_METHOD_PACKAGE_ARCHIVE` and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
+  Consume the built SDK, HTTP Agent, ACP Agent, reporting, display model/web/TUI
+  and Jig archives from the canonical producer. Pass `AGENT_METHOD_PACKAGE_ARCHIVE`
+  and `AGENT_ACP_PACKAGE_ARCHIVE` to lifecycle tests and the Jig/SDK
   archives to installed Markdown tests across the provisioned host boundary;
   verify the same archive hashes afterward. Jig's packer supplies the complete
   private authoring closure. Agent source rebuilds use ordinary declared
@@ -171,8 +186,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Each isolated shard checks the exact kernel/build, native Bun,
   process prerequisites, ordinary build, frozen archive identity and ownership
   residue. The deterministic test plan covers every discovered Jig and display test file;
-  it partitions the long root Agent lifecycle and package-provider files by
-  disjoint, exhaustive name groups and balances them with all other files.
+  it balances physical lifecycle/provider suites with all other applicable files.
   Tests run in fresh, sequential per-group Bun processes inside each host.
   One shard per architecture additionally checks genuine pinned clients offline,
   requiring Codex preference-profile refusal on 24G830 while Claude and Pi start,
@@ -182,7 +196,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   require exact-revision success markers, matching retained test plans and
   complete successful JUnit reports from every selected shard; prerequisite
   success alone is insufficient. Their retained summaries separate executed
-  cases from filtered/platform/opt-in skips, and runner wait from job execution.
+  cases with zero skipped or filtered registrations, and runner wait from job execution.
   Read-only acquisition and aggregate jobs receive `actions: read` to verify
   provenance or retrieve current-attempt timing; unavailable timing cannot
   qualify or reject proof.

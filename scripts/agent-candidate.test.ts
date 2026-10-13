@@ -8,6 +8,71 @@ import { join, resolve } from 'node:path'
 const root = resolve(import.meta.dir, '..')
 // Bun 1.3 parses YAML's unquoted `on` as a boolean; Bun 1.4 preserves its name.
 const workflowTriggers = (workflow: any) => workflow.on ?? workflow.true
+
+// Execute the workflow's real source-derived planner against a small committed
+// role tree. An editable checkout or a canned command list cannot prove that
+// the aggregate and source shards agree on their exact pinned inventory.
+async function linuxCommandFixture(workflow: any) {
+  const directory = await mkdtemp(join(tmpdir(), 'linux-command-plan-'))
+  const files = [
+    'packages/jig/test/linux-host/linux-rootless-delegation-hostile.test.ts',
+    'packages/jig/test/linux/linux-rootless-run.test.ts',
+    'packages/jig/test/host/root-agent-composition.test.ts',
+    'packages/jig/test/host/installed-software-factory.test.ts',
+    'packages/jig/test/host/package-provider-observation.test.ts',
+    'packages/jig/test/host/markdown-worker.test.ts',
+    'packages/display-model/test/one.test.ts',
+    'packages/display-web/test/one.test.ts',
+    'packages/display-tui/test/one.test.ts',
+  ]
+  try {
+    for (const file of files) {
+      await mkdir(join(directory, file, '..'), { recursive: true })
+      await writeFile(join(directory, file), '// Source inventory fixture.\n')
+    }
+    await mkdir(join(directory, 'scripts/ci'), { recursive: true })
+    for (const file of ['suite-inventory.mjs', 'affected-manifest.json'])
+      await copyFile(join(root, 'scripts/ci', file), join(directory, 'scripts/ci', file))
+    for (const args of [
+      ['init', '--quiet'],
+      ['add', '.'],
+      [
+        '-c',
+        'commit.gpgsign=false',
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'commit',
+        '--quiet',
+        '-m',
+        'Pinned Linux command fixture',
+      ],
+    ]) {
+      const result = spawnSync('git', args, { cwd: directory, encoding: 'utf8' })
+      expect(result.status, result.stderr).toBe(0)
+    }
+    const revision = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: directory, encoding: 'utf8' })
+    expect(revision.status, revision.stderr).toBe(0)
+    const sha = revision.stdout.trim()
+    const node = Bun.which('node')
+    if (!node) throw new Error('Linux workflow fixture requires genuine Node')
+    const planned = spawnSync(
+      node,
+      ['--input-type=module', '-e', workflow.env.LINUX_COMMAND_PLANNER],
+      {
+        cwd: directory,
+        env: { ...process.env, GITHUB_SHA: sha },
+        encoding: 'utf8',
+      },
+    )
+    expect(planned.status, planned.stderr).toBe(0)
+    return { directory, sha, files: files.sort(), commands: JSON.parse(planned.stdout) }
+  } catch (error) {
+    await rm(directory, { recursive: true, force: true })
+    throw error
+  }
+}
 test('the source gate refuses missing prerequisites before starting builds', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'source-gate-preflight-'))
   const node = Bun.which('node')
@@ -26,8 +91,8 @@ test('the source gate refuses missing prerequisites before starting builds', asy
       await chmod(join(bin, name), 0o755)
     }
     for (const [pythonStatus, dependencyStatus, expected, diagnostic] of [
-      ['1', '0', 1, 'Install release test tools'],
-      ['0', '1', 1, 'Install protocol fixture dependencies'],
+      ['1', '0', 1, 'Install Python release tools'],
+      ['0', '1', 1, 'Install protocol fixtures'],
       ['0', '0', 79, ''],
     ] as const) {
       await writeFile(calls, '')
@@ -161,6 +226,104 @@ test('PRs plan work before allocation and keep quick checks independent of candi
   )
   expect(sourceInputs.run).toContain('--producer-run "$GITHUB_RUN_ID"')
   expect(sourceInputs.run).toContain('CI_CANDIDATE_BUNDLE')
+  const source = ci.jobs['source-tests']
+  expect(source.if).toContain("needs.python-build.result == 'skipped'")
+  expect(ci.jobs.plan.outputs.source_targets).toContain('steps.plan.outputs.source_targets')
+  for (const name of ['source_portable', 'source_protocol', 'source_applications', 'source_python'])
+    expect(ci.jobs.plan.outputs[name]).toContain(`steps.plan.outputs.${name}`)
+  const execute = source.steps.find((step: any) => step.run?.includes('scripts/test-release.sh'))
+  expect(execute.run).toContain('--targets "$JIG_CI_SOURCE_TARGETS" --profile portable-linux')
+  expect(execute.env.JIG_CI_SOURCE_REPORT_DIRECTORY).toContain('/source-reports')
+  for (const step of source.steps.filter((step: any) => step.with?.name?.startsWith('python-')))
+    expect(step.if).toContain("source_python == 'true'")
+  expect(
+    source.steps.find((step: any) => step.name === 'Record each selected source stage').run,
+  ).toContain('writeJobEvidence')
+  expect(aggregate.run).toContain('target.selected?n["source-tests"].result:"skipped"')
+})
+
+test('the actual source evidence program records only selected stage reports and the aggregate maps job outcomes', async () => {
+  const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text()) as any
+  const directory = await mkdtemp(join(tmpdir(), 'source-stage-recording-'))
+  try {
+    await mkdir(join(directory, 'plan'))
+    await mkdir(join(directory, 'source-reports'))
+    const stages = ['source-portable', 'source-protocol', 'source-applications', 'source-python']
+    const pythonFiles = [
+      'sdk/test_a.py',
+      'sdk/test_b.py',
+      'updates/test_c.py',
+      'scripts/test_release.py',
+    ]
+    const targets = stages.map((id) => ({
+      id,
+      selected: id === 'source-portable' || id === 'source-python',
+      runtimeProfiles: ['source-profile'],
+      testInventory:
+        id === 'source-python' ? pythonFiles : ['packages/jig/test/portable/example.test.ts'],
+      inventoryDigest: 'inventory',
+    }))
+    await Bun.write(
+      join(directory, 'plan/plan.json'),
+      JSON.stringify({ identity: { head: 'a'.repeat(40) }, planDigest: 'plan', targets }),
+    )
+    await Bun.write(
+      join(directory, 'source-reports/source-portable.xml'),
+      '<testsuites tests="1"><testcase file="packages/jig/test/portable/example.test.ts" classname="suite" name="executed"/></testsuites>',
+    )
+    await Bun.write(
+      join(directory, 'source-reports/source-python.txt'),
+      pythonFiles
+        .map((file) => `Ran 1 test in 0.01s\n\nOK\nCI Python source file complete: ${file}\n`)
+        .join(''),
+    )
+    const writer = ci.jobs['source-tests'].steps.find(
+      (step: any) => step.name === 'Record each selected source stage',
+    )
+    const execute = spawnSync('/bin/bash', ['-c', writer.run], {
+      cwd: root,
+      env: { ...process.env, RUNNER_TEMP: directory },
+      encoding: 'utf8',
+    })
+    expect(execute.status, execute.stderr).toBe(0)
+    expect((await readdir(join(directory, 'source-evidence'))).sort()).toEqual([
+      'source-portable.json',
+      'source-python.json',
+    ])
+    for (const id of ['source-portable', 'source-python']) {
+      const receipt = await Bun.file(join(directory, 'source-evidence', `${id}.json`)).json()
+      expect(receipt.results[0].id).toBe(id)
+      expect(receipt.results[0].observedSkipped).toBe(0)
+      expect(receipt.results[0].executedCount).toBe(id === 'source-python' ? 4 : 1)
+    }
+    const aggregate = ci.jobs.test.steps.find((step: any) =>
+      step.run?.includes('affected-gate.mjs'),
+    )
+    const program = aggregate.run
+      .split('\n')
+      .find((line: string) => line.includes('JSON.parse(process.env.JOB_RESULTS)'))
+    for (const result of ['success', 'failure', 'cancelled']) {
+      const mapped = spawnSync('/bin/bash', ['-c', program], {
+        cwd: root,
+        env: {
+          ...process.env,
+          RUNNER_TEMP: directory,
+          JOB_RESULTS: JSON.stringify({
+            plan: { result: 'success' },
+            'candidate-build': { result: 'skipped' },
+            'source-tests': { result },
+          }),
+        },
+        encoding: 'utf8',
+      })
+      expect(mapped.status, mapped.stderr).toBe(0)
+      const actual = await Bun.file(join(directory, 'results.json')).json()
+      for (const target of targets)
+        expect(actual[target.id]).toBe(target.selected ? result : 'skipped')
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('Agent candidate refuses malformed requests and missing tools before creating output', async () => {
@@ -183,6 +346,55 @@ test('Agent candidate refuses malformed requests and missing tools before creati
       expect(await child.exited).not.toBe(0)
       expect(await stderr).toContain(args[0] === 'agent-acp' ? 'FLOW_NODE' : 'usage:')
       expect(await readdir(directory)).toEqual([])
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('installed npm qualification builds the source workspace only for Jig', async () => {
+  const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text()) as any
+  const steps = ci.jobs['npm-candidate'].steps
+  const dependencies = steps.find(
+    (step: any) => step.name === 'Install candidate qualification dependencies',
+  )
+  const build = steps.find((step: any) => step.name === 'Build Jig source-test workspace')
+  expect(dependencies.if).toBeUndefined()
+  expect(dependencies.run).toBe('bun install --ignore-scripts')
+  expect(build.if).toBe("${{ matrix.package == 'jig' }}")
+  expect(build.run).toBe('just jig::build')
+  const setup = steps.filter((step: any) =>
+    /\bbun install\b|\bjust jig::build\b/.test(step.run ?? ''),
+  )
+  expect(setup).toEqual([dependencies, build])
+  const directory = await mkdtemp(join(tmpdir(), 'candidate-setup-'))
+  try {
+    const bin = join(directory, 'bin')
+    await mkdir(bin)
+    for (const name of ['bun', 'just']) {
+      const executable = join(bin, name)
+      await writeFile(executable, `#!/bin/sh\nprintf '%s\\n' "${name} $*" >> "$SETUP_CALLS"\n`)
+      await chmod(executable, 0o755)
+    }
+    for (const kind of ['flow', 'agent', 'acp', 'jig']) {
+      const calls = join(directory, `${kind}.txt`)
+      const selected = setup.filter((step: any) => !step.if || kind === 'jig')
+      const result = spawnSync(
+        '/bin/bash',
+        ['-eu', '-c', selected.map((step: any) => step.run).join('\n')],
+        {
+          cwd: directory,
+          env: { PATH: `${bin}:/usr/bin:/bin`, SETUP_CALLS: calls },
+          encoding: 'utf8',
+          timeout: 5000,
+        },
+      )
+      expect(result.status, result.stderr).toBe(0)
+      expect(await readFile(calls, 'utf8')).toBe(
+        kind === 'jig'
+          ? 'bun install --ignore-scripts\njust jig::build\n'
+          : 'bun install --ignore-scripts\n',
+      )
     }
   } finally {
     await rm(directory, { recursive: true, force: true })
@@ -269,16 +481,19 @@ test('Python publication reuses the exact CI-qualified candidate', async () => {
   }
 })
 
-test('Linux host shards retain complete coverage and fail-closed aggregation', async () => {
+test('Linux full and compact routes preserve distinct qualification obligations', async () => {
   const workflow = Bun.YAML.parse(
     await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
   ) as any
   const artifacts = workflow.jobs['host-artifacts']
   const suites = workflow.jobs['host-suite']
   const aggregate = workflow.jobs['rootless-linux']
-  expect(suites.needs).toContain('host-artifacts')
+  const witness = workflow.jobs['linux-witness']
   expect(workflowTriggers(workflow).pull_request?.paths).toBeUndefined()
-  expect(workflow.jobs.plan).toBeDefined()
+  expect(artifacts.if).toContain("needs.plan.outputs.linux == 'true'")
+  expect(artifacts.if).toContain("needs.plan.outputs.linux_witness == 'true'")
+  expect(suites.if).toBe("${{ needs.plan.outputs.linux == 'true' }}")
+  expect(suites.needs).toContain('host-artifacts')
   expect(
     artifacts.steps.some((step: any) => step.run?.includes('candidate-transfer.mjs')),
   ).toBeTrue()
@@ -290,87 +505,57 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
     'package-lifecycle',
     'installed-evidence',
   ])
-  const proofSteps = suites.steps
-    .filter(
-      (step: any) =>
-        step.name?.startsWith('Prove ') ||
-        step.name?.startsWith('Run Operational') ||
-        step.name?.startsWith('Attack '),
-    )
-    .map((step: any) => step.name)
-  expect(proofSteps).toEqual([
-    'Prove transient delegation and lifetime fencing',
-    'Prove the rootless Run envelope',
-    'Prove the Agent lifecycle and ordinary method composition',
-    'Prove the finite foreground product path',
-    'Prove contained project commands',
-    'Prove delegated HTTP authority and coordinator-loss cleanup',
-    'Prove contained native preparation',
-    'Prove retained progress and coordinator-loss delivery',
-    'Prove packed source edits reuse dependencies without reusing authority',
-    'Prove ordinary ACP Agent progress and cancellation',
-    'Prove installed Markdown and exact typed calls',
-    'Prove installed workspace dependency admission and execution',
-    'Prove complete packed CLI composition',
-    'Run Operational Baseline/1 against the packed archive',
-    'Attack the packed CLI inside the proved envelope',
-  ])
-  const dependencyReuse = suites.steps.find(
-    (step: any) =>
-      step.name === 'Prove packed source edits reuse dependencies without reusing authority',
+  const source = suites.steps.find(
+    (step: any) => step.name === 'Execute every pinned whole-file source group exactly once',
   )
-  expect(dependencyReuse.if).toBe("matrix.suite == 'package-lifecycle'")
-  expect(dependencyReuse.run).toContain('"JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE"')
-  expect(dependencyReuse.run).toContain("-t '^packed project dependencies '")
-  const preparation = suites.steps.find(
-    (step: any) => step.name === 'Prove contained native preparation',
-  )
-  expect(preparation.if).toBe("matrix.suite == 'package-lifecycle'")
-  expect(preparation.run).toContain('packages/jig/test/project-author-evaluator.test.ts')
-  const packageProofs = [
-    'Prove contained native preparation',
-    'Prove retained progress and coordinator-loss delivery',
-    'Prove packed source edits reuse dependencies without reusing authority',
-    'Prove ordinary ACP Agent progress and cancellation',
-    'Prove installed Markdown and exact typed calls',
-    'Prove installed workspace dependency admission and execution',
+  expect(source.if).toBe("matrix.suite != 'installed-evidence'")
+  expect(source.run).toContain('node --input-type=module -e "$LINUX_COMMAND_PLANNER"')
+  expect(source.run).toContain('"$JIG_CI_BUN" test "$file" --timeout "$timeout_ms"')
+  expect(source.run).toContain('read -r -d')
+  expect(source.run).not.toContain(' -t ')
+  expect(source.run).not.toContain('testNamePattern')
+  expect(workflow.env.LINUX_COMMAND_PLANNER).toContain('gitRepositoryTests(process.cwd(), source)')
+  const archiveVariables = [
+    'JIG_PACKAGE_ARCHIVE',
+    'FLOW_SDK_PACKAGE_ARCHIVE',
+    'USER_UPDATES_PACKAGE_ARCHIVE',
+    'AGENT_METHOD_PACKAGE_ARCHIVE',
+    'AGENT_ACP_PACKAGE_ARCHIVE',
+    'DISPLAY_MODEL_PACKAGE_ARCHIVE',
+    'DISPLAY_WEB_PACKAGE_ARCHIVE',
+    'DISPLAY_TUI_PACKAGE_ARCHIVE',
   ]
-  for (const name of packageProofs) {
-    expect(suites.steps.find((step: any) => step.name === name).if).toBe(
-      "matrix.suite == 'package-lifecycle'",
-    )
+  const installed = suites.steps.filter((step: any) => step.env?.JIG_CI_COMMAND_CONTEXT)
+  expect(installed).toHaveLength(6)
+  for (const step of [source, ...installed]) {
+    if (step.name?.startsWith('Qualify standalone ')) {
+      expect(step.run).toContain('FLOW_NODE=$(command -v node)')
+    } else {
+      for (const variable of archiveVariables)
+        expect(step.run).toContain(`"${variable}=$${variable}"`)
+    }
+    expect(step.run).toContain('set -euo pipefail')
+    if (step !== source) {
+      expect(step.if).toBe("matrix.suite == 'installed-evidence'")
+      expect(JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT).commandKind).toBe('installed-script')
+      expect(step.run).toContain('CI installed script complete: %s')
+    }
   }
-  for (const name of [
-    'Prove complete packed CLI composition',
-    'Run Operational Baseline/1 against the packed archive',
-    'Attack the packed CLI inside the proved envelope',
-  ]) {
-    expect(suites.steps.find((step: any) => step.name === name).if).toBe(
-      "matrix.suite == 'installed-evidence'",
-    )
-  }
-  const workspace = suites.steps.find(
-    (step: any) => step.name === 'Prove installed workspace dependency admission and execution',
+  const identifyArchives = suites.steps.find(
+    (step: any) => step.name === 'Identify and verify the frozen archives',
   )
-  const patterns = [dependencyReuse, workspace].map(
-    (step) => new RegExp(step.run.match(/-t '([^']+)'/)[1]),
-  )
-  for (const name of [
-    'packed project dependencies uses fresh reviewed data and immutable execution',
-    'packed project entrypoint uses fresh reviewed data and immutable execution',
-    'packed read attachments preserve empty roots and maximum relative paths',
-    ...['member', 'root', 'nested'].map(
-      (location) =>
-        `installed CLI reviews and runs a workspace dependency (application: ${location})`,
-    ),
-    'a future package provider case',
-    'a future case mentioning packed project dependencies in its title',
-  ]) {
-    expect(
-      patterns.filter((pattern) => pattern.test(name)),
-      name,
-    ).toHaveLength(1)
-  }
+  for (const variable of archiveVariables)
+    expect(identifyArchives.run).toContain(`printf '${variable}=%s`)
+  expect(
+    installed.map((step: any) => JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT).files[0]),
+  ).toEqual([
+    'packages/jig/test/package-smoke.ts',
+    'scripts/test-operational-baseline.ts',
+    'scripts/test-installed-hostile-baseline.ts',
+    'packages/display-model/test/package-smoke.ts',
+    'packages/display-web/test/package-smoke.ts',
+    'packages/display-tui/test/package-smoke.ts',
+  ])
   expect(
     suites.steps.find((step: any) => step.name === 'Verify the tested archives are unchanged').if,
   ).toBe('always()')
@@ -382,9 +567,7 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   expect(aggregate.if).toContain('needs.plan.outputs.linux')
   expect(aggregate.needs).toContain('host-artifacts')
   expect(aggregate.needs).toContain('host-suite')
-  expect(workflowTriggers(workflow).workflow_dispatch?.inputs?.qualify_codex_api).toBeUndefined()
   const shardGate = aggregate.steps.find((step: any) => step.env?.ARTIFACT_RESULT !== undefined)
-  expect(shardGate.run).toContain('!= success')
   for (const key of ['ARTIFACT_RESULT', 'SUITE_RESULT']) {
     for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
       const child = spawnSync('/bin/sh', ['-c', shardGate.run], {
@@ -393,44 +576,78 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
       expect(child.status).toBe(result === 'success' ? 0 : 1)
     }
   }
-  const affected = Object.values(workflow.jobs).find((job: any) =>
-    job.steps?.some((step: any) => step.run?.includes('affected-gate.mjs')),
-  ) as any
-  expect(affected.if).toContain('always()')
+  const proof = aggregate.steps.find(
+    (step: any) => step.name === 'Require exact complete shard evidence and retain observed cases',
+  )
+  expect(proof.run).toContain('os.environ["LINUX_COMMAND_PLANNER"]')
+  expect(proof.run.indexOf('job-evidence.mjs')).toBeLessThan(
+    proof.run.indexOf('candidate-provenance.mjs qualification'),
+  )
+  expect(witness.if).toBe("${{ needs.plan.outputs.linux_witness == 'true' }}")
+  expect(witness.steps.some((step: any) => step.run?.includes('just --justfile'))).toBeFalse()
+  const witnessRuns = witness.steps.map((step: any) => step.run ?? '').join('\n')
+  expect(witnessRuns).toContain('packages/jig/test/host/package-provider-observation.test.ts')
+  expect(witnessRuns).toContain('packages/jig/test/installed-display-smoke.ts')
+  expect(witnessRuns).toContain('--junit')
+  expect(witnessRuns).toContain('--transcript-manifest')
+  expect(witnessRuns).toContain('--id linux-witness')
+  expect(witnessRuns).not.toContain('candidate-provenance.mjs qualification')
+  expect(witnessRuns).not.toContain('QUALIFICATION.json')
+  const affected = workflow.jobs['affected-linux']
+  expect(affected.needs).toContain('linux-witness')
   expect(affected.steps.some((step: any) => step.run?.includes('--scope linux'))).toBeTrue()
-  const proof = aggregate.steps.find((step: any) => step.env?.EXPECTED_COMMANDS)
-  const expectedCommands = JSON.parse(proof.env.EXPECTED_COMMANDS)
-  for (const suite of suites.strategy.matrix.suite) {
-    const commands = suites.steps.filter(
-      (step: any) => step.env?.JIG_CI_COMMAND_CONTEXT && step.if === `matrix.suite == '${suite}'`,
+  const fixture = await linuxCommandFixture(workflow)
+  try {
+    const sourceCommands = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'].flatMap(
+      (suite) => fixture.commands[suite],
     )
-    expect(commands.length).toBeGreaterThan(0)
-    expect(expectedCommands[suite]).toEqual(
-      commands.map((step: any) => JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT)),
+    expect(sourceCommands.map((command: any) => command.files[0]).sort()).toEqual(fixture.files)
+    expect(new Set(sourceCommands.map((command: any) => command.files[0])).size).toBe(
+      fixture.files.length,
     )
-    for (const command of commands) {
-      for (const name of [
-        'JIG_PACKAGE_ARCHIVE',
-        'FLOW_SDK_PACKAGE_ARCHIVE',
-        'USER_UPDATES_PACKAGE_ARCHIVE',
-        'AGENT_METHOD_PACKAGE_ARCHIVE',
-        'AGENT_ACP_PACKAGE_ARCHIVE',
-      ]) {
-        expect(command.run).toContain(`"${name}=$${name}"`)
-      }
-      expect(command.run).toContain('set -euo pipefail')
+    expect(
+      sourceCommands.every((command: any) => command.files.length === 1 && !command.filter),
+    ).toBeTrue()
+    for (const [index, file] of fixture.files.entries()) {
+      const suite = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'][index % 3]
+      expect(fixture.commands[suite].some((command: any) => command.files[0] === file)).toBeTrue()
     }
+    expect(
+      sourceCommands.find((command: any) =>
+        command.files[0].endsWith('installed-software-factory.test.ts'),
+      ).hostMode,
+    ).toBe('run-acquisition-host')
+    expect(
+      sourceCommands.find((command: any) =>
+        command.files[0].endsWith('root-agent-composition.test.ts'),
+      ).hostMode,
+    ).toBe('run-delegated')
+    expect(fixture.commands['installed-evidence']).toEqual(
+      installed.map((step: any) => JSON.parse(step.env.JIG_CI_COMMAND_CONTEXT)),
+    )
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true })
   }
 })
 
 const linuxAggregateScenarios = [
-  { name: 'accepts all 19 current-attempt commands', kind: 'complete', command: undefined },
-  ...Array.from({ length: 7 }, (_, index) => ({
-    name: `refuses missing installed-evidence command ${index + 12}`,
+  {
+    name: 'accepts every whole file and all six installed obligations',
+    kind: 'complete',
+    command: undefined,
+  },
+  ...[12, 13, 14, 16, 17, 18].map((index) => ({
+    name: `refuses missing installed-evidence command ${index}`,
     kind: 'missing',
-    command: `command-${index + 12}.txt`,
+    command: `command-${index}.txt`,
   })),
-  { name: 'refuses the old 15-command manifest', kind: 'legacy', command: undefined },
+  { name: 'refuses a missing whole-file command', kind: 'source-missing', command: undefined },
+  {
+    name: 'refuses changed whole-file authority metadata',
+    kind: 'source-drift',
+    command: undefined,
+  },
+  { name: 'refuses an old filtered command manifest', kind: 'legacy', command: undefined },
   { name: 'refuses a stale-attempt shard', kind: 'stale', command: undefined },
   { name: 'refuses different candidate bytes', kind: 'candidate', command: undefined },
 ]
@@ -442,21 +659,19 @@ for (const scenario of linuxAggregateScenarios) {
     const suites = workflow.jobs['host-suite']
     const record = suites.steps.find((step: any) => step.name === 'Record complete shard proof').run
     const proof = workflow.jobs['rootless-linux'].steps.find(
-      (step: any) => step.env?.EXPECTED_COMMANDS,
+      (step: any) =>
+        step.name === 'Require exact complete shard evidence and retain observed cases',
     )
-    const commands = JSON.parse(proof.env.EXPECTED_COMMANDS)
-    commands['installed-evidence'].push(...linuxDisplayCommands(suites))
-    expect(Object.values(commands).flat()).toHaveLength(19)
     const script = proof.run.split('\nmkdir "$RUNNER_TEMP/linux-qualification"')[0]
-    const directory = await mkdtemp(join(tmpdir(), 'linux-complete-evidence-'))
-    const sha = 'a'.repeat(40)
+    const fixture = await linuxCommandFixture(workflow)
+    const { directory, sha, commands } = fixture
     const env = {
       ...process.env,
       RUNNER_TEMP: directory,
       GITHUB_SHA: sha,
       GITHUB_RUN_ID: '41',
       GITHUB_RUN_ATTEMPT: '2',
-      EXPECTED_COMMANDS: proof.env.EXPECTED_COMMANDS,
+      LINUX_COMMAND_PLANNER: workflow.env.LINUX_COMMAND_PLANNER,
     }
     const shardDirectory = (suite: string) =>
       join(directory, 'linux-evidence', `linux-shard-${suite}-${sha}-r41-a2`)
@@ -482,15 +697,14 @@ for (const scenario of linuxAggregateScenarios) {
           JSON.stringify({ schemaVersion: 1, commands: commands[suite] }),
         )
         for (const command of commands[suite])
-          await writeFile(join(shard, 'linux-command-evidence', command.transcript), '1 pass\n')
+          await writeFile(
+            join(shard, 'linux-command-evidence', command.transcript),
+            'Owning transcript retained.\n',
+          )
       }
       if (scenario.command) {
-        const missing = join(
-          shardDirectory('installed-evidence'),
-          'linux-command-evidence/manifest.json',
-        )
         await writeFile(
-          missing,
+          join(shardDirectory('installed-evidence'), 'linux-command-evidence/manifest.json'),
           JSON.stringify({
             schemaVersion: 1,
             commands: commands['installed-evidence'].filter(
@@ -498,13 +712,22 @@ for (const scenario of linuxAggregateScenarios) {
             ),
           }),
         )
-      } else if (scenario.kind === 'legacy') {
+      } else if (['source-missing', 'source-drift', 'legacy'].includes(scenario.kind)) {
+        const changed = structuredClone(commands['agent-lifecycle'])
+        if (scenario.kind === 'source-missing') changed.pop()
+        if (scenario.kind === 'source-drift') changed[0].hostMode = 'run-acquisition-host'
+        if (scenario.kind === 'legacy')
+          changed[0] = {
+            transcript: 'command-0.txt',
+            files: ['packages/jig/test/package-provider-host.test.ts'],
+            filter: {
+              pattern: '^packed project dependencies ',
+              files: ['packages/jig/test/package-provider-host.test.ts'],
+            },
+          }
         await writeFile(
-          join(shardDirectory('installed-evidence'), 'linux-command-evidence/manifest.json'),
-          JSON.stringify({
-            schemaVersion: 1,
-            commands: commands['installed-evidence'].slice(0, 3),
-          }),
+          join(shardDirectory('agent-lifecycle'), 'linux-command-evidence/manifest.json'),
+          JSON.stringify({ schemaVersion: 1, commands: changed }),
         )
       } else if (scenario.kind === 'stale') {
         await writeFile(
@@ -517,12 +740,26 @@ for (const scenario of linuxAggregateScenarios) {
           'different candidate',
         )
       }
-      const result = spawnSync('/bin/bash', ['-c', script], { cwd: root, env, encoding: 'utf8' })
+      const result = spawnSync('/bin/bash', ['-c', script], {
+        cwd: directory,
+        env,
+        encoding: 'utf8',
+      })
       expect(result.status, result.stderr).toBe(scenario.kind === 'complete' ? 0 : 1)
+      const combined = join(directory, 'linux-evidence/manifest.json')
       if (scenario.kind === 'complete') {
-        const manifest = await Bun.file(join(directory, 'linux-evidence/manifest.json')).json()
-        expect(manifest.commands).toHaveLength(19)
-      }
+        const manifest = await Bun.file(combined).json()
+        expect(manifest.commands).toHaveLength(fixture.files.length + 6)
+        expect(manifest.commands.map((command: any) => command.files[0]).sort()).toEqual(
+          Object.values(commands)
+            .flat()
+            .map((command: any) => command.files[0])
+            .sort(),
+        )
+      } else expect(await Bun.file(combined).exists()).toBeFalse()
+      expect(
+        await Bun.file(join(directory, 'linux-qualification/QUALIFICATION.json')).exists(),
+      ).toBeFalse()
     } finally {
       await rm(directory, { recursive: true, force: true })
     }
@@ -624,6 +861,15 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
     { client: 'claude', model: 'mistralai/ministral-8b-2512' },
     { client: 'pi', model: 'mistralai/ministral-8b-2512' },
   ])
+  expect(matrix.map((entry: any) => entry['test-file'])).toEqual([
+    'packages/jig/test/live/root-agent-codex-responses.test.ts',
+    'packages/jig/test/live/root-agent-claude.test.ts',
+    'packages/jig/test/live/root-agent-pi.test.ts',
+  ])
+  expect(apiSteps[0].env.JIG_NATIVE_API_TEST_FILE).toBe('${{ matrix.test-file }}')
+  expect(apiSteps[0].run).toContain('test "$JIG_NATIVE_API_TEST_FILE"')
+  expect(apiSteps[0].run).toContain('parseBunTranscript')
+  expect(apiSteps[0].run).not.toContain('--test-name-pattern')
   expect(codexInstall.run).toContain('@openai/codex@latest')
   expect(codexInstall.run).toContain('--version')
   expect(claudeInstall.run).toContain('@anthropic-ai/claude-code@latest')
@@ -773,7 +1019,7 @@ test('Mac qualification copies the supplied candidate bytes and refuses archive 
       import { join } from 'node:path'
       if (process.argv[2] === 'count') console.log(3)
       else if (process.argv[2] === 'run') {
-        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'user-updates':'USER_UPDATES_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
+        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'user-updates':'USER_UPDATES_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', 'display-model':'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web':'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui':'DISPLAY_TUI_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
         for (const [kind, variable] of inputs) {
           const copied = process.env[variable]
           if (!copied || copied.startsWith(process.env.JIG_CI_CANDIDATE_DIRECTORY)) throw Error('consumer must receive an isolated frozen copy')

@@ -110,7 +110,7 @@ test(
     await withFixture(async (directory, environment) => {
       const args = ['a path with spaces', '$(touch SHOULD_NOT_EXIST)', '; echo unsafe', '']
       for (const [recipe, cwd, prefix] of [
-        ['jig::test', 'packages/jig', ['test']],
+        ['jig::test', 'packages/jig', ['test', './test/portable/fixture.test.ts']],
         ['flow::test', 'packages/flow-sdk', ['test']],
         ['display_model::test', 'packages/display-model', ['test']],
         ['display_web::test', 'packages/display-web', ['test']],
@@ -308,7 +308,7 @@ test('display packing builds through owning recipes and Jig composes them in dep
   }
 })
 
-test('hostile files remain separate ordered invocations', async () => {
+test('hostile recipe executes the complete owned Linux inventory sequentially', async () => {
   const result = await run([
     '--justfile',
     join(repository, 'justfile'),
@@ -316,26 +316,12 @@ test('hostile files remain separate ordered invocations', async () => {
     'jig::test-linux-rootless-proof-host',
   ])
   expect(result.code).toBe(0)
-  const sdkBuild = result.stderr.indexOf('just --justfile ../flow-sdk/justfile build')
-  expect(sdkBuild).toBeGreaterThanOrEqual(0)
-  expect(sdkBuild).toBeLessThan(result.stderr.indexOf('JIG_LINUX_ROOTLESS_HOSTILE=1'))
-  const lines = result.stderr
-    .split('\n')
-    .filter((line) => line.startsWith('JIG_LINUX_ROOTLESS_HOSTILE=1'))
-  expect(lines).toEqual([
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-delegation-hostile.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-author-evaluator.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/package-provider-host.test.ts --timeout 120000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/http-request-lifecycle.test.ts --timeout 240000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000',
-  ])
+  expect(result.stderr).toContain('suite-inventory.mjs --root ../.. --profile linux')
+  expect(result.stderr).toContain('while IFS= read -r file')
+  expect(result.stderr).toContain(
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test "./${file#packages/jig/}" --timeout 420000',
+  )
+  expect(result.stderr).not.toContain('--test-name-pattern')
 })
 
 async function withFixture(
@@ -350,6 +336,12 @@ async function withFixture(
     }
     const bin = join(directory, 'tools')
     await mkdir(bin)
+    const inventory = join(directory, 'scripts/ci/suite-inventory.mjs')
+    await mkdir(dirname(inventory), { recursive: true })
+    await writeFile(
+      inventory,
+      "process.stdout.write('packages/jig/test/portable/fixture.test.ts\\n')\n",
+    )
     await writeFile(
       join(bin, 'bun'),
       `#!${process.execPath}\nconsole.log(JSON.stringify({cwd: process.cwd(), args: process.argv.slice(2)}));\nprocess.exit(Number(process.env.JUST_TEST_BUN_EXIT ?? 0));\n`,

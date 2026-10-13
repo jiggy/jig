@@ -22,6 +22,11 @@ jobs:
       quick: "${{ steps.plan.outputs.quick }}"
       sites: "${{ steps.plan.outputs.sites }}"
       source: "${{ steps.plan.outputs.source }}"
+      source_targets: "${{ steps.plan.outputs.source_targets }}"
+      source_portable: "${{ steps.plan.outputs.source_portable }}"
+      source_protocol: "${{ steps.plan.outputs.source_protocol }}"
+      source_applications: "${{ steps.plan.outputs.source_applications }}"
+      source_python: "${{ steps.plan.outputs.source_python }}"
       python: "${{ steps.plan.outputs.python }}"
       candidates: "${{ steps.plan.outputs.candidates }}"
       linux: "${{ steps.plan.outputs.linux }}"
@@ -382,17 +387,22 @@ jobs:
         with:
           bun-version: "1.3.3"
       -
-        name: "Install workspace and fixture dependencies"
-        run: |
-          bun install --ignore-scripts
-          bun install --cwd conformance/run-0 --frozen-lockfile
-          python -m pip install --disable-pip-version-check build==1.3.0 twine==6.2.0 mypy==1.18.2
-      -
         name: "Read the exact selection plan"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
           name: "ci-plan-${{ github.sha }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/plan"
+      -
+        name: "Install only selected source dependencies"
+        env:
+          SOURCE_TARGETS: "${{ needs.plan.outputs.source_targets }}"
+        run: |
+          set -eu
+          targets=$(node -e 'const t=JSON.parse(process.env.SOURCE_TARGETS);if(!Array.isArray(t)||!t.length)process.exit(1);process.stdout.write(t.join(","))')
+          printf 'JIG_CI_SOURCE_TARGETS=%s\n' "$targets" >> "$GITHUB_ENV"
+          case ",$targets," in *,source-portable,*|*,source-protocol,*|*,source-applications,*) bun install --ignore-scripts ;; esac
+          case ",$targets," in *,source-protocol,*) bun install --cwd conformance/run-0 --frozen-lockfile ;; esac
+          case ",$targets," in *,source-python,*) python -m pip install --disable-pip-version-check build==1.3.0 twine==6.2.0 mypy==1.18.2 ;; esac
       -
         name: "Read the canonical npm bytes"
         if: "${{ needs.plan.outputs.candidates == 'true' }}"
@@ -403,11 +413,13 @@ jobs:
           printf 'CI_CANDIDATE_BUNDLE=%s\n' "$RUNNER_TEMP/candidates" >> "$GITHUB_ENV"
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        if: "${{ needs.plan.outputs.source_python == 'true' }}"
         with:
           name: "python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/python-dist"
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        if: "${{ needs.plan.outputs.source_python == 'true' }}"
         with:
           name: "python-reporting-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/python-reporting-dist"
@@ -415,7 +427,7 @@ jobs:
         name: "Run source, conformance, and package gates"
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          JIG_CI_SOURCE_JUNIT: "${{ runner.temp }}/source-tests.xml"
+          JIG_CI_SOURCE_REPORT_DIRECTORY: "${{ runner.temp }}/source-reports"
           CI_PYTHON_DISTRIBUTIONS: "${{ runner.temp }}/python-dist"
           CI_PYTHON_REPORTING_DISTRIBUTIONS: "${{ runner.temp }}/python-reporting-dist"
         run: |
@@ -423,17 +435,31 @@ jobs:
           FLOW_NODE=$(command -v node)
           PYTHON=$(command -v python)
           export FLOW_NODE PYTHON
-          scripts/test-release.sh 2>&1 | tee "$RUNNER_TEMP/source-transcript.txt"
+          scripts/test-release.sh --targets "$JIG_CI_SOURCE_TARGETS" --profile portable-linux 2>&1 | tee "$RUNNER_TEMP/source-transcript.txt"
       -
-        name: "Record observed execution"
-        run: "node scripts/ci/job-evidence.mjs --plan \"$RUNNER_TEMP/plan/plan.json\" --id source-tests --output \"$RUNNER_TEMP/evidence.json\" --junit \"$RUNNER_TEMP/source-tests.xml\" --python-transcript \"$RUNNER_TEMP/source-transcript.txt\" --skip-policy source-platform-opt-in"
+        name: "Record each selected source stage"
+        run: |
+          set -eu
+          mkdir "$RUNNER_TEMP/source-evidence"
+          node --input-type=module -e 'import{readFileSync}from"node:fs";import{writeJobEvidence}from"./scripts/ci/job-evidence.mjs";const planPath=process.env.RUNNER_TEMP+"/plan/plan.json",plan=JSON.parse(readFileSync(planPath));for(const target of plan.targets.filter(t=>t.id.startsWith("source-")&&t.selected)){const report=process.env.RUNNER_TEMP+"/source-reports/"+target.id;await writeJobEvidence({planPath,id:target.id,output:process.env.RUNNER_TEMP+"/source-evidence/"+target.id+".json",...(target.id==="source-python"?{transcript:report+".txt"}:{junit:report+".xml"})});}'
       -
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "ci-evidence-source-${{ github.sha }}-a${{ github.run_attempt }}"
           path: |
-            ${{ runner.temp }}/evidence.json
-            ${{ runner.temp }}/source-tests.xml
+            ${{ runner.temp }}/source-evidence/*.json
+          retention-days: 7
+          if-no-files-found: "error"
+          overwrite: true
+      -
+        name: "Retain source stage reports"
+        if: "always()"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "ci-source-reports-${{ github.sha }}-a${{ github.run_attempt }}"
+          path: |
+            ${{ runner.temp }}/source-reports
+            ${{ runner.temp }}/source-transcript.txt
           retention-days: 7
           if-no-files-found: "error"
           overwrite: true
@@ -441,7 +467,7 @@ jobs:
       - "plan"
       - "candidate-build"
       - "python-build"
-    if: "${{ always() && needs.plan.result == 'success' && needs.plan.outputs.source == 'true' && (needs.candidate-build.result == 'success' || needs.candidate-build.result == 'skipped') && needs.python-build.result == 'success' }}"
+    if: "${{ always() && needs.plan.result == 'success' && needs.plan.outputs.source == 'true' && (needs.candidate-build.result == 'success' || needs.candidate-build.result == 'skipped') && (needs.python-build.result == 'success' || needs.python-build.result == 'skipped') }}"
     permissions:
       contents: "read"
       actions: "read"
@@ -487,10 +513,12 @@ jobs:
           GH_TOKEN: "${{ github.token }}"
         run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/candidates\" --source \"$GITHUB_SHA\" --producer-run \"$GITHUB_RUN_ID\" --timeout-seconds 0"
       -
-        name: "Build source workspace dependencies"
-        run: |
-          bun install --ignore-scripts
-          just jig::build
+        name: "Install candidate qualification dependencies"
+        run: "bun install --ignore-scripts"
+      -
+        name: "Build Jig source-test workspace"
+        if: "${{ matrix.package == 'jig' }}"
+        run: "just jig::build"
       -
         name: "Provision Jig's disposable rootless host"
         id: "jig_host"
@@ -597,7 +625,7 @@ jobs:
           FORCE: "${{ vars.JIG_CI_FORCE_FULL || 'false' }}"
         run: |
           set -eu
-          node --input-type=module -e 'import{writeFileSync}from"node:fs";const n=JSON.parse(process.env.JOB_RESULTS);if(n.plan.result!=="success"||!["success","skipped"].includes(n["candidate-build"].result))process.exit(1);writeFileSync(process.env.RUNNER_TEMP+"/results.json",JSON.stringify(Object.fromEntries(Object.entries(n).map(([k,v])=>[k,v.result]))));'
+          node --input-type=module -e 'import{readFileSync,writeFileSync}from"node:fs";const n=JSON.parse(process.env.JOB_RESULTS);if(n.plan.result!=="success"||!["success","skipped"].includes(n["candidate-build"].result))process.exit(1);const plan=JSON.parse(readFileSync(process.env.RUNNER_TEMP+"/plan/plan.json")),results=Object.fromEntries(Object.entries(n).map(([k,v])=>[k,v.result]));for(const target of plan.targets.filter(t=>t.id.startsWith("source-")))results[target.id]=target.selected?n["source-tests"].result:"skipped";writeFileSync(process.env.RUNNER_TEMP+"/results.json",JSON.stringify(results));'
           node scripts/ci/job-evidence.mjs --plan "$RUNNER_TEMP/plan/plan.json" --directory "$RUNNER_TEMP/evidence" --results "$RUNNER_TEMP/results.json" --output "$RUNNER_TEMP/combined.json"
           node scripts/ci/affected-gate.mjs --plan "$RUNNER_TEMP/plan/plan.json" --evidence "$RUNNER_TEMP/combined.json" --scope ci > "$RUNNER_TEMP/affected-summary.json"
       -

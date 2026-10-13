@@ -8,6 +8,7 @@ case "$#" in
   0) ;;
   1)
     if [[ "$1" == --preflight ]]; then mode=preflight
+    elif [[ "$1" == --witness ]]; then mode=witness
     else echo 'Unexpected qualification arguments' >&2; exit 2
     fi
     ;;
@@ -44,7 +45,7 @@ if [[ "$mode" == shard && "$shard" -ge "$shard_count" ]]; then
   echo 'Shard is outside the selected architecture plan.' >&2
   exit 2
 fi
-if [[ "$mode" != shard || "$shard" == "$installed_shard" ]]; then
+if [[ "$mode" == full || "$mode" == preflight || ( "$mode" == shard && "$shard" == "$installed_shard" ) ]]; then
   for name in JIG_CODEX_STARTUP_PATH JIG_CLAUDE_STARTUP_PATH JIG_PI_STARTUP_PATH; do
     value="${!name:-}"
     if [[ "$value" != /* || ! -x "$value" ]]; then
@@ -62,6 +63,16 @@ if [[ -n "${JIG_CI_CANDIDATE_DIRECTORY:-}" ]]; then
   fi
   candidate_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
     "$JIG_CI_CANDIDATE_DIRECTORY" --source "$source_revision")
+fi
+if [[ "$mode" == witness ]]; then
+  if [[ -z "$candidate_receipt" ]]; then
+    echo 'Installed witnesses require the exact canonical candidate; local repacking cannot qualify.' >&2
+    exit 2
+  fi
+  if [[ "${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" != /* || ! -d "$JIG_MACOS_TEST_TIMINGS_DIRECTORY" ]]; then
+    echo 'Installed witnesses require an absolute existing evidence directory.' >&2
+    exit 2
+  fi
 fi
 if [[ "$mode" == preflight ]]; then exit 0; fi
 # Host qualification has no live API phase.
@@ -94,6 +105,9 @@ finish() {
     status=1
   fi
   if [[ "$status" == 0 ]]; then
+    if [[ "$mode" == witness ]]; then
+      printf '%s %s witness\n' "$source_revision" "$architecture" > "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/witness.complete"
+    fi
     rm -rf "$scratch"
   else
     echo "Qualification evidence retained at $scratch" >&2
@@ -151,10 +165,28 @@ export JIG_MACOS_PROCESS_TEST=1
 # Keep resource ownership tests sequential within each disposable host. The
 # hosted matrix distributes every file and all root lifecycle cases across
 # independent machines; the self-hosted qualification still runs them all.
-if [[ "$mode" == shard ]]; then
+if [[ "$mode" == witness ]]; then
+  # Compact evidence proves current installed observation and saved display on
+  # this profile. It does not qualify the complete native authority families.
+  bun test packages/jig/test/host/package-provider-observation.test.ts --bail=1 --timeout 420000 \
+    --reporter=junit --reporter-outfile="$JIG_MACOS_TEST_TIMINGS_DIRECTORY/observation.xml" 2>&1 | \
+    tee "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/observation.txt"
+  bun packages/jig/test/installed-display-smoke.ts 2>&1 | \
+    tee "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/installed-display.txt"
+  cat > "$JIG_MACOS_TEST_TIMINGS_DIRECTORY/transcript-manifest.json" <<'JSON'
+{"schemaVersion":1,"commands":[{"transcript":"installed-display.txt","files":["packages/jig/test/installed-display-smoke.ts"],"commandKind":"installed-script"}]}
+JSON
+elif [[ "$mode" == shard ]]; then
   node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
-  bun test packages/jig/test packages/display-model/test packages/display-web/test packages/display-tui/test --timeout 420000
+  mapfile_path="$scratch/full-suite-files.txt"
+  node scripts/ci/suite-inventory.mjs --profile "$([[ "$codex_startup_expectation" == startup ]] && echo macos-23E224 || echo macos-24G830)" --format lines > "$mapfile_path"
+  full_files=()
+  while IFS= read -r file; do
+    [[ "$file" == packages/jig/test/startup/native-agent-startup.test.ts ]] || full_files+=("./$file")
+  done < "$mapfile_path"
+  [[ ${#full_files[@]} -gt 0 ]] || { echo 'Full Mac inventory is empty.' >&2; exit 1; }
+  bun test "${full_files[@]}" --timeout 420000
 fi
 if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   startup_options=(--timeout 120000)
@@ -164,7 +196,7 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   # The genuine Codex path must start only on its qualified preference profile;
   # other selected Mac hosts must prove explicit refusal, never skip the case.
   JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="$codex_startup_expectation" \
-    bun test packages/jig/test/native-agent-startup.test.ts "${startup_options[@]}"
+    bun test packages/jig/test/startup/native-agent-startup.test.ts "${startup_options[@]}"
   bun packages/display-model/test/package-smoke.ts
   bun packages/display-web/test/package-smoke.ts
   bun packages/display-tui/test/package-smoke.ts
