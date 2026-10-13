@@ -158,9 +158,8 @@ test('close acknowledgement does not swallow a delayed unexpected send rejection
   expect(m.closes).toHaveLength(1)
 })
 
-test.each([false, true])(
-  'final drain joins a restarted pump and preserves its failure (%s)',
-  async (rejectLast) => {
+for (const rejectLast of [false, true]) {
+  test(`final drain joins a restarted pump and preserves its failure (${rejectLast})`, async () => {
     // Sweep body continuations across the first pump's promise settlement window.
     for (let turns = 0; turns < 10; turns++) {
       const began = deferred<void>()
@@ -189,8 +188,8 @@ test.each([false, true])(
       expect(events).toEqual(['first', 'last', 'closed'])
       expect(m.closes).toEqual([rejectLast ? { error: 'LAGGED' } : undefined])
     }
-  },
-)
+  })
+}
 
 test('local capacity stops observation and joins the original send once', async () => {
   const original = deferred<void>()

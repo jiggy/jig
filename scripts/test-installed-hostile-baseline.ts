@@ -1,6 +1,8 @@
+import { Database, constants as sqliteConstants } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import {
   chmod,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
@@ -12,6 +14,8 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
+import { checkInstalledMemoryProof, selectFreshInstalledRun } from './installed-memory-proof.js'
+import { finishOperationalBaseline } from './operational-baseline-checks.js'
 
 const systemctl = await fixedSystemctl()
 const startedUnixMs = Date.now()
@@ -287,11 +291,22 @@ try {
   await eventuallyNoJigResidue()
 
   process.stdout.write('Installed hostile case: aggregate memory pressure\n')
-  const memory = await run([jig, 'run', 'flow:flows/memory-pressure'], project, [0], 60_000)
-  const memoryTerminal = successfulTerminal(memory)
-  const memoryOutput = requireRecord(memoryTerminal.output)
-  assert.ok(Number.isSafeInteger(memoryOutput.exitCode))
-  assert.notEqual(memoryOutput.exitCode, 0)
+  const memoryBefore = await readInstalledRunEvidence(project)
+  const beforeRunIds = memoryBefore.rows.map((row) => row.run_id as string)
+  const memory = await run([jig, 'run', 'flow:flows/memory-pressure'], project, [0, 1], 60_000)
+  await writeFile(join(temporary, 'memory-command.json'), `${JSON.stringify(memory)}\n`, {
+    mode: 0o600,
+  })
+  const memoryAfter = await readInstalledRunEvidence(project, beforeRunIds)
+  assert.deepEqual(memoryAfter.project, memoryBefore.project)
+  assert.deepEqual(memoryAfter.database, memoryBefore.database)
+  const memoryProof = checkInstalledMemoryProof({
+    row: memoryAfter.fresh!,
+    beforeRunIds,
+    project: memoryAfter.project,
+    command: memory,
+  })
+  process.stdout.write(`Installed memory enforcement: ${JSON.stringify(memoryProof)}\n`)
   await eventuallyNoJigResidue()
 
   process.stdout.write('Installed hostile case: fixed wall-clock deadline\n')
@@ -308,34 +323,26 @@ try {
   failure = error
 }
 
-try {
-  await eventuallyNoJigResidue()
-} catch (cleanupFailure) {
-  failure =
-    failure === undefined
-      ? cleanupFailure
-      : new AggregateError(
-          [failure, cleanupFailure],
-          'installed-archive hostile baseline and its residue check both failed',
+await finishOperationalBaseline({
+  failures: failure === undefined ? [] : [failure],
+  temporary,
+  checkResidue: eventuallyNoJigResidue,
+  removeFixture: async () => {
+    try {
+      await rm(temporary, { recursive: true, force: true })
+    } catch (cleanupFailure) {
+      try {
+        await makeDirectoriesWritable(temporary)
+        await rm(temporary, { recursive: true, force: true })
+      } catch (forcedCleanupFailure) {
+        throw new AggregateError(
+          [cleanupFailure, forcedCleanupFailure],
+          'installed-archive hostile baseline temporary cleanup failed',
         )
-}
-try {
-  await rm(temporary, { recursive: true, force: true })
-} catch (cleanupFailure) {
-  try {
-    await makeDirectoriesWritable(temporary)
-    await rm(temporary, { recursive: true, force: true })
-  } catch (forcedCleanupFailure) {
-    failure =
-      failure === undefined
-        ? forcedCleanupFailure
-        : new AggregateError(
-            [failure, cleanupFailure, forcedCleanupFailure],
-            'installed-archive hostile baseline and temporary cleanup both failed',
-          )
-  }
-}
-if (failure !== undefined) throw failure
+      }
+    }
+  },
+})
 
 process.stdout.write(
   `Installed-archive hostile baseline passed in ${Date.now() - startedUnixMs} ms ` +
@@ -559,4 +566,85 @@ async function fixedSystemctl(): Promise<string> {
     }
   }
   throw new Error('the fixed user service manager control is unavailable')
+}
+
+/** Read existing host-owned state after ordinary CLI execution; grant no consumer authority. */
+async function readInstalledRunEvidence(
+  project: string,
+  beforeRunIds?: readonly string[],
+): Promise<{
+  project: { path: string; device: string; inode: string }
+  database: { device: string; inode: string }
+  rows: Record<string, unknown>[]
+  fresh?: Record<string, unknown>
+}> {
+  assert.equal(await realpath(project), project)
+  const root = await lstat(project, { bigint: true })
+  assert.ok(root.isDirectory())
+  const state = join(project, '.jig')
+  assert.equal(await realpath(state), state)
+  const stateInformation = await lstat(state, { bigint: true })
+  assert.ok(stateInformation.isDirectory())
+  assert.equal(stateInformation.dev, root.dev)
+  assert.equal(stateInformation.uid, BigInt(process.getuid!()))
+  assert.equal(Number(stateInformation.mode & 0o077n), 0)
+  const path = join(state, 'jig.sqlite3')
+  const information = await lstat(path, { bigint: true })
+  assert.ok(information.isFile() && information.nlink === 1n)
+  assert.equal(information.uid, BigInt(process.getuid!()))
+  assert.equal(Number(information.mode & 0o077n), 0)
+  const database = Database.open(
+    path,
+    sqliteConstants.SQLITE_OPEN_READONLY | sqliteConstants.SQLITE_OPEN_NOFOLLOW,
+  )
+  try {
+    database.exec('BEGIN')
+    assert.deepEqual(database.query('PRAGMA application_id').get(), { application_id: 0x4a494731 })
+    assert.deepEqual(database.query('PRAGMA user_version').get(), { user_version: 1 })
+    const rows = database.query('SELECT run_id FROM root_runs LIMIT 257').all() as Record<
+      string,
+      unknown
+    >[]
+    assert.ok(rows.length <= 256)
+    assert.equal(new Set(rows.map((row) => row.run_id)).size, rows.length)
+    for (const row of rows) assert.match(row.run_id as string, /^sha256:[0-9a-f]{64}$/)
+    let fresh: Record<string, unknown> | undefined
+    if (beforeRunIds !== undefined) {
+      const selected = selectFreshInstalledRun(beforeRunIds, rows)
+      const matches = database
+        .query(`SELECT
+      r.run_id, r.origin_digest, r.origin_bytes, r.admission_digest,
+      r.candidate_revision, r.coordinator_epoch, r.request_bytes,
+      a.admission_bytes, c.candidate_digest, c.candidate_bytes,
+      s.intent_digest, s.intent_bytes,
+      l.allocation_digest, l.allocation_bytes,
+      l.plan_digest, l.plan_bytes, l.backing_digest, l.backing_bytes,
+      l.sandbox_digest, l.sandbox_bytes, l.prepared_digest, l.prepared_bytes,
+      l.provisional_digest, l.provisional_bytes, l.fence_digest, l.fence_bytes,
+      l.release_digest, l.release_bytes, l.admitted_digest, l.admitted_bytes,
+      t.terminal_digest, t.terminal_bytes
+      FROM root_runs r
+      LEFT JOIN admissions a ON a.admission_digest = r.admission_digest
+      LEFT JOIN candidates c ON c.revision = r.candidate_revision
+      LEFT JOIN root_spawn_intents s ON s.run_id = r.run_id
+      LEFT JOIN root_execution_lifecycles l ON l.run_id = r.run_id
+      LEFT JOIN root_terminals t ON t.run_id = r.run_id
+      WHERE r.run_id = ?1 LIMIT 2`)
+        .all(selected.run_id as string) as Record<string, unknown>[]
+      assert.equal(matches.length, 1, 'fresh memory Run must have one exact joined lifecycle')
+      fresh = matches[0]!
+    }
+    database.exec('COMMIT')
+    const after = await lstat(path, { bigint: true })
+    assert.equal(after.dev, information.dev)
+    assert.equal(after.ino, information.ino)
+    return {
+      project: { path: project, device: String(root.dev), inode: String(root.ino) },
+      database: { device: String(information.dev), inode: String(information.ino) },
+      rows,
+      ...(fresh === undefined ? {} : { fresh }),
+    }
+  } finally {
+    database.close()
+  }
 }

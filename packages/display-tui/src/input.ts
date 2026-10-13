@@ -1,13 +1,14 @@
 import { StringDecoder } from 'node:string_decoder'
-import type { Reference } from '@jigging/reporting'
 import { referenceKey } from '@jigging/display-model'
-import { ViewerModel } from './viewer-model.js'
+import type { Reference } from '@jigging/reporting'
 import {
-  viewerDetailParts,
-  viewerReferences,
   type ViewerPanel,
   type ViewerState,
-} from './projection.js'
+  viewerDetailParts,
+  viewerReferences,
+} from './presentation/projection.js'
+import type { ViewerModel } from './presentation/viewer-model.js'
+
 type ScrollAnchor = { key: string; offset: number }
 /** Byte decoding and three bounded viewer-local overlays; owns no real stream. */
 export class ViewerInput {

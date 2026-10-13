@@ -1,16 +1,16 @@
-import { EventEmitter } from 'node:events'
 import { createHash } from 'node:crypto'
+import type { EventEmitter } from 'node:events'
 import type {
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
   RecordedViewRole,
 } from '@jigging/display-model'
 import { recordReferences } from '@jigging/display-model'
-import type { Reference, ViewItem, ReportingMessage, NoticeSeverity } from '@jigging/reporting'
+import type { NoticeSeverity, Reference, ReportingMessage, ViewItem } from '@jigging/reporting'
 import { validateReportingMessage } from '@jigging/reporting'
-import { ViewerModel } from '../src/viewer-model.js'
 import { ViewerInput } from '../src/input.js'
 import { NativeRenderer } from '../src/native.js'
+import { ViewerModel } from '../src/presentation/viewer-model.js'
 import type { TuiTheme } from '../src/types.js'
 
 type Mutable<T> = T extends readonly (infer Item)[]
@@ -309,7 +309,10 @@ export class FixtureModel extends ViewerModel {
     this.#commit()
     return true
   }
-  activity(sourceId: string, value: Extract<ReportingMessage, { kind: 'activity' | 'clear' }>): void {
+  activity(
+    sourceId: string,
+    value: Extract<ReportingMessage, { kind: 'activity' | 'clear' }>,
+  ): void {
     this.fixture.activities = this.fixture.activities.filter(
       (activity) => activity.id !== key(sourceId, value.id),
     )

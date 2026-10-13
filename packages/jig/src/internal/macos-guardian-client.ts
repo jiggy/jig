@@ -30,6 +30,7 @@ import {
 import {
   allocatePrivateMacosGuardianStorage,
   releasePrivateMacosGuardianStorage,
+  removeEmptyPrivateMacosUnstartedStorage,
   requirePrivateMacosGuardianStorage,
 } from './macos-guardian-storage.js'
 import { normalizePrivateMacosInputs } from './macos-input-projection.js'
@@ -92,8 +93,19 @@ export async function recoverPrivateMacosGuardian(
     // Without the first owner journal the admission gate was never opened. Stop
     // the exact job before it can become a late guardian, then retire its sockets.
     removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
-    if (await present(join(ownerDirectory, 'sockets.json')))
-      removePrivateMacosSockets(ownerDirectory, ownerToken)
+    // A startup already in progress may have recorded ownership before bootout.
+    // Such an owner still requires authenticated coalition fencing and storage.
+    if (await present(join(ownerDirectory, 'owner.json')))
+      await fenceDeadGuardian(ownerDirectory, ownerToken, cleanupTimeoutMs)
+    else {
+      if (await present(join(ownerDirectory, 'sockets.json')))
+        removePrivateMacosSockets(ownerDirectory, ownerToken)
+      await fenceStorageRecoverySlot(ownerDirectory, ownerToken)
+      if (await present(join(ownerDirectory, 'storage')))
+        await removeEmptyPrivateMacosUnstartedStorage(ownerDirectory)
+      if (await present(join(ownerDirectory, 'owner.json')))
+        await fenceDeadGuardian(ownerDirectory, ownerToken, cleanupTimeoutMs)
+    }
   }
   await recoverStorageWithGuardian(ownerDirectory, ownerToken, runtime)
 }
@@ -161,6 +173,26 @@ async function present(path: string): Promise<boolean> {
   }
 }
 
+/** Preserve an older cleanup owner even when target storage is still empty. */
+async function fenceStorageRecoverySlot(
+  targetDirectory: string,
+  targetToken: string,
+): Promise<void> {
+  const ownerDirectory = join(targetDirectory, 'recovery')
+  if (!(await present(ownerDirectory))) return
+  requirePrivateMacosOwnerDirectory(ownerDirectory)
+  const ownerToken = privateMacosStorageRecoveryToken(targetToken)
+  if (await present(join(ownerDirectory, 'owner.json')))
+    await fenceDeadGuardian(ownerDirectory, ownerToken, 5000)
+  else {
+    removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
+    if (await present(join(ownerDirectory, 'owner.json')))
+      await fenceDeadGuardian(ownerDirectory, ownerToken, 5000)
+    else if (await present(join(ownerDirectory, 'sockets.json')))
+      removePrivateMacosSockets(ownerDirectory, ownerToken)
+  }
+}
+
 /** A fixed, restartable cleanup slot owns image tools independently of this caller. */
 async function recoverStorageWithGuardian(
   targetDirectory: string,
@@ -175,15 +207,7 @@ async function recoverStorageWithGuardian(
     if (error.code !== 'EEXIST') throw error
   })
   requirePrivateMacosOwnerDirectory(ownerDirectory)
-  if (await present(join(ownerDirectory, 'owner.json')))
-    await fenceDeadGuardian(ownerDirectory, ownerToken, 5000)
-  else {
-    // A job without its first journal cannot yet have created a child. Remove
-    // it before replacing setup records so it can never become a late owner.
-    removeJob(`user/${process.getuid?.()}/${jobLabel(ownerToken)}`)
-    if (await present(join(ownerDirectory, 'sockets.json')))
-      removePrivateMacosSockets(ownerDirectory, ownerToken)
-  }
+  await fenceStorageRecoverySlot(targetDirectory, targetToken)
   resetPrivateMacosRecoveryState(ownerDirectory)
   const recovery = await prepareGuardian({
     bun: runtime.bun,

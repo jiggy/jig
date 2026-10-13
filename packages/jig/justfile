@@ -7,9 +7,6 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun check-native-support clean
-    just --justfile ../flow-sdk/justfile build
-    just --justfile ../reporting/justfile build
-    just --justfile ../display-model/justfile build
     just --justfile ../display-web/justfile build
     just --justfile ../display-tui/justfile build
     just --justfile ../agent-method/justfile build
@@ -92,7 +89,17 @@ verify-build-bun:
 
 [positional-arguments]
 @test *args:
-    bun test "$@"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    profile=portable
+    if [[ "$(uname -s)" == Linux ]]; then profile=portable-linux; fi
+    inventory=$(node ../../scripts/ci/suite-inventory.mjs --root ../.. --target source-portable --profile "$profile")
+    files=()
+    while IFS= read -r file; do
+      if [[ "$file" == packages/jig/* ]]; then files+=("./${file#packages/jig/}"); fi
+    done <<< "$inventory"
+    [[ ${#files[@]} -gt 0 ]]
+    bun test "${files[@]}" "$@"
 
 @check: build test
     just --justfile ../display-model/justfile test
@@ -106,20 +113,14 @@ verify-build-bun:
 
 # Run sequentially, only inside an already provisioned delegated proof host
 @test-linux-rootless-proof-host: build
-    just --justfile ../flow-sdk/justfile build
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-delegation-hostile.test.ts --timeout 30000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-author-evaluator.test.ts --timeout 30000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/package-provider-host.test.ts --timeout 120000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/http-request-lifecycle.test.ts --timeout 240000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000
-    JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000
-    bun test test/native-agent-startup.test.ts --timeout 60000
+    #!/usr/bin/env bash
+    set -euo pipefail
+    inventory=$(node ../../scripts/ci/suite-inventory.mjs --root ../.. --profile linux)
+    while IFS= read -r file; do
+      if [[ "$file" == packages/jig/* ]]; then
+        JIG_LINUX_ROOTLESS_HOSTILE=1 bun test "./${file#packages/jig/}" --timeout 420000
+      fi
+    done <<< "$inventory"
 
 # Verify checked-in native sources, binaries, recipe and runtime digest agree
 @check-native-support:

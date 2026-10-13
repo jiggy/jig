@@ -370,6 +370,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   full completion. Fencing alone is not storage-cleanup evidence; final publication
   also requires successful completion. Cancellation, expiry and connection loss
   terminate collection and retain cleanup responsibility.
+  Before the first guardian journal, coordinator loss may leave only the empty
+  fixed storage directory allocated before volume intent. After removing the exact
+  job and confirming absence, recheck for a late first journal. Fence any earlier
+  recovery-slot owner before empty retirement, so missing storage never skips its
+  independent coalition proof. A recorded owner
+  retains authenticated coalition and volume recovery. Only the no-first-owner
+  empty private child with no retirement marker or staging can retire through held parent/child descriptors, with
+  mount, owner, mode and immediate named-inode checks; rmdir refuses a new entry.
+  Any partial journal, image, staging or unknown entry retains ordinary recovery
+  and its strict refusal. This grants no image/detach authority, recursive cleanup
+  or data-directory ownership. The backend still owns its data allocation.
   Fresh storage recovery runs fixed image tools in a separate finite guardian,
   with a derived token and authenticated journal in the owner's `recovery` slot.
   After the fixed tools return, drain and fence any remaining recovery-coalition
@@ -464,7 +475,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Native Mac startup qualification consumes this lowering instead of a second translator.
   Read-only workers with captured inputs still allocate bounded Mac input storage
   without payload write grants; workers using only retained projections need
-  no volume.
+  no volume. The stdin-only HTTP worker uses exact runtime/worker files and literal
+  root cwd without readonly or writable trees, captured inputs or a volume. Scope
+  sealing permits that fixed cwd only without storage or tree grants, and scope
+  preparation requires both tree grant lists to be empty;
+  other cwd choices retain their exact directory-projection check.
   Backend sealing still validates identities, live capabilities and enforcement.
   `flow-execution-intent.ts` translates Jig recipes for both root and child
   Flows; command, HTTP, ACP, preparation and evaluator callers select their own
@@ -535,7 +550,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   closed failure step and cause, or null on ordinary completion. Validate both
   against fixed names before reporting a pre-readiness error code through the
   existing root host-test observer. Never forward native exception messages or
-  arbitrary error codes across this channel. Project Command qualification logs these
+  arbitrary error codes across this channel. Exact storage-recovery refusal
+  messages have fixed labels for directory, journal, backing, allocation and
+  recovery-tool fencing boundaries. Live image mapping refusals distinguish fixed
+  count, owner, sector size/count, encryption and entity-shape labels without
+  exposing rejected metadata. The exact predicates and subsequent authenticated
+  backing requirement stay mandatory. Only the enumerated filesystem errno and
+  Node/DOM abort shapes become fixed categories; unknown or unreadable fields
+  stay OTHER. These labels diagnose refusal and never authorize recovery or
+  imply its cause was established by a successful rerun.
+  Project Command qualification logs these
   events. Portable tests cover redaction and scope isolation; the native
   guardian-loss test verifies reporting and recovery with a throwing observer.
   Agent lifecycle fault qualification scopes the same closed recovery observer
@@ -545,7 +569,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Native injected storage and scope-preparation failures verify the returned
   diagnostic after actual fencing and storage cleanup.
   Before payload readiness, the guardian's own operation timer records expiry
-  only when it was the first stop cause. Transport that closed cause after
+  only when it was the first stop cause, for both payload setup and the
+  recovery-only guardian. Abort-shaped errors alone remain ABORTED and never
+  establish operation expiry. Transport the recorded closed cause after
   fenced cleanup; cancellation, lost control and tool failure do not become
   deadlines. Unconfirmed cleanup still overrides the preparation diagnostic.
   Ordinary tests compile the same injected guardian constructions so source
@@ -751,6 +777,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   execution/settlement and workspace capture; nested spans must not be summed.
   Finite ACP phases separate revalidation, containment, launch, exchange, release
   and recovery; they neither record native content nor establish remote dispatch.
+  Contained-effect phases record coordinator planning/revalidation, allocation,
+  sealing, launch, collection and settlement, including failed allocation and
+  recovery cleanup. A phase may contain several separately paired awaits.
+  Launch includes backend storage/input preparation; collection includes stream
+  draining, enforcement and backend cleanup, not just payload CPU time. Owner
+  settlement remains separate. Mac backend spans separate guardian preparation
+  from admission at their existing coordinator awaits. They cover root and child
+  Flow launches as well as contained effects; aggregate counts identify no
+  individual operation. No selector or trace is passed to a child, and
+  the existing 512-span/192-byte record bounds remain unchanged.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;
@@ -1266,6 +1302,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Expiry during the final recovery drain refuses success, retains journals,
   and permits an ordinary fresh guardian to finish cleanup before retirement.
   Every cleanup attempt keeps its exact journals until fencing is confirmed.
+  An actual coordinator paused inside the storage allocator before intent and
+  killed by the test proves empty pre-journal recovery without moving any existing
+  crash barrier. Whole-file native checks also preserve partial/foreign entries
+  and refuse a first or late owner journal, retirement markers, public/link/replaced
+  or mounted storage. Ordinary
+  source checks construct that exact injected allocator without native execution.
   `macos-guardian-input.test.ts` runs ordinary TypeScript relative imports and
   binary/empty reads from the immutable projection, denies source writes and
   private data, refuses changed/closed captures before execution, and recovers
@@ -1364,6 +1406,14 @@ child calls, project commands, delegated HTTP, and Agent providers.
   remains a private test seam;
   raw messages and unreadable message getters cannot become evidence. These
   codes change neither the public terminal nor recovery authority.
+  The same exact-message classifier recognizes six fixed native output
+  collection, cleanup, missing-capture, deadline and finite-file-profile causes.
+  Nested secret canaries and message near-matches must remain absent from its
+  bounded class/code projection. Contained repair host tests observe guardian
+  recovery per invocation and wrap only the existing snapshot-ready await with
+  a fixed `output-capture` failure phase, then rethrow the same error even if
+  observation fails. Capture, delivery and cleanup limits and outcomes stay
+  unchanged; successful diagnostic reruns do not explain an earlier failure.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
   two/three-minute fixture budgets; production defaults remain unchanged.

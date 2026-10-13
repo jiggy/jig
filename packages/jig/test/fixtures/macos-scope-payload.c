@@ -1,4 +1,5 @@
 // Bounded supervision fixture: at most two descendants, 12 MiB, 400 ms CPU.
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <stdio.h>
@@ -9,6 +10,20 @@
 static double cpu(void) { struct timespec t; clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &t); return t.tv_sec + t.tv_nsec / 1e9; }
 int main(int argc, char **argv) {
   alarm(10);
+  if (argc == 4 && !strcmp(argv[1], "file-only")) {
+    char cwd[4096];
+    if (!getcwd(cwd, sizeof(cwd)) || strcmp(cwd, "/")) return 10;
+    int readable = open(argv[0], O_RDONLY);
+    if (readable < 0) return 11;
+    close(readable);
+    int write_attempt = open(argv[2], O_CREAT | O_EXCL | O_WRONLY, 0600);
+    if (write_attempt >= 0) { close(write_attempt); return 12; }
+    if (errno != EACCES && errno != EPERM) return 13;
+    int control_attempt = open(argv[3], O_RDONLY);
+    if (control_attempt >= 0) { close(control_attempt); return 14; }
+    if (errno != EACCES && errno != EPERM) return 15;
+    return write(STDOUT_FILENO, "file-only-sandbox-proved\n", 25) == 25 ? 0 : 16;
+  }
   if (argc != 3) return 1;
   int marker = open(argv[2], O_CREAT | O_EXCL | O_WRONLY, 0600);
   if (marker < 0) return 2;

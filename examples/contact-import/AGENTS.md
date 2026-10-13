@@ -60,6 +60,7 @@ or both, then using ordinary code to produce a contact preview.
 ## Verification
 
 - `bun test examples/contact-import/test` checks parsing, composition, and policy.
+  Shared mapper scenarios register distinct implementation names in test reports.
 - `scripts/test-release.sh` repeats these tests with the packed SDK.
 - Use an admitted installed run separately before claiming host or live Agent behavior.
 

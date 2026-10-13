@@ -6,9 +6,9 @@ import {
 } from '@jigging/display-model'
 import { createTui, prepareTui } from '../src/index.js'
 import { createInlineDisplay } from '../src/inline.js'
-import { viewerDetailParts } from '../src/projection.js'
-import { terminalWidth } from '../src/text.js'
-import { ViewerModel } from '../src/viewer-model.js'
+import { viewerDetailParts } from '../src/presentation/projection.js'
+import { terminalWidth } from '../src/presentation/text.js'
+import { ViewerModel } from '../src/presentation/viewer-model.js'
 import { snapshot, waitFor } from './fixtures.js'
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: Plain frames must reject all terminal control bytes.

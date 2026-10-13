@@ -44,19 +44,68 @@ const causes = new Map([
   ['macOS volume info failed', 'VOLUME_INFO'],
   ['macOS volume detach failed', 'VOLUME_DETACH'],
   ['macOS volume plist conversion failed', 'VOLUME_PLIST'],
-  ['macOS image attachment does not match its allocation', 'VOLUME_IMAGE'],
+  ['macOS image attachment count does not match its allocation', 'VOLUME_IMAGE_COUNT'],
+  ['macOS image attachment owner does not match its allocation', 'VOLUME_IMAGE_OWNER'],
+  ['macOS image attachment sector size does not match its allocation', 'VOLUME_IMAGE_SECTOR_SIZE'],
+  [
+    'macOS image attachment sector count does not match its allocation',
+    'VOLUME_IMAGE_SECTOR_COUNT',
+  ],
+  ['macOS image attachment encryption does not match its allocation', 'VOLUME_IMAGE_ENCRYPTION'],
+  ['macOS image attachment entities do not match its allocation', 'VOLUME_IMAGE_ENTITIES'],
   ['macOS volume device does not match its allocation', 'VOLUME_DEVICE'],
+  ['macOS volume capacity is outside its finite profile', 'VOLUME_CAPACITY'],
+  ['macOS volume requires a canonical private path', 'VOLUME_PATH'],
+  ['macOS volume directory is aliased', 'VOLUME_DIRECTORY_ALIAS'],
+  ['macOS volume directory is not private', 'VOLUME_DIRECTORY_PRIVATE'],
+  ['macOS volume directory identity changed', 'VOLUME_DIRECTORY_IDENTITY'],
+  ['invalid macOS volume ownership token', 'VOLUME_TOKEN'],
+  ['macOS volume journal is unsafe', 'VOLUME_JOURNAL_UNSAFE'],
+  ['macOS volume journal changed', 'VOLUME_JOURNAL_CHANGED'],
+  ['macOS volume ownership authentication failed', 'VOLUME_AUTHENTICATION'],
+  ['invalid macOS volume allocation', 'VOLUME_ALLOCATION'],
+  ['macOS image inventory is invalid', 'VOLUME_INVENTORY'],
+  ['macOS volume control directory changed', 'VOLUME_CONTROL_IDENTITY'],
+  ['macOS volume backing journal is invalid', 'VOLUME_BACKING_JOURNAL'],
+  ['macOS volume backing identity changed', 'VOLUME_BACKING_IDENTITY'],
+  ['macOS attached image has no authenticated backing', 'VOLUME_ATTACHED_BACKING_MISSING'],
+  ['macOS volume backing changed before detach', 'VOLUME_BACKING_DETACH_IDENTITY'],
+  ['macOS volume mount allocation changed', 'VOLUME_MOUNT_IDENTITY'],
+  ['macOS volume backing changed before removal', 'VOLUME_BACKING_REMOVE_IDENTITY'],
+  ['macOS recovery tools are not fenced', 'RECOVERY_TOOLS_UNFENCED'],
 ] as const)
+
+const filesystemCauses = new Map([
+  ['ENOENT', 'FILESYSTEM_MISSING'],
+  ['EBUSY', 'FILESYSTEM_BUSY'],
+  ['ENOTEMPTY', 'FILESYSTEM_NOT_EMPTY'],
+  ['EIO', 'FILESYSTEM_IO'],
+  ['EACCES', 'FILESYSTEM_ACCESS'],
+  ['EPERM', 'FILESYSTEM_PERMISSION'],
+  ['ENOSPC', 'FILESYSTEM_FULL'],
+  ['EROFS', 'FILESYSTEM_READ_ONLY'],
+] as const)
+const closedCauses = new Set([...causes.values(), ...filesystemCauses.values(), 'ABORTED'])
 
 export interface PrivateMacosGuardianFailure {
   readonly step: PrivateMacosGuardianFailureStep
-  readonly cause: 'OTHER' | NonNullable<ReturnType<typeof causes.get>>
+  readonly cause:
+    | 'OTHER'
+    | 'ABORTED'
+    | NonNullable<ReturnType<typeof causes.get>>
+    | NonNullable<ReturnType<typeof filesystemCauses.get>>
 }
 
 function closedCause(error: unknown): PrivateMacosGuardianFailure['cause'] {
   try {
-    return error instanceof Error
-      ? (causes.get(error.message as Parameters<typeof causes.get>[0]) ?? 'OTHER')
+    if (error instanceof DOMException && error.name === 'AbortError') return 'ABORTED'
+    if (!(error instanceof Error)) return 'OTHER'
+    const cause = causes.get(error.message as Parameters<typeof causes.get>[0])
+    if (cause !== undefined) return cause
+    const code = (error as Error & { code?: unknown }).code
+    if (error.name === 'AbortError' && code === 'ABORT_ERR') return 'ABORTED'
+    return typeof code === 'string'
+      ? (filesystemCauses.get(code as Parameters<typeof filesystemCauses.get>[0]) ?? 'OTHER')
       : 'OTHER'
   } catch {
     return 'OTHER'
@@ -81,7 +130,7 @@ export function normalizePrivateMacosGuardianFailure(
     Array.isArray(value) ||
     Object.keys(value).sort().join() !== 'cause,step' ||
     !failureSteps.includes(record.step) ||
-    (record.cause !== 'OTHER' && ![...causes.values()].includes(record.cause))
+    (record.cause !== 'OTHER' && !closedCauses.has(record.cause))
   )
     throw new Error('invalid macOS guardian response')
   return Object.freeze({ step: record.step, cause: record.cause })

@@ -1,0 +1,1074 @@
+const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
+
+import { describe, expect, test } from 'bun:test'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import {
+  createPrivateProjectLocalLock,
+  decodePrivateProjectLocalLock,
+  encodePrivateProjectLocalLock,
+  privateProjectLocalLockDigest,
+  requirePrivateProjectLocalLock,
+} from '../../src/internal/project-local-lock.js'
+import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
+import { defineJig } from '../../src/project/author.js'
+import { captureFlowSource } from '../../src/project/flow-source.js'
+import {
+  type InjectedBindingDeclaration,
+  linkPackageProject,
+  type PackageProjectValue,
+} from '../../src/project/package-project.js'
+import {
+  buildPrivateActivationRequests,
+  restorePrivateActivationRequest,
+} from '../../src/project/package-resolution.js'
+import {
+  type RetainedFlowInput,
+  retainFlowSourcePackages,
+} from '../../src/project/retained-flow.js'
+import {
+  AGENT_RUN_CONTRACT_DIGEST,
+  AGENT_RUN_CONTRACT_ID,
+  AGENT_RUN_CONTRACT_VERSION,
+  agentChannelFiles,
+} from '.././fixtures/agent-contract.js'
+
+const encoder = new TextEncoder()
+const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
+const agentRunContract = await readFile(
+  new URL('../../../docs/jig/spec/contracts/agent-run/contract.json', suiteTestUrl),
+  'utf8',
+)
+const finiteAcpFiles = Object.fromEntries(
+  await Promise.all(
+    ['contract.json', 'requests.json', 'responses.json'].map(async (name) => [
+      `contracts/finite-acp/${name}`,
+      await readFile(
+        new URL(`../../../docs/jig/spec/contracts/finite-acp/${name}`, suiteTestUrl),
+        'utf8',
+      ),
+    ]),
+  ),
+)
+
+describe('private package-project portable lock projection', () => {
+  test('retains effective ACP policy and explicit review origin in canonical lock and request identity', async () => {
+    await withFlows(nativeLockTrees(), (flows) => {
+      const input = {
+        flows,
+        bindings: [
+          binding('bindings/inline.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'pi', maxTurns: 3 } },
+          }),
+          binding('bindings/named.ts', {
+            package: 'flows/native',
+            slots: { native: 'grant:shared' },
+          }),
+          binding('bindings/shared.ts', {
+            package: 'flows/native',
+            slots: { native: 'grant:shared' },
+          }),
+        ],
+        grants: { shared: { kind: 'acp' as const, client: 'claude' as const, maxTurns: 2 } },
+      }
+      const authored = linkPackageProject(input)
+      const effective = linkPackageProject(input, undefined, 'codex')
+      const lock = createPrivateProjectLocalLock(effective, 'codex')
+      const encoded = encodePrivateProjectLocalLock(lock)
+      const decoded = decodePrivateProjectLocalLock(encoded)
+      expect(decoded).toEqual(lock)
+      expect(decoded.agentOverride).toBe('codex')
+      expect(encodePrivateProjectLocalLock(decoded)).toEqual(encoded)
+      expect(privateProjectLocalLockDigest(decoded)).toBe(privateProjectLocalLockDigest(lock))
+      expect(privateProjectLocalLockDigest(lock)).not.toBe(
+        privateProjectLocalLockDigest(createPrivateProjectLocalLock(authored)),
+      )
+      for (const [id, selected] of Object.entries(decoded.bindings)) {
+        const policy = { kind: 'acp', client: 'codex', maxTurns: id === 'inline' ? 3 : 2 }
+        expect(selected.slots.native).toEqual({
+          kind: 'grant',
+          policy,
+          ...(id === 'inline' ? {} : { name: 'shared' }),
+        })
+        const request = buildPrivateActivationRequests(effective).find(
+          (value) => value.target.kind === 'binding' && value.target.id === id,
+        )!
+        expect(request.slots.native).toMatchObject({
+          kind: 'native',
+          native: 'finite-acp',
+          grant: policy,
+        })
+        expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request)
+        const old = buildPrivateActivationRequests(authored).find(
+          (value) => value.target.kind === 'binding' && value.target.id === id,
+        )!
+        expect(request.digest).not.toBe(old.digest)
+        expect(() =>
+          restorePrivateActivationRequest({
+            ...request,
+            slots: {
+              ...request.slots,
+              native: { ...request.slots.native, grant: { ...policy, client: 'pi' } },
+            },
+          }),
+        ).toThrow()
+      }
+      expect(createPrivateProjectLocalLock(linkPackageProject(input)).agentOverride).toBeUndefined()
+      expect(linkPackageProject(input)).toEqual(authored)
+      expect(() => createPrivateProjectLocalLock(effective, 'pi')).toThrow(
+        'agree with every selected ACP policy',
+      )
+      expect(() => createPrivateProjectLocalLock(effective, 'unknown' as never)).toThrow(
+        'must be codex, claude or pi',
+      )
+    })
+  })
+
+  test('same-client origin is retained explicitly and never inferred from effective client values', async () => {
+    await withFlows(nativeLockTrees(), (flows) => {
+      const project = linkPackageProject(
+        {
+          flows,
+          bindings: [
+            binding('bindings/native.ts', {
+              package: 'flows/native',
+              slots: {
+                native: {
+                  kind: 'acp',
+                  client: 'codex',
+                  model: 'pinned-model',
+                  maxTurns: 4,
+                  retainSessions: true,
+                },
+              },
+            }),
+          ],
+        },
+        undefined,
+        'codex',
+      )
+      const explicit = createPrivateProjectLocalLock(project, 'codex')
+      const omitted = createPrivateProjectLocalLock(project)
+      expect(explicit.bindings).toEqual(omitted.bindings)
+      expect(privateProjectLocalLockDigest(explicit)).not.toBe(
+        privateProjectLocalLockDigest(omitted),
+      )
+      expect(
+        decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(explicit)).agentOverride,
+      ).toBe('codex')
+      expect(
+        decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(omitted)).agentOverride,
+      ).toBeUndefined()
+      expect(explicit.bindings.native!.slots.native).toEqual({
+        kind: 'grant',
+        policy: {
+          kind: 'acp',
+          client: 'codex',
+          model: 'pinned-model',
+          maxTurns: 4,
+          retainSessions: true,
+        },
+      })
+    })
+  })
+
+  test('strict origin decoding refuses malformed operands, mismatched policies and zero selected ACP', async () => {
+    await withFlows(nativeLockTrees(), (flows) => {
+      const project = linkPackageProject({
+        flows,
+        bindings: [
+          binding('bindings/first.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
+          }),
+          binding('bindings/second.ts', {
+            package: 'flows/native',
+            slots: { native: { kind: 'acp', client: 'codex', maxTurns: 3 } },
+          }),
+        ],
+      })
+      const base = createPrivateProjectLocalLock(project, 'codex')
+      for (const malformed of [null, false, 1, {}, [], '', 'unknown', 'CodeX', 'codex\n'])
+        expectInvalid(
+          base,
+          (value) => {
+            value.agentOverride = malformed
+          },
+          'must be codex, claude or pi',
+        )
+      expectInvalid(
+        base,
+        (value) => {
+          value.agentOverride = 'pi'
+        },
+        'agree with every selected ACP policy',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.second.slots.native.policy.client = 'pi'
+        },
+        'agree with every selected ACP policy',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.agentOrigin = 'codex'
+        },
+        'must contain exactly',
+      )
+      const zero = { packages: {}, bindings: {}, agentOverride: 'codex' }
+      expect(() => decodePrivateProjectLocalLock(lockBytes(zero))).toThrow(
+        'agree with every selected ACP policy',
+      )
+      const ordinary = linkPackageProject({ flows: [], bindings: [] })
+      expect(() => createPrivateProjectLocalLock(ordinary, 'codex')).toThrow(
+        'agree with every selected ACP policy',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          for (const selected of Object.values(value.bindings) as any[])
+            selected.slots.native.policy = {
+              kind: 'http',
+              url: 'https://example.org/',
+              method: 'GET',
+            }
+        },
+        'agree with every selected ACP policy',
+      )
+    })
+  })
+
+  test('retains implementation support claims for review without deriving authority', async () => {
+    for (const supports of [undefined, [], ['sessions', 'conversation']]) {
+      await withFlows(
+        {
+          'flows/provider': {
+            'FLOW.meta.json': metadata({
+              name: 'provider',
+              ...(supports === undefined ? {} : { supports }),
+            }),
+            'FLOW.contract.json': agentRunContract,
+            'FLOW.ts': 'export {};\n',
+            ...agentChannelFiles('contracts'),
+          },
+        },
+        (flows) => {
+          const lock = createPrivateProjectLocalLock(linkPackageProject({ flows, bindings: [] }))
+          const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))
+          expect(decoded).toEqual(lock)
+          expect(decoded.packages['flows/provider']?.supports).toEqual(supports)
+          expect(Object.hasOwn(decoded.packages['flows/provider'] ?? {}, 'supports')).toBe(
+            supports !== undefined,
+          )
+          expect(decoded.bindings).toEqual({})
+          expect(decoded.packages['flows/provider']?.uses).toEqual({})
+          if (supports !== undefined)
+            expect(Object.isFrozen(decoded.packages['flows/provider']?.supports)).toBeTrue()
+        },
+      )
+    }
+  })
+  test('distinguishes omitted and empty support projections in canonical lock identity', () => {
+    const packageValue = { digest: `sha256:${'a'.repeat(64)}`, directRun: true, uses: {} }
+    const omitted = decodePrivateProjectLocalLock(
+      lockBytes({ packages: { 'flows/provider': packageValue }, bindings: {} }),
+    )
+    const empty = decodePrivateProjectLocalLock(
+      lockBytes({
+        packages: { 'flows/provider': { ...packageValue, supports: [] } },
+        bindings: {},
+      }),
+    )
+    expect(privateProjectLocalLockDigest(omitted)).not.toBe(privateProjectLocalLockDigest(empty))
+    expect(encodePrivateProjectLocalLock(omitted)).not.toEqual(encodePrivateProjectLocalLock(empty))
+    expect(omitted.packages['flows/provider']?.supports).toBeUndefined()
+    expect(empty.packages['flows/provider']?.supports).toEqual([])
+  })
+  test('closes retained support projections to bounded unique LocalName arrays', () => {
+    const lockWith = (supports: unknown) =>
+      lockBytes({
+        packages: {
+          'flows/provider': {
+            digest: `sha256:${'a'.repeat(64)}`,
+            directRun: true,
+            uses: {},
+            supports,
+          },
+        },
+        bindings: {},
+      })
+    const maximum = ['a'.repeat(64), ...Array.from({ length: 255 }, (_, index) => `item-${index}`)]
+    const decoded = decodePrivateProjectLocalLock(lockWith(maximum))
+    expect(decoded.packages['flows/provider']?.supports).toEqual(maximum)
+    expect(encodePrivateProjectLocalLock(decoded)).toEqual(lockWith(maximum))
+    for (const malformed of [
+      null,
+      {},
+      'conversation',
+      [1],
+      ['conversation', 'conversation'],
+      ['Conversation'],
+      ['conversation\n'],
+      [''],
+      ['a'.repeat(65)],
+      [...maximum, 'overflow'],
+    ]) {
+      expect(() => decodePrivateProjectLocalLock(lockWith(malformed))).toThrow()
+    }
+  })
+  test('checkpoint authority is exact, root-only, and retained in lock identity', async () => {
+    const descriptor = await readFile(
+      new URL('../../../docs/jig/spec/contracts/run-checkpoint/contract.json', suiteTestUrl),
+      'utf8',
+    )
+    for (const attachments of [{ out: 'read-write' }, {}]) {
+      await withFlows(
+        {
+          'flows/checkpoint': {
+            'FLOW.meta.json': metadata({
+              name: 'checkpoint',
+              description: 'Save progress.',
+              uses: { progress: { contract: './contracts/run-checkpoint/contract.json' } },
+            }),
+            'FLOW.contract.json': JSON.stringify({
+              $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+              attachments,
+            }),
+            'FLOW.ts': 'export {};\n',
+            'contracts/run-checkpoint/contract.json': descriptor,
+          },
+          'flows/parent': {
+            'FLOW.meta.json': metadata({ name: 'parent', description: 'Parent.' }),
+            'FLOW.ts': 'export {};\n',
+          },
+        },
+        async (flows) => {
+          if (!Object.hasOwn(attachments, 'out')) {
+            expect(() => linkPackageProject({ flows, bindings: [] })).toThrow('writable attachment')
+            return
+          }
+          const project = linkPackageProject({ flows, bindings: [] })
+          const lock = createPrivateProjectLocalLock(project)
+          expect(lock.packages['flows/checkpoint']!.directRun).toBe(true)
+          expect(lock.packages['flows/checkpoint']!.uses.progress!.id).toBe(
+            'https://jig.md/contracts/run-checkpoint',
+          )
+          expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
+          expect(() =>
+            linkPackageProject({
+              flows,
+              bindings: [
+                binding('bindings/parent.ts', {
+                  package: 'flows/parent',
+                  slots: { child: 'flow:flows/checkpoint' },
+                }),
+              ],
+            }),
+          ).toThrow()
+        },
+      )
+    }
+  })
+  test('has one empty canonical byte vector and authenticated identity', () => {
+    const bytes = encoder.encode('{"bindings":{},"packages":{}}\n')
+    const value = decodePrivateProjectLocalLock(bytes)
+
+    expect(encodePrivateProjectLocalLock(value)).toEqual(bytes)
+    expect(privateProjectLocalLockDigest(value)).toMatch(/^sha256:[0-9a-f]{64}$/)
+    expect(requirePrivateProjectLocalLock(value)).toBe(value)
+    expect(Object.isFrozen(value)).toBeTrue()
+    expect(Object.isFrozen(value.packages)).toBeTrue()
+    expect(() => requirePrivateProjectLocalLock(structuredClone(value))).toThrow(
+      'was not built or strictly decoded',
+    )
+  })
+  test('projects exact packages and Binding settings', async () => {
+    await withFlows(projectTrees(), async (flows) => {
+      const project = linkedProject(flows, 3)
+      const lock = createPrivateProjectLocalLock(project)
+      expect(() => createPrivateProjectLocalLock(structuredClone(project))).toThrow(
+        'not produced by the package-project linker',
+      )
+
+      expect(lock.packages['flows/configured']).toMatchObject({
+        directRun: false,
+        uses: {},
+      })
+      expect(lock.packages['flows/worker']).toMatchObject({
+        directRun: true,
+        uses: {},
+      })
+      expect(lock.bindings.configured).toEqual({
+        packagePath: 'flows/configured',
+        settings: { maxRetries: 3 },
+        slots: { worker: { kind: 'flow', path: 'flows/worker' } },
+      })
+
+      const encoded = encodePrivateProjectLocalLock(lock)
+      const decoded = decodePrivateProjectLocalLock(encoded)
+      expect(encodePrivateProjectLocalLock(decoded)).toEqual(encoded)
+      expect(privateProjectLocalLockDigest(decoded)).toBe(privateProjectLocalLockDigest(lock))
+      expect(Object.isFrozen(decoded.packages['flows/configured'])).toBeTrue()
+      expect(Object.isFrozen(decoded.bindings.configured)).toBeTrue()
+    })
+  })
+  test('canonically orders slots and changes identity for add, remove, and retarget', async () => {
+    await withFlows(projectTrees(), async (flows) => {
+      const base = createPrivateProjectLocalLock(
+        linkedProject(flows, 3, {
+          worker: 'flow:flows/worker',
+        }),
+      )
+      const reordered = createPrivateProjectLocalLock(
+        linkedProject(flows, 3, {
+          worker: 'flow:flows/worker',
+          backup: 'flow:flows/backup',
+        }),
+      )
+      expect(Object.keys(reordered.bindings.configured!.slots)).toEqual(['backup', 'worker'])
+
+      const variants = [
+        createPrivateProjectLocalLock(linkedProject(flows, 3, {})),
+        reordered,
+        createPrivateProjectLocalLock(
+          linkedProject(flows, 3, {
+            worker: 'flow:flows/backup',
+          }),
+        ),
+      ]
+      for (const variant of variants) {
+        expect(encodePrivateProjectLocalLock(variant)).not.toEqual(
+          encodePrivateProjectLocalLock(base),
+        )
+        expect(privateProjectLocalLockDigest(variant)).not.toBe(privateProjectLocalLockDigest(base))
+      }
+    })
+  })
+  test('projects exact interface requirements without granting native authority during lock decode', async () => {
+    await withFlows(
+      {
+        'flows/router': {
+          'FLOW.meta.json': metadata({
+            name: 'router',
+            description: 'Router.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
+        },
+      },
+      async (flows) => {
+        const lock = createPrivateProjectLocalLock(linkPackageProject({ flows, bindings: [] }))
+        expect(lock.packages['flows/router']!.uses).toEqual({
+          agent: {
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          },
+        })
+        expect(Object.isFrozen(lock.packages['flows/router']!.uses.agent)).toBeTrue()
+        const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))
+        expect(decoded).toEqual(lock)
+        const changed = structuredClone(lock)
+        ;(changed.packages['flows/router']!.uses.agent as { version: string }).version = '2.0.0'
+        ;(changed.packages['flows/router'] as { directRun: boolean }).directRun = true
+        expect(() => decodePrivateProjectLocalLock(lockBytes(changed))).toThrow(
+          'requires an explicit matching',
+        )
+        ;(changed.packages['flows/router'] as { directRun: boolean }).directRun = false
+        const changedDecoded = decodePrivateProjectLocalLock(lockBytes(changed))
+        expect(changedDecoded.packages['flows/router']!.uses.agent!.version).toBe('2.0.0')
+        expect(privateProjectLocalLockDigest(changedDecoded)).not.toBe(
+          privateProjectLocalLockDigest(lock),
+        )
+      },
+    )
+  })
+  test('retains reviewed command authority in lock and activation identity', async () => {
+    const commandContract = await readFile(
+      new URL('../../../docs/jig/spec/contracts/project-command/contract.json', suiteTestUrl),
+      'utf8',
+    )
+    await withFlows(
+      {
+        'flows/command': {
+          'FLOW.meta.json': metadata({
+            name: 'command',
+            description: 'Command.',
+            uses: { command: { contract: './contracts/project-command/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/project-command/contract.json': commandContract,
+        },
+      },
+      async (flows) => {
+        const project = (run: string) =>
+          linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/command.ts', {
+                package: 'flows/command',
+                slots: { command: { kind: 'command', run } },
+              }),
+            ],
+          })
+        const first = project('src/cli.ts'),
+          second = project('src/other.ts')
+        const lock = createPrivateProjectLocalLock(first)
+        expect(lock.bindings.command!.slots.command).toEqual({
+          kind: 'grant',
+          policy: { kind: 'command', run: 'src/cli.ts' },
+        })
+        expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
+        expect(privateProjectLocalLockDigest(createPrivateProjectLocalLock(second))).not.toBe(
+          privateProjectLocalLockDigest(lock),
+        )
+        const request = buildPrivateActivationRequests(first).find(
+          (r) => r.target.kind === 'binding',
+        )!
+        expect(restorePrivateActivationRequest(structuredClone(request))).toEqual(request)
+        expect(
+          buildPrivateActivationRequests(second).find((r) => r.target.kind === 'binding')!.digest,
+        ).not.toBe(request.digest)
+        expect(() =>
+          restorePrivateActivationRequest({
+            ...request,
+            slots: {
+              ...request.slots,
+              command: {
+                ...request.slots.command,
+                grant: { kind: 'command', run: 'src/other.ts' },
+              },
+            },
+          }),
+        ).toThrow()
+        expectInvalid(
+          lock,
+          (value) => {
+            value.bindings.command.slots.command.policy = { kind: 'command', shell: 'bun test' }
+          },
+          'run or test',
+        )
+      },
+    )
+  })
+  test('retains configured Agent child identity and rejects widened slot relations on decode', async () => {
+    const trees = projectTrees()
+    await withFlows(
+      {
+        ...trees,
+        'flows/configured': {
+          ...trees['flows/configured'],
+          'FLOW.meta.json': metadata({
+            name: 'configured',
+            description: 'Configured Agent consumer.',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
+        },
+        'flows/agent': {
+          'FLOW.meta.json': metadata({ name: 'agent', description: 'Ordinary Agent provider.' }),
+          'FLOW.ts': 'export {};\n',
+          'FLOW.contract.json': agentRunContract,
+          ...agentChannelFiles('contracts'),
+        },
+      },
+      async (flows) => {
+        const lock = createPrivateProjectLocalLock(
+          linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/router.ts', {
+                package: 'flows/worker',
+                slots: { review: 'binding:reviewer' },
+              }),
+              binding('bindings/reviewer.ts', {
+                package: 'flows/configured',
+                settings: { maxRetries: 7 },
+                slots: { agent: 'flow:flows/agent' },
+              }),
+            ],
+          }),
+        )
+        const value = JSON.parse(new TextDecoder().decode(encodePrivateProjectLocalLock(lock)))
+        expect(value.packages['flows/configured'].uses).toEqual({
+          agent: {
+            id: AGENT_RUN_CONTRACT_ID,
+            version: AGENT_RUN_CONTRACT_VERSION,
+            digest: AGENT_RUN_CONTRACT_DIGEST,
+          },
+        })
+        const decoded = decodePrivateProjectLocalLock(lockBytes(value))
+        expect(decoded.bindings.router!.slots.review).toEqual({ kind: 'binding', id: 'reviewer' })
+        expect(Object.isFrozen(decoded.bindings.router!.slots.review)).toBeTrue()
+        expect(decoded.bindings.reviewer!.settings).toEqual({ maxRetries: 7 })
+        const base = value
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = 'flows/configured'
+          },
+          'must be an object',
+        )
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = { kind: 'binding', id: 'missing' }
+          },
+          'unknown Binding',
+        )
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = { kind: 'binding', id: 'router' }
+          },
+          'own package',
+        )
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.router.slots.review = {
+              kind: 'binding',
+              id: 'reviewer',
+              path: 'flows/configured',
+            }
+          },
+          'must contain exactly',
+        )
+        const deeper = structuredClone(base)
+        deeper.bindings.reviewer.slots.nested = { kind: 'flow', path: 'flows/backup' }
+        expect(
+          decodePrivateProjectLocalLock(lockBytes(deeper)).bindings.reviewer!.slots.nested,
+        ).toEqual({ kind: 'flow', path: 'flows/backup' })
+        expectInvalid(
+          base,
+          (item) => {
+            item.bindings.reviewer.slots.nested = { kind: 'binding', id: 'router' }
+          },
+          'cycle',
+        )
+      },
+    )
+  })
+  test('changes when package bytes or Binding settings change', async () => {
+    let first: Uint8Array | undefined
+    await withFlows(projectTrees(), async (flows) => {
+      first = encodePrivateProjectLocalLock(createPrivateProjectLocalLock(linkedProject(flows, 3)))
+      const changedSettings = encodePrivateProjectLocalLock(
+        createPrivateProjectLocalLock(linkedProject(flows, 9)),
+      )
+      expect(changedSettings).not.toEqual(first)
+    })
+
+    const changed = projectTrees()
+    changed['flows/worker']!['FLOW.ts'] = 'export const changed = true;\n'
+    await withFlows(changed, async (flows) => {
+      const second = encodePrivateProjectLocalLock(
+        createPrivateProjectLocalLock(linkedProject(flows, 3)),
+      )
+      expect(second).not.toEqual(first!)
+    })
+  })
+  test('rejects alternate spelling and forged fields', () => {
+    const canonical = {
+      packages: {},
+      bindings: {},
+    }
+    const valid = lockBytes(canonical)
+    expect(() => decodePrivateProjectLocalLock(valid)).not.toThrow()
+    expect(() => decodePrivateProjectLocalLock(valid.subarray(0, valid.length - 1))).toThrow(
+      'not in canonical',
+    )
+    expect(() =>
+      decodePrivateProjectLocalLock(encoder.encode(JSON.stringify(canonical, null, 2) + '\n')),
+    ).toThrow('not in canonical')
+    expect(() =>
+      decodePrivateProjectLocalLock(
+        encoder.encode('{"packages":{},"packages":{},"bindings":{}}\n'),
+      ),
+    ).toThrow('duplicate object member')
+    expect(() =>
+      decodePrivateProjectLocalLock(
+        lockBytes({
+          ...canonical,
+          backend: { digest: `sha256:${'a'.repeat(64)}` },
+        }),
+      ),
+    ).toThrow('must contain exactly')
+    expect(() =>
+      decodePrivateProjectLocalLock(Uint8Array.from([0xef, 0xbb, 0xbf, ...valid])),
+    ).toThrow('BOM is not allowed')
+  })
+  test('strict decoding rejects corrupt packages and dangling Binding relations', async () => {
+    await withFlows(projectTrees(), async (flows) => {
+      const base = structuredClone(createPrivateProjectLocalLock(linkedProject(flows, 3))) as any
+
+      expectInvalid(
+        base,
+        (value) => {
+          value.packages['flows/worker'].digest = `sha256:${'A'.repeat(64)}`
+        },
+        'digest must be sha256',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.packagePath = 'flows/missing'
+        },
+        'selects an unknown package',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.packages['FLOWS/WORKER'] = value.packages['flows/worker']
+        },
+        'collide',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.packages['.JIG/worker'] = value.packages['flows/worker']
+        },
+        'protected .jig',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.packagePath = '.jig/configured'
+        },
+        'protected .jig',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          delete value.bindings.configured.slots
+        },
+        'must contain exactly',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.slots = []
+        },
+        'slots must be an object',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.slots = { Bad: { kind: 'flow', path: 'flows/worker' } }
+        },
+        'must be a LocalName',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.slots = { worker: { kind: 'flow', path: '../worker' } }
+        },
+        'invalid path segment',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.slots = Object.fromEntries(
+            Array.from({ length: 257 }, (_, index) => [`slot-${index}`, 'flows/worker']),
+          )
+        },
+        'exceed 256 entries',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.slots = { worker: { kind: 'flow', path: 'flows/missing' } }
+        },
+        'selects an unknown package',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.bindings.configured.slots = { worker: { kind: 'flow', path: 'flows/configured' } }
+        },
+        'selects its own package',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.packages['flows/worker'].directRun = false
+        },
+        'must select a direct Run package or configured Binding',
+      )
+      expectInvalid(
+        base,
+        (value) => {
+          value.packages['flows/configured'].unexpected = true
+        },
+        'must contain exactly',
+      )
+    })
+  })
+  test('enforces the aggregate activation-target bound', () => {
+    expect(() => decodePrivateProjectLocalLock(lockBytes(rootPackageCollection(257)))).not.toThrow()
+    expect(() => decodePrivateProjectLocalLock(lockBytes(rootPackageCollection(4_097)))).toThrow(
+      'activation targets exceed 4096 targets',
+    )
+  })
+  test('retains default-selected direct routes and changes lock and activation identities on retarget', async () => {
+    await withFlows(
+      {
+        'flows/consumer': {
+          'FLOW.meta.json': metadata({
+            name: 'consumer',
+            uses: { agent: { contract: './contracts/agent-run/contract.json' } },
+          }),
+          'FLOW.ts': 'export {};\n',
+          'contracts/agent-run/contract.json': agentRunContract,
+          ...agentChannelFiles('contracts/agent-run/contracts'),
+        },
+        ...Object.fromEntries(
+          ['first', 'second'].map((name) => [
+            `flows/${name}`,
+            {
+              'FLOW.meta.json': metadata({ name }),
+              'FLOW.ts': 'export {};\n',
+              'FLOW.contract.json': agentRunContract,
+              ...agentChannelFiles('contracts'),
+            },
+          ]),
+        ),
+      },
+      (flows) => {
+        const defaultProviders = { 'https://jig.md/contracts/agent-run': 'binding:first' }
+        const bindings = ['first', 'second'].map((name) =>
+          binding(`bindings/${name}.ts`, { package: `flows/${name}` }),
+        )
+        const first = linkPackageProject({ flows, bindings, defaultProviders })
+        const lock = createPrivateProjectLocalLock(first)
+        const encoded = encodePrivateProjectLocalLock(lock)
+        defaultProviders['https://jig.md/contracts/agent-run'] = 'binding:second'
+        const second = linkPackageProject({ flows, bindings, defaultProviders })
+        expect(lock.packages['flows/consumer']!.slots).toEqual({
+          agent: { kind: 'binding', id: 'first' },
+        })
+        expect(decodePrivateProjectLocalLock(encoded)).toEqual(lock)
+        expect(encodePrivateProjectLocalLock(lock)).toEqual(encoded)
+        expect(privateProjectLocalLockDigest(createPrivateProjectLocalLock(second))).not.toBe(
+          privateProjectLocalLockDigest(lock),
+        )
+        const requestFor = (project: PackageProjectValue) =>
+          buildPrivateActivationRequests(project).find(
+            (request) => request.target.kind === 'flow' && request.target.path === 'flows/consumer',
+          )!
+        expect(requestFor(first).slots.agent).toMatchObject({
+          kind: 'flow',
+          target: { kind: 'binding', id: 'first' },
+        })
+        expect(requestFor(second).digest).not.toBe(requestFor(first).digest)
+        expect(restorePrivateActivationRequest(structuredClone(requestFor(first)))).toEqual(
+          requestFor(first),
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].slots.agent.id = 'missing'
+          },
+          'unknown Binding',
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].slots.agent = { kind: 'flow', path: 'flows/consumer' }
+          },
+          'own package',
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].directRun = false
+          },
+          'direct Flow',
+        )
+        expectInvalid(
+          lock,
+          (value) => {
+            value.packages['flows/consumer'].slots.agent = {
+              kind: 'grant',
+              policy: { kind: 'command', run: 'src/cli.ts' },
+            }
+          },
+          'ordinary routes',
+        )
+      },
+    )
+  })
+  test('decoded direct Flow routes cannot hide a cycle or an excessive-depth path', () => {
+    const entry = (slots: Record<string, unknown> = {}) => ({
+      digest: `sha256:${'e'.repeat(64)}`,
+      directRun: true,
+      uses: {},
+      ...(Object.keys(slots).length === 0 ? {} : { slots }),
+    })
+    const next = (path: string) => ({ next: { kind: 'flow', path } })
+    const base = {
+      packages: {
+        'flows/first': entry(next('flows/second')),
+        'flows/second': entry(next('flows/third')),
+        'flows/third': entry(),
+        'flows/fourth': entry(),
+      },
+      bindings: {},
+    }
+    expect(() => decodePrivateProjectLocalLock(lockBytes(base))).not.toThrow()
+    expectInvalid(
+      base,
+      (value) => {
+        value.packages['flows/second'].slots = next('flows/first')
+      },
+      'cycle',
+    )
+    expectInvalid(
+      base,
+      (value) => {
+        value.packages['flows/third'].slots = next('flows/fourth')
+        value.packages['flows/fourth'].slots = next('flows/fifth')
+        value.packages['flows/fifth'] = entry(next('flows/sixth'))
+        value.packages['flows/sixth'] = entry(next('flows/seventh'))
+        value.packages['flows/seventh'] = entry()
+      },
+      'fixed root resource budget',
+    )
+    expectInvalid(
+      base,
+      (value) => {
+        value.packages['flows/second'].slots = next('flows/missing')
+      },
+      'unknown package',
+    )
+  })
+  test('enforces the JSON/0 file-byte ceiling', () => {
+    expect(() => decodePrivateProjectLocalLock(new Uint8Array(JSON_1_LIMITS.bytes + 1))).toThrow(
+      'maximum bytes exceeded',
+    )
+  })
+})
+
+function rootPackageCollection(count: number): unknown {
+  const packages = Object.fromEntries(
+    Array.from({ length: count }, (_, index) => [
+      `flows/item-${index}`,
+      {
+        digest: `sha256:${'e'.repeat(64)}`,
+        directRun: true,
+        uses: {},
+      },
+    ]),
+  )
+  return { packages, bindings: {} }
+}
+
+function projectTrees(): Record<string, Record<string, string>> {
+  return {
+    'flows/configured': {
+      'FLOW.meta.json': metadata({ name: 'configured', description: 'Configured.' }),
+      'FLOW.ts': 'export {};\n',
+      'settings.schema.json': schema({
+        type: 'object',
+        properties: { maxRetries: { type: 'integer' } },
+        required: ['maxRetries'],
+        additionalProperties: false,
+      }),
+    },
+    'flows/worker': {
+      'FLOW.meta.json': metadata({ name: 'worker', description: 'Worker.' }),
+      'FLOW.ts': 'export {};\n',
+    },
+    'flows/backup': {
+      'FLOW.meta.json': metadata({ name: 'backup', description: 'Backup.' }),
+      'FLOW.ts': 'export {};\n',
+    },
+  }
+}
+
+function nativeLockTrees(): Record<string, Record<string, string>> {
+  return {
+    'flows/native': {
+      'FLOW.meta.json': metadata({
+        name: 'native',
+        uses: { native: { contract: './contracts/finite-acp/contract.json' } },
+      }),
+      'FLOW.ts': 'export {};\n',
+      ...finiteAcpFiles,
+    },
+  }
+}
+
+function linkedProject(
+  flows: readonly RetainedFlowInput[],
+  maxRetries: number,
+  slots: Readonly<Record<string, string>> = { worker: 'flow:flows/worker' },
+): PackageProjectValue {
+  return linkPackageProject({
+    flows,
+    bindings: [
+      binding('bindings/configured.ts', {
+        package: 'flows/configured',
+        settings: { maxRetries },
+        slots,
+      }),
+    ],
+  })
+}
+
+function binding(sourcePath: string, definition: unknown): InjectedBindingDeclaration {
+  return { sourcePath, definition }
+}
+
+function metadata(value: Record<string, unknown>): string {
+  return JSON.stringify(value)
+}
+
+function schema(value: Record<string, unknown>): string {
+  return JSON.stringify({ $schema: schemaUri, ...value })
+}
+
+async function withFlows(
+  trees: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  action: (flows: readonly RetainedFlowInput[]) => Promise<void> | void,
+): Promise<void> {
+  const root = await mkdtemp(join(tmpdir(), 'jig-project-lock-'))
+  const store = join(root, 'store')
+  let source: Awaited<ReturnType<typeof captureFlowSource>> | undefined
+  try {
+    await mkdir(store, { mode: 0o700 })
+    for (const [path, tree] of Object.entries(trees)) {
+      for (const [name, contents] of Object.entries(tree)) {
+        const file = join(root, path, name)
+        await mkdir(dirname(file), { recursive: true })
+        await writeFile(file, contents)
+      }
+    }
+    source = await captureFlowSource(root, defineJig({ flows: Object.keys(trees) }).flows)
+    await action(await retainFlowSourcePackages(store, source))
+  } finally {
+    await source?.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+}
+
+function lockBytes(value: unknown): Uint8Array {
+  const body = canonicalJson(value as JsonValue)
+  const bytes = new Uint8Array(body.length + 1)
+  bytes.set(body)
+  bytes[body.length] = 0x0a
+  return bytes
+}
+
+function expectInvalid(base: unknown, change: (value: any) => void, message: string): void {
+  const value = structuredClone(base)
+  change(value)
+  expect(() => decodePrivateProjectLocalLock(lockBytes(value))).toThrow(message)
+}

@@ -318,6 +318,18 @@ function closedNativeTestCause(error: Error): string | undefined {
     return undefined
   }
   switch (message) {
+    case 'native output collection is unavailable':
+      return 'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE'
+    case 'native output was lost during cleanup':
+      return 'NATIVE_OUTPUT_LOST_DURING_CLEANUP'
+    case 'native output was not captured':
+      return 'NATIVE_OUTPUT_NOT_CAPTURED'
+    case 'output capture deadline exceeded':
+      return 'OUTPUT_CAPTURE_DEADLINE'
+    case 'output exceeds its finite file profile':
+      return 'OUTPUT_FILE_PROFILE'
+    case 'native output cleanup failed':
+      return 'NATIVE_OUTPUT_CLEANUP_FAILED'
     case 'macOS control deadline expired':
       return 'MACOS_CONTROL_DEADLINE'
     case 'macOS guardian bootstrap failed':

@@ -1,11 +1,14 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
-import { discoverHostTests, NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { NATIVE_PREREQUISITE_TESTS } from './ci/macos-host-test-shards.mjs'
+import { discoverRepositoryTests } from './ci/suite-inventory.mjs'
+import manifest from './ci/test-suites.json'
 import {
   compilerEnvironment,
+  macosOwnershipSnapshot,
   nativeTestFiles,
   requireMacHost,
   runNativeTests,
@@ -40,18 +43,23 @@ test('native preflight accepts only the existing unprivileged Mac qualification 
 })
 
 test('native inventory includes every discovered Mac file once, prerequisites first', async () => {
-  const files = await discoverHostTests(resolve(import.meta.dir, '..'))
-  const future = 'packages/jig/test/nested/macos-future.test.ts'
+  const files = discoverRepositoryTests(resolve(import.meta.dir, '..'), manifest)
+  const future = 'packages/jig/test/macos/future.test.ts'
   const planned = nativeTestFiles([...files, future])
+  expect(planned).toContain('packages/jig/test/macos-23E224/macos-preferences-observer.test.ts')
   expect(planned.slice(0, NATIVE_PREREQUISITE_TESTS.length)).toEqual(NATIVE_PREREQUISITE_TESTS)
   expect(new Set(planned).size).toBe(planned.length)
   expect([...planned].sort()).toEqual(
-    [...files.filter((file) => /\/macos-/.test(file)), future].sort(),
+    [...files.filter((file) => /\/macos(?:-23E224)?\//.test(file)), future].sort(),
   )
   expect(() =>
     nativeTestFiles(files.filter((file) => file !== NATIVE_PREREQUISITE_TESTS[0])),
   ).toThrow('is missing')
-  expect(() => nativeTestFiles([...files, NATIVE_PREREQUISITE_TESTS[0]])).toThrow('repeats')
+  expect(() => nativeTestFiles([...files, NATIVE_PREREQUISITE_TESTS[0]])).toThrow('Repeated')
+  expect(nativeTestFiles(files, '24G830')).not.toContain(
+    'packages/jig/test/macos-23E224/macos-preferences-observer.test.ts',
+  )
+  expect(() => nativeTestFiles([...files, 'packages/jig/test/unowned.test.ts'])).toThrow('Unowned')
 })
 
 test('preflight preserves tool configuration without inheriting live model opt-ins or credentials', () => {
@@ -266,4 +274,104 @@ test('invalid preflight arguments fail before any build or test', () => {
   expect(result.status).toBe(1)
   expect(result.stdout).toBe('')
   expect(result.stderr).toContain('Usage: just preflight')
+})
+
+const mountFixture = [
+  '/dev/disk20 on /private/tmp/jig-owned/mount (hfs, local, nodev, noexec)',
+  '/dev/disk21 on /Volumes/Jig-0123456789abcdef (hfs, local, nodev, noexec)',
+  '/dev/disk22 on /Volumes/Jig-0123456789abcdef 1 (hfs, local, nodev, noexec)',
+  '/dev/disk23 on /Volumes/Ordinary (hfs, local)',
+  '/dev/disk24 on /Volumes/My-Jig-0123456789abcdef (hfs, local)',
+  '/dev/disk25 on /Volumes/Personal/Jig-0123456789abcdef (hfs, local)',
+  '/dev/disk26 on /Volumes/Jigsaw (hfs, local)',
+].join('\n')
+const expectedMountResidue = mountFixture
+  .split('\n')
+  .slice(0, 3)
+  .map((line) => `mount ${line}`)
+  .sort()
+function observedMounts(text: string, calls: unknown[] = []) {
+  return macosOwnershipSnapshot((command, args) => {
+    calls.push({ command, args })
+    if (command === '/bin/launchctl' && args.join(' ') === 'list') return 'PID\tStatus\tLabel\n'
+    if (command === '/sbin/mount' && args.length === 0) return text
+    if (command === '/bin/ps' && args.join(' ') === '-axo pid=,command=') return ''
+    throw Error('Residue observation attempted a non-observational command')
+  })
+}
+test('native snapshots observe automatic Jig volumes and explicit paths without cleanup authority', () => {
+  const calls: unknown[] = []
+  expect(observedMounts(mountFixture, calls).split('\n')).toEqual(expectedMountResidue)
+  expect(calls).toEqual([
+    { command: '/bin/launchctl', args: ['list'] },
+    { command: '/sbin/mount', args: [] },
+    { command: '/bin/ps', args: ['-axo', 'pid=,command='] },
+  ])
+  expect(observedMounts(mountFixture.split('\n').slice(3).join('\n'))).toBe('')
+})
+test('an automatic uppercase mount refuses clean credit and preserves an earlier failure', () => {
+  for (const childStatus of [0, 42]) {
+    let snapshots = 0
+    const reports: string[] = []
+    const status = runNativeTests(
+      ['one.test.ts'],
+      {},
+      () => childStatus,
+      () => observedMounts(snapshots++ === 0 ? '' : mountFixture.split('\n')[1]!),
+      (message) => reports.push(message),
+    )
+    expect(status).toBe(childStatus || 1)
+    expect(snapshots).toBe(2)
+    expect(reports.join('\n')).toContain('mount /dev/disk21 on /Volumes/Jig-0123456789abcdef')
+    expect(reports.join('\n')).not.toContain('passed')
+  }
+})
+test('hosted and self-hosted Mac snapshot commands execute the same automatic-volume detection', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'jig-mac-mount-evidence-'))
+  try {
+    const bin = resolve(directory, 'bin'),
+      input = resolve(directory, 'mounts.txt')
+    await mkdir(bin)
+    await writeFile(input, mountFixture + '\n', { mode: 0o600 })
+    for (const [name, body] of Object.entries({
+      launchctl: 'test "$#" -eq 1 && test "$1" = list || exit 90\nprintf "PID\\tStatus\\tLabel\\n"',
+      mount: 'test "$#" -eq 0 || exit 90\ncat "$MOUNT_FIXTURE"',
+      ps: 'test "$#" -eq 2 && test "$1" = -axo && test "$2" = pid=,command= || exit 90',
+    }))
+      await writeFile(resolve(bin, name), `#!/bin/sh\nset -eu\n${body}\n`, { mode: 0o700 })
+    for (const path of [
+      'scripts/ci/qualify-macos-host.sh',
+      '.github/workflows/macos-hosted-candidates.yml',
+    ]) {
+      const source = await readFile(resolve(import.meta.dir, '..', path), 'utf8'),
+        lines = source.split('\n')
+      const start = lines.findIndex((line) => /^\s*snapshot\(\) \{$/.test(line))
+      expect(start).toBeGreaterThanOrEqual(0)
+      const end = lines.findIndex((line, index) => index > start && line.trim() === '}')
+      expect(end).toBeGreaterThan(start)
+      const indent = lines[start]!.match(/^\s*/)![0].length
+      const command =
+        lines
+          .slice(start, end + 1)
+          .map((line) => line.slice(indent))
+          .join('\n') + '\nsnapshot\n'
+      const result = spawnSync('/bin/sh', ['-c', command], {
+        encoding: 'utf8',
+        timeout: 5000,
+        env: { PATH: `${bin}:/usr/bin:/bin`, LC_ALL: 'C', MOUNT_FIXTURE: input },
+      })
+      expect(result.error).toBeUndefined()
+      expect(result.status).toBe(0)
+      expect(result.stderr).toBe('')
+      expect(result.stdout.trimEnd().split('\n')).toEqual(expectedMountResidue)
+    }
+    const selfHosted = await readFile(
+      resolve(import.meta.dir, '../.github/workflows/macos-host-conformance.yml'),
+      'utf8',
+    )
+    expect(selfHosted).toContain('run: scripts/ci/qualify-macos-host.sh --preflight')
+    expect(selfHosted).toContain('run: scripts/ci/qualify-macos-host.sh\n')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })

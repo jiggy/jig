@@ -24,7 +24,7 @@ mod site "site/justfile"
     just --list --list-submodules
 
 # Build the TypeScript packages
-build: flow::build jig::build authoring::build
+build: jig::build
 
 # Format only the requested paths, or the repository when omitted
 [positional-arguments]
@@ -48,7 +48,26 @@ build: flow::build jig::build authoring::build
 # Run ordinary method, SDK, Jig, and Run/0 tests
 [positional-arguments]
 @test *args:
-    bun test packages/agent-method packages/agent-acp packages/flow-sdk packages/reporting packages/display-model packages/display-web packages/display-tui packages/jig conformance/run-0 "$@"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    profile=portable
+    if [[ "$(uname -s)" == Linux ]]; then profile=portable-linux; fi
+    portable=$(node scripts/ci/suite-inventory.mjs --target source-portable --profile "$profile")
+    protocol=$(node scripts/ci/suite-inventory.mjs --target source-protocol --profile "$profile")
+    files=()
+    node_files=()
+    while IFS= read -r file; do files+=("./$file"); done <<< "$portable"
+    while IFS= read -r file; do
+        case "$file" in
+            *.node.mjs) node_files+=("./$file") ;;
+            *) files+=("./$file") ;;
+        esac
+    done <<< "$protocol"
+    bun test "${files[@]}" "$@"
+    if (( ${#node_files[@]} )); then
+        just authoring::build
+        "${FLOW_NODE:-node}" --test "${node_files[@]}"
+    fi
 
 # Run the portable Run/0 corpus
 [positional-arguments]

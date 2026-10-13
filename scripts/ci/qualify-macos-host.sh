@@ -44,7 +44,7 @@ if [[ "$mode" == shard && "$shard" -ge "$shard_count" ]]; then
   echo 'Shard is outside the selected architecture plan.' >&2
   exit 2
 fi
-if [[ "$mode" != shard || "$shard" == "$installed_shard" ]]; then
+if [[ "$mode" == full || "$mode" == preflight || ( "$mode" == shard && "$shard" == "$installed_shard" ) ]]; then
   for name in JIG_CODEX_STARTUP_PATH JIG_CLAUDE_STARTUP_PATH JIG_PI_STARTUP_PATH; do
     value="${!name:-}"
     if [[ "$value" != /* || ! -x "$value" ]]; then
@@ -52,6 +52,16 @@ if [[ "$mode" != shard || "$shard" == "$installed_shard" ]]; then
       exit 2
     fi
   done
+fi
+source_revision=$(git rev-parse HEAD)
+candidate_receipt=''
+if [[ -n "${JIG_CI_CANDIDATE_DIRECTORY:-}" ]]; then
+  if [[ "$JIG_CI_CANDIDATE_DIRECTORY" != /* || ! -d "$JIG_CI_CANDIDATE_DIRECTORY" ]]; then
+    echo 'Configure an absolute canonical candidate directory before qualification.' >&2
+    exit 2
+  fi
+  candidate_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
+    "$JIG_CI_CANDIDATE_DIRECTORY" --source "$source_revision")
 fi
 if [[ "$mode" == preflight ]]; then exit 0; fi
 # Host qualification has no live API phase.
@@ -62,7 +72,7 @@ scratch=$(bun -e 'console.log(require("node:fs").realpathSync(process.argv[1]))'
 snapshot() {
   {
     launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'
-    mount | awk '/jig-/ {print "mount " $0}'
+    mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'
     ps -axo pid=,command= | awk '/macos-native-supervisor|macos-exec|macos-codex-preferences|\/jig-guardian-/ && !/awk/ {print "process " $0}'
   } | LC_ALL=C sort
 }
@@ -70,6 +80,14 @@ snapshot > "$scratch/before"
 finish() {
   status=$?
   if [[ -f "$scratch/SHA256SUMS" ]] && ! shasum -a 256 --check "$scratch/SHA256SUMS"; then status=1; fi
+  if [[ -n "$candidate_receipt" ]]; then
+    current_receipt=''
+    if ! current_receipt=$("$JIG_AUTHORING_NODE_PATH" scripts/ci/candidate-provenance.mjs verify \
+      "$JIG_CI_CANDIDATE_DIRECTORY" --source "$source_revision") || [[ "$current_receipt" != "$candidate_receipt" ]]; then
+      echo 'The canonical candidate changed during Mac qualification.' >&2
+      status=1
+    fi
+  fi
   snapshot > "$scratch/after"
   if ! diff -u "$scratch/before" "$scratch/after"; then
     echo 'Mac qualification changed host ownership residue; preserve evidence and investigate.' >&2
@@ -83,13 +101,26 @@ finish() {
   exit "$status"
 }
 trap finish EXIT
-# Freeze all package inputs once; each consumer must use these same bytes.
-for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui; do
-  mkdir "$scratch/$package"
-  bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
-done
-mkdir "$scratch/jig"
-(cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
+# Hosted qualification receives the canonical publication bytes. The standalone
+# full-host entrypoint still freezes its own selected source once.
+if [[ -n "$candidate_receipt" ]]; then
+  for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig; do
+    archives=("$JIG_CI_CANDIDATE_DIRECTORY/$package/"*.tgz)
+    if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" || -L "${archives[0]}" ]]; then
+      echo "Expected one canonical $package archive" >&2
+      exit 1
+    fi
+    mkdir "$scratch/$package"
+    cp "${archives[0]}" "$scratch/$package/"
+  done
+else
+  for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui; do
+    mkdir "$scratch/$package"
+    bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
+  done
+  mkdir "$scratch/jig"
+  (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")
+fi
 for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig; do
   archives=("$scratch/$package/"*.tgz)
   if [[ ${#archives[@]} -ne 1 || ! -f "${archives[0]}" ]]; then
@@ -109,13 +140,6 @@ for package in flow-sdk reporting agent-method agent-acp display-model display-w
 done
 shasum -a 256 "$scratch"/*/*.tgz > "$scratch/SHA256SUMS"
 cat "$scratch/SHA256SUMS"
-if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
-  # npm must accept the frozen package on this native architecture and install
-  # its matching optional Bun runtime through an ordinary consumer manifest.
-  mkdir "$scratch/npm-consumer"
-  npm install --prefix "$scratch/npm-consumer" --ignore-scripts --no-audit --no-fund "$JIG_PACKAGE_ARCHIVE"
-  "$scratch/npm-consumer/node_modules/.bin/jig" --version
-fi
 export JIG_MACOS_PROCESS_TEST=1
 # Keep resource ownership tests sequential within each disposable host. The
 # hosted matrix distributes every file and all root lifecycle cases across
@@ -123,7 +147,14 @@ export JIG_MACOS_PROCESS_TEST=1
 if [[ "$mode" == shard ]]; then
   node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
-  bun test packages/jig/test packages/display-model/test packages/display-web/test packages/display-tui/test --timeout 420000
+  mapfile_path="$scratch/full-suite-files.txt"
+  node scripts/ci/suite-inventory.mjs --profile "$([[ "$codex_startup_expectation" == startup ]] && echo macos-23E224 || echo macos-24G830)" --format lines > "$mapfile_path"
+  full_files=()
+  while IFS= read -r file; do
+    [[ "$file" == packages/jig/test/startup/native-agent-startup.test.ts ]] || full_files+=("./$file")
+  done < "$mapfile_path"
+  [[ ${#full_files[@]} -gt 0 ]] || { echo 'Full Mac inventory is empty.' >&2; exit 1; }
+  bun test "${full_files[@]}" --timeout 420000
 fi
 if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   startup_options=(--timeout 120000)
@@ -133,12 +164,15 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   # The genuine Codex path must start only on its qualified preference profile;
   # other selected Mac hosts must prove explicit refusal, never skip the case.
   JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="$codex_startup_expectation" \
-    bun test packages/jig/test/native-agent-startup.test.ts "${startup_options[@]}"
+    bun test packages/jig/test/startup/native-agent-startup.test.ts "${startup_options[@]}"
   bun packages/display-model/test/package-smoke.ts
   bun packages/display-web/test/package-smoke.ts
   bun packages/display-tui/test/package-smoke.ts
   # Pack and install the result in a separate ordinary consumer, then use its CLI.
-  bun packages/jig/test/package-smoke.ts
+  # Retain closed failure metadata in the owning flat Mac evidence directory.
+  # Private command transcripts remain beside the failed consumer.
+  JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY="${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" \
+    bun packages/jig/test/package-smoke.ts
 fi
 if [[ -n "${JIG_STARTUP_PROFILE_DIRECTORY:-}" && "$shard" == "$installed_shard" ]]; then
   JIG_CI_BUN=$(bun -e 'console.log(process.execPath)') \

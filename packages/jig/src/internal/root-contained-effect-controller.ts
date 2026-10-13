@@ -65,6 +65,7 @@ import {
   parseHttpWorkerResult,
 } from './private-http-request.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
+import { privateProfileSpan } from './private-profile.js'
 import {
   isProjectCommandContract,
   PROJECT_COMMAND_LIMITS,
@@ -154,17 +155,22 @@ export async function executePrivateContainedEffect(
   let recipe: PrivateDirectRunRecipe
   try {
     if (target.disposition.state !== 'ready') throw new Error('target unavailable')
-    recipe = await planPrivateDirectRun({
-      ...input,
-      request: target.request,
-      execution: target.disposition.execution,
-    })
+    const execution = target.disposition.execution
+    recipe = await privateProfileSpan('contained-effect-planning', () =>
+      planPrivateDirectRun({
+        ...input,
+        request: target.request,
+        execution,
+      }),
+    )
     if (
       recipe.digest !== target.disposition.recipeDigest ||
       recipe.observation.digest !== target.disposition.observationDigest
     )
       throw new Error('operation parent recipe changed')
-    await revalidatePrivateInstalledBunSupport(input.installedSupport)
+    await privateProfileSpan('contained-effect-planning', () =>
+      revalidatePrivateInstalledBunSupport(input.installedSupport),
+    )
   } catch {
     return failed('UNAVAILABLE', 'the admitted contained-operation runtime cannot be reproduced')
   }
@@ -191,7 +197,7 @@ export async function executePrivateContainedEffect(
   const prior = rows.find((row) => row.operationId === input.call.operationId)
   if (prior !== undefined) {
     if (!isEffectOwner(prior)) throw new Error('operation identity names a different effect')
-    await releaseEffect(input, prior)
+    await privateProfileSpan('contained-effect-settlement', () => releaseEffect(input, prior))
     return failed('UNCERTAIN', 'a prior operation dispatch was fenced without a proved result')
   }
   // A repeated operation ID may already own a dispatched effect. Resolve and
@@ -208,10 +214,12 @@ export async function executePrivateContainedEffect(
     input.call.operationId,
     input.parentFlow?.operationId,
   )
-  const ownerAllocation = await planPrivateExecutionOwnerStateAllocation(input.backend, {
-    parent: await protectedOwnerRoot(input.projectRoot),
-    name: `x-${identity.slice(0, 62)}`,
-  })
+  const ownerAllocation = await privateProfileSpan('contained-effect-allocation', async () =>
+    planPrivateExecutionOwnerStateAllocation(input.backend, {
+      parent: await protectedOwnerRoot(input.projectRoot),
+      name: `x-${identity.slice(0, 62)}`,
+    }),
+  )
   const allocation: Allocation = {
     kind: KIND,
     effect: route.native as Allocation['effect'],
@@ -230,14 +238,18 @@ export async function executePrivateContainedEffect(
   const key = operationKey(input, input.call.operationId, input.parentFlow?.operationId)
   let lifecycle: PrivateRootChildOwnerLifecycle
   try {
-    lifecycle = await allocatePrivateRootChildOwner({
-      ...key,
-      allocation: allocation as unknown as JsonValue,
-    })
+    lifecycle = await privateProfileSpan('contained-effect-allocation', () =>
+      allocatePrivateRootChildOwner({
+        ...key,
+        allocation: allocation as unknown as JsonValue,
+      }),
+    )
   } catch (error) {
     try {
-      const cancelled = await cancelPrivateExecutionOwnerStateAllocation(ownerAllocation)
-      await releasePrivateExecutionOwnerState(ownerAllocation, cancelled)
+      await privateProfileSpan('contained-effect-settlement', async () => {
+        const cancelled = await cancelPrivateExecutionOwnerStateAllocation(ownerAllocation)
+        await releasePrivateExecutionOwnerState(ownerAllocation, cancelled)
+      })
     } catch (cleanupError) {
       throw new RunHostFatalOperationError(
         isPrivateExecutionFenceUnconfirmed(cleanupError) ? 'UNCERTAIN' : 'EXECUTION_FAILED',
@@ -263,22 +275,28 @@ export async function executePrivateContainedEffect(
       })
     }
     failurePhase = 'sealing'
-    const sealed = await sealPrivateExecutionOwner(
-      input.backend,
-      prepared.kind === 'command'
-        ? commandPlan(recipe, prepared.value, files, identity, deadlineUnixMs)
-        : httpPlan(recipe, identity, deadlineUnixMs),
-      ownerAllocation,
+    const sealed = await privateProfileSpan('contained-effect-sealing', () =>
+      sealPrivateExecutionOwner(
+        input.backend,
+        prepared.kind === 'command'
+          ? commandPlan(recipe, prepared.value, files, identity, deadlineUnixMs)
+          : httpPlan(recipe, identity, deadlineUnixMs),
+        ownerAllocation,
+      ),
     )
-    lifecycle = await recordPrivateRootChildSandbox({
-      ...key,
-      allocationDigest: lifecycle.allocation.digest,
-      sandbox: sealed.identity as unknown as JsonValue,
-    })
+    lifecycle = await privateProfileSpan('contained-effect-sealing', () =>
+      recordPrivateRootChildSandbox({
+        ...key,
+        allocationDigest: lifecycle.allocation.digest,
+        sandbox: sealed.identity as unknown as JsonValue,
+      }),
+    )
     attempted = true
     phase = 'starting the worker'
     failurePhase = 'admission'
-    const component = await admitPrivateExecutionOwner(sealed, input.signal)
+    const component = await privateProfileSpan('contained-effect-launch', () =>
+      admitPrivateExecutionOwner(sealed, input.signal),
+    )
     let workloadDeadline = false
     const workloadTimer =
       setupAllowanceMs === 0
@@ -292,17 +310,21 @@ export async function executePrivateContainedEffect(
     try {
       phase = 'collecting the worker result'
       failurePhase = 'collection'
-      observed = await collectEffect(
-        component,
-        stdin,
-        prepared.kind === 'http' ? JSON_1_LIMITS.bytes : PROJECT_COMMAND_LIMITS.streamBytes,
+      observed = await privateProfileSpan('contained-effect-collection', () =>
+        collectEffect(
+          component,
+          stdin,
+          prepared.kind === 'http' ? JSON_1_LIMITS.bytes : PROJECT_COMMAND_LIMITS.streamBytes,
+        ),
       )
     } finally {
       clearTimeout(workloadTimer)
     }
     phase = 'fencing and cleanup'
     failurePhase = 'settlement'
-    await releaseEffect(input, lifecycle, observed.fence)
+    await privateProfileSpan('contained-effect-settlement', () =>
+      releaseEffect(input, lifecycle, observed.fence),
+    )
     phase = 'checking the collected result'
     const reason =
       workloadDeadline && observed.fence.stopReason === 'cancelled'
@@ -400,7 +422,8 @@ export async function executePrivateContainedEffect(
           row.operationId === input.call.operationId &&
           row.parentOperationId === input.parentFlow?.operationId,
       )
-      if (row !== undefined) await releaseEffect(input, row)
+      if (row !== undefined)
+        await privateProfileSpan('contained-effect-settlement', () => releaseEffect(input, row))
     } catch (cleanupError) {
       try {
         input.onFailure?.('cleanup', cleanupError)
@@ -495,7 +518,8 @@ function httpPlan(
       privateExecutionPath(recipe.installedSupport.sandboxHttpWorkerPath),
     ],
     network: 'inherited',
-    storageBytes: 16 * 1024 * 1024,
+    readOnlyCwd: '/',
+    storageBytes: 0,
     maxOutputBytes: JSON_1_LIMITS.bytes + PROJECT_COMMAND_LIMITS.streamBytes,
   }
 }
@@ -597,7 +621,7 @@ export async function recoverPrivateContainedEffectOwners(input: Context): Promi
       isEffectOwner(owner) &&
       (input.parentFlow === undefined || owner.parentOperationId === input.parentFlow.operationId)
     )
-      await releaseEffect(input, owner)
+      await privateProfileSpan('contained-effect-settlement', () => releaseEffect(input, owner))
   }
 }
 

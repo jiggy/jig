@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import type { DisplaySnapshotEnvelope } from '@jigging/display-model'
 import { createTui, prepareTui, type TuiSupport, TuiSupportError } from '../src/index.js'
 import { createInlineDisplay } from '../src/inline.js'
-import { ViewerModel } from '../src/viewer-model.js'
+import { ViewerModel } from '../src/presentation/viewer-model.js'
 import { snapshot } from './fixtures.js'
 
 function supplied() {

@@ -1,0 +1,303 @@
+{
+  "schemaVersion": 1,
+  "externalTestRoots": [".agents/skills/"],
+  "fixtureTestRoots": ["examples/tested-patch/fixtures/", "examples/software-factory/fixtures/"],
+  "testSuites": [
+    {
+      "id": "tooling",
+      "roots": ["scripts/"],
+      "files": [],
+      "excludeRoots": [],
+      "profiles": ["tooling"],
+      "excludeFiles": ["scripts/test_pypi_release.py"]
+    },
+    {
+      "id": "jig-portable",
+      "roots": ["packages/jig/test/portable/"],
+      "profiles": ["portable", "portable-linux", "macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "linux-platform",
+      "roots": ["packages/jig/test/linux/"],
+      "profiles": ["portable-linux", "linux"]
+    },
+    {
+      "id": "linux-host",
+      "roots": ["packages/jig/test/linux-host/"],
+      "profiles": ["linux"]
+    },
+    {
+      "id": "macos-native",
+      "roots": ["packages/jig/test/macos/"],
+      "profiles": ["macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "macos-observer",
+      "roots": ["packages/jig/test/macos-23E224/"],
+      "profiles": ["macos-23E224"]
+    },
+    {
+      "id": "jig-host",
+      "roots": ["packages/jig/test/host/"],
+      "profiles": ["linux", "macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "live-clients",
+      "roots": ["packages/jig/test/live/"],
+      "profiles": ["live"]
+    },
+    {
+      "id": "image-thread-candidate",
+      "files": ["packages/jig/test/experimental/image-preview.test.ts"],
+      "profiles": ["experimental"]
+    },
+    {
+      "id": "display-model",
+      "roots": ["packages/display-model/test/"],
+      "profiles": ["portable", "portable-linux", "linux", "macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "display-web",
+      "roots": ["packages/display-web/test/"],
+      "profiles": ["portable", "portable-linux", "linux", "macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "display-tui",
+      "roots": ["packages/display-tui/test/"],
+      "profiles": ["portable", "portable-linux", "linux", "macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "flow",
+      "roots": ["packages/flow-sdk/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "agent",
+      "roots": ["packages/agent-method/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "acp",
+      "roots": ["packages/agent-acp/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "reporting",
+      "roots": ["packages/reporting/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "authoring",
+      "roots": ["packages/flow-authoring/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "conformance",
+      "roots": ["conformance/run-0/"],
+      "excludeRoots": ["conformance/run-0/python-peer/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "applications",
+      "roots": [
+        "examples/tested-patch/",
+        "examples/software-factory/",
+        "examples/photo-organiser/",
+        "examples/support-case/",
+        "examples/contact-import/",
+        "packages/jig/test/fixtures/incident-brief/"
+      ],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "python-sdk",
+      "roots": ["packages/jiggy-flow/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "python-reporting",
+      "roots": ["packages/jiggy-reporting/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "python-peer",
+      "roots": ["conformance/run-0/python-peer/"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "python-release",
+      "files": ["scripts/test_pypi_release.py"],
+      "profiles": ["portable", "portable-linux"]
+    },
+    {
+      "id": "filesystem",
+      "roots": ["packages/jig/test/filesystem/"],
+      "profiles": ["portable-linux", "linux", "macos-24G830", "macos-23E224"]
+    },
+    {
+      "id": "native-startup",
+      "roots": ["packages/jig/test/startup/"],
+      "profiles": ["macos-24G830", "macos-23E224"]
+    }
+  ],
+  "targets": [
+    {
+      "id": "quick-checks",
+      "scope": "ci",
+      "kind": "tooling",
+      "profiles": ["ubuntu-24.04/node-24/bun-1.3.3"],
+      "suiteIds": ["tooling"],
+      "inventoryProfile": "tooling",
+      "requiresArtifacts": false,
+      "requiresResidue": false
+    },
+    {
+      "id": "sites",
+      "scope": "ci",
+      "kind": "site-build",
+      "profiles": ["flow", "jig"],
+      "suiteIds": [],
+      "requiresArtifacts": false,
+      "requiresResidue": false
+    },
+    {
+      "id": "source-portable",
+      "scope": "ci",
+      "kind": "source-and-consumer",
+      "profiles": ["ubuntu-24.04/bun-1.3.3/node-24/python-3.13"],
+      "suiteIds": [
+        "jig-portable",
+        "linux-platform",
+        "display-model",
+        "display-web",
+        "display-tui",
+        "filesystem"
+      ],
+      "inventoryProfile": "portable-linux",
+      "requiresArtifacts": false,
+      "requiresResidue": false
+    },
+    {
+      "id": "source-protocol",
+      "scope": "ci",
+      "kind": "source-and-consumer",
+      "profiles": ["ubuntu-24.04/bun-1.3.3/node-24/python-3.13"],
+      "suiteIds": ["flow", "agent", "acp", "reporting", "authoring", "conformance"],
+      "inventoryProfile": "portable-linux",
+      "requiresArtifacts": false,
+      "requiresResidue": false
+    },
+    {
+      "id": "source-applications",
+      "scope": "ci",
+      "kind": "source-and-consumer",
+      "profiles": ["ubuntu-24.04/bun-1.3.3/node-24/python-3.13"],
+      "suiteIds": ["applications"],
+      "inventoryProfile": "portable-linux",
+      "requiresArtifacts": false,
+      "requiresResidue": false
+    },
+    {
+      "id": "source-python",
+      "scope": "ci",
+      "kind": "source-and-consumer",
+      "profiles": ["ubuntu-24.04/bun-1.3.3/node-24/python-3.13"],
+      "suiteIds": ["python-sdk", "python-reporting", "python-peer", "python-release"],
+      "inventoryProfile": "portable-linux",
+      "requiresArtifacts": false,
+      "requiresResidue": false
+    },
+    {
+      "id": "python-build",
+      "scope": "ci",
+      "kind": "candidate-build",
+      "profiles": ["jiggy-flow", "jiggy-reporting"],
+      "suiteIds": [],
+      "requiresArtifacts": true,
+      "requiresResidue": false
+    },
+    {
+      "id": "python-installed",
+      "scope": "ci",
+      "kind": "installed-consumer",
+      "profiles": [
+        "ubuntu-24.04/python-3.11",
+        "ubuntu-24.04/python-3.12",
+        "ubuntu-24.04/python-3.13",
+        "ubuntu-24.04/python-3.14",
+        "macos-14/python-3.14",
+        "windows-2022/python-3.13"
+      ],
+      "suiteIds": [],
+      "requiresArtifacts": true,
+      "requiresResidue": false
+    },
+    {
+      "id": "npm-candidate",
+      "scope": "ci",
+      "kind": "candidate-and-consumer",
+      "profiles": ["flow", "agent", "acp", "jig"],
+      "suiteIds": [],
+      "requiresArtifacts": true,
+      "requiresResidue": false
+    },
+    {
+      "id": "linux",
+      "scope": "linux",
+      "kind": "native-and-installed",
+      "profiles": ["ubuntu-24.04/x64/bun-1.3.3/rootless"],
+      "suiteIds": [
+        "linux-platform",
+        "linux-host",
+        "jig-host",
+        "display-model",
+        "display-web",
+        "display-tui",
+        "filesystem"
+      ],
+      "inventoryProfile": "linux",
+      "requiresArtifacts": true,
+      "requiresResidue": true
+    },
+    {
+      "id": "macos-x64",
+      "scope": "macos",
+      "kind": "native-and-installed",
+      "profiles": ["macos-24G830/x64/bun-1.4.2"],
+      "suiteIds": [
+        "jig-portable",
+        "macos-native",
+        "jig-host",
+        "display-model",
+        "display-web",
+        "display-tui",
+        "filesystem",
+        "native-startup",
+        "macos-observer"
+      ],
+      "inventoryProfile": "macos-24G830",
+      "requiresArtifacts": true,
+      "requiresResidue": true
+    },
+    {
+      "id": "macos-arm64",
+      "scope": "macos",
+      "kind": "native-and-installed",
+      "profiles": ["macos-24G830/arm64/bun-1.4.2"],
+      "suiteIds": [
+        "jig-portable",
+        "macos-native",
+        "jig-host",
+        "display-model",
+        "display-web",
+        "display-tui",
+        "filesystem",
+        "native-startup",
+        "macos-observer"
+      ],
+      "inventoryProfile": "macos-24G830",
+      "requiresArtifacts": true,
+      "requiresResidue": true
+    }
+  ]
+}

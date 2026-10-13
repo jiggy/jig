@@ -104,13 +104,133 @@ test('preflight is available from the root and package check includes native reg
   )
 })
 
+test('root build delegates the complete package graph to Jig exactly once', async () => {
+  const root = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'build'])
+  const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
+  expect(root.code).toBe(0)
+  expect(jig.code).toBe(0)
+  expect(root.stderr).toBe(jig.stderr)
+  for (const dependency of ['flow-sdk', 'reporting', 'display-model'])
+    expect(jig.stderr).not.toContain(`just --justfile ../${dependency}/justfile build`)
+  let previous = -1
+  for (const packageName of [
+    'display-web',
+    'display-tui',
+    'agent-method',
+    'agent-acp',
+    'flow-authoring',
+  ]) {
+    const command = `just --justfile ../${packageName}/justfile build`
+    const index = root.stderr.indexOf(command)
+    expect(index).toBeGreaterThan(previous)
+    expect(root.stderr.indexOf(command, index + command.length)).toBe(-1)
+    previous = index
+  }
+  expect(previous).toBeLessThan(root.stderr.indexOf('bun scripts/build-cli.ts'))
+  for (const renderer of ['display_web', 'display_tui']) {
+    const result = await run([
+      '--justfile',
+      join(repository, 'justfile'),
+      '--dry-run',
+      `${renderer}::build`,
+    ])
+    expect(result.code).toBe(0)
+    const modelIndex = result.stderr.indexOf('just --justfile ../display-model/justfile build')
+    const compilerIndex = result.stderr.indexOf('tsc -p tsconfig.json')
+    expect(modelIndex).toBeGreaterThanOrEqual(0)
+    expect(compilerIndex).toBeGreaterThanOrEqual(0)
+    expect(modelIndex).toBeLessThan(compilerIndex)
+  }
+  const model = await run([
+    '--justfile',
+    join(repository, 'justfile'),
+    '--dry-run',
+    'display_model::build',
+  ])
+  expect(model.code).toBe(0)
+  for (const dependency of ['flow-sdk', 'reporting']) {
+    const index = model.stderr.indexOf(`just --justfile ../${dependency}/justfile build`)
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(index).toBeLessThan(model.stderr.indexOf('tsc -p tsconfig.json'))
+  }
+})
+
+test('standalone authoring build still invokes its owning compiler once', async () => {
+  await withFixture(async (directory, environment) => {
+    const result = await run(
+      ['--justfile', join(directory, 'justfile'), 'authoring::build'],
+      environment,
+    )
+    expect(result.code).toBe(0)
+    expect(
+      result.stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      {
+        cwd: join(directory, 'packages/flow-authoring'),
+        args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'],
+      },
+    ])
+  })
+})
+
+test(
+  'tooling runs every CI file once and stops before Bun checks after a policy failure',
+  async () => {
+    for (const fail of ['', 'policy']) {
+      await withFixture(async (directory, environment) => {
+        const files = ['alpha.test.mjs', 'future.test.mjs', 'source-stages.test.mjs']
+        for (const file of files) await writeFile(join(directory, 'scripts/ci', file), '')
+        await writeFile(
+          join(directory, 'tools/node'),
+          `#!${process.execPath}
+const args = process.argv.slice(2);
+console.log(JSON.stringify({ cwd: process.cwd(), args }));
+process.exit(process.env.JUST_TEST_FAIL_PHASE === 'policy' ? 23 : 0);
+`,
+          { mode: 0o755 },
+        )
+        const result = await run(
+          ['--justfile', join(directory, 'justfile'), '--shell', '/bin/bash', 'test-tooling'],
+          {
+            ...environment,
+            JUST_TEST_FAIL_PHASE: fail,
+            // Version-manager dispatchers can prepend their selected Node to PATH.
+            // Bind the inert recorder in the fixture's explicit Bash shell.
+            'BASH_FUNC_node%%': `() { '${join(directory, 'tools/node').replaceAll("'", "'\\''")}' "$@"; }`,
+          },
+        )
+        expect(result.code, result.stderr).toBe(fail ? 23 : 0)
+        const calls = result.stdout
+          .trim()
+          .split('\n')
+          .map((line) => JSON.parse(line))
+        expect(calls[0]).toEqual({
+          cwd: directory,
+          args: ['--test', ...files.map((file) => `scripts/ci/${file}`)],
+        })
+        if (fail === 'policy') expect(calls).toHaveLength(1)
+        else {
+          expect(calls).toHaveLength(2)
+          expect(calls[1].cwd).toBe(directory)
+          expect(calls[1].args[0]).toBe('test')
+          expect(calls[1].args.slice(1)).toContain('scripts/justfile.test.ts')
+        }
+      })
+    }
+  },
+  INVENTORY_TIMEOUT_MS,
+)
+
 test(
   'module and root tasks preserve arguments and select their own working directory',
   async () => {
     await withFixture(async (directory, environment) => {
       const args = ['a path with spaces', '$(touch SHOULD_NOT_EXIST)', '; echo unsafe', '']
       for (const [recipe, cwd, prefix] of [
-        ['jig::test', 'packages/jig', ['test']],
+        ['jig::test', 'packages/jig', ['test', './test/portable/fixture.test.ts']],
         ['flow::test', 'packages/flow-sdk', ['test']],
         ['display_model::test', 'packages/display-model', ['test']],
         ['display_web::test', 'packages/display-web', ['test']],
@@ -283,12 +403,10 @@ test('ordinary Agent packing uses Bun after building, without a custom packer', 
 test('display packing builds through owning recipes and Jig composes them in dependency order', async () => {
   const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
   expect(jig.code).toBe(0)
-  const model = jig.stderr.indexOf('just --justfile ../display-model/justfile build')
   const web = jig.stderr.indexOf('just --justfile ../display-web/justfile build')
   const tui = jig.stderr.indexOf('just --justfile ../display-tui/justfile build')
-  expect(model).toBeGreaterThanOrEqual(0)
-  expect(model).toBeLessThan(web)
-  expect(model).toBeLessThan(tui)
+  expect(web).toBeGreaterThanOrEqual(0)
+  expect(tui).toBeGreaterThan(web)
   expect(Math.max(web, tui)).toBeLessThan(jig.stderr.indexOf('bun scripts/build-cli.ts'))
   for (const recipe of ['display_model::pack', 'display_web::pack', 'display_tui::pack']) {
     const result = await run([
@@ -308,7 +426,7 @@ test('display packing builds through owning recipes and Jig composes them in dep
   }
 })
 
-test('hostile files remain separate ordered invocations', async () => {
+test('hostile recipe executes the complete owned Linux inventory sequentially', async () => {
   const result = await run([
     '--justfile',
     join(repository, 'justfile'),
@@ -316,26 +434,12 @@ test('hostile files remain separate ordered invocations', async () => {
     'jig::test-linux-rootless-proof-host',
   ])
   expect(result.code).toBe(0)
-  const sdkBuild = result.stderr.indexOf('just --justfile ../flow-sdk/justfile build')
-  expect(sdkBuild).toBeGreaterThanOrEqual(0)
-  expect(sdkBuild).toBeLessThan(result.stderr.indexOf('JIG_LINUX_ROOTLESS_HOSTILE=1'))
-  const lines = result.stderr
-    .split('\n')
-    .filter((line) => line.startsWith('JIG_LINUX_ROOTLESS_HOSTILE=1'))
-  expect(lines).toEqual([
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-delegation-hostile.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/linux-rootless-run.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/bun-native-preparation.test.ts --timeout 120000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-author-evaluator.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/package-provider-host.test.ts --timeout 120000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/private-foreground.test.ts --timeout 30000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/project-command-lifecycle.test.ts --timeout 180000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/http-request-lifecycle.test.ts --timeout 240000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/run-checkpoint-lifecycle.test.ts --timeout 90000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/markdown-worker.test.ts --timeout 120000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/root-agent-run-lifecycle.test.ts --timeout 180000',
-    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test test/finite-acp-lifecycle.test.ts --timeout 180000',
-  ])
+  expect(result.stderr).toContain('suite-inventory.mjs --root ../.. --profile linux')
+  expect(result.stderr).toContain('while IFS= read -r file')
+  expect(result.stderr).toContain(
+    'JIG_LINUX_ROOTLESS_HOSTILE=1 bun test "./${file#packages/jig/}" --timeout 420000',
+  )
+  expect(result.stderr).not.toContain('--test-name-pattern')
 })
 
 async function withFixture(
@@ -350,6 +454,12 @@ async function withFixture(
     }
     const bin = join(directory, 'tools')
     await mkdir(bin)
+    const inventory = join(directory, 'scripts/ci/suite-inventory.mjs')
+    await mkdir(dirname(inventory), { recursive: true })
+    await writeFile(
+      inventory,
+      "process.stdout.write('packages/jig/test/portable/fixture.test.ts\\n')\n",
+    )
     await writeFile(
       join(bin, 'bun'),
       `#!${process.execPath}\nconsole.log(JSON.stringify({cwd: process.cwd(), args: process.argv.slice(2)}));\nprocess.exit(Number(process.env.JUST_TEST_BUN_EXIT ?? 0));\n`,

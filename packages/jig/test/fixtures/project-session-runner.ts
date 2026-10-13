@@ -1,5 +1,5 @@
-import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
+import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { installedBunLocation } from './installed-bun-location.js'
 
 const [projectRoot, submissionId, mode = 'direct'] = process.argv.slice(2)

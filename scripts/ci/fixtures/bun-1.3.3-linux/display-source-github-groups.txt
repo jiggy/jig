@@ -1,0 +1,172 @@
+bun test v1.3.3 (274e01c7)
+
+::group::packages/display-model/test/model.test.ts:
+(pass) public model owns immutable supplied observations without changing claims or opaque identities [4.00ms]
+(pass) typed references include hidden/detail evidence and deduplicate exact identities
+(pass) only explicit roles select recorded destinations; intervals remain observed and uncertainty explicit [1.00ms]
+(pass) malformed replacements, non-data values and cyclic call ancestry fail without modifying prior data [2.00ms]
+(pass) incomplete envelope retains current causes and rejects oversized encoded data [16.00ms]
+(pass) public destination keys keep opaque view identities disjoint from built-in surfaces [1.00ms]
+(pass) ambiguous source-scoped reference joins fail atomically while other sources keep raw identities [2.00ms]
+
+::endgroup::
+
+::group::packages/display-web/test/client.test.ts:
+(pass) capability accepts only the exact fragment, never query-shaped alternatives
+(pass) revision parsing coalesces bursts, handles boundaries and rejects oversized or malformed events [4.00ms]
+(pass) equal revision reconnect acknowledges freshness without replacing semantic data [5.00ms]
+(pass) behind responses retain one retry owner and highest committed revision [1.00ms]
+(pass) a notification arriving during snapshot decoding is captured afterward [1.00ms]
+(pass) incomplete current causes preserve but fence the last complete body [1.00ms]
+(pass) A to B to A has one request and discards the first A completion [1.00ms]
+(pass) preview identity, capture generation and UTF-8 capacity must match [2.00ms]
+(pass) capacity responses retry within bounds without submission routes or replay [1.00ms]
+(pass) snapshot bounds refuse before JSON acceptance and terminal responses release copies [14.00ms]
+(pass) malformed new semantic fields never partly replace an already complete body [1.00ms]
+(pass) preview routes encode producer opaque IDs without depending on a host HMAC scheme
+
+::endgroup::
+
+::group::packages/display-web/test/assets.test.ts:
+(pass) browser build emits only fixed self-contained assets and erases server type imports [8.00ms]
+
+::endgroup::
+
+::group::packages/display-web/test/navigation.test.ts:
+(pass) all supplied block kinds and rows remain reachable in order [1.00ms]
+(pass) saved navigation exposes one report, file inventory and diagnostics without synthetic history
+(pass) peek counts hidden cells and detail references and deduplicates complete typed identities
+(pass) artifact access requires matching publisher, attachment and manifest path before opaque host ID [1.00ms]
+(pass) record and call references remain local to their accepted publisher
+(pass) local filtering and stable typed sorts leave authored data untouched
+(pass) deleted selection chooses preceding survivor and changed evidence changes its signature
+(pass) literal text exposes invisible controls while preserving whitespace and inert markup
+(pass) elapsed freezes while stale and equal revision resumes without inventing disconnected time
+
+::endgroup::
+
+::group::packages/display-web/test/public.test.ts:
+(pass) public renderer exports consume semantic views, call uncertainty and explicit evidence identities
+(pass) public navigation reaches opaque-name views and built-in surfaces independently while references keep original identities [2.00ms]
+(pass) public browser client accepts preview provenance only when it matches the captured inventory [4.00ms]
+
+::endgroup::
+
+::group::packages/display-web/test/observations.test.ts:
+(pass) normal committed revision replacement stays quiet while genuine loss remains explicit
+(pass) invalid or backwards observation clocks cannot fabricate durations or SVG coordinates
+
+::endgroup::
+
+::group::packages/display-tui/test/presentation.test.ts:
+(pass) selection survives unselected retirement and follows preceding surviving visible row [5.00ms]
+(pass) bounded frame escapes application titles, reserves failure context and discloses overflow [542.01ms]
+(pass) owned keyboard bytes handle batched cancel, arrows and split UTF-8 [4.00ms]
+(pass) late or rejected previews cannot outlive presentation ownership [2.00ms]
+(pass) view and activity associations resolve dynamically while row focus and scroll anchors survive replacements [19.00ms]
+(pass) explicit reference choice follows identity across inserted and removed row references [3.00ms]
+(pass) duplicate cell/detail references produce one marker and every distinct target activates exactly [56.00ms]
+(pass) chooser selection survives reordered reference fields and duplicate interleaving [6.00ms]
+(pass) competing preview activation cannot mix target labels and bytes [1.00ms]
+(pass) Activity opens first, fixed shell retains task, configured limit and full-cause control [2.00ms]
+(pass) workspace styling preserves exact plain text while exposing typed visual hierarchy [2.00ms]
+(pass) attention emphasis follows explicit priority and leaves literal cause text unstyled
+(pass) colored byte-heavy attention charges generated SGR within the frame ceiling [14.00ms]
+(pass) mixed records include summary, report, facts, progress, rows and empty collections in author order [1.00ms]
+(pass) tables align typed columns, show one header, keep literal null and collapse row details [1.00ms]
+(pass) filter draft preserves applied rows and treats all printable shortcuts literally [48.00ms]
+(pass) Enter opens detail without reference activation, nested Escape returns to stable record [46.00ms]
+(pass) full attention is one action from every surface and preserves source priority [2.00ms]
+(pass) local collection state survives tabs and exact disclosure semantics include references [2.00ms]
+(pass) actual tree collapses descendants, counts issues and follows original operations [1.00ms]
+(pass) pathological zero-width text keeps frame bytes bounded and remains vertically reachable [2.00ms]
+(pass) zero physical dimensions draw nothing and settled facts/footer remain phase-aware on every tab [2.00ms]
+(pass) human activity navigation fences later landing hints and unsupported editing sequences are no-ops [1.00ms]
+(pass) an explicit same-publisher record reference exposes its exact row through a local filter [1.00ms]
+(pass) batched record-reference jumps clear originating detail before the first target frame [6.00ms]
+(pass) external surface and record changes reconcile detail scroll before projection [1.00ms]
+(pass) detail scrolling beyond the end retains the final literal line and a finite anchor [1.00ms]
+(pass) Enter toggles the literal detail panel and keeps the same record
+(pass) settlement offers the landing result without moving an operator who has navigated [3.00ms]
+(pass) wide collections use spare width and peek a sole selected artifact with literal context [3.00ms]
+(pass) authored detail wraps at word boundaries while preserving escaped text and bounded long words [1.00ms]
+(pass) Activity prioritizes recent domain history and retains setup and host warnings through disclosure [4.00ms]
+(pass) diagnostics are attributed and one action away on every view without inferred severity [2.00ms]
+(pass) completed trees start collapsed while explicit expansion and failed descendants remain visible [2.00ms]
+(pass) saved inspection exposes only recorded views and never promotes saved claims to live host facts [3.00ms]
+(pass) diagnostic capacity loss and final completeness remain visible from every surface [13.00ms]
+(pass) automatic details add context; exact call identity is reserved for expansion [1.00ms]
+(pass) entries with no extra detail explain that fact without opening a duplicate pane
+(pass) sole distinct artifact peeking includes hidden/detail references and never activates ambiguous targets [6.00ms]
+(pass) auto artifact peeks fence A to B to A and capture replacement without stale labels or bytes [4.00ms]
+(pass) host Delivered files is independent of views and selection previews captured bytes [43.00ms]
+(pass) expanded captured content has literal retained-excerpt search without another supplier operation [2.00ms]
+
+::endgroup::
+
+::group::packages/display-tui/test/workbench.test.ts:
+(pass) navigation shares host/application groups, every retained view and exclusive saved roles [15.00ms]
+(pass) view chooser reaches the last of all views, and printable v remains literal in filter drafts [4.00ms]
+(pass) actual clipped teasers remain expandable while empty context does not allocate a detail pane [1.00ms]
+(pass) replaced reference chooser cannot activate a cached old target before repaint [41.00ms]
+(pass) reference return restores preceding surviving row, local filters and scroll after away-view replacement [43.00ms]
+(pass) a removed sort column cannot reorder supplied rows or leave a misleading sort label [1.00ms]
+(pass) return skips retired intermediates and explains an entirely retired history without exiting [84.00ms]
+(pass) reference return checks enclosing lifetime before navigating [41.00ms]
+(pass) actual textual report prefix clipping never makes the literal tail unreachable [1.00ms]
+(pass) prefix bytes at the combining-mark limit preserve explicit literal report expansion [1.00ms]
+
+::endgroup::
+
+::group::packages/display-tui/test/portability.test.ts:
+(pass) public stale disclosure survives sticky attention, compact layouts and full-cause inspection [2057.05ms]
+(pass) inline paging keeps a stale marker before retained body without attention [2.00ms]
+(pass) missing parents retain uncertain calls, causes and descendants in public native and inline projections [341.01ms]
+(pass) opaque view IDs keep all public application and builtin destinations independently reachable [1937.04ms]
+(pass) handoff transfers chosen application state and fences native, input and preview effects [378.01ms]
+(pass) tagged synthetic records and diagnostic clipping stay separate from opaque journal identities [531.01ms]
+(pass) recorded lexical decoration follows explicit role rather than collection names [1.00ms]
+(pass) opaque call identities remain distinct from synthetic tags and raw attribution joins stay exact [534.01ms]
+(pass) public native, compact and inline facts retain provenance and clipping without certifying literal status words [3470.08ms]
+(pass) public warnings and multiline titles remain inert physical lines in native, compact and inline frames [2914.06ms]
+
+::endgroup::
+
+::group::packages/display-tui/test/native.test.ts:
+(pass) native panes render unrelated semantic records, selected detail, attribution and no real IO ownership [633.01ms]
+(pass) narrow view keeps the active tab reachable; detail, diagnostics and full causes remain literal [1436.03ms]
+(pass) settled facts never certify domain prose and closing during a pending native draw cannot read freed cells [335.01ms]
+(pass) native records refresh reference availability after delivery without a new Flow report [534.01ms]
+(pass) initial native allocation is bounded before oversized terminal geometry is rendered [39.00ms]
+(pass) saved inspection keeps its phase visible beside a long packet path without live claims [332.01ms]
+(pass) native span encoding charges ANSI and escaped zero-width content and discloses clipping [9.00ms]
+(pass) large native panes keep color roles and exit controls without spending the frame budget on blanks [1465.03ms]
+(pass) expanded native detail scrolls to the last supplied evidence line after layout [131.00ms]
+(pass) multiline caller intent cannot replace or recolor the actual host call state [334.01ms]
+(pass) native content-first artifact peek keeps semantic context and literal diff whitespace [534.01ms]
+(pass) native Delivered files works without views and distinguishes empty, non-text and unavailable captures [1132.02ms]
+(pass) native captured-content scrolling and literal search reach the retained excerpt without new reads [427.01ms]
+(pass) workbench thresholds retain dense rows and literal selection, with context only when useful [2137.05ms]
+(pass) actual invocation rows fit a small terminal; wide spans remain observations and ordinary lifecycle adds no pane [737.02ms]
+(pass) an ordinary three-column row can expand a clipped value without invented author detail [728.02ms]
+(pass) native chooser reveals the last and first of every legal attributed destination [1146.02ms]
+(pass) local action feedback stays visible without context and alongside a sticky failure [735.02ms]
+
+::endgroup::
+
+::group::packages/display-tui/test/api.test.ts:
+(pass) inline owns immutable observations, bounds frames and visibly rejects malformed replacements [1.00ms]
+(pass) equal revision refresh updates the captured clock without stealing local state or requesting repaint
+(pass) an unavailable observation clock is displayed without throwing during projection [1.00ms]
+(pass) opaque support rejects fabricated values before constructing a native viewer
+(pass) replacement collection identities release old filters while stable identities retain their draft [13.00ms]
+(pass) public native display emits local intents, owns one pending frame and becomes inert after disposal [768.02ms]
+(pass) phase-aware interrupt remains an intent; interaction lifetime prevents navigation [67.00ms]
+(pass) preview replies are fenced by supplied capture identity and disposal releases callbacks [1.00ms]
+
+::endgroup::
+
+ 122 pass
+ 0 fail
+ 2128 expect() calls
+Ran 122 tests across 11 files. [27.07s]

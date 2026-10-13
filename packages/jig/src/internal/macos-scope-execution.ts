@@ -169,7 +169,12 @@ export async function preparePrivateMacosScope(input: {
   )
     throw new TypeError('invalid macOS native launch')
   const profile = privateMacosSandboxProfile(input.files)
+  const rootWithoutTrees =
+    input.cwd === '/' &&
+    input.files.readOnlyTrees.length === 0 &&
+    input.files.writableTrees.length === 0
   if (
+    !rootWithoutTrees &&
     ![...input.files.readOnlyTrees, ...input.files.writableTrees].some(
       (root) => input.cwd === root || input.cwd.startsWith(`${root}/`),
     )

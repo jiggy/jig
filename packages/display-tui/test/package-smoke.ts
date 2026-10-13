@@ -118,12 +118,19 @@ try {
     const source = await readFile(path, 'utf8')
     assert(!/@jigging\/jig|@jigging\/display-web|cli-run-model|cli-web-snapshot/.test(source), path)
   }
-  for (const name of ['index.d.ts', 'types.d.ts', 'inline.d.ts', 'text.d.ts', 'style.d.ts'])
+  const publicExports = ['.', './inline', './text', './style']
+  assert.deepEqual(Object.keys(manifest.exports).sort(), [...publicExports].sort())
+  assert.equal(manifest.types, manifest.exports['.'].types)
+  const declarations = [
+    ...publicExports.map((name) => manifest.exports[name].types),
+    './dist/types.d.ts',
+  ]
+  for (const path of declarations)
     assert(
       !/@opentui|CliRenderer|OptimizedBuffer|NativeRenderer|ViewerModel/.test(
-        await readFile(join(installed, 'dist', name), 'utf8'),
+        await readFile(join(installed, path), 'utf8'),
       ),
-      name,
+      path,
     )
   for (const name of ['LICENSE.md', 'PRICING.md', 'LICENSES.md'])
     assert.deepEqual(
