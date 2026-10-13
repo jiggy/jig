@@ -621,3 +621,117 @@ jobs:
           retention-days: 7
           if-no-files-found: "error"
           overwrite: true
+  audit-source-portable:
+    name: "Audit source portable"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 30
+    needs:
+      - "plan"
+      - "candidate-build"
+      - "test"
+    permissions:
+      contents: "read"
+      actions: "read"
+    if: "${{ github.event_name == 'pull_request' && github.repository == 'jiggy/jig' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'alpha' && contains(github.event.pull_request.labels.*.name, 'ci-performance-audit') && needs.plan.outputs.linux == 'true' && needs.plan.outputs.macos == 'true' && needs.test.result == 'success' }}"
+    steps:
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        with:
+          node-version: "24"
+      -
+        uses: "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+        with:
+          python-version: "3.13"
+      -
+        uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
+        with:
+          just-version: "1.43.1"
+      -
+        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+        with:
+          bun-version: "1.3.3"
+      -
+        name: "Read the exact full source plan"
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        with:
+          name: "ci-plan-${{ github.sha }}-a${{ github.run_attempt }}"
+          path: "${{ runner.temp }}/plan"
+      -
+        name: "Install source-portable dependencies"
+        run: "bun install --ignore-scripts"
+      -
+        name: "Acquire this real PR attempt's original canonical candidate"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          set -eu
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/audit-candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --timeout-seconds 300
+          mkdir "$RUNNER_TEMP/audit-source"
+          cp "$RUNNER_TEMP/audit-candidates/CANDIDATE.json" "$RUNNER_TEMP/audit-source/CANDIDATE.json"
+          cp "$RUNNER_TEMP/audit-candidates/ARTIFACT.json" "$RUNNER_TEMP/audit-source/ARTIFACT.json"
+      -
+        name: "Execute the whole prospective portable source stage freshly"
+        env:
+          JIG_CI_SOURCE_PARALLEL: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+          CI_CANDIDATE_BUNDLE: "${{ runner.temp }}/audit-candidates"
+        run: |
+          set -o pipefail
+          FLOW_NODE=$(command -v node)
+          PYTHON=$(command -v python)
+          export FLOW_NODE PYTHON
+          scripts/test-release.sh --targets source-portable --profile portable-linux --report-directory "$RUNNER_TEMP/audit-source/reports" 2>&1 | tee "$RUNNER_TEMP/audit-source/transcript.txt"
+      -
+        name: "Recheck the original source candidate"
+        if: "always()"
+        run: |
+          set -eu
+          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/audit-candidates" --source "$GITHUB_SHA"
+          cmp "$RUNNER_TEMP/audit-source/CANDIDATE.json" "$RUNNER_TEMP/audit-candidates/CANDIDATE.json"
+          cmp "$RUNNER_TEMP/audit-source/ARTIFACT.json" "$RUNNER_TEMP/audit-candidates/ARTIFACT.json"
+      -
+        name: "Record only partial source audit execution"
+        run: |
+          set -eu
+          node --input-type=module <<'JS'
+          import { readFile, writeFile } from 'node:fs/promises';
+          import { execFileSync } from 'node:child_process';
+          import { verifyCandidateBundle, candidateBinding, githubContext } from './scripts/ci/candidate-provenance.mjs';
+          import { observedCount } from './scripts/ci/job-evidence.mjs';
+          const root=process.env.RUNNER_TEMP, source=process.env.GITHUB_SHA, profile='ubuntu-24.04/bun-1.3.3/node-24/python-3.13';
+          if(execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim()!==source)throw Error('Audit checkout is not the tested merge');
+          const plan=JSON.parse(await readFile(root+"/plan/plan.json",'utf8'));
+          const target=plan.targets.find(t=>t.id==='source-portable');
+          if(plan.identity.head!==source||!plan.decisions.linux||!plan.decisions.macos||JSON.stringify(plan.decisions.sourceTargets)!==JSON.stringify(['source-portable','source-protocol','source-applications','source-python'])||JSON.stringify(plan.decisions.npmPackages)!==JSON.stringify(['flow','agent','acp','jig'])||!Array.isArray(plan.inventory?.coverageErrors)||plan.inventory.coverageErrors.length||!target?.testInventory?.length||!target.runtimeProfiles.includes(profile))throw Error('Audit needs an exact full baseline and owning inventory');
+          const candidateRoot=root+"/audit-candidates";
+          const receipt=await verifyCandidateBundle(candidateRoot,{sourceRevision:source,producerRepository:process.env.GITHUB_REPOSITORY});
+          const artifact=JSON.parse(await readFile(candidateRoot+'/ARTIFACT.json','utf8'));
+          if(target.id==='source-portable'&&(receipt.producer.runId!==Number(process.env.GITHUB_RUN_ID)||receipt.producer.runAttempt!==Number(process.env.GITHUB_RUN_ATTEMPT)))throw Error('Audit source producer is not this run attempt');
+          const candidate=candidateBinding(receipt,artifact), context=await githubContext({sourceRevision:source});
+          if(context.event!=='pull_request'||receipt.producer.workflowPath!=='.github/workflows/ci.yml'||receipt.producer.event!==context.event||receipt.producer.headSha!==context.headSha||receipt.producer.headBranch!==context.headBranch||receipt.producer.headRepository!==context.headRepository)throw Error('Audit candidate is from another proposal');
+
+
+          const observed=await observedCount({repository:process.cwd(),source,targetId:target.id,profiles:[profile],testFiles:target.testInventory,junit:root+"/audit-source/reports/source-portable.xml"});
+          if(!Number.isSafeInteger(observed.count)||observed.count<=0||observed.skipped!==0||(observed.filtered??0)!==0)throw Error('Audit execution is empty or incomplete');
+          const proof={schemaVersion:1,scope:'performance-audit-only',ordering:'full-first-per-profile',source,tree:execFileSync('git',['rev-parse','HEAD^{tree}'],{encoding:'utf8'}).trim(),workflow:context.workflowPath,runId:context.runId,runAttempt:context.runAttempt,role:target.id,profile,planDigest:plan.planDigest,inventoryDigest:target.inventoryDigest,candidate,archiveHashes:Object.fromEntries(receipt.packages.map(p=>[p.kind,p.sha256])),observed,qualificationReceipt:false};
+          await writeFile(root+"/audit-source/AUDIT.json",JSON.stringify(proof,null,2)+'\n',{flag:'wx'});
+          JS
+      -
+        name: "Retain fresh audit source evidence, including failures"
+        if: "always()"
+        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
+        with:
+          name: "audit-source-portable-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          path: |
+            ${{ runner.temp }}/audit-source/AUDIT.json
+            ${{ runner.temp }}/audit-source/CANDIDATE.json
+            ${{ runner.temp }}/audit-source/ARTIFACT.json
+            ${{ runner.temp }}/audit-source/reports/source-portable.xml
+            ${{ runner.temp }}/audit-source/transcript.txt
+          retention-days: 7
+          if-no-files-found: "error"
