@@ -77,6 +77,37 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
     assert.deepEqual(filesFor(target), [files[5]])
 })
 
+test('Reporting additions retain distinct JavaScript and Python source owners', () => {
+  const files = [
+    'packages/reporting/test/wire.test.ts',
+    'packages/reporting/test/nested/future.test.ts',
+    'packages/jiggy-reporting/tests/test_wire.py',
+    'packages/jiggy-reporting/tests/nested/test_future.py',
+  ]
+  const inventory = reconcileSuiteInventory(files, affectedManifest)
+  assert.deepEqual(inventory.errors, [])
+  assert.deepEqual(inventory.ownership, {
+    [files[0]]: 'reporting',
+    [files[1]]: 'reporting',
+    [files[2]]: 'python-reporting',
+    [files[3]]: 'python-reporting',
+  })
+  assert.deepEqual(
+    filesForTarget(files, 'source-protocol', affectedManifest),
+    files.slice(0, 2).sort(),
+  )
+  assert.deepEqual(filesForTarget(files, 'source-python', affectedManifest), files.slice(2).sort())
+  for (const target of ['source-portable', 'linux', 'macos-x64', 'macos-arm64'])
+    assert.deepEqual(filesForTarget(files, target, affectedManifest), [])
+  assert.match(
+    reconcileSuiteInventory(
+      ['packages/unreviewed-reporting/test/wire.test.ts'],
+      affectedManifest,
+    ).errors.join('\n'),
+    /Unowned/,
+  )
+})
+
 test('unowned, ambiguous, duplicate and symlink tests cannot inherit suite execution from neighboring paths', () => {
   const known = 'packages/jig/test/portable/known.test.ts'
   for (const file of ['packages/jig/test/new.test.ts', 'packages/new-package/test/new.test.ts'])

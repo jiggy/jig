@@ -2,21 +2,6 @@ const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.m
 
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-<<<<<<<< HEAD:packages/jig/test/reporting.test.ts
-import { REPORTING_CONTRACT } from '@jigging/reporting'
-import { parseChannelContract } from '../src/channel-contract.js'
-import { PrivateCliProgress } from '../src/cli-progress.js'
-import { privateTerminalWidth } from '../src/cli-reporting.js'
-import { type PrivateRunChannelOutput, PrivateRunChannels } from '../src/internal/run-channels.js'
-import type { JsonValue } from '../src/json.js'
-import type { CapturedPackage } from '../src/package/capture.js'
-import type { InspectedPackage } from '../src/package/inspect.js'
-import { parseProjectEntrypoint, resolveProjectEntrypoint } from '../src/project/entrypoint.js'
-import { ChannelBroker, type ResolvedChannelContract } from '../src/run/channels.js'
-import { parseRun } from '../src/run-arguments.js'
-
-const bytes = readFileSync(new URL('../../reporting/src/reporting.json', import.meta.url))
-========
 import { REPORTING_CONTRACT } from '@jigging/reporting'
 import { parseChannelContract } from '../../src/channel-contract.js'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
@@ -33,7 +18,6 @@ import { ChannelBroker, type ResolvedChannelContract } from '../../src/run/chann
 import { parseRun } from '../../src/run-arguments.js'
 
 const bytes = readFileSync(new URL('../../reporting/src/reporting.json', suiteTestUrl))
->>>>>>>> 3f8bb197 (perf(ci): select whole suites and reduce repeated qualification):packages/jig/test/portable/reporting.test.ts
 const parsed = parseChannelContract(bytes)
 const contract: ResolvedChannelContract = {
   identity: REPORTING_CONTRACT,

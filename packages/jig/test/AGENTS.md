@@ -28,6 +28,12 @@ The installed factory's blocked proof and coupled checked/automatic proof use se
 
 Root Agent live suites select one exact client/input contract per file. Codex subscription requires its native executable and CODEX_HOME; Codex Responses requires the executable, model and OpenRouter key; Claude and Pi require their own executable, API model/provider and key. The protected native API workflow selects only its matching file. Restoration is an independent explicit opt-in.
 
+Installed package smoke commands use the shared bounded command owner. Preserve
+each command's timeout, bounded interruption/escalation and pipe drain, and
+exclusive mode-0600 private transcripts on failure. An unconfirmed exit after
+escalation refuses within a separate bounded settlement wait. A timeout is failure even if the child
+later exits successfully; command exit never establishes native cleanup.
+
 ## Verification
 
 Preserve every existing test body, case input, timeout and cleanup assertion when moving a suite. Retain before/after migration evidence, then run complete source checks and native regression on the matching profile. CI must reconcile every planned file exactly once against successful reports. Platform-specific omissions are applicability decisions, never a passing qualification. Timing weights only place work; they cannot change inventory or evidence.

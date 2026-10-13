@@ -162,6 +162,12 @@ test('planning and native subphases remain bounded names understood by the insta
       'finite-acp-exchange',
       'finite-acp-release',
       'finite-acp-recovery',
+      'contained-effect-planning',
+      'contained-effect-allocation',
+      'contained-effect-sealing',
+      'contained-effect-launch',
+      'contained-effect-collection',
+      'contained-effect-settlement',
       'root-package-release',
       'root-owner-release',
     ] as const

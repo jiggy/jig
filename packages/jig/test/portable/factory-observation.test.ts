@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
-import { asciiJsonString } from '../../src/cli-usage.js'
+import { PrivateCliReporting } from '../../src/cli-reporting.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
-import { PrivateCliUserUpdates } from '../../src/cli-user-updates.js'
+import { asciiJsonString } from '../../src/cli-usage.js'
 import {
   assertExplicitObservation,
   assertFactoryPrefix,
@@ -15,7 +15,7 @@ test('factory automatic observation accepts complete views or exact truthful los
   const render = (mode: 'clean' | 'lagged', unchanged = false, receive = true) => {
     const model = new PrivateRunModel()
     const output: string[] = []
-    const updates = new PrivateCliUserUpdates(
+    const updates = new PrivateCliReporting(
       (text) => {
         output.push(text)
         return true

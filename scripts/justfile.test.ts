@@ -104,6 +104,78 @@ test('preflight is available from the root and package check includes native reg
   )
 })
 
+test('root build delegates the complete package graph to Jig exactly once', async () => {
+  const root = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'build'])
+  const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
+  expect(root.code).toBe(0)
+  expect(jig.code).toBe(0)
+  expect(root.stderr).toBe(jig.stderr)
+  for (const dependency of ['flow-sdk', 'reporting', 'display-model'])
+    expect(jig.stderr).not.toContain(`just --justfile ../${dependency}/justfile build`)
+  let previous = -1
+  for (const packageName of [
+    'display-web',
+    'display-tui',
+    'agent-method',
+    'agent-acp',
+    'flow-authoring',
+  ]) {
+    const command = `just --justfile ../${packageName}/justfile build`
+    const index = root.stderr.indexOf(command)
+    expect(index).toBeGreaterThan(previous)
+    expect(root.stderr.indexOf(command, index + command.length)).toBe(-1)
+    previous = index
+  }
+  expect(previous).toBeLessThan(root.stderr.indexOf('bun scripts/build-cli.ts'))
+  for (const renderer of ['display_web', 'display_tui']) {
+    const result = await run([
+      '--justfile',
+      join(repository, 'justfile'),
+      '--dry-run',
+      `${renderer}::build`,
+    ])
+    expect(result.code).toBe(0)
+    const modelIndex = result.stderr.indexOf('just --justfile ../display-model/justfile build')
+    const compilerIndex = result.stderr.indexOf('tsc -p tsconfig.json')
+    expect(modelIndex).toBeGreaterThanOrEqual(0)
+    expect(compilerIndex).toBeGreaterThanOrEqual(0)
+    expect(modelIndex).toBeLessThan(compilerIndex)
+  }
+  const model = await run([
+    '--justfile',
+    join(repository, 'justfile'),
+    '--dry-run',
+    'display_model::build',
+  ])
+  expect(model.code).toBe(0)
+  for (const dependency of ['flow-sdk', 'reporting']) {
+    const index = model.stderr.indexOf(`just --justfile ../${dependency}/justfile build`)
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(index).toBeLessThan(model.stderr.indexOf('tsc -p tsconfig.json'))
+  }
+})
+
+test('standalone authoring build still invokes its owning compiler once', async () => {
+  await withFixture(async (directory, environment) => {
+    const result = await run(
+      ['--justfile', join(directory, 'justfile'), 'authoring::build'],
+      environment,
+    )
+    expect(result.code).toBe(0)
+    expect(
+      result.stdout
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    ).toEqual([
+      {
+        cwd: join(directory, 'packages/flow-authoring'),
+        args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'],
+      },
+    ])
+  })
+})
+
 test(
   'module and root tasks preserve arguments and select their own working directory',
   async () => {
@@ -283,12 +355,10 @@ test('ordinary Agent packing uses Bun after building, without a custom packer', 
 test('display packing builds through owning recipes and Jig composes them in dependency order', async () => {
   const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
   expect(jig.code).toBe(0)
-  const model = jig.stderr.indexOf('just --justfile ../display-model/justfile build')
   const web = jig.stderr.indexOf('just --justfile ../display-web/justfile build')
   const tui = jig.stderr.indexOf('just --justfile ../display-tui/justfile build')
-  expect(model).toBeGreaterThanOrEqual(0)
-  expect(model).toBeLessThan(web)
-  expect(model).toBeLessThan(tui)
+  expect(web).toBeGreaterThanOrEqual(0)
+  expect(tui).toBeGreaterThan(web)
   expect(Math.max(web, tui)).toBeLessThan(jig.stderr.indexOf('bun scripts/build-cli.ts'))
   for (const recipe of ['display_model::pack', 'display_web::pack', 'display_tui::pack']) {
     const result = await run([

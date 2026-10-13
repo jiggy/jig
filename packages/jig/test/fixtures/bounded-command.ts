@@ -22,6 +22,11 @@ export async function settleTestCommand(
   let stopping = false
   let exited = false
   let escalation: ReturnType<typeof setTimeout> | undefined
+  let exitDeadline: ReturnType<typeof setTimeout> | undefined
+  let rejectExit!: (error: Error) => void
+  const unavailableExit = new Promise<never>((_, reject) => {
+    rejectExit = reject
+  })
   const stop = (error: unknown) => {
     failures.push(error)
     if (stopping || exited) return
@@ -38,6 +43,10 @@ export async function settleTestCommand(
         } catch (error) {
           failures.push(error)
         }
+        exitDeadline = setTimeout(
+          () => rejectExit(new Error('Installed command exit is unconfirmed after escalation')),
+          options.graceMs ?? 5_000,
+        )
       }
     }, options.graceMs ?? 5_000)
   }
@@ -56,7 +65,7 @@ export async function settleTestCommand(
     try {
       // Keep already-observed evidence even if the capturing process dies.
       // Refuse collisions rather than replacing an earlier qualification.
-      file = await open(`${options.evidence}.${name}`, 'wx')
+      file = await open(`${options.evidence}.${name}`, 'wx', 0o600)
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
@@ -88,13 +97,19 @@ export async function settleTestCommand(
   const stderr = collect(child.stderr, options.stderrLimit ?? 256 * 1024, 'stderr')
   let code = -1
   try {
-    code = await child.exited
+    code = await Promise.race([child.exited, unavailableExit])
+    exited = true
   } catch (error) {
     stop(error)
+    // A failed exit observer proves neither exit nor cleanup. Retain escalation
+    // until the same final refusal as a missing exit observation.
+    await unavailableExit.catch((exitError) => {
+      if (exitError !== error) failures.push(exitError)
+    })
   } finally {
-    exited = true
     clearTimeout(timer)
     clearTimeout(escalation)
+    clearTimeout(exitDeadline)
   }
   // A descendant retaining a pipe must not keep qualification hanging after
   // its coordinator exited. This is a diagnostic failure, not cleanup proof.

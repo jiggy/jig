@@ -348,7 +348,7 @@ printf '%s\\n' "$codex_startup_expectation"
   assert.ok(qualification.includes('macos-codex-preferences'))
 })
 
-test('Linux whole-file roles own all hostile and display work while startup remains a separate Mac obligation', () => {
+test('Linux whole-file roles own all hostile and display work while startup remains a separate Mac obligation', async () => {
   const files = discoverRepositoryTests(resolve(import.meta.dirname, '../..'), affectedManifest)
   const linux = filesForTarget(files, 'linux', affectedManifest)
   const mac = filesForTarget(files, 'macos-x64', affectedManifest)
@@ -362,4 +362,51 @@ test('Linux whole-file roles own all hostile and display work while startup rema
   assert.ok(mac.includes(INSTALLED_STARTUP_TEST))
   for (const name of ['display-model', 'display-web', 'display-tui'])
     assert.ok(linux.some((file) => file.startsWith(`packages/${name}/test/`)))
+
+  const workflow = await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/linux-host-conformance.yml'),
+    'utf8',
+  )
+  const start = workflow.indexOf('\n  host-suite:\n')
+  const end = workflow.indexOf('\n  linux-witness:\n', start)
+  assert.ok(start >= 0 && end > start)
+  const shard = workflow.slice(start, end)
+  const steps = shard.split(/\n {6}-\n/)
+  const builds = steps.filter((step) =>
+    step.includes('name: "Build source-test workspace packages"'),
+  )
+  assert.equal(builds.length, 1)
+  assert.match(builds[0], /if: "matrix\.suite != 'installed-evidence'"/)
+  assert.match(builds[0], /run: "just --justfile packages\/jig\/justfile build"/)
+  const source = steps.find((step) =>
+    step.includes('name: "Execute every pinned whole-file source group exactly once"'),
+  )
+  assert.ok(source)
+  assert.match(source, /if: "matrix\.suite != 'installed-evidence'"/)
+  assert.ok(source.includes('node --input-type=module -e "$LINUX_COMMAND_PLANNER"'))
+  for (const path of [
+    'packages/jig/test/package-smoke.ts',
+    'scripts/test-operational-baseline.ts',
+    'scripts/test-installed-hostile-baseline.ts',
+    'packages/display-model/test/package-smoke.ts',
+    'packages/display-web/test/package-smoke.ts',
+    'packages/display-tui/test/package-smoke.ts',
+  ]) {
+    const owners = steps.filter(
+      (step) =>
+        step.includes(`'${path}' >> "$RUNNER_TEMP/linux-command-evidence/`) &&
+        step.includes('CI installed script complete:'),
+    )
+    assert.equal(owners.length, 1, path)
+    assert.match(owners[0], /if: "matrix\.suite == 'installed-evidence'"/)
+    assert.ok(owners[0].includes(path))
+    assert.ok(owners[0].includes(String.raw`\"commandKind\":\"installed-script\"`))
+  }
+  for (const proof of [
+    'scripts/ci/provision-github-rootless-host.sh provision',
+    'candidate-provenance.mjs verify',
+    'sha256sum --check',
+    'scripts/ci/provision-github-rootless-host.sh assert-clean',
+  ])
+    assert.ok(shard.includes(proof), proof)
 })

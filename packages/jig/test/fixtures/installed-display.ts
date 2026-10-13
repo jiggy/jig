@@ -42,8 +42,8 @@ export const expectedInstalledFiles = [
   'libexec/markdown-runtime.js',
   'libexec/http-request-worker.js',
   'libexec/flow.LICENSE',
-  'libexec/contracts/user-updates/user-updates.json',
-  'libexec/contracts/user-updates/LICENSE',
+  'libexec/contracts/reporting/reporting.json',
+  'libexec/contracts/reporting/LICENSE',
   ...['agent-run', 'project-command', 'http-request', 'run-checkpoint', 'finite-acp'].flatMap(
     (name) => [`libexec/contracts/${name}/contract.json`, `libexec/contracts/${name}/LICENSE`],
   ),
@@ -141,7 +141,11 @@ console.log(path);
     // the non-Run checks; qualified host callers must prove this refusal.
     if (canProveRunRefusal) {
       const tuiRefusal = await run(
-        [process.env.PYTHON ?? 'python3', join(import.meta.dir, 'installed-tui-refusal.py'), command],
+        [
+          process.env.PYTHON ?? 'python3',
+          join(import.meta.dir, 'installed-tui-refusal.py'),
+          command,
+        ],
         consumer,
         {},
         45_000,

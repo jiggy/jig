@@ -14,6 +14,7 @@ import {
 import { tmpdir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
+import { settleTestCommand } from './fixtures/bounded-command.js'
 import {
   checkInstalledDisplay,
   expectedInstalledFiles,
@@ -25,23 +26,6 @@ import { checkInstalledMappedFiles } from './installed-mapped-files.js'
 const packageRoot = resolve(import.meta.dir, '..')
 const temporary = await mkdtemp(join(tmpdir(), 'jig-package-'))
 let completed = false
-const installedRuntime =
-  process.platform === 'darwin'
-    ? Object.freeze({
-        package: process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline',
-        version: '1.4.2',
-        revision: '1.4.2+744846f84',
-        sha256:
-          process.arch === 'arm64'
-            ? '35d20dd0263e5c950194434b925454fdfa9ba6e4467da960410fa05b08a7a5b5'
-            : '2fa513af22ac59e03aae640cad302e73cb1ddb0f6398501e2ddccf7dcd613596',
-      })
-    : Object.freeze({
-        package: 'bun-linux-x64-baseline',
-        version: '1.3.3',
-        revision: '1.3.3+274e01c73',
-        sha256: 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
-      })
 const expectedInstalledFiles = [
   'LICENSE.md',
   'PRICING.md',
@@ -100,6 +84,7 @@ const expectedInstalledFiles = [
   'libexec/macos-descriptor-bridge.dylib',
   'package.json',
 ].sort()
+let commandNumber = 0
 
 try {
   const artifacts = join(temporary, 'artifacts')
@@ -1397,14 +1382,14 @@ async function run(
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const timeout = setTimeout(() => child.kill(), timeoutMs)
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    new Response(child.stdout).text(),
-    new Response(child.stderr).text(),
-  ]).finally(() => clearTimeout(timeout))
-  if (exitCode !== 0) {
-    throw new Error(`${command.join(' ')} failed (${exitCode})\n${stdout}${stderr}`)
+  const result = await settleTestCommand(child, {
+    evidence: join(temporary, `command-${commandNumber++}`),
+    timeoutMs,
+  })
+  if (result.code !== 0) {
+    throw new Error(
+      `${command.join(' ')} failed (${result.code})\n${result.stdout}${result.stderr}`,
+    )
   }
-  return { stdout, stderr }
+  return result
 }

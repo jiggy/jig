@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { settleTestCommand } from '.././fixtures/bounded-command.js'
@@ -90,4 +90,101 @@ test('reader failure retains diagnostics and waits for actual child exit', async
   expect(child.signalCode).toBe('SIGKILL')
   expect(await child.exited).toBe(137)
   expect(await readFile(`${path}.stderr`, 'utf8')).toBe('ready\n')
+})
+
+test('unconfirmed exit after escalation refuses instead of hanging or establishing cleanup', async () => {
+  const path = await evidence()
+  const signals: string[] = []
+  const stream = () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('retained prefix\n'))
+      },
+    })
+  const outcome = settleTestCommand(
+    {
+      exited: new Promise<number>(() => {}),
+      stdout: stream(),
+      stderr: stream(),
+      kill(signal) {
+        signals.push(signal)
+      },
+    },
+    { evidence: path, timeoutMs: 20, graceMs: 20 },
+  )
+  const failure = await outcome.then(
+    () => undefined,
+    (error) => error,
+  )
+  expect(failure).toBeInstanceOf(AggregateError)
+  expect(failure.errors.some((error: Error) => error.message.includes('exit is unconfirmed'))).toBe(
+    true,
+  )
+  expect(signals).toEqual(['SIGINT', 'SIGKILL'])
+  expect(await readFile(`${path}.stdout`, 'utf8')).toBe('retained prefix\n')
+  expect((await stat(`${path}.stdout`)).mode & 0o777).toBe(0o600)
+})
+
+test('a zero exit after the command deadline cannot turn timeout into success', async () => {
+  const path = await evidence()
+  let resolveExit!: (code: number) => void
+  const exited = new Promise<number>((resolve) => {
+    resolveExit = resolve
+  })
+  const stream = () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+  const failure = await settleTestCommand(
+    {
+      exited,
+      stdout: stream(),
+      stderr: stream(),
+      kill() {
+        resolveExit(0)
+      },
+    },
+    { evidence: path, timeoutMs: 20, graceMs: 20 },
+  ).then(
+    () => undefined,
+    (error) => error,
+  )
+  expect(failure).toBeInstanceOf(AggregateError)
+  expect(
+    failure.errors.some((error: Error) => error.message === 'Installed command timed out'),
+  ).toBe(true)
+})
+
+test('a rejected exit observer retains escalation and refuses unconfirmed exit', async () => {
+  const path = await evidence()
+  const signals: string[] = []
+  const observerError = new Error('exit observation failed')
+  const stream = () =>
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.close()
+      },
+    })
+  const failure = await settleTestCommand(
+    {
+      exited: Promise.reject(observerError),
+      stdout: stream(),
+      stderr: stream(),
+      kill(signal) {
+        signals.push(signal)
+      },
+    },
+    { evidence: path, timeoutMs: 200, graceMs: 20 },
+  ).then(
+    () => undefined,
+    (error) => error,
+  )
+  expect(failure).toBeInstanceOf(AggregateError)
+  expect(failure.errors).toContain(observerError)
+  expect(failure.errors.some((error: Error) => error.message.includes('exit is unconfirmed'))).toBe(
+    true,
+  )
+  expect(signals).toEqual(['SIGINT', 'SIGKILL'])
 })

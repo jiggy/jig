@@ -85,7 +85,7 @@ export async function qualifyCandidate(
     const inputs = Object.fromEntries(
       [
         ['FLOW_SDK_PACKAGE_ARCHIVE', 'flow-sdk'],
-        ['USER_UPDATES_PACKAGE_ARCHIVE', 'user-updates'],
+        ['REPORTING_PACKAGE_ARCHIVE', 'reporting'],
         ['AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-method'],
         ['AGENT_ACP_PACKAGE_ARCHIVE', 'agent-acp'],
         ['DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-model'],

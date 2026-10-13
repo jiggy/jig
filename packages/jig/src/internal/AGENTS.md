@@ -751,6 +751,13 @@ child calls, project commands, delegated HTTP, and Agent providers.
   execution/settlement and workspace capture; nested spans must not be summed.
   Finite ACP phases separate revalidation, containment, launch, exchange, release
   and recovery; they neither record native content nor establish remote dispatch.
+  Contained-effect phases record coordinator planning/revalidation, allocation,
+  sealing, launch, collection and settlement, including failed allocation and
+  recovery cleanup. A phase may contain several separately paired awaits.
+  Launch includes backend storage/input preparation; collection includes stream
+  draining, enforcement and backend cleanup, not just payload CPU time. Owner
+  settlement remains separate. No selector or trace is passed to a child, and
+  the existing 512-span/192-byte record bounds remain unchanged.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
   coordinator. Reuse filesystem identity and retained-artifact verification;

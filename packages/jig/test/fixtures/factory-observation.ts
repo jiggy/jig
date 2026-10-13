@@ -2,8 +2,8 @@ import { expect } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
+import { type ReportingMessage, validateReportingMessage } from '@jigging/reporting'
 import { asciiJsonString } from '../../src/cli-usage.js'
-import { type UserUpdate, validateUserUpdate } from '@jigging/user-updates'
 
 export const lostObservation =
   "Live progress stopped before all updates were delivered. Check the final result for the work's outcome. (LAGGED)"
@@ -106,7 +106,7 @@ export function assertTypedObservation(
 
 export function assertExplicitObservation(stdout: string): {
   status: 'closed' | 'lagged'
-  updates: UserUpdate[]
+  updates: ReportingMessage[]
   terminal: ReturnType<typeof JSON.parse>
 } {
   if (!stdout.endsWith('\n')) throw new Error('Explicit observation has an incomplete final line')
@@ -141,7 +141,7 @@ export function assertExplicitObservation(stdout: string): {
     fields(record, ['type', 'channel', 'sequence', 'value'])
     if (record.type !== 'data' || record.channel !== 'progress' || record.sequence !== index + 1)
       throw new Error('Explicit observation data is not a contiguous selected-channel prefix')
-    return validateUserUpdate(record.value)
+    return validateReportingMessage(record.value)
   })
   const end = records.at(-2)
   if (end.status === 'closed') {
@@ -163,7 +163,7 @@ export function assertExplicitObservation(stdout: string): {
 }
 
 export function assertFactoryPrefix(
-  updates: UserUpdate[],
+  updates: ReportingMessage[],
   phase: 'blocked' | 'checked',
   jobs: ReturnType<typeof JSON.parse>,
 ) {

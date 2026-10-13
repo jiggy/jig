@@ -40,7 +40,9 @@ operational baselines, and public-site assembly.
   runs all stages serially. Only Linux GitHub Actions may opt into
   `JIG_CI_SOURCE_PARALLEL=1`: after shared builds and archive freezing, portable
   checks run beside the sequential protocol, applications and Python lane.
-  Authoring builds finish before either lane starts. The fixed lane owner joins
+  Jig's portable build owns its complete package graph, including authoring;
+  protocol-only execution builds authoring separately before its lane starts.
+  The fixed lane owner joins
   both process groups on failure or cancellation; cleanup requires confirmed
   settlement. Single selected lanes still execute serially. It includes the
   authored examples' deterministic application
@@ -109,6 +111,10 @@ operational baselines, and public-site assembly.
   makes no provider calls and is not a performance claim or release threshold.
   Planning subphases separate configuration support verification, envelope
   startup, execution/settlement and workspace capture before selecting a change.
+  Contained-command and HTTP effects retain paired planning, allocation, sealing,
+  launch, collection and settlement spans. Collection includes backend enforcement
+  and cleanup; it does not establish child CPU time. The consumer admits the same
+  closed phase names as the private recorder.
 - `test-operational-baseline.ts` retains failed fixtures and private command
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed; residue or

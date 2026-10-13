@@ -7,9 +7,6 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun check-native-support clean
-    just --justfile ../flow-sdk/justfile build
-    just --justfile ../reporting/justfile build
-    just --justfile ../display-model/justfile build
     just --justfile ../display-web/justfile build
     just --justfile ../display-tui/justfile build
     just --justfile ../agent-method/justfile build
