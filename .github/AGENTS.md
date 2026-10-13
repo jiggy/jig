@@ -110,7 +110,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   observation validator; installed consumers use the untouched canonical eight
   archives.
 - A temporary eligible-PR trial sets `active` only for this repository's own
-  `alpha` pull request to the immutable `ci-performance-trial-baseline` base.
+  `alpha` pull request to the immutable `ci-performance-trial-baseline-recovery` base.
   Each plan and its final independent gate use the same predicate. FORCE,
   verified-head sampling, ordinary jobs and publication rules remain unchanged.
   Record the full policy baseline SHA/tree, then one genuine presentation change
