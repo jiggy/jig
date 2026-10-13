@@ -376,8 +376,14 @@
       },
       {
         "file": "packages/jig/test/package-provider-host.test.ts",
-        "blob": "455f890e063ebf70645f687289c1e810357d6e91",
-        "sourcePatterns": ["^.+$"],
+        "blob": "c39339e2e8b201aa49cac946c0d4ea8f6060051f",
+        "sourcePatterns": [
+          "^installed software factory delivers complete blocked and checked dashboard views$",
+          "^installed automatic plain typed views end cleanly and report declared observation loss$",
+          "^installed CLI reviews and runs a workspace dependency \\(application: (?:member|root|nested)\\)$",
+          "^packed read attachments preserve empty roots and maximum relative paths$",
+          "^packed project (?:entrypoint|dependencies) uses fresh reviewed data and immutable execution$"
+        ],
         "macosPatterns": [],
         "linuxPatterns": []
       },
@@ -537,7 +543,7 @@
   "macosExecutedCaseMultiplicities": [
     {
       "file": "packages/jig/test/user-updates.test.ts",
-      "blob": "8de2311061ac70fae9ec086133475f2f7861b3be",
+      "blob": "2168219b769fee6f61962c0b9559a1da9440ea87",
       "cases": [
         {
           "classname": "",
