@@ -30,11 +30,9 @@ function guardianLifecycleTest(name: string, run: () => Promise<void>, timeoutMs
 }
 
 describe.serial('contained repair file application', () => {
-  for (const scenario of ['successful', 'unsuccessful'] as const) {
-    guardianLifecycleTest(
-      `exports ${scenario} repair evidence through a JSON leaf and real contained commands`,
-      () => qualifyRepairScenario(scenario, temporaryRoot),
-      process.platform === 'darwin' ? 420_000 : 180_000,
-    )
-  }
+  guardianLifecycleTest(
+    'exports successful repair evidence through a JSON leaf and real contained commands',
+    () => qualifyRepairScenario('successful', temporaryRoot),
+    process.platform === 'darwin' ? 420_000 : 180_000,
+  )
 })

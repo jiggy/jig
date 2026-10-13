@@ -23,49 +23,45 @@ export const NATIVE_PREREQUISITE_TESTS = [
   'packages/jig/test/macos/macos-guardian.test.ts',
 ]
 
-// Advisory case totals from verified complete run 38107858216. Each physical
-// suite runs once in a fresh process; hints change placement, never membership.
-// Split suites sum their original case timings, rounded up to whole seconds.
+// Advisory whole-file elapsed times from verified complete run38156769162,
+// attempt1. Hints place every applicable file once; they cannot omit coverage.
+// Repair/factory split hints are conservative projections from that same run.
+// Factory includes fresh setup and initial review in both consumers; its new
+// cold second review still needs measurement.
 const WEIGHTS = new Map([
-  ['packages/jig/test/portable/root-agent-fixtures.test.ts', { x64: 2, arm64: 1 }],
-  ['packages/jig/test/portable/factory-observation.test.ts', { x64: 1, arm64: 1 }],
-  ['packages/jig/test/host/root-agent-composition.test.ts', { x64: 153, arm64: 68 }],
-  ['packages/jig/test/host/root-agent-http-composition.test.ts', { x64: 188, arm64: 76 }],
-  ['packages/jig/test/host/root-agent-repair.test.ts', { x64: 243, arm64: 71 }],
-  ['packages/jig/test/host/root-agent-repair-batch.test.ts', { x64: 199, arm64: 69 }],
-  ['packages/jig/test/host/root-agent-fences-run.test.ts', { x64: 103, arm64: 53 }],
-  ['packages/jig/test/host/root-agent-fences-acp.test.ts', { x64: 102, arm64: 54 }],
-  ['packages/jig/test/host/root-agent-fences-specialist.test.ts', { x64: 153, arm64: 83 }],
-  ['packages/jig/test/host/installed-software-factory.test.ts', { x64: 253, arm64: 121 }],
-  ['packages/jig/test/host/package-provider-observation.test.ts', { x64: 29, arm64: 17 }],
-  ['packages/jig/test/host/installed-workspace-provider.test.ts', { x64: 170, arm64: 121 }],
-  ['packages/jig/test/host/installed-package-provider.test.ts', { x64: 115, arm64: 72 }],
-  ['packages/jig/test/host/installed-attachments.test.ts', { x64: 15, arm64: 9 }],
-  ['packages/jig/test/host/run-checkpoint-lifecycle.test.ts', { x64: 203, arm64: 170 }],
-  ['packages/jig/test/host/http-request-lifecycle.test.ts', { x64: 201, arm64: 78 }],
-  ['packages/jig/test/host/project-command-lifecycle.test.ts', { x64: 141, arm64: 65 }],
-  ['packages/jig/test/host/finite-acp-lifecycle.test.ts', { x64: 172, arm64: 71 }],
-  ['packages/jig/test/host/bun-native-preparation.test.ts', { x64: 117, arm64: 67 }],
-  ['packages/jig/test/host/project-author-evaluator.test.ts', { x64: 91, arm64: 61 }],
-  ['packages/jig/test/portable/activation-admission-store.test.ts', { x64: 55, arm64: 41 }],
-  ['packages/jig/test/macos/macos-guardian-storage.test.ts', { x64: 66, arm64: 54 }],
-  ['packages/jig/test/portable/contract-generation.test.ts', { x64: 23, arm64: 8 }],
-  ['packages/jig/test/portable/markdown-worker.test.ts', { x64: 2, arm64: 1 }],
-  ['packages/jig/test/host/markdown-worker.test.ts', { x64: 40, arm64: 16 }],
-  ['packages/jig/test/portable/activation-plan2.test.ts', { x64: 9, arm64: 5 }],
-  ['packages/jig/test/portable/project-evaluator-child.test.ts', { x64: 11, arm64: 11 }],
-  ['packages/jig/test/portable/file-delivery.test.ts', { x64: 10, arm64: 10 }],
-  ['packages/jig/test/macos/file-delivery.test.ts', { x64: 9, arm64: 9 }],
-  ['packages/jig/test/portable/codex-acp-dispatch.test.ts', { x64: 8, arm64: 6 }],
-  ['packages/jig/test/portable/finite-acp-resource.test.ts', { x64: 9, arm64: 9 }],
+  ['packages/display-tui/test/native.test.ts', { x64: 15, arm64: 17 }],
   ['packages/display-tui/test/portability.test.ts', { x64: 14, arm64: 14 }],
-  ['packages/jig/test/portable/workspace-progress.test.ts', { x64: 10, arm64: 10 }],
-  ['packages/display-tui/test/native.test.ts', { x64: 15, arm64: 16 }],
+  ['packages/jig/test/host/bun-native-preparation.test.ts', { x64: 137, arm64: 67 }],
+  ['packages/jig/test/host/finite-acp-lifecycle.test.ts', { x64: 200, arm64: 64 }],
+  ['packages/jig/test/host/http-request-lifecycle.test.ts', { x64: 197, arm64: 71 }],
+  ['packages/jig/test/host/installed-attachments.test.ts', { x64: 15, arm64: 11 }],
+  ['packages/jig/test/host/installed-package-provider.test.ts', { x64: 142, arm64: 68 }],
+  ['packages/jig/test/host/installed-software-factory-blocked.test.ts', { x64: 86, arm64: 38 }],
+  ['packages/jig/test/host/installed-software-factory.test.ts', { x64: 213, arm64: 107 }],
+  ['packages/jig/test/host/installed-workspace-provider.test.ts', { x64: 211, arm64: 119 }],
+  ['packages/jig/test/host/markdown-worker.test.ts', { x64: 25, arm64: 15 }],
+  ['packages/jig/test/host/package-provider-observation.test.ts', { x64: 35, arm64: 18 }],
+  ['packages/jig/test/host/project-author-evaluator.test.ts', { x64: 78, arm64: 58 }],
+  ['packages/jig/test/host/project-command-lifecycle.test.ts', { x64: 125, arm64: 59 }],
+  ['packages/jig/test/host/root-agent-composition.test.ts', { x64: 152, arm64: 66 }],
+  ['packages/jig/test/host/root-agent-fences-acp.test.ts', { x64: 120, arm64: 56 }],
+  ['packages/jig/test/host/root-agent-fences-run.test.ts', { x64: 116, arm64: 46 }],
+  ['packages/jig/test/host/root-agent-fences-specialist.test.ts', { x64: 270, arm64: 83 }],
+  ['packages/jig/test/host/root-agent-http-composition.test.ts', { x64: 190, arm64: 64 }],
+  ['packages/jig/test/host/root-agent-repair-batch.test.ts', { x64: 194, arm64: 91 }],
+  ['packages/jig/test/host/root-agent-repair-unsuccessful.test.ts', { x64: 108, arm64: 41 }],
+  ['packages/jig/test/host/root-agent-repair.test.ts', { x64: 96, arm64: 30 }],
+  ['packages/jig/test/host/run-checkpoint-lifecycle.test.ts', { x64: 221, arm64: 160 }],
+  ['packages/jig/test/macos/macos-guardian-storage.test.ts', { x64: 56, arm64: 44 }],
+  ['packages/jig/test/portable/activation-admission-store.test.ts', { x64: 51, arm64: 41 }],
+  ['packages/jig/test/portable/contract-generation.test.ts', { x64: 19, arm64: 8 }],
+  ['packages/jig/test/portable/project-evaluator-child.test.ts', { x64: 11, arm64: 11 }],
+  ['packages/jig/test/portable/workspace-progress.test.ts', { x64: 10, arm64: 11 }],
 ])
-// Same-run native prerequisite case totals and host-step remainder after group
-// execution. The latter includes the installed consumer and startup witnesses.
-const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze({ x64: 50, arm64: 38 })
-const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 464, arm64: 205 })
+// Actual owning-step wall time for native prerequisites and the installed tail.
+// The latter includes genuine-client startup and all four installed consumers.
+const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze({ x64: 59, arm64: 36 })
+const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 450, arm64: 250 })
 const manifest = JSON.parse(
   readFileSync(new URL('./affected-manifest.json', import.meta.url), 'utf8'),
 )

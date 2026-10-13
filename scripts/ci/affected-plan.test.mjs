@@ -473,6 +473,50 @@ test('model/web presentation changes qualify bundled Jig with all three compact 
   assert.equal(plan({ ...f, base }).policy.classification, 'full')
 })
 
+test('mixed Python and presentation changes require FLOW qualification for delegated protocol smoke', () => {
+  const f = fixture()
+  write(f.root, 'packages/display-model/package.json', '{"name":"@jigging/display-model"}')
+  write(f.root, 'packages/display-model/src/view.ts', 'export const view=1')
+  const base = commit(f.root)
+  write(f.root, 'packages/display-model/src/view.ts', 'export const view=2')
+  write(f.root, 'packages/jiggy-flow/src/jiggy/flow/runtime.py', 'RUNTIME = 2\n')
+  commit(f.root)
+
+  const p = plan({ ...f, base })
+  assert.equal(p.policy.classification, 'presentation-and-python')
+  assert.deepEqual(p.policy.fallbackReasons, [])
+  assert.deepEqual(p.decisions.sourceTargets, [
+    'source-portable',
+    'source-protocol',
+    'source-python',
+  ])
+  assert.equal(p.targets.find((target) => target.id === 'source-protocol').selected, true)
+  assert.equal(p.decisions.candidates, true)
+  assert.deepEqual(p.decisions.npmPackages, ['flow', 'jig'])
+  assert.deepEqual(p.targets.find((target) => target.id === 'npm-candidate').runtimeProfiles, [
+    'flow',
+    'jig',
+  ])
+  assert.deepEqual(JSON.parse(/^npm_matrix=(.+)$/m.exec(githubOutputs(p))[1]), {
+    include: [{ package: 'flow' }, { package: 'jig' }],
+  })
+  assert.equal(reconcileAffectedEvidence(p, evidenceFor(p), { cwd: f.root }).qualified, true)
+
+  const missingFlow = structuredClone(evidenceFor(p))
+  missingFlow.results.find((result) => result.id === 'npm-candidate').profiles = ['jig']
+  const report = reconcileAffectedEvidence(p, missingFlow, { cwd: f.root })
+  assert.equal(report.qualified, false)
+  assert.ok(report.errors.includes('Incomplete or unexpected runtime/host matrix: npm-candidate'))
+
+  for (const options of [{ mode: 'shadow' }, { forceFull: true }])
+    assert.deepEqual(plan({ ...f, base }, options).decisions.npmPackages, [
+      'flow',
+      'agent',
+      'acp',
+      'jig',
+    ])
+})
+
 test('a new outside consumer blocks a display presentation omission using the old/new graph', () => {
   const f = fixture()
   write(f.root, 'packages/display-web/package.json', '{"name":"@jigging/display-web"}')

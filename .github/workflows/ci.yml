@@ -427,6 +427,7 @@ jobs:
         name: "Run source, conformance, and package gates"
         env:
           PYTHONDONTWRITEBYTECODE: "1"
+          JIG_CI_SOURCE_PARALLEL: "1"
           JIG_CI_SOURCE_REPORT_DIRECTORY: "${{ runner.temp }}/source-reports"
           CI_PYTHON_DISTRIBUTIONS: "${{ runner.temp }}/python-dist"
           CI_PYTHON_REPORTING_DISTRIBUTIONS: "${{ runner.temp }}/python-reporting-dist"
@@ -516,20 +517,6 @@ jobs:
         name: "Install candidate qualification dependencies"
         run: "bun install --ignore-scripts"
       -
-        name: "Build Jig source-test workspace"
-        if: "${{ matrix.package == 'jig' }}"
-        run: "just jig::build"
-      -
-        name: "Provision Jig's disposable rootless host"
-        id: "jig_host"
-        if: "${{ matrix.package == 'jig' }}"
-        run: |
-          set -eu
-          JIG_CI_BUN=$(command -v bun)
-          export JIG_CI_BUN
-          scripts/ci/provision-github-rootless-host.sh provision
-          printf 'ready=true\n' >> "$GITHUB_OUTPUT"
-      -
         name: "Qualify the frozen candidate"
         run: |
           set -eu
@@ -543,10 +530,6 @@ jobs:
           version=$(node -p 'require(process.env.RUNNER_TEMP+"/candidates/"+process.env.RELEASE_PACKAGE.replace("flow","flow-sdk").replace("agent","agent-method").replace("acp","agent-acp")+"/SUCCESS.json").version')
           printf 'artifact_name=npm-candidate-%s-%s-%s\n' "$RELEASE_PACKAGE" "$version" "$GITHUB_SHA" >> "$GITHUB_OUTPUT"
         id: "qualified"
-      -
-        name: "Require zero Jig host residue"
-        if: "${{ always() && steps.jig_host.outputs.ready == 'true' }}"
-        run: "scripts/ci/provision-github-rootless-host.sh assert-clean"
       -
         name: "Upload exact candidate"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"

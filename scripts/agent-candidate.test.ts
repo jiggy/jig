@@ -352,21 +352,21 @@ test('Agent candidate refuses malformed requests and missing tools before creati
   }
 })
 
-test('installed npm qualification builds the source workspace only for Jig', async () => {
+test('installed npm qualification uses tooling and frozen packages without a source build', async () => {
   const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text()) as any
   const steps = ci.jobs['npm-candidate'].steps
   const dependencies = steps.find(
     (step: any) => step.name === 'Install candidate qualification dependencies',
   )
-  const build = steps.find((step: any) => step.name === 'Build Jig source-test workspace')
   expect(dependencies.if).toBeUndefined()
   expect(dependencies.run).toBe('bun install --ignore-scripts')
-  expect(build.if).toBe("${{ matrix.package == 'jig' }}")
-  expect(build.run).toBe('just jig::build')
   const setup = steps.filter((step: any) =>
     /\bbun install\b|\bjust jig::build\b/.test(step.run ?? ''),
   )
-  expect(setup).toEqual([dependencies, build])
+  expect(setup).toEqual([dependencies])
+  expect(
+    steps.some((step: any) => step.run?.includes('provision-github-rootless-host.sh')),
+  ).toBeFalse()
   const directory = await mkdtemp(join(tmpdir(), 'candidate-setup-'))
   try {
     const bin = join(directory, 'bin')
@@ -378,10 +378,9 @@ test('installed npm qualification builds the source workspace only for Jig', asy
     }
     for (const kind of ['flow', 'agent', 'acp', 'jig']) {
       const calls = join(directory, `${kind}.txt`)
-      const selected = setup.filter((step: any) => !step.if || kind === 'jig')
       const result = spawnSync(
         '/bin/bash',
-        ['-eu', '-c', selected.map((step: any) => step.run).join('\n')],
+        ['-eu', '-c', setup.map((step: any) => step.run).join('\n')],
         {
           cwd: directory,
           env: { PATH: `${bin}:/usr/bin:/bin`, SETUP_CALLS: calls },
@@ -390,11 +389,7 @@ test('installed npm qualification builds the source workspace only for Jig', asy
         },
       )
       expect(result.status, result.stderr).toBe(0)
-      expect(await readFile(calls, 'utf8')).toBe(
-        kind === 'jig'
-          ? 'bun install --ignore-scripts\njust jig::build\n'
-          : 'bun install --ignore-scripts\n',
-      )
+      expect(await readFile(calls, 'utf8')).toBe('bun install --ignore-scripts\n')
     }
   } finally {
     await rm(directory, { recursive: true, force: true })

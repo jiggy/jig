@@ -461,7 +461,12 @@ export function createAffectedPlan({
           sourceTargets,
           python: classes.has('python'),
           candidates: classes.has('presentation'),
-          npmPackages: classes.has('presentation') ? ['jig'] : [],
+          // Canonical source-protocol inputs delegate installed FLOW smoke to its qualifier.
+          npmPackages: classes.has('presentation')
+            ? classes.has('python')
+              ? ['flow', 'jig']
+              : ['jig']
+            : [],
           linux: false,
           macos: false,
           witnesses: classes.has('presentation'),
