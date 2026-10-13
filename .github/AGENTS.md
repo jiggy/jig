@@ -76,12 +76,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - CI, Linux and hosted Mac always plan each PR; runner allocation follows the
   repository-owned conservative policy instead of workflow path filters.
   `JIG_CI_SELECTION_MODE` defaults to `shadow`: proposed exclusions are retained
-  while every existing target executes freshly. `active` allows bounded
-  model/web and bounded TUI presentation changes, plus reviewed pure test-only inputs, to
-  select the portable source gate and compact real installed witnesses on Linux,
-  Intel Mac and Apple Silicon Mac. Python-only changes select protocol and Python
-  source stages; mixed Python and presentation changes require both FLOW and Jig
-  installed candidate profiles. Public site assets select their site. Four source
+  while every existing target executes freshly. Broader site, Python, pure-test
+  and model/web classifications remain advisory and execute full work even in
+  active mode. Active omissions require a modified source leaf among the four
+  existing TUI presentation files, with only its three reviewed whole test
+  companions and an optional canonical Jig root-version counter increment.
+  All other inputs remain full. The [CI policy owner](../scripts/ci/AGENTS.md)
+  defines the exact file, Git-mode, raw-byte and version bounds. Four source
   targets share one workspace/job. Linux source CI uses two fixed lanes after
   shared builds: portable beside sequential protocol, applications and Python.
   Both lanes must settle before workspace cleanup and archive revalidation;
@@ -113,8 +114,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `alpha` pull request to the immutable `ci-performance-trial-baseline-recovery` base.
   Each plan and its final independent gate use the same predicate. FORCE,
   verified-head sampling, ordinary jobs and publication rules remain unchanged.
-  Record the full policy baseline SHA/tree, then one genuine presentation change
-  and regression. Require fresh `test`, `affected-linux` and `affected-macos`
+  Record the full policy baseline SHA/tree, then one genuine presentation change,
+  regression and constrained Jig prerelease counter increment. Require fresh `test`, `affected-linux` and `affected-macos`
   proof for three complete timing repetitions and one same-head forced-full
   comparator. Retain failures, queues and every job's setup and execution work.
   Three repeats of one head are not independent sampler draws. A sampled-full

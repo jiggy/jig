@@ -17,28 +17,36 @@ Host preparation never becomes a consumer requirement.
 - `affected-plan.mjs` records verified base, exact PR head and tested merge state,
   old/new dependency graphs, inventories, endpoints and omission reasons. Shared,
   authority, runtime, harness, build, unknown, main and release inputs select full
-  fresh work. Narrow active PR pilots cover public site assets, independent Python,
-  reviewed pure test-only files, model/web presentation and the TUI
-  `src/presentation/` source group. Whole `test/presentation/` companions retain
-  their source owner. The package-owned boundary regression rejects native/input/
-  lifecycle imports, dynamic loading and ambient execution in that source group;
-  it is an ordinary dependency guard, not a JavaScript sandbox. TUI native, input,
-  lifecycle, shared types/fixtures and boundary-check changes remain full. Presentation changes still build
-  and qualify bundled Jig and run fresh Linux, Intel and Apple Silicon installed
-  witnesses. A compact witness never creates a full host qualification receipt.
-  Mixed Python and presentation selection also requires FLOW's installed profile,
-  so a canonical bundle cannot cause protocol smoke proof to disappear.
-  `guidanceFiles` names six instruction-only inputs excluded from packed products
-  and executable fixtures. Only existing modifications with no rename endpoint
-  and Git mode `100644` in both snapshots may select mandatory tooling alone.
-  Other input classes keep their obligations; additions, deletions, renames,
-  executable modes and links remain full. A new build, pack or test reader must
-  remove its guidance input from this set in the same change. Shadow, main,
-  forced execution and sampled full audits retain complete work.
-  Full host collection owns that same observation file and does not run a redundant
-  compact target. Shadow remains the default until same-revision audits support
-  each omission class. Domain-separated SHA-256 bucket zero modulo five selects
-  active PR heads for full audits; seed only from the exact verified proposal.
+  fresh work. Broad site, Python, pure-test and display classifications remain
+  advisory: their `proposedDecisions` never authorize execution omissions. Active
+  omissions are confined to existing regular modifications of the four TUI
+  `src/presentation/` leaves (`projection.ts`, `viewer-model.ts`, `text.ts`,
+  `style.ts`), optionally with its three existing whole test companions
+  (`presentation.test.ts`, `workbench.test.ts`, `inline.test.ts`). At least one
+  source leaf must change; every input must have no rename endpoint and Git mode
+  `100644` in both snapshots. Other files, mixed guidance, test-only deltas,
+  additions, deletions, renames, executable modes and links execute full work.
+  A paired `packages/jig/package.json` may advance only its top-level alpha/next
+  counter by one with unchanged core and channel. Read at most 64 KiB from each
+  raw Git blob; require exact canonical two-space JSON plus LF and equality after
+  replacing only the root version. Malformed, noncanonical or other metadata
+  edits remain full. Fresh canonical archives, Jig's installed qualifier, registry
+  collision checks and full main/release qualification remain unchanged.
+  The package-owned boundary regression rejects native/input/lifecycle imports,
+  dynamic loading and ambient execution in the source group; it is an ordinary
+  dependency guard, not a JavaScript sandbox. TUI native, input, lifecycle,
+  shared types/fixtures and boundary-check changes remain full. Narrow TUI work
+  builds and qualifies bundled Jig and runs fresh Linux, Intel and Apple Silicon
+  installed witnesses. A compact witness never creates a full host receipt.
+  Advisory mixed Python/presentation proposals retain FLOW's installed profile
+  for delegated protocol smoke. `guidanceFiles` retains the six reviewed
+  instruction-only classifications; a new build, pack or test reader removes its
+  guidance input from that set. These classifications currently execute full work.
+  Full host collection owns the same observation file without a redundant compact
+  target. Shadow remains the default; representative controls, missed-fault checks
+  and same-revision full/compact measurements must precede activation. Main,
+  manual, forced execution and domain-separated SHA-256 bucket zero modulo five
+  retain full fresh work; seed only from the exact verified PR proposal.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and
   `source-python` evidence. Linux CI opts into two fixed lanes only after shared

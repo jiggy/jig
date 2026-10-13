@@ -29,6 +29,68 @@ const FULL_DECISIONS = Object.freeze({
 const AUDIT_ALGORITHM = 'sha256-modulo-v1'
 const AUDIT_DOMAIN = 'jig-ci-full-pr-audit-v1'
 
+const TUI_SOURCE_FILES = new Set([
+  'packages/display-tui/src/presentation/projection.ts',
+  'packages/display-tui/src/presentation/viewer-model.ts',
+  'packages/display-tui/src/presentation/text.ts',
+  'packages/display-tui/src/presentation/style.ts',
+])
+const TUI_TEST_FILES = new Set([
+  'packages/display-tui/test/presentation/presentation.test.ts',
+  'packages/display-tui/test/presentation/workbench.test.ts',
+  'packages/display-tui/test/presentation/inline.test.ts',
+])
+const JIG_MANIFEST = 'packages/jig/package.json'
+
+// The identifier companion changes no package input other than its root version.
+function jigVersionOnly(cwd, before, after) {
+  try {
+    const manifests = [before, after].map(({ oid }) => {
+      const size = Number(git(cwd, ['cat-file', '-s', oid]).trim())
+      if (!Number.isSafeInteger(size) || size <= 0 || size > 64 * 1024)
+        throw new Error('Unbounded Jig manifest')
+      const result = spawnSync('git', ['-C', cwd, 'cat-file', 'blob', oid], {
+        maxBuffer: 64 * 1024,
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+      })
+      if (
+        result.error ||
+        result.status !== 0 ||
+        !Buffer.isBuffer(result.stdout) ||
+        result.stdout.length !== size
+      )
+        throw new Error('Unavailable Jig manifest bytes')
+      const value = JSON.parse(result.stdout.toString('utf8'))
+      if (
+        !value ||
+        Array.isArray(value) ||
+        value.name !== '@jigging/jig' ||
+        !result.stdout.equals(Buffer.from(`${JSON.stringify(value, null, 2)}\n`))
+      )
+        throw new Error('Noncanonical Jig manifest')
+      return { value, bytes: result.stdout }
+    })
+    const [old, next] = manifests
+    const pattern =
+      /^((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)-(?:alpha|next))\.(0|[1-9][0-9]*)$/
+    const a = typeof old.value.version === 'string' ? pattern.exec(old.value.version) : null
+    const b = typeof next.value.version === 'string' ? pattern.exec(next.value.version) : null
+    return Boolean(
+      a &&
+        b &&
+        a[1] === b[1] &&
+        BigInt(b[2]) === BigInt(a[2]) + 1n &&
+        next.bytes.equals(
+          Buffer.from(
+            `${JSON.stringify({ ...old.value, version: next.value.version }, null, 2)}\n`,
+          ),
+        ),
+    )
+  } catch {
+    return false
+  }
+}
+
 // Stable identities deliberately exclude wall-clock time, ambient variables and
 // cache history. This planner never transfers a passing result between runs.
 export function stableJson(value) {
@@ -379,8 +441,34 @@ export function createAffectedPlan({
   if (event !== 'pull_request')
     fallbackReasons.push('Main, manual and merge-group qualification executes complete fresh work')
   if (changes.length === 0) fallbackReasons.push('No complete nonempty input delta established')
-  const oldModes = new Map(previous?.files.map((file) => [file.path, file.mode]) ?? [])
-  const newModes = new Map(current.files.map((file) => [file.path, file.mode]))
+  const oldFiles = new Map(previous?.files.map((file) => [file.path, file]) ?? [])
+  const newFiles = new Map(current.files.map((file) => [file.path, file]))
+  const oldModes = new Map([...oldFiles].map(([path, file]) => [path, file.mode]))
+  const newModes = new Map([...newFiles].map(([path, file]) => [path, file.mode]))
+  const regularModification = (change) =>
+    change.status === 'M' &&
+    change.oldPath === null &&
+    oldModes.get(change.path) === '100644' &&
+    newModes.get(change.path) === '100644'
+  const tuiSourceChanged = changes.some(
+    (change) => TUI_SOURCE_FILES.has(change.path) && regularModification(change),
+  )
+  const jigChange = changes.find((change) => change.path === JIG_MANIFEST)
+  const jigVersionCompanion = Boolean(
+    tuiSourceChanged &&
+      jigChange &&
+      regularModification(jigChange) &&
+      jigVersionOnly(cwd, oldFiles.get(JIG_MANIFEST), newFiles.get(JIG_MANIFEST)),
+  )
+  const tuiOmissionEligible =
+    tuiSourceChanged &&
+    changes.every(
+      (change) =>
+        regularModification(change) &&
+        (TUI_SOURCE_FILES.has(change.path) ||
+          TUI_TEST_FILES.has(change.path) ||
+          (change.path === JIG_MANIFEST && jigVersionCompanion)),
+    )
   const classes = new Set()
   const normalizedChanges = changes.map((change) => {
     const paths = [...new Set([change.path, change.oldPath].filter(Boolean))]
@@ -392,7 +480,11 @@ export function createAffectedPlan({
         change.oldPath === null &&
         oldModes.get(path) === '100644' &&
         newModes.get(path) === '100644'
-      const classification = guidance ? 'guidance' : classifyPath(path, manifest)
+      const classification = guidance
+        ? 'guidance'
+        : path === JIG_MANIFEST && jigVersionCompanion
+          ? 'presentation'
+          : classifyPath(path, manifest)
       classes.add(classification)
       if (ownersForPath(path).length === 0) fallbackReasons.push(`Unknown changed input: ${path}`)
       if (oldModes.get(path) === '120000' || newModes.get(path) === '120000')
@@ -401,7 +493,7 @@ export function createAffectedPlan({
     })
     return { ...change, owners, reasons }
   })
-  // Reviewed guidance cannot expand or reduce another input's execution obligations.
+  // Guidance stays neutral in advisory classification; mixed deltas cannot graduate.
   if (classes.size > 1) classes.delete('guidance')
   if (classes.has('full'))
     fallbackReasons.push('Shared, host, build, harness, runtime or unproven input changed')
@@ -499,7 +591,11 @@ export function createAffectedPlan({
     bucket: selectionHash ? Number(BigInt(`0x${selectionHash}`) % 5n) : null,
   }
   audit.selected = audit.eligible && audit.bucket === 0
-  const decisions = mode === 'shadow' || audit.selected ? { ...FULL_DECISIONS } : proposedDecisions
+  // Broader proposals remain advisory until their own omission evidence is earned.
+  const decisions =
+    mode === 'shadow' || audit.selected || !tuiOmissionEligible
+      ? { ...FULL_DECISIONS }
+      : proposedDecisions
   const targets = manifest.targets.map((target) => {
     const testInventory = current.inventory.filter((path) => {
       const suite = manifest.testSuites.find((item) => item.id === current.suiteOwnership[path])
@@ -547,7 +643,9 @@ export function createAffectedPlan({
                 ? [
                     'Shadow mode requires full execution while recording the proposed component omission',
                   ]
-                : ['Input delta is confined to proven independent component ownership'],
+                : !tuiOmissionEligible
+                  ? ['Complete execution required outside the graduated TUI component']
+                  : ['Input delta is confined to the graduated TUI component'],
       requiresArtifacts:
         target.requiresArtifacts === true ||
         [

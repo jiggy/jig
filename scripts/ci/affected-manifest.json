@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "policyVersion": "whole-suite-selection-2",
+  "policyVersion": "whole-suite-selection-3",
   "audits": {
     "sampleDivisor": 5
   },

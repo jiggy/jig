@@ -164,7 +164,8 @@ test('a reconstructed later-ancestor baseline cannot hide earlier runtime change
   assert.equal(plan(f).policy.classification, 'full')
   const forged = plan(f, { base: hiddenRuntimeBase })
   assert.equal(forged.policy.classification, 'public-site')
-  assert.equal(forged.decisions.source, false)
+  assert.equal(forged.proposedDecisions.source, false)
+  assert.equal(forged.decisions.source, true)
   const report = reconcileAffectedEvidence(forged, evidence(forged), {
     cwd: f.root,
     expectedContext: context(f),
@@ -178,7 +179,8 @@ test('forged active rollout, PR event or disabled full override cannot authorize
   write(f.root, 'site/jig/public/logo.svg', '<svg>last change</svg>')
   commit(f.root)
   const forged = plan(f)
-  assert.equal(forged.decisions.source, false)
+  assert.equal(forged.proposedDecisions.source, false)
+  assert.equal(forged.decisions.source, true)
   for (const expectedContext of [
     context(f, { mode: 'shadow' }),
     context(f, { event: 'schedule', base: null, prHead: null }),
