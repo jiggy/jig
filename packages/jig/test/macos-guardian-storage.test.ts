@@ -384,45 +384,49 @@ native(
   45_000,
 )
 
-native(
-  'guardian retains bounded output only through collection and recovers exact storage after failures',
-  async () => {
-    const build = await mkdtemp('/private/tmp/jig-storage-build-')
-    const launcher = join(build, 'macos-exec'),
-      payload = join(build, 'payload')
-    try {
-      for (const [source, output] of [
-        [new URL('../support/macos-exec.c', import.meta.url), launcher],
-        [new URL('./fixtures/macos-storage-payload.c', import.meta.url), payload],
-      ] as const) {
-        const result = spawnSync(
-          '/usr/bin/clang',
-          [
-            '-O2',
-            '-Wall',
-            '-Wextra',
-            '-Werror',
-            '-Wno-deprecated-declarations',
-            fileURLToPath(source),
-            '-o',
-            output,
-          ],
-          { encoding: 'utf8', timeout: 15_000 },
-        )
-        expect({ status: result.status, errors: result.stderr }).toEqual({ status: 0, errors: '' })
-      }
-      for (const mode of [
-        'complete',
-        'cancel-prepared',
-        'cancel-preparing',
-        'guardian-loss-preparing',
-        'collection-timeout',
-        'cancel-collecting',
-        'guardian-loss-running',
-        'guardian-loss-collecting',
-        'coordinator-loss-running',
-        'coordinator-loss-collecting',
-      ]) {
+// Each fresh allocation owns its full test timer, including compilation and recovery.
+for (const mode of [
+  'complete',
+  'cancel-prepared',
+  'cancel-preparing',
+  'guardian-loss-preparing',
+  'collection-timeout',
+  'cancel-collecting',
+  'guardian-loss-running',
+  'guardian-loss-collecting',
+  'coordinator-loss-running',
+  'coordinator-loss-collecting',
+] as const) {
+  native(
+    `guardian storage ${mode}: retains bounded output only through collection and recovers exact storage after failures`,
+    async () => {
+      const build = await mkdtemp('/private/tmp/jig-storage-build-')
+      const launcher = join(build, 'macos-exec'),
+        payload = join(build, 'payload')
+      try {
+        for (const [source, output] of [
+          [new URL('../support/macos-exec.c', import.meta.url), launcher],
+          [new URL('./fixtures/macos-storage-payload.c', import.meta.url), payload],
+        ] as const) {
+          const result = spawnSync(
+            '/usr/bin/clang',
+            [
+              '-O2',
+              '-Wall',
+              '-Wextra',
+              '-Werror',
+              '-Wno-deprecated-declarations',
+              fileURLToPath(source),
+              '-o',
+              output,
+            ],
+            { encoding: 'utf8', timeout: 15_000 },
+          )
+          expect({ status: result.status, errors: result.stderr }).toEqual({
+            status: 0,
+            errors: '',
+          })
+        }
         const root = await mkdtemp('/private/tmp/jig-storage-owner-')
         const ownerDirectory = join(root, 'owner'),
           mountPath = join(root, 'data')
@@ -625,10 +629,10 @@ native(
           if (settled) await rm(root, { recursive: true })
           else console.error(`Mac storage evidence retained at ${root}`)
         }
+      } finally {
+        await rm(build, { recursive: true })
       }
-    } finally {
-      await rm(build, { recursive: true })
-    }
-  },
-  150_000,
-)
+    },
+    150_000,
+  )
+}

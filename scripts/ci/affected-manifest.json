@@ -229,8 +229,13 @@
       },
       {
         "file": "packages/jig/test/macos-guardian-storage.test.ts",
-        "blob": "7411820c45263cdcfdc0dfc4bea36ab791150d1f",
-        "sourcePatterns": ["^.+$"],
+        "blob": "9e7417ed0fd32ba6960455f0e2289f358a7f9d6c",
+        "sourcePatterns": [
+          "^recovery expiry during final drain refuses success and preserves retry evidence$",
+          "^guardian preparation failures retain a closed step and cause after fenced cleanup$",
+          "^guardian loss during backing journal publication retains recoverable storage$",
+          "^guardian storage (?:complete|cancel-prepared|cancel-preparing|guardian-loss-preparing|collection-timeout|cancel-collecting|guardian-loss-running|guardian-loss-collecting|coordinator-loss-running|coordinator-loss-collecting): retains bounded output only through collection and recovers exact storage after failures$"
+        ],
         "macosPatterns": [],
         "linuxPatterns": []
       },
@@ -644,31 +649,31 @@
         {
           "classname": "finite Jig project commands",
           "name": "resolution permission is separate from execution approval (yes=%s)",
-          "line": "1247",
+          "line": "1261",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "rejects vague, duplicate or misplaced contract generation: \"review\"",
-          "line": "1375",
+          "line": "1389",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "attributed live diagnostics are retained without human replay (human: %s)",
-          "line": "1598",
+          "line": "1612",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "a rejected live record closes work and reports cleanup failure: %s",
-          "line": "1673",
+          "line": "1687",
           "occurrences": 2
         },
         {
           "classname": "finite Jig project commands",
           "name": "interruption without a terminal preserves cleanup uncertainty (human: %s)",
-          "line": "2129",
+          "line": "2143",
           "occurrences": 2
         }
       ]
