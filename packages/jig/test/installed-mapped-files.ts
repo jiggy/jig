@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, realpath, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { settleTestCommand } from './fixtures/bounded-command.js'
 import {
@@ -59,9 +59,10 @@ export async function checkInstalledMappedFiles(options: {
   await mkdir(library, { recursive: true })
   await command(['tar', '-xzf', options.sdkArchive, '--strip-components=1', '-C', library])
   await command([options.cli, 'review', '--yes', '--allow-resolution-network'])
-  const source = join(options.directory, 'source')
-  const independent = join(options.directory, 'leaf-packet')
-  const composed = join(options.directory, 'composed-packet')
+  const directory = await realpath(options.directory)
+  const source = join(directory, 'source')
+  const independent = join(directory, 'leaf-packet')
+  const composed = join(directory, 'composed-packet')
   for (const [target, packet, composition] of [
     ['flow:flows/copy', independent, false],
     ['binding:root', composed, true],
