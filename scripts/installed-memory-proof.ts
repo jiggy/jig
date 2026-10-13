@@ -117,7 +117,14 @@ function validateMemoryProof(
     ['coordinatorEpoch', 'coordinator_epoch'],
   ] as const)
     assert.equal(intent[key], row[column])
-  assert.equal(intent.requestDigest, domain('JIG-Private-Root-Request/1', request))
+  // Root Run identity hashes its invocation. A spawn intent hashes the admitted
+  // activation request instead; those protocol domains must remain distinct.
+  const admittedTarget = admittedMemoryTarget(row, project, request.target)
+  const activationRequest = record(admittedTarget.request)
+  const disposition = record(admittedTarget.disposition)
+  assert.equal(intent.requestDigest, activationRequest.digest)
+  assert.equal(intent.recipeDigest, disposition.recipeDigest)
+  assert.equal(intent.observationDigest, disposition.observationDigest)
   assert.equal(intent.deadlineUnixMs, request.deadlineUnixMs)
 
   setStage('allocation')
@@ -195,6 +202,10 @@ function validateMemoryProof(
   assert.equal(packageAllocation.name, `root-${(row.run_id as string).slice(7)}`)
   assert.equal(packageAllocation.path, `${packageParent.path}/${packageAllocation.name}`)
   digest(packageAllocation.packageDigest)
+  assert.equal(
+    packageAllocation.packageDigest,
+    record(record(disposition.execution).package).digest,
+  )
   exact(checkpoints.backing!, ['kind', 'lease'])
   assert.equal(checkpoints.backing!.kind, 'private-direct-root-backing/1')
   const lease = record(checkpoints.backing!.lease)
@@ -409,6 +420,152 @@ function validateMemoryProof(
     fenced: true,
     released: true,
   }
+}
+
+/** Read only the admitted target bound to this fresh Run's stored generation. */
+function admittedMemoryTarget(
+  row: RecordValue,
+  project: { readonly device: string; readonly inode: string },
+  target: unknown,
+): RecordValue {
+  const admission = activationFact(
+    row.admission_bytes,
+    row.admission_digest,
+    'JIG-Private-Activation-Admission/2',
+  )
+  exact(admission, [
+    'kind',
+    'baseGeneration',
+    'planDigest',
+    'candidateRevision',
+    'candidateDigest',
+    'lockDigest',
+  ])
+  assert.equal(admission.kind, 'private-activation-admission/2')
+  if (admission.baseGeneration !== null) digest(admission.baseGeneration)
+  digest(admission.planDigest)
+  digest(admission.lockDigest)
+  assert.equal(admission.candidateRevision, row.candidate_revision)
+  const candidate = activationFact(
+    row.candidate_bytes,
+    row.candidate_digest,
+    'JIG-Private-Activation-Candidate/5',
+  )
+  exact(candidate, [
+    'kind',
+    'projectRoot',
+    'captureDigest',
+    'observedSemanticDigest',
+    'activationMeaningDigest',
+    'resolutionInputDigest',
+    'planningObservationDigest',
+    'lockDigest',
+    'declarationArtifact',
+    'targets',
+  ])
+  assert.equal(candidate.kind, 'private-activation-candidate/5')
+  assert.deepEqual(candidate.projectRoot, { device: project.device, inode: project.inode })
+  assert.equal(admission.candidateDigest, row.candidate_digest)
+  assert.equal(admission.lockDigest, candidate.lockDigest)
+  for (const key of [
+    'captureDigest',
+    'observedSemanticDigest',
+    'activationMeaningDigest',
+    'resolutionInputDigest',
+    'planningObservationDigest',
+    'lockDigest',
+  ])
+    digest(candidate[key])
+  const declaration = record(candidate.declarationArtifact)
+  exact(declaration, ['kind', 'closureDigest', 'package'])
+  assert.equal(declaration.kind, 'author-closure/1')
+  digest(declaration.closureDigest)
+  packageArtifact(declaration.package)
+  assert.ok(
+    Array.isArray(candidate.targets) &&
+      candidate.targets.length > 0 &&
+      candidate.targets.length <= 65_536,
+  )
+  const targets = (candidate.targets as unknown[]).map((value) => {
+    const entry = record(value)
+    exact(entry, ['request', 'disposition'])
+    return entry
+  })
+  const keys = targets.map((entry) => canonical(record(entry.request).target))
+  assert.equal(new Set(keys).size, keys.length)
+  const selected = targets.filter(
+    (entry) => canonical(record(entry.request).target) === canonical(target),
+  )
+  assert.equal(selected.length, 1, 'memory Run must name one exact admitted target')
+  const entry = selected[0]!
+  const request = record(entry.request)
+  exact(request, [
+    'kind',
+    'digest',
+    'target',
+    'mode',
+    'packagePath',
+    'package',
+    'entrypoint',
+    'settings',
+    'slots',
+    'attachments',
+  ])
+  assert.equal(request.kind, 'activation-request/4')
+  assert.deepEqual(request.target, { kind: 'flow', path: 'flows/memory-pressure' })
+  assert.equal(request.mode, 'run')
+  assert.equal(request.packagePath, 'flows/memory-pressure')
+  assert.deepEqual(request.entrypoint, { path: 'FLOW.ts', suffix: 'ts' })
+  assert.deepEqual(request.settings, {})
+  assert.deepEqual(request.slots, {})
+  assert.deepEqual(request.attachments, {})
+  packageArtifact(request.package)
+  const { digest: requestDigest, ...requestFields } = request
+  digest(requestDigest)
+  assert.equal(requestDigest, domain('JIG-Activation-Request/4', requestFields))
+  const disposition = record(entry.disposition)
+  exact(disposition, ['state', 'recipeDigest', 'observationDigest', 'execution'])
+  assert.equal(disposition.state, 'ready')
+  digest(disposition.recipeDigest)
+  digest(disposition.observationDigest)
+  const execution = record(disposition.execution)
+  exact(execution, [
+    'package',
+    'layout',
+    ...(Object.hasOwn(execution, 'preparation') ? ['preparation'] : []),
+  ])
+  packageArtifact(execution.package)
+  const layout = record(execution.layout)
+  exact(layout, ['flowRoot', 'members', 'aliases'])
+  if (Object.hasOwn(execution, 'preparation')) {
+    const preparation = record(execution.preparation)
+    exact(preparation, ['inputDigest', 'package'])
+    digest(preparation.inputDigest)
+    packageArtifact(preparation.package)
+  }
+  return entry
+}
+
+function packageArtifact(value: unknown): void {
+  const artifact = record(value)
+  exact(artifact, ['kind', 'digest'])
+  assert.equal(artifact.kind, 'flow-package/0')
+  digest(artifact.digest)
+}
+
+/** These two owning activation protocols require canonical JSON followed by one LF. */
+function activationFact(
+  value: unknown,
+  expectedDigest: unknown,
+  identityDomain: string,
+): RecordValue {
+  digest(expectedDigest)
+  assert.ok(value instanceof Uint8Array && value.byteLength > 1 && value.byteLength <= 16_777_216)
+  const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(value)
+  const parsed = record(JSON.parse(text))
+  assert.equal(text, `${canonical(parsed)}\n`)
+  assert.equal(domain(identityDomain, parsed), expectedDigest)
+  return parsed
 }
 
 function fact(

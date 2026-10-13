@@ -128,13 +128,71 @@ function memoryProofFixture(victim: 'descendant' | 'root') {
     coordinatorEpoch: 1,
   })
   const hex = (row.run_id as string).slice(7)
+  // The activated target describes executable package meaning; it is not the
+  // root invocation's input/files/deadline request and uses a different domain.
+  const activationFields = {
+    kind: 'activation-request/4',
+    target: request.target,
+    mode: 'run',
+    packagePath: 'flows/memory-pressure',
+    package: { kind: 'flow-package/0', digest: memoryDigest('source-package', {}) },
+    entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
+    settings: {},
+    slots: {},
+    attachments: {},
+  }
+  const activationRequest = {
+    ...activationFields,
+    digest: memoryDigest('JIG-Activation-Request/4', activationFields),
+  }
+  const candidate = {
+    kind: 'private-activation-candidate/5',
+    projectRoot: { device: project.device, inode: project.inode },
+    captureDigest: memoryDigest('capture', {}),
+    observedSemanticDigest: memoryDigest('observed', {}),
+    activationMeaningDigest: memoryDigest('meaning', {}),
+    resolutionInputDigest: memoryDigest('resolution', {}),
+    planningObservationDigest: memoryDigest('planning', {}),
+    lockDigest: memoryDigest('lock', {}),
+    declarationArtifact: {
+      kind: 'author-closure/1',
+      closureDigest: memoryDigest('closure', {}),
+      package: { kind: 'flow-package/0', digest: memoryDigest('declaration-package', {}) },
+    },
+    targets: [
+      {
+        request: activationRequest,
+        disposition: {
+          state: 'ready',
+          recipeDigest: memoryDigest('recipe', {}),
+          observationDigest: memoryDigest('observation', {}),
+          execution: {
+            package: { kind: 'flow-package/0', digest: memoryDigest('package', {}) },
+            layout: { flowRoot: '', members: [], aliases: [] },
+          },
+        },
+      },
+    ],
+  }
+  row.candidate_bytes = Buffer.from(`${memoryCanonical(candidate)}\n`)
+  row.candidate_digest = memoryDigest('JIG-Private-Activation-Candidate/5', candidate)
+  const admission = {
+    kind: 'private-activation-admission/2',
+    baseGeneration: null,
+    planDigest: memoryDigest('admission-plan', {}),
+    candidateRevision: 1,
+    candidateDigest: row.candidate_digest,
+    lockDigest: candidate.lockDigest,
+  }
+  row.admission_bytes = Buffer.from(`${memoryCanonical(admission)}\n`)
+  row.admission_digest = memoryDigest('JIG-Private-Activation-Admission/2', admission)
   const intent = {
     kind: 'private-root-spawn-intent/1',
     runId: row.run_id,
     admissionDigest: row.admission_digest,
     candidateRevision: 1,
     coordinatorEpoch: 1,
-    requestDigest,
+    requestDigest: activationRequest.digest,
     recipeDigest: memoryDigest('recipe', {}),
     observationDigest: memoryDigest('observation', {}),
     deadlineUnixMs: request.deadlineUnixMs,
@@ -218,7 +276,7 @@ function memoryProofFixture(victim: 'descendant' | 'root') {
     )
   checkpoint('plan', {
     kind: 'private-direct-root-plan/1',
-    requestDigest,
+    requestDigest: activationRequest.digest,
     recipeDigest: intent.recipeDigest,
     observationDigest: intent.observationDigest,
     activationStartedUnixMs: 10_000,
@@ -693,3 +751,211 @@ for (const [stage, change] of memoryProofStageFailures)
     expect(Object.hasOwn(rejected!, 'expected')).toBe(false)
     expect(String(rejected)).not.toContain('unrecognized private text')
   })
+
+// Retie all downstream checkpoints when substituting a self-consistent intent.
+// A negative must fail the target binding, not an unrelated stale envelope hash.
+function retieMemoryIntent(
+  fixture: ReturnType<typeof memoryProofFixture>,
+  change: (intent: MemoryRecord) => void = () => {},
+): void {
+  const row = fixture.row
+  const intent = JSON.parse(Buffer.from(row.intent_bytes as Uint8Array).toString()) as MemoryRecord
+  intent.admissionDigest = row.admission_digest
+  change(intent)
+  row.intent_bytes = Buffer.from(memoryCanonical(intent))
+  row.intent_digest = memoryDigest('JIG-Private-Root-Spawn-Intent/1', intent)
+  const allocation = JSON.parse(
+    Buffer.from(row.allocation_bytes as Uint8Array).toString(),
+  ) as MemoryRecord
+  allocation.spawnIntentDigest = row.intent_digest
+  row.allocation_bytes = Buffer.from(memoryCanonical(allocation))
+  row.allocation_digest = memoryDigest('JIG-Private-Root-Execution-Allocation/1', allocation)
+  for (const name of [
+    'plan',
+    'backing',
+    'sandbox',
+    'prepared',
+    'provisional',
+    'fence',
+    'release',
+    'admitted',
+  ]) {
+    const envelope = JSON.parse(
+      Buffer.from(row[`${name}_bytes`] as Uint8Array).toString(),
+    ) as MemoryRecord
+    envelope.allocationDigest = row.allocation_digest
+    if (name === 'plan') {
+      const plan = memoryRecord(envelope.value)
+      plan.requestDigest = intent.requestDigest
+      plan.recipeDigest = intent.recipeDigest
+      plan.observationDigest = intent.observationDigest
+      const packageAllocation = memoryRecord(plan.packageAllocation)
+      packageAllocation.ownerToken = row.allocation_digest
+    }
+    if (name === 'backing') {
+      const lease = memoryRecord(memoryRecord(envelope.value).lease)
+      memoryRecord(lease.allocation).ownerToken = row.allocation_digest
+    }
+    if (name === 'release') {
+      const release = memoryRecord(envelope.value)
+      for (const bound of ['plan', 'backing', 'fence'])
+        release[`${bound}Digest`] = row[`${bound}_digest`]
+    }
+    row[`${name}_bytes`] = Buffer.from(memoryCanonical(envelope))
+    row[`${name}_digest`] = memoryDigest(
+      `JIG-Private-Root-Execution-${name[0]!.toUpperCase()}${name.slice(1)}/1`,
+      envelope,
+    )
+  }
+}
+
+function mutateMemoryActivation(
+  fixture: ReturnType<typeof memoryProofFixture>,
+  change: (candidate: MemoryRecord, admission: MemoryRecord) => void,
+): void {
+  const row = fixture.row
+  const candidate = JSON.parse(
+    Buffer.from(row.candidate_bytes as Uint8Array).toString(),
+  ) as MemoryRecord
+  const admission = JSON.parse(
+    Buffer.from(row.admission_bytes as Uint8Array).toString(),
+  ) as MemoryRecord
+  change(candidate, admission)
+  row.candidate_bytes = Buffer.from(`${memoryCanonical(candidate)}\n`)
+  row.candidate_digest = memoryDigest('JIG-Private-Activation-Candidate/5', candidate)
+  admission.candidateDigest = row.candidate_digest
+  row.admission_bytes = Buffer.from(`${memoryCanonical(admission)}\n`)
+  row.admission_digest = memoryDigest('JIG-Private-Activation-Admission/2', admission)
+  retieMemoryIntent(fixture)
+}
+
+test('memory proof binds the root invocation and admitted activation request in their distinct domains', () => {
+  const fixture = memoryProofFixture('descendant')
+  const rootRequest = JSON.parse(
+    Buffer.from(fixture.row.request_bytes as Uint8Array).toString(),
+  ) as MemoryRecord
+  const intent = JSON.parse(
+    Buffer.from(fixture.row.intent_bytes as Uint8Array).toString(),
+  ) as MemoryRecord
+  const candidate = JSON.parse(
+    Buffer.from(fixture.row.candidate_bytes as Uint8Array).toString(),
+  ) as MemoryRecord
+  const activation = memoryRecord(memoryRecord((candidate.targets as MemoryRecord[])[0]).request)
+  const { digest: activationDigest, ...activationFields } = activation
+  expect(intent.requestDigest).toBe(memoryDigest('JIG-Activation-Request/4', activationFields))
+  expect(intent.requestDigest).toBe(activationDigest)
+  expect(intent.requestDigest).not.toBe(memoryDigest('JIG-Private-Root-Request/1', rootRequest))
+  expect(checkInstalledMemoryProof(fixture)).toMatchObject({ fenced: true, released: true })
+})
+
+for (const field of ['requestDigest', 'recipeDigest', 'observationDigest'] as const)
+  test(`memory proof rejects a self-consistent spawn intent with foreign ${field}`, () => {
+    const fixture = memoryProofFixture('root')
+    const rootRequest = JSON.parse(
+      Buffer.from(fixture.row.request_bytes as Uint8Array).toString(),
+    ) as MemoryRecord
+    retieMemoryIntent(fixture, (intent) => {
+      intent[field] =
+        field === 'requestDigest'
+          ? memoryDigest('JIG-Private-Root-Request/1', rootRequest)
+          : memoryDigest('foreign-activation-meaning', { field })
+    })
+    expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at origin-intent;')
+  })
+
+const memoryActivationTampering: readonly [
+  string,
+  (candidate: MemoryRecord, admission: MemoryRecord) => void,
+][] = [
+  [
+    'foreign project',
+    (candidate) => {
+      memoryRecord(candidate.projectRoot).inode = '1000'
+    },
+  ],
+  [
+    'wrong candidate revision',
+    (_candidate, admission) => {
+      admission.candidateRevision = 2
+    },
+  ],
+  [
+    'foreign lock',
+    (_candidate, admission) => {
+      admission.lockDigest = memoryDigest('foreign-lock', {})
+    },
+  ],
+  [
+    'missing target',
+    (candidate) => {
+      candidate.targets = []
+    },
+  ],
+  [
+    'duplicated target',
+    (candidate) => {
+      ;(candidate.targets as MemoryRecord[]).push((candidate.targets as MemoryRecord[])[0]!)
+    },
+  ],
+  [
+    'neighboring target',
+    (candidate) => {
+      const request = memoryRecord(memoryRecord((candidate.targets as MemoryRecord[])[0]).request)
+      request.target = { kind: 'flow', path: 'flows/isolation-orphan' }
+      const { digest: _digest, ...fields } = request
+      request.digest = memoryDigest('JIG-Activation-Request/4', fields)
+    },
+  ],
+  [
+    'unavailable target',
+    (candidate) => {
+      memoryRecord((candidate.targets as MemoryRecord[])[0]).disposition = {
+        state: 'unavailable',
+        code: 'RUNTIME_UNAVAILABLE',
+        evidenceDigests: [memoryDigest('failure', {})],
+      }
+    },
+  ],
+  [
+    'altered request content',
+    (candidate) => {
+      memoryRecord(memoryRecord((candidate.targets as MemoryRecord[])[0]).request).packagePath =
+        'flows/foreign'
+    },
+  ],
+]
+for (const [name, change] of memoryActivationTampering)
+  test(`memory proof refuses a rehashed admitted generation with ${name}`, () => {
+    const fixture = memoryProofFixture('root')
+    mutateMemoryActivation(fixture, change)
+    expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at origin-intent;')
+  })
+
+test('memory proof rejects materialization of a different admitted execution package', () => {
+  const fixture = memoryProofFixture('root')
+  mutateMemoryActivation(fixture, (candidate) => {
+    const disposition = memoryRecord((candidate.targets as MemoryRecord[])[0]!.disposition)
+    memoryRecord(memoryRecord(disposition.execution).package).digest = memoryDigest(
+      'foreign-execution-package',
+      {},
+    )
+  })
+  expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at plan-backing;')
+})
+
+for (const column of ['admission', 'candidate'] as const)
+  for (const alteration of ['missing', 'digest', 'without-LF', 'extra-LF'] as const)
+    test(`memory proof rejects ${column} ${alteration} before accepting its target`, () => {
+      const fixture = memoryProofFixture('root')
+      if (alteration === 'missing') fixture.row[`${column}_bytes`] = null
+      else if (alteration === 'digest')
+        fixture.row[`${column}_digest`] = memoryDigest('foreign-bytes', {})
+      else {
+        const original = Buffer.from(fixture.row[`${column}_bytes`] as Uint8Array)
+        fixture.row[`${column}_bytes`] =
+          alteration === 'without-LF'
+            ? original.subarray(0, original.byteLength - 1)
+            : Buffer.concat([original, Buffer.from('\n')])
+      }
+      expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at origin-intent;')
+    })

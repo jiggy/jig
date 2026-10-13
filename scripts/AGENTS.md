@@ -73,10 +73,14 @@ operational baselines, and public-site assembly.
   Its memory probe retains the fixed 256 MiB aggregate ceiling, 320 MiB touched
   child allocation and 60-second command bound. Host-side read-only inspection
   binds exactly one fresh memory Run to its canonical durable checkpoints,
-  prepared Linux owner, positive `memory.events` max/oom/oom_kill counters,
-  confirmed fence, complete release and admitted CLI terminal. It permits a
-  nonzero child status with a successful parent or an accurately failed SIGKILL
-  parent only with that same exhaustion proof; a bare kill or unrelated failure
+  immutable admission and candidate generation, and exact ready target. Root
+  invocation identity and admitted activation-request identity retain their
+  distinct protocol domains; intent and plan bind that target's meaning.
+  The same proof requires a prepared Linux owner, positive `memory.events`
+  max/oom/oom_kill counters, confirmed fence, complete release and admitted CLI
+  terminal. It permits a nonzero child status with a successful parent or an
+  accurately failed SIGKILL parent only with that same exhaustion proof; a bare
+  kill or unrelated failure
   never qualifies. The counters prove an OOM kill in this Run, not its exact
   victim. The numerical ceiling remains owned by the exact installed candidate;
   durable evidence contains counters, not a replacement limit policy. It passes
