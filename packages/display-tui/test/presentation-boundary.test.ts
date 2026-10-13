@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test'
 import { lstat, readdir, readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
-import ts from 'typescript'
+import * as ts from 'typescript/unstable/ast'
+import { API } from 'typescript/unstable/async'
+import { createVirtualFileSystem } from 'typescript/unstable/fs'
 
 const purePackages = new Set(['@jigging/display-model'])
 const ambientEffects = new Set([
@@ -31,15 +33,14 @@ const ambientEffects = new Set([
 ])
 
 // Package-scoped dependency regression check, not an arbitrary-JavaScript sandbox.
-function presentationBoundary(file: string, source: string, modules: ReadonlySet<string>) {
-  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-  const refuse = () => {
+async function presentationBoundary(file: string, source: string, modules: ReadonlySet<string>) {
+  const refuse = (): never => {
     throw new Error(`Presentation boundary refused: ${file}`)
   }
   const unwrap = (expression: ts.Expression): ts.Expression => {
     while (
       ts.isAsExpression(expression) ||
-      ts.isTypeAssertionExpression(expression) ||
+      ts.isTypeAssertion(expression) ||
       ts.isParenthesizedExpression(expression)
     )
       expression = expression.expression
@@ -69,7 +70,7 @@ function presentationBoundary(file: string, source: string, modules: ReadonlySet
       if (!ts.isStringLiteral(node.moduleSpecifier) || !node.importClause) refuse()
       imports(
         (node.moduleSpecifier as ts.StringLiteral).text,
-        node.importClause?.isTypeOnly === true,
+        node.importClause?.phaseModifier === ts.SyntaxKind.TypeKeyword,
       )
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier) {
       if (!ts.isStringLiteral(node.moduleSpecifier)) refuse()
@@ -81,8 +82,8 @@ function presentationBoundary(file: string, source: string, modules: ReadonlySet
       // Ignore member/type names. Only ambient value references cross this seam.
       if (
         (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) ||
-        ts.isPropertySignature(node.parent) ||
-        ts.isMethodSignature(node.parent)
+        ts.isPropertySignatureDeclaration(node.parent) ||
+        ts.isMethodSignatureDeclaration(node.parent)
       )
         return
       if (ambientEffects.has(node.text)) refuse()
@@ -96,15 +97,41 @@ function presentationBoundary(file: string, source: string, modules: ReadonlySet
           !ts.isCallExpression(call) ||
           members(call.expression).join('.') !== 'globalThis.Bun.stringWidth' ||
           call.arguments.length !== 1 ||
-          !ts.isIdentifier(call.arguments[0]!) ||
-          call.arguments[0]!.text !== 'text'
+          !call.arguments[0] ||
+          !ts.isIdentifier(call.arguments[0]) ||
+          call.arguments[0].text !== 'text'
         )
           refuse()
       }
     }
-    ts.forEachChild(node, visit)
+    node.forEachChild(visit)
   }
-  ts.forEachChild(parsed, visit)
+  const path = `/${file}`
+  const api = new API({
+    cwd: '/',
+    fs: createVirtualFileSystem({
+      '/tsconfig.json': JSON.stringify({
+        files: [path],
+        compilerOptions: { noLib: true, noResolve: true },
+      }),
+      [path]: source,
+    }),
+  })
+  try {
+    const snapshot = await api.updateSnapshot({ openProjects: ['/tsconfig.json'] })
+    try {
+      const project = snapshot.getProject('/tsconfig.json')
+      if (!project) refuse()
+      const program = project.program
+      const parsed = await program.getSourceFile(path)
+      if (!parsed || (await program.getSyntacticDiagnostics(path)).length) refuse()
+      parsed.forEachChild(visit)
+    } finally {
+      await snapshot.dispose()
+    }
+  } finally {
+    await api.close()
+  }
 }
 
 async function presentationSources(directory: string, prefix = ''): Promise<Map<string, string>> {
@@ -127,16 +154,24 @@ async function presentationSources(directory: string, prefix = ''): Promise<Map<
   return files
 }
 
+async function expectRefusal(file: string, source: string, modules: ReadonlySet<string>) {
+  const error = await presentationBoundary(file, source, modules).then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  expect(error).toBeInstanceOf(Error)
+  expect((error as Error).message).toContain('Presentation boundary refused')
+}
+
 test('presentation modules depend only on semantic data and their own non-native component', async () => {
   const sources = await presentationSources(resolve(import.meta.dir, '../src/presentation'))
   const modules = new Set(sources.keys())
   for (const file of ['projection.ts', 'viewer-model.ts', 'text.ts', 'style.ts'])
     expect(modules.has(file)).toBeTrue()
-  for (const [file, source] of sources)
-    expect(() => presentationBoundary(file, source, modules)).not.toThrow()
+  for (const [file, source] of sources) await presentationBoundary(file, source, modules)
 })
 
-test('native, input, lifecycle and ambient execution cannot enter the presentation boundary', () => {
+test('native, input, lifecycle and ambient execution cannot enter the presentation boundary', async () => {
   const modules = new Set(['projection.ts', 'text.ts', 'style.ts', 'viewer-model.ts'])
   for (const source of [
     "import { NativeRenderer } from '../native.js'",
@@ -161,41 +196,31 @@ test('native, input, lifecycle and ambient execution cannot enter the presentati
     "import { TuiOptions } from '../types.js'",
     "import { escaping } from './missing.js'",
   ])
-    expect(() => presentationBoundary('projection.ts', source, modules)).toThrow(
-      'Presentation boundary refused',
-    )
+    await expectRefusal('projection.ts', source, modules)
 })
 
-test('semantic imports, explicit preview inputs and qualified width measurement remain allowed', () => {
+test('semantic imports, explicit preview inputs and qualified width measurement remain allowed', async () => {
   const modules = new Set(['projection.ts', 'text.ts', 'style.ts', 'viewer-model.ts'])
-  expect(() =>
-    presentationBoundary(
-      'viewer-model.ts',
-      `
+  await presentationBoundary(
+    'viewer-model.ts',
+    `
     import { validateDisplaySnapshot } from '@jigging/display-model'
     import type { ViewItem } from '@jigging/reporting'
     import type { PreviewService } from '../types.js'
     import { terminalWidth } from './text.js'
     export const preview = (service: PreviewService, input: never) => service(input)
   `,
-      modules,
-    ),
-  ).not.toThrow()
-  expect(() =>
-    presentationBoundary(
-      'text.ts',
-      `
+    modules,
+  )
+  await presentationBoundary(
+    'text.ts',
+    `
     export function terminalWidth(text: string) {
       return (globalThis as unknown as { Bun: { stringWidth(value: string): number } }).Bun.stringWidth(text)
     }
   `,
-      modules,
-    ),
-  ).not.toThrow()
-  expect(() =>
-    presentationBoundary('projection.ts', 'globalThis.Bun.stringWidth(text)', modules),
-  ).toThrow()
-  expect(() =>
-    presentationBoundary('text.ts', 'globalThis.Bun.stringWidth(other)', modules),
-  ).toThrow()
+    modules,
+  )
+  await expectRefusal('projection.ts', 'globalThis.Bun.stringWidth(text)', modules)
+  await expectRefusal('text.ts', 'globalThis.Bun.stringWidth(other)', modules)
 })
