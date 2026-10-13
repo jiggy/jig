@@ -732,11 +732,16 @@ async function sealPlan(
   if (value === null || typeof value !== 'object' || !RUN_ID.test(value.runId))
     throw new TypeError('invalid native macOS launch plan')
   const command = [...value.command]
+  const rootWithoutStorage =
+    value.cwd === '/' &&
+    value.storage === undefined &&
+    value.files.readOnlyTrees.length === 0 &&
+    value.files.writableTrees.length === 0
   if (
     command.length === 0 ||
     command.some((part) => typeof part !== 'string' || part.includes('\0')) ||
     !canonical(command[0]!) ||
-    !canonical(value.cwd) ||
+    (!rootWithoutStorage && !canonical(value.cwd)) ||
     !Number.isSafeInteger(value.maxOutputBytes) ||
     value.maxOutputBytes < 1 ||
     value.maxOutputBytes > PRIVATE_MACOS_MAX_OUTPUT_BYTES

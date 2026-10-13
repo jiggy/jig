@@ -61,38 +61,56 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
     return result
   }) as typeof childProcess.spawnSync)
   try {
-    const sealed = await backend.seal(
-      {
-        runId: 'terminal',
-        limits: {
-          memoryBytes: 256 * 1024 * 1024,
-          pids: 4,
-          cpuQuotaMicros: 50_000,
-          cpuPeriodMicros: 100_000,
-          deadlineUnixMs: Date.now() + 30_000,
-          cleanupTimeoutMs: 5000,
-        },
-        command: [
-          process.execPath,
-          '--no-env-file',
-          '--no-install',
-          '--config=/dev/null',
-          '-e',
-          'await Bun.stdin.text(); process.exit(17)',
-        ],
-        cwd: '/',
-        environment: {},
-        files: {
-          readOnlyFiles: [process.execPath],
-          readOnlyTrees: [],
-          writableTrees: [],
-          protectedRoots: [owners],
-          network: 'isolated',
-        },
-        maxOutputBytes: 4096,
+    const beforeSealing = await readdir(allocation.directory)
+    const plan: PrivateMacosLaunchPlan = {
+      runId: 'terminal',
+      limits: {
+        memoryBytes: 256 * 1024 * 1024,
+        pids: 4,
+        cpuQuotaMicros: 50_000,
+        cpuPeriodMicros: 100_000,
+        deadlineUnixMs: Date.now() + 30_000,
+        cleanupTimeoutMs: 5000,
       },
-      allocation,
-    )
+      command: [
+        process.execPath,
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        '-e',
+        'await Bun.stdin.text(); process.exit(17)',
+      ],
+      cwd: '/',
+      environment: {},
+      files: {
+        readOnlyFiles: [process.execPath],
+        readOnlyTrees: [],
+        writableTrees: [],
+        protectedRoots: [owners],
+        network: 'isolated',
+      },
+      maxOutputBytes: 4096,
+    }
+    for (const invalid of [
+      { cwd: '//' },
+      { cwd: '/./' },
+      { files: { ...plan.files, readOnlyTrees: [work] } },
+      { files: { ...plan.files, writableTrees: [work] } },
+      {
+        storage: {
+          mountPath: join(allocation.directory, 'data'),
+          bytes: 16 * 1024 * 1024,
+          collect: null,
+        },
+      },
+    ]) {
+      await expect(backend.seal({ ...plan, ...invalid }, allocation)).rejects.toThrow(
+        'invalid native macOS launch configuration',
+      )
+      expect(await readdir(owners)).toEqual([allocation.name])
+      expect(await readdir(allocation.directory)).toEqual(beforeSealing)
+    }
+    const sealed = await backend.seal(plan, allocation)
     component = await sealed.admit()
     for (const path of ['data', 'control/guardian/storage']) {
       let absent = false
