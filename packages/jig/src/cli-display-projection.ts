@@ -386,7 +386,7 @@ export class PrivateDisplayProjection {
       bytes: file.bytes,
       clipped: file.clipped,
     }
-    if (!['text', 'empty'].includes(base.state)) return base
+    if (!['text', 'empty', 'image'].includes(base.state)) return base
     this.#previewBusy = true
     try {
       const preview = await this.model.capturePreview(file.path, capture.generation)
@@ -395,8 +395,8 @@ export class PrivateDisplayProjection {
         return { ...base, state: 'unavailable' }
       return {
         ...base,
-        state: preview.text ? 'text' : 'empty',
-        text: preview.text,
+        state: preview.image ? 'image' : preview.text ? 'text' : 'empty',
+        ...(preview.image ? { image: preview.image } : { text: preview.text }),
         clipped: preview.clipped,
       }
     } catch {

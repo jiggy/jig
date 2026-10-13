@@ -238,9 +238,16 @@ child calls, project commands, delegated HTTP, and Agent providers.
   20-second completion bound includes serial previews, retirement ACK and spent
   channel completion, clamped by the inherited presentation deadline. At most
   the first ten seconds are for previews; tighter constraints reserve half the
-  remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 64 KiB
-  each and 4 MiB aggregate text, with distinct empty/non-text/unavailable/clipped
-  metadata. Late or failed previews stay unavailable; they do not retract a
+  remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 4 KiB
+  each and 512 KiB aggregate retained content, charging text as UTF-16 storage.
+  Text, empty, image, non-text, unavailable and clipped states remain distinct.
+  `image-preview-policy.ts` owns the shared finite capture/transport limits;
+  complete image sources add bytes only within that same retention budget.
+  Production decoding remains unavailable: the private thread candidate cannot
+  interrupt Wasm on qualified Bun. Its renderer tests establish bounded output,
+  not independent fencing. Worker, renderer and font bytes are pinned and bundled.
+  Preserve text and saved-file fallback while qualification is incomplete.
+  Late or failed previews stay unavailable; they do not retract a
   known publication. The map never reopens a destination or invokes file RPC.
   Capture/retirement errors are closed command-cleanup failures, separate from
   known execution and delivery facts; callers must not fabricate unknown work.
@@ -277,6 +284,8 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Keep distinct root diagnostics beside child reports; only an exactly matching
   rendered root entry replaces the root envelope. Capture truncation disclosures
   precede excerpts, and human clipping never changes exact JSON inspection.
+  Saved preview preparation closes file descriptors before asynchronous decoding
+  and releases retained text/image buffers on cancellation or close.
 - `macos-file-command.ts` supplies private filesystem sockets for the independent
   command owner. Bind the control connection to its directly spawned coordinator
   and bind descriptor transfers to that connection's kernel PID version; the

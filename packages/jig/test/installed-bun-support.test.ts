@@ -84,6 +84,7 @@ describe('fixed installed Bun support', () => {
       await copyFile(installedBunLocation.executablePath, executable)
       await writeFile(join(root, 'libexec', 'http-request-worker.js'), 'http worker\n')
       await writeFile(installedCli, 'installed command\n')
+      await writeFile(join(root, 'libexec', 'image-preview-worker.js'), 'image worker\n')
       await writeFile(join(root, 'libexec', 'markdown-runtime.js'), 'markdown interpreter\n')
       await writeFile(
         join(
@@ -174,6 +175,7 @@ describe('fixed installed Bun support', () => {
         'installed Bun support changed after selection',
       )
       await writeFile(installedCli, 'installed command\n')
+      await writeFile(join(root, 'libexec', 'image-preview-worker.js'), 'image worker\n')
       await expect(revalidatePrivateInstalledBunSupport(support)).resolves.toBeUndefined()
 
       await writeFile(join(evaluator, 'project-evaluator-worker.js'), 'changed\n')

@@ -30,7 +30,7 @@ FLOW owns the portable boundary. Jig owns local authority and execution lifecycl
 A shared interface does not establish equal judgment, cost, or required powers.
 
 See [how Jig works](./understand.md) and
-[one caller, three implementations](./request-triage.md). Changing an implementation
+[one caller, three implementations](./contact-import.md). Changing an implementation
 or Binding still needs review; a matching contract does not authorize new bytes.
 
 ## Start from the user's task

@@ -203,3 +203,70 @@ test('public browser client accepts preview provenance only when it matches the 
       }
     }
 })
+
+test('public browser client accepts bounded raster previews and refuses forged dimensions or active markup', async () => {
+  const image = {
+    mime: 'image/png',
+    width: 1,
+    height: 1,
+    base64:
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==',
+  }
+  const flush = async () => {
+    for (let index = 0; index < 50; index++) await Promise.resolve()
+  }
+  for (const [payload, accepted] of [
+    [image, true],
+    [{ ...image, width: 2 }, false],
+    [{ ...image, mime: 'image/svg+xml' }, false],
+    [{ ...image, base64: '<script>' }, false],
+  ] as const) {
+    const body = {
+      ...snapshot,
+      artifacts: {
+        ...snapshot.artifacts,
+        files: [{ id: 'artifact', path: 'photo.png', state: 'image', bytes: 70, clipped: false }],
+      },
+    }
+    const client = new BrowserClient('a'.repeat(43), () => {}, {
+      fetch: async (input, init) =>
+        String(input) === '/api/events'
+          ? new Response(
+              new ReadableStream({
+                start(controller) {
+                  init?.signal?.addEventListener('abort', () => controller.close(), { once: true })
+                },
+              }),
+            )
+          : new Response(
+              JSON.stringify(
+                String(input) === '/api/snapshot'
+                  ? body
+                  : {
+                      artifactId: 'artifact',
+                      captureGeneration: 'capture',
+                      provenance: 'verified-delivery',
+                      state: 'image',
+                      image: payload,
+                      bytes: 70,
+                      clipped: false,
+                    },
+              ),
+            ),
+    })
+    try {
+      client.start()
+      await flush()
+      client.setPreview({
+        artifactId: 'artifact',
+        captureGeneration: 'capture',
+        signature: 'selected',
+      })
+      await flush()
+      expect(client.preview?.phase).toBe(accepted ? 'ready' : 'unavailable')
+      expect(client.preview?.reply?.image).toEqual(accepted ? image : undefined)
+    } finally {
+      client.stop()
+    }
+  }
+})

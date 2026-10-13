@@ -1,4 +1,0 @@
-{
-  "name": "request-triage-intake",
-  "description": "Ask the configured classifier for a suggested support queue."
-}

@@ -44,7 +44,9 @@ descriptors.
 - `web-display.md` owns the local browser display's access boundary, bounded
   snapshots/streams, independent viewer navigation, confined immutable previews,
   admission and finite authority retirement before indefinite inspection. It
-  adds no Flow author API or HTTP/execution SPI. Independently packaged browser
+  adds no Flow author API or HTTP/execution SPI. It owns the bounded shared
+  text detection/colouring and CSV/TSV table profile, plus the bounded
+  PNG/JPEG and rasterised SVG preview profile; terminal blocks retain their frame ceiling. Independently packaged browser
   and terminal renderers consume bounded semantic snapshots; Jig owns transport,
   authenticated evidence access and execution authority. CLI grammar and hierarchy
   remain in `cli-experience.md`. Appearance is viewer-local, with accessible

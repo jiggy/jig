@@ -535,7 +535,21 @@ export class PrivateCliProgress {
     display: 'tui' | 'web' = 'tui',
   ): Promise<void> {
     this.#settled = true
-    const previews = new Map(packet.files.map((file) => [file.path, packet.preview(file.path)]))
+    const previews = new Map<string, PrivatePreview | undefined>()
+    const omittedPreviews = new Set<string>()
+    let retainedPreviewBytes = 0
+    for (const file of packet.files) {
+      const preview = packet.preview(file.path)
+      const size = preview
+        ? Buffer.byteLength(preview.text) + (preview.image?.base64.length ?? 0)
+        : 0
+      if (retainedPreviewBytes + size > 16 * 1024 * 1024) {
+        omittedPreviews.add(file.path)
+        continue
+      }
+      retainedPreviewBytes += size
+      previews.set(file.path, preview)
+    }
     this.model.transaction(() => {
       this.model.configureWorkspace({
         target: display === 'web' ? 'Saved result packet' : packet.directory,
@@ -575,13 +589,16 @@ export class PrivateCliProgress {
         files: packet.files.map((file) => ({
           path: file.path,
           bytes: file.bytes,
-          state: !file.available
-            ? 'unavailable'
-            : previews.get(file.path) === undefined
-              ? 'non-text'
-              : file.bytes === 0
-                ? 'empty'
-                : 'text',
+          state:
+            !file.available || omittedPreviews.has(file.path)
+              ? 'unavailable'
+              : previews.get(file.path) === undefined
+                ? 'non-text'
+                : previews.get(file.path)?.image
+                  ? 'image'
+                  : file.bytes === 0
+                    ? 'empty'
+                    : 'text',
           clipped: previews.get(file.path)?.clipped ?? false,
         })),
       })

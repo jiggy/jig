@@ -258,8 +258,7 @@ the essential replies. A failed progress display need not stop the conversation.
 
 ## Hand work to a fresh conversation
 
-The [incident brief example](https://github.com/jiggy/jig/tree/main/examples/incident-brief)
-uses these controls for an application-owned summary handoff. One worker drafts,
+An application can use these controls for an application-owned summary handoff. One worker drafts,
 while another publishes preliminary analysis through an ordinary FLOW channel
 and continues preparing independent review questions. Ordinary commentary uses
 a follow-up in the same conversation. A validated replacement of source files

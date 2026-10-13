@@ -10,7 +10,7 @@ An Agent helps with interpretation. Ordinary code decides credit eligibility.
 
 This [support-case example](https://github.com/jiggy/jig/tree/main/examples/support-case)
 turns a request and supplied account records into a decision and a reply.
-It extends [request triage](./request-triage.md): once software can call an
+It extends [contact import](./contact-import.md): once software can call an
 intelligent method, it can evaluate that method's contribution before proceeding.
 
 ## Run a case
@@ -162,7 +162,7 @@ For the same `ch-102` assessment, the result now contains `manual_review`,
 code determines the new boundary.
 
 An application could also replace the configured `assessment` method while
-keeping its input and result contract. As in request triage, changing its
+keeping its input and result contract. As in contact import, changing its
 implementation requires review, even when the caller remains unchanged.
 
 To verify the authored policy from the repository root:

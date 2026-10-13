@@ -17,9 +17,9 @@ methods with operator-chosen powers and accounts for their execution. Methods
 own the work; applications own purpose and consequences; Jig owns the common
 execution boundaries.
 
-Start with [one caller, three implementations](docs/jig/guide/request-triage.md):
-an intake method calls a classifier written as code, an Agent method, or a
-combination. Its caller stays unchanged. The shared interface keeps composition
+Start with [one caller, three implementations](docs/jig/guide/contact-import.md):
+a contact importer calls a column mapper written as code, an Agent method,
+or a combination. Its caller stays unchanged. The shared interface keeps composition
 consistent; it does not guarantee equal answers or make Agent judgment correct.
 
 For larger applications, try [a tested patch](docs/jig/guide/tested-patch.md) or

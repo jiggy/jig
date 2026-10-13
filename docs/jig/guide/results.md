@@ -132,7 +132,10 @@ explicit enclosing command limit. Input/output failure or external interruption
 also closes it and releases its retained evidence.
 For web, open the private link printed on terminal stderr and choose **Close
 inspection** to leave. Browser disconnection does not cancel or close it.
-Selecting a captured file shows its contents; empty, non-text, unavailable and
+Selecting a captured file shows its contents. PNG, JPEG and supported SVG files
+show an image preview in the browser and coloured blocks in the TUI. SVG previews
+use a bundled font and may differ from the original typography. Images above the
+preview limits remain available in the result packet. Empty, non-text, unavailable and
 clipped files have distinct explanations. Expanded search covers the retained
 excerpt, not bytes outside it. Saved values keep their recorded provenance.
 

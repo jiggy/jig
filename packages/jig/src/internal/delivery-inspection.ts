@@ -5,13 +5,17 @@ import type {
   PrivateDeliveryInspectionPreview,
   PrivateDeliveryReceipt,
 } from './file-delivery.js'
-import { PRIVATE_FILE_LIMITS, privateFilePath } from './file-input.js'
+import { privateFilePath } from './file-input.js'
+import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
+import {
+  PRIVATE_PREVIEW_LIMITS,
+  privatePreviewStringBytes,
+  privateValidImagePreview,
+} from './image-preview-policy.js'
 import { privatePresentationNow } from './root-run-timeout-policy.js'
 
 export const PRIVATE_INSPECTION_COMPLETION_MS = 20_000
 export const PRIVATE_INSPECTION_PREVIEW_MS = 10_000
-const PREVIEW_BYTES = 64 * 1024
-const TEXT_BYTES = 4 * 1024 * 1024
 
 /** Kept separate from the already known execution and publication records. */
 export class PrivateDeliveryInspectionError extends Error {
@@ -69,6 +73,10 @@ export class PrivateDeliveryCompletion {
     readonly inheritedDeadline?: number,
     readonly allowanceMs = PRIVATE_INSPECTION_COMPLETION_MS,
   ) {}
+  /** Observing an enclosing end must not start retirement. */
+  get startedDeadline(): number | undefined {
+    return this.#deadline
+  }
   start(requestedDeadline?: number): number {
     const deadline = Math.min(
       this.#deadline ?? privatePresentationNow() + this.allowanceMs,
@@ -186,7 +194,7 @@ export async function privateCaptureDeliveryInspection(
         throw new PrivateDeliveryInspectionError('INVALID_CAPTURE')
       paths.add(file.path)
       bytes += file.bytes
-      if (bytes > PRIVATE_FILE_LIMITS.bytes)
+      if (bytes > PRIVATE_CAPTURE_LIMITS.output)
         throw new PrivateDeliveryInspectionError('INVALID_CAPTURE')
       previews.set(
         file.path,
@@ -208,13 +216,19 @@ export async function privateCaptureDeliveryInspection(
           ...bound,
           deadline: previewDeadline,
         })
-        const size = preview.text === undefined ? 0 : Buffer.byteLength(preview.text)
+        const textSize = preview.text === undefined ? 0 : Buffer.byteLength(preview.text)
+        const size =
+          (preview.text === undefined ? 0 : privatePreviewStringBytes(preview.text)) +
+          (preview.image === undefined ? 0 : privatePreviewStringBytes(preview.image.base64))
         if (
           (preview.state !== 'unavailable' && preview.bytes !== file.bytes) ||
-          size > PREVIEW_BYTES ||
-          retained + size > TEXT_BYTES ||
-          !['text', 'empty', 'non-text', 'unavailable'].includes(preview.state) ||
+          textSize > PRIVATE_PREVIEW_LIMITS.textBytes ||
+          retained + size > PRIVATE_PREVIEW_LIMITS.retainedBytes ||
+          !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(preview.state) ||
           typeof preview.clipped !== 'boolean' ||
+          (preview.state === 'image'
+            ? !privateValidImagePreview(preview.image)
+            : preview.image !== undefined) ||
           (preview.state === 'text' || preview.state === 'empty') !==
             (typeof preview.text === 'string') ||
           (preview.state === 'empty' &&

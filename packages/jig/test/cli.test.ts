@@ -2071,6 +2071,7 @@ describe('finite Jig project commands', () => {
         ...fakeHost(fakeSession(events, { terminal }), events),
         delivery: {
           async prepare() {},
+          async retire() {},
           async publish(record) {
             canonicalJson(record)
             throw new Error('expanded record unexpectedly fit')
@@ -2361,6 +2362,7 @@ describe('finite Jig project commands', () => {
           {
             delivery: {
               async prepare() {},
+              async retire() {},
               async publish(record, retainedOutput, signal) {
                 expect(events).toContain('close')
                 expect(record).toMatchObject({ status: 'succeeded' })

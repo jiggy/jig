@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 
@@ -21,11 +22,25 @@ const dependencySections = [
 ] as const
 
 test('example Jig dependencies match current public package versions', async () => {
-  const tracked = Bun.spawnSync(['git', 'ls-files', '-z', '--', 'examples', 'packages'], {
-    cwd: repository,
-  })
-  expect(tracked.exitCode).toBe(0)
-  const paths = new TextDecoder().decode(tracked.stdout).split('\0').filter(Boolean)
+  const inventory = Bun.spawnSync(
+    [
+      'git',
+      'ls-files',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      'examples',
+      'packages',
+    ],
+    { cwd: repository },
+  )
+  expect(inventory.exitCode).toBe(0)
+  const paths = new TextDecoder()
+    .decode(inventory.stdout)
+    .split('\0')
+    .filter((path) => path && existsSync(join(repository, path)))
   const packagePaths = paths.filter((path) => /^packages\/[^/]+\/package\.json$/.test(path))
   const examplePaths = paths.filter(
     (path) => path.startsWith('examples/') && path.endsWith('/package.json'),

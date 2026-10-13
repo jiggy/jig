@@ -156,12 +156,30 @@ actual evidence. The independent host file inventory does not attribute its
 bytes to an unavailable authored reference.
 
 Capture retains at most 64 files /16 MiB under the existing confined file policy.
-Live settled inspection transfers at most 64 text excerpts /4 MiB, each at most
-64 KiB. One active browser preview is bounded to one such UTF-8 excerpt. Empty,
-non-text, unavailable and clipped evidence are distinct states. Content is primary;
+Live settled inspection transfers at most 64 previews with 512 KiB aggregate
+retained content. Text excerpts remain at most 4 KiB each, charged as UTF-16
+storage. One active browser preview contains one text excerpt or one validated
+raster image. Production file-image decoding remains unavailable until its
+execution owner can independently enforce cancellation; saved files remain usable
+outside the display. The private renderer candidate accepts at most 64 KiB of
+PNG/JPEG or SVG source and returns PNG within 384 by 1024 pixels and 64 KiB.
+External references and entities are refused; its bundled fonts supply text.
+Candidate rendering tests do not establish execution-lifetime qualification.
+The browser renders validated raster data in an image element, never authored
+SVG markup, and retains no image object URL or file/network access.
+Empty, image, non-text, unavailable and clipped evidence are distinct states. Content is primary;
 path, byte count, verified-delivery/recorded-capture provenance and limits are
 secondary. Preserve diff whitespace with addition/removal/context roles and a
-plain fallback. Expansion adds space, scrolling and search of retained text.
+plain fallback. Text previews detect common formats from the captured filename;
+unknown filenames use bounded shebang, diff and complete-JSON signals before
+falling back to plain text. Both renderers share detection and lexical colouring
+for CSV/TSV, JSON, YAML, Markdown and common source files. Colouring is a reading
+aid, not syntax validation. No grammar, file or network lookup is performed.
+Web CSV/TSV previews offer Table/Raw views for complete rectangular excerpts of
+at most 500 rows and 64 columns, respecting quoted delimiters and multiline
+fields. Clipped, malformed and oversized tables retain raw text. Literal search
+shows the raw excerpt, preserving its whitespace and match locations.
+Expansion adds space, scrolling and search of retained text.
 
 Provide a compact host shell, visible focus, keyboard and pointer navigation,
 responsive layouts, readable selected context, view overflow navigation and
@@ -218,8 +236,18 @@ paths. Fence every verb and recovery fallback before closing resources. Accept
 success only after resources close, authenticated retirement acknowledgment and
 expected spent-channel completion. Release local input/output captures before
 waiting on the inspector. Retain only bounded semantic presentation and pure
-captured excerpts; no project lock, execution scope, channel owner, descriptor
+captured previews; no project lock, execution scope, channel owner, descriptor
 endpoint or native renderer remains alive for browser inspection.
+
+The first retirement operation requires a confirmed terminal and successful
+project closure. Unknown execution or a project-close failure closes the viewer
+and local captures without spending the original source-exit recovery authority.
+Bound those local joins by the existing enclosing presentation end when supplied,
+without starting a new completion reserve; an unknown close stays unconfirmed.
+Do not retain an indefinite unknown inspector. Once finalization has started,
+later errors join its original promise and end, including a latched failure;
+they cannot select another operation. Report local-close uncertainty separately
+without replacing the primary error or known terminal/delivery.
 
 Late/lost/silent acknowledgments, uncertain closes and exhausted completion
 allowances close presentation finitely. Preserve any known execution and delivery

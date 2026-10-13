@@ -47,6 +47,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   This does not replace publication's complete group preflight and rechecks.
   Preserve the existing `test` check as a fail-closed aggregate of quick, site
   and source jobs; skipped or cancelled inputs cannot produce a successful check.
+- The protected main rules require the stable `affected-linux` and
+  `affected-macos` check names. Selected host workflows report these only after
+  complete qualification in the same run: Linux requires `rootless-linux`;
+  Mac requires every native shard and both architecture proofs. Preserve the
+  underlying qualification checks and reject failed, cancelled, skipped or
+  missing results. Do not replace host evidence with a successful name-only check.
 - npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
   dependency order. FLOW publishes after its successful main-push CI run;
   the Agent/Jig group additionally requires same-revision host and native gates.

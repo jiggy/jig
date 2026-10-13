@@ -27,6 +27,8 @@
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
+    "dist/image.js",
+    "dist/image.d.ts",
     "dist/types.js",
     "dist/types.d.ts",
     "dist/semantics.js",
@@ -38,7 +40,9 @@
     "PRICING.md",
     "LICENSES.md",
     "LICENSES",
-    "THIRD_PARTY_NOTICES"
+    "THIRD_PARTY_NOTICES",
+    "dist/text.js",
+    "dist/text.d.ts"
   ],
   "dependencies": {
     "@jigging/reporting": "0.1.0-alpha.1"

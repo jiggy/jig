@@ -26,7 +26,7 @@ HTTP_LIMIT = 8 * 1024 * 1024
 LINK = re.compile(rb"http://127\.0\.0\.1:(\d+)/#cap=([A-Za-z0-9_-]{43})(?![A-Za-z0-9_-])")
 CHECKS = [
     "embedded-assets", "bearer-required", "recorded-capture",
-    "immutable-previews", "exact-origin-close", "piped-input",
+    "immutable-previews", "captured-svg-fallback", "exact-origin-close", "piped-input",
     "joined-exit", "capability-redaction",
 ]
 
@@ -145,6 +145,7 @@ def main():
     contents = {
         "notes.txt": b"Captured document intake evidence.\n",
         "review.patch": b"--- a/intake.txt\n+++ b/intake.txt\n@@ -1 +1 @@\n-missing\n+received\n",
+        "chart.svg": b'<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
         "empty.txt": b"",
         "binary.dat": bytes([255, 0, 254, 128]),
         "long.txt": b"LONG_CAPTURE_BEGIN\n" + b"x" * (70 * 1024) + b"\nLONG_CAPTURE_END\n",
@@ -249,7 +250,12 @@ def main():
             if state == "non-text":
                 require("text" not in preview)
             else:
-                require(preview["text"] == data[:65536].decode("utf-8"))
+                require(preview["text"] == data[:4096].decode("utf-8"))
+                require("image" not in preview)
+                if name == "chart.svg":
+                    # Unqualified image decoding preserves captured SVG text.
+                    phase = "captured-svg-fallback"
+                    require(preview["text"] == data.decode("utf-8"))
         require(owner.process.poll() is None)
 
         phase = "exact-origin-close"

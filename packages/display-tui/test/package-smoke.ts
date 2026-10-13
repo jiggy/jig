@@ -139,6 +139,10 @@ const { createInlineDisplay } = await import('@jigging/display-tui/inline');
 const { escapeTerminalText, terminalWidth } = await import('@jigging/display-tui/text');
 const { heading, syntaxHex } = await import('@jigging/display-tui/style');
 const { prepareTui, createTui, TuiSupportError } = await import('@jigging/display-tui');
+const { detectDisplayTextFormat, displayTextTokens, displayDelimitedRows } = await import('@jigging/display-model');
+assert.equal(detectDisplayTextFormat('manifest.csv','event,file'), 'csv');
+assert.deepEqual(displayDelimitedRows('event,file'), [['event','file']]);
+assert.equal(displayTextTokens('event,file','csv').map(token=>token.text).join(''), 'event,file');
 const value = {
   kind:'snapshot',revision:1,mode:'live-run',rootSourceId:'consumer-source',
   workspace:{target:'Independent packet review',phase:'live',hostStage:'Inspecting',elapsedMs:100},
@@ -191,6 +195,17 @@ try {
   assert.equal(value.workspace.phase,'live');
 } finally {display.dispose();inline.dispose();}
 assert.deepEqual(await display.frame({columns:80,rows:24,color:false}),{text:''});
+const image={mime:'image/png',width:1,height:1,base64:'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg=='};
+const imageValue={...value,views:value.views.slice(0,1),artifacts:{...value.artifacts,files:[{...value.artifacts.files[0],state:'image'}]}};
+const imageDisplay=await createTui(await prepareTui(),{snapshot:imageValue,preview:async intent=>({...intent,provenance:'verified-delivery',state:'image',image,bytes:14,clipped:false})});
+try {
+  imageDisplay.input(new TextEncoder().encode('c'));
+  await imageDisplay.frame({columns:140,rows:36,color:true});
+  for(let i=0;i<10;i++) await new Promise(resolve=>setTimeout(resolve,0));
+  const frame=(await imageDisplay.frame({columns:140,rows:36,color:true})).text;
+  assert(frame.includes('1 × 1'));assert(frame.includes('38;2;255;0;0'));assert(Buffer.byteLength(frame)<=32768);
+}finally{imageDisplay.dispose();}
+
 assert.equal(process.stdin.isRaw,raw);assert.equal(process.stdin.listenerCount('data'),listeners);
 const facts={...value,views:[],workspace:{...value.workspace,phase:'settled',facts:{
   execution:{value:'succeeded',provenance:'application-reported',clipped:true},

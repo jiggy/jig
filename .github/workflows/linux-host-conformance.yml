@@ -390,3 +390,20 @@ jobs:
             echo "Linux host conformance requires successful artifacts and every suite; artifacts=$ARTIFACT_RESULT suites=$SUITE_RESULT" >&2
             exit 1
           fi
+
+  affected-linux:
+    name: affected-linux
+    if: always()
+    needs: [rootless-linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require complete Linux qualification for protected merges
+        env:
+          HOST_RESULT: ${{ needs.rootless-linux.result }}
+        run: |
+          set -eu
+          if [ "$HOST_RESULT" != success ]; then
+            echo 'Protected merges require complete Linux host qualification.' >&2
+            exit 1
+          fi

@@ -13,6 +13,7 @@ export type PrivateBrowserLocal = {
   previewSearch: string
   previewWrap: boolean
   plainDiff: boolean
+  csvRaw: boolean
   previewScroll?: { signature: string; left: number; top: number } | undefined
 }
 export type PrivateBrowserRecord = {
@@ -251,6 +252,7 @@ export function privateBrowserLocal(): PrivateBrowserLocal {
     previewSearch: '',
     previewWrap: false,
     plainDiff: false,
+    csvRaw: false,
   }
 }
 

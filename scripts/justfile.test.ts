@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -52,11 +53,23 @@ test('startup profiler initializes its trace allowlist before execution and refu
 })
 
 test('repository task manifests exclude scripts without constraining imported skill tooling', async () => {
-  const child = Bun.spawn(['git', 'ls-files', '*package.json', ':(exclude).agents/skills/**'], {
-    cwd: repository,
-    stdout: 'pipe',
-  })
-  const paths = (await new Response(child.stdout).text()).trim().split('\n')
+  const child = Bun.spawn(
+    [
+      'git',
+      'ls-files',
+      '--cached',
+      '--others',
+      '--exclude-standard',
+      '-z',
+      '--',
+      '*package.json',
+      ':(exclude).agents/skills/**',
+    ],
+    { cwd: repository, stdout: 'pipe' },
+  )
+  const paths = (await new Response(child.stdout).text())
+    .split('\0')
+    .filter((path) => path && existsSync(join(repository, path)))
   expect(await child.exited).toBe(0)
   for (const path of paths) {
     const manifest = JSON.parse(await readFile(join(repository, path), 'utf8'))

@@ -59,6 +59,8 @@ export interface PrivateInstalledBunSupport {
   readonly sandboxExecutablePath: typeof BUN_DESTINATION
   readonly installedCliPath: string
   readonly installedCliDigest: string
+  readonly imagePreviewWorkerPath: string
+  readonly imagePreviewWorkerDigest: string
   readonly hostLibraryDirectory: string
   readonly runtimeMounts: readonly PrivateLinuxReadOnlyMount[]
   readonly supervisorPath: string
@@ -109,6 +111,11 @@ export async function openPrivateInstalledBunSupport(
     'installed Jig command',
   )
   if (installedCliPath !== location.installedCliPath) throw new PrivateInstalledBundleError()
+  const imagePreviewWorkerPath = await installedRegularFile(
+    join(releaseRoot, 'libexec', 'image-preview-worker.js'),
+    false,
+    'installed image preview worker',
+  )
   const supervisorPath = await installedRegularFile(
     join(
       releaseRoot,
@@ -206,6 +213,7 @@ export async function openPrivateInstalledBunSupport(
   const [
     executableDigest,
     installedCliDigest,
+    imagePreviewWorkerDigest,
     supervisorDigest,
     launcherDigest,
     loaderDigest,
@@ -217,6 +225,7 @@ export async function openPrivateInstalledBunSupport(
   ] = await Promise.all([
     privateInstallationFileDigest(executablePath),
     privateInstallationFileDigest(installedCliPath),
+    privateInstallationFileDigest(imagePreviewWorkerPath),
     privateInstallationFileDigest(supervisorPath),
     launcherPath === null ? null : privateInstallationFileDigest(launcherPath),
     loaderPath === null ? null : privateInstallationFileDigest(loaderPath),
@@ -254,6 +263,7 @@ export async function openPrivateInstalledBunSupport(
     platform,
     executableDigest,
     installedCliDigest,
+    imagePreviewWorkerDigest,
     supervisorDigest,
     launcherDigest,
     loader:
@@ -285,7 +295,9 @@ export async function openPrivateInstalledBunSupport(
     executableDigest,
     sandboxExecutablePath: BUN_DESTINATION,
     installedCliPath,
+    imagePreviewWorkerPath,
     installedCliDigest,
+    imagePreviewWorkerDigest,
     hostLibraryDirectory,
     runtimeMounts,
     descriptorBridgePath,
@@ -332,6 +344,7 @@ export async function revalidatePrivateInstalledBunSupport(value: unknown): Prom
     current.digest !== support.digest ||
     current.executablePath !== support.executablePath ||
     current.installedCliPath !== support.installedCliPath ||
+    current.imagePreviewWorkerPath !== support.imagePreviewWorkerPath ||
     current.supervisorPath !== support.supervisorPath ||
     current.launcherPath !== support.launcherPath ||
     current.descriptorBridgePath !== support.descriptorBridgePath ||

@@ -3,6 +3,9 @@
 Readonly semantic values shared by independent browser and terminal renderers.
 The producer supplies observations and literal application claims; these values
 carry no execution authority, renderer state or file-access power.
+Captured preview replies can contain bounded PNG/JPEG data. `validDisplayImage`
+checks encoded byte limits, MIME type and matching image-header dimensions; it
+does not authenticate the producer or decode pixels.
 
 A minimal producer starts with a complete snapshot; add ordinary reporting
 views and observed calls when available:
@@ -60,6 +63,11 @@ requires the source's inventory to permit `evidence` and contain a file whose
 name. The renderer resolves that match to the file's opaque `id`; the preview
 service receives only that ID and the capture generation. Pending or absent
 inventory entries remain unavailable regardless of a reference's declaration.
+
+Captured text helpers are `detectDisplayTextFormat`, `displayTextTokens` and
+`displayDelimitedRows`. They share conservative filename/content detection,
+lexical colour roles and bounded strict CSV/TSV parsing across renderers. They
+perform no IO; formatting hints do not validate syntax or grant file access.
 
 Pure helpers are `displayDestinations`, `displayViewKey`, `callObservationSpans`, `displayDuration`,
 `referenceKey`, `recordReferences` and `attentionImportance`. Observation spans

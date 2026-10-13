@@ -1,0 +1,9 @@
+{
+  "name": "photo-organiser",
+  "description": "Group twelve photos from captions, check the proposal, and deliver renamed copies and a contact sheet.",
+  "uses": {
+    "group": {},
+    "copy-photos": {},
+    "contact-sheet": {}
+  }
+}

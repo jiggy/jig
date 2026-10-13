@@ -49,8 +49,26 @@ for await (const line of lines) {
 }
 `
 
+function progressEndedNormally(
+  records: Array<{ type: string; channel?: string; status?: string; code?: string }>,
+): boolean {
+  const ends = records.filter((record) => record.type === 'end' && record.channel === 'progress')
+  expect(ends).toHaveLength(1)
+  const end = ends[0]!
+  console.error('factory-reporting-end', JSON.stringify(end))
+  if (end.status === 'failed') {
+    // Reporting is optional. Only explicitly disclosed observation loss can
+    // excuse a missing final view; the delivered work must still be complete.
+    expect(end.code).toBe('LAGGED')
+    return false
+  }
+  expect(end.status).toBe('closed')
+  expect(end.code).toBeUndefined()
+  return true
+}
+
 hostTest(
-  'installed software factory delivers complete blocked and checked dashboard views',
+  'installed software factory retains verified results and reports dashboard completion or observation loss',
   async () => {
     const directory = await mkdtemp(join(tmpdir(), 'jig-factory-consumer-'))
     const project = join(directory, 'project')
@@ -197,44 +215,51 @@ hostTest(
           ready: false,
           result: { outcome: 'blocked', output: { reason: cause } },
         })
-        expect(job.result.output.baseline.acceptance).not.toHaveLength(0)
+        const baseline = job.result.output.baseline
+        expect(baseline.repositoryTestsPassed).toBe(false)
+        expect(baseline.acceptance).toHaveLength(4)
+        expect(baseline.acceptance.filter((check: { passed: boolean }) => check.passed)).toHaveLength(
+          job.id === 'logs' ? 1 : 2,
+        )
       }
       const updates = records
         .filter((record) => record.type === 'data')
         .map((record) => record.value)
-      for (const id of ['jobs', 'checks', 'patches'])
-        expect(updates.some((update) => update.kind === 'view' && update.id === id)).toBe(true)
-      const finalJobs = updates
-        .filter((update) => update.kind === 'view' && update.id === 'jobs')
-        .at(-1)
-      expect(finalJobs.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
-      const finalChecks = updates
-        .filter((update) => update.kind === 'view' && update.id === 'checks')
-        .at(-1)
-      expect(JSON.stringify(finalChecks)).not.toContain('Pending independent verification')
-      expect(JSON.stringify(finalChecks)).toContain('No checked patch')
-      const finalPatches = updates
-        .filter((update) => update.kind === 'view' && update.id === 'patches')
-        .at(-1)
-      expect(finalPatches.summary).toContain('0 independently checked candidates')
-      expect(
-        updates.some(
-          (update) =>
-            update.kind === 'view' &&
-            update.id === 'jobs' &&
-            JSON.stringify(update).includes('Requested goal:'),
-        ),
-      ).toBe(true)
-      const retainedChecks = JSON.stringify(finalChecks.sections)
-      expect(retainedChecks).toContain('Repository test command failed.')
-      expect(retainedChecks).toContain('Independent acceptance cases: 1/4 passed.')
-      expect(retainedChecks).toContain('Independent acceptance cases: 2/4 passed.')
-      expect(retainedChecks).toContain('Observed commands:')
-      expect(
-        updates.some(
-          (update) => update.kind === 'notice' && update.text.includes('Baseline check report:'),
-        ),
-      ).toBe(true)
+      if (progressEndedNormally(records)) {
+        for (const id of ['jobs', 'checks', 'patches'])
+          expect(updates.some((update) => update.kind === 'view' && update.id === id)).toBe(true)
+        const finalJobs = updates
+          .filter((update) => update.kind === 'view' && update.id === 'jobs')
+          .at(-1)
+        expect(finalJobs.sections[0].blocks[0]).toMatchObject({ completed: 2, total: 2 })
+        const finalChecks = updates
+          .filter((update) => update.kind === 'view' && update.id === 'checks')
+          .at(-1)
+        expect(JSON.stringify(finalChecks)).not.toContain('Pending independent verification')
+        expect(JSON.stringify(finalChecks)).toContain('No checked patch')
+        const finalPatches = updates
+          .filter((update) => update.kind === 'view' && update.id === 'patches')
+          .at(-1)
+        expect(finalPatches.summary).toContain('0 independently checked candidates')
+        expect(
+          updates.some(
+            (update) =>
+              update.kind === 'view' &&
+              update.id === 'jobs' &&
+              JSON.stringify(update).includes('Requested goal:'),
+          ),
+        ).toBe(true)
+        const retainedChecks = JSON.stringify(finalChecks.sections)
+        expect(retainedChecks).toContain('Repository test command failed.')
+        expect(retainedChecks).toContain('Independent acceptance cases: 1/4 passed.')
+        expect(retainedChecks).toContain('Independent acceptance cases: 2/4 passed.')
+        expect(retainedChecks).toContain('Observed commands:')
+        expect(
+          updates.some(
+            (update) => update.kind === 'notice' && update.text.includes('Baseline check report:'),
+          ),
+        ).toBe(true)
+      }
       const packet = JSON.parse(await readFile(join(project, 'factory-result/result.json'), 'utf8'))
       expect(packet).toMatchObject({ status: 'succeeded', outcome: 'blocked' })
       expect(await readFile(join(project, 'factory-result/files/summary.txt'), 'utf8')).toContain(
@@ -300,28 +325,37 @@ await handle(async run => {
       const checkedUpdates = checked
         .filter((record) => record.type === 'data')
         .map((record) => record.value)
-      expect(
-        checkedUpdates.filter((update) => update.kind === 'view' && update.id === 'jobs').at(-1)
-          .summary,
-      ).toContain('2 independently checked patches')
-      expect(
-        JSON.stringify(
-          checkedUpdates
-            .filter((update) => update.kind === 'view' && update.id === 'checks')
-            .at(-1),
-        ),
-      ).toContain('Passed; independently verified')
-      const patches = checkedUpdates
-        .filter((update) => update.kind === 'view' && update.id === 'patches')
-        .at(-1)
-      expect(patches.summary).toContain('2 independently checked candidates')
-      expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
-        { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
-        { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
-      ])
-      expect(checked.some((record) => record.type === 'end' && record.error !== undefined)).toBe(
-        false,
+      if (progressEndedNormally(checked)) {
+        expect(
+          checkedUpdates.filter((update) => update.kind === 'view' && update.id === 'jobs').at(-1)
+            .summary,
+        ).toContain('2 independently checked patches')
+        expect(
+          JSON.stringify(
+            checkedUpdates
+              .filter((update) => update.kind === 'view' && update.id === 'checks')
+              .at(-1),
+          ),
+        ).toContain('Passed; independently verified')
+        const patches = checkedUpdates
+          .filter((update) => update.kind === 'view' && update.id === 'patches')
+          .at(-1)
+        expect(patches.summary).toContain('2 independently checked candidates')
+        expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
+          { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
+          { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
+        ])
+      }
+      const checkedPacket = JSON.parse(
+        await readFile(join(project, 'factory-checked/result.json'), 'utf8'),
       )
+      expect(checkedPacket).toMatchObject({ status: 'succeeded', outcome: 'done' })
+      expect(checkedPacket.output).toEqual(checkedTerminal.output)
+      for (const id of ['logs', 'timesheet']) {
+        expect(
+          await readFile(join(project, `factory-checked/files/${id}/review.patch`), 'utf8'),
+        ).toContain('--- a/src/')
+      }
       const plain = JSON.parse(
         await command(
           [

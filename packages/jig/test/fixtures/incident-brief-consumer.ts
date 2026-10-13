@@ -28,7 +28,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
     ])
     expect(exit, stdout + stderr).toBe(0)
   }
-  await cp(resolve(import.meta.dir, '../../../../examples/incident-brief'), project, {
+  await cp(resolve(import.meta.dir, './incident-brief'), project, {
     recursive: true,
     filter: (path) => !['node_modules', '.jig'].includes(basename(path)),
   })

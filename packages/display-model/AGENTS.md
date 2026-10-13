@@ -9,12 +9,17 @@ with their producer. This package owns readonly display data and pure meaning.
 
 - `src/types.ts` owns snapshots, attribution, captured preview replies and fixed
   asset value types; `src/validate.ts` owns bounded inert-data validation.
+- `src/image.ts` validates bounded PNG/JPEG payloads and matching encoded dimensions;
+  it owns no decoder, IO or authenticity claim.
 - `src/semantics.ts` owns destination vocabulary, observation intervals and typed
   reference helpers. `src/index.ts` declares the public surface.
 - Package metadata, README, notices, justfile and tests own this release unit.
   Root licensing/pricing text is canonical and copied only during the build.
 
 ## Local Contracts
+
+- `src/text.ts` owns shared bounded filename/content detection, lexical token roles
+  and strict CSV/TSV table parsing. Hints never validate content or grant access.
 
 - Import only ordinary declared dependencies; never import Jig or a renderer.
 - No execution state, host clock, navigation, native initialization, filesystem

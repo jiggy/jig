@@ -18,7 +18,12 @@ import {
   viewerReferences,
   viewerTableColumns,
 } from './projection.js'
-import { callObservationSpans, displayDuration } from '@jigging/display-model'
+import {
+  callObservationSpans,
+  displayDuration,
+  detectDisplayTextFormat,
+  displayTextTokens,
+} from '@jigging/display-model'
 import { syntaxHex } from './style.js'
 import {
   type ViewerModel,
@@ -95,6 +100,7 @@ export class NativeRenderer {
   #revealDetail: string | undefined
   #detailScrollTarget: number | undefined
   #closed = false
+  #imageColor = true
   readonly #layout = () => {
     if (this.#detailScrollTarget !== undefined && !this.#closed) {
       const target = this.#detailScrollTarget
@@ -343,7 +349,31 @@ export class NativeRenderer {
   #capturedContent(parent: BoxRenderable): void {
     const p = this.model.theme === 'one-light' ? palettes.light : palettes.dark
     this.#text(parent, this.model.previewTitle ?? 'Immutable captured content', 'accent', true)
-    if (!this.model.preview || !this.model.preview.text)
+    if (this.model.preview?.image) {
+      const image = this.model.preview.image
+      if (!this.#imageColor)
+        this.#text(parent, 'Image preview needs terminal colour; inspect the delivered file.')
+      else
+        try {
+          const decoded = this.core.NativeImage.decode(Buffer.from(image.base64, 'base64'))
+          try {
+            parent.add(
+              new this.core.ImageRenderable(this.renderer, {
+                source: decoded,
+                fit: 'fit',
+                protocol: 'blocks',
+                width: '100%',
+                height: Math.min(20, Math.max(3, this.renderer.height - 16)),
+              }),
+            )
+          } finally {
+            decoded.dispose()
+          }
+        } catch {
+          this.#text(parent, 'Image could not be decoded; inspect the delivered file.')
+        }
+      this.#text(parent, `${image.width} × ${image.height}`, 'muted')
+    } else if (!this.model.preview || !this.model.preview.text)
       this.#text(parent, viewerPreviewState(this.model))
     else {
       const text = this.model.preview.text
@@ -364,7 +394,33 @@ export class NativeRenderer {
         if (lines.length > 256)
           content.chunks.push(this.core.fg(p.fg)(safe(lines.slice(256).join(''))))
         this.#text(parent, content)
-      } else this.#text(parent, text)
+      } else {
+        const format = detectDisplayTextFormat(
+          this.model.record?.file?.path ?? this.model.previewTitle ?? '',
+          text,
+        )
+        const content = new this.core.StyledText([])
+        const columns = [
+          p.success,
+          p.accent,
+          `#${syntaxHex('number', this.model.theme)}`,
+          `#${syntaxHex('literal', this.model.theme)}`,
+          p.error,
+          p.muted,
+        ]
+        for (const token of displayTextTokens(text, format)) {
+          const color =
+            token.column !== undefined
+              ? columns[token.column % columns.length]!
+              : token.role === 'plain'
+                ? p.fg
+                : token.role === 'comment'
+                  ? p.muted
+                  : `#${syntaxHex(token.role, this.model.theme)}`
+          content.chunks.push(this.core.fg(color)(safe(token.text)))
+        }
+        this.#text(parent, content)
+      }
     }
     this.#text(
       parent,
@@ -519,6 +575,7 @@ export class NativeRenderer {
     color: boolean,
   ): Promise<{ text: string; references: readonly Reference[]; scroll: number }> {
     if (this.#closed) return { text: '', references: [], scroll: 0 }
+    this.#imageColor = color
     this.model.peekSelectedArtifact()
     const model = this.model,
       panel = state.panels.at(-1),
@@ -644,6 +701,7 @@ export class NativeRenderer {
     const signature = JSON.stringify([
       model.surface,
       model.workspace.phase,
+      color,
       records,
       destinations,
       detail,
@@ -881,7 +939,7 @@ export class NativeRenderer {
         : panel?.kind === 'filter' || panel?.kind === 'preview-search'
           ? `Enter apply · Esc cancel · Ctrl-D leave · Ctrl-C ${settled ? 'leave' : 'stop'}`
           : panel
-            ? `${exit} · Esc back · ${panel.kind === 'views' || panel.kind === 'references' ? '↑↓ choose · Enter open' : panel.kind === 'preview' ? '/ excerpt search · ↑↓ scroll' : '↑↓ scroll'}`
+            ? `${exit} · Esc back · ${panel.kind === 'views' || panel.kind === 'references' ? '↑↓ choose · Enter open' : panel.kind === 'preview' && !model.preview?.image ? '/ excerpt search · ↑↓ scroll' : '↑↓ scroll'}`
             : width < 90
               ? `${exit} · ! cause · v views · ↑↓ · Enter · ? help`
               : `${exit} · ! cause · Tab next · v views · ↑↓ select · Enter expand · r refs · ? help`

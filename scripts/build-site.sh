@@ -130,7 +130,7 @@ docs/flow/spec/machine/schema-0.json|schema-0.json|https://flow.jig.md/schemas/s
     forbidden_page='spec/project-policy.html'
     ;;
   jig)
-    if [ ! -s "$staging/guide/request-triage.html" ]; then
+    if [ ! -s "$staging/guide/contact-import.html" ]; then
       echo "the code-and-Agent composition guide is missing" >&2
       exit 1
     fi

@@ -31,7 +31,7 @@ Jig public sites.
   authoring at `/guide/markdown`, Skill compatibility at `/guide/skills`,
   language and runtime matrix at `/guide/runtimes`, and host/platform integration
   at `/guide/platforms`. Navigation, `llms.txt`, and site assembly keep these routes reachable. Jig introduces
-  composition at `/guide/request-triage`; its navigation, generated index, and
+  composition at `/guide/contact-import`; its navigation, generated index, and
   assembly gate keep that walkthrough reachable.
   The bounded factory walkthrough is published at `/guide/software-factory`.
 - `theme/` owns the shared default-theme extension; `landing.css` owns shared

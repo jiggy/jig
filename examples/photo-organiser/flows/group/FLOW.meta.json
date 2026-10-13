@@ -1,0 +1,9 @@
+{
+  "name": "photo-caption-grouping",
+  "description": "Suggest event assignments from captions and dates, without file access.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

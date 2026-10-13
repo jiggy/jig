@@ -34,7 +34,7 @@ operational baselines, and public-site assembly.
   Package-local `jig::check` runs Jig and display-package suites before the same
   native pass.
 - `test-release.sh` includes the authored examples' deterministic application
-  tests and the optional contract author's Node mapping/type/lifecycle checks.
+  tests, the private conversation-handoff fixture, and the optional contract author's Node mapping/type/lifecycle checks.
   It also checks the shared Agent method and ordinary ACP package.
   Refuse missing Python build/test tools or separately installed Run/0 fixture
   dependencies before builds and long tests, with the existing setup commands.
@@ -106,7 +106,7 @@ operational baselines, and public-site assembly.
   notices for bundled fonts.
 - Site assembly requires both products’ home, guide, and understanding routes,
   plus FLOW’s authoring entrypoint, SDK/Markdown/Skill guides, and Jig’s
-  request-triage composition guide.
+  contact-import composition guide.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles,
   JSON content types, and canonical bytes; neither operation is runtime
@@ -178,6 +178,8 @@ operational baselines, and public-site assembly.
   example dependency versions against public package manifests,
   explicit packing, and build-tool refusal before cleanup or site staging. Its
   no-package-scripts rule covers repository tasks, not imported skill toolchains.
+  Manifest checks include tracked and non-ignored new source files present in
+  the working tree; deleted files and ignored generated state are excluded.
   It includes all quick CI checks and the protected npm publisher's controlled
   registry tests; the publisher uses Node hashing so these checks also run on Mac.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector

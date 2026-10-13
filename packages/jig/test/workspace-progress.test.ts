@@ -412,7 +412,7 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
   }
 })
 
-test('post-dispatch observation failure keeps inspection only after confirmed project cleanup', async () => {
+test('post-dispatch observation failure closes inspection and retains original recovery', async () => {
   for (const closeFails of [false, true]) {
     const input = new Input()
     let stderr = '',
@@ -469,14 +469,13 @@ test('post-dispatch observation failure keeps inspection only after confirmed pr
       },
     })
     expect(code).toBe(2)
-    expect(settled).toBe(!closeFails)
+    expect(settled).toBeFalse()
     expect(stdout).toBe('')
     expect(stderr).toContain('EARLY_RETAINED_DIAGNOSTIC')
-    if (closeFails) expect(stderr).toContain('JIG_RUN_CLEANUP_FAILED')
-    else
-      expect(stderr.slice(stderr.indexOf(entered), stderr.indexOf(restored))).toContain(
-        'EARLY_RETAINED_DIAGNOSTIC',
-      )
+    if (closeFails) expect(stderr).toContain('JIG_CLEANUP_FAILED')
+    // Terminal setup runs alongside dispatch. An early failure can close the
+    // workspace before entry; restoration must match the screen actually used.
+    expect(stderr.includes(restored)).toBe(stderr.includes(entered))
     expect(stderr).not.toContain('private observation failure')
     expect(stderr).not.toContain('private close failure')
     expect(input.isRaw).toBeFalse()

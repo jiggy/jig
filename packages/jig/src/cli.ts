@@ -779,9 +779,9 @@ async function executeSavedResultInspect(
   parsed: ReturnType<typeof parseInspect>,
   runtime: CliRuntime,
 ): Promise<number> {
-  let packet: ReturnType<typeof privateCaptureSavedResult> | undefined
+  let packet: Awaited<ReturnType<typeof privateCaptureSavedResult>> | undefined
   try {
-    packet = privateCaptureSavedResult(
+    packet = await privateCaptureSavedResult(
       resolve(runtime.currentDirectory, parsed.resultDirectory!),
       runtime.signal,
     )
@@ -1382,39 +1382,110 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     runtime.host.delivery,
   )
   let inspectionCapture: PrivateDeliveryInspectionCapture | undefined
-  let filesClosedEarly = false
-  let inspectionCompletionDeadline: number | undefined
-  let inspectionFilesClose: Promise<void> | undefined
+  let fileCompletionDeadline: number | undefined
+  let localFileClosure: Promise<void> | undefined
   let knownTerminal: JsonValue | undefined
   let knownExecution: JsonValue | undefined
   let knownDelivery: PrivateDeliveryReceipt | undefined
-  let inspectionFinalization: Promise<void> | undefined
-  const finalizeInspection = (receipt: PrivateDeliveryReceipt | undefined): Promise<void> => {
-    inspectionCompletionDeadline ??= Math.min(
+  let deliveryFinalization: Promise<void> | undefined
+  let deliveryRetirementFailed = false
+  let deliveryCleanupFailureReported = false
+  let localFileClosureFailed = false
+  let localFileClosureFailureReported = false
+  const closeLocalFiles = (): Promise<void> => {
+    localFileClosure ??= Promise.resolve().then(async () => {
+      let failed = false
+      let failure: unknown
+      try {
+        const close = files.close()
+        const deadline = fileCompletionDeadline ?? runtime.progress.lifetime.presentationDeadline
+        await (deadline === undefined ? close : privateBoundInspection(close, { deadline }))
+      } catch (error) {
+        failed = true
+        failure = error
+      }
+      try {
+        capture.close()
+      } catch (error) {
+        if (!failed) failure = error
+        failed = true
+      }
+      if (failed) {
+        localFileClosureFailed = true
+        cleanupFailed = true
+        throw failure
+      }
+    })
+    return localFileClosure
+  }
+  const finalizeDelivery = (
+    receipt: PrivateDeliveryReceipt | undefined,
+  ): Promise<void> | undefined => {
+    // A later failure must join the original operation, including its rejection.
+    if (deliveryFinalization !== undefined) return deliveryFinalization
+    // Spending the command's authority can remove its loss-recovery binding.
+    // Unknown work or a failed project close must retain that original owner.
+    if (knownTerminal === undefined || cleanupFailed) return undefined
+    fileCompletionDeadline = Math.min(
       privatePresentationNow() + PRIVATE_INSPECTION_COMPLETION_MS,
       runtime.progress.lifetime.presentationDeadline ?? Infinity,
     )
-    const bound = {
-      deadline: inspectionCompletionDeadline,
-    }
+    const bound = { deadline: fileCompletionDeadline }
     // Execution cancellation does not cancel spending file authority. This
     // cleanup has its own finite deadline, including after a Run abort.
-    inspectionFinalization ??= (async () => {
+    deliveryFinalization = Promise.resolve().then(async () => {
+      let failed = false
+      let failure: unknown
       try {
-        inspectionCapture = await privateCaptureDeliveryInspection(runtime.host.delivery, receipt, {
-          presentationDeadline: bound.deadline,
-        })
-      } finally {
-        try {
-          inspectionFilesClose ??= privateBoundInspection(files.close(), bound)
-          await inspectionFilesClose
-          filesClosedEarly = true
-        } finally {
-          capture.close()
+        if (dashboardEntry !== undefined) {
+          inspectionCapture = await privateCaptureDeliveryInspection(
+            runtime.host.delivery,
+            receipt,
+            {
+              presentationDeadline: bound.deadline,
+            },
+          )
+        } else if (runtime.host.delivery !== undefined) {
+          if (runtime.host.delivery.retire === undefined)
+            throw new Error('file authority retirement is unavailable')
+          await privateBoundInspection(runtime.host.delivery.retire(bound), bound)
         }
+      } catch (error) {
+        deliveryRetirementFailed = true
+        failed = true
+        failure = error
       }
-    })()
-    return inspectionFinalization
+      try {
+        await closeLocalFiles()
+      } catch (error) {
+        if (!failed) failure = error
+        failed = true
+      }
+      if (failed) throw failure
+    })
+    return deliveryFinalization
+  }
+  const reportDeliveryCleanupFailure = (): void => {
+    if (!deliveryRetirementFailed || deliveryCleanupFailureReported) return
+    deliveryCleanupFailureReported = true
+    runtime.writeError(
+      renderDiagnostic(
+        dashboardEntry === undefined
+          ? 'JIG_DELIVERY_CLEANUP_FAILED'
+          : 'JIG_INSPECTION_CLEANUP_FAILED',
+        'Execution and packet delivery retain their reported results. File authority retirement could not be confirmed. Inspect effects before starting new work.',
+      ),
+    )
+  }
+  const reportLocalFileCleanupFailure = (): void => {
+    if (!localFileClosureFailed || localFileClosureFailureReported) return
+    localFileClosureFailureReported = true
+    runtime.writeError(
+      renderDiagnostic(
+        'JIG_RUN_CLEANUP_FAILED',
+        'Local file resources could not be confirmed closed. Preserve known results and settle existing work before starting another command.',
+      ),
+    )
   }
   try {
     if (parsed.output !== undefined) {
@@ -1526,11 +1597,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       knownTerminal = record
       try {
         runtime.progress.stage('Publishing the result packet')
+        const includeFiles =
+          !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
         delivery = await runtime.host.delivery!.publish(
           record,
-          !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
-            ? files.output
-            : undefined,
+          includeFiles ? files.output : undefined,
           runtime.signal,
         )
       } catch {
@@ -1552,34 +1623,33 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       record = { ...(record as Record<string, JsonValue>), command: { status: 'interrupted' } }
     knownTerminal = record
     let encodedRecord: Uint8Array
-    let inspectionFailed = false
-    if (dashboardEntry !== undefined) {
-      // The indefinite inspector receives only excerpts after the outer file
-      // owner ACKs irreversible retirement. Preserve the known terminal even
-      // when this separate command cleanup cannot be confirmed.
-      try {
-        await finalizeInspection(delivery)
-      } catch {
-        inspectionCapture?.close()
-        inspectionCapture = undefined
-        inspectionFailed = true
-        cleanupFailed = true
-        record = {
-          ...(record as Record<string, JsonValue>),
-          cleanup: (record as Record<string, JsonValue>).cleanup ?? {
-            status: 'failed',
-            code: 'INSPECTION_CLOSE_FAILED',
-          },
-        }
-        knownTerminal = record
-        await runtime.progress.closeWorkspace()
-        runtime.writeError(
-          renderDiagnostic(
-            'JIG_INSPECTION_CLEANUP_FAILED',
-            'Execution and packet delivery retain their reported results. File authority retirement could not be confirmed, so inspection was closed. Inspect effects before starting new work.',
-          ),
-        )
+    let fileFinalizationFailed = false
+    try {
+      const finalization = finalizeDelivery(delivery)
+      if (finalization !== undefined) await finalization
+      else {
+        await runtime.progress.closeWorkspace().catch(() => undefined)
+        await closeLocalFiles()
       }
+    } catch {
+      inspectionCapture?.close()
+      inspectionCapture = undefined
+      fileFinalizationFailed = true
+      cleanupFailed = true
+      record = {
+        ...(record as Record<string, JsonValue>),
+        cleanup: (record as Record<string, JsonValue>).cleanup ?? {
+          status: 'failed',
+          code:
+            dashboardEntry === undefined
+              ? 'COMMAND_FINALIZATION_FAILED'
+              : 'INSPECTION_CLOSE_FAILED',
+        },
+      }
+      knownTerminal = record
+      await runtime.progress.closeWorkspace()
+      reportDeliveryCleanupFailure()
+      reportLocalFileCleanupFailure()
     }
     const artifact = inspectionCapture
       ? {
@@ -1591,9 +1661,14 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
               : undefined,
           preview: async (path: string) => {
             const preview = inspectionCapture!.preview(path)
-            return preview?.text === undefined
+            return !preview || (preview.text === undefined && !preview.image)
               ? undefined
-              : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
+              : {
+                  text: preview.text ?? '',
+                  ...(preview.image ? { image: preview.image } : {}),
+                  bytes: preview.bytes,
+                  clipped: preview.clipped,
+                }
           },
           capture: {
             generation: inspectionCapture.generation,
@@ -1662,7 +1737,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           rootDispatched,
         ),
       )
-    if (cleanupFailed || inspectionFailed) return 2
+    if (cleanupFailed || fileFinalizationFailed) return 2
     if (delivery !== undefined && delivery.status !== 'written') {
       runtime.writeError(
         renderDiagnostic(
@@ -1677,22 +1752,27 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     if (runtime.signal?.aborted) return 2
     return status.terminal.status === 'succeeded' ? 0 : status.terminal.status === 'failed' ? 1 : 2
   } catch (error) {
+    await runtime.progress.closeWorkspace().catch(() => undefined)
+    let retirementFailed = false
+    try {
+      const finalization = finalizeDelivery(knownDelivery)
+      await (finalization ?? closeLocalFiles())
+    } catch {
+      retirementFailed = true
+      cleanupFailed = true
+      reportDeliveryCleanupFailure()
+      reportLocalFileCleanupFailure()
+    }
     if (knownTerminal !== undefined) {
-      await runtime.progress.closeWorkspace().catch(() => undefined)
-      let retirementFailed = false
-      if (dashboardEntry !== undefined) {
-        try {
-          await finalizeInspection(knownDelivery)
-        } catch {
-          retirementFailed = true
-        }
-      }
       if (!terminalEmissionStarted) {
         const final = {
           ...(knownTerminal as Record<string, JsonValue>),
           cleanup: (knownTerminal as Record<string, JsonValue>).cleanup ?? {
             status: 'failed',
-            code: retirementFailed ? 'INSPECTION_CLOSE_FAILED' : 'COMMAND_FINALIZATION_FAILED',
+            code:
+              retirementFailed && dashboardEntry !== undefined
+                ? 'INSPECTION_CLOSE_FAILED'
+                : 'COMMAND_FINALIZATION_FAILED',
           },
         }
         let retained: JsonValue
@@ -1706,59 +1786,19 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       renderFailure(error, runtime)
       return 2
     }
-    await dashboardEntry?.catch(() => undefined)
-    if (dashboardEntry !== undefined) {
-      // No terminal is invented when command observation failed after dispatch.
-      // Owned project cleanup has already run through withProjectSession.
-      const exitCode = renderFailure(error, runtime)
-      if (runtime.signal?.aborted || cleanupFailed)
-        await runtime.progress.closeWorkspace().catch(() => undefined)
-      try {
-        await finalizeInspection(undefined)
-      } catch {
-        await runtime.progress.closeWorkspace().catch(() => undefined)
-        runtime.writeError(
-          renderDiagnostic(
-            'JIG_INSPECTION_CLEANUP_FAILED',
-            'No execution result was confirmed, and file authority retirement could not be confirmed. Inspection was closed; inspect effects before starting new work.',
-          ),
-        )
-        return 2
-      }
-      if (cleanupFailed) {
-        runtime.writeError(
-          renderDiagnostic(
-            'JIG_RUN_CLEANUP_FAILED',
-            'The command could not confirm an execution result, and project cleanup could not be confirmed. Inspection was closed; inspect any result and effects before starting new work.',
-          ),
-        )
-        return 2
-      }
-      if (runtime.signal?.aborted) return 2
-      await runtime.progress.settleDisplay({
-        status: 'unknown',
-        message:
-          'The command could not confirm an execution result. Inspect any result and effects before starting new work.',
-        ...(cleanupFailed ? { cleanup: { status: 'failed', code: 'PROJECT_CLOSE_FAILED' } } : {}),
-      })
-      return exitCode
+    // Unconfirmed execution or project cleanup cannot spend recovery authority
+    // or hold an inspector. The original source-exit owner settles unknown work.
+    if (localFileClosureFailed && !runtime.signal?.aborted) {
+      renderFailure(error, runtime)
+      return 2
     }
+    // Keep the command's original interruption and primary-error projection.
     throw error
   } finally {
-    try {
-      if (!filesClosedEarly) {
-        if (inspectionCompletionDeadline === undefined) await files.close()
-        else {
-          inspectionFilesClose ??= privateBoundInspection(files.close(), {
-            deadline: inspectionCompletionDeadline,
-          })
-          await inspectionFilesClose.catch(() => undefined)
-        }
-      }
-    } finally {
-      capture.close()
-      inspectionCapture?.close()
-    }
+    // Success and catch already observed this same close, including failure.
+    // A repeated finally join cannot replace the primary error or renew time.
+    await closeLocalFiles().catch(() => undefined)
+    inspectionCapture?.close()
   }
 }
 

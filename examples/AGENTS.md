@@ -8,7 +8,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Ownership
 
-- `README.md` routes readers through the examples by useful outcome.
+- `README.md` routes readers through runnable examples by useful outcome.
 
 - Each application owns its domain policy, fixtures, local tests, and exact
   Flow and Binding declarations.
@@ -19,6 +19,15 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Local Contracts
 
+- High modularity is a required example standard. Compose focused, independently
+  callable Flows for cohesive workflow capabilities, each with clear inputs,
+  results, outcomes and required powers. Examples teach the general Flow creation
+  rule in the [maintainer guide](../.agents/maintainer-guide.md#create-focused-composable-flows);
+  introductory scope is not an exemption.
+- Extract stages with meaningful inputs and results into separate Flows. Do not
+  wait for a second consumer or impose a Flow-count ceiling. Keep small mechanical
+  helpers as ordinary modules; splitting a monolith into files alone does not
+  demonstrate Flow composition.
 - Each example must be independently understandable and usable through public
   FLOW and Jig interfaces. Self-contained means a complete application, not a
   local implementation of every dependency. Do not import host internals.
@@ -84,9 +93,20 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Work Guidance
 
+- Cookbook code prioritises readability over compactness. Use descriptive names,
+  explicit steps and focused validation errors. Avoid single-letter domain names,
+  giant mixed validation conditions, nested ternaries and compressed markup.
+  Explain why a schema or boundary exists where the reader encounters it.
+
 - Prefer experienced authors and reviewers with full project context. Examples
   should show users how to use the public interfaces well; they do not need the
   fresh-context restrictions that make independent design probes effective.
+- The software factory is intended for an independent project, outside the
+  cookbook. Preserve its existing source and host checks until extraction is
+  complete; do not expand it as an example.
+- Prefer photo organisation as the first new everyday example: visual results
+  should make its value immediately clear. Media display gaps belong to the
+  shared product, not example-only viewers.
 - Keep the portfolio selective: every example must teach a useful task for
   developers putting intelligence inside software, or make the common code/Agent
   boundary immediately understandable. Delete weak or redundant examples;
@@ -94,9 +114,10 @@ authored examples, not independent consumer evidence or promoted Starters.
 - Introduce the user's outcome before mechanisms. Progress, channels, and
   multiple Agents do not independently justify a standalone example. Host proof
   fixtures belong with their tests, not in the public portfolio.
-- Every example has a complexity cap in its local contract: one primary lesson,
-  a recognizable task, and only the concepts/setup needed to teach it honestly.
-  Examples introduce capabilities; they are not complete production solutions.
+- Every example has a scope cap in its local contract: one primary lesson and a
+  recognizable task, with only the concepts/setup needed to teach it honestly.
+  Limit scenario breadth and setup burden, not modular decomposition or Flow
+  count. Examples introduce capabilities; they are not complete production solutions.
 - Keep validation and failure handling required by that lesson. Narrow the task
   if those safeguards exceed its teaching budget; do not remove the safeguards.
 - Before adding a capability, consider an independent example. Extend an existing
@@ -109,8 +130,13 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
-- Run `bun test examples/request-triage/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/incident-brief/test examples/software-factory/test`
-  after workspace setup. The release gate repeats these application checks
+- Review every substantial workflow stage for its own callable responsibility.
+  Check that Flow boundaries, contracts, powers and focused tests demonstrate
+  high modularity, and verify the complete composed application separately.
+
+- Run `bun test examples/photo-organiser/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/software-factory/test`
+  after workspace setup. Private handoff checks live in
+  `packages/jig/test/fixtures/incident-brief/test` and remain in the packed release gate. The release gate repeats these application checks
   against the freshly packed SDK.
 - Exercise package boundaries through an admitted Jig Run before claiming
   host execution; unit tests alone establish only application behavior.
@@ -118,8 +144,8 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Child DOX Index
 
-- [request-triage/AGENTS.md](request-triage/AGENTS.md) — One caller and three
-  implementations of a queue suggestion, through the same Flow boundary.
+- [photo-organiser/AGENTS.md](photo-organiser/AGENTS.md) — Checked photo copies, event grouping and a before-and-after contact sheet.
+
 - [support-case/AGENTS.md](support-case/AGENTS.md) — Agent interpretation of a
   disputed charge, checked by application-owned credit policy.
 - [tested-patch/AGENTS.md](tested-patch/AGENTS.md) — A multi-file Bun project
@@ -129,5 +155,3 @@ authored examples, not independent consumer evidence or promoted Starters.
   with checkpoints and a human merge gate.
 - [contact-import/AGENTS.md](contact-import/AGENTS.md) — A CSV preview with
   interchangeable code, Agent, and mixed column-mapping methods.
-- [incident-brief/AGENTS.md](incident-brief/AGENTS.md) — Internal drafting with
-  one revision-triggered summary handoff and an independent review worker.

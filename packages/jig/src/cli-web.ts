@@ -8,7 +8,7 @@ import type {
 
 const SNAPSHOT_BYTES = 8 * 1024 * 1024
 const INCOMPLETE_BYTES = 2 * 1024 * 1024
-const PREVIEW_BYTES = 512 * 1024
+const PREVIEW_BYTES = 2 * 1024 * 1024
 const REFRESH_MS = 200
 const encoder = new TextEncoder()
 type PrivateWebServer = {
@@ -40,7 +40,7 @@ const policy = Object.freeze({
   'X-Frame-Options': 'DENY',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   'Content-Security-Policy':
-    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
+    "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'",
 })
 
 type Projection = {

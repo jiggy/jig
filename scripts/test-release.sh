@@ -109,19 +109,23 @@ JIG_PACKAGE_ARCHIVE=$1
 export AGENT_ACP_PACKAGE_ARCHIVE JIG_PACKAGE_ARCHIVE
 archive_digests "$FLOW_SDK_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$DISPLAY_MODEL_PACKAGE_ARCHIVE" "$DISPLAY_WEB_PACKAGE_ARCHIVE" "$DISPLAY_TUI_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" > "$release_tmp/archive-digests"
 set --
-for application in tested-patch software-factory request-triage support-case contact-import incident-brief; do
+for application in photo-organiser tested-patch software-factory support-case contact-import incident-brief; do
+  application_source="examples/$application"
+  if [ "$application" = incident-brief ]; then
+    application_source="packages/jig/test/fixtures/incident-brief"
+  fi
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
-  cp "examples/$application/package.json" "$application_copy/"
+  cp "$application_source/package.json" "$application_copy/"
   for member in flows test fixtures issue.json input.json batch.json; do
-    if [ -e "examples/$application/$member" ]; then
+    if [ -e "$application_source/$member" ]; then
       bun --no-env-file -e '
         import { cp } from "node:fs/promises";
         import { basename } from "node:path";
         await cp(Bun.argv[1], Bun.argv[2], {
           recursive: true, filter: path => basename(path) !== "node_modules",
         });
-      ' "examples/$application/$member" "$application_copy/$member"
+      ' "$application_source/$member" "$application_copy/$member"
     fi
   done
   if [ "$application" = software-factory ]; then

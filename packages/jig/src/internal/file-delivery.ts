@@ -1,14 +1,17 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { closeSync, constants, fstatSync } from 'node:fs'
 import { type FileHandle, statfs } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
+import type { DisplayImagePreview } from '@jigging/display-model'
 import type { JsonValue } from '../json.js'
-import { canonicalJson } from '../json.js'
+import { privateCanonicalJsonChunks, privateUtf8StringChunks } from './canonical-json-stream.js'
 import {
-  capturePrivateOutput,
+  inspectPrivateOutput,
   type PrivateCapturedOutput,
-  readPrivateCapturedOutput,
+  privateOutputFileChunks,
+  requirePrivateCapturedOutput,
 } from './captured-output.js'
+import { privateDescriptorByteChunks } from './descriptor-byte-stream.js'
 import {
   duplicatePrivateDirectoryDescriptor,
   mkdirPrivateFile,
@@ -19,21 +22,24 @@ import {
   statPrivateChild,
 } from './descriptor-files.js'
 import type { PrivateExecutionOutput } from './execution-output.js'
-import { removePrivateDeliveryStage, writePrivateDeliveryFile } from './file-delivery-storage.js'
+import { removePrivateDeliveryStage, writePrivateDeliveryStream } from './file-delivery-storage.js'
 import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
   PRIVATE_FILE_LIMITS,
   privateFilePath,
   privateOpenAt,
   privateOpenFileRoot,
-  sha256,
 } from './file-input.js'
+import { PRIVATE_CAPTURE_CHUNK_BYTES } from './file-input-policy.js'
+import { privateImagePreview, privateImageSourceCandidate } from './image-preview.js'
+import { PRIVATE_PREVIEW_LIMITS } from './image-preview-policy.js'
 import type {
   RetainedRunCheckpoint,
   RunCheckpointIdentity,
   RunCheckpointInput,
   RunCheckpointReceipt,
 } from './private-run-checkpoint.js'
+import { privatePresentationNow } from './root-run-timeout-policy.js'
 
 export interface PrivateDeliveryReceipt {
   readonly status: 'written' | 'failed' | 'unknown'
@@ -79,8 +85,9 @@ export interface PrivateDeliveryInspectionOptions {
   readonly signal?: AbortSignal
 }
 export type PrivateDeliveryInspectionPreview = Readonly<{
-  state: 'text' | 'empty' | 'non-text' | 'unavailable'
+  state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   text?: string
+  image?: DisplayImagePreview
   bytes: number
   clipped: boolean
 }>
@@ -88,6 +95,18 @@ export type PrivateDeliveryInspectionPreview = Readonly<{
 export type PrivateDeliveryOutput =
   | { readonly kind: 'linux-directory'; readonly fd: number }
   | { readonly kind: 'snapshot'; readonly capture: PrivateCapturedOutput }
+
+// Reserve all text prefixes before image extras. Both share one content budget.
+interface PreviewFile {
+  readonly contents: Buffer
+  readonly bytes: number
+}
+interface DeliveryFile {
+  readonly path: string
+  readonly bytes: number
+  readonly digest: string
+  chunks(): Generator<Uint8Array>
+}
 
 /** Owned by the outer command, never the execution coordinator or Flow. */
 export class PrivateFileDeliveryOwner {
@@ -99,39 +118,60 @@ export class PrivateFileDeliveryOwner {
   #published = false
   #preparing = false
   #publishing = false
-  #previewFiles: Map<string, Buffer> | undefined
+  #previewFiles: Map<string, PreviewFile> | undefined
   #retainPreview = false
   #close: Promise<void> | undefined
   #preparation: Promise<void> | undefined
   #publication: Promise<PrivateDeliveryReceipt> | undefined
+  readonly #previewCancellation = new AbortController()
+  readonly #previewJobs = new Set<Promise<PrivateDeliveryInspectionPreview>>()
 
   enableInspection(): void {
     if (!this.#publishing && !this.#close) this.#retainPreview = true
   }
   preview(path: string): { text: string; bytes: number; clipped: boolean } | undefined {
-    const preview = this.inspectionPreview(path)
+    privateFilePath(path)
+    const file = this.#close ? undefined : this.#previewFiles?.get(path)
+    const preview = file ? this.#textPreview(file) : { text: undefined, bytes: 0, clipped: false }
     return preview.text === undefined
       ? undefined
       : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
   }
-  inspectionPreview(path: string): PrivateDeliveryInspectionPreview {
+  inspectionPreview(path: string): Promise<PrivateDeliveryInspectionPreview> {
     privateFilePath(path)
-    const contents = this.#previewFiles?.get(path)
-    if (!contents) return { state: 'unavailable', bytes: 0, clipped: false }
-    const size = Math.min(65536, contents.length)
+    const file = this.#close ? undefined : this.#previewFiles?.get(path)
+    if (!file) return Promise.resolve({ state: 'unavailable', bytes: 0, clipped: false })
+    const job = this.#inspectionPreview(file)
+    this.#previewJobs.add(job)
+    void job.finally(() => this.#previewJobs.delete(job)).catch(() => {})
+    return job
+  }
+  async #inspectionPreview(file: PreviewFile): Promise<PrivateDeliveryInspectionPreview> {
+    const { contents, bytes } = file
+    const image =
+      contents.length === bytes
+        ? await privateImagePreview(contents, this.#previewCancellation.signal)
+        : undefined
+    if (this.#previewCancellation.signal.aborted)
+      return { state: 'unavailable', bytes, clipped: false }
+    if (image) return { state: 'image', image, bytes, clipped: false }
+    return this.#textPreview(file)
+  }
+  #textPreview({ contents, bytes }: PreviewFile): PrivateDeliveryInspectionPreview {
+    const size = Math.min(PRIVATE_PREVIEW_LIMITS.textBytes, contents.length)
     let text: string | undefined
-    for (let end = size; end >= Math.max(0, size - (contents.length > size ? 3 : 0)); end--) {
+    for (let end = size; end >= Math.max(0, size - (bytes > size ? 3 : 0)); end--) {
       try {
         text = new TextDecoder('utf-8', { fatal: true }).decode(contents.subarray(0, end))
         break
       } catch {}
     }
-    if (text === undefined) return { state: 'non-text', bytes: contents.length, clipped: false }
+    if (text === undefined) return { state: 'non-text', bytes, clipped: contents.length < bytes }
     return {
-      state: contents.length === 0 ? 'empty' : 'text',
+      state: bytes === 0 ? 'empty' : 'text',
       text,
-      bytes: contents.length,
-      clipped: contents.length > size,
+      bytes,
+      clipped: bytes > size,
     }
   }
 
@@ -190,6 +230,7 @@ export class PrivateFileDeliveryOwner {
     checkpoint?: RetainedRunCheckpoint,
     retainAfterCancellation = false,
     coordinatorLost?: AbortSignal,
+    phaseDeadline?: number,
   ): Promise<PrivateDeliveryReceipt> {
     if (this.#close || this.#publishing)
       return Promise.reject(new Error('delivery owner unavailable'))
@@ -199,6 +240,7 @@ export class PrivateFileDeliveryOwner {
       checkpoint,
       retainAfterCancellation,
       coordinatorLost,
+      phaseDeadline,
     )
     return this.#publication
   }
@@ -208,6 +250,7 @@ export class PrivateFileDeliveryOwner {
     checkpoint?: RetainedRunCheckpoint,
     retainAfterCancellation = false,
     coordinatorLost?: AbortSignal,
+    phaseDeadline?: number,
   ): Promise<PrivateDeliveryReceipt> {
     if (
       this.#close ||
@@ -217,6 +260,8 @@ export class PrivateFileDeliveryOwner {
       this.#publishing
     )
       throw new Error('delivery has no available destination owner')
+    if (phaseDeadline !== undefined && !Number.isSafeInteger(phaseDeadline))
+      throw new TypeError('file delivery requires an absolute phase deadline')
     this.#publishing = true
     const retainedDelivery =
       output === undefined &&
@@ -226,7 +271,12 @@ export class PrivateFileDeliveryOwner {
           typeof record === 'object' &&
           !Array.isArray(record) &&
           !Object.hasOwn(record, 'cleanup')))
-    const deadline = performance.now() + PRIVATE_FILE_LIMITS.deliveryMs
+    // Native settlement and packet streaming share the caller's original end.
+    // Entering this writer cannot renew time already spent authenticating it.
+    const deadline = Math.min(
+      privatePresentationNow() + PRIVATE_FILE_LIMITS.deliveryMs,
+      phaseDeadline ?? Infinity,
+    )
     let timedOut = false
     const checkTime = () => {
       // Retaining a settled record does not waive its sender's lifetime.
@@ -235,13 +285,16 @@ export class PrivateFileDeliveryOwner {
       // Accepted progress or a settled terminal-only report can survive
       // execution cancellation. Ordinary final-file copying remains cancellable.
       if (!retainedDelivery) this.signal.throwIfAborted()
-      if (performance.now() >= deadline) {
+      if (privatePresentationNow() >= deadline) {
         timedOut = true
         throw new Error('file delivery deadline exceeded')
       }
     }
     let failure: PrivateDeliveryReceipt['code'] = 'INVALID_FILES'
-    const files: { path: string; bytes: number; digest: string; contents: Buffer }[] = []
+    const files: DeliveryFile[] = []
+    const previews = new Map<string, PreviewFile>()
+    let previewBytes = 0
+    let keptPreviews = false
     try {
       checkTime()
       const rootRecord = record as Record<string, JsonValue>
@@ -256,29 +309,42 @@ export class PrivateFileDeliveryOwner {
       if (output !== undefined) {
         if (rootRecord.status !== 'succeeded' || Object.hasOwn(rootRecord, 'cleanup'))
           throw new TypeError('files require a validated successful execution')
-        if (output.kind === 'snapshot') files.push(...readPrivateCapturedOutput(output.capture))
-        else {
+        if (output.kind === 'snapshot') {
+          const capture = requirePrivateCapturedOutput(output.capture)
+          files.push(
+            ...capture.files.map((file) => ({
+              ...file,
+              chunks: () => privateDescriptorByteChunks(capture.fd, file.bytes, file.offset),
+            })),
+          )
+        } else {
+          if (!Number.isSafeInteger(output.fd) || output.fd < 0)
+            throw new TypeError('invalid output directory descriptor')
           if (
             process.platform !== 'linux' ||
-            !Number.isSafeInteger(output.fd) ||
-            output.fd < 0 ||
             BigInt((await statfs(`/proc/self/fd/${output.fd}`)).type) !== 0x01021994n
           )
             throw new TypeError('output is not bounded anonymous storage')
-          const captured = capturePrivateOutput(output.fd, this.signal)
-          try {
-            files.push(...readPrivateCapturedOutput(captured))
-          } finally {
-            captured.close()
-          }
+          const manifest = inspectPrivateOutput(output.fd, this.signal)
+          const directory = output.fd
+          files.push(
+            ...manifest.files.map((file) => ({
+              ...file,
+              chunks: () => privateOutputFileChunks(directory, file, checkTime),
+            })),
+          )
         }
       }
       if (checkpoint !== undefined && output === undefined) {
         if (rootRecord.runId !== checkpoint.identity.runId || Object.hasOwn(rootRecord, 'cleanup'))
           throw new TypeError('checkpoint publication requires its settled Run')
         for (const [path, text] of Object.entries(checkpoint.files)) {
-          const contents = Buffer.from(text)
-          files.push({ path, contents, bytes: contents.length, digest: sha256(contents) })
+          files.push({
+            path,
+            bytes: Buffer.byteLength(text),
+            digest: `sha256:${createHash('sha256').update(text).digest('hex')}`,
+            chunks: () => privateUtf8StringChunks(text),
+          })
         }
       }
       checkTime()
@@ -295,6 +361,10 @@ export class PrivateFileDeliveryOwner {
       await this.onStaged?.()
       checkTime()
       let delivery: PrivateDeliveryReceipt
+      previewBytes = files.reduce(
+        (sum, file) => sum + Math.min(file.bytes, PRIVATE_PREVIEW_LIMITS.textBytes),
+        0,
+      )
       const stage = await openPrivateFile(
         location,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -306,7 +376,52 @@ export class PrivateFileDeliveryOwner {
         await mkdirPrivateFile(privateChildLocation(stage, 'files'))
         for (const file of files) {
           checkTime()
-          await writePrivateDeliveryFile(stage, `files/${file.path}`, file.contents, checkTime)
+          let preview: Buffer | undefined
+          const retainPreview = this.#retainPreview
+          let copied = 0
+          const hash = createHash('sha256')
+          function* verifiedChunks() {
+            for (const chunk of file.chunks()) {
+              checkTime()
+              hash.update(chunk)
+              if (retainPreview && preview === undefined) {
+                const prefixBytes = Math.min(file.bytes, PRIVATE_PREVIEW_LIMITS.textBytes)
+                const extraBytes = file.bytes - prefixBytes
+                const keepImage =
+                  file.bytes <= PRIVATE_PREVIEW_LIMITS.sourceBytes &&
+                  privateImageSourceCandidate(
+                    Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
+                  ) &&
+                  previewBytes + extraBytes <= PRIVATE_PREVIEW_LIMITS.retainedBytes
+                preview = Buffer.alloc(prefixBytes + (keepImage ? extraBytes : 0))
+                if (keepImage) previewBytes += extraBytes
+              }
+              if (preview && copied < preview.length)
+                preview.set(
+                  chunk.subarray(0, Math.min(chunk.length, preview.length - copied)),
+                  copied,
+                )
+              copied += chunk.length
+              yield chunk
+            }
+            if (copied !== file.bytes || `sha256:${hash.digest('hex')}` !== file.digest)
+              throw new Error('delivery source changed after validation')
+          }
+          try {
+            await writePrivateDeliveryStream(
+              stage,
+              `files/${file.path}`,
+              verifiedChunks(),
+              checkTime,
+            )
+            if (this.#retainPreview && preview === undefined) preview = Buffer.alloc(0)
+            if (preview) {
+              previews.set(file.path, { contents: preview, bytes: file.bytes })
+            }
+          } catch (error) {
+            preview?.fill(0)
+            throw error
+          }
         }
         delivery = Object.freeze({
           status: 'written',
@@ -314,11 +429,10 @@ export class PrivateFileDeliveryOwner {
           source: output !== undefined ? 'final' : checkpoint !== undefined ? 'checkpoint' : 'none',
           files: Object.freeze(files.map(({ path, bytes, digest }) => ({ path, bytes, digest }))),
         })
-        const packet = canonicalJson({ ...rootRecord, delivery } as unknown as JsonValue)
-        await writePrivateDeliveryFile(
+        await writePrivateDeliveryStream(
           stage,
           'result.json',
-          Buffer.concat([Buffer.from(packet), Buffer.from('\n')]),
+          privateCanonicalJsonChunks({ ...rootRecord, delivery } as unknown as JsonValue, true),
           checkTime,
         )
       } finally {
@@ -333,12 +447,8 @@ export class PrivateFileDeliveryOwner {
       await publishPrivateDirectory(this.#parent, name, this.#leaf)
       this.#published = true
       this.#stage = undefined
-      if (this.#retainPreview) {
-        // These are the exact fenced bytes used for verified publication. The
-        // private presentation copy never reopens the mutable destination.
-        if (files.length <= 64 && files.reduce((n, f) => n + f.bytes, 0) <= 16 * 1024 * 1024)
-          this.#previewFiles = new Map(files.map((file) => [file.path, Buffer.from(file.contents)]))
-      }
+      if (this.#retainPreview) this.#previewFiles = previews
+      keptPreviews = this.#retainPreview
       return delivery
     } catch {
       let code: PrivateDeliveryReceipt['code'] =
@@ -354,7 +464,7 @@ export class PrivateFileDeliveryOwner {
       }
       return Object.freeze({ status: 'failed', destination: this.#destination, code })
     } finally {
-      for (const file of files) file.contents.fill(0)
+      if (!keptPreviews) for (const preview of previews.values()) preview.contents.fill(0)
     }
   }
 
@@ -363,17 +473,21 @@ export class PrivateFileDeliveryOwner {
     return this.#close
   }
   async #closeOwned(): Promise<void> {
+    this.#previewCancellation.abort()
     // The same owner joins its original operations before consuming their held
     // references. Their execution/publication outcomes remain independent.
     await Promise.allSettled([this.#preparation, this.#publication])
+    const previewResults = await Promise.allSettled(this.#previewJobs)
     const previews = this.#previewFiles,
       parent = this.#parent,
       stage = this.#stage
     this.#previewFiles = undefined
     this.#parent = undefined
     this.#stage = undefined
-    for (const bytes of previews?.values() ?? []) bytes.fill(0)
-    const failures: unknown[] = []
+    for (const preview of previews?.values() ?? []) preview.contents.fill(0)
+    const failures: unknown[] = previewResults.flatMap((result) =>
+      result.status === 'rejected' ? [result.reason] : [],
+    )
     try {
       await this.#cleanupStage(stage, parent)
     } catch (error) {

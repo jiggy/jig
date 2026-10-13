@@ -6,7 +6,7 @@ title: Get started with Jig
 
 Jig runs methods that use code, Agent judgment, or both through the same
 callable boundary. This guide starts with a small code-only Flow and the
-review-and-run loop. Then [use one caller with three implementations](./request-triage.md)
+review-and-run loop. Then [use one caller with three implementations](./contact-import.md)
 to see how Agent work fits into the same model.
 
 ## Install
@@ -95,7 +95,7 @@ meaning described above; it does not authorize the Flow to access the network.
 
 You have now created, run, and adapted a method. Next,
 [choose an ordinary Agent for this same project](./agents.md), or see
-[one caller use code, an Agent, or both](./request-triage.md). The method boundary
+[one caller use code, an Agent, or both](./contact-import.md). The method boundary
 stays consistent as the implementation changes. Read [how Jig works](./understand.md)
 for the architecture behind it, or try [a tested patch](./tested-patch.md)
 for one repair or [a small software factory](./software-factory.md) for a fixed
@@ -167,7 +167,7 @@ contract and declares the slot, leaving the method's code, provider selection
 and grants with you. See [conversations](./conversations.md) for a complete caller.
 
 - [Add an ordinary Agent](./agents.md) in the project you just created.
-- [Compose code and Agent methods](./request-triage.md) through one caller.
+- [Compose code and Agent methods](./contact-import.md) through one caller.
 - [Run a Markdown method](./markdown.md) without an SDK dependency.
 - [Choose an Agent](./agents.md) using an API or a supported local client.
 - [Work with files](./files.md) to capture inputs and export one result packet.

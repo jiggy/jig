@@ -1,7 +1,8 @@
 # Build software with code and Agents
 
-Start with the shared method boundary, then use it to delegate useful work
-inside an application. Each example introduces one primary idea; adapt it
+Try [Photo organiser](photo-organiser/) for a visible before-and-after collection.
+Start with **Contact import** for a code-only first run: produce a useful CSV preview without an Agent,
+then swap in Agent interpretation for unfamiliar headings. Each example introduces one primary idea; adapt it
 without treating it as a complete production solution. These examples use the ordinary public FLOW SDK and Jig
 interfaces. Choose an Agent on your host; the applications do not choose a
 provider or carry credentials.
@@ -14,12 +15,10 @@ on its own, without another example or sibling checkout.
 
 | Start here | What you get | What you learn |
 | --- | --- | --- |
-| [Request triage](request-triage/) | A suggested support queue | One caller composes with code, an Agent, or both through the same contract. |
-| [Support case](support-case/) | A disputed-charge decision and reply | Code checks an Agent's proposal against account facts and application policy. |
+| [Photo organiser](photo-organiser/) | Grouped image copies, a manifest and a before/after contact sheet | Agent interpretation proposes event groups; code checks complete assignments and safe filenames. |
 | [Contact import](contact-import/) | A contact preview from an unfamiliar CSV | Compose code and Agent mapping through one boundary, then validate rows in code. |
+| [Support case](support-case/) | A disputed-charge decision and reply | Code checks an Agent's proposal against account facts and application policy. |
 | [Tested patch](tested-patch/) | A patch with executed checks and evidence | A reusable repair method combines Agent proposals with independent acceptance. |
-| [Small software factory](software-factory/) | Separate patch packets for a fixed issue set | Select bounded repair methods explicitly or with optional semantic judgment, retain evidence, and keep a human merge gate. |
-| [Incident brief](incident-brief/) | A draft incorporating preliminary review, plus separate questions | A channel update triggers one settled drafting handoff while the reviewer continues. |
 
 Complete [workspace setup](../docs/jig/guide/dependencies.md#local-workspace-packages)
 and follow the selected example's README on a
@@ -27,7 +26,7 @@ and follow the selected example's README on a
 The [documentation](../docs/jig/guide/overview.md) explains installation,
 Agent configuration, results, and integration.
 
-Request triage, support case and incident brief return their results on stdout
+Support case returns its result on stdout
 without creating a packet by default. The file-producing examples receive fresh packet directories
 in operating-system temporary storage; Jig reports each destination on stderr.
 The operating system may clear that storage. Use `jig run --out DIRECTORY` for a
@@ -42,12 +41,10 @@ and blocking causes; application views explain the requested work and its eviden
 
 | Application | Domain views |
 | --- | --- |
-| Request triage | Request and suggested queue |
+| Photo organiser | Original filenames, event groups and checked copies |
 | Support case | Case decision and supplied Charges |
 | Contact import | Mapping, Contacts and Rejected rows |
 | Tested patch | Repair, Checks and Evidence |
-| Software factory | Jobs, Checks and Patches; standalone repair and Selection |
-| Incident brief | Work, Brief and Review questions |
 
 Select delivered file references to read content. Completed inspection remains open
 until explicit exit. Reopen a saved packet with `jig inspect --result DIRECTORY
@@ -57,3 +54,7 @@ authority to issue a credit, import records, publish a brief or apply a patch.
 
 Fixtures are synthetic. The examples teach authored procedures and their
 boundaries; successful runs do not establish general model accuracy.
+
+The software factory is planned for extraction into an independent project.
+Its source remains temporarily in this tree to preserve existing host checks;
+it is outside the cookbook. Tested patch is the developer repair example.

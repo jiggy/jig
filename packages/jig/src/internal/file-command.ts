@@ -1,3 +1,4 @@
+import { PRIVATE_PREVIEW_LIMITS, privateValidImagePreview } from './image-preview-policy.js'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync } from 'node:fs'
@@ -399,7 +400,7 @@ export async function privateOwnFileCommand(
             if (typeof request.path !== 'string' || !publication)
               throw new Error('preview unavailable')
             await publication
-            const preview = owner.inspectionPreview(request.path)
+            const preview = await owner.inspectionPreview(request.path)
             send(socket, {
               ok: true,
               preview,
@@ -683,20 +684,31 @@ export function privateFileDeliveryConnection(
     const preview = reply.preview as Record<string, JsonValue> | null
     if (
       !preview ||
-      !['text', 'empty', 'non-text', 'unavailable'].includes(String(preview.state)) ||
+      !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(String(preview.state)) ||
       !Number.isSafeInteger(preview.bytes) ||
       Number(preview.bytes) < 0 ||
       Number(preview.bytes) > 16 * 1024 * 1024 ||
       typeof preview.clipped !== 'boolean' ||
+      (preview.state === 'image'
+        ? !privateValidImagePreview(preview.image)
+        : preview.image !== undefined) ||
       (preview.state === 'text' || preview.state === 'empty') !==
         (typeof preview.text === 'string') ||
-      (typeof preview.text === 'string' && Buffer.byteLength(preview.text) > 65536) ||
+      (typeof preview.text === 'string' &&
+        Buffer.byteLength(preview.text) > PRIVATE_PREVIEW_LIMITS.textBytes) ||
       (preview.state === 'empty' && (preview.bytes !== 0 || preview.text !== '' || preview.clipped))
     )
       throw new Error('Invalid preview response')
     return {
       state: preview.state as PrivateDeliveryInspectionPreview['state'],
       ...(typeof preview.text === 'string' ? { text: preview.text } : {}),
+      ...(preview.state === 'image'
+        ? {
+            image: preview.image as unknown as NonNullable<
+              PrivateDeliveryInspectionPreview['image']
+            >,
+          }
+        : {}),
       bytes: Number(preview.bytes),
       clipped: preview.clipped,
     }
