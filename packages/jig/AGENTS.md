@@ -9,8 +9,11 @@ admitted FLOW packages.
 
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
 - `src/project/author.ts` also owns shipped static attachment-route data types.
-  `attachment-routes.ts` validates their closed maps, exact caller/child ports
-  and distinct output folders for authoring, retained routes and lock decoding.
+  `attachment-routes.ts` validates their closed maps and distinct output folders
+  during authoring and inert lock decoding, and exact caller/child ports during
+  linking and Candidate/5 or Plan/2 decoding. Admission rechecks each target's
+  declared interface against its verified retained package bytes; the portable
+  lock does not duplicate package attachment declarations.
   Keep the authoring closure pure and import-free after bundling; declaration
   values use enumerable data descriptors like `author-value.ts`. Proxy
   reflection runs only under the existing authoring realm when evaluating
@@ -627,7 +630,8 @@ buffer release and output failure independently of recorded execution status.
   decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`.
   Failed smoke consumers and candidate archives remain available for diagnosis.
-  Its trusted npm installation accepts `JIG_NPM` and uses the selected absolute
+  Its trusted npm installation has a 120-second fixture allowance, accepts
+  `JIG_NPM` and uses the selected absolute
   `JIG_AUTHORING_NODE_PATH` directory for npm's interpreter when the host PATH
   excludes runner tool-cache binaries. This does not change Run authority.
 - The installed smoke also runs `test/installed-mapped-files.ts` with frozen

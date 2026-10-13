@@ -127,6 +127,7 @@ try {
           PATH: `${dirname(process.env.JIG_AUTHORING_NODE_PATH)}${delimiter}${process.env.PATH ?? ''}`,
         }
       : {},
+    120_000,
   )
   const installed = join(consumer, 'node_modules', '@jigging', 'jig')
   const runtime = join(consumer, 'node_modules', '@oven', installedRuntime.package, 'bin', 'bun')

@@ -763,6 +763,11 @@ child calls, project commands, delegated HTTP, and Agent providers.
   approval, persistence or launch revalidation. An explicit review client operand
   always retains authored/effective selection context, even when policy is unchanged.
 - One resolved slot table pins exact Flow targets or qualified native invocations.
+  Inert portable lock decoding checks attachment map shape and target references;
+  Candidate/5 and Plan/2 decoding check complete maps against both target requests'
+  declared ports and access. Artifact reacquisition independently binds every
+  request's attachment interface to verified retained Package/0 metadata before
+  admission or execution. Keep package declarations out of the portable lock.
   `project-feature-qualification.ts` qualifies the selected graph from captured
   support/requirement metadata, without preparing execution or choosing alternatives.
   Feature-refusal evidence pins the caller and selected provider requests, including

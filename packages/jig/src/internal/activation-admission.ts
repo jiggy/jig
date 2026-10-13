@@ -1,5 +1,6 @@
 import { types as utilTypes } from 'node:util'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
+import { validateBindingAttachmentMapForInterfaces } from '../project/attachment-routes.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import {
   type PrivateActivationRequest,
@@ -604,7 +605,33 @@ function normalizeCandidateTargets(
     targets.map((target) => target.request.target),
     lock,
   )
-  for (const target of targets) requireRequestLockProjection(target.request, lock)
+  const byTarget = new Map(
+    targets.map(({ request }) => [privateActivationTargetKey(request.target), request]),
+  )
+  const attachmentsByPackage = new Map<string, PrivateActivationRequest['attachments']>()
+  for (const { request } of targets) {
+    requireRequestLockProjection(request, lock)
+    const attachments = attachmentsByPackage.get(request.package.digest)
+    if (attachments !== undefined && !sameJson(attachments, request.attachments))
+      throw new TypeError('activation targets disagree on their package attachment interface')
+    attachmentsByPackage.set(request.package.digest, request.attachments)
+    for (const route of Object.values(request.slots)) {
+      if (route.kind !== 'flow') continue
+      const child = byTarget.get(privateActivationTargetKey(route.target))
+      if (child === undefined)
+        throw new TypeError('child attachment route selects an absent target')
+      if (route.attachments === undefined) {
+        if (Object.keys(child.attachments).length !== 0)
+          throw new TypeError('attachment-bearing child requires a complete static attachment map')
+      } else {
+        validateBindingAttachmentMapForInterfaces({
+          attachments: route.attachments,
+          caller: request.attachments,
+          child: child.attachments,
+        })
+      }
+    }
+  }
   assertPrivateResourceQualification(targets)
   return Object.freeze(targets)
 }

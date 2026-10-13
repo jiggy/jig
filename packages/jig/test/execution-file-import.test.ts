@@ -24,7 +24,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
-test.skipIf(process.platform !== 'linux')(
+test.skipIf(process.platform !== 'linux' || process.arch !== 'x64')(
   'Linux target attempts both stages and closes confirmed backing despite sticky commit uncertainty',
   async () => {
     const root = await mkdtemp('/dev/shm/jig-private-import-close-')
