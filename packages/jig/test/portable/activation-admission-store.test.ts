@@ -1298,6 +1298,8 @@ describe.serial('direct alpha activation store', () => {
           | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
           | undefined
         let executions = 0
+        const originalMonotonic = performance.now
+        let settlementClock: ReturnType<typeof spyOn> | undefined
         try {
           await admit(fixture)
           coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
@@ -1312,6 +1314,12 @@ describe.serial('direct alpha activation store', () => {
               if (scenario === 'terminal-refusal-without-terminal') {
                 throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
               }
+              if (scenario === 'pending' && executions === 2) {
+                // Two genuine mocked reacquisitions precede the unchanged 30s cutoff.
+                // No native executor or timer runs under this local observation.
+                const beyondSettlement = performance.now() + 30_001
+                settlementClock = spyOn(performance, 'now').mockReturnValue(beyondSettlement)
+              }
               return { state: 'pending', reason: 'fence-unconfirmed' }
             },
           })
@@ -1321,6 +1329,9 @@ describe.serial('direct alpha activation store', () => {
             input: { value: 'first' },
           })
           await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
+          settlementClock?.mockRestore()
+          settlementClock = undefined
+          expect(performance.now).toBe(originalMonotonic)
           const settledAttempts = executions
           for (let poll = 0; poll < 4; poll++) {
             const error = await controller.administration
@@ -1355,6 +1366,7 @@ describe.serial('direct alpha activation store', () => {
           await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
           expect(executions).toBe(scenario === 'pending' ? settledAttempts : 2)
         } finally {
+          settlementClock?.mockRestore()
           await controller?.dispose().catch(() => undefined)
           await coordinator?.dispose()
           await fixture.dispose()

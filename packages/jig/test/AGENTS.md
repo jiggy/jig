@@ -21,6 +21,12 @@ its existing duration when constructed. A plan spread from a completed Run must
 not carry that spent deadline into another fresh owner. Never reset a sealed or
 active Run deadline.
 
+The portable pending-status controller case advances only its observed monotonic
+clock after two mocked reacquisitions, crossing the unchanged 30-second cutoff.
+It verifies the original clock function is restored before durable-state checks
+and cleanup. The executor remains mocked; native timers and ownership receive no
+clock substitution.
+
 `just jig::test` selects the ordinary source profile. `just jig::check` and root `just preflight` add the qualified Mac regression pass. Complete hosted qualification also runs shared lifecycle suites, fresh installed consumers and genuine offline clients. Partial display witnesses never replace that evidence.
 
 `host/markdown-worker.test.ts` exercises only the installed CLI and its packed worker. Its fresh temporary root owns consumers and failure evidence; it does not build a second source worker. Source-worker compilation and direct protocol exchanges belong to `portable/markdown-worker.test.ts`.
@@ -46,6 +52,15 @@ each command's timeout, bounded interruption/escalation and pipe drain, and
 exclusive mode-0600 private transcripts on failure. An unconfirmed exit after
 escalation refuses within a separate bounded settlement wait. A timeout is failure even if the child
 later exits successfully; command exit never establishes native cleanup.
+
+The Mac qualifier may supply `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY` for a
+bounded package-smoke refusal. Retain only the command ordinal, closed phase and
+helper-refusal labels, original budget, elapsed time, observed child exit or null,
+and bounded private transcript file byte counts in exclusive mode-0600 JSON.
+These facts establish no cleanup. Raw transcripts remain beside the failed
+consumer; never copy their contents, command arguments, environment, exceptions
+or wide consumer trees into hosted evidence. Metadata collisions or observation
+failures preserve the original bounded-command error object.
 
 ## HTTP readonly qualification
 

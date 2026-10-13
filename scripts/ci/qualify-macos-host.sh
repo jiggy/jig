@@ -194,7 +194,10 @@ if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   bun packages/display-web/test/package-smoke.ts
   bun packages/display-tui/test/package-smoke.ts
   # Pack and install the result in a separate ordinary consumer, then use its CLI.
-  bun packages/jig/test/package-smoke.ts
+  # Retain closed failure metadata in the owning flat Mac evidence directory.
+  # Private command transcripts remain beside the failed consumer.
+  JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY="${JIG_MACOS_TEST_TIMINGS_DIRECTORY:-}" \
+    bun packages/jig/test/package-smoke.ts
 fi
 if [[ -n "${JIG_STARTUP_PROFILE_DIRECTORY:-}" && "$shard" == "$installed_shard" ]]; then
   JIG_CI_BUN=$(bun -e 'console.log(process.execPath)') \

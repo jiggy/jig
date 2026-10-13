@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
@@ -12,7 +13,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 import { settleTestCommand } from './fixtures/bounded-command.js'
 import {
@@ -1376,20 +1377,140 @@ async function run(
   environment: NodeJS.ProcessEnv = {},
   timeoutMs = 30_000,
 ): Promise<{ readonly stdout: string; readonly stderr: string }> {
+  const started = performance.now()
   const child = Bun.spawn(command, {
     cwd,
     env: { ...process.env, ...environment },
     stdout: 'pipe',
     stderr: 'pipe',
   })
-  const result = await settleTestCommand(child, {
-    evidence: join(temporary, `command-${commandNumber++}`),
-    timeoutMs,
-  })
+  const ordinal = commandNumber++
+  const evidence = join(temporary, `command-${ordinal}`)
+  let result: Awaited<ReturnType<typeof settleTestCommand>>
+  try {
+    result = await settleTestCommand(child, { evidence, timeoutMs })
+  } catch (error) {
+    try {
+      await retainPackageSmokeFailure(
+        command,
+        ordinal,
+        timeoutMs,
+        Math.max(0, Math.ceil(performance.now() - started)),
+        child.exitCode,
+        evidence,
+        error,
+      )
+    } catch {
+      // A diagnostic observer never replaces the original bounded-command failure.
+    }
+    throw error
+  }
   if (result.code !== 0) {
     throw new Error(
       `${command.join(' ')} failed (${result.code})\n${result.stdout}${result.stderr}`,
     )
   }
   return result
+}
+
+/** Closed test diagnostics only. Raw command bytes stay in the private consumer. */
+async function retainPackageSmokeFailure(
+  command: readonly string[],
+  ordinal: number,
+  timeoutMs: number,
+  elapsedMs: number,
+  processExit: number | null,
+  evidence: string,
+  error: unknown,
+): Promise<void> {
+  const phase =
+    command[1] === 'install'
+      ? 'ordinary-npm-install'
+      : basename(command[1] ?? '') === 'renderer-check.mjs'
+        ? 'installed-core-initialization'
+        : command[1] === '--help'
+          ? 'installed-cli-help'
+          : basename(command[1] ?? '') === 'authoring-without-renderer.mjs'
+            ? 'installed-authoring-import'
+            : 'other-installed-command'
+  console.error(
+    `Package smoke bounded command ${ordinal} failed (${phase}); original failure retained.`,
+  )
+  const directory = process.env.JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY
+  if (!directory) return
+  try {
+    assert(isAbsolute(directory))
+    assert.equal(await realpath(directory), directory)
+    const owner = await lstat(directory)
+    assert(owner.isDirectory() && !owner.isSymbolicLink())
+    assert.equal(owner.uid, process.geteuid!())
+    assert.equal(owner.mode & 0o022, 0)
+    assert(Number.isSafeInteger(ordinal) && ordinal >= 0 && ordinal < 512)
+    assert(Number.isSafeInteger(elapsedMs) && elapsedMs >= 0)
+    const retainedBytes = async (stream: string, limit: number): Promise<number | null> => {
+      try {
+        const file = await lstat(`${evidence}.${stream}`)
+        return file.isFile() &&
+          !file.isSymbolicLink() &&
+          file.uid === owner.uid &&
+          (file.mode & 0o777) === 0o600 &&
+          file.nlink === 1 &&
+          Number.isSafeInteger(file.size) &&
+          file.size >= 0 &&
+          file.size <= limit
+          ? file.size
+          : null
+      } catch {
+        return null
+      }
+    }
+    const refusals = new Set<string>()
+    try {
+      const failures = error instanceof AggregateError ? error.errors : [error]
+      if (Array.isArray(failures)) {
+        if (failures.length > 16) refusals.add('other')
+        for (const failure of failures.slice(0, 16)) {
+          const message = failure instanceof Error ? failure.message : undefined
+          refusals.add(
+            message === 'Installed command timed out'
+              ? 'timeout'
+              : message === 'Installed command exit is unconfirmed after escalation'
+                ? 'exit-unconfirmed'
+                : message === 'Installed command output did not settle after exit'
+                  ? 'pipe-drain-unconfirmed'
+                  : message === 'Installed stdout exceeded test bound'
+                    ? 'stdout-bound'
+                    : message === 'Installed stderr exceeded test bound'
+                      ? 'stderr-bound'
+                      : 'other',
+          )
+        }
+      }
+    } catch {
+      refusals.add('other')
+    }
+    const record = {
+      schemaVersion: 1,
+      kind: 'package-smoke-bounded-command-failure/1',
+      commandOrdinal: ordinal,
+      phase,
+      budgetMs: timeoutMs,
+      elapsedMs,
+      observedProcessExit: Number.isSafeInteger(processExit) ? processExit : null,
+      retainedStdoutBytes: await retainedBytes('stdout', 2 * 1024 * 1024),
+      retainedStderrBytes: await retainedBytes('stderr', 256 * 1024),
+      refusals: [...refusals].sort(),
+      rawTranscripts: 'private-consumer-only',
+      cleanupClaim: 'none',
+      qualificationReceipt: false,
+    }
+    const bytes = JSON.stringify(record) + '\n'
+    assert(Buffer.byteLength(bytes) <= 2048)
+    await writeFile(join(directory, `package-smoke-command-${ordinal}.json`), bytes, {
+      flag: 'wx',
+      mode: 0o600,
+    })
+  } catch {
+    console.error('Package smoke bounded-command metadata unavailable; original failure retained.')
+  }
 }

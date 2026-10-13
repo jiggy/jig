@@ -146,6 +146,11 @@ Host preparation never becomes a consumer requirement.
   portion of the same complete suite: three Intel or two Apple Silicon shards.
   Shard zero runs native prerequisites and the final shard runs installed
   consumer and genuine-client checks on each architecture.
+  The full Jig package smoke receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`
+  only from the existing Mac evidence directory. Its flat exclusive mode-0600
+  JSON retains closed failed-command metadata; the existing JSON upload pattern
+  carries it on failure. Raw command transcripts and private consumer trees stay
+  outside hosted artifacts. Metadata is diagnostic, never cleanup or qualification.
   Hosted qualification consumes `JIG_CI_CANDIDATE_DIRECTORY` after verifying
   provenance and copies its exact archives; ordinary platform source builds
   remain separate. Full self-hosted local mode uses the owning local packers.
