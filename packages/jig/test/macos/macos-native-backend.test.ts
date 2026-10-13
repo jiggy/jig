@@ -3,7 +3,7 @@ const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.m
 import { expect, spyOn, test } from 'bun:test'
 import * as childProcess from 'node:child_process'
 import { spawnSync } from 'node:child_process'
-import { access, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { readPrivateCapturedOutput } from '../../src/internal/captured-output.js'
@@ -80,11 +80,11 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
           '-e',
           'await Bun.stdin.text(); process.exit(17)',
         ],
-        cwd: work,
+        cwd: '/',
         environment: {},
         files: {
           readOnlyFiles: [process.execPath],
-          readOnlyTrees: [work],
+          readOnlyTrees: [],
           writableTrees: [],
           protectedRoots: [owners],
           network: 'isolated',
@@ -94,6 +94,16 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
       allocation,
     )
     component = await sealed.admit()
+    for (const path of ['data', 'control/guardian/storage']) {
+      let absent = false
+      try {
+        await lstat(join(allocation.directory, path))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        absent = true
+      }
+      expect(absent).toBe(true)
+    }
     component.stdout[Symbol.asyncIterator]()
     component.stderr[Symbol.asyncIterator]()
     await component.closeInput()

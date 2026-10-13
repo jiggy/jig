@@ -219,7 +219,7 @@ test('native scopes supervise resources, deadlines, cancellation and orphan clea
     await runMacosFixture(
       fileURLToPath(new URL('.././fixtures/macos-scope-owner.ts', import.meta.url)),
       [launcher, payload],
-      { empty: true, passed: true, completed: 9 },
+      { empty: true, passed: true, completed: 9, fileOnly: true, refusedCwds: 6 },
     )
   } finally {
     await rm(directory, { recursive: true, force: true })

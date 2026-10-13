@@ -34,6 +34,10 @@ exclusive mode-0600 private transcripts on failure. An unconfirmed exit after
 escalation refuses within a separate bounded settlement wait. A timeout is failure even if the child
 later exits successfully; command exit never establishes native cleanup.
 
+## HTTP readonly qualification
+
+The actual contained-effect fixture captures the generated HTTP intent, proves file-only Mac lowering and unchanged Linux lowering, and retains failure/cancellation cleanup and diagnostic privacy. Native scope tests require exact zero-tree root cwd, refuse near-matching and unrelated-tree alternatives, and prove denied writes/private-control reads through the real launcher. Held HTTP lifecycle cases bind the exact fresh Run/effect allocation and sealed owner before proving its Mac storage is absent, then retain cancellation/coordinator-loss fencing and final owner cleanup. The offline localhost TLS case proves name resolution and ordinary certificate refusal with no HTTP request; it does not establish successful public HTTPS. Run the whole HTTP lifecycle and packed HTTP Agent composition suites on Linux and both qualified Macs before release acceptance.
+
 ## Verification
 
 Preserve every existing test body, case input, timeout and cleanup assertion when moving a suite. Retain before/after migration evidence, then run complete source checks and native regression on the matching profile. CI must reconcile every planned file exactly once against successful reports. Platform-specific omissions are applicability decisions, never a passing qualification. Timing weights only place work; they cannot change inventory or evidence.

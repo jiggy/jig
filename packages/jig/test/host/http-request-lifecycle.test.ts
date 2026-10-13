@@ -4,13 +4,26 @@ const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
+import { createServer as createHttpsServer } from 'node:https'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../../src/administration/root.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
+import { privateDomainDigest } from '../../src/internal/identity.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
+import { untrustedCertificate, untrustedKey } from '../http-tls-fixture.js'
 
 async function fixture(root: string, grants: Record<string, unknown>) {
   await mkdir(join(root, 'bindings'), { recursive: true })
@@ -82,6 +95,88 @@ async function waitUntil(ready: () => boolean) {
   while (!ready()) {
     if (Date.now() > until) throw new Error('HTTP request did not arrive')
     await Bun.sleep(20)
+  }
+}
+async function liveHttpOwner(root: string, receipt: StartRootRunReceipt, scope: string) {
+  const database = Database.open(
+    join(root, '.jig/jig.sqlite3'),
+    constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+  )
+  let owner: any
+  try {
+    database.exec('PRAGMA query_only = ON; BEGIN')
+    const rows = database
+      .query(
+        'SELECT allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, cleanup_digest FROM root_child_owners WHERE parent_run_id = ? AND scope_operation_id = ? AND operation_id = ?',
+      )
+      .all(receipt.runId, scope, 'http') as {
+      allocation_digest: string
+      allocation_bytes: Uint8Array
+      sandbox_digest: string
+      sandbox_bytes: Uint8Array
+      fence_digest: string | null
+      cleanup_digest: string | null
+    }[]
+    expect(rows.length).toBe(1)
+    const row = rows[0]!
+    let allocation: any, sandbox: any
+    try {
+      allocation = JSON.parse(Buffer.from(row.allocation_bytes).toString())
+      sandbox = JSON.parse(Buffer.from(row.sandbox_bytes).toString())
+    } catch {
+      throw Error('The live HTTP owner evidence is unreadable')
+    }
+    expect(privateDomainDigest('JIG-Private-Root-Child-Owner-Allocation/1', allocation)).toBe(
+      row.allocation_digest,
+    )
+    expect(privateDomainDigest('JIG-Private-Root-Child-Sandbox/1', sandbox)).toBe(
+      row.sandbox_digest,
+    )
+    expect(allocation.kind).toBe('private-contained-effect-owner/1')
+    expect(allocation.effect).toBe('http-request')
+    expect(allocation.parentRunId).toBe(receipt.runId)
+    expect(allocation.operationId).toBe('http')
+    expect(allocation.parentFlow?.operationId ?? '').toBe(scope)
+    expect(row.fence_digest === null && row.cleanup_digest === null).toBe(true)
+    const identity = privateDomainDigest('JIG-Contained-Effect-Owner/1', {
+      parentRunId: receipt.runId,
+      operationId: 'http',
+      parentOperationId: scope || null,
+    }).slice(7)
+    owner = allocation.ownerAllocation
+    expect(owner.name).toBe(`x-${identity.slice(0, 62)}`)
+    expect(owner.parent).toBe(await realpath(join(root, '.jig/private-root-owners')))
+    expect(owner.directory).toBe(join(owner.parent, owner.name))
+    expect(sandbox.runId).toBe(`effect-${identity.slice(0, 40)}`)
+    expect(
+      sandbox.kind === 'private-macos-sealed-owner/1'
+        ? sandbox.allocation.digest
+        : sandbox.ownerStateAllocationDigest,
+    ).toBe(owner.digest)
+  } finally {
+    database.exec('ROLLBACK')
+    database.close()
+  }
+  if (process.platform === 'darwin') {
+    expect(owner.kind).toBe('private-macos-owner-state-allocation/1')
+    const physical = await lstat(owner.directory, { bigint: true })
+    expect(
+      physical.isDirectory() &&
+        physical.uid === BigInt(process.getuid!()) &&
+        (physical.mode & 0o777n) === 0o700n &&
+        String(physical.dev) === owner.directoryDevice &&
+        String(physical.ino) === owner.directoryInode,
+    ).toBe(true)
+    for (const path of ['data', 'control/guardian/storage']) {
+      let absent = false
+      try {
+        await lstat(join(owner.directory, path))
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        absent = true
+      }
+      expect(absent).toBe(true)
+    }
   }
 }
 async function noOwners(root: string) {
@@ -166,6 +261,7 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
         )
         await waitUntil(() => requests === 1)
         const receipt = JSON.parse(await readFile(join(root, 'receipt.json'), 'utf8'))
+        await liveHttpOwner(root, receipt, 'reader')
         coordinator.kill('SIGKILL')
         await coordinator.exited
         session = await openPrivateProjectSession({ directory: root, host })
@@ -320,6 +416,7 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
           } else if (scenario === 'cancellation') {
             const stopped = await start({ ...valid, slot: 'wait' }, 'parent')
             await waitUntil(() => seen.some(({ path }) => path === '/wait'))
+            await liveHttpOwner(root, stopped, 'reader')
             await session.close()
             session = await openPrivateProjectSession({
               directory: root,
@@ -385,6 +482,77 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
       process.platform === 'darwin' ? 360000 : 180000,
     )
   }
+  test(
+    'resolves a local TLS name and preserves certificate refusal without an HTTP request',
+    async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-http-tls-')))
+      let connections = 0,
+        requests = 0,
+        completed = false
+      const server = createHttpsServer(
+        { key: untrustedKey, cert: untrustedCertificate },
+        (_request, response) => {
+          requests++
+          response.end('must not arrive')
+        },
+      )
+      server.on('connection', () => {
+        connections++
+      })
+      server.on('tlsClientError', () => {})
+      let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
+      try {
+        await new Promise<void>((resolve, reject) => {
+          server.once('error', reject)
+          server.listen(0, resolve)
+        })
+        const address = server.address()
+        if (!address || typeof address === 'string') throw Error('Missing local TLS endpoint')
+        const grant = { url: `https://localhost:${address.port}/`, method: 'POST', timeoutMs: 5000 }
+        await fixture(
+          root,
+          Object.fromEntries(
+            ['document', 'redirect', 'echo', 'big', 'wait'].map((name) => [name, grant]),
+          ),
+        )
+        const host = await openPrivateInstalledBunHost(installedBunLocation, {})
+        session = await openPrivateProjectSession({ directory: root, host })
+        const plan = await session.plan({ lockMode: 'update' })
+        if (plan.state !== 'applicable') throw Error('Missing local TLS admission')
+        await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
+        const receipt = await session.rootAdministration.startRun({
+          submissionId: 'tls-no-volume',
+          target: { kind: 'binding', id: 'reader' },
+          input: { slot: 'document', body: { text: 'bounded' } },
+        })
+        expect(await terminal(session.rootAdministration, receipt)).toMatchObject({
+          terminal: { status: 'failed', code: 'UNCERTAIN' },
+        })
+        expect(connections).toBeGreaterThan(0)
+        expect(requests).toBe(0)
+        await noOwners(root)
+        await session.close()
+        session = undefined
+        completed = true
+      } finally {
+        try {
+          await session?.close()
+        } finally {
+          server.closeAllConnections()
+          await new Promise<void>((resolve, reject) =>
+            server.close((error) =>
+              error && (error as NodeJS.ErrnoException).code !== 'ERR_SERVER_NOT_RUNNING'
+                ? reject(error)
+                : resolve(),
+            ),
+          )
+          if (completed) await rm(root, { recursive: true, force: true })
+          else console.error(`Retained HTTP TLS fixture: ${root}`)
+        }
+      }
+    },
+    process.platform === 'darwin' ? 180000 : 90000,
+  )
 })
 
 if (
