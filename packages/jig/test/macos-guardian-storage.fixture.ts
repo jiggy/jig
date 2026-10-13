@@ -53,6 +53,26 @@ const preparationFailures = [
     30_000,
   ],
 ] as const
+async function preJournalAllocationModule(root: string): Promise<string> {
+  const directory = fileURLToPath(new URL('../src/internal/', import.meta.url))
+  const source = await readFile(join(directory, 'macos-guardian-storage.ts'), 'utf8')
+  const boundary =
+    '  await allocatePrivateMacosVolume(controlPath(owner), token, storage.mountPath, storage.bytes)'
+  expect(source.split(boundary)).toHaveLength(2)
+  const module = join(root, 'pre-journal-storage.ts')
+  await writeFile(
+    module,
+    source.replaceAll("from './", `from '${directory}`).replace(
+      boundary,
+      `  await (await import('node:fs/promises')).writeFile(${JSON.stringify(join(root, 'pre-journal.paused'))}, '', { mode: 0o600, flag: 'wx' })
+  await new Promise<void>(() => setInterval(() => {}, 60_000))
+${boundary}`,
+    ),
+    { mode: 0o600, flag: 'wx' },
+  )
+  return module
+}
+
 async function journalLossSupervisor(root: string): Promise<string> {
   const directory = fileURLToPath(new URL('../src/internal/', import.meta.url))
   const volume = join(root, 'volume.ts'),
@@ -112,6 +132,7 @@ export {
   exists,
   journalLossSupervisor,
   killGuardian,
+  preJournalAllocationModule,
   preparationFailureSupervisor,
   preparationFailures,
 }

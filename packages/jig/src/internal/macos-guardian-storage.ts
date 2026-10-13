@@ -1,7 +1,15 @@
 import { constants } from 'node:fs'
 import { type FileHandle, lstat, open } from 'node:fs/promises'
 import { join, posix } from 'node:path'
-import { privateMacosMkdirAt, privateMacosOpenAt } from './macos-descriptor-files.js'
+import {
+  privateMacosDirectory,
+  privateMacosFilesystem,
+  privateMacosMkdirAt,
+  privateMacosOpenAt,
+  privateMacosStatAt,
+  privateMacosUnlinkAt,
+} from './macos-descriptor-files.js'
+import { requirePrivateMacosOwnerDirectory } from './macos-owner-state.js'
 import type { PrivateMacosSandboxFiles } from './macos-sandbox-profile.js'
 import {
   allocatePrivateMacosVolume,
@@ -90,6 +98,85 @@ export async function preparePrivateMacosGuardianStorage(
   } catch (error) {
     await volume.directory.close()
     throw error
+  }
+}
+
+/** Only after the exact no-first-owner job is absent and any prior recovery
+ * slot is fenced. No tool or payload can
+ * precede that owner's first journal. Retire only its still-empty fixed child;
+ * initialized, partial, mounted or changed state retains ordinary recovery. */
+export async function removeEmptyPrivateMacosUnstartedStorage(owner: string): Promise<boolean> {
+  requirePrivateMacosOwnerDirectory(owner)
+  const parent = await open(owner, DIRECTORY)
+  try {
+    const parentIdentity = await parent.stat({ bigint: true })
+    if (
+      !parentIdentity.isDirectory() ||
+      parentIdentity.uid !== BigInt(process.getuid!()) ||
+      (parentIdentity.mode & 0o777n) !== 0o700n
+    )
+      throw new Error('macOS unstarted storage parent is unsafe')
+    const unrecorded = () => {
+      for (const name of ['owner.json', 'storage.release.json', 'storage.release.pending']) {
+        try {
+          privateMacosStatAt(parent.fd, name)
+          return false
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+        }
+      }
+      return true
+    }
+    if (!unrecorded()) return false
+    let storage: FileHandle
+    try {
+      storage = await privateMacosOpenAt(parent.fd, 'storage', DIRECTORY)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+      throw error
+    }
+    try {
+      const identity = await storage.stat({ bigint: true })
+      if (
+        !identity.isDirectory() ||
+        identity.uid !== parentIdentity.uid ||
+        (identity.mode & 0o777n) !== 0o700n ||
+        identity.dev !== parentIdentity.dev ||
+        privateMacosFilesystem(storage.fd).mountpoint === controlPath(owner)
+      )
+        throw new Error('macOS unstarted storage allocation is unsafe')
+      const entries = privateMacosDirectory(storage.fd)
+      try {
+        if (entries.readSync() !== null) return false
+      } finally {
+        entries.closeSync()
+      }
+      if (!unrecorded()) return false
+      const namedParent = await lstat(owner, { bigint: true })
+      const namedStorage = privateMacosStatAt(parent.fd, 'storage')
+      if (
+        !namedParent.isDirectory() ||
+        namedParent.dev !== parentIdentity.dev ||
+        namedParent.ino !== parentIdentity.ino ||
+        namedParent.uid !== parentIdentity.uid ||
+        (namedParent.mode & 0o777n) !== 0o700n ||
+        !namedStorage.isDirectory() ||
+        namedStorage.dev !== identity.dev ||
+        namedStorage.ino !== identity.ino ||
+        namedStorage.uid !== identity.uid ||
+        (namedStorage.mode & 0o777n) !== 0o700n
+      )
+        throw new Error('macOS unstarted storage identity changed')
+      if (!unrecorded()) return false
+      // rmdir itself rejects an intervening entry; never enumerate/remove a tree.
+      privateMacosUnlinkAt(parent.fd, 'storage', true)
+      await parent.sync()
+      return true
+    } finally {
+      await storage.close()
+    }
+  } finally {
+    await parent.close()
   }
 }
 

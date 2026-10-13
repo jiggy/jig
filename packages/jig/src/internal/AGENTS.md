@@ -298,6 +298,17 @@ child calls, project commands, delegated HTTP, and Agent providers.
   full completion. Fencing alone is not storage-cleanup evidence; final publication
   also requires successful completion. Cancellation, expiry and connection loss
   terminate collection and retain cleanup responsibility.
+  Before the first guardian journal, coordinator loss may leave only the empty
+  fixed storage directory allocated before volume intent. After removing the exact
+  job and confirming absence, recheck for a late first journal. Fence any earlier
+  recovery-slot owner before empty retirement, so missing storage never skips its
+  independent coalition proof. A recorded owner
+  retains authenticated coalition and volume recovery. Only the no-first-owner
+  empty private child with no retirement marker or staging can retire through held parent/child descriptors, with
+  mount, owner, mode and immediate named-inode checks; rmdir refuses a new entry.
+  Any partial journal, image, staging or unknown entry retains ordinary recovery
+  and its strict refusal. This grants no image/detach authority, recursive cleanup
+  or data-directory ownership. The backend still owns its data allocation.
   Fresh storage recovery runs fixed image tools in a separate finite guardian,
   with a derived token and authenticated journal in the owner's `recovery` slot.
   After the fixed tools return, drain and fence any remaining recovery-coalition
@@ -1213,6 +1224,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Expiry during the final recovery drain refuses success, retains journals,
   and permits an ordinary fresh guardian to finish cleanup before retirement.
   Every cleanup attempt keeps its exact journals until fencing is confirmed.
+  An actual coordinator paused inside the storage allocator before intent and
+  killed by the test proves empty pre-journal recovery without moving any existing
+  crash barrier. Whole-file native checks also preserve partial/foreign entries
+  and refuse a first or late owner journal, retirement markers, public/link/replaced
+  or mounted storage. Ordinary
+  source checks construct that exact injected allocator without native execution.
   `macos-guardian-input.test.ts` runs ordinary TypeScript relative imports and
   binary/empty reads from the immutable projection, denies source writes and
   private data, refuses changed/closed captures before execution, and recovers
