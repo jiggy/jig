@@ -345,6 +345,43 @@ test('Linux host shards retain complete coverage and fail-closed aggregation', a
   ).toBeTrue()
 })
 
+test('protected host checks require complete Linux and both Mac architectures', async () => {
+  const linux = Bun.YAML.parse(
+    await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),
+  ) as any
+  const mac = Bun.YAML.parse(
+    await Bun.file(join(root, '.github/workflows/macos-hosted-candidates.yml')).text(),
+  ) as any
+  for (const [workflow, name, needs, results] of [
+    [linux, 'affected-linux', ['rootless-linux'], { HOST_RESULT: 'success' }],
+    [
+      mac,
+      'affected-macos',
+      ['prerequisites', 'qualified-architecture'],
+      { SHARDS_RESULT: 'success', ARCHITECTURES_RESULT: 'success' },
+    ],
+  ] as const) {
+    const check = workflow.jobs[name]
+    expect(check.name).toBe(name)
+    expect(check.if).toBe('always()')
+    expect(check.needs).toEqual(needs)
+    const step = check.steps[0]
+    for (const dependency of needs) {
+      expect(Object.values(step.env)).toContain(`\${{ needs.${dependency}.result }}`)
+    }
+    for (const [key, value] of Object.entries(step.env)) {
+      expect(value).toMatch(/^\$\{\{ needs\.[a-z-]+\.result \}\}$/)
+      for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
+        const child = spawnSync('/bin/sh', ['-c', step.run], {
+          env: { ...results, [key]: result },
+        })
+        expect(child.status, `${name}: ${key}=${result}`).toBe(result === 'success' ? 0 : 1)
+      }
+    }
+    expect(Object.keys(step.env)).toEqual(Object.keys(results))
+  }
+})
+
 test('native API qualification is automatic, exact-revision, and scoped to supported clients', async () => {
   const host = Bun.YAML.parse(
     await Bun.file(join(root, '.github/workflows/linux-host-conformance.yml')).text(),

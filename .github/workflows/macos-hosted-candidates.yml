@@ -191,3 +191,21 @@ jobs:
           path: ${{ runner.temp }}/mac-summary.json
           if-no-files-found: ignore
           retention-days: 7
+
+  affected-macos:
+    name: affected-macos
+    if: always()
+    needs: [prerequisites, qualified-architecture]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Require both Mac architectures for protected merges
+        env:
+          SHARDS_RESULT: ${{ needs.prerequisites.result }}
+          ARCHITECTURES_RESULT: ${{ needs.qualified-architecture.result }}
+        run: |
+          set -eu
+          if [ "$SHARDS_RESULT" != success ] || [ "$ARCHITECTURES_RESULT" != success ]; then
+            echo 'Protected merges require every Mac shard and both architecture proofs.' >&2
+            exit 1
+          fi
