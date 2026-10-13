@@ -113,7 +113,7 @@ Host preparation never becomes a consumer requirement.
   application scenarios, preserving order within both partitions. This exposes
   primitive failures early without moving files between runners or changing
   weights, commands, limits or qualification obligations.
-- `test-reports.mjs` is the canonical Mac report validator. It reconstructs the complete source-pinned shard plan and reads every owning report and completion marker once, refusing missing, failed, skipped, filtered or repeated execution. `macos-host-summary.py` projects those validated counts and optional job timing into the human summary; it does not implement another XML or plan validator. Timing cannot grant or remove qualification. The evidence writer consumes that owning summary without reparsing Mac reports.
+- `test-reports.mjs` owns the shared JUnit case reader for source/job evidence and Mac reports. It rejects empty, failed, skipped, incomplete or duplicate-case reports; each consumer enforces its owning file inventory. The Mac validator reconstructs the complete source-pinned shard plan and reads every owning report and completion marker once. Linux whole-file commands retain their stdout parser and installed-script completion markers. `macos-host-summary.py` projects validated Mac counts and optional job timing; it does not implement another XML or plan validator. Timing cannot grant or remove qualification. The evidence writer consumes that owning summary without reparsing Mac reports.
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
   digest and manifest, then compares any existing exact public npm version's
@@ -175,7 +175,9 @@ Host preparation never becomes a consumer requirement.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive
   Mac file assignment including each display package and future files,
   whole-file profile assignment and balanced scheduling
-  of a representative observed workload including out-of-file costs, exact
+  using synthetic weights and out-of-file costs without freezing measured timing
+  hints. Workflow role checks parse YAML and inspect commands, conditions and
+  evidence contexts rather than indentation, scalar quoting or step names. Exact
   Codex startup/refusal host selection without running native clients, and that every
   Linux hostile test file enters provisioned host conformance.
 - `node --test scripts/ci/macos-host-summary.test.mjs` exercises both architecture

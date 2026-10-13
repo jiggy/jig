@@ -79,7 +79,7 @@ test('current full Mac role assignment owns every selected file once without nam
   }
 })
 
-test('primitive priority preserves existing LPT memberships and budgets and includes future native files', () => {
+test('synthetic costs balance whole files and fixed overhead before prioritizing native work', () => {
   const checkpoint = 'packages/jig/test/host/run-checkpoint-lifecycle.test.ts'
   const workspace = 'packages/jig/test/host/installed-workspace-provider.test.ts'
   const factory = 'packages/jig/test/host/installed-software-factory.test.ts'
@@ -98,20 +98,34 @@ test('primitive priority preserves existing LPT memberships and budgets and incl
     future,
     portable,
   ]
+  const costs = {
+    weights: new Map(
+      [
+        [checkpoint, 80],
+        [workspace, 70],
+        [factory, 60],
+        [specialist, 50],
+        [storage, 40],
+        [portable, 20],
+      ].map(([file, seconds]) => [file, { x64: seconds, arm64: seconds }]),
+    ),
+    nativePrerequisiteSeconds: 30,
+    installedConsumerSeconds: 60,
+  }
   const expected = {
     x64: [
-      { seconds: 491, files: [checkpoint, workspace] },
-      { seconds: 487, files: [specialist, factory, future, portable] },
-      { seconds: 506, files: [storage] },
+      { seconds: 140, files: [workspace, storage] },
+      { seconds: 132, files: [checkpoint, specialist, future] },
+      { seconds: 140, files: [factory, portable] },
     ],
     arm64: [
-      { seconds: 402, files: [checkpoint, workspace, specialist, future, portable] },
-      { seconds: 401, files: [factory, storage] },
+      { seconds: 210, files: [checkpoint, factory, storage] },
+      { seconds: 202, files: [workspace, specialist, portable, future] },
     ],
   }
   for (const arch of ['x64', 'arm64']) {
-    const shards = planMacHostTests(files, arch)
-    assert.deepEqual(planMacHostTests([...files].reverse(), arch), shards)
+    const shards = planMacHostTests(files, arch, costs)
+    assert.deepEqual(planMacHostTests([...files].reverse(), arch, costs), shards)
     for (const shard of shards) {
       const baseline = expected[arch][shard.index]
       assert.equal(shard.estimatedSeconds, baseline.seconds)
@@ -162,49 +176,6 @@ test('future whole-file suites inherit explicit roles while hidden, dependency a
     assert.equal(isHostTestFile('packages/display-web/test-neighbor/foreign.test.ts'), false)
   } finally {
     await rm(root, { recursive: true, force: true })
-  }
-})
-
-test('whole-file scheduling spreads observed work and conservative split projections deterministically', async () => {
-  const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
-  const measured = new Map([
-    ['packages/display-tui/test/native.test.ts', 15],
-    ['packages/display-tui/test/portability.test.ts', 14],
-    ['packages/jig/test/host/bun-native-preparation.test.ts', 137],
-    ['packages/jig/test/host/finite-acp-lifecycle.test.ts', 200],
-    ['packages/jig/test/host/http-request-lifecycle.test.ts', 197],
-    ['packages/jig/test/host/installed-attachments.test.ts', 15],
-    ['packages/jig/test/host/installed-package-provider.test.ts', 142],
-    ['packages/jig/test/host/installed-software-factory-blocked.test.ts', 86],
-    ['packages/jig/test/host/installed-software-factory.test.ts', 213],
-    ['packages/jig/test/host/installed-workspace-provider.test.ts', 211],
-    ['packages/jig/test/host/markdown-worker.test.ts', 25],
-    ['packages/jig/test/host/package-provider-observation.test.ts', 35],
-    ['packages/jig/test/host/project-author-evaluator.test.ts', 78],
-    ['packages/jig/test/host/project-command-lifecycle.test.ts', 125],
-    ['packages/jig/test/host/root-agent-composition.test.ts', 152],
-    ['packages/jig/test/host/root-agent-fences-acp.test.ts', 120],
-    ['packages/jig/test/host/root-agent-fences-run.test.ts', 116],
-    ['packages/jig/test/host/root-agent-fences-specialist.test.ts', 270],
-    ['packages/jig/test/host/root-agent-http-composition.test.ts', 190],
-    ['packages/jig/test/host/root-agent-repair-batch.test.ts', 194],
-    ['packages/jig/test/host/root-agent-repair-unsuccessful.test.ts', 108],
-    ['packages/jig/test/host/root-agent-repair.test.ts', 96],
-    ['packages/jig/test/host/run-checkpoint-lifecycle.test.ts', 221],
-    ['packages/jig/test/macos/macos-guardian-storage.test.ts', 56],
-    ['packages/jig/test/portable/activation-admission-store.test.ts', 51],
-    ['packages/jig/test/portable/contract-generation.test.ts', 19],
-    ['packages/jig/test/portable/project-evaluator-child.test.ts', 11],
-    ['packages/jig/test/portable/workspace-progress.test.ts', 10],
-  ])
-  const shards = planMacHostTests(files, 'x64')
-  assert.deepEqual(planMacHostTests([...files].reverse(), 'x64'), shards)
-  for (const shard of shards) {
-    const seconds = shard.groups.reduce(
-      (sum, { file }) => sum + (measured.get(file) ?? 0),
-      shard.index === 0 ? 59 : shard.index === shards.length - 1 ? 450 : 0,
-    )
-    assert.ok(seconds <= 1250, `shard ${shard.index} concentrates ${seconds}s of observed work`)
   }
 })
 
@@ -433,46 +404,66 @@ test('Linux whole-file roles own all hostile and display work while startup rema
     resolve(import.meta.dirname, '../../.github/workflows/linux-host-conformance.yml'),
     'utf8',
   )
-  const start = workflow.indexOf('\n  host-suite:\n')
-  const end = workflow.indexOf('\n  rootless-linux:\n', start)
-  assert.ok(start >= 0 && end > start)
-  const shard = workflow.slice(start, end)
-  const steps = shard.split(/\n {6}-\n/)
-  const builds = steps.filter((step) =>
-    step.includes('name: "Build source-test workspace packages"'),
-  )
-  assert.equal(builds.length, 1)
-  assert.match(builds[0], /if: "matrix\.suite != 'installed-evidence'"/)
-  assert.match(builds[0], /run: "just --justfile packages\/jig\/justfile build"/)
-  const source = steps.find((step) =>
-    step.includes('name: "Execute every pinned whole-file source group exactly once"'),
-  )
-  assert.ok(source)
-  assert.match(source, /if: "matrix\.suite != 'installed-evidence'"/)
-  assert.ok(source.includes('node --input-type=module -e "$LINUX_COMMAND_PLANNER"'))
-  for (const path of [
-    'packages/jig/test/package-smoke.ts',
-    'scripts/test-operational-baseline.ts',
-    'scripts/test-installed-hostile-baseline.ts',
-    'packages/display-model/test/package-smoke.ts',
-    'packages/display-web/test/package-smoke.ts',
-    'packages/display-tui/test/package-smoke.ts',
-  ]) {
-    const owners = steps.filter(
-      (step) =>
-        step.includes(`'${path}' >> "$RUNNER_TEMP/linux-command-evidence/`) &&
-        step.includes('CI installed script complete:'),
+  const parse = (text) => {
+    const result = spawnSync(
+      'bun',
+      [
+        '--no-env-file',
+        '--no-install',
+        '--config=/dev/null',
+        '--eval',
+        'process.stdout.write(JSON.stringify(Bun.YAML.parse(await Bun.stdin.text())))',
+      ],
+      { input: text, encoding: 'utf8', timeout: 10000 },
     )
-    assert.equal(owners.length, 1, path)
-    assert.match(owners[0], /if: "matrix\.suite == 'installed-evidence'"/)
-    assert.ok(owners[0].includes(path))
-    assert.ok(owners[0].includes(String.raw`\"commandKind\":\"installed-script\"`))
+    assert.equal(result.status, 0, result.stderr)
+    return JSON.parse(result.stdout)
   }
-  for (const proof of [
-    'scripts/ci/provision-github-rootless-host.sh provision',
-    'candidate-provenance.mjs verify',
-    'sha256sum --check',
-    'scripts/ci/provision-github-rootless-host.sh assert-clean',
-  ])
-    assert.ok(shard.includes(proof), proof)
+  const check = (parsed) => {
+    const steps = parsed.jobs['host-suite'].steps
+    const condition = (step) => step.if.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '').trim()
+    const builds = steps.filter((step) =>
+      /just\s+--justfile\s+packages\/jig\/justfile\s+build\b/.test(step.run ?? ''),
+    )
+    assert.equal(builds.length, 1)
+    assert.match(condition(builds[0]), /^matrix\.suite\s*!=\s*'installed-evidence'$/)
+    const source = steps.filter((step) =>
+      /node\s+--input-type=module\s+-e\s+"\$LINUX_COMMAND_PLANNER"/.test(step.run ?? ''),
+    )
+    assert.equal(source.length, 1)
+    assert.match(condition(source[0]), /^matrix\.suite\s*!=\s*'installed-evidence'$/)
+    for (const path of [
+      'packages/jig/test/package-smoke.ts',
+      'scripts/test-operational-baseline.ts',
+      'scripts/test-installed-hostile-baseline.ts',
+      'packages/display-model/test/package-smoke.ts',
+      'packages/display-web/test/package-smoke.ts',
+      'packages/display-tui/test/package-smoke.ts',
+    ]) {
+      const owners = steps.filter((step) => {
+        const context = step.env?.JIG_CI_COMMAND_CONTEXT
+        return context && JSON.parse(context).files.includes(path)
+      })
+      assert.equal(owners.length, 1, path)
+      assert.match(condition(owners[0]), /^matrix\.suite\s*==\s*'installed-evidence'$/)
+      assert.ok(owners[0].run.includes(path))
+      assert.ok(owners[0].run.includes('CI installed script complete:'))
+      assert.equal(JSON.parse(owners[0].env.JIG_CI_COMMAND_CONTEXT).commandKind, 'installed-script')
+    }
+    const commands = steps.map((step) => step.run ?? '').join('\n')
+    for (const proof of [
+      /scripts\/ci\/provision-github-rootless-host\.sh\s+provision/,
+      /candidate-provenance\.mjs\s+verify/,
+      /sha256sum\s+--check/,
+      /scripts\/ci\/provision-github-rootless-host\.sh\s+assert-clean/,
+    ])
+      assert.match(commands, proof)
+  }
+  const parsed = parse(workflow)
+  check(parsed)
+  // JSON is YAML too: indentation, scalar quoting and step labels carry no role.
+  for (const step of parsed.jobs['host-suite'].steps) step.name = 'Renamed step'
+  check(parse(JSON.stringify(parsed, null, 1)))
+  parsed.jobs['host-suite'].steps.find((step) => step.env?.JIG_CI_COMMAND_CONTEXT).if = 'false'
+  assert.throws(() => check(parsed), /installed-evidence/)
 })

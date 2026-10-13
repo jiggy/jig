@@ -166,6 +166,8 @@ test('JUnit failures, errors, incomplete totals and arbitrary roots are not succ
     xml(testcase('runs') + testcase('broken', '<error/>')),
     xml(testcase('runs')).replace('<testsuites tests="1">', '<testsuites tests="2">'),
     `<not-a-test-report>${testcase('runs')}</not-a-test-report>`,
+    xml(''),
+    xml(testcase('   ')),
   ].entries()) {
     const junit = await f.put(`bad-${i}.xml`, text)
     await assert.rejects(() => observedCount({ junit }))

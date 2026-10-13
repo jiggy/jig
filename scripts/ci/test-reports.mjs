@@ -147,9 +147,9 @@ function inertPath(directory, path) {
     throw new Error('Report must be a regular evidence file')
   return resolved
 }
-function parseJUnit(path) {
+export function readJUnitCases(path) {
   const program =
-    'import sys,json,xml.etree.ElementTree as E\nr=E.parse(sys.argv[1]).getroot()\nif r.tag not in ("testsuite","testsuites"): raise ValueError("invalid JUnit root")\nc=list(r.iter("testcase"))\nif not c or any(x.find("failure") is not None or x.find("error") is not None or x.find("skipped") is not None for x in c): raise ValueError("failed, skipped or empty host proof")\nif any(int(x.get("failures","0")) or int(x.get("errors","0")) or int(x.get("skipped","0")) for x in r.iter() if x.tag in ("testsuite","testsuites")): raise ValueError("failed suite")\nif r.get("tests") is not None and int(r.get("tests"))!=len(c): raise ValueError("incomplete JUnit cases")\nprint(json.dumps([dict(x.attrib) for x in c]))'
+    'import sys,json,xml.etree.ElementTree as E\nr=E.parse(sys.argv[1]).getroot()\nif r.tag not in ("testsuite","testsuites"): raise ValueError("invalid JUnit root")\nc=list(r.iter("testcase"))\nif not c or any(x.find("failure") is not None or x.find("error") is not None or x.find("skipped") is not None for x in c): raise ValueError("failed, skipped or empty test proof")\nif any(int(x.get("failures","0")) or int(x.get("errors","0")) or int(x.get("skipped","0")) for x in r.iter() if x.tag in ("testsuite","testsuites")): raise ValueError("failed suite")\nidentities=[(x.get("file",""),x.get("classname",""),x.get("name","")) for x in c]\nif any(not name.strip() for _,_,name in identities) or len(set(identities))!=len(identities): raise ValueError("missing or repeated JUnit case identity")\nif r.get("tests") is not None and int(r.get("tests"))!=len(c): raise ValueError("incomplete JUnit cases")\nprint(json.dumps([dict(x.attrib) for x in c]))'
   return JSON.parse(
     execFileSync('python3', ['-c', program, path], {
       encoding: 'utf8',
@@ -206,7 +206,7 @@ export function readMacReports({
       reports.push({ path: 'installed-startup.xml', files: [INSTALLED_STARTUP_TEST] })
     for (const report of reports) {
       const observed = new Set()
-      for (const item of parseJUnit(inertPath(directory, report.path))) {
+      for (const item of readJUnitCases(inertPath(directory, report.path))) {
         const file = repositoryPath(item.file)
         if (!report.files.includes(file) || typeof item.name !== 'string' || !item.name.trim())
           throw new Error('Mac case differs from its owning command')

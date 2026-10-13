@@ -92,7 +92,15 @@ export async function discoverHostTests(root) {
   )
 }
 
-export function planMacHostTests(files, architecture) {
+export function planMacHostTests(
+  files,
+  architecture,
+  {
+    weights = WEIGHTS,
+    nativePrerequisiteSeconds = NATIVE_PREREQUISITE_WEIGHTS[architecture],
+    installedConsumerSeconds = INSTALLED_CONSUMER_WEIGHTS[architecture],
+  } = {},
+) {
   const count = macHostShardCount(architecture)
   const unique = new Set(files)
   if (unique.size !== files.length) {
@@ -111,14 +119,14 @@ export function planMacHostTests(files, architecture) {
     // Include native prerequisites in shard zero and the installed smoke tail
     // in the last shard. These costs must participate in balancing, too.
     estimatedSeconds:
-      (index === 0 ? NATIVE_PREREQUISITE_WEIGHTS[architecture] : 0) +
-      (index === count - 1 ? INSTALLED_CONSUMER_WEIGHTS[architecture] : 0),
+      (index === 0 ? nativePrerequisiteSeconds : 0) +
+      (index === count - 1 ? installedConsumerSeconds : 0),
   }))
   const ordinary = files
     .filter((file) => !NATIVE_PREREQUISITE_TESTS.includes(file) && file !== INSTALLED_STARTUP_TEST)
     .map((file) => ({
       file,
-      estimatedSeconds: WEIGHTS.get(file)?.[architecture] ?? 2,
+      estimatedSeconds: weights.get(file)?.[architecture] ?? 2,
     }))
     .sort((a, b) => b.estimatedSeconds - a.estimatedSeconds || a.file.localeCompare(b.file))
   for (const group of ordinary) {

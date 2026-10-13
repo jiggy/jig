@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { regularFile } from './candidate-provenance.mjs'
 import { filesForTarget, gitRepositoryTests } from './suite-inventory.mjs'
-import { parseBunTranscript } from './test-reports.mjs'
+import { parseBunTranscript, readJUnitCases } from './test-reports.mjs'
 
 // Counts come from completed reports or built files. The aggregate binds them
 // to the current full inventory and requires every job and runtime profile.
@@ -149,10 +149,10 @@ export async function observedCount({
     }
   }
   if (junit) {
-    const program =
-      'import sys,json,xml.etree.ElementTree as E\nr=E.parse(sys.argv[1]).getroot()\nif r.tag not in ("testsuite","testsuites"): raise ValueError("invalid JUnit root")\nc=list(r.iter("testcase"))\nif any(x.find("failure") is not None or x.find("error") is not None or x.find("skipped") is not None for x in c) or any(int(x.get("failures","0")) or int(x.get("errors","0")) or int(x.get("skipped","0")) for x in r.iter() if x.tag in ("testsuite","testsuites")): raise ValueError("failed or skipped test proof")\nidentities=[(x.get("file",""),x.get("classname",""),x.get("name","")) for x in c]\nif any(not name for _,_,name in identities) or len(set(identities))!=len(identities): raise ValueError("missing or repeated JUnit case identity")\nif r.get("tests") is not None and int(r.get("tests"))!=len(c): raise ValueError("incomplete JUnit cases")\nprint(json.dumps({"count":len(c),"skipped":0,"files":sorted(set(x.get("file","") for x in c))}))'
+    const cases = readJUnitCases(junit)
     const report = {
-      ...JSON.parse(execFileSync('python3', ['-c', program, junit], { encoding: 'utf8' })),
+      count: cases.length,
+      skipped: 0,
       basis: 'test-cases',
     }
     if (testFiles) {
@@ -160,11 +160,11 @@ export async function observedCount({
         !Array.isArray(testFiles) ||
         !testFiles.length ||
         new Set(testFiles).size !== testFiles.length ||
-        JSON.stringify([...testFiles].sort()) !== JSON.stringify(report.files)
+        JSON.stringify([...testFiles].sort()) !==
+          JSON.stringify([...new Set(cases.map((item) => item.file ?? ''))].sort())
       )
         throw new Error('JUnit files differ from the selected target inventory')
     }
-    delete report.files
     if (pythonTranscript) {
       const text = await readFile(pythonTranscript, 'utf8')
       if (/^FAILED\b|^OK \(skipped=|^skipped=/m.test(text))
