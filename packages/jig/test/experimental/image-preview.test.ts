@@ -3,8 +3,8 @@ import { Worker } from 'node:worker_threads'
 import { PRIVATE_PREVIEW_LIMITS } from '../../src/internal/image-preview-policy.js'
 import { fixture } from '../image-preview.fixture.js'
 
-if (process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1')
-  throw Error('This suite requires opted-in native Mac qualification')
+if (process.env.JIG_NATIVE_IMAGE_THREAD_TEST !== '1')
+  throw Error('This candidate qualification requires JIG_NATIVE_IMAGE_THREAD_TEST=1')
 
 for (const mode of ['javascript', 'wasm']) {
   test(`native qualification: actual ${mode} termination joins its thread exit`, async () => {

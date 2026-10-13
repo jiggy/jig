@@ -10,6 +10,8 @@
 - `macos/` owns native Mac enforcement and recovery; `macos-23E224/` owns the exact Intel preference observer profile.
 - `startup/` owns real offline native client startup in the installed qualification step.
 - `live/` owns separately authorized subscription, API and restoration qualifications.
+- `experimental/image-preview.test.ts` owns the explicitly opted-in, unqualified
+  thread-renderer candidate; it is not part of release qualification.
 - `fixtures/` and root `*.fixture.ts` modules own shared construction and assertions. They register no tests and acquire no native owners on import. Each case owns fresh project capture, admission, Run, durable state and cleanup.
   The private `fixtures/incident-brief/test/` application owns separately registered
   deterministic method cases in the applications profile.
@@ -43,10 +45,12 @@ clock substitution.
 
 `just jig::test` selects the ordinary source profile. `just jig::check` and root `just preflight` add the qualified Mac regression pass. Complete hosted qualification also runs shared lifecycle suites, fresh installed consumers and genuine offline clients.
 
-Image rendering cases belong to the portable suite. Actual JavaScript and Wasm
-thread-exit cases belong to the qualified Mac suite, whose pinned Bun supports
-the required termination promise. Both modes retain their ready-message barrier,
-exit join and five-second case limit.
+Image rendering and unavailable-production fallback cases belong to the portable
+suite. Actual JavaScript and Wasm thread-exit cases remain a manual candidate
+qualification with `JIG_NATIVE_IMAGE_THREAD_TEST=1`; qualified Bun cannot currently
+interrupt its spinning Wasm worker. Both modes retain their ready-message barrier,
+exit join and five-second case limit. A successful renderer test does not qualify
+thread lifetime or enable production decoding.
 
 `host/markdown-worker.test.ts` exercises only the installed CLI and its packed worker. Its fresh temporary root owns consumers and failure evidence; it does not build a second source worker. Source-worker compilation and direct protocol exchanges belong to `portable/markdown-worker.test.ts`.
 

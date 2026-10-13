@@ -47,6 +47,11 @@
       "profiles": ["live"]
     },
     {
+      "id": "image-thread-candidate",
+      "files": ["packages/jig/test/experimental/image-preview.test.ts"],
+      "profiles": ["experimental"]
+    },
+    {
       "id": "display-model",
       "roots": ["packages/display-model/test/"],
       "profiles": ["portable", "portable-linux", "linux", "macos-24G830", "macos-23E224"]

@@ -62,6 +62,7 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
     'packages/jig/test/startup/native-agent-startup.test.ts',
     'packages/flow-authoring/test/authoring.node.mjs',
     'packages/display-tui/test/native.test.ts',
+    'packages/jig/test/experimental/image-preview.test.ts',
   ]
   assert.deepEqual(reconcileSuiteInventory(files, affectedManifest).errors, [])
   const filesFor = (target, profile) => filesForTarget(files, target, affectedManifest, profile)
@@ -77,6 +78,12 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
   assert.ok(filesFor('macos-x64').includes(files[7]))
   assert.ok(filesFor('linux').includes(files[5]))
   assert.ok(filesFor('macos-x64').includes(files[5]))
+  for (const target of ['source-portable', 'source-protocol', 'linux', 'macos-x64', 'macos-arm64'])
+    assert.ok(!filesFor(target).includes(files[10]))
+  assert.equal(
+    reconcileSuiteInventory(files, affectedManifest).ownership[files[10]],
+    'image-thread-candidate',
+  )
 })
 
 test('Reporting additions retain distinct JavaScript and Python source owners', () => {

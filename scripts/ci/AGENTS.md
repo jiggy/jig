@@ -9,6 +9,9 @@ Host preparation never becomes a consumer requirement.
 ## Ownership
 
 - `test-suites.json` declares whole-file roots, applicability and fixed full execution targets. `suite-inventory.mjs` supplies local and pinned-Git membership, rejecting unknown, ambiguous or linked tests. Every applicable file belongs to one physical suite; fixtures declare inputs without registering independent cases.
+  The explicitly listed `image-thread-candidate` belongs only to the experimental
+  profile and retains its manual opt-in. It cannot qualify a release; production
+  image decoding remains unavailable while Wasm thread termination is unproved.
 - `host-scope.mjs` avoids native allocation only for a verified two-parent PR merge whose entire delta is independent site files, non-specification documentation, Python SDK/reporting files, or reviewed root/agent guidance. The shared Reporting descriptor remains a native input. Source, build, workflow, specification, mixed, unknown or unverifiable inputs require complete Linux and both Mac architectures. Main and manual execution are always full. Final `affected-linux` and `affected-macos` checks independently reconstruct this decision and require either every native job's success or every job's explicit omission. An omitted PR creates no host qualification receipt. No selection modes, result reuse, compact witnesses or recurring audit jobs exist.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and

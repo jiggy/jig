@@ -11,6 +11,7 @@ export const SUITE_PROFILES = Object.freeze([
   'macos-24G830',
   'macos-23E224',
   'live',
+  'experimental',
   'tooling',
 ])
 const TEST_FILE =
