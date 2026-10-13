@@ -69,17 +69,39 @@ const {readFileSync,writeFileSync}=require('node:fs');
 const state=JSON.parse(readFileSync(process.env.MOCK_NPM_STATE,'utf8'));
 const snapshot=JSON.parse(process.env.QUALIFICATION_SNAPSHOT);
 const path=process.argv[3];
-const runs=snapshot.runs.map(x=>({id:x.runId,run_attempt:x.runAttempt,path:x.workflowPath,event:x.event,head_sha:x.headSha,head_branch:x.headBranch,repository:{full_name:snapshot.repository},head_repository:{full_name:x.headRepository},status:'completed',conclusion:'success'}));
+const url=new URL('https://api.github.com/'+path);
+const runs=snapshot.runs.map(x=>({id:x.runId,created_at:new Date(Date.UTC(2026,0,1,0,0,x.runId)).toISOString(),run_attempt:x.runAttempt,path:x.workflowPath,event:x.event,head_sha:x.headSha,head_branch:x.headBranch,repository:{full_name:snapshot.repository},head_repository:{full_name:x.headRepository},status:'completed',conclusion:'success'}));
+const native=runs.find(x=>x.path.endsWith('/native-agent-api-qualification.yml'));
+if(native && Object.hasOwn(state,'githubNativeCreatedAt')) native.created_at=state.githubNativeCreatedAt;
+if(native && state.githubMissingNativeCreatedAt) delete native.created_at;
 let result;
-const run=path.match(/\\/actions\\/runs\\/(\\d+)$/);
-const jobs=path.match(/\\/runs\\/(\\d+)\\/attempts\\/(\\d+)\\/jobs/);
-const artifact=path.match(/\\/actions\\/artifacts\\/(\\d+)$/);
+const run=url.pathname.match(/\\/actions\\/runs\\/(\\d+)$/);
+const jobs=url.pathname.match(/\\/runs\\/(\\d+)\\/attempts\\/(\\d+)\\/jobs/);
+const artifact=url.pathname.match(/\\/actions\\/artifacts\\/(\\d+)$/);
+const runArtifacts=url.pathname.match(/\\/actions\\/runs\\/(\\d+)\\/artifacts$/);
 if(run){result=runs.find(x=>x.id===Number(run[1]));if(state.githubRerun || (state.githubRerunAfterRegistry && state.calls.length))result={...result,run_attempt:result.run_attempt+1};}
 else if(jobs){const proof=snapshot.runs.find(x=>x.runId===Number(jobs[1]));result={jobs:proof.jobs.map(x=>({id:x.jobId,name:x.name,run_attempt:x.runAttempt,status:'completed',conclusion:'success'}))};}
 else if(artifact){const proof=snapshot.artifacts.find(x=>x.artifactId===Number(artifact[1]));result={id:proof.artifactId,name:proof.name,digest:proof.digest,expired:false,expires_at:'2099-01-01T00:00:00Z',workflow_run:{id:proof.runId,head_sha:proof.headSha}};if(state.githubExpired)result.expired=true;}
-else if(path.includes('/workflows/')){result={workflow_runs:runs.filter(x=>path.includes(x.path.split('/').at(-1)))};if(state.githubNewRun && result.workflow_runs.length)result.workflow_runs.push({...result.workflow_runs[0],id:9999});}
+else if(runArtifacts){result={artifacts:Number(runArtifacts[1])===5000 && state.githubNewNative?.startsWith('inputs') ? [{name:'native-inputs-codex-'+snapshot.sourceRevision+'-r5000-a1'}] : []};}
+else if(url.pathname.includes('/workflows/')){
+  let values=runs.filter(x=>url.pathname.includes(x.path.split('/').at(-1)));
+  if(native && url.pathname.includes('/native-agent-api-qualification.yml/')){
+    for(let i=0;i<(state.githubNativeHistory||0);i++) values.push({...native,id:10000+i,head_sha:'b'.repeat(40),created_at:state.githubNativeHistoryRecent?native.created_at:'2025-12-31T00:00:00Z'});
+    if(state.githubNewNative){
+      const manual=state.githubNewNative.startsWith('manual');
+      const pending=state.githubNewNative.endsWith('waiting');
+      values.push({...native,id:5000,event:manual?'workflow_dispatch':'workflow_run',head_sha:manual?snapshot.sourceRevision:'b'.repeat(40),created_at:state.githubNewNativeSameTime?native.created_at:new Date(Date.parse(native.created_at)+1000).toISOString(),status:pending?'waiting':'completed',conclusion:pending?null:'failure'});
+    }
+  }
+  if(state.githubNewRun && values.length) values.push({...values[0],id:9999});
+  const created=url.searchParams.get('created');
+  values=values.filter(x=>['branch','event','head_sha'].every(key=>!url.searchParams.has(key)||url.searchParams.get(key)===x[key==='branch'?'head_branch':key]) && (created===null||Date.parse(x.created_at)>=Date.parse(created.slice(2)))).sort((a,b)=>b.id-a.id);
+  const page=Number(url.searchParams.get('page')||1),size=Number(url.searchParams.get('per_page')||100);
+  result={workflow_runs:values.slice((page-1)*size,page*size)};
+}
 else throw Error('Unexpected GitHub API path '+path);
 state.githubCalls=(state.githubCalls||0)+1;
+(state.githubPaths||=[]).push(path);
 writeFileSync(process.env.MOCK_NPM_STATE,JSON.stringify(state));
 process.stdout.write(JSON.stringify(result));
 `
@@ -398,6 +420,86 @@ test('newer same-source runs and expired evidence invalidate queued publication'
     })
   }
 }, 45_000)
+
+test('queued host publication excludes more than a thousand historical native runs', async () => {
+  await fixture('0.1.0-alpha.16', async ({ state, root }) => {
+    state.githubNativeHistory = 1500
+    const result = await run(root, state)
+    expect(result.result.error).toBeUndefined()
+    expect(result.result.status).toBe(0)
+    expect(result.state.calls.filter((call: string[]) => call[0] === 'publish')).toHaveLength(3)
+    const queries = result.state.githubPaths
+      .filter((path: string) => path.includes('/workflows/native-agent-api-qualification.yml/runs'))
+      .map((path: string) => new URL(`https://api.github.com/${path}`))
+    expect(queries.length).toBeGreaterThan(0)
+    for (const query of queries) {
+      expect(query.searchParams.get('created')).toBe('>=2026-01-01T00:00:04.000Z')
+      expect(query.search).toContain('created=%3E%3D')
+      expect(query.searchParams.get('status')).toBeNull()
+      expect(query.searchParams.get('page')).toBe('1')
+    }
+    expect(
+      result.state.githubPaths.some((path: string) => /\/runs\/1\d{4}\/artifacts/.test(path)),
+    ).toBe(false)
+  })
+}, 45_000)
+
+for (const scenario of ['manual-waiting', 'manual-failed', 'inputs-waiting', 'inputs-failed']) {
+  test(`queued host publication rejects newer native ${scenario} after narrowing history`, async () => {
+    await fixture('0.1.0-alpha.16', async ({ state, root }) => {
+      state.githubNativeHistory = 1500
+      state.githubNewNative = scenario
+      state.githubNewNativeSameTime = scenario.endsWith('waiting')
+      const result = await run(root, state)
+      expect(result.result.error).toBeUndefined()
+      expect(result.result.status).not.toBeNull()
+      expect(result.result.status).not.toBe(0)
+      expect(result.result.stderr).toContain('native qualification superseded authorization')
+      expect(result.state.calls).toEqual([])
+    })
+  })
+}
+
+test('queued host publication retains its native pagination bound within the current window', async () => {
+  await fixture('0.1.0-alpha.16', async ({ state, root }) => {
+    state.githubNativeHistory = 1000
+    state.githubNativeHistoryRecent = true
+    const result = await run(root, state)
+    expect(result.result.error).toBeUndefined()
+    expect(result.result.status).not.toBeNull()
+    expect(result.result.status).not.toBe(0)
+    expect(result.result.stderr).toContain('pagination exceeded its bound')
+    expect(result.state.calls).toEqual([])
+  })
+})
+
+for (const [label, value] of [
+  ['missing', undefined],
+  ['null', null],
+  ['empty', ''],
+  ['malformed', 'invalid'],
+  ['non-string', 123],
+  ['invalid-calendar', '2026-02-30T00:00:00Z'],
+  ['future', '2099-01-01T00:00:00Z'],
+] as const) {
+  test(`queued host publication rejects ${label} native creation time before narrowing history`, async () => {
+    await fixture('0.1.0-alpha.16', async ({ state, root }) => {
+      if (value === undefined) state.githubMissingNativeCreatedAt = true
+      else state.githubNativeCreatedAt = value
+      const result = await run(root, state)
+      expect(result.result.error).toBeUndefined()
+      expect(result.result.status).not.toBeNull()
+      expect(result.result.status).not.toBe(0)
+      expect(result.result.stderr).toContain('valid native qualification creation time')
+      expect(result.state.calls).toEqual([])
+      expect(
+        result.state.githubPaths.some((path: string) =>
+          path.includes('/workflows/native-agent-api-qualification.yml/runs'),
+        ),
+      ).toBe(false)
+    })
+  })
+}
 
 test('publication and tagging use separate SDK and host qualification paths', async () => {
   const workflow = Bun.YAML.parse(

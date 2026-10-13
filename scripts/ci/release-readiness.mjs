@@ -184,7 +184,7 @@ export function verifyQualification(
   return receipt
 }
 
-async function latestMainRun(client, repository, kind, source) {
+async function mainRuns(client, repository, kind, source) {
   const query = new URLSearchParams({ branch: 'main', event: 'push', head_sha: source })
   const runs = await paginated(
     client,
@@ -200,7 +200,23 @@ async function latestMainRun(client, repository, kind, source) {
         return false
       }
     })
-    .sort((a, b) => b.id - a.id)[0]
+    .sort((a, b) => b.id - a.id)
+}
+
+async function latestMainRun(client, repository, kind, source) {
+  return (await mainRuns(client, repository, kind, source))[0]
+}
+
+function creationTime(value) {
+  const time = Date.parse(value)
+  if (
+    typeof value !== 'string' ||
+    !Number.isFinite(time) ||
+    time > Date.now() ||
+    new Date(time).toISOString().replace('.000Z', 'Z') !== value.replace('.000Z', 'Z')
+  )
+    throw new Error('Missing valid CI creation time for native qualification discovery')
+  return time
 }
 
 async function loadCanonical(client, repository, run, source) {
@@ -327,7 +343,8 @@ export async function releaseReadiness({
     result.reasons.push('No trusted tested source was identified')
     return result
   }
-  const ci = await latestMainRun(client, repository, 'ci', source)
+  const ciRuns = await mainRuns(client, repository, 'ci', source)
+  const ci = ciRuns[0]
   if (!succeeded(ci)) {
     result.reasons.push('Complete current-attempt CI qualification is pending or failed')
     return result
@@ -413,11 +430,32 @@ export async function releaseReadiness({
       const { receipt } = await qualificationFromArtifact(client, artifact)
       verifyQualification(receipt, { kind: 'macos', profile, candidate, run: mac, repository })
     }
-    const nativeRuns = await paginated(
-      client,
-      `repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs`,
-      'workflow_runs',
+    // Rerunning an older Linux/native pair may consume a newer same-source CI
+    // producer. Preserve descendants since the first verified push of that source.
+    const earliestCi = ciRuns.reduce((earliest, run) =>
+      creationTime(run.created_at) < creationTime(earliest.created_at) ? run : earliest,
     )
+    creationTime(earliestCi.created_at)
+    // A queued manual run can predate even the first CI run; its head identifies
+    // the tested source directly, unlike a workflow_run descendant's head.
+    const nativeQueries = [
+      new URLSearchParams({
+        branch: 'main',
+        event: 'workflow_run',
+        created: `>=${earliestCi.created_at}`,
+      }),
+      new URLSearchParams({ branch: 'main', event: 'workflow_dispatch', head_sha: source }),
+    ]
+    const nativeResponses = await Promise.all(
+      nativeQueries.map((query) =>
+        paginated(
+          client,
+          `repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs?${query}`,
+          'workflow_runs',
+        ),
+      ),
+    )
+    const nativeRuns = [...new Map(nativeResponses.flat().map((run) => [run.id, run])).values()]
     // Native head_sha is the default-branch workflow revision, not the tested
     // source. Receipts and Linux lineage are the only source association.
     let nativeMatch
