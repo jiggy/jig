@@ -106,21 +106,23 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   fresh canonical archives, actual installed display/observation checks and
   distinct partial execution evidence. They never emit full host qualification
   receipts. Full/audit runs omit these redundant partial jobs.
-- The temporary `ci-performance-audit` opt-in label on the repository's own alpha
-  PR adds fresh, separate source-portable and Linux/Intel/ARM installed audit
-  jobs after their existing full owners. Add the label before a new synchronize
-  event; normal triggers, conditions, gates, main/manual/release policy and selection
-  stay unchanged. The normal and audit Linux compact jobs build only Flow and
-  Reporting for their source observation validator; installed consumers still use
-  the untouched original eight archives. All roles use the same tested merge source, original CI
-  producer attempt and immutable eight archives. Existing readers validate
-  positive complete reports, zero skips/filters and native residue; audit-prefixed
-  partial evidence never creates a qualification receipt or enters readiness.
-  Repeat three full-first cohorts and retain failures and queue/setup/work costs.
-  This is provisional cost evidence with order bias, not an eligible-PR latency
-  or selector activation claim. Protected acquisition semantics are unchanged.
-  Remove these temporary audit job blocks after three retained cohorts; keep the
-  offline evidence ledger outside the production pipeline.
+- Linux compact witness jobs build only Flow and Reporting for their source
+  observation validator; installed consumers use the untouched canonical eight
+  archives.
+- A temporary eligible-PR trial sets `active` only for this repository's own
+  `alpha` pull request to the immutable `ci-performance-trial-baseline` base.
+  Each plan and its final independent gate use the same predicate. FORCE,
+  verified-head sampling, ordinary jobs and publication rules remain unchanged.
+  Record the full policy baseline SHA/tree, then one genuine presentation change
+  and regression. Require fresh `test`, `affected-linux` and `affected-macos`
+  proof for three complete timing repetitions and one same-head forced-full
+  comparator. Retain failures, queues and every job's setup and execution work.
+  Three repeats of one head are not independent sampler draws. A sampled-full
+  head stays full; never amend or search seeds. The comparator is one observed
+  cost reference; audit-inclusive expected cost is modeled. This trial cannot
+  qualify main publication or justify unrelated exclusions. Close its unmerged
+  PR and remove this override before merging the delivery PR. Historical
+  temporary-audit evidence remains outside the production pipeline.
 
 - Model and web/TUI display packages enter dependency ownership, source and host
   test inventories, and frozen standalone artifact gates. Their JavaScript/assets

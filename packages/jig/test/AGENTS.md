@@ -16,6 +16,11 @@
 
 `scripts/ci/affected-manifest.json` owns whole-file applicability. The shared suite inventory refuses unknown or ambiguous files. Select suites before execution; selected suites must execute positively with zero skipped or filtered cases. Missing native flags, exact host prerequisites or live inputs fail the selected suite. Parameterized cases have explicit unique registration names; do not add name-pattern partitions or frozen line/name skip exceptions.
 
+Each independent native backend fixture Run plan receives a fresh absolute deadline for
+its existing duration when constructed. A plan spread from a completed Run must
+not carry that spent deadline into another fresh owner. Never reset a sealed or
+active Run deadline.
+
 `just jig::test` selects the ordinary source profile. `just jig::check` and root `just preflight` add the qualified Mac regression pass. Complete hosted qualification also runs shared lifecycle suites, fresh installed consumers and genuine offline clients. Partial display witnesses never replace that evidence.
 
 `host/markdown-worker.test.ts` exercises only the installed CLI and its packed worker. Its fresh temporary root owns consumers and failure evidence; it does not build a second source worker. Source-worker compilation and direct protocol exchanges belong to `portable/markdown-worker.test.ts`.
