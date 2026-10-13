@@ -319,7 +319,7 @@
       },
       {
         "file": "packages/jig/test/root-agent-run-lifecycle.test.ts",
-        "blob": "b9ff0cf4201fd65000094b55ef10ce3196159308",
+        "blob": "c77e0aa7c981cf628a95ff462270e3f958ba89db",
         "sourcePatterns": [
           "^(?:contained repair file application |private contained Agent Run lifecycle )"
         ],

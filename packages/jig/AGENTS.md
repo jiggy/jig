@@ -89,6 +89,12 @@ admitted FLOW packages.
   verification policy, acquire support for the actual consumer project, and
   keep verification caches outside it. Result and cleanup assertions remain
   independent of this installed-support optimization.
+  Contained repair scenarios retain invocation-scoped guardian recovery evidence
+  and report native output capture rejection through the existing bounded
+  error class/code classifier at the fixed `output-capture` phase. Observer
+  exceptions cannot replace the original error. Work acceptance, captured
+  output, delivery acknowledgement and cleanup remain independent assertions;
+  these diagnostics establish no cause without an observed failure.
 - Agent Run resolves to an ordinary Flow through defaults or exact slots.
   Jig retains source admission, resource grants and owned execution, not Agent
   preparation or answer interpretation. Skill content is explicit caller data;

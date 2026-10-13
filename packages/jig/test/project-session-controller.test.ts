@@ -24,6 +24,14 @@ setDefaultTimeout(30_000)
 
 describe('private finite project session', () => {
   test('retains a closed cleanup cause behind an unconfirmed native fence', () => {
+    const nativeOutputCauses = [
+      ['native output collection is unavailable', 'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE'],
+      ['native output was lost during cleanup', 'NATIVE_OUTPUT_LOST_DURING_CLEANUP'],
+      ['native output was not captured', 'NATIVE_OUTPUT_NOT_CAPTURED'],
+      ['output capture deadline exceeded', 'OUTPUT_CAPTURE_DEADLINE'],
+      ['output exceeds its finite file profile', 'OUTPUT_FILE_PROFILE'],
+      ['native output cleanup failed', 'NATIVE_OUTPUT_CLEANUP_FAILED'],
+    ] as const
     for (const [message, code] of [
       ['macOS storage recovery is unconfirmed', 'MACOS_STORAGE_RECOVERY_UNCONFIRMED'],
       ['macOS guardian job is still present', 'MACOS_GUARDIAN_JOB_PRESENT'],
@@ -33,6 +41,7 @@ describe('private finite project session', () => {
       ['macOS volume detach failed', 'MACOS_VOLUME_DETACH'],
       ['macOS guardian contains unexpected state', 'MACOS_GUARDIAN_UNEXPECTED_STATE'],
       ['macOS recovery slot contains unexpected state', 'MACOS_RECOVERY_UNEXPECTED_STATE'],
+      ...nativeOutputCauses,
     ] as const) {
       const failure = Object.assign(new Error('private owner path'), {
         name: 'PrivateMacosFenceUnconfirmedError',
@@ -53,6 +62,32 @@ describe('private finite project session', () => {
     expect(closedTestErrorCauses(new Error('macOS volume info failed private token'))).toEqual([
       'Error',
     ])
+    for (const [message] of nativeOutputCauses) {
+      for (const nearMatch of [
+        `${message} synthetic bearer secret`,
+        `private capture path ${message}`,
+      ]) {
+        expect(closedTestErrorCauses(new Error(nearMatch))).toEqual(['Error'])
+      }
+    }
+    const captureFailure = new AggregateError(
+      [
+        new Error('native output was lost during cleanup', {
+          cause: new Error('synthetic bearer secret /private/capture'),
+        }),
+      ],
+      'native output cleanup failed',
+      { cause: new Error('synthetic bearer secret /private/owner') },
+    )
+    const captureCauses = closedTestErrorCauses(captureFailure)
+    expect(captureCauses).toEqual([
+      'AggregateError:NATIVE_OUTPUT_CLEANUP_FAILED',
+      'Error:NATIVE_OUTPUT_LOST_DURING_CLEANUP',
+      'Error',
+      'Error',
+    ])
+    expect(JSON.stringify(captureCauses)).not.toContain('synthetic bearer secret')
+    expect(JSON.stringify(captureCauses)).not.toContain('/private/')
     const nativeFailure = Object.assign(new Error('private owner path'), {
       name: 'PrivateMacosFenceUnconfirmedError',
       cause: new AggregateError(
