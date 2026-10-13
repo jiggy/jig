@@ -246,4 +246,5 @@ test('applied begin and commit with lost ACK remain unconfirmed and fence the or
   }
 }, 120_000)
 
-if (process.platform !== 'darwin') throw Error('This suite requires a native Mac')
+if (process.platform !== 'darwin' || process.env.JIG_MACOS_PROCESS_TEST !== '1')
+  throw Error('This suite requires opted-in native Mac qualification')

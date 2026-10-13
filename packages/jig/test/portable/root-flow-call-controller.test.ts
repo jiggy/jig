@@ -30,7 +30,7 @@ test('file children settle sources and ownership before commit and preserve unce
   const root = await mkdtemp(join(tmpdir(), 'jig-child-import-lifecycle-'))
   try {
     const child = Bun.spawn(
-      [process.execPath, join(import.meta.dir, 'fixtures/child-file-import-lifecycle.ts'), root],
+      [process.execPath, join(suiteTestRoot, 'fixtures/child-file-import-lifecycle.ts'), root],
       { stdout: 'pipe', stderr: 'pipe' },
     )
     const result = await settleTestCommand(child, {

@@ -39,7 +39,7 @@ const finiteAcpFiles = Object.fromEntries(
     ['contract.json', 'requests.json', 'responses.json'].map(async (name) => [
       `contracts/finite-acp/${name}`,
       await readFile(
-        new URL(`../../../docs/jig/spec/contracts/finite-acp/${name}`, import.meta.url),
+        new URL(`../../../../docs/jig/spec/contracts/finite-acp/${name}`, import.meta.url),
         'utf8',
       ),
     ]),

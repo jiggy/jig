@@ -12,6 +12,11 @@
 - `live/` owns separately authorized subscription, API and restoration qualifications.
 - `fixtures/` and root `*.fixture.ts` modules own shared construction and assertions. They register no tests and acquire no native owners on import. Each case owns fresh project capture, admission, Run, durable state and cleanup.
 
+Static child-attachment maps and file-import lifetimes retain portable, Linux
+and native Mac whole suites under these owners. Mac file-import and input-alias
+cases require the native opt-in. The ordinary installed mapped-files consumer
+remains a package-smoke obligation using frozen Jig and FLOW SDK archives.
+
 ## Execution contracts
 
 `scripts/ci/test-suites.json` owns whole-file applicability. The shared suite inventory refuses unknown or ambiguous files. Select suites before execution; selected suites must execute positively with zero skipped or filtered cases. Missing native flags, exact host prerequisites or live inputs fail the selected suite. Parameterized cases have explicit unique registration names; do not add name-pattern partitions or frozen line/name skip exceptions.
