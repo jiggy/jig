@@ -23,6 +23,22 @@ const linuxProfile = 'ubuntu-24.04/x64/bun-1.3.3/rootless'
 const inputFile = 'packages/jig/test/file-input.test.ts'
 const providerFile = 'packages/jig/test/package-provider-host.test.ts'
 const rootFile = 'packages/jig/test/root-agent-run-lifecycle.test.ts'
+const foregroundFile = 'packages/jig/test/private-foreground.test.ts'
+const rootlessForegroundCases = [
+  'reviewed Binding resources run unchanged methods with immutable bytes, honest failure and cancellation',
+  'installed dataset conversation preserves named meaning, correlated results, and cancellation',
+  'installed broadcast isolates a slow monitor while its worker and root recorder complete',
+  'installed sibling channels preserve exact admission, leaf results, and independent cleanup',
+  'installed direct channels stream, recover optional observation, and clean root cancellation',
+  'a rebuilt Jig requires review before any Flow starts and explains the environment-only change',
+  'strict refuses and cleans up an execution environment changed at sealing before admitting the Flow',
+  'cached refuses and cleans up an execution environment changed at sealing before admitting the Flow',
+  'keeps unavailable native clients out of resource-free review and Run',
+  'preserves one bounded malformed-source diagnostic through a real session',
+  'executes exact child slots inside the parent deadline and leaves no child owner',
+  'executes one packed ordinary HTTP Agent choice and exact child without retaining its key',
+  'reviews, admits, executes, replays, cancels, and recovers one exact Bun Flow',
+].map((name) => ({ file: foregroundFile, classname: 'private rootless project session', name }))
 const parameterizedCases = [
   {
     file: 'packages/jig/test/project-author-evaluator.test.ts',
@@ -109,6 +125,89 @@ test('unchanged mixed platform file cannot authorize its portable or Linux-only 
       'duplicates sealed inputs above every child stdio destination without changing bytes',
     ])
       assert.throws(() => authorize(f, [{ ...macInputCase, name }]), /Unexpected skipped case/)
+  }))
+
+test('both Macs authorize only the thirteen frozen Linux foreground cases and retain every skipped identity', () =>
+  fixture([foregroundFile], (f) => {
+    for (const architecture of ['x64', 'arm64']) {
+      const extra = {
+        targetId: `macos-${architecture}`,
+        profile: `macos-24G830/${architecture}/bun-1.4.2`,
+        skipPolicy: 'host-partitions-and-platform',
+      }
+      const proof = authorize(f, rootlessForegroundCases, extra)
+      assert.equal(proof.observedSkipped, 13)
+      assert.equal(proof.unexpectedSkips, 0)
+      assert.deepEqual(
+        proof.skippedCases.map(({ name }) => name),
+        rootlessForegroundCases.map(({ name }) => name),
+      )
+      assert.equal(proof.skippedCaseDigest, skippedCaseDigest(proof.skippedCases))
+      for (const name of [
+        'constructs current package declarations and parseable code for every contained fixture',
+        'requires explicit approval separately from a reviewed Plan',
+        'constructs every named conversation peer',
+        'does not combine admission and root execution',
+      ])
+        assert.throws(
+          () =>
+            authorize(
+              f,
+              [{ file: foregroundFile, classname: 'private foreground command boundary', name }],
+              extra,
+            ),
+          /Unexpected skipped case/,
+        )
+      for (const forged of [
+        { ...rootlessForegroundCases[0], name: 'new Linux foreground regression' },
+        {
+          ...rootlessForegroundCases[0],
+          name: `${rootlessForegroundCases[0].name} without cleanup`,
+        },
+        { ...rootlessForegroundCases[0], classname: 'neighboring rootless project session' },
+        {
+          ...rootlessForegroundCases[6],
+          name: '%s refuses and cleans up an execution environment changed at sealing before admitting the Flow',
+        },
+        {
+          ...rootlessForegroundCases[6],
+          name: 'future refuses and cleans up an execution environment changed at sealing before admitting the Flow',
+        },
+      ])
+        assert.throws(() => authorize(f, [forged], extra), /Unexpected skipped case/)
+    }
+  }))
+
+test('Linux foreground work must execute while only its exact Agent opt-in case may skip', () =>
+  fixture([foregroundFile], (f) => {
+    const extra = {
+      targetId: 'linux',
+      profile: linuxProfile,
+      skipPolicy: 'host-partitions-and-platform',
+    }
+    for (const item of rootlessForegroundCases) {
+      if (
+        item.name ===
+        'executes one packed ordinary HTTP Agent choice and exact child without retaining its key'
+      )
+        assert.equal(authorize(f, [item], extra).observedSkipped, 1)
+      else assert.throws(() => authorize(f, [item], extra), /Unexpected skipped case/)
+    }
+  }))
+
+test('Mac foreground skip permission cannot survive a changed frozen source', () =>
+  fixture([foregroundFile], (f) => {
+    write(f.root, foregroundFile, `${readFileSync(join(f.root, foregroundFile), 'utf8')}\n`)
+    f.source = commit(f.root)
+    assert.throws(
+      () =>
+        authorize(f, [rootlessForegroundCases[0]], {
+          targetId: 'macos-x64',
+          profile: 'macos-24G830/x64/bun-1.4.2',
+          skipPolicy: 'host-partitions-and-platform',
+        }),
+      /Changed or unavailable expected-skip source/,
+    )
   }))
 
 const sourceProviderHostCases = [

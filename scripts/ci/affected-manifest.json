@@ -330,7 +330,19 @@
         "blob": "af42c12210ce96ae36c571ddc86a17dc4efa775c",
         "sourcePatterns": ["^private rootless project session "],
         "macosPatterns": [
-          "^private rootless project session executes one packed ordinary HTTP Agent choice and exact child without retaining its key$"
+          "^private rootless project session reviewed Binding resources run unchanged methods with immutable bytes, honest failure and cancellation$",
+          "^private rootless project session installed dataset conversation preserves named meaning, correlated results, and cancellation$",
+          "^private rootless project session installed broadcast isolates a slow monitor while its worker and root recorder complete$",
+          "^private rootless project session installed sibling channels preserve exact admission, leaf results, and independent cleanup$",
+          "^private rootless project session installed direct channels stream, recover optional observation, and clean root cancellation$",
+          "^private rootless project session a rebuilt Jig requires review before any Flow starts and explains the environment-only change$",
+          "^private rootless project session strict refuses and cleans up an execution environment changed at sealing before admitting the Flow$",
+          "^private rootless project session cached refuses and cleans up an execution environment changed at sealing before admitting the Flow$",
+          "^private rootless project session keeps unavailable native clients out of resource-free review and Run$",
+          "^private rootless project session preserves one bounded malformed-source diagnostic through a real session$",
+          "^private rootless project session executes exact child slots inside the parent deadline and leaves no child owner$",
+          "^private rootless project session executes one packed ordinary HTTP Agent choice and exact child without retaining its key$",
+          "^private rootless project session reviews, admits, executes, replays, cancels, and recovers one exact Bun Flow$"
         ],
         "linuxPatterns": [
           "^private rootless project session executes one packed ordinary HTTP Agent choice and exact child without retaining its key$"
