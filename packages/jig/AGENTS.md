@@ -551,6 +551,11 @@ buffer release and output failure independently of recorded execution status.
   typed preparation causes together with fenced completion and cleanup.
   Resource-accounting changes also require `macos-execution.test.ts` and
   `macos-process-controls.test.ts` to preserve native enforcement and ownership.
+  The raw-launcher proof anchors its work deadline before compilation/setup and
+  reserves time for exact launchd cleanup inside the outer test deadline. Bound
+  each native exit/control-end join; preserve failure and per-mode phase/stderr
+  evidence rather than waiting beyond the helper's closing allowance. The
+  unrelated sentinel must outlive fixture work and is killed/joined separately.
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
 - `just jig::test-package` checks the installed inventory, exact copied licensing
   and pricing files, and the published Bread 1.0 text's fixed digest. The check
