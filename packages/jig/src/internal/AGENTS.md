@@ -756,7 +756,10 @@ child calls, project commands, delegated HTTP, and Agent providers.
   recovery cleanup. A phase may contain several separately paired awaits.
   Launch includes backend storage/input preparation; collection includes stream
   draining, enforcement and backend cleanup, not just payload CPU time. Owner
-  settlement remains separate. No selector or trace is passed to a child, and
+  settlement remains separate. Mac backend spans separate guardian preparation
+  from admission at their existing coordinator awaits. They cover root and child
+  Flow launches as well as contained effects; aggregate counts identify no
+  individual operation. No selector or trace is passed to a child, and
   the existing 512-span/192-byte record bounds remain unchanged.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a

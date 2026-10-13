@@ -55,6 +55,7 @@ import {
   type PrivateReadInputAlias,
   planPrivateReadInputProjection,
 } from './read-input-projection.js'
+import { privateProfileSpan } from './private-profile.js'
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -426,19 +427,24 @@ export class PrivateMacosBackend {
       await revalidatePlan(data.sealedPlan)
       await mkdir(state.guardianDirectory, { mode: 0o700 })
       if (data.sealedPlan.storage !== undefined) await mkdir(state.dataPath, { mode: 0o700 })
-      guardian = await preparePrivateMacosGuardian({
-        bun: this.#options.bunPath,
-        supervisor: this.#options.supervisorPath,
-        configuration: guardianConfiguration(data, state),
-        capturedInputs: guardianInputs(plan),
-      })
+      guardian = await privateProfileSpan('macos-guardian-preparation', () =>
+        preparePrivateMacosGuardian({
+          bun: this.#options.bunPath,
+          supervisor: this.#options.supervisorPath,
+          configuration: guardianConfiguration(data, state),
+          capturedInputs: guardianInputs(plan),
+        }),
+      )
       signal?.addEventListener('abort', cancel, { once: true })
       if (signal?.aborted) throw new Error('native macOS Run was cancelled before admission')
       if (beforeAdmission !== undefined) await beforeAdmission(data.prepared)
       if (signal?.aborted) throw new Error('native macOS Run was cancelled before admission')
       await state.admit()
       active = true
-      const processIdentity = await guardian.admit()
+      const preparedGuardian = guardian
+      const processIdentity = await privateProfileSpan('macos-guardian-admission', () =>
+        preparedGuardian.admit(),
+      )
       if (signal?.aborted) guardian.cancel()
       else guardian.continue()
       const retained =
