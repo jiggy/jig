@@ -726,7 +726,7 @@ test('local action feedback stays visible without context and alongside a sticky
 })
 
 test('captured image bytes render as bounded native blocks and disposal releases image state', async () => {
-  const { ViewerModel } = await import('../src/viewer-model.js')
+  const { ViewerModel } = await import('../src/presentation/viewer-model.js')
   const { snapshot } = await import('./fixtures.js')
   const value = snapshot()
   const image = {
@@ -785,7 +785,7 @@ test('captured image bytes render as bounded native blocks and disposal releases
 })
 
 test('captured CSV retains raw rows with coloured columns and a colour-free fallback', async () => {
-  const { ViewerModel } = await import('../src/viewer-model.js')
+  const { ViewerModel } = await import('../src/presentation/viewer-model.js')
   const { snapshot } = await import('./fixtures.js')
   const value = snapshot()
   const text = 'event,filename\nBeach,photo.svg\n'
