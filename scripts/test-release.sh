@@ -29,17 +29,6 @@ for stage in $source_targets; do
 done
 IFS=$old_ifs
 
-source_parallel=${JIG_CI_SOURCE_PARALLEL:-0}
-case "$source_parallel" in
-  0|'') source_parallel=0 ;;
-  1)
-    [ "$(uname -s)" = Linux ] && [ "${GITHUB_ACTIONS:-}" = true ] && [ -n "${BASH_VERSION:-}" ] || {
-      echo "Parallel source lanes require Bash and the explicit Linux CI opt-in" >&2; exit 1
-    }
-    case :${SHELLOPTS:-}: in *:posix:*) echo "Parallel source lanes require direct Bash invocation" >&2; exit 1 ;; esac ;;
-  *) echo "Invalid parallel source opt-in" >&2; exit 1 ;;
-esac
-
 case ${FLOW_NODE:-} in /*) ;; *) echo "Source checks require the absolute qualified FLOW_NODE executable." >&2; exit 1 ;; esac
 node_identity=$("$FLOW_NODE" -e 'if(process.release?.name!=="node"||process.versions?.bun!==undefined)process.exit(70);process.stdout.write("FLOW_NODE_OK\n")')
 [ "$node_identity" = FLOW_NODE_OK ] || { echo "FLOW_NODE identity mismatch" >&2; exit 1; }
@@ -58,25 +47,10 @@ fi
 
 temporary_parent=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P)
 release_tmp=$(mktemp -d "$temporary_parent/jig-release.XXXXXX")
-source_lanes_pid=
-source_lanes_settled=1
-cleanup_release() {
-  if [ "$source_lanes_settled" = 1 ]; then rm -rf -- "$release_tmp"
-  else echo "Retained unsettled source workspace: $release_tmp" >&2
-  fi
-}
-cancel_source_lanes() {
-  trap '' HUP INT TERM
-  if [ -n "$source_lanes_pid" ]; then
-    kill -TERM "$source_lanes_pid" 2>/dev/null || :
-    wait "$source_lanes_pid" 2>/dev/null || :
-    if [ -f "$release_tmp/lanes/lanes-settled" ]; then source_lanes_settled=1; fi
-  fi
-}
-trap cleanup_release EXIT
-trap 'cancel_source_lanes; exit 129' HUP
-trap 'cancel_source_lanes; exit 130' INT
-trap 'cancel_source_lanes; exit 143' TERM
+trap 'rm -rf -- "$release_tmp"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 if [ -z "$report_directory" ]; then report_directory=$release_tmp/reports; fi
 mkdir -p "$report_directory"
 for stage in source-portable source-protocol source-applications source-python; do
@@ -282,34 +256,10 @@ fi
 python_run "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group scripts/test_pypi_release.py
 
 }
-source_portable_lane() { source_portable_stage; }
-source_other_lane() {
-  if has_stage source-protocol; then source_protocol_stage; fi
-  if has_stage source-applications; then source_applications_stage; fi
-  if has_stage source-python; then source_python_stage; fi
-}
-if [ "$source_parallel" = 1 ] && has_stage source-portable &&
-    { has_stage source-protocol || has_stage source-applications || has_stage source-python; }; then
-  export -f has_stage run_bun_stage source_portable_stage source_protocol_stage source_applications_stage source_python_stage source_portable_lane source_other_lane
-  export source_targets source_profile release_tmp report_directory python_bin
-  if [ -n "$archive_packages" ]; then export sdk_archive; fi
-  mkdir "$release_tmp/lanes"
-  source_lanes_settled=0
-  "$FLOW_NODE" scripts/ci/source-lanes.mjs --directory "$release_tmp/lanes" &
-  source_lanes_pid=$!
-  source_lanes_status=0
-  wait "$source_lanes_pid" || source_lanes_status=$?
-  source_lanes_pid=
-  if [ -f "$release_tmp/lanes/lanes-settled" ]; then source_lanes_settled=1; fi
-  for lane in source_portable_lane source_other_lane; do
-    if [ -f "$release_tmp/lanes/$lane.txt" ]; then cat "$release_tmp/lanes/$lane.txt"; fi
-  done
-  [ "$source_lanes_status" -eq 0 ] || exit "$source_lanes_status"
-  [ "$source_lanes_settled" = 1 ] || { echo "Source lane settlement is unconfirmed" >&2; exit 1; }
-else
-  if has_stage source-portable; then source_portable_stage; fi
-  source_other_lane
-fi
+if has_stage source-portable; then source_portable_stage; fi
+if has_stage source-protocol; then source_protocol_stage; fi
+if has_stage source-applications; then source_applications_stage; fi
+if has_stage source-python; then source_python_stage; fi
 
 set --
 for package in $archive_packages; do for archive in "$release_tmp/artifacts/$package/"*.tgz; do set -- "$@" "$archive"; done; done

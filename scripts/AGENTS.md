@@ -40,14 +40,10 @@ operational baselines, and public-site assembly.
 - `test-release.sh` accepts explicit portable, protocol, applications and Python
   stages in one built workspace. Omitted stages perform no setup or execution;
   selected reports bind the complete whole-file suite inventory. Its default
-  runs all stages serially. Only Linux GitHub Actions may opt into
-  `JIG_CI_SOURCE_PARALLEL=1`: after shared builds and archive freezing, portable
-  checks run beside the sequential protocol, applications and Python lane.
+  runs all stages serially after shared builds and archive freezing.
   Jig's portable build owns its complete package graph, including authoring;
-  protocol-only execution builds authoring separately before its lane starts.
-  The fixed lane owner joins
-  both process groups on failure or cancellation; cleanup requires confirmed
-  settlement. Single selected lanes still execute serially. It includes the
+  protocol-only execution builds authoring separately before its stage starts.
+  A failed stage stops later execution and archive-success verification. It includes the
   authored examples' deterministic application
   tests and the optional contract author's Node mapping/type/lifecycle checks.
   It also checks the shared Agent method and ordinary ACP package.
@@ -230,10 +226,8 @@ operational baselines, and public-site assembly.
   the working tree; deleted files and ignored generated state are excluded.
   It includes all quick CI checks and the protected npm publisher's controlled
   registry tests; the publisher uses Node hashing so these checks also run on Mac.
-  The Node policy files run in their ordinary pool before the complete source-lane
-  lifecycle file runs alone. Its process and shell readiness deadlines remain
-  unchanged; every discovered CI test file executes once, and a failed phase
-  stops subsequent phases before the ordinary Bun tooling checks.
+  Every discovered Node CI test file runs once in the ordinary pool, followed
+  by the Bun tooling checks only after successful policy execution.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 - `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive

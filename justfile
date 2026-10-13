@@ -80,15 +80,7 @@ build: jig::build
 
 # Run quick development, host-coverage, and release-automation checks
 @test-tooling:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    policy_files=()
-    for file in scripts/ci/*.test.mjs; do
-        if [[ "$file" != scripts/ci/source-lanes.test.mjs ]]; then policy_files+=("$file"); fi
-    done
-    (( ${#policy_files[@]} > 0 ))
-    node --test "${policy_files[@]}"
-    node --test scripts/ci/source-lanes.test.mjs
+    node --test scripts/ci/*.test.mjs
     bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/preflight.test.ts scripts/example-dependency-versions.test.ts scripts/agent-candidate.test.ts scripts/npm-publish.test.ts scripts/operational-baseline-checks.test.ts
 
 # Build and check locally, including native regression tests on supported Macs

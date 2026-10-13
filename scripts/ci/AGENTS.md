@@ -12,11 +12,9 @@ Host preparation never becomes a consumer requirement.
 - `host-scope.mjs` avoids native allocation only for a verified two-parent PR merge whose entire delta is independent site files, non-specification documentation, Python SDK/reporting files, or reviewed root/agent guidance. The shared Reporting descriptor remains a native input. Source, build, workflow, specification, mixed, unknown or unverifiable inputs require complete Linux and both Mac architectures. Main and manual execution are always full. Final `affected-linux` and `affected-macos` checks independently reconstruct this decision and require either every native job's success or every job's explicit omission. An omitted PR creates no host qualification receipt. No selection modes, result reuse, compact witnesses or recurring audit jobs exist.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and
-  `source-python` evidence. Linux CI opts into two fixed lanes only after shared
-  builds: portable runs beside sequential protocol, applications and Python.
-  `source-lanes.mjs` owns bounded cancellation and descendant settlement; the
-  source shell retains its temporary workspace if settlement is unconfirmed.
-  Local execution remains serial. Canonical installed smoke checks belong to
+  `source-python` evidence. CI and local execution run selected stages serially
+  after shared builds and archive freezing; a failed stage stops later work.
+  Canonical installed smoke checks belong to
   required candidate profiles, including Jig's three standalone display gates;
   local source execution retains those consumers. Source-only Python stages do
   not build Jig. Actual
@@ -170,6 +168,9 @@ Host preparation never becomes a consumer requirement.
   descendant SHA drift and failed host gates beside independent FLOW readiness.
 - Inspect every workflow's permissions, executable modes, profile inventory,
   attempt-specific artifact flow and final gate when changing these interfaces.
+- `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
+  propagation, canonical-input reuse and protocol-only prerequisites through
+  the actual source shell with controlled tools on Bash and POSIX sh.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive

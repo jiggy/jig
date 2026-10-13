@@ -1,0 +1,168 @@
+import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { test } from 'node:test'
+
+function fixture(t, targets = 'source-portable,source-protocol') {
+  const root = mkdtempSync(join(tmpdir(), 'jig-source-stages-'))
+  t.after(() => rmSync(root, { recursive: true, force: true }))
+  const bin = join(root, 'bin'),
+    temp = join(root, 'tmp'),
+    reports = join(root, 'reports')
+  for (const path of [bin, temp, reports, join(root, 'conformance/run-0')])
+    mkdirSync(path, { recursive: true })
+  const executable = (name, body) => {
+    const path = join(bin, name)
+    writeFileSync(path, body, { mode: 0o700 })
+    return path
+  }
+  const script = join(root, 'test-release.sh')
+  writeFileSync(script, readFileSync(new URL('../test-release.sh', import.meta.url)))
+  const events = join(root, 'events')
+  executable('just', '#!/bin/sh\nprintf "build:%s\\n" "$1" >> "$FIXTURE_EVENTS"\n')
+  executable('uname', '#!/bin/sh\nprintf "Linux\\n"\n')
+  executable('git', '#!/bin/sh\nprintf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n"\n')
+  const python = executable(
+    'python',
+    '#!/bin/sh\nif [ "$1" = scripts/ci/merge-source-junit.py ]; then printf "<testsuites/>\\n" > "$2"; fi\n',
+  )
+  const node = executable(
+    'qualified-node',
+    `#!/bin/sh
+case "$1" in
+  scripts/ci/candidate-provenance.mjs) printf 'canonical-verified\\n' >> "$FIXTURE_EVENTS"; exit 0 ;;
+  --input-type=module) case "$3" in *createHash*) printf 'archive-hash\\n' >> "$FIXTURE_EVENTS" ;; esac; exit 0 ;;
+  scripts/ci/suite-inventory.mjs)
+    printf 'fixtures/%s.test.ts\\n' "$3"
+    if [ "$3" = source-protocol ]; then printf 'fixtures/author.node.mjs\\n'; fi; exit 0 ;;
+  --test)
+    for arg in "$@"; do case "$arg" in --test-reporter-destination=*) printf '<testsuites/>\\n' > "\${arg#*=}" ;; esac; done
+    printf 'authoring-done\\n' >> "$FIXTURE_EVENTS"; exit 0 ;;
+esac
+exec "$FIXTURE_REAL_NODE" "$@"
+`,
+  )
+  executable(
+    'bun',
+    `#!${process.execPath}
+const fs=require('node:fs'),path=require('node:path'),a=process.argv.slice(2);
+const event=s=>fs.appendFileSync(process.env.FIXTURE_EVENTS,s+'\\n');
+if(a.includes('--destination')) {
+ const destination=a[a.indexOf('--destination')+1];
+ fs.mkdirSync(destination,{recursive:true});fs.writeFileSync(path.join(destination,'fixture.tgz'),'frozen fixture');event('pack');
+} else if(a[0]==='test') {
+ const stage=a.includes('./fixtures/source-portable.test.ts')?'portable':'protocol';event(stage+'-start');
+ if(process.env.FIXTURE_FAIL===stage)process.exit(7);
+ for(const arg of a)if(arg.startsWith('--reporter-outfile='))fs.writeFileSync(arg.slice(19),'<testsuites/>');
+ event(stage+'-done');
+} else event('consumer:'+a.join(' '));
+`,
+  )
+  const env = {
+    ...process.env,
+    PATH: `${bin}:${process.env.PATH}`,
+    FLOW_NODE: node,
+    PYTHON: python,
+    TMPDIR: temp,
+    GITHUB_ACTIONS: 'true',
+    GITHUB_SHA: 'a'.repeat(40),
+    FIXTURE_EVENTS: events,
+    FIXTURE_REAL_NODE: process.execPath,
+  }
+  delete env.CI_CANDIDATE_BUNDLE
+  const run = (shell = '/bin/sh', extra = {}) =>
+    spawnSync(
+      shell,
+      [script, '--targets', targets, '--profile', 'portable-linux', '--report-directory', reports],
+      { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', timeout: 10000 },
+    )
+  return { root, temp, reports, run, events: () => readFileSync(events, 'utf8').trim().split('\n') }
+}
+
+test('source stages run serially after one shared build on both supported shells', (t) => {
+  for (const shell of ['/bin/sh', '/bin/bash']) {
+    const f = fixture(t),
+      result = f.run(shell)
+    assert.equal(result.status, 0, result.stderr)
+    const events = f.events()
+    assert.deepEqual(
+      events.filter((event) => event.startsWith('build:')),
+      ['build:jig::build'],
+    )
+    assert.ok(events.indexOf('build:jig::build') < events.indexOf('portable-start'))
+    assert.ok(events.indexOf('portable-done') < events.indexOf('protocol-start'))
+    for (const file of ['source-portable.xml', 'source-protocol.xml', 'source-authoring.xml'])
+      assert.ok(existsSync(join(f.reports, file)))
+    for (const name of ['jig', 'display-model', 'display-web', 'display-tui'])
+      assert.ok(events.includes(`consumer:packages/${name}/test/package-smoke.ts`))
+    assert.deepEqual(readdirSync(f.temp), [])
+  }
+})
+
+test('canonical CI inputs preserve source stages and delegate installed consumers without repacking', (t) => {
+  const f = fixture(t),
+    bundle = join(f.root, 'canonical')
+  for (const name of [
+    'flow-sdk',
+    'reporting',
+    'agent-method',
+    'agent-acp',
+    'display-model',
+    'display-web',
+    'display-tui',
+    'jig',
+  ]) {
+    mkdirSync(join(bundle, name), { recursive: true })
+    writeFileSync(join(bundle, name, 'fixture.tgz'), 'frozen canonical fixture')
+  }
+  const result = f.run('/bin/sh', { CI_CANDIDATE_BUNDLE: bundle })
+  assert.equal(result.status, 0, result.stderr)
+  const events = f.events()
+  assert.ok(events.includes('canonical-verified'))
+  assert.ok(events.includes('portable-done') && events.includes('protocol-done'))
+  assert.ok(!events.includes('pack'))
+  for (const name of ['jig', 'display-model', 'display-web', 'display-tui'])
+    assert.ok(!events.includes(`consumer:packages/${name}/test/package-smoke.ts`))
+  assert.equal(events.filter((event) => event === 'archive-hash').length, 2)
+  assert.deepEqual(readdirSync(f.temp), [])
+})
+
+test('a failed source stage stops later stages and cannot produce successful archive revalidation', (t) => {
+  const f = fixture(t),
+    result = f.run('/bin/sh', { FIXTURE_FAIL: 'portable' })
+  assert.equal(result.status, 7, result.stderr)
+  const events = f.events()
+  assert.ok(!events.includes('protocol-start'))
+  assert.equal(events.filter((event) => event === 'archive-hash').length, 1)
+  assert.deepEqual(readdirSync(f.temp), [])
+})
+
+test('protocol-only execution owns its authoring prerequisite without running portable tests', (t) => {
+  const f = fixture(t, 'source-protocol'),
+    result = f.run()
+  assert.equal(result.status, 0, result.stderr)
+  const events = f.events()
+  assert.deepEqual(
+    events.filter((event) => event.startsWith('build:')),
+    [
+      'build:flow::build',
+      'build:reporting::build',
+      'build:agent::build',
+      'build:acp::build',
+      'build:authoring::build',
+    ],
+  )
+  assert.ok(events.indexOf('build:authoring::build') < events.indexOf('protocol-start'))
+  assert.ok(!events.includes('portable-start'))
+  assert.deepEqual(readdirSync(f.temp), [])
+})

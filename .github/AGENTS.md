@@ -70,7 +70,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   SDK npm publication and source tagging are independent of those Jig gates;
   Python also uses its own CI-qualified artifacts. Each group preflights its own
   archives before mutation. A host failure cannot block FLOW publication.
-- CI runs its complete fixed source, site, Python and npm profiles. Source targets share one workspace, with portable checks beside sequential protocol, applications and Python after shared builds. Local execution remains serial; both lanes settle before cleanup and archive revalidation. Installed smoke checks use the canonical candidate profiles.
+- CI runs its complete fixed source, site, Python and npm profiles. Source targets run serially in one workspace after shared builds and archive freezing, with separate complete reports for each stage. A failed stage stops later work. Installed smoke checks use the canonical candidate profiles.
 - Host workflows always report `affected-linux` and `affected-macos` for PRs. A small verified-Git scope check can omit native jobs for independent site, non-specification documentation or Python changes. The shared Reporting descriptor, source, build, workflow, specifications, mixed and uncertain changes run complete hosts. Main and manual runs are always complete. An omission records its source and reason and creates no qualification receipt. Final gates reconstruct scope and reject any missing, failed or cancelled required job. Keep these checks and `test` in merge policy. There are no selection modes, temporary benchmark predicates, compact witness jobs or scheduled audit runs.
 
 - Model and web/TUI display packages enter dependency ownership, source and host

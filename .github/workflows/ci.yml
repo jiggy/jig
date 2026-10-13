@@ -324,7 +324,6 @@ jobs:
         name: "Run source, conformance, and package gates"
         env:
           PYTHONDONTWRITEBYTECODE: "1"
-          JIG_CI_SOURCE_PARALLEL: "1"
           JIG_CI_SOURCE_REPORT_DIRECTORY: "${{ runner.temp }}/source-reports"
           CI_PYTHON_DISTRIBUTIONS: "${{ runner.temp }}/python-dist"
           CI_PYTHON_REPORTING_DISTRIBUTIONS: "${{ runner.temp }}/python-reporting-dist"

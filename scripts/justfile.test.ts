@@ -177,29 +177,31 @@ test('standalone authoring build still invokes its owning compiler once', async 
 })
 
 test(
-  'tooling runs every CI file once, isolates lane lifecycle, and preserves phase failures',
+  'tooling runs every CI file once and stops before Bun checks after a policy failure',
   async () => {
-    for (const fail of ['', 'policy', 'lanes']) {
+    for (const fail of ['', 'policy']) {
       await withFixture(async (directory, environment) => {
-        const files = ['alpha.test.mjs', 'future.test.mjs', 'source-lanes.test.mjs']
+        const files = ['alpha.test.mjs', 'future.test.mjs', 'source-stages.test.mjs']
         for (const file of files) await writeFile(join(directory, 'scripts/ci', file), '')
         await writeFile(
           join(directory, 'tools/node'),
           `#!${process.execPath}
 const args = process.argv.slice(2);
 console.log(JSON.stringify({ cwd: process.cwd(), args }));
-const stage = args.includes('scripts/ci/source-lanes.test.mjs') ? 'lanes' : 'policy';
-process.exit(process.env.JUST_TEST_FAIL_PHASE === stage ? 23 : 0);
+process.exit(process.env.JUST_TEST_FAIL_PHASE === 'policy' ? 23 : 0);
 `,
           { mode: 0o755 },
         )
-        const result = await run(['--justfile', join(directory, 'justfile'), 'test-tooling'], {
-          ...environment,
-          JUST_TEST_FAIL_PHASE: fail,
-          // Version-manager dispatchers can prepend their selected Node to PATH.
-          // Bind the inert recorder at the actual Bash recipe boundary instead.
-          'BASH_FUNC_node%%': `() { '${join(directory, 'tools/node').replaceAll("'", "'\\''")}' "$@"; }`,
-        })
+        const result = await run(
+          ['--justfile', join(directory, 'justfile'), '--shell', '/bin/bash', 'test-tooling'],
+          {
+            ...environment,
+            JUST_TEST_FAIL_PHASE: fail,
+            // Version-manager dispatchers can prepend their selected Node to PATH.
+            // Bind the inert recorder in the fixture's explicit Bash shell.
+            'BASH_FUNC_node%%': `() { '${join(directory, 'tools/node').replaceAll("'", "'\\''")}' "$@"; }`,
+          },
+        )
         expect(result.code, result.stderr).toBe(fail ? 23 : 0)
         const calls = result.stdout
           .trim()
@@ -207,27 +209,14 @@ process.exit(process.env.JUST_TEST_FAIL_PHASE === stage ? 23 : 0);
           .map((line) => JSON.parse(line))
         expect(calls[0]).toEqual({
           cwd: directory,
-          args: ['--test', ...files.slice(0, 2).map((file) => `scripts/ci/${file}`)],
+          args: ['--test', ...files.map((file) => `scripts/ci/${file}`)],
         })
         if (fail === 'policy') expect(calls).toHaveLength(1)
         else {
-          expect(calls[1]).toEqual({
-            cwd: directory,
-            args: ['--test', 'scripts/ci/source-lanes.test.mjs'],
-          })
-          if (fail === 'lanes') expect(calls).toHaveLength(2)
-          else {
-            expect(calls).toHaveLength(3)
-            expect(calls[2].cwd).toBe(directory)
-            expect(calls[2].args[0]).toBe('test')
-            expect(calls[2].args.slice(1)).toContain('scripts/justfile.test.ts')
-            expect(
-              calls
-                .slice(0, 2)
-                .flatMap((call) => call.args.slice(1))
-                .sort(),
-            ).toEqual(files.map((file) => `scripts/ci/${file}`))
-          }
+          expect(calls).toHaveLength(2)
+          expect(calls[1].cwd).toBe(directory)
+          expect(calls[1].args[0]).toBe('test')
+          expect(calls[1].args.slice(1)).toContain('scripts/justfile.test.ts')
         }
       })
     }
