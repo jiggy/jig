@@ -737,55 +737,21 @@ export class PrivateLinuxCgroupBackend {
       let inputClosed = false
       let terminationRequested = false
       let nativeRunning = true
-      const importReplies = new Map<
-        string,
-        {
-          readonly resolve: (outcome: string) => void
-          readonly reject: (cause: unknown) => void
-        }
-      >()
-      const rejectImports = (cause: unknown) => {
-        for (const pending of importReplies.values())
-          pending.reject(new PrivateFileImportUnconfirmedError(cause))
-        importReplies.clear()
-      }
-      const importRequest = async (
-        type: string,
-        value: Record<string, unknown>,
-      ): Promise<string> => {
-        if (!nativeRunning || importReplies.size >= 2)
-          throw new PrivateFileImportUnconfirmedError('native import owner is unavailable')
-        const id = randomBytes(12).toString('hex')
-        const reply = new Promise<string>((resolve, reject) =>
-          importReplies.set(id, { resolve, reject }),
-        )
-        try {
-          writeControl(control!, { type, id, ...value })
-          return await withTimeout(reply, data.identity.cleanupTimeoutMs, 'native import reply')
-        } catch (cause) {
-          throw new PrivateFileImportUnconfirmedError(cause)
-        } finally {
-          importReplies.delete(id)
-        }
-      }
-      const terminal = waitForTerminal(messages, closed, (value) => {
-        if (value === null || typeof value !== 'object' || Array.isArray(value))
-          throw new PrivateFileImportUnconfirmedError('invalid native import reply')
-        const reply = value as Record<string, unknown>
-        if (typeof reply.id !== 'string' || typeof reply.outcome !== 'string')
-          throw new PrivateFileImportUnconfirmedError('invalid native import reply identity')
-        const pending = importReplies.get(reply.id)
-        if (pending === undefined)
-          throw new PrivateFileImportUnconfirmedError('unsolicited native import reply')
-        if (reply.outcome === 'error')
-          pending.reject(new PrivateFileImportUnconfirmedError(reply.error))
-        else pending.resolve(reply.outcome)
-      }).then((message) => {
+      const imports = createPrivateLinuxImportReplies({
+        running: () => nativeRunning,
+        timeoutMs: data.identity.cleanupTimeoutMs,
+        write: (value) => writeControl(control!, value),
+        retire: () => {
+          terminationRequested = true
+          cancel()
+        },
+      })
+      const terminal = waitForTerminal(messages, closed, imports.receive).then((message) => {
         nativeRunning = false
         requireTerminalMessage(message, preparedMessage, data)
         return message
       })
-      void terminal.then(() => rejectImports('native import owner ended'), rejectImports)
+      void terminal.then(() => imports.reject('native import owner ended'), imports.reject)
       const enforcement = terminal
         .then(async (message) => {
           const final = await readFinal(data.prepared)
@@ -832,7 +798,7 @@ export class PrivateLinuxCgroupBackend {
       if (outputBacking !== undefined && outputDirectory !== undefined) {
         const owner: PrivateLinuxImportOwner = {
           async begin(value) {
-            const outcome = await importRequest('import-begin', { ...value })
+            const outcome = await imports.request('import-begin', { ...value })
             if (outcome !== 'staged' && outcome !== 'absent')
               throw new PrivateFileImportUnconfirmedError('invalid native import begin outcome')
             return outcome
@@ -842,26 +808,26 @@ export class PrivateLinuxCgroupBackend {
           },
           async commit(name) {
             // No command was sent: a confirmed original fence proves noncommit.
-            if (!nativeRunning) {
+            if (!nativeRunning || imports.retired) {
               await enforcement
               return 'absent'
             }
-            const outcome = await importRequest('import-commit', { name })
+            const outcome = await imports.request('import-commit', { name })
             if (outcome !== 'committed' && outcome !== 'absent')
               throw new PrivateFileImportUnconfirmedError('invalid native import commit outcome')
             return outcome
           },
           async end(name) {
             try {
-              if (!nativeRunning) {
+              if (!nativeRunning || imports.retired) {
                 await enforcement
                 return
               }
-              const outcome = await importRequest('import-end', { name })
+              const outcome = await imports.request('import-end', { name })
               if (outcome !== 'closed')
                 throw new PrivateFileImportUnconfirmedError('invalid native import end outcome')
             } catch (error) {
-              if (nativeRunning) throw error
+              if (nativeRunning && !imports.retired) throw error
               // The existing final fence includes closure of every native-held stage FD.
               await enforcement
             }
@@ -2690,6 +2656,99 @@ export async function readPrivateSupervisorMessage(
     pending,
     closed.then(() => withTimeout(pending, 1000, 'rootless supervisor final channel drain')),
   ])
+}
+
+type ImportRequest = 'import-begin' | 'import-commit' | 'import-end'
+const IMPORT_OUTCOMES = {
+  'import-begin': ['staged', 'absent'],
+  'import-commit': ['committed', 'absent'],
+  'import-end': ['closed'],
+} as const
+
+/** Existing Backend wire bookkeeping; this test seam grants no native authority. */
+export function createPrivateLinuxImportReplies(input: {
+  readonly running: () => boolean
+  readonly timeoutMs: number
+  readonly write: (value: unknown) => void
+  readonly retire: () => void
+}) {
+  const pending = new Map<
+    string,
+    {
+      readonly type: ImportRequest
+      readonly resolve: (outcome: string) => void
+      readonly reject: (cause: unknown) => void
+    }
+  >()
+  const abandoned = new Map<string, ImportRequest>()
+  let retired = false
+  return {
+    get retired() {
+      return retired
+    },
+    async request(type: ImportRequest, value: Record<string, unknown>): Promise<string> {
+      // Two stages have only begin/commit/end. Keep bounded IDs for queued
+      // replies after a waiter fails, without preventing their cleanup RPCs.
+      if (pending.size + abandoned.size >= 6 && !retired) {
+        retired = true
+        input.retire()
+      }
+      if (retired || !input.running() || pending.size >= 2)
+        throw new PrivateFileImportUnconfirmedError('native import owner is unavailable')
+      const id = randomBytes(12).toString('hex')
+      const reply = new Promise<string>((resolve, reject) =>
+        pending.set(id, { type, resolve, reject }),
+      )
+      // A write can queue bytes and still report backpressure before we await.
+      void reply.catch(() => undefined)
+      try {
+        input.write({ ...value, type, id })
+        return await withTimeout(reply, input.timeoutMs, 'native import reply')
+      } catch (cause) {
+        throw new PrivateFileImportUnconfirmedError(cause)
+      } finally {
+        if (pending.delete(id)) abandoned.set(id, type)
+      }
+    },
+    receive(value: unknown): void {
+      if (value === null || typeof value !== 'object' || Array.isArray(value))
+        throw new PrivateFileImportUnconfirmedError('invalid native import reply')
+      const reply = value as Record<string, unknown>
+      const keys = reply.outcome === 'error' ? 'error,id,outcome,type' : 'id,outcome,type'
+      if (
+        Object.keys(reply).sort().join() !== keys ||
+        reply.type !== 'import-reply' ||
+        typeof reply.id !== 'string' ||
+        !NONCE.test(reply.id) ||
+        typeof reply.outcome !== 'string' ||
+        (reply.outcome === 'error' && typeof reply.error !== 'string')
+      )
+        throw new PrivateFileImportUnconfirmedError('invalid native import reply identity')
+      const waiting = pending.get(reply.id)
+      const type = waiting?.type ?? abandoned.get(reply.id)
+      if (type === undefined)
+        throw new PrivateFileImportUnconfirmedError('unsolicited native import reply')
+      if (
+        reply.outcome !== 'error' &&
+        !(IMPORT_OUTCOMES[type] as readonly string[]).includes(reply.outcome)
+      )
+        throw new PrivateFileImportUnconfirmedError('invalid native import reply outcome')
+      if (waiting === undefined) {
+        abandoned.delete(reply.id)
+        return
+      }
+      pending.delete(reply.id)
+      if (reply.outcome === 'error')
+        waiting.reject(new PrivateFileImportUnconfirmedError(reply.error))
+      else waiting.resolve(reply.outcome)
+    },
+    reject(cause: unknown): void {
+      for (const waiting of pending.values())
+        waiting.reject(new PrivateFileImportUnconfirmedError(cause))
+      pending.clear()
+      abandoned.clear()
+    },
+  }
 }
 
 async function waitForTerminal(

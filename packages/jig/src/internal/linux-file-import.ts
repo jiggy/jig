@@ -269,16 +269,21 @@ export function createPrivateLinuxFileImportTarget(input: {
     },
     close() {
       closing ??= (async () => {
-        for (const stage of stages) await stage.close()
-        if (acquired.size !== 0)
+        const attempts = await Promise.allSettled([...stages].map((stage) => stage.close()))
+        const errors: unknown[] = attempts
+          .filter((attempt) => attempt.status === 'rejected')
+          .map((attempt) => (attempt as PromiseRejectedResult).reason)
+        if (acquired.size !== 0) errors.push('native import readers retain uncertain closure')
+        else
+          try {
+            await input.backing.close()
+          } catch (error) {
+            errors.push(error)
+          }
+        if (errors.length !== 0)
           throw new PrivateFileImportUnconfirmedError(
-            'native import readers retain uncertain closure',
+            new AggregateError(errors, 'native import target close failed'),
           )
-        try {
-          await input.backing.close()
-        } catch (error) {
-          throw new PrivateFileImportUnconfirmedError(error)
-        }
       })()
       return closing
     },

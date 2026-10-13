@@ -12,6 +12,7 @@ import {
   requirePrivateFileImportStage,
   requirePrivateFileImportTarget,
 } from '../src/internal/execution-file-import.js'
+import { createPrivateLinuxFileImportTarget } from '../src/internal/linux-file-import.js'
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -22,6 +23,56 @@ function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
+
+test.skipIf(process.platform !== 'linux')(
+  'Linux target attempts both stages and closes confirmed backing despite sticky commit uncertainty',
+  async () => {
+    const root = await mkdtemp('/dev/shm/jig-private-import-close-')
+    await mkdir(join(root, 'public'))
+    const backing = await open(root)
+    const publicDirectory = await open(join(root, 'public'))
+    const ended: string[] = []
+    const target = createPrivateLinuxFileImportTarget({
+      backing,
+      publicDirectory,
+      deadlineUnixMs: Date.now() + 60_000,
+      alive: () => true,
+      owner: {
+        begin: async () => 'staged',
+        cancel() {},
+        async commit() {
+          throw new PrivateFileImportUnconfirmedError('commit acknowledgement timed out')
+        },
+        async end(name) {
+          ended.push(name)
+        },
+      },
+    })
+    try {
+      const stages = await Promise.all(
+        ['first', 'second'].map((directory) =>
+          target.stage({
+            directory,
+            operationId: directory,
+            deadlineUnixMs: Date.now() + 60_000,
+            signal: new AbortController().signal,
+          }),
+        ),
+      )
+      await expect(stages[0]!.commit()).rejects.toBeInstanceOf(PrivateFileImportUnconfirmedError)
+      await expect(target.close()).rejects.toBeInstanceOf(PrivateFileImportUnconfirmedError)
+      expect(new Set(ended).size).toBe(2)
+      for (const stage of stages)
+        await expect(stage.directory.stat()).rejects.toMatchObject({ code: 'EBADF' })
+      await expect(backing.stat()).rejects.toMatchObject({ code: 'EBADF' })
+      await expect(target.close()).rejects.toBeInstanceOf(PrivateFileImportUnconfirmedError)
+      expect(ended).toHaveLength(2)
+    } finally {
+      await publicDirectory.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  },
+)
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'jig-private-import-'))

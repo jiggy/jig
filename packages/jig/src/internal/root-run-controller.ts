@@ -50,6 +50,7 @@ import {
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
+import type { PrivateFileImportTarget } from './execution-file-import.js'
 import { PRIVATE_OUTPUT_BYTES } from './execution-intent.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
 import {
@@ -221,6 +222,7 @@ async function startOrResumeCurrentExecution(
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
   let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
   let fileContext: PrivateFlowFileContext | undefined
+  let outputImport: PrivateFileImportTarget | undefined
   let failurePhase: PrivateRootExecutionFailurePhase = 'planning'
   let reportedError: unknown
   let hasReportedError = false
@@ -233,6 +235,28 @@ async function startOrResumeCurrentExecution(
     } catch {
       // Optional closed test evidence cannot replace the Run outcome.
     }
+  }
+  const retireFencedImporter = async (original?: unknown, settleChildren = true): Promise<void> => {
+    const failures: unknown[] = []
+    if (settleChildren) {
+      try {
+        await recoverPrivateRootOperationOwners(input, work)
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    try {
+      await outputImport?.close()
+    } catch (error) {
+      failures.push(error)
+    }
+    if (failures.length !== 0)
+      throw new PrivateExecutionFenceUnconfirmedError(
+        new AggregateError(
+          original === undefined ? failures : [original, ...failures],
+          'root operation and file importer retirement could not be confirmed',
+        ),
+      )
   }
   try {
     let recipe: PrivateDirectRunRecipe
@@ -386,6 +410,7 @@ async function startOrResumeCurrentExecution(
           } as unknown as JsonValue)
         }),
       )
+      outputImport = component.outputImport
       // The signal passed to Backend admission is startup-only. Once the
       // component is ready, RunHost owns cooperative cancellation/deadline
       // delivery and the helper's absolute timer owns the hard fence after
@@ -472,6 +497,9 @@ async function startOrResumeCurrentExecution(
           kind: FENCE_KIND,
           receipt: fence,
         } as unknown as JsonValue)
+        // The child join stays pending; the fenced caller's private copy loans
+        // can retire independently without releasing any child ownership.
+        await retireFencedImporter(error, false)
         return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
       }
       work = await advanceCheckpoint(
@@ -519,6 +547,8 @@ async function startOrResumeCurrentExecution(
         }
         throw fenceError
       }
+      failurePhase = 'child-settlement'
+      await retireFencedImporter(error)
       if (retryableBusy !== undefined) {
         // A sealed owner has existed, so publish its confirmed fence before
         // asking the durable controller to repeat this complete operation.
@@ -561,7 +591,13 @@ async function startOrResumeCurrentExecution(
     if (isAdmissionStateBusy(error)) throw error
     work = await reacquire(input)
     if (work.lifecycle.sandbox !== undefined || work.lifecycle.provisional !== undefined) {
-      return await recoverCurrentExecution(input, work, observedTerminal ?? stop.terminal, error)
+      return await recoverCurrentExecution(
+        input,
+        work,
+        observedTerminal ?? stop.terminal,
+        error,
+        outputImport === undefined ? undefined : () => retireFencedImporter(error),
+      )
     }
     if (work.lifecycle.plan !== undefined) {
       return await settleBeforeSandbox(
@@ -625,45 +661,83 @@ async function recoverCurrentExecution(
   initial: PrivateReacquiredRootExecutionWork,
   knownTerminal?: PrivateRootRunTerminal,
   fallbackError?: unknown,
+  retireImporter?: () => Promise<void>,
 ): Promise<PrivateRootExecutionDisposition> {
   let work = initial
   let confirmedFence =
     work.lifecycle.fence === undefined ? undefined : parseFence(work.lifecycle.fence.value).receipt
-  if (work.lifecycle.provisional === undefined && knownTerminal !== undefined) {
-    work = await advanceCheckpoint(
-      input,
-      work,
-      'provisional',
-      knownTerminal as unknown as JsonValue,
-    )
-  }
-  if (work.lifecycle.sandbox !== undefined && work.lifecycle.fence === undefined) {
-    const sandbox = parseSandbox(work.lifecycle.sandbox.value)
-    let receipt: PrivateExecutionConfirmedEnforcementReceipt
-    try {
-      receipt = await recoverPrivateExecutionFence(input.backend, sandbox.owner)
-    } catch (error) {
-      if (isPrivateExecutionFenceUnconfirmed(error)) {
-        return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
-      }
-      throw error
-    }
-    work = await advanceCheckpoint(input, work, 'fence', {
-      kind: FENCE_KIND,
-      receipt,
-    } as unknown as JsonValue)
-    confirmedFence = receipt
-  }
-  if (work.lifecycle.provisional === undefined) {
-    work = await advanceCheckpoint(
-      input,
-      work,
-      'provisional',
-      (knownTerminal ??
-        terminalAfterRecoveredFence(confirmedFence, fallbackError)) as unknown as JsonValue,
-    )
-  }
   try {
+    let checkpointFailure: { readonly error: unknown } | undefined
+    let fenceAttempted = false
+    try {
+      if (work.lifecycle.provisional === undefined && knownTerminal !== undefined) {
+        work = await advanceCheckpoint(
+          input,
+          work,
+          'provisional',
+          knownTerminal as unknown as JsonValue,
+        )
+      }
+      if (work.lifecycle.sandbox !== undefined && work.lifecycle.fence === undefined) {
+        const sandbox = parseSandbox(work.lifecycle.sandbox.value)
+        fenceAttempted = true
+        confirmedFence = await recoverPrivateExecutionFence(input.backend, sandbox.owner)
+        work = await advanceCheckpoint(input, work, 'fence', {
+          kind: FENCE_KIND,
+          receipt: confirmedFence,
+        } as unknown as JsonValue)
+      }
+      if (work.lifecycle.provisional === undefined) {
+        work = await advanceCheckpoint(
+          input,
+          work,
+          'provisional',
+          (knownTerminal ??
+            terminalAfterRecoveredFence(confirmedFence, fallbackError)) as unknown as JsonValue,
+        )
+      }
+    } catch (error) {
+      checkpointFailure = { error }
+    }
+    // A failed terminal checkpoint cannot skip fencing an admitted local
+    // importer. Recovery never reattempts an already unconfirmed fence here.
+    if (
+      retireImporter !== undefined &&
+      confirmedFence === undefined &&
+      !fenceAttempted &&
+      work.lifecycle.sandbox !== undefined
+    ) {
+      try {
+        confirmedFence = await recoverPrivateExecutionFence(
+          input.backend,
+          parseSandbox(work.lifecycle.sandbox.value).owner,
+        )
+      } catch (error) {
+        throw new PrivateExecutionFenceUnconfirmedError(
+          new AggregateError(
+            checkpointFailure === undefined ? [error] : [checkpointFailure.error, error],
+            'root recovery fence could not be confirmed',
+          ),
+        )
+      }
+    }
+    // The actual receipt permits retirement even if persisting that receipt
+    // or the known terminal failed. It never permits releasing child rows.
+    if (confirmedFence !== undefined) {
+      try {
+        await retireImporter?.()
+      } catch (error) {
+        if (checkpointFailure !== undefined)
+          throw new PrivateExecutionFenceUnconfirmedError(
+            new AggregateError(
+              [checkpointFailure.error, error],
+              'root recovery and importer retirement could not be confirmed',
+            ),
+          )
+        throw error
+      }
+    }
+    if (checkpointFailure !== undefined) throw checkpointFailure.error
     return terminal(await releaseAdmitAndClose(input, work))
   } catch (error) {
     if (isPrivateExecutionFenceUnconfirmed(error)) {

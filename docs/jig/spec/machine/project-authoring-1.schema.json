@@ -309,7 +309,7 @@
     },
     "mappedAttachmentRoute": {
       "type": "object",
-      "description": "Closed static review data for an explicit Binding route. Child attachment execution is refused until the private native and lifecycle qualification gate opens. Jig additionally validates LocalNames, ordinary target grammar, complete port interfaces and distinct destination folders.",
+      "description": "Closed static review data for an explicit Binding route. Mapped child execution requires admitted routes and qualified native containment and cleanup support. Jig additionally validates LocalNames, ordinary target grammar, complete port interfaces and distinct destination folders.",
       "properties": {
         "target": {
           "$ref": "#/$defs/defaultSelector"

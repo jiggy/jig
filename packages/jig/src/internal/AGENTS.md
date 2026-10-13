@@ -129,6 +129,9 @@ child calls, project commands, delegated HTTP, and Agent providers.
   copying. Source readers and existing child package/native/row cleanup settle
   before native no-replace commit; remaining importer closes precede a normal
   reply. Unknown setup, commit or close ends the caller without rollback/replay.
+  Admitted roots retain the original importer across protocol/checkpoint faults.
+  After confirmed parent fencing, attempt child settlement and join importer
+  loans; unresolved child or importer retirement keeps the root pending without release.
 - `execution-file-import.ts` joins native stage preparation, one bounded copy
   and retirement without owning dispatch or durable Run state. Native issuers
   own source/destination authority and cancellation-versus-rename arbitration.
@@ -159,6 +162,12 @@ child calls, project commands, delegated HTTP, and Agent providers.
   Payload fencing joins outer copy leases and original root loans before Mac
   snapshot/storage retirement. Retain real FileHandles on uncertain close,
   never retry an ambiguous close or reconstruct authority from path metadata.
+  Linux keeps at most two live and six total live/abandoned import reply IDs.
+  One well-formed late ACK drains only its known failed request; unknown or
+  duplicate IDs fail closed and never revive a failed result. Exhaustion retires
+  import control and cancels the native owner; only its original confirmed fence
+  can retire remaining native loans. Attempt every stage close, then backing
+  close only after all actual readers have closed, preserving every uncertainty.
 - Attachment coexistence derives from the existing root reservation: at most
   six Flow envelopes and five child stages, no new pool or independent volume.
   Linux stages share each 16 MiB output tmpfs; trusted import writes may charge

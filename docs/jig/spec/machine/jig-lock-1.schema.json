@@ -420,7 +420,7 @@
     },
     "mappedAttachmentRoute": {
       "type": "object",
-      "description": "Closed static review data, with no native filesystem authority. Child attachment execution remains separately refused by the private qualification gate.",
+      "description": "Closed static review data, with no native filesystem authority. Mapped child execution requires admitted routes and qualified native containment and cleanup support.",
       "properties": {
         "kind": {
           "const": "route"
