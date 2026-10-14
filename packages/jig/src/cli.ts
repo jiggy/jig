@@ -2,7 +2,7 @@
 import { randomBytes } from 'node:crypto'
 import { lstat, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, resolve } from 'node:path'
+import { basename, dirname, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { WebAssets } from '@jigging/display-model'
@@ -784,6 +784,7 @@ async function executeSavedResultInspect(
     packet = await privateCaptureSavedResult(
       resolve(runtime.currentDirectory, parsed.resultDirectory!),
       runtime.signal,
+      !parsed.json && runtime.humanOutput && (parsed.display === 'tui' || parsed.display === 'web'),
     )
     if (packet.finding)
       runtime.writeError(
@@ -2320,8 +2321,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_ACP_UNAVAILABLE:
         'configure the native client named in the affected ACP grant: its operator executable, model and authentication; then retry jig review',
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
-      PACKAGE_BUN_LOCK_STALE:
-        'package.json and bun.lock disagree; update the supplied lock explicitly',
+      PACKAGE_BUN_LOCK_STALE: staleDependencyLockHint(error),
       PACKAGE_BUN_INPUT_LIMIT:
         'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/guide/dependencies',
       PACKAGE_BUN_OUTPUT_LIMIT:
@@ -2647,13 +2647,33 @@ function renderRunFailure(
   )
 }
 
+function staleDependencyLockHint(error: ProjectAdministrationError): string {
+  const lockPath = error.diagnostic?.lockPath
+  const directory = lockPath === undefined ? undefined : dirname(lockPath)
+  const afterRepair =
+    'Inspect the updated bun.lock, then rerun your jig review command.\n    --allow-resolution-network permits resolving missing locks; it does not update a supplied lock.'
+  const command = 'bun install --lockfile-only --ignore-scripts'
+  const repair =
+    directory !== undefined && /^[\x20-\x7e]+$/.test(directory)
+      ? `From the reviewed project's directory, update the dependency lock:\n\n  $ ${command} --cwd ${shellWord(directory)}`
+      : `Open the directory containing the supplied bun.lock, then update the dependency lock:\n\n  $ ${command}`
+  return `${repair}\n\n    ${afterRepair}`
+}
+
 function renderProjectDiagnostic(error: ProjectAdministrationError, message: string): string {
   const diagnostic = error.diagnostic
   if (diagnostic === undefined) return renderDiagnostic(error.code, message)
   const pointer =
     diagnostic.pointer === undefined ? '' : `\n  Value: ${asciiJsonString(diagnostic.pointer)}`
   const mismatch = schemaTypeMismatchText(diagnostic.typeMismatch)
-  const cause = ACP_SETUP_CAUSES[diagnostic.code]
+  const cause =
+    diagnostic.code === 'PACKAGE_BUN_LOCK_STALE'
+      ? 'The package declarations in package.json no longer match bun.lock.'
+      : ACP_SETUP_CAUSES[diagnostic.code]
+  const lock =
+    diagnostic.lockPath === undefined
+      ? ''
+      : `\n  Dependency lock: ${asciiJsonString(diagnostic.lockPath)}`
   const selection =
     cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
       ? '\n  Agent selection: the resource grant at this Binding slot.'
@@ -2661,7 +2681,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const alternative = selection
     ? '\n\n  Use another installed client\n    Edit client in the ACP grant selected by this slot (its inline Binding value or named JSON file), choosing codex, claude, or pi. Check model and client-specific policy, then review the change:\n\n  $ jig review'
     : ''
-  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
+  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${lock}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 if (import.meta.main) {

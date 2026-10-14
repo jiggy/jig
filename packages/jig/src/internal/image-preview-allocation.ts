@@ -1,6 +1,6 @@
 import { PRIVATE_PREVIEW_LIMITS } from './image-preview-policy.js'
 
-/** Install only in a disposable renderer thread before resvg's audited glue.
+/** Install only in a disposable decoder thread before resvg's audited glue.
  * Charge external copies before allocation, cumulatively for the entire job;
  * errors and garbage collection cannot replenish either allowance. */
 export function privateGuardImageAllocations(): { copies(): number; decodedText(): number } {

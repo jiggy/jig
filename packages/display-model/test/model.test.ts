@@ -143,12 +143,12 @@ test('public destination keys keep opaque view identities disjoint from built-in
     source: view.sourceLabel,
   }))
   const live = displayDestinations(false, views)
-  expect(live.slice(0, 3).map((destination) => destination.key)).toEqual([
+  expect(live.slice(-3).map((destination) => destination.key)).toEqual([
     'overview',
     'activity',
     'files',
   ])
-  expect(live.slice(3).map((destination) => destination.key)).toEqual(ids.map(displayViewKey))
+  expect(live.slice(0, -3).map((destination) => destination.key)).toEqual(ids.map(displayViewKey))
   expect(new Set(live.map((destination) => destination.key)).size).toBe(live.length)
   expect(snapshot.views.map((view) => view.id)).toEqual(ids)
   const recorded = displayDestinations(true, [

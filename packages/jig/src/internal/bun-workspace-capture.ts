@@ -32,6 +32,8 @@ const Bun = (
 ).Bun
 
 export interface PrivateBunWorkspace {
+  /** Host-only display context; excluded from preparation identity and wire data. */
+  readonly projectRelativeRoot: string
   readonly captured: CapturedPackage
   readonly target: string
   readonly members: readonly string[]
@@ -330,6 +332,7 @@ async function capture(
     }
     const digest = await packageDigest(files, (file) => backing.stream(file.path))
     return {
+      projectRelativeRoot: relative(projectPath, root.requestedPath) || '.',
       captured: createCapturedPackage('captured Bun workspace', files, digest, backing),
       target,
       members: members.map(({ path }) => path),

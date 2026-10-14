@@ -95,9 +95,11 @@ test('inspection retains only verified immutable bytes and closes previews with 
         clipped: false,
       })
       const image = await owner.inspectionPreview('chart.svg')
-      expect(image.state).toBe('text')
-      expect(image.text).toContain('<svg')
-      expect(image.image).toBeUndefined()
+      expect(image.state).toBe('image')
+      expect(image.image?.mime).toBe('image/png')
+      const expired = await owner.inspectionPreview('chart.svg', privatePresentationNow() - 1)
+      expect(expired.state).toBe('text')
+      expect(expired.text).toContain('<svg')
       await writeFile(join(destination, 'files/chart.svg'), 'Changed image')
       expect(await owner.inspectionPreview('chart.svg')).toEqual(image)
       await rm(destination, { recursive: true })
@@ -154,7 +156,7 @@ test('image source retention shares one aggregate budget and reserves every text
     try {
       await owner.prepare(destination, [])
       expect((await owner.publish(record, { kind: 'snapshot', capture })).status).toBe('written')
-      expect((await owner.inspectionPreview('image-00.svg')).state).toBe('text')
+      expect((await owner.inspectionPreview('image-00.svg')).state).toBe('image')
       const last = await owner.inspectionPreview('image-63.svg')
       expect(last.state).toBe('text')
       expect(last.text?.length).toBe(4096)

@@ -147,6 +147,12 @@ These links locate module rules. All selected domain requirements still apply.
 - Manifest-policy diagnostics identify a closed cause and JSON field without
   rejected dependency values. Ancestor workspace manifest display paths are
   bounded project-relative locations, not executable or readable file routes.
+  Stale-lock diagnostics identify the verified authored lock and working
+  directory. They provide a shell-safe repair command.
+
+  Resolution permission does not update supplied locks. Root name/version
+  metadata does not select dependencies. Keep member name/version and all
+  dependency checks.
 
 - Project `entrypoint` is a target plus optional Run-argument string, retained
   in semantic identity, lock, review and inspection. `run-arguments.ts` owns

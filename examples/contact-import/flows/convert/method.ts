@@ -13,9 +13,10 @@ export async function runMethod(run: Pick<RunContext, 'input' | 'signal'>): Prom
     !mapping ||
     Object.keys(mapping).sort().join(',') !== 'email,name,organization' ||
     fields.some(
-      (k) => !Number.isInteger(mapping[k]) || mapping[k] < 0 || mapping[k] >= headers.length,
+      (field) =>
+        !Number.isInteger(mapping[field]) || mapping[field] < 0 || mapping[field] >= headers.length,
     ) ||
-    new Set(fields.map((k) => mapping[k])).size !== 3
+    new Set(fields.map((field) => mapping[field])).size !== 3
   )
     return {
       outcome: 'done',
@@ -41,14 +42,14 @@ export async function runMethod(run: Pick<RunContext, 'input' | 'signal'>): Prom
       email: row[mapping.email]?.trim() ?? '',
       organization: row[mapping.organization]?.trim() ?? '',
     }
-    const reason =
-      row.length !== headers.length
-        ? 'Column count does not match the header.'
-        : !contact.name || !contact.organization
-          ? 'Name and organization are required.'
-          : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)
-            ? 'Email does not match this example’s basic format rule.'
-            : ''
+    let reason = ''
+    if (row.length !== headers.length) {
+      reason = 'Column count does not match the header.'
+    } else if (!contact.name || !contact.organization) {
+      reason = 'Name and organization are required.'
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) {
+      reason = 'Email does not match this example’s basic format rule.'
+    }
     if (reason) rejected.push({ record, reason })
     else accepted.push({ record, contact })
   }

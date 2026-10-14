@@ -298,19 +298,30 @@ metadata is bounded to 1 MiB per manifest and 2 MiB for the root lock. Existing
 aggregate preparation limits apply to the captured workspace.
 
 Bun installs the captured target with `--filter`, script execution disabled,
-and the supplied root lock frozen, or with explicitly permitted lock resolution.
-Workspace lock entries must name captured members and agree with their manifests.
-Only selected members' code is staged, after installation. Preparation uses the
+and the supplied root lock frozen, or with explicitly permitted lock
+resolution. Workspace lock entries must name captured members and agree with
+their manifests. Workspace-root name/version metadata is not compared against
+the lock: Bun does not reliably maintain it, and it does not select dependency
+versions. Member names/versions, root and member dependency declarations, and
+patches remain checked.
+
+Root manifest edits still participate in reviewed source identity. Only
+selected members' code is staged, after installation. Preparation uses the
 pinned Bun hoisted linker and preserves workspace-relative source paths and
 installed dependency scopes. Exact installer aliases to selected member roots
 are retained as bounded private layout metadata, not Package/0 file records.
+
 This preserves nested versions and canonical module identity, including cyclic
-imports. Unselected member links are omitted; unknown links, aliases traversing
-aliases, and source-path collisions fail closed. Preparation permits at most
-4,096 combined file/alias records and 32 MiB of file content plus layout JSON;
-layout JSON has its own 1 MiB ceiling. Existing project-wide preparation bounds
-also apply. The target entrypoint runs from its retained member path while its
-working directory remains disposable scratch. No isolated-linker mode is exposed.
+imports. Unselected member links are omitted. Unknown links, aliases
+traversing aliases, and source-path collisions fail closed. Preparation
+permits at most 4,096 combined file/alias records and 32 MiB of file content
+plus layout JSON.
+
+Layout JSON has its own 1 MiB ceiling. Existing project-wide preparation
+bounds also apply. The target entrypoint runs from its retained member path
+while its working directory remains disposable scratch. No isolated-linker
+mode is exposed.
+
 Ancestor runtime configuration outside selected packages is not captured.
 Registry dependencies retain the same integrity and source policy.
 
@@ -707,41 +718,57 @@ It does not mutate user source or the visible lock, admit execution authority,
 or run package code.
 
 SDK planning retains closed expected ACP prerequisite refusals as per-target
-unavailability, as defined above. Other unsupported recipe failures, interrupted
-qualification, integrity faults and unconfirmed cleanup fail planning with no
-applicable Plan. Missing or invalid native configuration supplies its known
-`PROJECT_ACP_<CLIENT>_<STAGE>` cause, or `PROJECT_ACP_UNAVAILABLE` when unclassified.
-The CLI stops the complete review on an observed typed selected ACP prerequisite
-before apply or otherwise unchanged success, independently of report truncation.
-It identifies the captured policy selection with verified locations or an honest
-Binding/slot fallback; it does not label a provider's executable Flow as the
-client declaration. Failure preserves the previous complete admission.
-Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED`
-and its project-relative `package.json` location. These diagnostics include
-fixed guidance, not credentials, raw provider errors, or installer output.
-Manifest-policy refusals identify the manifest and offending JSON field with
-a closed cause: unsupported field or dependency source, invalid object shape,
-dependency map, package name, or patch declaration. Rejected values are not
-displayed; invalid dependency names identify their containing map instead.
-Workspace manifest locations are relative to the Jig project and may begin
-with up to 32 `../` segments for an ancestor workspace, within the existing
-path bounds. Only these manifest diagnostics permit ancestor locations;
-they grant no filesystem access and cannot name protected `.jig` state.
-A successful review
-shows the complete added, removed, and changed package, Binding, and target
-identities. Current and proposed package entries include their full Package/0
-content digest, which is the same portable identity written to `jig.lock`.
-The default CLI view leads with additions, changes, removals, and the resulting
-target list. It shows changed fields as previous/proposed values and omits
-unchanged policy. `jig review --details` expands the same diff with unchanged context.
+unavailability, as defined above. Other unsupported recipe failures,
+interrupted qualification, integrity faults and unconfirmed cleanup fail
+planning with no applicable Plan. Missing or invalid native configuration
+supplies its known `PROJECT_ACP_<CLIENT>_<STAGE>` cause, or
+`PROJECT_ACP_UNAVAILABLE` when unclassified. The CLI stops the complete review
+on an observed typed selected ACP prerequisite before apply or otherwise
+unchanged success, independently of report truncation.
+
+It identifies the captured policy selection with verified locations or an
+honest Binding/slot fallback. It does not label a provider's executable Flow
+as the client declaration. Failure preserves the previous complete admission.
+Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED` and
+its project-relative `package.json` location.
+
+These diagnostics include fixed guidance, not credentials, raw provider
+errors, or installer output. Manifest-policy refusals identify the manifest
+and offending JSON field with a closed cause. Causes cover unsupported fields
+or dependency sources, invalid object shapes, dependency maps, package names,
+and patch declarations. Rejected values are not displayed. Invalid dependency names
+identify their containing map instead.
+
+Workspace manifest locations are relative to the Jig project. Ancestor workspace
+locations may begin with up to 32 `../` segments, within the existing path bounds.
+`PACKAGE_BUN_LOCK_STALE` also permits these bounded ancestor
+locations for the mismatched manifest or lock. Its optional `lockPath` names
+the authored `bun.lock` relative to the project, using the verified captured
+workspace root or standalone package location. Other diagnostic codes cannot
+supply `lockPath`.
+
+These display locations grant no filesystem access and cannot name protected
+`.jig` state. The CLI identifies the mismatch and lock. It gives a shell-safe Bun
+lock update command with its working directory. It explains that resolution
+permission does not update a supplied lock. Review never performs that source
+update implicitly. A successful review shows the complete added, removed, and
+changed package, Binding, and target identities.
+
+Current and proposed package entries include their full Package/0 content
+digest, which is the same portable identity written to `jig.lock`. The default
+CLI view leads with additions, changes, removals, and the resulting target
+list. It shows changed fields as previous/proposed values and omits unchanged
+policy. `jig review --details` expands the same diff with unchanged context.
+
 For ACP grants, both views identify the recipient's exact proposed client,
 configured model, authentication mode and operator-selected executable through
 a non-secret field allowlist. They never expose credentials or private
 authentication-store paths. These facts come from authenticated recipes, not
-package-authored claims.
-Ordinary Agent implementations appear through their selected package,
-Binding settings and reviewed resource grants, like other ordinary targets.
-Approval behavior is identical in both views; `--details` is display policy,
+package-authored claims. Ordinary Agent implementations appear through their
+selected package, Binding settings and reviewed resource grants, like other
+ordinary targets.
+
+Approval behavior is identical in both views. `--details` is display policy,
 not another admission operation.
 
 The review is not a source-file diff; authors inspect editable source with

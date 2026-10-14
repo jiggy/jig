@@ -246,7 +246,7 @@ test('opaque view IDs keep all public application and builtin destinations indep
   ]
   const display = await createTui(await prepareTui(), { snapshot: value })
   try {
-    display.input(Buffer.from('v\u001b[H\r'))
+    display.input(Buffer.from('v\u001b[H' + 'j'.repeat(ids.length) + '\r'))
     const viewport = { columns: 100, rows: 28, color: false }
     expect((await display.frame(viewport)).text).toContain('[Execution]')
     display.input(Buffer.from('\t'))
@@ -321,7 +321,7 @@ test('handoff transfers chosen application state and fences native, input and pr
       })
     },
   })
-  display.input(Buffer.from('\tcs/a\r'))
+  display.input(Buffer.from('v\u001b[F\rcs/a\r'))
   await display.frame({ columns: 140, rows: 36, color: false })
   expect(reads).toBe(1)
   display.input(Buffer.from('\u001b'))

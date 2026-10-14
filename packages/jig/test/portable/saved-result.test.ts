@@ -624,7 +624,8 @@ test('recorded multiline expansion preserves trailing spaces and blank lines', a
       capture.close()
     }
   }))
-test('an unavailable image renderer preserves immutable SVG text after the original file changes', async () =>
+
+test('saved image previews remain immutable after the original SVG changes', async () =>
   fixture(async (root) => {
     const svg = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
@@ -633,12 +634,27 @@ test('an unavailable image renderer preserves immutable SVG text after the origi
     const capture = await privateCaptureSavedResult(root)
     try {
       const before = capture.preview('chart.svg')!
-      expect(before.image).toBeUndefined()
-      expect(before.text).toContain('<svg')
+      expect(before.image?.mime).toBe('image/png')
+      expect(before.image?.width).toBe(384)
       await writeFile(join(root, 'files/chart.svg'), 'replacement')
       expect(capture.preview('chart.svg')).toEqual(before)
       capture.close()
       expect(capture.preview('chart.svg')).toBeUndefined()
+    } finally {
+      capture.close()
+    }
+  }))
+
+test('plain and machine saved inspection can skip optional decoding while retaining the captured text', async () =>
+  fixture(async (root) => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16"/></svg>',
+    )
+    await packet(root, { 'chart.svg': svg })
+    const capture = await privateCaptureSavedResult(root, undefined, false)
+    try {
+      expect(capture.preview('chart.svg')?.image).toBeUndefined()
+      expect(capture.preview('chart.svg')?.text).toBe(svg.toString())
     } finally {
       capture.close()
     }

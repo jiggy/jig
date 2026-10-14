@@ -1,0 +1,37 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
+  "type": "object",
+  "properties": {
+    "status": {
+      "enum": ["proposed", "review"],
+      "type": "string"
+    },
+    "assignments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "shiftId": {
+            "type": "string"
+          },
+          "role": {
+            "enum": ["cook", "serve"],
+            "type": "string"
+          },
+          "volunteerId": {
+            "type": "string"
+          }
+        },
+        "required": ["shiftId", "role", "volunteerId"],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 8
+    },
+    "reason": {
+      "type": "string"
+    }
+  },
+  "required": ["status", "assignments", "reason"],
+  "additionalProperties": false
+}

@@ -292,13 +292,22 @@ Trusted root admission starts screen entry and the CLI joins it before
 settlement. Early host stages, call observations and diagnostics remain visible.
 Post-settlement inspection owns no execution/channel lifetime.
 
-Select immutable delivery capture before publication. Preview suppliers receive
-only artifact identity and capture generation, never mutable destinations or
-arbitrary paths. Navigation is renderer-local and cannot mutate host
-observations. `image-preview-policy.ts` owns bounded raster preview data. The
-bundled image worker and pinned renderer/font bytes participate in installed
-support identity. Production file-image decoding remains unavailable until
-independent fencing can interrupt Wasm on the qualified Bun profiles.
+Select immutable delivery capture before publication. Preview suppliers
+receive only artifact identity and capture generation, never mutable
+destinations or arbitrary paths. Navigation is renderer-local and cannot
+mutate host observations. `image-preview-policy.ts` owns bounded raster
+preview data.
+
+The bundled image worker and pinned renderer/font bytes participate in
+installed support identity. A disposable process owns image decoding. Its
+separate watchdog limits each image to five seconds. An open stdin pipe
+controls its lifetime.
+
+Pipe loss kills the decoder. Cancellation kills and joins it before reuse. The
+private command carries earlier preview cutoffs to the decoder timer.
+Image-content limits do not bound total Bun RSS.
+
+Saved-image preparation has a ten-second aggregate limit.
 
 Text and saved-file access remain usable. Auto/plain commit complete essential
 causes outside redraw. Entered TUI restores the screen, then commits retained

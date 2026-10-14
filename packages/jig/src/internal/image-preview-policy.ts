@@ -13,6 +13,7 @@ export const PRIVATE_PREVIEW_LIMITS = Object.freeze({
   copyBytes: 1024 * 1024,
   decodedTextBytes: 1024 * 1024,
   renderMs: 5000,
+  totalRenderMs: 10000,
 })
 
 /** Charge UTF-16 storage even when the runtime represents ASCII more cheaply. */

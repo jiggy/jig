@@ -1,0 +1,10 @@
+{
+  "name": "roster",
+  "description": "Build a checked Saturday kitchen roster from a volunteer scenario.",
+  "uses": {
+    "read-roster": {},
+    "propose-roster": {},
+    "check-roster": {},
+    "export-roster": {}
+  }
+}

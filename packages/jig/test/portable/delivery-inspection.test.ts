@@ -1,6 +1,10 @@
 import { expect, spyOn, test } from 'bun:test'
 import type { Socket } from 'node:net'
 import { Duplex } from 'node:stream'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { fileURLToPath } from 'node:url'
 import {
   PrivateDeliveryAuthorityRetirement,
   PrivateDeliveryCompletion,
@@ -18,6 +22,7 @@ import type {
   PrivateDeliveryReceipt,
 } from '../../src/internal/file-delivery.js'
 import { PrivateRootRunFiles } from '../../src/internal/root-run-files.js'
+import { privateImagePreviewProcess } from '../../src/internal/image-preview.js'
 import {
   PRIVATE_PRESENTATION_DEADLINE_ENV,
   privateConstrainPresentationDeadline,
@@ -608,6 +613,64 @@ test('retire joins one pending preview before sending its authenticated request'
   expect(socket.requests.map((request) => request.type)).toEqual(['preview', 'retire'])
   expect(delivery.signal.aborted).toBe(false)
 })
+
+test('a busy decoder drains before retirement under a short inspection deadline', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-inspection-decoder-'))
+  const ready = join(root, 'ready.json')
+  const fixture = fileURLToPath(new URL('../fixtures/image-preview-process-fixture.ts', import.meta.url))
+  const abort = new AbortController()
+  let decoder: Promise<Buffer | undefined> | undefined
+  let decoderExited = false
+  let retiredAfterDecoder = false
+  const socket = new ReplySocket((request, peer) => {
+    if (request.type === 'preview') {
+      decoder = privateImagePreviewProcess(
+        fixture,
+        Buffer.from(JSON.stringify({ mode: 'wasm', ready })),
+        abort.signal,
+        typeof request.deadline === 'number' ? request.deadline : undefined,
+      )
+      void decoder.then(
+        () => {
+          decoderExited = true
+          peer.reply({ ok: true, preview: { state: 'text', text: 'late', bytes: 4, clipped: false } })
+        },
+        (error) => peer.destroy(error),
+      )
+    } else {
+      retiredAfterDecoder = decoderExited
+      peer.reply({ ok: true, retired: true })
+    }
+  })
+  const delivery = channel(socket)
+  delivery.enableInspection!()
+  const started = privatePresentationNow()
+  const presentationDeadline = started + 4000
+  try {
+    const capture = await privateCaptureDeliveryInspection(
+      delivery,
+      receipt([{ path: 'image.svg', bytes: 4 }]),
+      { presentationDeadline },
+    )
+    const evidence = JSON.parse(await readFile(ready, 'utf8'))
+    expect(evidence.capped).toBeTrue()
+    expect(() => process.kill(evidence.pid, 0)).toThrow()
+    expect(retiredAfterDecoder).toBeTrue()
+    expect(socket.requests.map((request) => request.type)).toEqual(['preview', 'retire'])
+    expect(Number(socket.requests[0]!.deadline)).toBeLessThan(started + 2100)
+    expect(socket.requests[1]!.deadline).toBe(presentationDeadline)
+    expect(privatePresentationNow()).toBeLessThan(presentationDeadline)
+    expect(delivery.signal.aborted).toBeFalse()
+    expect(capture.files[0]!.bytes).toBe(4)
+    capture.close()
+  } finally {
+    abort.abort()
+    await decoder
+    delivery.close()
+    await rm(root, { recursive: true, force: true })
+  }
+}, 8000)
+
 test('image transfer retires authority and rejects non-raster or oversized preview payloads', async () => {
   const image = {
     mime: 'image/png' as const,

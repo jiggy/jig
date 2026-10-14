@@ -84,7 +84,7 @@ test('navigation shares host/application groups, every retained view and exclusi
     model
       .destinations()
       .slice(3)
-      .every((entry) => entry.group === 'application'),
+      .every((entry) => entry.group === 'run'),
   ).toBeTrue()
   expect(new Set(model.surfaceKeys()).size).toBe(35)
   for (const name of ['recorded-result', 'files', 'diagnostics', 'constructor', 'toString'])
@@ -110,6 +110,8 @@ test('view chooser reaches the last of all views, and printable v remains litera
   const frame = viewerFrame(model, 80, 14, false, true, 0, undefined, keys.state)
   expect(frame.lines.join('\n')).toContain('Documents')
   input.emit('data', Buffer.from('\r'))
+  expect(model.surface).toBe('files')
+  input.emit('data', Buffer.from('v\u001b[H' + 'j'.repeat(7) + '\r'))
   expect(model.surface).toBe(displayViewKey(JSON.stringify(['root', 'view-7'])))
   model.cycleCollection()
   input.emit('data', Buffer.from('/v\r'))
@@ -299,7 +301,7 @@ test('actual textual report prefix clipping never makes the literal tail unreach
   const text = 'A'.repeat(68) + ' END'
   model.acceptView('root', view([{ kind: 'report', text }]))
   model.selectRecord('block:0:0')
-  expect(viewerFrame(model, 80, 24, false, true).lines.join('\n')).not.toContain(' END')
+  expect(viewerFrame(model, 80, 24, false, true).lines.join('\n')).toContain(' END')
   const { input, keys } = keyboard(model)
   input.emit('data', Buffer.from('\r'))
   expect(keys.state.panels.at(-1)?.kind).toBe('detail')
@@ -314,7 +316,7 @@ test('prefix bytes at the combining-mark limit preserve explicit literal report 
   const text = 'A' + '\u0301'.repeat(2044) + 'END'
   model.acceptView('root', view([{ kind: 'report', text }]))
   model.selectRecord('block:0:0')
-  expect(viewerFrame(model, 49, 24, false, true).lines.join('\n')).not.toContain('END')
+  expect(viewerFrame(model, 49, 24, false, true).lines.join('\n')).toContain('END')
   const { input, keys } = keyboard(model)
   input.emit('data', Buffer.from('\r'))
   expect(keys.state.panels.at(-1)?.kind).toBe('detail')
@@ -366,4 +368,52 @@ test('top-level Escape stays; cancellation and physical EOF bypass the exit conf
   next.input.emit('data', Buffer.from('q'))
   next.input.emit('end')
   expect(next.keys.active).toBeFalse()
+})
+
+test('application pages show full reports and every fact in authored sections before expansion', () => {
+  const model = new FixtureModel()
+  model.acceptView('root', {
+    kind: 'view',
+    id: 'kitchen',
+    title: 'Saturday kitchen',
+    landing: true,
+    summary: 'Cover four shifts with a cook and a server.',
+    sections: [
+      {
+        title: '09:00–10:00',
+        blocks: [
+          {
+            kind: 'facts',
+            items: [
+              { label: 'Cook', value: 'Alex' },
+              { label: 'Serve', value: 'Bea' },
+              { label: 'Coverage', value: 'Both roles checked' },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Your roster',
+        blocks: [
+          {
+            kind: 'report',
+            text: 'Inspect the complete CSV before using this roster.\nJig confirms delivery separately.',
+          },
+        ],
+      },
+    ],
+  })
+  const page = viewerFrame(model, 100, 30, false, true).lines.join('\n')
+  for (const value of [
+    '09:00–10:00',
+    'Cook: Alex',
+    'Serve: Bea',
+    'Coverage: Both roles checked',
+    'Jig confirms delivery separately.',
+  ])
+    expect(page).toContain(value)
+  expect(page).not.toContain('Selected detail')
+  expect(model.destinations()[0]?.group).toBe('application')
+  model.acceptView('child', view([], 'checks', false))
+  expect(model.destinations().at(-1)?.group).toBe('run')
 })

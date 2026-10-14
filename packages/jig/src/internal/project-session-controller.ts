@@ -53,10 +53,9 @@ import {
 import {
   assemblePrivateBunExecution,
   capturePrivateBunDependencies,
-  type PrivateBunPreparationWorkspace,
   privateBunPreparationInputs,
 } from './bun-preparation-evidence.js'
-import { capturePrivateBunWorkspace } from './bun-workspace-capture.js'
+import { capturePrivateBunWorkspace, type PrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
 import { captureDependencyFlows } from './dependency-flows.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
@@ -419,19 +418,31 @@ function createSession(
                   const unlocked = !captured.files.some((file) => file.path === 'bun.lock')
                   if (unlocked && host.allowResolutionNetwork === true)
                     host.onResolution?.('package.json')
-                  return privateProfileSpan('dependency-preparation', () =>
-                    preparePrivateBunPackage({
-                      captured,
-                      ...(workspace === undefined ? {} : { workspace }),
-                      installedSupport: host.installedBunSupport,
-                      backend: host.backend,
-                      projectRoot: owner.root.requestedPath,
-                      coordinator: owner.coordinator,
-                      deadlineUnixMs: budget.deadlineUnixMs,
-                      signal: budget.signal,
-                      allowResolutionNetwork: host.allowResolutionNetwork === true,
-                    }),
-                  )
+                  try {
+                    return await privateProfileSpan('dependency-preparation', () =>
+                      preparePrivateBunPackage({
+                        captured,
+                        ...(workspace === undefined ? {} : { workspace }),
+                        installedSupport: host.installedBunSupport,
+                        backend: host.backend,
+                        projectRoot: owner.root.requestedPath,
+                        coordinator: owner.coordinator,
+                        deadlineUnixMs: budget.deadlineUnixMs,
+                        signal: budget.signal,
+                        allowResolutionNetwork: host.allowResolutionNetwork === true,
+                      }),
+                    )
+                  } catch (error) {
+                    if (error instanceof CheckError && error.code === 'PACKAGE_BUN_LOCK_STALE') {
+                      throw scopePrivatePackagePlanningError(
+                        error,
+                        '.',
+                        undefined,
+                        workspace?.projectRelativeRoot,
+                      )
+                    }
+                    throw error
+                  }
                 },
                 retain: async (selector, source, prepared) => {
                   budget.retain(
@@ -541,6 +552,13 @@ function createSession(
                 if (workspace !== undefined) {
                   try {
                     execution = await prepareExecution(workspace.captured, workspace)
+                  } catch (error) {
+                    throw scopePrivatePackagePlanningError(
+                      error,
+                      request.packagePath,
+                      undefined,
+                      workspace.projectRelativeRoot,
+                    )
                   } finally {
                     await workspace.captured.dispose()
                   }
@@ -555,7 +573,7 @@ function createSession(
 
                 async function prepareExecution(
                   captured: typeof source,
-                  workspace?: PrivateBunPreparationWorkspace,
+                  workspace?: PrivateBunWorkspace,
                 ): Promise<PrivateBunExecutionArtifact> {
                   const inputs = await privateBunPreparationInputs({
                     captured,
@@ -1032,6 +1050,7 @@ export function projectError(
             path: error.path,
             ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
             ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
+            ...(error.lockPath === undefined ? {} : { lockPath: error.lockPath }),
           },
         )
       } catch {
@@ -1065,10 +1084,25 @@ export function scopePrivatePackagePlanningError(
   error: unknown,
   packagePath: string,
   bindingPath?: string,
+  workspaceRoot?: string,
 ): unknown {
   if (error instanceof PrivateBunManifestError && error.projectRelative) return error
   if (!(error instanceof CheckError)) {
     return error
+  }
+  if (error.lockPath !== undefined) return error
+  if (error.code === 'PACKAGE_BUN_LOCK_STALE') {
+    const root = workspaceRoot ?? packagePath
+    const atRoot = (path: string) => (root === '.' ? path : `${root}/${path}`)
+    return new CheckError(
+      error.kind,
+      error.code,
+      error.message,
+      atRoot(error.path ?? 'bun.lock'),
+      error.pointer,
+      error.typeMismatch,
+      atRoot('bun.lock'),
+    )
   }
   if (
     bindingPath !== undefined &&

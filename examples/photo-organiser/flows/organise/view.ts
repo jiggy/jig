@@ -1,59 +1,132 @@
-import type { Report, ViewSnapshot } from '@jigging/reporting'
+import type { Section, ViewSnapshot } from '@jigging/reporting'
+import type { Photo } from './catalogue.ts'
 import type { RenamedPhoto } from './plan.ts'
 
-export function photosView(photos: RenamedPhoto[] = [], accepted = false): ViewSnapshot {
-  let summary = 'Grouping is provisional until every photo and filename passes the checks.'
-  let explanation: Report = {
-    kind: 'report',
-    text: 'The Agent receives captions and dates only, never photo bytes.',
-  }
+export type PhotoBoxState = {
+  phase:
+    | 'reading'
+    | 'grouping'
+    | 'checking'
+    | 'copying'
+    | 'contact-sheet'
+    | 'ready'
+    | 'blocked'
+    | 'limit'
+    | 'cancelled'
+    | 'failed'
+  photos?: Photo[]
+  plan?: RenamedPhoto[]
+  reason?: string
+}
 
-  if (accepted) {
-    summary = `${photos.length} checked copies prepared. Full images and contact sheet are in the result packet.`
-    explanation = {
-      kind: 'report',
-      text: 'Open overview/contact-sheet.svg from the result packet to see before and after. The Agent groups captions without interpreting pixels.',
-      references: [
-        { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
-        { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
+const stages = {
+  reading: ['Reading photos and captions', 0],
+  grouping: ['Suggesting event groups', 1],
+  checking: ['Checking every assignment and filename', 2],
+  copying: ['Preparing checked copies and the manifest', 3],
+  'contact-sheet': ['Creating the before-and-after contact sheet', 4],
+  ready: ['Photo collection prepared', 5],
+  blocked: ['Grouping needs attention', 0],
+  limit: ['Grouping limit reached', 0],
+  cancelled: ['Photo organisation cancelled', 0],
+  failed: ['Photo organisation stopped', 0],
+} as const
+
+export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
+  const photos = state.photos ?? []
+  const plan = state.plan ?? []
+  const groups = [...new Set(plan.map((photo) => photo.event))]
+  const ready = state.phase === 'ready'
+  const [label, completed] = stages[state.phase]
+  const sections: Section[] = []
+
+  if (ready) {
+    sections.push({
+      title: 'Before and after',
+      blocks: [
+        {
+          kind: 'report',
+          text: 'Open the contact sheet to see the original photo box beside its organised copies. The manifest records every destination.',
+          references: [
+            { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
+            { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
+          ],
+        },
       ],
-    }
+    })
   }
 
-  return {
-    summary,
-    sections: [
+  sections.push({
+    title: 'Photo box status',
+    blocks: [
+      { kind: 'progress', label, completed, total: 5, unit: 'stages' },
       {
-        blocks: [
+        kind: 'facts',
+        items: [
+          { label: 'Photos found', value: state.photos ? photos.length : 'Reading' },
+          { label: 'Checked groups', value: state.plan ? groups.join(', ') : 'Awaiting checks' },
           {
-            kind: 'collection',
-            id: 'photos',
-            title: 'Original → organised copy',
-            columns: [
-              { key: 'original', label: 'Original', type: 'text' },
-              { key: 'group', label: 'Event', type: 'text' },
-              { key: 'copy', label: 'Copy', type: 'text' },
-            ],
-            rows: photos.map((photo) => ({
+            label: 'Copies and contact sheet',
+            value: ready
+              ? 'Prepared; Jig confirms delivery separately'
+              : 'No complete collection confirmed',
+          },
+        ],
+      },
+      {
+        kind: 'report',
+        text: state.reason
+          ? [...state.reason].slice(0, 1000).join('')
+          : 'Originals stay unchanged. The Agent groups captions and dates; it receives no photo bytes. Grouping quality still needs your review.',
+      },
+    ],
+  })
+
+  if (photos.length) {
+    sections.push({
+      title: 'Your photos',
+      blocks: [
+        {
+          kind: 'collection',
+          id: 'photos',
+          title: 'Original → organised copy',
+          columns: [
+            { key: 'original', label: 'Original', type: 'text' },
+            { key: 'date', label: 'Date', type: 'text' },
+            { key: 'group', label: 'Event', type: 'text' },
+            { key: 'copy', label: ready ? 'Copy' : 'Planned copy', type: 'text' },
+          ],
+          rows: photos.map((photo) => {
+            const checked = plan.find((entry) => entry.id === photo.id)
+            return {
               id: photo.id,
               cells: {
                 original: photo.file,
-                group: photo.event,
-                copy: photo.destination,
+                date: photo.date,
+                group: checked?.event ?? null,
+                copy: checked?.destination ?? null,
               },
               details: [
                 {
                   kind: 'report',
-                  text: 'The source stays unchanged.',
-                  references: [{ kind: 'artifact', attachment: 'photos', path: photo.destination }],
+                  text: photo.caption,
+                  references:
+                    ready && checked
+                      ? [{ kind: 'artifact', attachment: 'photos', path: checked.destination }]
+                      : [],
                 },
               ],
-            })),
-            total: photos.length,
-          },
-          explanation,
-        ],
-      },
-    ],
+            }
+          }),
+          total: photos.length,
+        },
+      ],
+    })
+  }
+
+  return {
+    summary:
+      'Turn a photo box into event folders, preserving the originals and preparing a visual before-and-after comparison.',
+    sections,
   }
 }

@@ -1,10 +1,11 @@
-import { Worker } from 'node:worker_threads'
 import type { DisplayImagePreview } from '@jigging/display-model'
+import { dirname } from 'node:path'
+import { spawn } from 'node:child_process'
 import { PRIVATE_PREVIEW_LIMITS, privateValidImagePreview } from './image-preview-policy.js'
 import { privateImagePreviewWorkerPath } from './image-preview-worker-location.js'
+import { privatePresentationNow } from './root-run-timeout-policy.js'
 
-/** A single live renderer reservation belongs to this command process. Concurrent
- * callers fall back to text instead of allocating another renderer or queue. */
+// One live renderer per command. Concurrent requests retain their file fallback.
 let rendering = false
 
 export function privateImageSourceCandidate(prefix: Buffer): boolean {
@@ -19,74 +20,28 @@ export function privateImageSourceCandidate(prefix: Buffer): boolean {
   )
 }
 
-/** Preview failure preserves saved files and the existing textual fallback.
- * Thread termination does not interrupt Wasm on the qualified Bun profiles.
- * Do not expose that candidate until an independently fenced owner is proved. */
+/** Decode only captured bytes, in fixed installed code with no inherited environment.
+ * SIGKILL stops the whole process, including Wasm; its actual exit precedes reuse. */
 export async function privateImagePreview(
-  _bytes: Buffer,
-  _signal?: AbortSignal,
-): Promise<DisplayImagePreview | undefined> {
-  return undefined
-}
-
-/** Private qualification candidate only. Successful rendering does not qualify
- * its lifetime: native JS/Wasm termination failures remain an admission gate. */
-export async function privateCandidateThreadImagePreview(
   bytes: Buffer,
   signal?: AbortSignal,
+  deadline?: number,
 ): Promise<DisplayImagePreview | undefined> {
   if (
     rendering ||
     signal?.aborted ||
+    (deadline !== undefined && privatePresentationNow() >= deadline) ||
     bytes.length > PRIVATE_PREVIEW_LIMITS.sourceBytes ||
     !privateImageSourceCandidate(bytes)
   )
     return undefined
   rendering = true
-  let worker: Worker | undefined
-  let exited: Promise<void> | undefined
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let stop: (() => void) | undefined
   try {
     const path = await privateImagePreviewWorkerPath()
     if (signal?.aborted) return undefined
-    const input = new ArrayBuffer(bytes.length)
-    new Uint8Array(input).set(bytes)
-    const activeWorker = new Worker(path, { workerData: input, transferList: [input], env: {} })
-    worker = activeWorker
-    exited = new Promise<void>((resolve) => activeWorker.once('exit', () => resolve()))
-    const result = await new Promise<ArrayBuffer | undefined>((resolve) => {
-      let done = false
-      stop = () => {
-        if (!done) {
-          done = true
-          resolve(undefined)
-        }
-      }
-      activeWorker.once('message', (value: unknown) => {
-        if (done) return
-        done = true
-        resolve(
-          value instanceof ArrayBuffer && value.byteLength <= PRIVATE_PREVIEW_LIMITS.pngBytes
-            ? value
-            : undefined,
-        )
-      })
-      activeWorker.once('error', stop)
-      activeWorker.once('exit', stop)
-      signal?.addEventListener('abort', stop, { once: true })
-      timer = setTimeout(stop, PRIVATE_PREVIEW_LIMITS.renderMs)
-      if (signal?.aborted) stop()
-    })
-    clearTimeout(timer)
-    if (stop) signal?.removeEventListener('abort', stop)
-    await worker.terminate()
-    await exited
-    worker = undefined
-    exited = undefined
-    if (!result || signal?.aborted) return undefined
-    const png = Buffer.from(result)
-    if (png.length < 33 || png.toString('ascii', 12, 16) !== 'IHDR') return undefined
+    const png = await privateImagePreviewProcess(path, bytes, signal, deadline)
+    if (!png || signal?.aborted || png.length < 33 || png.toString('ascii', 12, 16) !== 'IHDR')
+      return undefined
     const image = {
       mime: 'image/png' as const,
       width: png.readUInt32BE(16),
@@ -97,14 +52,61 @@ export async function privateCandidateThreadImagePreview(
   } catch {
     return undefined
   } finally {
-    clearTimeout(timer)
-    if (stop) signal?.removeEventListener('abort', stop)
-    // An uncertain join holds this reservation permanently. A deadline is never
-    // permission to reuse a potentially live Wasm heap.
-    if (worker) {
-      await worker.terminate()
-      await exited
-    }
     rendering = false
+  }
+}
+
+/** Private process-lifetime seam for native fault fixtures; callers cannot select it. */
+export async function privateImagePreviewProcess(
+  path: string,
+  bytes: Buffer,
+  signal?: AbortSignal,
+  deadline?: number,
+): Promise<Buffer | undefined> {
+  const renderDeadline = Math.min(
+    privatePresentationNow() + PRIVATE_PREVIEW_LIMITS.renderMs,
+    deadline ?? Infinity,
+  )
+  if (
+    !Number.isSafeInteger(renderDeadline) ||
+    renderDeadline <= privatePresentationNow() ||
+    signal?.aborted
+  )
+    return undefined
+  const child = spawn(process.execPath, ['--no-env-file', path, String(bytes.length)], {
+    cwd: dirname(path),
+    env: {},
+    stdio: ['pipe', 'pipe', 'ignore'],
+  })
+  // Observe errors before feeding stdin: a decoder can fail before its first read.
+  const exited = new Promise<number | null>((resolve) => {
+    child.once('error', () => {})
+    child.once('close', resolve)
+  })
+  const stop = () => {
+    child.kill('SIGKILL')
+  }
+  const timer = setTimeout(stop, Math.max(0, renderDeadline - privatePresentationNow()))
+  signal?.addEventListener('abort', stop, { once: true })
+  child.stdin.on('error', stop)
+  // Keep this pipe open as a lifetime lease. Parent death closes it in the kernel.
+  child.stdin.write(bytes)
+  if (signal?.aborted) stop()
+  const chunks: Buffer[] = []
+  let length = 0
+  try {
+    for await (const chunk of child.stdout) {
+      length += chunk.length
+      if (length > PRIVATE_PREVIEW_LIMITS.pngBytes) return undefined
+      chunks.push(chunk)
+    }
+    if ((await exited) !== 0 || signal?.aborted) return undefined
+    return Buffer.concat(chunks, length)
+  } finally {
+    stop()
+    await exited
+    child.stdin.destroy()
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', stop)
   }
 }

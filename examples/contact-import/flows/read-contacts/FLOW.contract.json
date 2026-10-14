@@ -1,0 +1,59 @@
+{
+  "attachments": {
+    "source": "read"
+  },
+  "input": {
+    "type": "object",
+    "properties": {},
+    "required": [],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "headers": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "maxItems": 16,
+            "minItems": 1
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 2048
+              },
+              "maxItems": 16
+            },
+            "maxItems": 100
+          }
+        },
+        "required": ["headers", "rows"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/reporting/reporting.json"
+    }
+  }
+}

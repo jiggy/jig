@@ -166,6 +166,67 @@ describe('private finite project session', () => {
       ).diagnostic,
     ).toBeUndefined()
   })
+  test('stale workspace locks retain project-relative manifest and repair locations', () => {
+    for (const root of ['.', '../..']) {
+      const atRoot = (path: string) => (root === '.' ? path : `${root}/${path}`)
+      const failure = scopePrivatePackagePlanningError(
+        new CheckError(
+          'invalid',
+          'PACKAGE_BUN_LOCK_STALE',
+          'private installer detail',
+          'packages/library/package.json',
+          '/version',
+        ),
+        'flows/demo',
+        undefined,
+        root,
+      )
+      expect(scopePrivatePackagePlanningError(failure, 'flows/demo')).toBe(failure)
+      expect(projectError(failure, 'plan').diagnostic).toEqual({
+        code: 'PACKAGE_BUN_LOCK_STALE',
+        path: atRoot('packages/library/package.json'),
+        pointer: '/version',
+        lockPath: atRoot('bun.lock'),
+      })
+    }
+  })
+  test('dependency lock display metadata rejects unrelated, protected and unbounded paths', () => {
+    const diagnostic = {
+      code: 'PACKAGE_BUN_LOCK_STALE',
+      path: '../../package.json',
+      lockPath: '../../bun.lock',
+    }
+    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', diagnostic)
+    expect(Object.isFrozen(failure.diagnostic)).toBe(true)
+    for (const lockPath of [
+      '../token',
+      '/private/bun.lock',
+      '../.jig/bun.lock',
+      '../libs/../../bun.lock',
+      '../'.repeat(33) + 'bun.lock',
+    ]) {
+      expect(
+        () =>
+          new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+            ...diagnostic,
+            lockPath,
+          }),
+      ).toThrow()
+    }
+    expect(
+      () =>
+        new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+          ...diagnostic,
+          code: 'PROJECT_DEFAULT_MISSING',
+          path: 'package.json',
+        }),
+    ).toThrow('project diagnostic lock path is invalid')
+    const accessor = { ...diagnostic }
+    Object.defineProperty(accessor, 'lockPath', { enumerable: true, get: () => '../../bun.lock' })
+    expect(() => new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', accessor)).toThrow(
+      'project diagnostic is invalid',
+    )
+  })
   test('preserves missing default diagnostics without exposing source error text', () => {
     const failure = projectError(
       new CheckError(
@@ -651,6 +712,7 @@ describe('private finite project session', () => {
     expect(projectError(stale, 'plan').diagnostic).toEqual({
       code: 'PACKAGE_BUN_LOCK_STALE',
       path: 'flows/dependent/bun.lock',
+      lockPath: 'flows/dependent/bun.lock',
     })
     const unsupportedFormat = projectError(
       scopePrivatePackagePlanningError(

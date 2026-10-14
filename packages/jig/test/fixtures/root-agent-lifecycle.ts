@@ -76,13 +76,29 @@ export async function addBatchRepairFixture(project: string) {
       filter: (path) => basename(path) !== 'node_modules',
     })
   }
+  // Copy unchanged current method helpers into the private batch package;
+  // source-level tests import the same files directly from their owning Flows.
+  const example = join(testRoot, '../../../examples/tested-patch/flows')
+  for (const [method, files] of [
+    ['read-project', ['capture.ts', 'checks.ts', 'logs-cases.json']],
+    ['check-repair', ['evidence.ts', 'identity.ts', 'commands.ts', 'types.ts']],
+    ['export-patch', ['method.ts', 'patch.ts']],
+  ] as const) {
+    const destination = join(project, 'flows/project', method)
+    await mkdir(destination, { recursive: true })
+    for (const file of files) await cp(join(example, method, file), join(destination, file))
+  }
   const batchPath = join(project, 'flows/project/batch.ts')
   await writeFile(
     batchPath,
     (await readFile(batchPath, 'utf8')).replaceAll(
-      '../../../../../../../examples/tested-patch/flows/project/',
+      '../../../../../../../examples/tested-patch/flows/',
       './',
     ),
+  )
+  await writeFile(
+    join(project, 'bindings/repair.ts'),
+    "import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/project',slots:{repair:'binding:specialist'}});\n",
   )
   const checks = join(project, 'fixtures/timesheet/test/project.test.ts')
   await rename(`${checks}.txt`, checks)
@@ -1167,14 +1183,16 @@ export async function qualifyRepairScenario(
         outcome: 'done',
         delivery: { status: 'written' },
       })
-      expect(await readFile(join(out, 'files/summary.txt'), 'utf8')).toContain('review-ready')
-      expect(await readFile(join(out, 'files/goal.txt'), 'utf8')).toBe(
+      expect(await readFile(join(out, 'files/review/summary.txt'), 'utf8')).toContain(
+        'review-ready',
+      )
+      expect(await readFile(join(out, 'files/review/goal.txt'), 'utf8')).toBe(
         JSON.parse(await readFile(join(project, 'issue.json'), 'utf8')).issue + '\n',
       )
-      expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
+      expect(await readFile(join(out, 'files/review/review.patch'), 'utf8')).toContain(
         '--- a/src/parse.ts',
       )
-      expect(await readFile(join(out, 'files/review.patch'), 'utf8')).toContain(
+      expect(await readFile(join(out, 'files/review/review.patch'), 'utf8')).toContain(
         '--- a/src/report.ts',
       )
       expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
@@ -1214,7 +1232,7 @@ export async function qualifyRepairScenario(
       expect(unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false)).toBe(
         true,
       )
-      expect((await readdir(join(failedOut, 'files'))).sort()).toEqual([
+      expect((await readdir(join(failedOut, 'files/review'))).sort()).toEqual([
         'goal.txt',
         'proposal-1.patch',
         'proposal-2.patch',

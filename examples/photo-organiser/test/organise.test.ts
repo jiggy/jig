@@ -12,7 +12,7 @@ import responseSchema from '../flows/group/proposal.schema.json'
 import { readCatalogue } from '../flows/organise/catalogue.ts'
 import { organisePhotos } from '../flows/organise/method.ts'
 import { checkProposal, type RenamedPhoto } from '../flows/organise/plan.ts'
-import { photosView } from '../flows/organise/view.ts'
+import { photoBoxView } from '../flows/organise/view.ts'
 
 type TestOrganiserRun = {
   input: JsonValue
@@ -123,7 +123,9 @@ test('checked copies preserve original bytes, group files and deliver a visible 
       manifest: 'copies/manifest.csv',
       contactSheet: 'overview/contact-sheet.svg',
     })
-    expect(photosView(rows, true).sections[0]?.blocks[1]).toMatchObject({
+    expect(
+      photoBoxView({ phase: 'ready', photos: catalogue, plan: rows }).sections[0]?.blocks[0],
+    ).toMatchObject({
       references: [
         { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
         { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
@@ -351,9 +353,13 @@ test('both Flow views satisfy the exact public channel contract', async () => {
             updates,
           )
         } else {
-          updates
-            .view('photos', { title: 'Photo box', landing: true })
-            .update(photosView(checkProposal(catalogue, proposal), true))
+          updates.view('photos', { title: 'Photo box', landing: true }).update(
+            photoBoxView({
+              phase: 'ready',
+              photos: catalogue,
+              plan: checkProposal(catalogue, proposal),
+            }),
+          )
         }
       },
     )

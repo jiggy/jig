@@ -114,49 +114,71 @@ canonical ports get one hint instead of a guess. Unsupported contracts remain
 ordinary optional channels. NO_COLOR and TERM=dumb alter style, not selection.
 
 Use `jig run --display tui` for a terminal workspace. **Activity** collects
-current work and the newest notices first; setup stages expand from one entry.
+current work and the newest notices first. Setup stages expand from one entry.
 **Execution** shows actual calls, opening active or problematic branches and
-collapsing returned branches. You can expand them to see their calls.
-Your domain tabs retain their own records and evidence. Routine
-reports stay collapsed, while attributed causes remain visible across tabs. `!`
-opens their full explanation, `d` opens attributed diagnostic text, and `?` shows
-contextual help. Diagnostic text with no structured severity stays unclassified.
+collapsing returned branches.
+
+You can expand them to see their calls. Your application page composes its
+summary and authored sections, retaining records and evidence. Routine
+activity history stays collapsed, while attributed causes remain visible
+across tabs. `!` opens their full explanation, `d` opens attributed diagnostic
+text, and `?` shows contextual help.
+
+Diagnostic text with no structured severity stays unclassified.
 
 Give each child call a short, descriptive `intent` in `run.call(...)`; Execution
 uses that supplied label. Without it, the graph shows the reviewed slot name.
 Enter on a call shows its original operation ID and host lifecycle.
 
-The terminal renderer is included with Jig. Flows supply semantic reports, facts,
-counts and collections; they do not import a UI library or choose terminal widgets.
-The workspace groups execution, activity and files separately from your application's
-views. Large terminals show a navigation rail; `v` opens the complete view chooser
-at any size. Compact tables keep records together. A context pane appears on wide
-screens only when it adds information; Enter expands full details. Tab changes
-views; arrows/j/k select records. `c` selects
-a collection; `/` edits its filter and `s` changes sorting. Filter text is literal:
-Enter applies it and Escape discards the draft. `r` explicitly selects a reference;
-Enter then opens the chosen record, call or verified immutable file preview.
-When the selected entry has one distinct artifact reference, its available
-content is previewed directly. Multiple references still require a choice.
-**Delivered files** lists captured evidence independently of application views;
-select a file to read its text or patch. Size and capture limits stay secondary.
+The terminal renderer is included with Jig. Flows supply semantic reports,
+facts, counts and collections. They do not import a UI library or choose
+terminal widgets. Your root landing view is the application's main page.
+
+Execution, Activity, Delivered files and child views sit together under
+Inspector. Publish the same root view as your application advances or stops,
+using a separate presentation module to turn domain state into sections. Keep
+each child Flow's own view useful when that Flow is invoked directly. Large
+terminals show a navigation rail.
+
+`v` opens the complete view chooser at any size. Compact tables keep records
+together. A context pane appears on wide screens only when it adds
+information. Enter expands full details.
+
+Tab changes views. Arrows/j/k select records. `c` selects a collection. `/`
+edits its filter and `s` changes sorting.
+
+Filter text is literal: Enter applies it and Escape discards the draft. `r`
+explicitly selects a reference. Enter then opens the chosen record, call or
+verified immutable file preview. When the selected entry has one distinct
+artifact reference, its available content is previewed directly.
+
+Multiple references still require a choice. **Delivered files** lists captured
+evidence independently of application views. Select a file to read its text or
+patch. Size and capture limits stay secondary.
+
 Brackets/Page keys scroll details. Escape returns from a local panel or
 record/call reference jump, and stays at the top level. q asks before leaving,
-with Stay selected; confirmed live exit continues work inline. Ctrl-C requests cancellation
-and waits for cleanup. After execution, cleanup and delivery settle, result
-inspection is read-only and stays open until you confirm leaving with q or keyboard Ctrl-C, subject
-to any explicit enclosing command limit. Initial input, review, file and runtime
-refusals stay in ordinary output; the workspace opens only once root execution
-begins. Leaving restores your terminal and prints
-retained essential causes before the final result.
-`--display plain` selects nonanimated presentation. `--json` or effective
-`--receive` keeps exact existing output and takes precedence over the dashboard.
-The workspace needs terminal input/stderr and at least 18 columns/4 rows;
-smaller terminals release to plain output. Normal panes need 50 columns/14 rows.
-Ordinary `jig run` selects TUI when input and both output streams are suitable
-terminals; otherwise it uses ordinary output. NO_COLOR keeps TUI controls without color. Activity is
-bounded session history; omission is disclosed, and result evidence remains separate.
-Use [saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
+with Stay selected. Confirmed live exit continues work inline.
+
+Ctrl-C requests cancellation and waits for cleanup. After execution, cleanup
+and delivery settle, result inspection is read-only. It stays open until you
+confirm leaving with q or keyboard Ctrl-C, subject to any explicit enclosing
+command limit. Initial input, review, file and runtime refusals stay in
+ordinary output. The workspace opens only once root execution begins.
+
+Leaving restores your terminal and prints retained essential causes before the
+final result. `--display plain` selects nonanimated presentation. `--json` or
+effective `--receive` keeps exact existing output and takes precedence over
+the dashboard. The workspace needs terminal input/stderr and at least 18
+columns/4 rows.
+
+Smaller terminals release to plain output. Normal panes need 50 columns/14
+rows. Ordinary `jig run` selects TUI when input and both output streams are
+suitable terminals. Otherwise it uses ordinary output.
+
+NO_COLOR keeps TUI controls without color. Activity is bounded session
+history. Omission is disclosed, and result evidence remains separate. Use
+[saved-result inspection](results.md#reopen-a-saved-result) to reopen a packet
 after the dashboard closes, without starting another Run.
 
 Use `jig run --display web` for the same semantic views in a browser. Jig prints

@@ -121,25 +121,42 @@ workspace before hiding the cause and disclose clipping.
 
 ### Workspace navigation
 
-The explicit workspace groups host Execution, Activity and Delivered files separately
-from every attributed application view. Saved inspection has exactly one Recorded
-result, Captured files and Diagnostics destination, supplied by the recorded host
-adapter. Author-supplied names never select host navigation. A navigation rail is
-available at 150 columns and 24 rows; smaller layouts retain the current-view trail.
-`v` opens a grouped chooser that reveals the selected attributed destination within
-the viewport. Tab/Shift-Tab cycle the same destinations. View selection preserves
+The explicit workspace presents root-publisher application pages first.
+Inspector contains host Execution, Activity, Delivered files and attributed
+child views. Publisher identity, rather than an authored title, determines the
+group. A Flow invoked directly owns the root page even if it is also used as a
+child elsewhere.
+
+Saved inspection has exactly one Recorded result, Captured files and
+Diagnostics destination, supplied by the recorded host adapter.
+Author-supplied names never select host navigation. A navigation rail is
+available at 150 columns and 24 rows. Smaller layouts retain the current-view
+trail.
+
+`v` opens a grouped chooser that reveals the selected destination within the
+viewport. Tab/Shift-Tab cycle the same destinations. View selection preserves
 viewer-local filters, sorting and stable record identity.
 
-All valid block types are reachable in supplied order. Lists use dense rows and
-aligned declared columns, showing at most the first three fields; full expansion
-retains every supplied field. Automatic context requires at least 118 columns and
-24 rows and meaningful additional selected content: authored details, hidden fields,
-facts, remaining or clipped report text, captured content, or an observed call's
-known cause or strictly scoped related report. Generic lifecycle metadata alone
-never splits the Execution view. Local action feedback remains visible without
-opening a duplicate pane and without replacing sticky attention. Empty-detail
-requests explain that fact. Report clipping accounts for prefixes, display cells
-and encoded bytes; the complete retained source stays reachable through expansion.
+Application pages compose the supplied summary, sections, reports, facts and
+progress in order. Reports wrap and facts show their labels and values in
+place. Reading them does not require expanding an inspector record.
+Collections use aligned columns, showing as many declared fields as fit.
+Hidden fields and viewport overflow remain disclosed and every retained field
+stays reachable through expansion. Keyboard selection, filtering, sorting and
+typed references continue to work on the composed page.
+
+Inspection lists use dense rows with at most the first three fields. Automatic
+context requires at least 118 columns and 24 rows and meaningful additional
+selected content. On an application page it opens for selected collection rows
+or artifact evidence. Ordinary page blocks do not automatically allocate a
+second pane.
+
+Generic lifecycle metadata alone never splits the Execution view. Local action
+feedback remains visible without opening a duplicate pane and without
+replacing sticky attention. Empty-detail requests explain that fact. Report
+clipping accounts for prefixes, display cells and encoded bytes.
+
+The complete retained source stays reachable through expansion.
 
 Selection alone never navigates a record/call reference. A selected entry with
 exactly one distinct typed artifact reference, considering all cells and supplied
@@ -308,24 +325,39 @@ available in TUI/web. Final evidence remains independent of optional updates.
    selection is a shell preference available before project loading, not a
    `jig.ts` authoring or approval setting. Plain output ignores themes.
 4. **Readable failures.** Order the failure summary, relevant location, known
-   explanation/recovery, and diagnostic code. Codes support search and software;
-   they must not replace the explanation. Name known missing prerequisites.
+   explanation/recovery, and diagnostic code. Codes support search and
+   software. They must not replace the explanation. Name known missing
+   prerequisites.
+
    Unknown causes stay unknown, with a bounded diagnostic step rather than a
    guessed repair or raw exception. Explicitly identify absent diagnostic text
-   and an unretained cause; never direct users to inspect nonexistent evidence.
-   Show one failure explanation, retaining additional details without repeating
-   the raw status/code/message as a separate result block. Explain whether work started and whether
-   effects or cleanup are uncertain whenever that affects recovery.
-   Preserve value-free expected/received JSON type facts for schema type errors
-   across planning and execution boundaries. Never echo rejected values or
-   arbitrary worker messages to manufacture a more detailed cause.
-   Schema authoring failures identify the required FLOW Schema/0 root identifier
-   when `$schema` is missing or wrong. Invalid JSON, unsupported keywords,
-   references and exceeded limits give bounded corrections and the relevant
-   FLOW specification, without echoing rejected values or compiler exceptions.
-   Missing or invalid files in the installed Jig runtime have a closed
-   installation-repair explanation; raw paths and filesystem exceptions remain
-   private, and a later revalidation failure must not imply that no work started.
+   and an unretained cause. Never direct users to inspect nonexistent
+   evidence. Show one failure explanation, retaining additional details
+   without repeating the raw status/code/message as a separate result block.
+
+   Explain whether work started and whether effects or cleanup are uncertain
+   whenever that affects recovery. Preserve value-free expected/received JSON
+   type facts for schema type errors across planning and execution boundaries.
+   Never echo rejected values or arbitrary worker messages to manufacture a
+   more detailed cause. Schema authoring failures identify the required FLOW
+   Schema/0 root identifier when `$schema` is missing or wrong.
+
+   Invalid JSON, unsupported keywords, references and exceeded limits give
+   bounded corrections and the relevant FLOW specification, without echoing
+   rejected values or compiler exceptions. A stale dependency lock identifies
+   the mismatched manifest and field when known, and the authored lock
+   relative to the reviewed project. Give a shell-safe
+   `bun install --lockfile-only --ignore-scripts` command selecting the verified
+   lock directory. Explain where to run it. Direct the user to inspect the
+   changed lock before reviewing again. Unsafe terminal characters in the
+   directory require navigation guidance instead of a pasteable path.
+
+   Explain that `--allow-resolution-network` resolves missing locks and does
+   not update supplied locks. Never silently replace an authored lock. Missing
+   or invalid files in the installed Jig runtime have a closed
+   installation-repair explanation. Raw paths and filesystem exceptions remain
+   private, and a later revalidation failure must not imply that no work
+   started.
 5. **Useful next actions.** Successful setup and review identify the next
    supported action. Failures give a verified command, specific correction, or
    relevant documentation when available. Never invent commands or recommend

@@ -1,0 +1,104 @@
+{
+  "volunteers": [
+    {
+      "id": "alex",
+      "name": "Alex",
+      "roles": ["cook"],
+      "available": [
+        {
+          "from": 540,
+          "until": 660
+        }
+      ],
+      "maxMinutes": 120,
+      "preference": "Early cooking shifts."
+    },
+    {
+      "id": "bea",
+      "name": "Bea",
+      "roles": ["serve"],
+      "available": [
+        {
+          "from": 540,
+          "until": 660
+        }
+      ],
+      "maxMinutes": 120,
+      "preference": "Serve at the start of the morning."
+    },
+    {
+      "id": "casey",
+      "name": "Casey",
+      "roles": ["cook"],
+      "available": [
+        {
+          "from": 660,
+          "until": 780
+        }
+      ],
+      "maxMinutes": 120,
+      "preference": "The later cooking shifts."
+    },
+    {
+      "id": "drew",
+      "name": "Drew",
+      "roles": ["serve"],
+      "available": [
+        {
+          "from": 660,
+          "until": 780
+        }
+      ],
+      "maxMinutes": 120,
+      "preference": "Serve around lunchtime."
+    },
+    {
+      "id": "sam",
+      "name": "Sam",
+      "roles": ["cook", "serve"],
+      "available": [
+        {
+          "from": 720,
+          "until": 780
+        }
+      ],
+      "maxMinutes": 60,
+      "preference": "One late shift, preferably serving."
+    },
+    {
+      "id": "toni",
+      "name": "Toni",
+      "roles": ["cook", "serve"],
+      "available": [
+        {
+          "from": 600,
+          "until": 720
+        }
+      ],
+      "maxMinutes": 120,
+      "preference": "Either role in the middle of the morning."
+    }
+  ],
+  "shifts": [
+    {
+      "id": "shift-1",
+      "from": 540,
+      "until": 600
+    },
+    {
+      "id": "shift-2",
+      "from": 600,
+      "until": 660
+    },
+    {
+      "id": "shift-3",
+      "from": 660,
+      "until": 720
+    },
+    {
+      "id": "shift-4",
+      "from": 840,
+      "until": 900
+    }
+  ]
+}

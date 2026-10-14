@@ -19,7 +19,7 @@ policy in `bindings/agent.ts`. [Choose your client](./agents.md#switching) there
 or explicitly propose one for the current review; Pi is an example choice,
 not a Jig preference. The `defaultProviders` map selects that Binding
 for the Agent Run contract. Inspect `issue.json`, `bindings/specialist.ts`, and
-`flows/project/logs-cases.json`.
+`flows/read-project/logs-cases.json`.
 Download the example directory. Review prepares its ordinary declared dependencies;
 the resolution flag permits dependency-selected network requests before approval.
 A selected ACP prerequisite failure stops review before new approval. Repair
@@ -46,7 +46,7 @@ NDJSON. A phase message reports activity; the terminal record and command
 evidence establish the result. Progress is transient and does not preserve
 partial patches.
 
-Open `files/summary.txt` inside the reported destination. A `review.patch` appears beside it
+Open `files/review/summary.txt` inside the reported destination. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
 outside the selected source. Candidate commands do not install dependencies.
 
@@ -61,13 +61,14 @@ a remote request already received, and unsuccessful calls may incur charges.
 
 ## Follow the work
 
-**Repair** retains the requested goal and editable scope. **Checks** separates the
-original failure from each proposal's repository and independent acceptance checks.
-Worker reports stay provisional until the project caller validates identities and
-recomputes the verdicts. **Evidence** links to the complete `goal.txt`, summaries and
-retained proposals; only an accepted candidate earns `review.patch`. Selecting a
-delivered file shows its content. The reusable specialist offers Repair and Checks
-without claiming that its caller has accepted a patch.
+**Patch review** keeps the requested issue, permitted edits, current stage,
+original → candidate check comparison, and complete review files together. The
+coordinator captures source, calls the repair specialist, delegates
+independent evidence acceptance, then exports patches. It shows checked
+verdicts only after `check-repair` validates command identities and recomputes
+every result. Worker views remain provisional in Inspector. Only accepted
+evidence earns `review/review.patch`. Unsuccessful proposals remain
+inspectable.
 
 Use `--display web` for the same views through the private browser link printed after
 work starts. Completed inspection waits for explicit exit. The host’s graph and blocking
@@ -75,7 +76,7 @@ causes remain separate from application reports; plain and JSON output remain av
 
 ## From a reproduced failure to a tested patch
 
-The root application captures source and owns delivery. Its reusable repair
+The root application coordinates focused reading, repair, acceptance and export Flows. Its reusable repair
 specialist receives JSON, asks the Agent for replacement text, and requests
 reviewed Bun commands in separate containment. It never needs a writable
 host repository or an unrestricted Agent terminal.
@@ -84,6 +85,12 @@ The original goes through the same checks first. An independent failure
 permits a proposal; an invalid proposal or unsuccessful candidate permits
 one correction. There are at most two Agent calls. Tests and acceptance
 expectations never change to make the repair pass.
+
+The `read-project` Flow owns source capture and fixed case selection.
+`check-repair` independently validates returned command evidence and
+recomputes verdicts. `export-patch` formats that supplied review data into its
+own output folder, imported at `deliverables/review`. It never applies
+changes. The root page projects these results without repeating their policy.
 
 Three different kinds of evidence appear in the result:
 
@@ -101,10 +108,10 @@ Passing a finite case set is not proof of general correctness.
 
 | File | Meaning |
 | --- | --- |
-| `files/goal.txt` | Complete original repair request, including any displayed excerpt. |
-| `files/review.patch` | A patch backed by reproduced failure and passing candidate checks. Still requires human review. |
-| `files/proposal-N.patch` | Each validated proposal, including unsuccessful attempts. |
-| `files/summary.txt` | Review-ready or unsuccessful, with the method's reason. |
+| `files/review/goal.txt` | Complete original repair request, including any displayed excerpt. |
+| `files/review/review.patch` | A patch backed by reproduced failure and passing candidate checks. Still requires human review. |
+| `files/review/proposal-N.patch` | Each validated proposal, including unsuccessful attempts. |
+| `files/review/summary.txt` | Review-ready or unsuccessful, with the method's reason. |
 | `result.json` | Host outcome, input identities, original and candidate evidence, and published file manifest. |
 
 Read the Flow's outcome, not just the CLI exit code: `done` means a passing
@@ -140,7 +147,7 @@ during capture, take an atomic Git snapshot, or filter secrets for you.
 
 In `bindings/specialist.ts`, name your existing Bun test files under
 `slots.tests.test` and CLI entrypoint under `slots.cli.run`.
-Write independent cases in `flows/project/my-project-cases.json`: each has an ID,
+Write independent cases in `flows/read-project/my-project-cases.json`: each has an ID,
 arguments, stdin, expected stdout/stderr, and exit code. For example:
 
 ```json

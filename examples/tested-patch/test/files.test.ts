@@ -3,17 +3,45 @@ import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RunContext } from '@jigging/flow'
-import {
-  identity,
-  inspect,
-  readRepairInput,
-  repairFiles,
-  unifiedPatch,
-  writeRepairDeliverables,
-} from '../flows/project/files.ts'
+import { checkRepair } from '../flows/check-repair/evidence.ts'
+import { identity } from '../flows/check-repair/identity.ts'
+import { checkRepairEvidence as checkEvidence } from '../flows/check-repair/method.ts'
+import { exportPatch } from '../flows/export-patch/method.ts'
+import { unifiedPatch } from '../flows/export-patch/patch.ts'
+import { repairFiles } from '../flows/project/method.ts'
+import { readProject } from '../flows/read-project/capture.ts'
+import { captureProject as readSource } from '../flows/read-project/method.ts'
 import { digest } from '../flows/repair/policy.ts'
 import { input, syntheticRepair } from './fixture.ts'
 
+async function exportReview(
+  path: string,
+  captured: typeof input,
+  result: Awaited<ReturnType<typeof syntheticRepair>>['result'],
+) {
+  return exportPatch({
+    input: {
+      issue: captured.issue,
+      originals: captured.files,
+      checked: checkRepair(captured, result),
+    },
+    attachments: { files: { access: 'read-write', path } },
+    signal: new AbortController().signal,
+  })
+}
+async function localStage(run: RunContext, request: Parameters<RunContext['call']>[0]) {
+  if (request.slot === 'reader') return readSource(run)
+  if (request.slot === 'checker') return checkEvidence({ input: request.input, signal: run.signal })
+  if (request.slot === 'exporter')
+    return exportPatch({
+      input: request.input,
+      signal: run.signal,
+      attachments: {
+        files: { access: 'read-write', path: join(run.attachments.deliverables!.path, 'review') },
+      },
+    })
+  throw new Error('Unknown test stage')
+}
 const roots: string[] = []
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
@@ -28,23 +56,21 @@ test('root captures bounded text without executing it and shares the documented 
   await mkdir(join(root, 'src'))
   const content = '\ufeffthrow new Error("do not execute"); // 😀\r\n'
   await writeFile(join(root, 'src/code.ts'), content)
-  const actual = await readRepairInput({ issue: 'Fix.', editPaths: ['src/code.ts'] }, root)
+  const actual = await readProject({ issue: 'Fix.', editPaths: ['src/code.ts'] }, root)
   expect(actual.files).toEqual({ 'src/code.ts': content })
   expect(identity(actual.files)).toBe(digest(actual.files))
   await symlink('code.ts', join(root, 'src/link.ts'))
-  await expect(
-    readRepairInput({ issue: 'Fix.', editPaths: ['src/code.ts'] }, root),
-  ).rejects.toThrow()
+  await expect(readProject({ issue: 'Fix.', editPaths: ['src/code.ts'] }, root)).rejects.toThrow()
 })
 test('single issues select reviewed acceptance data without sending the selector to the specialist', async () => {
   const root = await directory()
   await mkdir(join(root, 'src'))
   await writeFile(join(root, 'src/code.ts'), 'export const value = 0')
   const request = { issue: 'Fix.', editPaths: ['src/code.ts'], checks: 'logs' }
-  const actual = await readRepairInput(request, root)
+  const actual = await readProject(request, root)
   expect(actual.cases[0]?.id).toBe('client-and-server-errors')
   expect(Object.hasOwn(actual, 'checks')).toBe(false)
-  await expect(readRepairInput({ ...request, checks: null }, root)).rejects.toThrow(
+  await expect(readProject({ ...request, checks: null }, root)).rejects.toThrow(
     'Select a check set',
   )
 })
@@ -52,7 +78,7 @@ test('single issues select reviewed acceptance data without sending the selector
 test('only verified successful evidence earns a review patch', async () => {
   const root = await directory(),
     { result } = await syntheticRepair()
-  await writeRepairDeliverables(root, input, result)
+  await exportReview(root, input, result)
   expect((await readdir(root)).sort()).toEqual([
     'goal.txt',
     'proposal-1.patch',
@@ -64,7 +90,7 @@ test('only verified successful evidence earns a review patch', async () => {
   expect(patch).toContain('--- a/src/parse.ts')
   expect(patch).toContain('--- a/src/report.ts')
   expect(patch).not.toContain('--- a/test/')
-  await expect(writeRepairDeliverables(root, input, result)).rejects.toThrow()
+  await expect(exportReview(root, input, result)).rejects.toThrow()
 })
 test('decoded JSON evidence accepts null-prototype records and rejects changed verdicts', async () => {
   const { result } = await syntheticRepair()
@@ -73,14 +99,14 @@ test('decoded JSON evidence accepts null-prototype records and rejects changed v
       ? Object.assign(Object.create(null), value)
       : value,
   )
-  expect(() => inspect(input, decoded)).not.toThrow()
+  expect(() => checkRepair(input, decoded)).not.toThrow()
   decoded.output.attempts[0].evaluation.acceptance[0].passed = false
-  expect(() => inspect(input, decoded)).toThrow('contradicts collected command behavior')
+  expect(() => checkRepair(input, decoded)).toThrow('contradicts collected command behavior')
 })
 test('failed attempts remain inspectable and are never renamed review-ready', async () => {
   const root = await directory(),
     { result } = await syntheticRepair({ success: false })
-  await writeRepairDeliverables(root, input, result)
+  await exportReview(root, input, result)
   expect((await readdir(root)).sort()).toEqual([
     'goal.txt',
     'proposal-1.patch',
@@ -102,7 +128,7 @@ test('the root rejects contradicted checks or edited evidence before publication
   ]) {
     const { result } = await syntheticRepair()
     mutate(result)
-    expect(() => inspect(input, result)).toThrow()
+    expect(() => checkRepair(input, result)).toThrow()
   }
 })
 test('complete-file patches preserve empty files and missing final newlines', () => {
@@ -116,6 +142,7 @@ test('complete-file patches preserve empty files and missing final newlines', ()
 for (const success of [true, false]) {
   test(`one specialist produces only final ${success ? 'passing' : 'unsuccessful'} deliverables`, async () => {
     const destination = await directory()
+    await mkdir(join(destination, 'review'))
     const { result } = await syntheticRepair({ success })
     let calls = 0
     const run = {
@@ -127,6 +154,7 @@ for (const success of [true, false]) {
         deliverables: { access: 'read-write', path: destination },
       },
       call: async (request: any) => {
+        if (request.slot !== 'repair') return localStage(run, request)
         calls++
         expect(request).toEqual({
           operationId: 'repair',
@@ -139,7 +167,7 @@ for (const success of [true, false]) {
     } as unknown as RunContext
     expect(await repairFiles(run)).toEqual(result)
     expect(calls).toBe(1)
-    expect((await readdir(destination)).sort()).toEqual(
+    expect((await readdir(join(destination, 'review'))).sort()).toEqual(
       success
         ? ['goal.txt', 'proposal-1.patch', 'review.patch', 'summary.txt']
         : ['goal.txt', 'proposal-1.patch', 'proposal-2.patch', 'summary.txt'],
@@ -149,6 +177,7 @@ for (const success of [true, false]) {
 
 test('the root passes a requested progress writer to the repair specialist', async () => {
   const destination = await directory()
+  await mkdir(join(destination, 'review'))
   const { result } = await syntheticRepair()
   const progress = { direction: 'send', send: async () => {} }
   let observed: unknown
@@ -160,7 +189,8 @@ test('the root passes a requested progress writer to the repair specialist', asy
       source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
       deliverables: { access: 'read-write', path: destination },
     },
-    call: async (request: unknown) => {
+    call: async (request: any) => {
+      if (request.slot !== 'repair') return localStage(run, request)
       observed = request
       return result
     },
@@ -176,6 +206,7 @@ test('the root passes a requested progress writer to the repair specialist', asy
 for (const mode of ['uncertain', 'cancelled', 'invalid-evidence']) {
   test(`${mode} work cannot publish a final patch or trigger replay`, async () => {
     const destination = await directory()
+    await mkdir(join(destination, 'review'))
     const controller = new AbortController()
     const failure = new Error(mode)
     const { result } = await syntheticRepair()
@@ -188,7 +219,8 @@ for (const mode of ['uncertain', 'cancelled', 'invalid-evidence']) {
         source: { access: 'read', path: join(import.meta.dir, '../fixtures/log-report') },
         deliverables: { access: 'read-write', path: destination },
       },
-      call: async () => {
+      call: async (request: any) => {
+        if (request.slot !== 'repair') return localStage(run, request)
         calls++
         if (mode === 'uncertain') throw failure
         if (mode === 'cancelled') controller.abort(failure)
@@ -198,6 +230,6 @@ for (const mode of ['uncertain', 'cancelled', 'invalid-evidence']) {
     } as unknown as RunContext
     await expect(repairFiles(run)).rejects.toThrow()
     expect(calls).toBe(1)
-    expect(await readdir(destination)).toEqual([])
+    expect(await readdir(join(destination, 'review'))).toEqual([])
   })
 }

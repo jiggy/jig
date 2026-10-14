@@ -1,6 +1,6 @@
-import type { Block, Collection, Reference, Value } from '@jigging/reporting'
-import { displayDestinations, displayViewKey, recordReferences } from '@jigging/display-model'
 import type { DisplaySnapshot } from '@jigging/display-model'
+import { displayDestinations, displayViewKey, recordReferences } from '@jigging/display-model'
+import type { Block, Collection, Reference, Value } from '@jigging/reporting'
 
 export type PrivateBrowserLocal = {
   selected?: string | undefined
@@ -53,8 +53,10 @@ export function privateBrowserTabs(
       key: view.id,
       title: view.value.title,
       source: view.sourceLabel,
+      sourceId: view.sourceId,
       role: view.hostRole,
     })),
+    snapshot?.rootSourceId,
   ).map(({ key, title, source, icon, group }) => ({
     id: key,
     title,

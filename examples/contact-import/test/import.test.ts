@@ -4,10 +4,13 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RunContext, RunResult } from '@jigging/flow'
 import { runMethod as convert } from '../flows/convert/method.ts'
-import { runMethod as importer, parseContacts } from '../flows/import/method.ts'
+import { exportPreview } from '../flows/export-preview/method.ts'
+import { runMethod as importer } from '../flows/import/method.ts'
 import { runMethod as agent } from '../flows/map-agent/method.ts'
 import { runMethod as known } from '../flows/map-code/method.ts'
 import { runMethod as mixed } from '../flows/map-mixed/method.ts'
+import { parseContacts } from '../flows/read-contacts/csv.ts'
+import { readContacts } from '../flows/read-contacts/method.ts'
 
 const headers = ['Customer', 'Email address', 'Company']
 const mapping = { name: 0, email: 1, organization: 2 }
@@ -183,6 +186,7 @@ async function withImport(
   try {
     await mkdir(join(root, 'source'))
     await mkdir(join(root, 'preview'))
+    await mkdir(join(root, 'preview/contacts'))
     await writeFile(join(root, 'source/contacts.csv'), await fixture('known'))
     const run = {
       input: {},
@@ -195,7 +199,7 @@ async function withImport(
         throw Error('Provide a child')
       },
     } as Parameters<typeof importer>[0]
-    await work(run, join(root, 'preview/preview.json'))
+    await work(run, join(root, 'preview/contacts/preview.json'))
   } finally {
     await rm(root, { recursive: true, force: true })
   }
@@ -206,6 +210,15 @@ test('composes public handlers and writes only the complete preview', async () =
     const calls: string[] = []
     run.call = async (request) => {
       calls.push(request.slot)
+      if (request.slot === 'reader') return readContacts(run)
+      if (request.slot === 'exporter')
+        return exportPreview({
+          input: request.input,
+          signal: run.signal,
+          attachments: {
+            files: { access: 'read-write', path: join(run.attachments.preview!.path, 'contacts') },
+          },
+        })
       if (request.slot === 'mapper') {
         expect(Object.keys(request.input as object)).toEqual(['headers'])
         return known({ input: request.input })
@@ -213,7 +226,7 @@ test('composes public handlers and writes only the complete preview', async () =
       return convert({ input: request.input, signal: run.signal })
     }
     const result = await importer(run)
-    expect(calls).toEqual(['mapper', 'converter'])
+    expect(calls).toEqual(['reader', 'mapper', 'converter', 'exporter'])
     expect(JSON.parse(await readFile(out, 'utf8'))).toEqual(result.output)
     expect((result.output as any).accepted).toHaveLength(2)
     expect((result.output as any).rejected).toHaveLength(1)
@@ -224,7 +237,8 @@ for (const failure of ['blocked', 'limit', 'error', 'cancel'])
       const controller = new AbortController()
       run = { ...run, signal: controller.signal }
       let calls = 0
-      run.call = async () => {
+      run.call = async (request) => {
+        if (request.slot === 'reader') return readContacts(run)
         calls++
         if (failure === 'error') throw Error('uncertain dispatch')
         if (failure === 'cancel') {
@@ -254,11 +268,12 @@ test('a converter failure leaves no preview and does not rerun the mapper', asyn
     const calls: string[] = []
     run.call = async (request) => {
       calls.push(request.slot)
+      if (request.slot === 'reader') return readContacts(run)
       if (request.slot === 'mapper') return completed({ mapping })
       throw Error('converter failed')
     }
     await expect(importer(run)).rejects.toThrow('converter failed')
-    expect(calls).toEqual(['mapper', 'converter'])
+    expect(calls).toEqual(['reader', 'mapper', 'converter'])
     expect(await Bun.file(out).exists()).toBe(false)
   }))
 
@@ -266,7 +281,8 @@ test('invalid CSV fails before any child work', async () =>
   withImport(async (run, out) => {
     await writeFile(join(run.attachments.source!.path, 'contacts.csv'), await fixture('malformed'))
     let called = false
-    run.call = async () => {
+    run.call = async (request) => {
+      if (request.slot === 'reader') return readContacts(run)
       called = true
       return completed({ mapping })
     }

@@ -1,0 +1,4 @@
+{
+  "name": "read-roster",
+  "description": "Read volunteer availability and notice any completely uncovered role."
+}

@@ -106,6 +106,7 @@ export interface PrivateSavedResult {
 export async function privateCaptureSavedResult(
   directory: string,
   signal?: AbortSignal,
+  captureImages = true,
 ): Promise<PrivateSavedResult> {
   const deadline = performance.now() + 10_000
   const check = () => {
@@ -184,17 +185,27 @@ export async function privateCaptureSavedResult(
     closeDirectories()
     signal?.throwIfAborted()
     let imageBytes = 0
-    for (const [path, bytes] of retained) {
-      check()
-      const image = await privateImagePreview(bytes, signal)
-      signal?.throwIfAborted()
-      if (image) {
-        const charge = privatePreviewStringBytes(image.base64)
-        if (imageBytes + charge <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
-          images.set(path, image)
-          imageBytes += charge
+    const previewCancellation = new AbortController()
+    const cancelPreviews = () => previewCancellation.abort()
+    const previewDeadline = setTimeout(cancelPreviews, PRIVATE_PREVIEW_LIMITS.totalRenderMs)
+    signal?.addEventListener('abort', cancelPreviews, { once: true })
+    try {
+      for (const [path, bytes] of retained) {
+        signal?.throwIfAborted()
+        if (!captureImages || previewCancellation.signal.aborted) break
+        const image = await privateImagePreview(bytes, previewCancellation.signal)
+        signal?.throwIfAborted()
+        if (image) {
+          const charge = privatePreviewStringBytes(image.base64)
+          if (imageBytes + charge <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
+            images.set(path, image)
+            imageBytes += charge
+          }
         }
       }
+    } finally {
+      clearTimeout(previewDeadline)
+      signal?.removeEventListener('abort', cancelPreviews)
     }
     const capturedReport = report
     let closed = false

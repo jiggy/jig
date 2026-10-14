@@ -21,7 +21,7 @@ supported [native client](./agents.md#local-clients). The inline policy in
 for a lasting choice, or use an explicit [review client selection](./agents.md#switching).
 A selected ACP prerequisite failure stops review before approval. The included ordinary dependency and
 `jig.ts` default supply that Agent to the assessor.
-From `examples/support-case`, inspect the two Flows and their policy, then run:
+From `examples/support-case`, inspect the focused Flows and their policy, then run:
 
 ```sh
 jig review --allow-resolution-network
@@ -58,10 +58,13 @@ neither payments nor customer messages.
 
 ## Follow the work
 
-**Case** follows the request, proposed charge and code-owned eligibility decision.
-**Charges** keeps the supplied chronological records available for comparison; long
-lists explicitly show their retained excerpt. The assessor's own Case view stops at a
-proposal. An eligible decision never claims that a credit was issued.
+**Support case** presents the customer request, relevant supplied charges,
+interpretation, checked policy decision and draft reply on one page. It
+follows assessment and eligibility checking. The proposal stays provisional
+until checks finish. Up to twelve charges are shown, including the proposed
+charge and any matching earlier settled payment. Complete facts remain in the
+input and result. Child views remain available in Inspector and on independent
+invocation.
 
 Use `--display web` for the same views through the private browser link printed after
 work starts. Completed inspection waits for explicit exit. The host’s graph and blocking
@@ -69,9 +72,10 @@ causes remain separate from application reports; plain and JSON output remain av
 
 ## Follow the decision
 
-There are two Flow packages. The `assess` method uses one Agent call to propose
-a charge ID and an amount. The `resolve` method receives that proposal through
-its configured slot and applies the application's policy:
+Three focused Flow packages compose the decision. `assess` proposes a charge
+ID and amount through one Agent call. `check-credit` applies fixed policy to
+the account and proposal, without receiving customer text. `resolve` coordinates
+both through declared slots and owns the application page:
 
 ```ts
 const assessment = await run.call({
@@ -87,7 +91,7 @@ also checks account identity consistency, preserves `blocked` and `limit`,
 and checks cancellation before returning. The child result schema establishes
 its shape. It cannot establish that the proposal deserves a credit.
 
-The [policy](https://github.com/jiggy/jig/blob/main/examples/support-case/flows/resolve/policy.ts)
+The [policy](https://github.com/jiggy/jig/blob/main/examples/support-case/flows/check-credit/policy.ts)
 checks the proposed charge against supplied records:
 
 - It belongs to the supplied account and has not already been refunded.
@@ -155,7 +159,7 @@ service or make stale eligibility safe to replay.
 
 ## Make one change
 
-Open `flows/resolve/policy.ts` and lower `maximumCreditCents` from `5000` to
+Open `flows/check-credit/policy.ts` and lower `maximumCreditCents` from `5000` to
 `2000`. Review the edited application, then run `fixtures/duplicate.json` again.
 For the same `ch-102` assessment, the result now contains `manual_review`,
 `reason: "above_credit_limit"`, and `credit: null`. The Agent method is unchanged;

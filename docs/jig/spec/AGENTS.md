@@ -15,7 +15,7 @@ sections.
 | --- | --- |
 | `cli-experience.md` | All public CLI presentation, progress, review, diagnostics, display navigation, interruption, and acceptance requirements |
 | `project-policy.md`, `project-sdk.md` | Source capture, preparation, planning, admission, targets, entrypoints, provider selection, root files, and execution policy |
-| `web-display.md` | Browser access, bounded transport, viewer navigation, immutable previews, and presentation lifetime |
+| `web-display.md` | Browser access, bounded transport, navigation, immutable text/image previews, and finite presentation authority |
 | `reporting.md` | Optional-port selection, separate CLI allocation, stderr presentation, and qualification |
 | `agent-run.md` | Explicit Agent values, package claims, feature contracts, channels, conversations, and session receipts |
 | `finite-acp.md` | Native grants, credential separation, client selection, bounded lifecycle, retention, and restoration |

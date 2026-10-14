@@ -125,6 +125,29 @@ bytes.
 
 Invalid or stale locks remain errors even with that permission.
 
+### When the dependency lock is out of date
+
+`PACKAGE_BUN_LOCK_STALE` means package declarations changed after the supplied
+`bun.lock` was created. Review identifies the manifest, field and lock when known.
+It provides a command to update that lock. Run the command from the reviewed
+project directory. If the workspace root is two levels above, use:
+
+```sh
+bun install --lockfile-only --ignore-scripts --cwd '../..'
+```
+
+The command updates the authored lock and may use the network. Inspect the
+changed lock, then repeat `jig review`. Updating a lock does not approve
+execution. `--allow-resolution-network` permits resolution when a lock is
+missing.
+
+It does not repair a supplied lock. In a workspace, update the root lock. Do
+not add a separate lock beside each Flow.
+
+Root `name` or `version` edits do not make a lock stale. Bun does not reliably
+retain that metadata. Jig still checks dependency selections and member metadata.
+Root manifest changes still require review.
+
 ## Local workspace packages
 
 Use ordinary Bun workspaces to share a library before publishing it. Declare the
@@ -156,6 +179,9 @@ Include nested Flows explicitly.
 
 An application's own workspace list cannot expand the outer root. An application
 may retain its own workspace declaration for standalone use.
+
+If a supplied lock is stale, follow the [lock recovery instructions](#when-the-dependency-lock-is-out-of-date)
+to update the workspace root lock and review again.
 
 ### Capture, reuse, and supported boundaries
 

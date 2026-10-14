@@ -82,6 +82,8 @@ export interface PrivateDeliveryConnection {
 export interface PrivateDeliveryInspectionOptions {
   /** Epoch-referenced process-monotonic milliseconds, never a renewed allowance. */
   readonly deadline: number
+  /** Earlier decoder cutoff; the RPC still has until deadline to drain its reply. */
+  readonly previewDeadline?: number
   readonly signal?: AbortSignal
 }
 export type PrivateDeliveryInspectionPreview = Readonly<{
@@ -137,20 +139,23 @@ export class PrivateFileDeliveryOwner {
       ? undefined
       : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
   }
-  inspectionPreview(path: string): Promise<PrivateDeliveryInspectionPreview> {
+  inspectionPreview(path: string, deadline?: number): Promise<PrivateDeliveryInspectionPreview> {
     privateFilePath(path)
     const file = this.#close ? undefined : this.#previewFiles?.get(path)
     if (!file) return Promise.resolve({ state: 'unavailable', bytes: 0, clipped: false })
-    const job = this.#inspectionPreview(file)
+    const job = this.#inspectionPreview(file, deadline)
     this.#previewJobs.add(job)
     void job.finally(() => this.#previewJobs.delete(job)).catch(() => {})
     return job
   }
-  async #inspectionPreview(file: PreviewFile): Promise<PrivateDeliveryInspectionPreview> {
+  async #inspectionPreview(
+    file: PreviewFile,
+    deadline?: number,
+  ): Promise<PrivateDeliveryInspectionPreview> {
     const { contents, bytes } = file
     const image =
       contents.length === bytes
-        ? await privateImagePreview(contents, this.#previewCancellation.signal)
+        ? await privateImagePreview(contents, this.#previewCancellation.signal, deadline)
         : undefined
     if (this.#previewCancellation.signal.aborted)
       return { state: 'unavailable', bytes, clipped: false }
