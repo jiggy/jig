@@ -85,9 +85,9 @@ These links locate module rules. All selected domain requirements still apply.
   installation under private `libexec/authoring`. It removes unused npm
   executable links. Before packing the allowlisted tree, it rejects every
   non-regular archive entry. `support/authoring-install.json` and its generated
-  npm lock pin the complete private compiler closure. Authoring-source changes
-  require a matching lock update. Packaging uses `npm ci` and fails on stale
-  integrity.
+  npm lock pin the complete private compiler closure. Changes to any packed
+  authoring file require a matching lock update, including diagnostics and README
+  text. Packaging uses `npm ci` and fails on stale integrity.
 
   The final tarball uses pinned build-only `tar` to normalize file order,
   timestamps and ownership on both Linux and Mac. The local authoring archive
