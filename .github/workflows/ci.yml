@@ -112,11 +112,21 @@ jobs:
       -
         run: "bun install --cwd site --frozen-lockfile --ignore-scripts"
       -
+        name: "Check documentation source and checker regressions"
+        env:
+          DOCS_BASE_REVISION: "${{ github.event.pull_request.base.sha || github.event.before }}"
+        run: |
+          bun test scripts/check-docs.test.ts
+          bun scripts/check-docs.ts
+      -
         name: "Build separate FLOW and Jig sites"
+        env:
+          DOCS_BASE_REVISION: "${{ github.event.pull_request.base.sha || github.event.before }}"
         run: |
           mkdir "$RUNNER_TEMP/sites"
           scripts/build-site.sh flow "$RUNNER_TEMP/sites/flow"
           scripts/build-site.sh jig "$RUNNER_TEMP/sites/jig"
+          bun scripts/check-docs.ts --sites "$RUNNER_TEMP/sites"
       -
         name: "Record observed execution"
         run: "node scripts/ci/job-evidence.mjs --id sites --output \"$RUNNER_TEMP/evidence.json\" --pages \"$RUNNER_TEMP/sites\" --profiles flow,jig"

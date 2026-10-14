@@ -75,6 +75,8 @@ catalogues for FLOW and Jig.
 
 ## Verification
 
+- Run `bun scripts/check-docs.ts` for metadata, local links, anchors, and changed technical prose.
+
 - Build each affected public site into a fresh directory with
   `scripts/build-site.sh`.
 - When adding or changing a project-owned identity URL, include its explanatory

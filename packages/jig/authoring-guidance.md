@@ -3,9 +3,25 @@
 Apply these rules when the [package reading map](AGENTS.md) selects this domain.
 The package entrypoint retains shared requirements and child ownership.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+- [src index](#src-index)
+- [src project author](#src-project-author)
+- [src package capture](#src-package-capture)
+- [src project agent-source-location](#src-project-agent-source-location)
+- [src project slot-graph](#src-project-slot-graph)
+- [src run channels](#src-run-channels)
+- [src package capture 2](#src-package-capture-2)
+
 ## Ownership
 
+### src index
+
 - `src/index.ts` and `src/project/author.ts` own the public authoring surface.
+
+### src project author
 
 - `src/project/author.ts` also owns shipped static attachment-route data types.
   `attachment-routes.ts` validates their closed maps and distinct output folders
@@ -20,6 +36,8 @@ The package entrypoint retains shared requirements and child ownership.
   project code. Revalidate retained JSON before supplying file authority. Native
   execution qualification remains separate from this review data.
 
+### src package capture
+
 - `src/package/capture.ts` snapshots through held directory descriptors and
   rechecks source identity and contents. Linux uses unnamed temporary files.
   Qualified Mac capture opens a private reader beside its sole writer, unlinks
@@ -33,6 +51,8 @@ The package entrypoint retains shared requirements and child ownership.
   Filesystem capture does not independently qualify Bun installation or
   execution.
 
+### src project agent-source-location
+
 - `src/project/agent-source-location.ts` owns the private captured-source
   lexical recognizer for ACP diagnostics. Its bounds are 1 MiB of TypeScript or
   32 KiB of JSON, 32,768 tokens and nesting depth 64. Locations use one-based
@@ -43,6 +63,8 @@ The package entrypoint retains shared requirements and child ownership.
 
   Never evaluate or reread source, or add an AST, editor or compiler dependency
   to obtain these facts.
+
+### src project slot-graph
 
 - `src/project/slot-graph.ts` supplies the same resource-bounded, acyclic graph
   validation to source linking, retained-lock decoding and dispatch. Dispatch
@@ -59,6 +81,8 @@ The package entrypoint retains shared requirements and child ownership.
   The compiler is bundled, with Node 22+ selected only from fixed system
   locations or the operator's absolute `JIG_AUTHORING_NODE_PATH`.
 
+### src run channels
+
 - `src/run/channels.ts` owns finite participant-scoped endpoint rights, atomic
   transfer, bounded direct delivery, isolated broadcast subscriptions and source
   lifetime. It is not an event bus or execution scheduler. Package validation
@@ -66,6 +90,8 @@ The package entrypoint retains shared requirements and child ownership.
   Check its held rights before recording sticky source failure, settle pending
   sends and preserve earlier clean seals. Producer declarations are observation
   evidence, not execution authority.
+
+### src package capture 2
 
 - `src/package/capture.ts` owns descriptor-confined immutable snapshots. Its
   serial copy traversal reuses one private bounded buffer per attempt. Yielded

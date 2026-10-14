@@ -3,7 +3,27 @@
 Apply these rules when the parent reading map selects this domain.
 Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+- [descriptor-files](#descriptor-files)
+- [flow-file-context](#flow-file-context)
+- [execution-file-import](#execution-file-import)
+- [read-input-projection](#read-input-projection)
+- [file-input](#file-input)
+- [captured-bytes](#captured-bytes)
+- [captured-output](#captured-output)
+- [execution-output](#execution-output)
+- [file-delivery](#file-delivery)
+- [delivery-inspection](#delivery-inspection)
+- [saved-result](#saved-result)
+- [raw-directory](#raw-directory)
+- [workspace-progress tests](#workspace-progress-tests)
+
 ## Ownership
+
+### descriptor-files
 
 - `descriptor-files.ts` selects closed Linux or qualified Darwin operations for
   held-directory children. Its live references cannot be reconstructed from
@@ -21,6 +41,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
+
+### flow-file-context
 
 - `flow-file-context.ts` retains immediate-caller immutable read views and binds
   only authentic admitted native import targets. Contexts own neither captured
@@ -42,6 +64,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   Unresolved child or importer retirement keeps the root pending without
   release.
 
+### execution-file-import
+
 - `execution-file-import.ts` joins native stage preparation, one bounded copy
   and retirement without owning dispatch or durable Run state. Native issuers
   own source/destination authority and cancellation-versus-rename arbitration.
@@ -53,6 +77,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   retirement is confirmed.
 
   A fatal caller does not release unknown native handles to garbage collection.
+
+### read-input-projection
 
 - `read-input-projection.ts` derives only whole-view aliases with identical
   paths and original captured-input capabilities. Keep at most eight logical
@@ -94,6 +120,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
   Keep the full derived accounting in SECURITY.md synchronized with host policy.
 
+### file-input
+
 - `file-input.ts` owns common bounded selection, raw-name validation and regular
   reads. `file-input-policy.ts` owns limits and closed diagnostics. Linux uses
   openat2 and sealed memfds. Qualified Darwin walks held descriptors without
@@ -109,6 +137,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   forwarding and physical filesystem capacity retain their separate budgets.
   Matching byte values do not make them file-capture authority.
 
+### captured-bytes
+
 - `captured-bytes.ts` binds anonymous byte capabilities to a closed input or
   output purpose and its separate byte limit. `input-capture.ts` owns the
   invocation-only interface. Output handles cannot substitute for input
@@ -122,6 +152,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   authority. Transfer descriptors only through an authenticated trusted handoff.
   This primitive does not by itself qualify or enable an installed macOS host.
 
+### captured-output
+
 - `captured-output.ts` snapshots an already-fenced output directory into one
   anonymous immutable backing under the 16 MiB aggregate output bound. Preserve
   directory evidence, including empty directories, for native-session
@@ -129,6 +161,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   evidence. The snapshot may outlive a detached native volume. Its descriptors
   and bytes remain command-owned and cannot be recreated from serialized
   metadata.
+
+### execution-output
 
 - `execution-output.ts` owns the closed Linux directory/native snapshot lifetime
   used by Run files and native-session collection. `macos-guardian-output.ts`
@@ -146,6 +180,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   until that close is confirmed. Typed close uncertainty blocks child commit and
   never permits another close attempt.
 
+### file-delivery
+
 - `file-delivery.ts` accepts local held input roots and bounded output snapshots
   or Linux anonymous directory descriptors. Remote descriptor acquisition
   belongs to the authenticated command transport, never a decoded pathname in
@@ -161,6 +197,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   close. Never retry a recycled descriptor. `RootRunFiles` similarly consumes
   output once and fences further projection, checkpoint and retention after
   close begins.
+
+### delivery-inspection
 
 - `delivery-inspection.ts` transfers only verified receipt-selected excerpts to
   a pure presentation map before indefinite live-result inspection. One total
@@ -196,6 +234,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   Completed bounded close promises remain completed during operator-controlled
   inspection. Later exit must not reapply their already elapsed transfer
   deadline.
+
+### saved-result
 
 - `saved-result.ts` captures operator-selected local result packets for
   `inspect --result`, without a project, approval, provider, verification
@@ -305,6 +345,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
 ## Work Guidance
 
+### raw-directory
+
 - `raw-directory.ts` preserves byte names for Linux descriptor enumeration.
   Pinned Bun can return byte arrays instead of Dirent objects for buffer
   encoding. Acquire missing type metadata with no-follow stat of the raw leaf
@@ -312,6 +354,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   descriptor-relative admission. Never substitute lossy decoded names.
 
 ## Verification
+
+### workspace-progress tests
 
 - `workspace-progress.test.ts` uses injected streams and clocks. It covers
   operator-controlled inspection, private deadline minima, trusted dispatch

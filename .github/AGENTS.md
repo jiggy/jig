@@ -120,6 +120,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   install commands, and docs. Preserve existing release notes on retries. Never
   present source archives as the installable package.
 - Keep FLOW and Jig site publication independent.
+- The CI site job checks documentation metadata, local links, source anchors,
+  changed technical paragraphs, and both rendered sites before recording success.
+  PR style checks use the base SHA. Push checks use the previous SHA.
+  Manual checks use the checked revision's parent. Missing baselines fail.
 
 ## Work Guidance
 

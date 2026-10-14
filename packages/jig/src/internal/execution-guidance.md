@@ -3,10 +3,25 @@
 Apply these rules when the parent reading map selects this domain.
 Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+- [private-profile](#private-profile)
+- [root-run-timeout-policy](#root-run-timeout-policy)
+- [invocation-context](#invocation-context)
+- [execution-intent](#execution-intent)
+- [execution-backend](#execution-backend)
+- [linux-rootless-delegation](#linux-rootless-delegation)
+- [execution-intent tests](#execution-intent-tests)
+- [root-flow-call-controller tests](#root-flow-call-controller-tests)
+
 ## Ownership
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
+
+### private-profile
 
 - `private-profile.ts` owns opt-in bounded phase-only diagnostics, written
   before shutdown. Partial spans are not completion or machine-crash durability
@@ -28,6 +43,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
   The child watchdog and independent supervisor own time enforcement. Guest VM
   execution has no shorter timer that can reject work within that entry ceiling.
+
+### root-run-timeout-policy
 
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
   Linux and Mac. Installed host acquisition and CLI parsing use that same value.
@@ -60,10 +77,14 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   still attempts independent endpoint/descriptor release. Confirm retirement
   before indefinite inspection.
 
+### invocation-context
+
 - `invocation-context.ts` owns shared admitted-parent identity and durable
   parent-owner checks, plus protected owner-root validation. Finite ACP, command
   and HTTP controllers use these checks. Resource ownership must not import
   Agent execution logic. Parent descriptors retain the exact bounded ancestry.
+
+### execution-intent
 
 - `execution-intent.ts` owns inert execution requirements: exact command and
   explicit path arguments, read-only projections, captured input capabilities,
@@ -103,6 +124,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
   Their fallback locations remain unchanged.
 
+### execution-backend
+
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
   Persist each backend's discriminated owner and receipt records without
   flattening their evidence. Dispatch sealing, admission, recovery, cancellation
@@ -140,6 +163,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   remain possible after an unsuccessful local result.
 
 ## Local Contracts
+
+### linux-rootless-delegation
 
 - `linux-rootless-delegation.ts` forwards an outer installed-command interrupt
   through its authenticated transient-scope lifetime socket to the inner CLI.
@@ -254,6 +279,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
 ## Verification
 
+### execution-intent tests
+
 - `execution-intent.test.ts` checks cross-host lowering, literal/path
   separation, empty input roots, output locations, network authority, and
   read-only workers. `execution-backend.test.ts` rejects mismatched owner
@@ -265,6 +292,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   terminal settlement, including cleanup. Linux retains its existing waits.
   Aggregate scenario tests allow each independently bounded Run to settle. These
   test windows never expand workload enforcement limits.
+
+### root-flow-call-controller tests
 
 - `root-flow-call-controller.test.ts` isolates injected allocation failures in a
   subprocess. Unexpected lifecycle allocation failures report the `allocation`

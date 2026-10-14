@@ -8,6 +8,7 @@ cancellation and recovery. This directory owns Jig's trusted private machinery.
 ## Ownership
 
 The guides below own detailed module contracts and their verification rules.
+Their module indexes locate details. All selected domain requirements still apply.
 Read every row that matches the files or responsibilities affected by a change.
 Cross-domain work must satisfy every affected guide. If ownership is unclear,
 read the execution guide before selecting a narrower scope.

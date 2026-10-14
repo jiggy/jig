@@ -3,7 +3,25 @@
 Apply these rules when the parent reading map selects this domain.
 Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+| Work | Module rules |
+| --- | --- |
+| Capture and transfer immutable files | [Capture](#capture): descriptor operations, handoff, input projection, and command files |
+| Launch, supervise, and fence payloads | [Execution](#execution): process ABI, backend, profiles, guardian control, and pre-exec boundary |
+| Allocate and retire bounded writable roots | [Storage](#storage): volumes and guardian storage |
+| Authenticate owners and recover allocations | [Recovery](#recovery): owner state and exclusive locks |
+| Observe private host tests | [Diagnostics](#diagnostics): opt-in bounded observation |
+| Inspect native Agent installations | [Agent runtime](#macos-agent-runtime) |
+| Rebuild native assets or verify a change | [Verification](#verification) |
+
 ## Ownership
+
+### Capture
+
+#### macos-file-command
 
 - `macos-file-command.ts` supplies private filesystem sockets for the
   independent command owner. Bind the control connection to its directly spawned
@@ -24,6 +42,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   Include empty-directory evidence.
 
   Copied or closed bundle objects cannot supply descriptor authority.
+
+#### macos-descriptor-files
 
 - `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative file
   operations, raw directory enumeration and anonymous streaming backings.
@@ -48,17 +68,7 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   may observe a cache directory's current location for project exclusion. File
   access must still use the held descriptor, never reopen the observed path.
 
-- `macos-process-controls.ts` owns the qualified Darwin process ABI: acquire
-  only the guardian's initially exclusive resource coalition, observe kernel
-  accounting, and signal matching PID versions. Sampled footprint and process
-  discovery are not hard quotas. Incomplete samples cannot prove a limit or
-  cleanup. Only the kernel's remaining guardian count establishes emptiness. A
-  CPU ledger regression across a kernel read marks the sample incomplete. Exec
-  transitions can temporarily omit a task's ledger.
-
-  Do not clamp or invent a monotonic reading. Unix control peer UID, PID and PID
-  version come from `LOCAL_PEERTOKEN`, never claimed message fields. Unavailable
-  native socket identity fails closed.
+#### macos-descriptor-handoff
 
 - `macos-descriptor-handoff.ts` passes at most 64 read-only file/directory
   descriptors between kernel-authenticated trusted peers. Keep the socket owner
@@ -75,6 +85,147 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   originals stay held through transfer.
 
   The received bundle owns its duplicates until closed.
+
+#### macos-input-projection
+
+- `macos-input-projection.ts` validates the admitted input manifest and copies
+  authenticated anonymous readers through the held volume descriptor before
+  payload creation. Recheck original capture capabilities before admission,
+  kernel-authenticate both transfer peers, and verify byte counts and hashes
+  again in the guardian. Keep immutable inputs separate from writable roots.
+  Close every writer and transferred descriptor before native execution. Root
+  launch plans grant read-only access to the bounded `data/inputs` projection
+  for declared input roots, including empty attachments. This tree never joins
+  writable payload grants.
+
+  Retain those exact root names in the sealed plan and guardian configuration.
+  Create them before execution. Reject files outside them. Apply file-path depth
+  and byte limits relative to each root. The separately bounded root names do
+  not consume the captured-entry budget. Input names, aggregate bytes, directory
+  entries and file count retain common bounds.
+
+  Recovery receives only its own fixed configuration, never stale input handles
+  or other payload launch fields from the failed attempt.
+
+### Execution
+
+#### macos-process-controls
+
+- `macos-process-controls.ts` owns the qualified Darwin process ABI: acquire
+  only the guardian's initially exclusive resource coalition, observe kernel
+  accounting, and signal matching PID versions. Sampled footprint and process
+  discovery are not hard quotas. Incomplete samples cannot prove a limit or
+  cleanup. Only the kernel's remaining guardian count establishes emptiness. A
+  CPU ledger regression across a kernel read marks the sample incomplete. Exec
+  transitions can temporarily omit a task's ledger.
+
+  Do not clamp or invent a monotonic reading. Unix control peer UID, PID and PID
+  version come from `LOCAL_PEERTOKEN`, never claimed message fields. Unavailable
+  native socket identity fails closed.
+
+#### macos-native-backend
+
+- `macos-native-backend.ts` binds the qualified Darwin mechanism, immutable path
+  identities, bounded native storage and live input capabilities into one sealed
+  owner. Keep its coordinator lock continuously from sealing through guardian
+  admission, complete cleanup and the authenticated final receipt. Durable
+  active state precedes the guardian's payload gate. Recovery must exclude a
+  live coordinator. It must revalidate the cleanup runtime before launching
+  recovery tools. It must handle both pre-admission and active coordinator loss.
+
+  It must retire guardian journals before recording completion. Report
+  supervised sampling and possible resource overshoot explicitly. Never project
+  Linux cgroup or hard-quota claims. Installed support selects this backend only
+  on exact qualified native Mac kernels.
+
+#### macos-sandbox-profile
+
+- `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
+  Reject overlap between host control, immutable inputs and writable trees. Keep
+  the narrow sysctl/process-information rules. Only explicit network authority
+  enables resolver access and the DNS Mach service. Formatting paths does not
+  validate their live filesystem identity or authorize execution.
+
+#### macos-scope-execution
+
+- `macos-scope-execution.ts` owns guardian-local admission and supervised
+  resources after durable ownership exists. Keep the native execution gate
+  closed until explicit admission. Account for exited-task CPU and repeatedly
+  fence the complete coalition before reporting settlement. Sampled memory, task
+  limits and CPU throttling can overshoot. Record sampling evidence and fail
+  closed on sustained accounting uncertainty. Native exit status and kernel
+  emptiness are independent requirements, including after crashes.
+
+  Incomplete samples and CPU regressions share the existing 500 ms uncertainty
+  bound. Preserve the CPU high-water/time baseline across regressions. The next
+  nonregressing reading charges accumulated CPU and elapsed refill. Continue
+  charging observable CPU during incomplete membership samples. Final settlement
+  requires complete accounting at or above that baseline. Recovery may confirm
+  cleanup without establishing a payload result.
+
+  After admission, a payload's unread stdin may close with EPIPE without
+  invalidating its native exit evidence. Other stream errors still fail closed.
+  Neither EPIPE nor pipe closure substitutes for the status frame or fencing.
+
+#### macos-native-supervisor
+
+- `macos-native-supervisor.ts` and `macos-guardian-client.ts` own finite,
+  unprivileged user-domain jobs. Keep control, stdin, stdout and stderr
+  separate. Kernel UID/PID/version bind every connection to its peer. Journal
+  before admission, apply the native profile before continuation, and retain
+  cleanup ownership through cancellation, coordinator loss and blocked output.
+  Bound aggregate output before forwarding it. The ten-second admission wait
+  ends at admission.
+
+  Storage and input preparation then use the original operation deadline,
+  without extending it. Native readiness and image-tool bounds remain separate.
+  Recovery removes the authenticated job and socket allocation only after kernel
+  fencing. `macos-control-channel.ts` bounds private frames and queued messages.
+  None of these modules is a public backend extension point or an
+  installed-support claim. If job retirement needs recovery, preserve a
+  validated authenticated terminal.
+
+  Expose it only after recovery confirms fencing and storage cleanup. Lost
+  streams remain lost. A missing terminal remains unknown. Native receipts
+  retain the known stop reason and record cleanup recovery independently.
+  Persistent job-removal uncertainty still rejects completion and retains owner
+  journals.
+
+#### System library grants
+
+- `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
+  under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
+  projections cannot overlap these runtime roots. Host control remains excluded.
+  Only the verified Codex profile may select exact preference-service lookup and
+  read-only daemon/current-UID notification-counter pages. This grants no
+  preference reads, writes, other IPC or networking. Preserve the flag through
+  intent lowering, sealing and guardian message validation.
+
+  On Intel build 23E224 the pages are qualified as 16 KiB invalidation counters,
+  including cross-domain change activity. Other OS profiles need independent
+  qualification. `macos-codex-preferences.ts` runs the authenticated installed
+  observer in a fresh bounded process during provider selection and each
+  launch/restoration, outside resource/installation caches. Forced policy or
+  unavailable observation refuses execution with a closed actionable cause. This
+  is an observation boundary, not continuous MDM enforcement. Codex HOME
+  relocates to private tmp.
+
+  Reject Rosetta and arm64 in the universal observer, and retain its native
+  self-deadline after coordinator loss. Inherited sandbox uncertainty also
+  refuses observation. Missing observer support is an installation failure.
+
+- [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native
+  pre-exec boundary. Clear inherited Mach rights and descriptors, apply the
+  selected profile, report private readiness, and wait for admission before
+  execution. Close all child control handoffs before exec. The trusted parent
+  reports actual waitpid evidence separately from payload output. It does not
+  own admission storage, resource supervision, recovery, or installation
+  authority. These private components do not enable the installed macOS host
+  independently.
+
+### Storage
+
+#### macos-volume
 
 - `macos-volume.ts` owns fixed, case-sensitive native filesystem images for
   bounded writable projections. Authenticate the allocation and backing inode
@@ -98,6 +249,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   single-link bounded staging leaf after exact image and mount cleanup.
 
   Backing staging never grants attachment or recovery authority.
+
+#### macos-guardian-storage
 
 - `macos-guardian-storage.ts` records bounded volume intent before job creation
   and attaches only after admission inside the guardian. Work, temporary and
@@ -148,24 +301,9 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   each exact guardian directory only after its main and recovery jobs are
   absent. Never replace this with recursive deletion.
 
-- `macos-input-projection.ts` validates the admitted input manifest and copies
-  authenticated anonymous readers through the held volume descriptor before
-  payload creation. Recheck original capture capabilities before admission,
-  kernel-authenticate both transfer peers, and verify byte counts and hashes
-  again in the guardian. Keep immutable inputs separate from writable roots.
-  Close every writer and transferred descriptor before native execution. Root
-  launch plans grant read-only access to the bounded `data/inputs` projection
-  for declared input roots, including empty attachments. This tree never joins
-  writable payload grants.
+### Recovery
 
-  Retain those exact root names in the sealed plan and guardian configuration.
-  Create them before execution. Reject files outside them. Apply file-path depth
-  and byte limits relative to each root. The separately bounded root names do
-  not consume the captured-entry budget. Input names, aggregate bytes, directory
-  entries and file count retain common bounds.
-
-  Recovery receives only its own fixed configuration, never stale input handles
-  or other payload launch fields from the failed attempt.
+#### macos-owner-state
 
 - `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and
   PID-version journal before descendants exist. Its per-allocation token stays
@@ -184,6 +322,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   fencing, remove only its exact socket names and empty directory.
 
   Never perform recursive deletion using a decoded recovery path.
+
+#### macos-owner-lock
 
 - `macos-owner-lock.ts` holds an exclusive, nonblocking kernel file lock through
   native admission and settlement, or through recovery. Bind its original inode
@@ -214,65 +354,9 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   cleanup receipts independently. Ledger JSON alone is neither execution nor
   fencing authority.
 
-- `macos-native-backend.ts` binds the qualified Darwin mechanism, immutable path
-  identities, bounded native storage and live input capabilities into one sealed
-  owner. Keep its coordinator lock continuously from sealing through guardian
-  admission, complete cleanup and the authenticated final receipt. Durable
-  active state precedes the guardian's payload gate. Recovery must exclude a
-  live coordinator. It must revalidate the cleanup runtime before launching
-  recovery tools. It must handle both pre-admission and active coordinator loss.
+### Diagnostics
 
-  It must retire guardian journals before recording completion. Report
-  supervised sampling and possible resource overshoot explicitly. Never project
-  Linux cgroup or hard-quota claims. Installed support selects this backend only
-  on exact qualified native Mac kernels.
-
-- `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
-  Reject overlap between host control, immutable inputs and writable trees. Keep
-  the narrow sysctl/process-information rules. Only explicit network authority
-  enables resolver access and the DNS Mach service. Formatting paths does not
-  validate their live filesystem identity or authorize execution.
-
-- `macos-scope-execution.ts` owns guardian-local admission and supervised
-  resources after durable ownership exists. Keep the native execution gate
-  closed until explicit admission. Account for exited-task CPU and repeatedly
-  fence the complete coalition before reporting settlement. Sampled memory, task
-  limits and CPU throttling can overshoot. Record sampling evidence and fail
-  closed on sustained accounting uncertainty. Native exit status and kernel
-  emptiness are independent requirements, including after crashes.
-
-  Incomplete samples and CPU regressions share the existing 500 ms uncertainty
-  bound. Preserve the CPU high-water/time baseline across regressions. The next
-  nonregressing reading charges accumulated CPU and elapsed refill. Continue
-  charging observable CPU during incomplete membership samples. Final settlement
-  requires complete accounting at or above that baseline. Recovery may confirm
-  cleanup without establishing a payload result.
-
-  After admission, a payload's unread stdin may close with EPIPE without
-  invalidating its native exit evidence. Other stream errors still fail closed.
-  Neither EPIPE nor pipe closure substitutes for the status frame or fencing.
-
-- `macos-native-supervisor.ts` and `macos-guardian-client.ts` own finite,
-  unprivileged user-domain jobs. Keep control, stdin, stdout and stderr
-  separate. Kernel UID/PID/version bind every connection to its peer. Journal
-  before admission, apply the native profile before continuation, and retain
-  cleanup ownership through cancellation, coordinator loss and blocked output.
-  Bound aggregate output before forwarding it. The ten-second admission wait
-  ends at admission.
-
-  Storage and input preparation then use the original operation deadline,
-  without extending it. Native readiness and image-tool bounds remain separate.
-  Recovery removes the authenticated job and socket allocation only after kernel
-  fencing. `macos-control-channel.ts` bounds private frames and queued messages.
-  None of these modules is a public backend extension point or an
-  installed-support claim. If job retirement needs recovery, preserve a
-  validated authenticated terminal.
-
-  Expose it only after recovery confirms fencing and storage cleanup. Lost
-  streams remain lost. A missing terminal remains unknown. Native receipts
-  retain the known stop reason and record cleanup recovery independently.
-  Persistent job-removal uncertainty still rejects completion and retains owner
-  journals.
+#### macos-guardian-diagnostics
 
 - `macos-guardian-diagnostics.ts` supplies opt-in, asynchronous-scope host-test
   evidence when the guardian client enters recovery. Record its phase, failing
@@ -315,37 +399,9 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   guardian constructions so source matching and import errors fail before native
   qualification.
 
-- `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
-  under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
-  projections cannot overlap these runtime roots. Host control remains excluded.
-  Only the verified Codex profile may select exact preference-service lookup and
-  read-only daemon/current-UID notification-counter pages. This grants no
-  preference reads, writes, other IPC or networking. Preserve the flag through
-  intent lowering, sealing and guardian message validation.
-
-  On Intel build 23E224 the pages are qualified as 16 KiB invalidation counters,
-  including cross-domain change activity. Other OS profiles need independent
-  qualification. `macos-codex-preferences.ts` runs the authenticated installed
-  observer in a fresh bounded process during provider selection and each
-  launch/restoration, outside resource/installation caches. Forced policy or
-  unavailable observation refuses execution with a closed actionable cause. This
-  is an observation boundary, not continuous MDM enforcement. Codex HOME
-  relocates to private tmp.
-
-  Reject Rosetta and arm64 in the universal observer, and retain its native
-  self-deadline after coordinator loss. Inherited sandbox uncertainty also
-  refuses observation. Missing observer support is an installation failure.
-
-- [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native
-  pre-exec boundary. Clear inherited Mach rights and descriptors, apply the
-  selected profile, report private readiness, and wait for admission before
-  execution. Close all child control handoffs before exec. The trusted parent
-  reports actual waitpid evidence separately from payload output. It does not
-  own admission storage, resource supervision, recovery, or installation
-  authority. These private components do not enable the installed macOS host
-  independently.
-
 ## Local Contracts
+
+### macos-agent-runtime
 
 - `macos-agent-runtime.ts` supplies the qualified native Mac installation
   inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices,
@@ -370,6 +426,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   `/tmp`.
 
 ## Verification
+
+### .. .. scripts native-support
 
 - `../../scripts/native-support.mjs` regenerates and checks both descriptor
   bridge digest pins (`macos-descriptor-files.ts` and

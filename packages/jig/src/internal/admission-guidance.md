@@ -3,7 +3,19 @@
 Apply these rules when the parent reading map selects this domain.
 Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+- [contract-import](#contract-import)
+- [dependency-flows](#dependency-flows)
+- [project-plan-review](#project-plan-review)
+- [project-resource-qualification](#project-resource-qualification)
+- [installation-verification](#installation-verification)
+
 ## Ownership
+
+### contract-import
 
 - `contract-import.ts` owns explicit, inert contract-bundle copying: capture an
   invocation descriptor and exact offline channel closure, or a standalone
@@ -36,6 +48,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
 - Package artifact retention, materialization, and preparation.
 
+### dependency-flows
+
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
   the original dependency lookup layout with that package as the execution root.
@@ -53,6 +67,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   the full offline closure. Retain input hashes for freshness. Recheck them
   before/after publication and interrupted-batch recovery. Do not rewrite them.
 
+### project-plan-review
+
 - `project-plan-review.ts` renders retained public policy and affected targets.
   Keep exact child attachment port/folder maps visible, and mark mapped parents
   affected when their selected child revision or availability changes.
@@ -60,6 +76,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 - Installed Bun authentication, rootless acquisition, delegation, containment,
   supervision, and execution. Missing or invalid installed release files produce
   closed repair evidence. Supported-host failures remain distinct.
+
+### project-resource-qualification
 
 - `project-resource-qualification.ts` qualifies exact selected ACP grants before
   avoidable execution preparation, then propagates refusal through captured Flow
@@ -300,6 +318,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   live filesystem scan, and cannot grant authority or select a replacement.
 
 ## Work Guidance
+
+### installation-verification
 
 - `installation-verification.ts` owns command-scoped operator policy and the
   bounded installation cache. The installed CLI resolves `--verification` over

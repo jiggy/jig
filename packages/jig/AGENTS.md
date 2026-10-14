@@ -32,6 +32,7 @@ owns the public authoring API and installed Linux and qualified Mac hosts.
   release rights, and distributed-source duties, linking to those retained
   terms.
 
+The guides contain module indexes. Each selected guide remains required reading.
 Read every guide that matches the affected files or responsibilities:
 
 | Work | Required guide |

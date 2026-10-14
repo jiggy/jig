@@ -8,6 +8,13 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `check-docs.ts` owns documentation metadata, local links, source anchors,
+  changed-paragraph structural writing checks, and built-site routes and anchors.
+  It uses an explicit Git baseline without an external skill dependency.
+  Unchanged paragraphs retain existing style findings across owner changes.
+  New technical paragraphs receive all mechanical style checks.
+  `docs/jig/AGENTS.md` owns the temporary software-factory style exclusion.
+  It makes no network requests and does not certify ASD-STE100 compliance.
 - `new-worktree.sh` owns sibling development-checkout creation. It inherits
   existing ignored `../<same-name>` links from the primary checkout to real
   workspace entries. Tracked source stays local to each checkout. Parent links
@@ -209,6 +216,9 @@ operational baselines, and public-site assembly.
   diagnostic. Never force-remove potentially edited work as failure cleanup.
 
 ## Verification
+
+- `bun test scripts/check-docs.test.ts` verifies documentation refusal and baseline handling.
+- `bun scripts/check-docs.ts` checks current source documentation.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.

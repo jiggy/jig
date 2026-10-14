@@ -65,11 +65,11 @@ run the approved revision, not unreviewed edits.
 
 Paths in the declaration are project-relative. Input files and source trees are
 captured afresh for each invocation. Changing a job file does not require a new
-review. Changing the entrypoint itself does. Use quotes around arguments
-containing spaces. Jig parses arguments without shell execution or variable
-expansion. `jig inspect`
+review. Changing the entrypoint itself does.
 
-shows the approved entrypoint.
+Use quotes around arguments containing spaces.
+Jig parses arguments without shell execution or variable expansion.
+`jig inspect` shows the approved entrypoint.
 
 When the selected target declares writable deliverables and you omit `--out`,
 Jig chooses a fresh packet directory in operating-system temporary storage. Jig

@@ -682,12 +682,12 @@ is not a pass. State the exact evidence that completed.
 ## Write clear technical English
 
 Clear instructions support agency: people and software must understand their
-authority, the result, and the next permitted action. Use the
-[ASD-STE100 skill](skills/asd-ste100/SKILL.md) for project technical text.
+authority, the result, and the next permitted action.
+Apply the structural rules below to project technical text.
 
-- Apply its strict rules to procedures, Agent instructions, prompts, tool
+- Apply these rules to procedures, Agent instructions, prompts, tool
   descriptions, error messages, and operational status reports.
-- Apply its structural rules to technical guides, READMEs, specifications, and
+- Apply these rules to technical guides, READMEs, specifications, and
   explanatory prose. Treat dictionary-dependent word choices as advice.
 - Preserve the voice of creative and marketing copy. The
   [communication guide](communication.md) owns public positioning and narrative.
@@ -712,18 +712,28 @@ authority, the result, and the next permitted action. Use the
 - If simpler wording loses required meaning, retain that meaning and explain the
   departure. Keep compound verb forms when they carry necessary uncertainty or
   current relevance.
-- Check changed technical text with the skill's linter. Review its findings
-  against the source meaning. The linter does not prove full ASD-STE100
-  compliance.
+- Check changed technical text with `bun scripts/check-docs.ts`.
+  Review findings against the source meaning. The checker enforces sentence
+  length, paragraph length, and prose semicolons in changed technical paragraphs.
+  Unchanged paragraphs retain their existing findings, including moves between owners.
+  Link-only changes do not change the style baseline.
+- The checker also validates documentation metadata, local links, and heading
+  anchors. CI checks both built sites' routes, assets, and rendered anchors.
+- Mechanical checks do not establish complete ASD-STE100 compliance.
+  They do not check the official approved-word dictionary.
+  Review actors, ambiguity, terminology, modality, and one instruction per sentence manually.
 
-The skill does not contain the official approved-word dictionary. Do not claim
-dictionary compliance or certified ASD-STE100 compliance from these checks.
-
-For a focused check, supply the changed files:
+For a focused comparison, select a Git baseline:
 
 ```sh
-python .agents/skills/asd-ste100/scripts/ste-lint.py path/to/document.md
+bun scripts/check-docs.ts --base HEAD
 ```
+
+Use a baseline before your edits. Local checks default to `HEAD`.
+CI compares PRs with their base revision and pushes with the preceding revision.
+Manual CI uses the checked revision's parent.
+New technical paragraphs receive all mechanical style checks.
+Do not claim dictionary compliance or certified ASD-STE100 compliance from these checks.
 
 ## Find authoritative sources
 

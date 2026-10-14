@@ -3,6 +3,14 @@
 Apply these rules when the parent reading map selects this domain.
 Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+- [private-acp-resources](#private-acp-resources)
+- [acp-setup-diagnostics](#acp-setup-diagnostics)
+- [finite-acp-policy](#finite-acp-policy)
+
 ## Ownership
 
 - Admission storage retains private native-session snapshots under exact
@@ -35,6 +43,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   back to another installation. Only native executable/support bytes enter the
   provider identity and execution projection. Launch never rediscovers metadata.
 
+### private-acp-resources
+
 - `private-acp-resources.ts` captures operator configuration before project
   loading and resolves only each target's exact granted clients. Selected
   runtime identities enter the recipe and review. Launch revalidates their bytes
@@ -47,6 +57,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   launch-time validation. Cache selected configurations by client and granted
   model together. A grant model does not change authentication mode or mutate
   the operator snapshot.
+
+### acp-setup-diagnostics
 
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
   corrective hints. Preserve known failures through planning and CLI rendering.
@@ -65,6 +77,8 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
   Executable discovery failures do not imply an absent installation: preserve
   rejected override facts without its value, retain selected-client repair and
   detect alternatives passively.
+
+### finite-acp-policy
 
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `native-agent-turn-policy.ts` owns Jig's default and allowed

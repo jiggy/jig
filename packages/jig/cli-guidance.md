@@ -3,7 +3,22 @@
 Apply these rules when the [package reading map](AGENTS.md) selects this domain.
 The package entrypoint retains shared requirements and child ownership.
 
+## Find a module or task
+
+All selected domain requirements still apply.
+
+| Work | Required details |
+| --- | --- |
+| Discovery, completion, or caller creation | [CLI discovery](#src-cli-discovery) |
+| Grammar, acquisition, or review readiness | [Command grammar and review](#command-grammar-and-review) |
+| Inspect approved targets | [Approved target inspection](#approved-target-inspection) |
+| Select installation verification | [Installation verification](#installation-verification) |
+| Change presentation, progress, or reporting | [Shared presentation](#shared-presentation) |
+| Verify observable output | [Verification](#verification), [acceptance checks](#acceptance-checks) |
+
 ## Local Contracts
+
+### src cli-discovery
 
 - `src/cli-discovery.ts` owns invocation guidance and shell completion.
   Completion and the interactive target chooser read approval only, without
@@ -16,6 +31,8 @@ The package entrypoint retains shared requirements and child ownership.
   It does not infer providers, grants, library dependencies or workflow logic.
   Stage complete source outside ordinary Flow discovery before non-replacing
   publication.
+
+### Command grammar and review
 
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy. `--details` includes unchanged policy. Run
@@ -46,6 +63,8 @@ The package entrypoint retains shared requirements and child ownership.
   preparation. Generic limits do not imply host pressure. Arbitrary launch codes
   cannot establish a deadline.
 
+### Approved target inspection
+
 - `inspect` compares the last local approval with current local execution
   identities, including selected children. Report mismatches as review required
   and unverifiable comparisons as unchecked. It does not evaluate source,
@@ -60,6 +79,8 @@ The package entrypoint retains shared requirements and child ownership.
   rejected values. Human Run output leads with host facts before arbitrary
   results.
 
+### Installation verification
+
 - `run`, `review`, and `inspect` expose `--verification cached|strict|fast`.
   Precedence is argument, then `JIG_VERIFICATION`, then cached. Validate with
   each command grammar before acquisition, and preserve the choice on
@@ -71,6 +92,8 @@ The package entrypoint retains shared requirements and child ownership.
   authority.
 
 ## Work Guidance
+
+### Shared presentation
 
 - Before any public CLI output change, read and apply
   [the CLI experience contract](../../docs/jig/spec/cli-experience.md).
@@ -307,6 +330,8 @@ all evidence recorded, never reconstruct live views or authority, and preserve
 exact decoded JSON. Qualify partial file capture, framing/byte/path limits, link
 refusal, interruption, buffer release and output failure independently of
 recorded execution status.
+
+### Acceptance checks
 
 - CLI acceptance:
   `bun test packages/jig/test/portable/cli.test.ts packages/jig/test/portable/cli-presentation.test.ts packages/jig/test/portable/cli-run-presentation.test.ts packages/jig/test/portable/cli-value-presentation.test.ts packages/jig/test/portable/cli-output.test.ts packages/jig/test/portable/project-plan-review.test.ts`.

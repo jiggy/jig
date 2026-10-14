@@ -3,6 +3,15 @@
 Apply these rules when the [package reading map](AGENTS.md) selects this domain.
 The package entrypoint retains shared requirements and child ownership.
 
+## Find a module
+
+These links locate module rules. All selected domain requirements still apply.
+
+- [scripts pack](#scripts-pack)
+- [test host markdown-worker tests](#test-host-markdown-worker-tests)
+- [test host installed-* tests](#test-host-installed--tests)
+- [linux-rootless-run tests](#linux-rootless-run-tests)
+
 ## Ownership
 
 - `test/` owns unit, integration, fault-injection, packed-package, and
@@ -69,6 +78,8 @@ The package entrypoint retains shared requirements and child ownership.
   removal conditions, and known upstream issue or pull-request links.
 
   Distinguish related reports from an exact fix.
+
+### scripts pack
 
 - `scripts/pack.ts` stages the complete script-disabled npm compiler
   installation under private `libexec/authoring`. It removes unused npm
@@ -159,12 +170,16 @@ The package entrypoint retains shared requirements and child ownership.
   Mac profiles must explicitly refuse Codex selection while retaining their
   independent client checks.
 
+### test host markdown-worker tests
+
 - `test/host/markdown-worker.test.ts` checks installed Markdown's
   Agent-admission requirement and Agent-free code execution with the complete
   packed FLOW SDK in an ordinary declared workspace. It honors
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`. Otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics under
   the selected temporary root for investigation.
+
+### test host installed-* tests
 
 - `test/host/installed-*.test.ts` and
   `test/host/package-provider-observation.test.ts`, under
@@ -280,6 +295,8 @@ The package entrypoint retains shared requirements and child ownership.
   quality. Failed handoff fixtures retain bounded phase/dispatch timing with
   their results. Timing is diagnostic evidence, not permission to extend
   execution deadlines.
+
+### linux-rootless-run tests
 
 - `linux-rootless-run.test.ts` isolates real finite ACP exit, automatic crash
   fencing and shutdown-grace fencing with a synthetic authenticated peer. Its

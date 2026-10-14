@@ -361,10 +361,10 @@ Turn limits and other policy fields remain intact. An actual cross-client change
 with a pinned model or incompatible native retention refuses the whole request.
 Jig does not clear or translate either field. The argument also refuses when no
 ACP resources are selected. A same-client choice still undergoes the normal
-prerequisite checks. New or changed resource authority requires the same
-explicit approval as a source edit. `--yes`
+prerequisite checks.
 
-alone does not grant it.
+New or changed resource authority requires the same explicit approval as a source edit.
+`--yes` alone does not grant it.
 
 The argument is not remembered for the next review. Repeat it when reviewing
 later code edits, or edit the Binding for persistence. A later bare `jig review`

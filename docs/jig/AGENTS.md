@@ -158,6 +158,10 @@ use-case and orchestration hypotheses.
 
 ## Work Guidance
 
+- The software-factory guide awaits replacement. Exclude it from structural style
+  checks until recreation. Restore the check when recreating the guide.
+  Link, metadata, and publication checks still apply.
+
 - Keep `pricing.md` persuasive and easy to scan. Place qualifications beside
   claims that determine who pays or what rights persist. Lead with unconditional
   free personal use and evaluation. Introduce small-business eligibility,
