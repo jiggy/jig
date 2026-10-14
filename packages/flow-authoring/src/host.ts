@@ -60,7 +60,7 @@ function inspect(source: string) {
         if (node.arguments.length)
           fail(
             'SOURCE_UNSUPPORTED',
-            'Template applications are not supported; use T[] for arrays.',
+            'Template applications are not supported. Use T[] for arrays.',
             node,
           )
         break
@@ -96,7 +96,7 @@ function inspect(source: string) {
         if (node.default)
           fail(
             'SOURCE_UNSUPPORTED',
-            'Defaults are not supported; requiredness must remain explicit.',
+            'Defaults are not supported. Specify requiredness explicitly.',
             node,
           )
         break

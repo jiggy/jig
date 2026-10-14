@@ -943,7 +943,7 @@ export async function submitPrivateRootRun(input: {
     )
       unavailable(
         'RUN_APPROVAL_CHANGED',
-        'approval changed after selecting the project entrypoint; invoke again to use the current approval',
+        'approval changed after selecting the project entrypoint. Invoke again to use the current approval',
       )
 
     const candidateRow = requireCandidateRow(
@@ -5505,7 +5505,7 @@ function isSqliteBusy(error: unknown): boolean {
 function busy(): never {
   unavailable(
     'ADMISSION_STATE_BUSY',
-    'private admission state is busy; retry the complete operation',
+    'private admission state is busy. Retry the complete operation',
   )
 }
 function projectBusy(message: string): never {

@@ -15,22 +15,24 @@ The product authority pyramid descends from:
 5. Implementations, configurations, examples, experiments, and individual edits.
 
 A lower level may refine a higher one but must never contradict it. Constraints
-accumulate down the pyramid: invoking a core idea does not authorize bypassing
-a specific principle or safeguard. FLOW and Jig are sibling branches; a Jig
+accumulate down the pyramid: invoking a core idea does not authorize bypassing a
+specific principle or safeguard. FLOW and Jig are sibling branches. A Jig
 decision cannot subordinate FLOW's independence to Jig's convenience.
 
-Before making project decisions, read the
-[product compass](.agents/product-compass.md),
-[shared purpose](.agents/doctrine/purpose.md), the relevant
-[FLOW](.agents/doctrine/flow.md) or [Jig](.agents/doctrine/jig.md) branch (both
-for cross-project work), and [design judgment](.agents/doctrine/design-judgment.md).
-Relate material choices to the principles they serve. Independent probe
-consumers do not make platform decisions and retain their public-only inputs.
+Before making project decisions:
 
-Jig's adoption and retained Bread text belong in [LICENSE.md](LICENSE.md),
-its prices in [PRICING.md](PRICING.md), and contribution rights in
+1. Read the [product compass](.agents/product-compass.md).
+2. Read the [shared purpose](.agents/doctrine/purpose.md).
+3. Read the relevant [FLOW](.agents/doctrine/flow.md) or
+   [Jig](.agents/doctrine/jig.md) branch. For cross-project work, read both.
+4. Read [design judgment](.agents/doctrine/design-judgment.md). Relate material
+   choices to the principles they serve. Independent probe consumers do not make
+   platform decisions and retain their public-only inputs.
+
+Jig's adoption and retained Bread text belong in [LICENSE.md](LICENSE.md), its
+prices in [PRICING.md](PRICING.md), and contribution rights in
 [CONTRIBUTING.md](CONTRIBUTING.md). [LICENSES.md](LICENSES.md) owns the
-multi-project scope. Bread is independently maintained; no neighboring Bread
+multi-project scope. Bread is independently maintained. No neighboring Bread
 checkout is an input to Jig builds, releases, or required guidance. Preserve
 previously issued grants and separately licensed FLOW and third-party material.
 
@@ -42,60 +44,63 @@ implementation or release state. Transient task lists and reports belong in
 `.tmp/`.
 
 If a lower-level proposal or existing contract conflicts with a higher-level
-commitment, do not implement the conflict or silently reinterpret either side.
-Choose a conforming alternative; if none is established, pause the affected
-work and ask the owner to resolve the conflict at its owning level. A core
-idea does not itself select an API, prove a hypothesis, or authorize new scope.
-Doctrinal wording does not silently change an exact public contract: resolve
-the conflict through authorized, synchronized revisions to the affected
-guidance, specifications, schemas, implementation, and tests before proceeding.
-Evidence can motivate a revision; it cannot grant permission to contradict an
-unchanged higher-level commitment.
+commitment, do not implement the conflict. Do not silently reinterpret either
+side. Choose a conforming alternative. If none is established, pause the
+affected work and ask the owner to resolve the conflict at its owning level. A
+core idea does not itself select an API, prove a hypothesis, or authorize new
+scope. Doctrinal wording does not silently change an exact public contract.
+
+Before proceeding, resolve the conflict through authorized, synchronized
+revisions to the affected guidance, specifications, schemas, implementation, and
+tests. Evidence can motivate a revision. It cannot grant permission to
+contradict an unchanged higher-level commitment.
 
 ## Improve the product, not the local artifact
 
 Optimize for people building their own projects with Jig and FLOW, not for
 making this repository's examples, probes, builds, or demonstrations succeed.
 When an artifact exposes friction, identify the consumer's task and its root
-cause before choosing a fix. Existing implementation restrictions are
-revisable design choices, not reasons to move avoidable burden onto users.
+cause before choosing a fix. Existing implementation restrictions are revisable
+design choices, not reasons to move avoidable burden onto users.
 
 Do not conceal a product gap with example-only wrappers, injected dependencies,
-preprocessed copies, private helpers, or extra setup instructions that ordinary
-consumers would have to reinvent. Prefer standard ecosystem mechanisms and the
-smallest reusable correction at the responsible layer. Examples must exercise
-the ordinary public experience, not receive a privileged implementation path.
-Verify a product correction in an ordinary consumer project, without relying
-on this repository's layout or private tooling.
+preprocessed copies, or private helpers. Do not conceal such a gap with extra
+setup instructions that ordinary consumers would have to reinvent. Prefer
+standard ecosystem mechanisms and the smallest reusable correction at the
+responsible layer. Examples must exercise the ordinary public experience, not
+receive a privileged implementation path. Verify a product correction in an
+ordinary consumer project, without relying on this repository's layout or
+private tooling.
 
-This is not permission to absorb application logic into Jig or runtime policy
-into FLOW: establish whether the defect belongs to the product, its public
-guidance, or the application. Keep legitimate artifact fixes local. A question
-or design discussion authorizes analysis, not implementation; a proposed fix
-needs authorization unless it is already within explicitly approved work.
+This does not permit application logic in Jig or runtime policy in FLOW.
+Establish whether the defect belongs to the product, its public guidance, or the
+application. Keep legitimate artifact fixes local. A question or design
+discussion authorizes analysis, not implementation. A proposed fix needs
+authorization unless it is already within explicitly approved work.
 
 ## No prerelease compatibility
 
 Jig and FLOW are prerelease projects. Do not retain deprecated, superseded,
 transitional, or compatibility-only code, schemas, formats, migrations, tests,
-aliases, or documentation. When one design replaces another, remove the old
-path completely in the same change.
+aliases, or documentation. When one design replaces another, remove the old path
+completely in the same change.
 
 Registry-visible development alphas do not by themselves establish a
 compatibility promise. Until the owner explicitly promotes a Jig, FLOW, or
-Capability Contract interface, keep its current version provisional: replace
-draft semantics in place and keep implementation, schemas, fixtures, and
-documentation synchronized instead of creating prerelease version archaeology.
-This does not permit overwriting an immutable package archive; advance the
-package prerelease identifier when publishing changed bytes without treating
-that identifier as a compatibility or migration obligation.
+Capability Contract interface, keep its current version provisional. Replace
+draft semantics in place. Keep implementation, schemas, fixtures, and
+documentation synchronized. Do not create prerelease version archaeology. This
+does not permit overwriting an immutable package archive.
 
-Preserve compatibility only when the user explicitly requires it for an
-already released external interface.
+Advance the package prerelease identifier when publishing changed bytes without
+treating that identifier as a compatibility or migration obligation.
+
+Preserve compatibility only when the user explicitly requires it for an already
+released external interface.
 
 This removal rule governs active product, test, schema, and normative
 documentation surfaces. It does not erase selected non-normative recovery
-landmarks or historical field notes isolated under `.agents/`; those records
+landmarks or historical field notes isolated under `.agents/`. Those records
 must remain explicitly subordinate and must never load a compatibility path.
 
 ---
@@ -108,7 +113,9 @@ must remain explicitly subordinate and must never load a compatibility path.
 ## Core Contract
 
 - AGENTS.md files are binding work contracts for their subtrees
-- Work products, source materials, instructions, records, assets, and durable docs must stay understandable from the nearest applicable AGENTS.md plus every parent AGENTS.md above it
+- Work products, source materials, instructions, records, assets, and durable
+  docs must stay understandable from the nearest applicable AGENTS.md plus every
+  parent AGENTS.md above it
 
 ## Read Before Editing
 
@@ -116,11 +123,15 @@ must remain explicitly subordinate and must never load a compatibility path.
 2. Identify every file or folder you expect to touch
 3. Walk from the repository root to each target path
 4. Read every AGENTS.md found along each route
-5. If a parent AGENTS.md lists a child AGENTS.md whose scope contains the path, read that child and continue from there
-6. Use the nearest AGENTS.md as the local contract and parent docs for repo-wide rules
-7. If docs conflict, the closer doc controls only local details consistent with parent contracts; no child may weaken DOX or the product authority pyramid
+5. If a parent AGENTS.md lists a child AGENTS.md whose scope contains the path,
+   read that child and continue from there
+6. Use the nearest AGENTS.md as the local contract and parent docs for repo-wide
+   rules
+7. If docs conflict, the closer doc controls only local details consistent with
+   parent contracts. No child may weaken DOX or the product authority pyramid
 
-Do not rely on memory. Re-read the applicable DOX chain in the current session before editing.
+Do not rely on memory. Re-read the applicable DOX chain in the current session
+before editing.
 
 ## Update After Editing
 
@@ -131,30 +142,41 @@ Update the closest owning AGENTS.md when a change affects:
 - purpose, scope, ownership, or responsibilities
 - durable structure, contracts, workflows, or operating rules
 - required inputs, outputs, permissions, constraints, side effects, or artifacts
-- user preferences about behavior, communication, process, organization, or quality
+- user preferences about behavior, communication, process, organization, or
+  quality
 - AGENTS.md creation, deletion, move, rename, or index contents
 
-Update parent docs when parent-level structure, ownership, workflow, or child index changes. Update child docs when parent changes alter local rules. Remove stale or contradictory text immediately. Small edits that do not change behavior or contracts may leave docs unchanged, but the DOX pass still must happen.
+Update parent docs when parent-level structure, ownership, workflow, or child
+index changes. Update child docs when parent changes alter local rules. Remove
+stale or contradictory text immediately. Small edits that do not change behavior
+or contracts may leave docs unchanged, but the DOX pass still must happen.
 
 ## Hierarchy
 
-- Root AGENTS.md is the DOX rail: repository-wide authority, required entrypoints, document routing, and the top-level Child DOX Index
+- Root AGENTS.md is the DOX rail: repository-wide authority, required
+  entrypoints, document routing, and the top-level Child DOX Index
 - Avoid adding entries to this root file. Record durable preferences and rules
-  in the nearest owning child AGENTS.md or required guide; merge existing
+  in the nearest owning child AGENTS.md or required guide. Merge existing
   guidance before adding more. Add root content only when it governs the whole
   repository and cannot be owned through an existing entrypoint. Do not restore
   a general User Preferences section here.
-- Child AGENTS.md files own domain-specific instructions and their own Child DOX Index
-- Each parent explains what its direct children cover and what stays owned by the parent
+- Child AGENTS.md files own domain-specific instructions and their own Child DOX
+  Index
+- Each parent explains what its direct children cover and what stays owned by
+  the parent
 - The closer a doc is to the work, the more specific and practical it must be
 - Filesystem proximity does not raise product authority: local rules and
   implementation choices remain subject to the higher-level doctrine
 
 ## Child Doc Shape
 
-- Create a child AGENTS.md when a folder becomes a durable boundary with its own purpose, rules, responsibilities, workflow, materials, or quality standards
-- Work Guidance must reflect the current standards of the project or user instructions; if there are no specific standards or instructions yet, leave it empty
-- Verification must reflect an existing check; if no verification framework exists yet, leave it empty and update it when one exists
+- Create a child AGENTS.md when a folder becomes a durable boundary with its own
+  purpose, rules, responsibilities, workflow, materials, or quality standards
+- Work Guidance must reflect the current standards of the project or user
+  instructions. If there are no specific standards or instructions yet, leave it
+  empty
+- Verification must reflect an existing check. If no verification framework
+  exists yet, leave it empty and update it when one exists
 
 Default section order:
 - Purpose
@@ -169,15 +191,17 @@ Default section order:
 - Keep docs concise, current, and operational
 - Write living docs as first-time entrypoints with no assumed conversations or
   prior participation. Lead with the owning core idea or purpose, then a few
-  principles, then wider commitments and details. Explain necessary terms
-  before relying on them; keep historical narratives in their optional owner
+  principles, then wider commitments and details. Explain necessary terms before
+  relying on them. Keep historical narratives in their optional owner
 - Document stable contracts, not diary entries
 - Put broad rules in parent docs and concrete details in child docs
 - Prefer direct bullets with explicit names
-- Do not duplicate rules across many files unless each scope needs a local version
+- Do not duplicate rules across many files unless each scope needs a local
+  version
 - Delete stale instructions from living docs instead of explaining history
-  there; keep only selected evidence in its designated non-normative owner
-- Trim obvious statements, repeated rules, misplaced detail, and warnings for risks that no longer exist
+  there. Keep only selected evidence in its designated non-normative owner
+- Trim obvious statements, repeated rules, misplaced detail, and warnings for
+  risks that no longer exist
 
 ## Closeout
 
@@ -190,9 +214,9 @@ Default section order:
 
 ## Child DOX Index
 
-- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal product compass and doctrine,
-  project coordination and recovery, optional field notes, and repository-native
-  agent skills.
+- [.agents/AGENTS.md](.agents/AGENTS.md) — Internal product compass and
+  doctrine, project coordination and recovery, optional field notes, and
+  repository-native agent skills.
 - [.github/AGENTS.md](.github/AGENTS.md) — Continuous integration, release,
   host-conformance, and public-site automation.
 - [conformance/AGENTS.md](conformance/AGENTS.md) — Implementation-independent

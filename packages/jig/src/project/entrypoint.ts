@@ -36,7 +36,7 @@ export function entrypointWords(value: unknown): string[] {
     } else {
       if ('|&;<>()`$'.includes(char))
         throw new TypeError(
-          'entrypoint accepts arguments, not shell operators or expansions; quote literal values',
+          'entrypoint accepts arguments, not shell operators or expansions. Quote literal values',
         )
       word += char
       active = true

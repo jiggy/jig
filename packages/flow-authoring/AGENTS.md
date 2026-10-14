@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Make reusable contracts practical to edit without requiring a source compiler
-in FLOW consumers. This package owns the bounded TypeSpec mapping prototype;
-it returns artifacts to Jig's separately owned managed publisher.
+Make reusable contracts practical to edit without requiring a source compiler in
+FLOW consumers. This package owns the bounded TypeSpec mapping prototype. It
+returns artifacts to Jig's separately owned managed publisher.
 
 ## Ownership
 
@@ -18,24 +18,26 @@ it returns artifacts to Jig's separately owned managed publisher.
   edits a project, admits execution, fetches imports or runs package extensions.
 - Preserve requiredness, constraints and complete outcome/output correlation.
   Reject unsupported source and Agent projections rather than weakening them.
-  Projection filenames must not replace reserved invocation or settings schema owners.
+  Projection filenames must not replace reserved invocation or settings schema
+  owners.
 - Generated types are editor assistance, not validation or authority.
 - Keep the complete drafter fixture and honest compilerless consumption checks.
-- Named invocation identity and channel agreements can be authored together;
-  generated channel closures contain only reachable definitions. Keep channel
+- Named invocation identity and channel agreements can be authored together.
+  Generated channel closures contain only reachable definitions. Keep channel
   semantics explicit and validate complete artifact batches before publication.
   `compileContract` emits borrowed channel references from source without
-  reading or inventorying package files. It emits only authored outputs; the
+  reading or inventorying package files. It emits only authored outputs. The
   consumer must resolve and validate the exact referenced agreements before
   publishing the package.
 - `@invocation` options may include the named single-form contract's `features`
-  catalog. Preserve its names/descriptions and omission versus an empty map;
-  reject anonymous catalogs and native bound violations. Catalogs affect the
+  catalog. Preserve its names/descriptions and omission versus an empty map.
+  Reject anonymous catalogs and native bound violations. Catalogs affect the
   descriptor, not generated validation types, support claims or granted powers.
 
 ## Work Guidance
 
-- Keep publication and project ownership in Jig; this library remains standalone.
+- Keep publication and project ownership in Jig. This library remains
+  standalone.
 - Use only the pinned compiler and bundled authoring definitions.
 
 ## Verification

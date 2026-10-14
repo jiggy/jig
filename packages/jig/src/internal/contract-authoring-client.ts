@@ -34,7 +34,7 @@ export async function generateContract(
   if (!node)
     unavailable(
       'AUTHORING_NODE',
-      'Contract generation requires Node 22+; set JIG_AUTHORING_NODE_PATH to its absolute executable.',
+      'Contract generation requires Node 22+. Set JIG_AUTHORING_NODE_PATH to its absolute executable.',
     )
   const worker =
     workerPath ??

@@ -134,7 +134,7 @@ export function readHeader(source: string, toolchain: Toolchain): SourceHeader {
   if (typeof parsed?.types !== 'boolean' || first !== prefix + JSON.stringify(expected)) {
     fail(
       'SOURCE_HEADER',
-      'Header differs from the installed toolchain or canonical options; select the intended tool explicitly.',
+      'Header differs from the installed toolchain or canonical options. Select the intended tool explicitly.',
     )
   }
   return parsed

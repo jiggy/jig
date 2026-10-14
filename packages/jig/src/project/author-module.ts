@@ -80,7 +80,7 @@ export async function captureAuthorModule(
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PROJECT_EVALUATOR_UNAVAILABLE',
-      'project source capture is unavailable on this host; use a supported Jig host',
+      'project source capture is unavailable on this host. Use a supported Jig host',
       projectPath,
     )
   }
@@ -162,7 +162,7 @@ export async function captureOpenedAuthorClosure(
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PROJECT_EVALUATOR_UNAVAILABLE',
-      'project source capture is unavailable on this host; use a supported Jig host',
+      'project source capture is unavailable on this host. Use a supported Jig host',
     )
   }
 

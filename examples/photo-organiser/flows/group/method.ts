@@ -61,7 +61,7 @@ export async function groupPhotos(
     if (typeof agentOutput.text !== 'string') {
       throw new TypeError('The Agent omitted its reason for stopping.')
     }
-    updates?.notice('The Agent could not propose groups; inspect the final cause.', 'error')
+    updates?.notice('The Agent could not propose groups. Inspect the final cause.', 'error')
     return { outcome: agentResponse.outcome, output: { reason: agentOutput.text } }
   }
 

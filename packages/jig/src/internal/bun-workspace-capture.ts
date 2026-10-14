@@ -606,7 +606,7 @@ function requireBuiltExports(manifest: Record<string, unknown>, captured: Captur
     )
       fail(
         'PACKAGE_BUN_WORKSPACE_BUILD_REQUIRED',
-        'a workspace export is missing; build the package before review',
+        'a workspace export is missing. Build the package before review',
       )
     if (value !== null && typeof value === 'object')
       for (const child of Object.values(value)) check(child)
@@ -617,7 +617,7 @@ function requireBuiltExports(manifest: Record<string, unknown>, captured: Captur
 }
 
 function changed(): never {
-  fail('PACKAGE_BUN_WORKSPACE_CHANGED', 'workspace metadata changed during capture; review again')
+  fail('PACKAGE_BUN_WORKSPACE_CHANGED', 'workspace metadata changed during capture. Review again')
 }
 function fail(code: string, message: string): never {
   throw new CheckError('invalid', code, message, 'package.json')

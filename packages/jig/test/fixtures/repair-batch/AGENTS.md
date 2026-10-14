@@ -12,26 +12,26 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 - `../../root-agent-run-lifecycle.test.ts` owns assembly, synthetic Agent
   responses, command execution, result assertions, and cleanup.
 - Source capture, patch acceptance, and the repair leaf come from the current
-  public example; do not maintain private copies of those implementations.
+  public example. Do not maintain private copies of those implementations.
 
 ## Local Contracts
 
 - `batch.ts` imports the public evidence/check helpers for source-level units.
-  Assembly rewrites only that fixture import prefix to package-local paths;
-  host execution uses the unchanged public helpers, never a private duplicate.
-- The retained monitor and wiring have deterministic channel lifecycle tests
-  in `test/repair-monitoring.test.ts`; batch cases live in
+  Assembly rewrites only that fixture import prefix to package-local paths. Host
+  execution uses the unchanged public helpers, never a private duplicate.
+- The retained monitor and wiring have deterministic channel lifecycle tests in
+  `test/repair-monitoring.test.ts`. Batch cases live in
   `test/repair-batch.test.ts`. These are not live Agent evidence.
 - Keep this fixture private to tests. It is not a recommended example or a
   second application distribution.
 - Preserve separate worker identities, fixed acceptance cases, and checkpoints.
-- Store deliberately failing sample checks as `project.test.ts.txt`; the host
+- Store deliberately failing sample checks as `project.test.ts.txt`. The host
   test assembles them as `project.test.ts` in its disposable project. Ordinary
   repository test discovery must not run these unrepaired sample checks.
 
 ## Work Guidance
 
-- Add only host-proof inputs; no public application features.
+- Add only host-proof inputs. No public application features.
 
 ## Verification
 

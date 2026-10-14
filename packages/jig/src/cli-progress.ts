@@ -700,7 +700,7 @@ export class PrivateCliProgress {
     if (this.#outputFailed) throw this.#outputFailure
   }
   #unavailable(text: string): void {
-    this.model.setIncomplete('Live observation is incomplete; inspect the final result')
+    this.model.setIncomplete('Live observation is incomplete. Inspect the final result')
     if (this.#unavailableReported) return
     this.#unavailableReported = true
     this.model.addAttention('Jig', text, 3, false)

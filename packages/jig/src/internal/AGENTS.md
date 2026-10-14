@@ -2,208 +2,241 @@
 
 ## Purpose
 
-Owns Jig's trusted private machinery for admission, retained artifacts,
-project and Run lifecycles, rootless Linux containment, dependency preparation,
-child calls, project commands, delegated HTTP, and Agent providers.
+This directory owns Jig's trusted private machinery for admission, retained
+artifacts, project and Run lifecycles, and rootless Linux containment. It also
+owns dependency preparation, child calls, project commands, delegated HTTP, and
+Agent providers.
 
 ## Ownership
 
-- `contract-import.ts` owns explicit, inert contract-bundle copying: capture
-  an invocation descriptor and exact offline channel closure, or a standalone
+- `contract-import.ts` owns explicit, inert contract-bundle copying: capture an
+  invocation descriptor and exact offline channel closure, or a standalone
   channel descriptor. `standard-contracts.ts` owns the closed `jig:` catalog of
-  installed invocation and channel agreements. `--list` stays offline; imports
+  installed invocation and channel agreements. `--list` stays offline. Imports
   capture the exact descriptor closure and its license and verify the catalog
-  digest. Names select agreements, never implementations or authority. Validate before writing,
-  and publish a new directory without replacement. Source package code,
-  unrelated files, network access and Run approval stay outside this operation.
-  Native publication uses exclusive directory rename from a newly owned staging
-  leaf. Cleanup walks held descriptors with finite entry/depth bounds; a failed
-  allocation must never authorize removal of an existing name.
+  digest. Names select agreements, never implementations or authority. Validate
+  before writing, and publish a new directory without replacement.
+
+  Source package code, unrelated files, network access and Run approval stay
+  outside this operation. Native publication uses exclusive directory rename
+  from a newly owned staging leaf. Cleanup walks held descriptors with finite
+  entry/depth bounds. A failed allocation must never authorize removal of an
+  existing name.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
-- `private-profile.ts` owns opt-in bounded phase-only diagnostics, written before
-  shutdown. Partial spans are not completion or machine-crash durability evidence.
+- `private-profile.ts` owns opt-in bounded phase-only diagnostics, written
+  before shutdown. Partial spans are not completion or machine-crash durability
+  evidence.
 - The configuration evaluator shares only finite review-envelope setup. Its
-  trusted manager runs fresh declaration subprocesses sequentially, enforcing
+  trusted manager runs fresh declaration subprocesses sequentially. It enforces
   each host's declaration ceiling independently of guest code: three seconds on
   Linux and ten seconds on Mac. Resources remain aggregate-limited under that
-  host's enforcement profile; the supervisor caps a multi-entry batch by the
-  sum of entry ceilings plus fixed and per-entry bounded setup and settlement
-  time. A single entry keeps its host's total ceiling. Each subprocess receives
-  only the captured modules reachable from its entry. Worker and SDK bytes use the
-  existing sealed file projection; later children never reopen live installed
-  support. Bootstrap consistency remains a separate evaluation; collection
-  requires whole-batch fencing and cleanup. No result cache or resident service.
+  host's enforcement profile. The supervisor caps a multi-entry batch by the sum
+  of entry ceilings plus fixed and per-entry bounded setup and settlement time.
+  A single entry keeps its host's total ceiling.
+
+  Each subprocess receives only the captured modules reachable from its entry.
+  Worker and SDK bytes use the existing sealed file projection. Later children
+  never reopen live installed support. Bootstrap consistency remains a separate
+  evaluation. Collection requires whole-batch fencing and cleanup. No result
+  cache or resident service.
+
   The child watchdog and independent supervisor own time enforcement. Guest VM
   execution has no shorter timer that can reject work within that entry ceiling.
 - `root-run-timeout-policy.ts` owns the shared 30-second root Run default for
-  Linux and Mac. Installed host acquisition and CLI parsing use that same value;
-  explicit operator timeouts remain separate from bounded cleanup settlement.
+  Linux and Mac. Installed host acquisition and CLI parsing use that same value.
+  Explicit operator timeouts remain separate from bounded cleanup settlement.
   Its private presentation constraint uses epoch-referenced milliseconds from
-  `Math.floor(performance.timeOrigin + performance.now())`, advancing monotonically
-  within one process and retaining normal scalar meaning across Bun reexecution.
-  Do not use process-relative `hrtime` as an inherited absolute deadline. Host-clock
-  adjustments between process startups can shift the epoch reference; independent
-  execution and command timers remain the enforcement authorities.
+  `Math.floor(performance.timeOrigin + performance.now())`, advancing
+  monotonically within one process and retaining normal scalar meaning across
+  Bun reexecution. Do not use process-relative `hrtime` as an inherited absolute
+  deadline. Host-clock adjustments between process startups can shift the epoch
+  reference.
+
+  Independent execution and command timers remain the enforcement authorities.
   Seed it before a finite enclosing file-command or Linux delegation timer,
   reserve 45 seconds for bounded restoration/reporting, and preserve the minimum
   inherited value through reexecution. Eligible interactive effective dashboard
-  commands omit only the default command envelope; finite explicit constraints
+  commands omit only the default command envelope. Finite explicit constraints
   and bounded setup, Run, cancellation and cleanup owners remain enforced. The
-  scalar only constrains presentation; it never grants execution authority.
+  scalar only constrains presentation. It never grants execution authority.
+
   Eligible web inspection also omits the default presentation envelope. Its
-  outer file owner seeds one completion budget before joining pending work:
-  twenty seconds for authenticated retirement or uncapped inspector exit,
-  preserving the inbound inherited minimum captured before generating the
-  child's presentation deadline. A local presentation deadline leaves its
-  closing reserve available to owner cleanup. Legacy finite-envelope exit retains its
-  existing sixty-second settlement allowance. Memoize task/publication joins
-  and cleanup failure; no finally path may wait outside that allowance or reset
-  it. A stalled publication fences fallback and still attempts independent
-  endpoint/descriptor release. Confirm retirement before indefinite inspection.
+  outer file owner seeds one completion budget before joining pending work. The
+  budget permits twenty seconds for authenticated retirement or uncapped
+  inspector exit. It preserves the inbound inherited minimum captured before
+  generating the child's presentation deadline. A local presentation deadline
+  leaves its closing reserve available to owner cleanup. Legacy finite-envelope
+  exit retains its existing sixty-second settlement allowance.
+
+  Memoize task/publication joins and cleanup failure. No finally path may wait
+  outside that allowance or reset it. A stalled publication fences fallback and
+  still attempts independent endpoint/descriptor release. Confirm retirement
+  before indefinite inspection.
 - Admission storage uses the closed native descriptor operations while SQLite
   retains DELETE rollback journaling, EXTRA synchronization and NOFOLLOW opens.
-  Darwin resolves system ancestor aliases only for SQLite's visible filename;
-  verify that hierarchy against the held state/database and the original
+  Darwin resolves system ancestor aliases only for SQLite's visible filename.
+  Verify that hierarchy against the held state/database and the original
   requested project root before and after opening. Do not use this pathname
   normalization to replace descriptor-relative file authority.
 - Durable materialization preserves exact package identity through native
   creation, aliases, reacquisition and disposal. Darwin requires the package
-  directory writable for the disposal rename, after fencing and digest checks.
-  A crash in that window cannot readmit it: disposal rechecks the same lease,
+  directory writable for the disposal rename, after fencing and digest checks. A
+  crash in that window cannot readmit it: disposal rechecks the same lease,
   restores read-only mode and validates all bytes before resuming the rename.
-  Changed bytes fail closed; recorded allocation recovery may remove an
+  Changed bytes fail closed. Recorded allocation recovery may remove an
   incomplete projection without treating it as an executable lease.
 - Admission storage retains private native-session snapshots under exact
-  recipient scopes: at most sixteen 8 MiB UTF-8 rollouts, with 24-hour logical
-  expiry and atomic single-use claims that delete the payload. Access requires
-  the current coordinator and an active prepared root Run. Run-scoped snapshots
-  additionally bind to that root; successors inherit their lifetime. Terminal
-  commit atomically removes temporary state, including through recovery; storage
-  failure prevents terminal completion. Cross-Run snapshots retain their separate
-  expiry policy. Native collectors
-  own clean-close, content and current-grant validation; a reference grants no
-  authority. Storage or ownership uncertainty must not become successful retention.
-  Expected retention loss reports a closed reason. Only recognized content-profile
-  rejection is optional; unexpected collector/I/O errors remain execution failures.
+  recipient scopes. It permits at most sixteen 8 MiB UTF-8 rollouts, with
+  24-hour logical expiry. Atomic single-use claims delete the payload. Access
+  requires the current coordinator and an active prepared root Run. Run-scoped
+  snapshots additionally bind to that root. Successors inherit their lifetime.
+
+  Terminal commit atomically removes temporary state, including through
+  recovery. Storage failure prevents terminal completion. Cross-Run snapshots
+  retain their separate expiry policy. Native collectors own clean-close,
+  content and current-grant validation. A reference grants no authority. Storage
+  or ownership uncertainty must not become successful retention.
+
+  Expected retention loss reports a closed reason. Only recognized
+  content-profile rejection is optional. Unexpected collector/I/O errors remain
+  execution failures.
 - `invocation-context.ts` owns shared admitted-parent identity and durable
   parent-owner checks, plus protected owner-root validation. Finite ACP, command
-  and HTTP controllers use these checks; resource ownership must not import Agent
-  execution logic. Parent descriptors retain the exact bounded ancestry.
+  and HTTP controllers use these checks. Resource ownership must not import
+  Agent execution logic. Parent descriptors retain the exact bounded ancestry.
 - Package artifact retention, materialization, and preparation.
 - `descriptor-files.ts` selects closed Linux or qualified Darwin operations for
   held-directory children. Its live references cannot be reconstructed from
-  decoded data; callers own descriptor lifetime and entry identity checks.
-  Never convert these references to visible paths to regain file authority.
-  Package publication serializes by store device/inode, publishes by exclusive
-  hard link, and reacquires verified anonymous snapshots. Store enumeration
-  retains and rechecks directory descriptors instead of following child paths.
+  decoded data. Callers own descriptor lifetime and entry identity checks. Never
+  convert these references to visible paths to regain file authority. Package
+  publication serializes by store device/inode, publishes by exclusive hard
+  link, and reacquires verified anonymous snapshots. Store enumeration retains
+  and rechecks directory descriptors instead of following child paths.
+
   Project sessions retain their protected store parent through all planning and
   Run operations, then close it after root settlement and before the project
-  owner. Acquisition failures and checkpoint recovery close that same owner;
-  retained-project and child-call plumbing pass live locations without serializing them.
+  owner. Acquisition failures and checkpoint recovery close that same owner.
+  Retained-project and child-call plumbing pass live locations without
+  serializing them.
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
   the original dependency lookup layout with that package as the execution root.
   No provider imports, live installation traversal or new native authority.
 - Contract generation owns captured TypeSpec requests, a bounded trusted Node
   subprocess with empty environment and stdin lifetime lease, and per-package
-  publication journals beneath `.jig`. It requires separate `--generate-contracts` consent.
-  Only exact before/after bytes may settle interrupted batches; observed edits
-  conflict. Completion recaptures visible files before review. Individual renames
-  are not atomic multi-file publication or protection against every editor race.
+  publication journals beneath `.jig`. It requires separate
+  `--generate-contracts` consent. Only exact before/after bytes may settle
+  interrupted batches. Observed edits conflict. Completion recaptures visible
+  files before review. Individual renames are not atomic multi-file publication
+  or protection against every editor race.
+
   Borrowed channel agreements are captured inputs, not managed outputs. Validate
-  the full offline closure, retain input hashes for freshness, and recheck them
-  before/after publication and interrupted-batch recovery without rewriting them.
+  the full offline closure. Retain input hashes for freshness. Recheck them
+  before/after publication and interrupted-batch recovery. Do not rewrite them.
 - Invocation file capture, sealed input projection, bounded anonymous output,
   and separate command-owned publication after execution fencing.
-- `flow-file-context.ts` retains immediate-caller immutable read views and
-  binds only authentic admitted native import targets. Contexts own neither
-  captured bytes nor native storage; closing an ancestor revokes descendants.
-  `child-file-import.ts` retains caller-lifetime busy/consumed/unavailable folder
-  state independently of child-row and visible-directory deletion. Existing
-  RunHost operation identity owns duplicates; recovery fences the caller and
-  never resumes its program, so no durable destination history is added.
+- `flow-file-context.ts` retains immediate-caller immutable read views and binds
+  only authentic admitted native import targets. Contexts own neither captured
+  bytes nor native storage. Closing an ancestor revokes descendants.
+  `child-file-import.ts` retains caller-lifetime busy/consumed/unavailable
+  folder state independently of child-row and visible-directory deletion.
+  Existing RunHost operation identity owns duplicates. Recovery fences the
+  caller and never resumes its program, so no durable destination history is
+  added.
+
   Child controllers admit the complete result and fence descendants before
   copying. Source readers and existing child package/native/row cleanup settle
-  before native no-replace commit; remaining importer closes precede a normal
+  before native no-replace commit. Remaining importer closes precede a normal
   reply. Unknown setup, commit or close ends the caller without rollback/replay.
   Admitted roots retain the original importer across protocol/checkpoint faults.
   After confirmed parent fencing, attempt child settlement and join importer
-  loans; unresolved child or importer retirement keeps the root pending without release.
+  loans.
+
+  Unresolved child or importer retirement keeps the root pending without
+  release.
 - `execution-file-import.ts` joins native stage preparation, one bounded copy
   and retirement without owning dispatch or durable Run state. Native issuers
   own source/destination authority and cancellation-versus-rename arbitration.
-  Target closure preserves unknown setup cleanup, aborts/joins copies before
-  raw stage closure, and still attempts native target cleanup after failures.
-  Keep copied-file and directory FileHandles strongly retained until each
-  actual close fulfills; unknown closes never become a successful retirement.
-  Retain the original target and its active leases strongly until complete
-  target retirement is confirmed; a fatal caller does not release unknown
-  native handles to garbage collection.
-- `read-input-projection.ts` derives only whole-view aliases with identical paths
-  and original captured-input capabilities. Keep at most eight logical roots,
-  64 canonical files and 8 MiB of unique projected bytes; equal hashes never
-  authenticate aliases. Native owners create immutable local aliases before
-  payload execution and retain the exact closed recipe at seal/admission.
+  Target closure preserves unknown setup cleanup, aborts/joins copies before raw
+  stage closure, and still attempts native target cleanup after failures. Keep
+  copied-file and directory FileHandles strongly retained until each actual
+  close fulfills. Unknown closes never become a successful retirement. Retain
+  the original target and its active leases strongly until complete target
+  retirement is confirmed.
+
+  A fatal caller does not release unknown native handles to garbage collection.
+- `read-input-projection.ts` derives only whole-view aliases with identical
+  paths and original captured-input capabilities. Keep at most eight logical
+  roots, 64 canonical files and 8 MiB of unique projected bytes. Equal hashes
+  never authenticate aliases. Native owners create immutable local aliases
+  before payload execution and retain the exact closed recipe at seal/admission.
   Each Linux launch reopens its held sealed memfd read-only, rechecks backing
   identity and seals, and hands off an independent file position above stdio
   destination slots. Parent and sibling copies never seek the original reader.
 - Writable child maps opt into the existing per-invocation output owner. Linux
   captures original backing/public descriptors before projecting the public
-  subtree; trusted setup uses fixed environment, drops all capabilities and
+  subtree. Trusted setup uses fixed environment, drops all capabilities and
   reexecs before final continuation and package execution. Mac's existing
-  guardian keeps denied import/public siblings on its ordinary volume, loans
-  original roots through authenticated transfer, and handles bounded tagged
-  begin/commit/cancel/end messages on its existing control. At most two stages
-  belong to one caller. Native membership, original deadlines and accepted
-  cancellation arbitrate commit; a coordinator check is not the commit owner.
-  Payload fencing joins outer copy leases and original root loans before Mac
-  snapshot/storage retirement. Retain real FileHandles on uncertain close,
-  never retry an ambiguous close or reconstruct authority from path metadata.
-  Linux keeps at most two live and six total live/abandoned import reply IDs.
-  One well-formed late ACK drains only its known failed request; unknown or
+  guardian keeps denied import/public siblings on its ordinary volume. It loans
+  original roots through authenticated transfer. It handles bounded tagged
+  begin/commit/cancel/end messages on its existing control.
+
+  At most two stages belong to one caller. Native membership, original deadlines
+  and accepted cancellation arbitrate commit. A coordinator check is not the
+  commit owner. Payload fencing joins outer copy leases and original root loans
+  before Mac snapshot/storage retirement. Retain real FileHandles on uncertain
+  close, never retry an ambiguous close or reconstruct authority from path
+  metadata. Linux keeps at most two live and six total live/abandoned import
+  reply IDs.
+
+  One well-formed late ACK drains only its known failed request. Unknown or
   duplicate IDs fail closed and never revive a failed result. Exhaustion retires
-  import control and cancels the native owner; only its original confirmed fence
+  import control and cancels the native owner. Only its original confirmed fence
   can retire remaining native loans. Attempt every stage close, then backing
   close only after all actual readers have closed, preserving every uncertainty.
-- Attachment coexistence derives from the existing root reservation: at most
-  six Flow envelopes and five child stages, no new pool or independent volume.
-  Linux stages share each 16 MiB output tmpfs; trusted import writes may charge
+- Attachment coexistence derives from the existing root reservation: at most six
+  Flow envelopes and five child stages, no new pool or independent volume. Linux
+  stages share each 16 MiB output tmpfs. Trusted import writes may charge
   coordinator memory. Mac stages share each existing 512 MiB Flow image.
-  Collection retains <=16 MiB snapshots per Flow and streams <=64 KiB chunks;
-  final publication and accepted checkpoint bytes keep their separate limits.
+  Collection retains <=16 MiB snapshots per Flow and streams <=64 KiB chunks.
+  Final publication and accepted checkpoint bytes keep their separate limits.
+
   Keep the full derived accounting in SECURITY.md synchronized with host policy.
 - `file-input.ts` owns common bounded selection, raw-name validation and regular
-  reads; `file-input-policy.ts` owns limits and closed diagnostics. Linux uses
-  openat2 and sealed memfds; qualified Darwin walks held descriptors without
+  reads. `file-input-policy.ts` owns limits and closed diagnostics. Linux uses
+  openat2 and sealed memfds. Qualified Darwin walks held descriptors without
   links or mount crossings and excludes case variants of private Jig state.
   `input-capture.ts` returns live immutable-byte capabilities, not serializable
   descriptor authority. Retained attachments, command inputs and invocation
   projections keep these capabilities through launch and close them afterward.
-  Directory ancestry may use only the closed `.`/`..` operation; observed
-  filesystem paths never authorize reopening. These adapters do not by themselves
-  qualify native execution or output delivery.
-  The logical Bun launch identity derives its file profile from this policy.
-  Live stdout/stderr forwarding and physical filesystem capacity retain their
-  separate budgets; matching byte values do not make them file-capture authority.
+
+  Directory ancestry may use only the closed `.`/`..` operation. Observed
+  filesystem paths never authorize reopening. These adapters do not by
+  themselves qualify native execution or output delivery. The logical Bun launch
+  identity derives its file profile from this policy. Live stdout/stderr
+  forwarding and physical filesystem capacity retain their separate budgets.
+  Matching byte values do not make them file-capture authority.
 - `captured-bytes.ts` binds anonymous byte capabilities to a closed input or
   output purpose and its separate byte limit. `input-capture.ts` owns the
-  invocation-only interface; output handles cannot substitute for input authority.
-  `macos-captured-bytes.ts` owns private, capability-backed macOS byte captures.
-  Mint a handle only after unlinking the only pathname and closing the only
-  writable descriptor. Allocate its directory outside every payload file grant;
-  same-UID permissions alone are insufficient. Revalidation requires the original
-  live capability and exact bytes; serialized metadata cannot mint authority.
-  Transfer descriptors only through an authenticated trusted handoff. This
-  primitive does not by itself qualify or enable an installed macOS host.
+  invocation-only interface. Output handles cannot substitute for input
+  authority. `macos-captured-bytes.ts` owns private, capability-backed macOS
+  byte captures. Mint a handle only after unlinking the only pathname and
+  closing the only writable descriptor. Allocate its directory outside every
+  payload file grant.
+
+  Same-UID permissions alone are insufficient. Revalidation requires the
+  original live capability and exact bytes. Serialized metadata cannot mint
+  authority. Transfer descriptors only through an authenticated trusted handoff.
+  This primitive does not by itself qualify or enable an installed macOS host.
 - `captured-output.ts` snapshots an already-fenced output directory into one
   anonymous immutable backing under the 16 MiB aggregate output bound. Preserve
-  directory evidence, including empty directories, for native-session validation.
-  Keep capture/profile failures distinct from execution and cleanup evidence.
-  The snapshot may outlive a detached native volume; its descriptors and bytes
-  remain command-owned and cannot be recreated from serialized metadata.
+  directory evidence, including empty directories, for native-session
+  validation. Keep capture/profile failures distinct from execution and cleanup
+  evidence. The snapshot may outlive a detached native volume. Its descriptors
+  and bytes remain command-owned and cannot be recreated from serialized
+  metadata.
 - `execution-output.ts` owns the closed Linux directory/native snapshot lifetime
   used by Run files and native-session collection. `macos-guardian-output.ts`
   captures only after fencing, releases an available collector, and waits for
@@ -211,532 +244,624 @@ child calls, project commands, delegated HTTP, and Agent providers.
   release. An immutable snapshot copied after fencing survives later confirmed
   terminal cleanup recovery only with the authenticated successful native exit.
   Missing collection, missing exit evidence and unconfirmed cleanup still refuse
-  output; recovery never recaptures a mutable source or replays execution.
-  Content-profile rejection remains a delivery or optional-history
-  outcome; unexpected I/O and cleanup failure retain their separate consequences.
-  Closing an unavailable snapshot cannot manufacture a storage-cleanup failure.
-  Memoize each original directory or snapshot loan's actual close and retain
-  it strongly until that close is confirmed. Typed close uncertainty blocks
-  child commit and never permits another close attempt.
+  output. Recovery never recaptures a mutable source or replays execution.
+
+  Content-profile rejection remains a delivery or optional-history outcome.
+  Unexpected I/O and cleanup failure retain their separate consequences. Closing
+  an unavailable snapshot cannot manufacture a storage-cleanup failure. Memoize
+  each original directory or snapshot loan's actual close and retain it strongly
+  until that close is confirmed. Typed close uncertainty blocks child commit and
+  never permits another close attempt.
 - `project-plan-review.ts` renders retained public policy and affected targets.
   Keep exact child attachment port/folder maps visible, and mark mapped parents
   affected when their selected child revision or availability changes.
 - `file-delivery.ts` accepts local held input roots and bounded output snapshots
-  or Linux anonymous directory descriptors. Remote descriptor acquisition belongs
-  to the authenticated command transport, never a decoded pathname in publication.
-  Staging writes and bounded cleanup use held directories on both platforms.
-  Recheck the selected parent and exact staging identity before exclusive
-  publication; a moved parent cannot redirect writes or cleanup. Invalid final
-  files retain the known execution terminal and never authorize replay.
-  Its memoized close joins original prepare/publication, consumes held references
-  before cleanup and closes the destination parent even if staging cleanup fails.
-  The same failure remains observable on racing or repeated close; never retry
-  a recycled descriptor. `RootRunFiles` similarly consumes output once and fences
-  further projection, checkpoint and retention after close begins.
+  or Linux anonymous directory descriptors. Remote descriptor acquisition
+  belongs to the authenticated command transport, never a decoded pathname in
+  publication. Staging writes and bounded cleanup use held directories on both
+  platforms. Recheck the selected parent and exact staging identity before
+  exclusive publication. A moved parent cannot redirect writes or cleanup.
+  Invalid final files retain the known execution terminal and never authorize
+  replay.
+
+  Its memoized close joins original prepare/publication, consumes held
+  references before cleanup and closes the destination parent even if staging
+  cleanup fails. The same failure remains observable on racing or repeated
+  close. Never retry a recycled descriptor. `RootRunFiles` similarly consumes
+  output once and fences further projection, checkpoint and retention after
+  close begins.
 - `delivery-inspection.ts` transfers only verified receipt-selected excerpts to
   a pure presentation map before indefinite live-result inspection. One total
   20-second completion bound includes serial previews, retirement ACK and spent
   channel completion, clamped by the inherited presentation deadline. At most
-  the first ten seconds are for previews; tighter constraints reserve half the
+  the first ten seconds are for previews. Tighter constraints reserve half the
   remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 4 KiB
-  each and 512 KiB aggregate retained content, charging text as UTF-16 storage.
+  each and 512 KiB aggregate retained content. Charge text as UTF-16 storage.
+
   Text, empty, image, non-text, unavailable and clipped states remain distinct.
-  `image-preview-policy.ts` owns the shared finite capture/transport limits;
-  complete image sources add bytes only within that same retention budget.
+  `image-preview-policy.ts` owns the shared finite capture/transport limits.
+  Complete image sources add bytes only within that same retention budget.
   Production decoding remains unavailable: the private thread candidate cannot
   interrupt Wasm on qualified Bun. Its renderer tests establish bounded output,
-  not independent fencing. Worker, renderer and font bytes are pinned and bundled.
-  Preserve text and saved-file fallback while qualification is incomplete.
-  Late or failed previews stay unavailable; they do not retract a
-  known publication. The map never reopens a destination or invokes file RPC.
-  Capture/retirement errors are closed command-cleanup failures, separate from
-  known execution and delivery facts; callers must not fabricate unknown work.
+  not independent fencing. Worker, renderer and font bytes are pinned and
+  bundled.
+
+  Preserve text and saved-file fallback while qualification is incomplete. Late
+  or failed previews stay unavailable. They do not retract a known publication.
+  The map never reopens a destination or invokes file RPC. Capture/retirement
+  errors are closed command-cleanup failures, separate from known execution and
+  delivery facts. Callers must not fabricate unknown work.
+
   Authenticated `file-command.ts` retirement irreversibly fences every authority
   verb and checkpoint recovery/fallback, including no-publication. Join original
   operations, then close checkpoint, project read descriptor, delivery owner and
   native endpoints through one failure-preserving close. Begin listener shutdown
   without awaiting the ACK socket's own close cycle. ACK follows authoritative
-  release only; the client disarms disconnect cancellation only on that timely
+  release only. The client disarms disconnect cancellation only on that timely
   ACK, then joins spent-channel completion under the same bound. Silence, loss,
-  late ACK and mere close never establish retirement. Completed bounded close
-  promises remain completed during operator-controlled inspection; later exit
-  must not reapply their already elapsed transfer deadline.
+  late ACK and mere close never establish retirement.
+
+  Completed bounded close promises remain completed during operator-controlled
+  inspection. Later exit must not reapply their already elapsed transfer
+  deadline.
 - `saved-result.ts` captures operator-selected local result packets for
-  `inspect --result`, without a project, approval, provider, verification setting
-  or execution owner. Recorded facts and diagnostic paths are unauthenticated
-  local claims. One JSON/0 document plus the publisher's single trailing LF
-  and at most 64 manifest files /16 MiB are captured through held no-link
-  directory descriptors; validate the whole manifest before allocation/read.
-  The separate held `files/` descriptor preserves each delivered path's full
-  depth/byte budget. Matching size/digest establishes captured consistency,
-  never publication authority. Partial verification retains the valid report
-  and prior verified copies; later previews use only those immutable buffers.
-  The regular-file reader owns each allocation until post-read checks and
-  descriptor closure succeed; rejected allocations are zeroed even when read,
-  stat or close throws. Finish every owned directory close before transferring
-  the inspection's buffer owner. A close failure disposes accepted copies too;
-  collective cleanup preserves the primary capture failure or interruption.
+  `inspect --result`, without a project, approval, provider, verification
+  setting or execution owner. Recorded facts and diagnostic paths are
+  unauthenticated local claims. One JSON/0 document plus the publisher's single
+  trailing LF and at most 64 manifest files /16 MiB are captured through held
+  no-link directory descriptors. Validate the whole manifest before
+  allocation/read. The separate held `files/` descriptor preserves each
+  delivered path's full depth/byte budget. Matching size/digest establishes
+  captured consistency, never publication authority.
+
+  Partial verification retains the valid report and prior verified copies. Later
+  previews use only those immutable buffers. The regular-file reader owns each
+  allocation until post-read checks and descriptor closure succeed. Zero
+  rejected allocations even when read, stat or close throws. Finish every owned
+  directory close before transferring the inspection's buffer owner. A close
+  failure disposes accepted copies too.
+
+  Collective cleanup preserves the primary capture failure or interruption.
   Every exit closes descriptors and releases retained bytes. No recorded field
-  can select execution, a current evidence destination, or mutable preview reads.
-  Private saved views retain every captured file's full preview reference while
-  disclosing clipped table names. Charge human report/diagnostic excerpts by
-  serialized JSON bytes so all three views fit one publisher's retained budget.
-  Keep distinct root diagnostics beside child reports; only an exactly matching
-  rendered root entry replaces the root envelope. Capture truncation disclosures
-  precede excerpts, and human clipping never changes exact JSON inspection.
-  Saved preview preparation closes file descriptors before asynchronous decoding
-  and releases retained text/image buffers on cancellation or close.
-- `macos-file-command.ts` supplies private filesystem sockets for the independent
-  command owner. Bind the control connection to its directly spawned coordinator
-  and bind descriptor transfers to that connection's kernel PID version; the
-  coordinator authenticates the parent's expected kernel identity too. Mac
-  messages carry counts and inert manifests, never PID/FD claims as authority.
-  Keep command cancellation, settlement grace and final escalation unchanged.
-  Remove only exact private endpoints after the coordinator and publication settle.
-  Native endpoint close is memoized and consumes receiver references before
-  cleanup; racing paths join its actual completion and retain its failure.
-  Reconstruct transferred output into a fresh immutable backing only after
-  authenticating the live received bundle and validating its complete bounded
-  manifest, anonymous-file identity, offsets and hashes. Include empty-directory
-  evidence. Copied or closed bundle objects cannot supply descriptor authority.
-- `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative
-  file operations, raw directory enumeration and anonymous streaming backings.
-  Capture syscall errno inside the packaged native bridge; never read or clear
-  thread-local errno in a later FFI call. Integer errors return negative errno;
-  directory pointers use explicit error buffers and native readdir resets.
+  can select execution, a current evidence destination, or mutable preview
+  reads. Private saved views retain every captured file's full preview reference
+  while disclosing clipped table names. Charge human report/diagnostic excerpts
+  by serialized JSON bytes so all three views fit one publisher's retained
+  budget. Keep distinct root diagnostics beside child reports.
+
+  Only an exactly matching rendered root entry replaces the root envelope.
+  Capture truncation disclosures precede excerpts, and human clipping never
+  changes exact JSON inspection. Saved preview preparation closes file
+  descriptors before asynchronous decoding and releases retained text/image
+  buffers on cancellation or close.
+- `macos-file-command.ts` supplies private filesystem sockets for the
+  independent command owner. Bind the control connection to its directly spawned
+  coordinator and bind descriptor transfers to that connection's kernel PID
+  version. The coordinator authenticates the parent's expected kernel identity
+  too. Mac messages carry counts and inert manifests, never PID/FD claims as
+  authority. Keep command cancellation, settlement grace and final escalation
+  unchanged. Remove only exact private endpoints after the coordinator and
+  publication settle.
+
+  Memoize native endpoint close. Consume receiver references before cleanup.
+  Racing paths join its actual completion and retain its failure. Before
+  reconstructing transferred output, authenticate the live received bundle.
+  Validate its complete bounded manifest, anonymous-file identity, offsets and
+  hashes. Only then reconstruct transferred output into a fresh immutable
+  backing.
+
+  Include empty-directory evidence.
+
+  Copied or closed bundle objects cannot supply descriptor authority.
+- `macos-descriptor-files.ts` supplies qualified Darwin descriptor-relative file
+  operations, raw directory enumeration and anonymous streaming backings.
+  Capture syscall errno inside the packaged native bridge. Never read or clear
+  thread-local errno in a later FFI call. Integer errors return negative errno.
+  Directory pointers use explicit error buffers and native readdir resets.
   Bundled Markdown workers resolve the verified descriptor bridge beside their
-  installed `libexec` entrypoint; native Markdown launch grants read access to
-  that exact bridge file, never its containing tree. Copied installation
-  fixtures must preserve the complete support closure.
-  Markdown's contained recapture allocates its anonymous backing
-  inside the existing bounded work directory; this guest-only path grants no
-  host capture authority. Trusted captures retain the separate host allocation
-  outside payload file grants.
-  Do not substitute F_GETPATH followed by a pathname reopen for a held
-  descriptor. The pinned Bun FileHandle adoption seam and SDK stat/dirent layouts
-  require native qualification. Use matching INODE64 entrypoints, independent
+  installed `libexec` entrypoint.
+
+  Native Markdown launch grants read access to that exact bridge file, never its
+  containing tree. Copied installation fixtures must preserve the complete
+  support closure. Markdown's contained recapture allocates its anonymous
+  backing inside the existing bounded work directory. This guest-only path
+  grants no host capture authority. Trusted captures retain the separate host
+  allocation outside payload file grants. Do not substitute F_GETPATH followed
+  by a pathname reopen for a held descriptor.
+
+  The pinned Bun FileHandle adoption seam and SDK stat/dirent layouts require
+  native qualification. Use matching INODE64 entrypoints, independent
   enumeration offsets, and O_NOFOLLOW_ANY without the conflicting O_NOFOLLOW.
   Anonymous readers remain private until their only writer has closed. F_GETPATH
-  may observe a cache directory's current location for project exclusion; file
+  may observe a cache directory's current location for project exclusion. File
   access must still use the held descriptor, never reopen the observed path.
 - `macos-process-controls.ts` owns the qualified Darwin process ABI: acquire
   only the guardian's initially exclusive resource coalition, observe kernel
   accounting, and signal matching PID versions. Sampled footprint and process
-  discovery are not hard quotas; incomplete samples cannot prove a limit or
-  cleanup. Only the kernel's remaining guardian count establishes emptiness.
-  A CPU ledger regression across a kernel read marks the sample incomplete;
-  exec transitions can temporarily omit a task's ledger. Do not clamp or invent
-  a monotonic reading.
-  Unix control peer UID, PID and PID version come from `LOCAL_PEERTOKEN`, never
-  claimed message fields; unavailable native socket identity fails closed.
+  discovery are not hard quotas. Incomplete samples cannot prove a limit or
+  cleanup. Only the kernel's remaining guardian count establishes emptiness. A
+  CPU ledger regression across a kernel read marks the sample incomplete. Exec
+  transitions can temporarily omit a task's ledger.
+
+  Do not clamp or invent a monotonic reading. Unix control peer UID, PID and PID
+  version come from `LOCAL_PEERTOKEN`, never claimed message fields. Unavailable
+  native socket identity fails closed.
 - `macos-descriptor-handoff.ts` passes at most 64 read-only file/directory
   descriptors between kernel-authenticated trusted peers. Keep the socket owner
-  outside payload grants, bound waits and framing, set close-on-exec immediately,
-  and close every received right on refusal. Socket and received-file `fcntl`
-  operations use the fixed-signature bridge too; verify nonblocking and
-  close-on-exec flags before accepting, so a flag failure cannot block the
-  coordinator’s event loop. Receive storage must fit a complete
-  qualified kernel control mbuf even when rejecting an oversized protocol bundle;
-  Darwin externalizes rights before copying ancillary bytes. A receipt proves
-  transfer from that peer, not immutable capture, exact file identity or writer
-  fencing. Those remain the owning protocol's obligations. Sender originals stay
-  held through transfer; the received bundle owns its duplicates until closed.
+  outside payload grants. Bound waits and framing. Set close-on-exec
+  immediately. On refusal, close every received right. Socket and received-file
+  `fcntl` operations use the fixed-signature bridge too.
+
+  Verify nonblocking and close-on-exec flags before accepting, so a flag failure
+  cannot block the coordinator’s event loop. Receive storage must fit a complete
+  qualified kernel control mbuf even when rejecting an oversized protocol
+  bundle. Darwin externalizes rights before copying ancillary bytes. A receipt
+  proves transfer from that peer, not immutable capture, exact file identity or
+  writer fencing. Those remain the owning protocol's obligations. Sender
+  originals stay held through transfer.
+
+  The received bundle owns its duplicates until closed.
 - `macos-volume.ts` owns fixed, case-sensitive native filesystem images for
   bounded writable projections. Authenticate the allocation and backing inode
-  before attachment; keep control files outside payload grants. Use in-kernel
+  before attachment. Keep control files outside payload grants. Use in-kernel
   images, fixed system tools and finite command/output bounds. Mount evidence
-  comes from the held directory's qualified `fstatfs` ABI. After complete tool
-  and payload fencing and collector closure, derive detach authority from the
-  live exact image mapping, never a saved disk number or observed mount location.
-  Interrupted attachment may finish at an automatic mount; recovery still
-  authenticates the exact backing inode and allocation before detaching it.
-  Launch requires the requested mount. Recheck the allocation, detach, then
-  remove only its original empty mount directory and backing file; an observed
-  alternate mount path never grants deletion authority.
-  Retain authenticated journals until the enclosing owner is released. Storage
+  comes from the held directory's qualified `fstatfs` ABI. Derive detach
+  authority only after complete tool and payload fencing and collector closure.
+
+  Use the live exact image mapping. Never use a saved disk number or observed
+  mount location. Interrupted attachment may finish at an automatic mount.
+  Recovery still authenticates the exact backing inode and allocation before
+  detaching it. Launch requires the requested mount. Recheck the allocation,
+  detach, then remove only its original empty mount directory and backing file.
+
+  An observed alternate mount path never grants deletion authority. Retain
+  authenticated journals until the enclosing owner is released. Storage
   ownership alone does not establish process fencing or installed Mac support.
   Publish the backing-image journal by exclusive rename of complete, synced
   authenticated staging bytes before attachment. Guardian loss during staging
-  must leave fenced recovery usable; retire only its fixed regular, private,
+  must leave fenced recovery usable. Retire only its fixed regular, private,
   single-link bounded staging leaf after exact image and mount cleanup.
+
   Backing staging never grants attachment or recovery authority.
 - `macos-guardian-storage.ts` records bounded volume intent before job creation
   and attaches only after admission inside the guardian. Work, temporary and
-  output roots share that fixed capacity; their parent stays host-owned.
-  A worker without write grants or collection may use its immutable input tree
-  as its read-only working directory. After payload fencing, an authenticated
-  descriptor handoff permits at most 20 seconds
-  of collection. Close the borrowed collector and release it before awaiting
-  full completion. Fencing alone is not storage-cleanup evidence; final publication
-  also requires successful completion. Cancellation, expiry and connection loss
-  terminate collection and retain cleanup responsibility.
-  Before the first guardian journal, coordinator loss may leave only the empty
-  fixed storage directory allocated before volume intent. After removing the exact
-  job and confirming absence, recheck for a late first journal. Fence any earlier
-  recovery-slot owner before empty retirement, so missing storage never skips its
-  independent coalition proof. A recorded owner
-  retains authenticated coalition and volume recovery. Only the no-first-owner
-  empty private child with no retirement marker or staging can retire through held parent/child descriptors, with
-  mount, owner, mode and immediate named-inode checks; rmdir refuses a new entry.
-  Any partial journal, image, staging or unknown entry retains ordinary recovery
-  and its strict refusal. This grants no image/detach authority, recursive cleanup
-  or data-directory ownership. The backend still owns its data allocation.
-  Fresh storage recovery runs fixed image tools in a separate finite guardian,
-  with a derived token and authenticated journal in the owner's `recovery` slot.
-  After the fixed tools return, drain and fence any remaining recovery-coalition
-  members within a five-second bound before reporting successful cleanup.
-  Recheck cancellation after this drain; expiry or cancellation during fencing
-  refuses the recovery receipt and preserves journals for a fresh attempt.
-  Fence the preceding attempt, remove its exact job and sockets, then reset only
-  the slot's known private records before reuse. Never erase a live attempt's
-  journal or recursively delete a recovery path. Recovery tool admission has a
-  separate 30-second deadline; uncertain cleanup preserves the allocation.
-  After authentic guardian completion or recovery proves fencing and storage
-  cleanup, retire the volume and guardian journals through their authenticated
-  fixed entry sets. Volume retirement stages and persists an authenticated
-  marker in the guardian directory before deleting its last control journal; recovery and
-  release can resume after either deletion, and remove the marker only after
-  the exact control directory is gone. Journal release is separate from recovery: detach/backing or
-  job uncertainty must retain evidence. Remove each exact guardian directory only
-  after its main and recovery jobs are absent; never replace this with recursive
-  deletion.
+  output roots share that fixed capacity. Their parent stays host-owned. A
+  worker without write grants or collection may use its immutable input tree as
+  its read-only working directory. After payload fencing, an authenticated
+  descriptor handoff permits at most 20 seconds of collection. Close the
+  borrowed collector and release it before awaiting full completion.
+
+  Fencing alone is not storage-cleanup evidence. Final publication also requires
+  successful completion. Cancellation, expiry and connection loss terminate
+  collection and retain cleanup responsibility. Before the first guardian
+  journal, coordinator loss may leave only the empty fixed storage directory
+  allocated before volume intent. After removing the exact job and confirming
+  absence, recheck for a late first journal. Fence any earlier recovery-slot
+  owner before empty retirement, so missing storage never skips its independent
+  coalition proof.
+
+  A recorded owner retains authenticated coalition and volume recovery. Only an
+  empty private child with no first owner, retirement marker or staging can
+  retire through held parent/child descriptors. Retirement requires mount,
+  owner, mode and immediate named-inode checks. `rmdir` refuses a new entry. Any
+  partial journal, image, staging or unknown entry retains ordinary recovery and
+  its strict refusal. This grants no image/detach authority, recursive cleanup
+  or data-directory ownership.
+
+  The backend still owns its data allocation. Fresh storage recovery runs fixed
+  image tools in a separate finite guardian, with a derived token and
+  authenticated journal in the owner's `recovery` slot. After the fixed tools
+  return, drain and fence any remaining recovery-coalition members within a
+  five-second bound before reporting successful cleanup. Recheck cancellation
+  after this drain. Expiry or cancellation during fencing refuses the recovery
+  receipt and preserves journals for a fresh attempt. Fence the preceding
+  attempt, remove its exact job and sockets, then reset only the slot's known
+  private records before reuse.
+
+  Never erase a live attempt's journal or recursively delete a recovery path.
+  Recovery tool admission has a separate 30-second deadline. Uncertain cleanup
+  preserves the allocation. Retire volume and guardian journals only after
+  authentic guardian completion or recovery proves fencing and storage cleanup.
+  Use their authenticated fixed entry sets. Volume retirement stages and
+  persists an authenticated marker in the guardian directory before deleting its
+  last control journal.
+
+  Recovery and release can resume after either deletion, and remove the marker
+  only after the exact control directory is gone. Journal release is separate
+  from recovery: detach/backing or job uncertainty must retain evidence. Remove
+  each exact guardian directory only after its main and recovery jobs are
+  absent. Never replace this with recursive deletion.
 - `macos-input-projection.ts` validates the admitted input manifest and copies
   authenticated anonymous readers through the held volume descriptor before
   payload creation. Recheck original capture capabilities before admission,
   kernel-authenticate both transfer peers, and verify byte counts and hashes
-  again in the guardian. Keep immutable inputs separate from writable roots;
-  close every writer and transferred descriptor before native execution. Root
+  again in the guardian. Keep immutable inputs separate from writable roots.
+  Close every writer and transferred descriptor before native execution. Root
   launch plans grant read-only access to the bounded `data/inputs` projection
-  for declared input roots, including empty attachments; this tree never joins
-  writable payload grants. Retain those exact root names in the sealed plan and
-  guardian configuration, create them before execution, and reject files outside
-  them. Apply file-path depth and byte limits relative to each root; the separately
-  bounded root names do not consume the captured-entry budget. Input names,
-  aggregate bytes, directory entries and file count retain common bounds.
+  for declared input roots, including empty attachments. This tree never joins
+  writable payload grants.
+
+  Retain those exact root names in the sealed plan and guardian configuration.
+  Create them before execution. Reject files outside them. Apply file-path depth
+  and byte limits relative to each root. The separately bounded root names do
+  not consume the captured-entry budget. Input names, aggregate bytes, directory
+  entries and file count retain common bounds.
+
   Recovery receives only its own fixed configuration, never stale input handles
   or other payload launch fields from the failed attempt.
 - `macos-owner-state.ts` writes the guardian's authenticated boot, coalition and
   PID-version journal before descendants exist. Its per-allocation token stays
   in protected coordinator state, never arguments, payloads or the journal.
-  Recovery accepts only a capability minted from the bounded private journal;
-  open owner/socket records nonblocking before regular-file validation. Reject
+  Recovery accepts only a capability minted from the bounded private journal.
+  Open owner/socket records nonblocking before regular-file validation. Reject
   aliases, tampering and a still-live guardian. Same-boot coalition recovery
-  rejects wrong boots. Authenticated prior-boot guardian recovery never observes
-  or signals stale PIDs or coalitions: kernel reboot establishes task death;
-  exact job/socket retirement and fresh storage cleanup remain required. A fresh
-  process fences that exact coalition and confirms zero remaining tasks or the
-  kernel's reaped-coalition response. Keep evidence when settlement is uncertain.
-  Authenticate the temporary socket directory's device/inode separately; after
-  fencing, remove only its exact socket names and empty directory. Never perform
-  recursive deletion using a decoded recovery path.
+  rejects wrong boots.
+
+  Authenticated prior-boot guardian recovery never observes or signals stale
+  PIDs or coalitions: kernel reboot establishes task death. Exact job/socket
+  retirement and fresh storage cleanup remain required. A fresh process fences
+  that exact coalition and confirms zero remaining tasks or the kernel's
+  reaped-coalition response. Keep evidence when settlement is uncertain.
+  Authenticate the temporary socket directory's device/inode separately. After
+  fencing, remove only its exact socket names and empty directory.
+
+  Never perform recursive deletion using a decoded recovery path.
 - `macos-owner-lock.ts` holds an exclusive, nonblocking kernel file lock through
   native admission and settlement, or through recovery. Bind its original inode
-  into durable state and revalidate the held directory and named lock; process
+  into durable state and revalidate the held directory and named lock. Process
   death releases the lock but does not prove payload fencing. A competing live
   coordinator must remain a refusal, never permission to cancel its ownership.
-  `macos-backend-state.ts` authenticates bounded, atomically committed allocation,
-  sealing, admission, cancellation and final-receipt records. Interrupted staging
-  never authorizes dispatch; retain the last authenticated commit. Reopening a
-  cancelled or finished allocation cannot admit work. Planning creates and binds
-  the exact allocation, control directory and lock inodes; opening state must never
-  recreate a missing allocation, because removal permanently revokes every stale
-  copy of its capability. Cancellation and final receipts authorize release only
-  for the same allocation. Rename a releasable allocation out of its executable
-  name while still holding the lock. First publish its complete, synced release
-  marker by exclusive rename; partial staging cannot authorize retirement.
-  Under the same lock and authenticated proof, discard only the fixed regular,
-  private, single-link bounded staging leaf. State and release records share one
-  bounded nonblocking reader; reject substituted pipes before they can stall
-  the coordinator. Authenticate the release marker and remove only the closed
-  known entry set. Preserve unexpected or partially cleaned state;
-  block reuse of its owner name until exact release completes. The backend must validate
-  sealed identities and cleanup receipts independently; ledger JSON alone is
-  neither execution nor fencing authority.
+  `macos-backend-state.ts` authenticates bounded, atomically committed
+  allocation, sealing, admission, cancellation and final-receipt records.
+  Interrupted staging never authorizes dispatch.
+
+  Retain the last authenticated commit. Reopening a cancelled or finished
+  allocation cannot admit work. Planning creates and binds the exact allocation,
+  control directory and lock inodes. Opening state must never recreate a missing
+  allocation, because removal permanently revokes every stale copy of its
+  capability. Cancellation and final receipts authorize release only for the
+  same allocation. Rename a releasable allocation out of its executable name
+  while still holding the lock.
+
+  First publish its complete, synced release marker by exclusive rename. Partial
+  staging cannot authorize retirement. Under the same lock and authenticated
+  proof, discard only the fixed regular, private, single-link bounded staging
+  leaf. State and release records share one bounded nonblocking reader. Reject
+  substituted pipes before they can stall the coordinator. Authenticate the
+  release marker and remove only the closed known entry set.
+
+  Preserve unexpected or partially cleaned state. Block reuse of its owner name
+  until exact release completes. The backend must validate sealed identities and
+  cleanup receipts independently. Ledger JSON alone is neither execution nor
+  fencing authority.
 - `macos-native-backend.ts` binds the qualified Darwin mechanism, immutable path
   identities, bounded native storage and live input capabilities into one sealed
   owner. Keep its coordinator lock continuously from sealing through guardian
-  admission, complete cleanup
-  and the authenticated final receipt. Durable active state precedes the guardian's
-  payload gate. Recovery must exclude a live coordinator, revalidate the cleanup
-  runtime before launching recovery tools, handle both pre-admission and active
-  coordinator loss, and retire guardian journals before recording completion.
-  Report supervised sampling and possible resource overshoot explicitly; never
-  project Linux cgroup or hard-quota claims. Installed support selects this
-  backend only on exact qualified native Mac kernels.
+  admission, complete cleanup and the authenticated final receipt. Durable
+  active state precedes the guardian's payload gate. Recovery must exclude a
+  live coordinator. It must revalidate the cleanup runtime before launching
+  recovery tools. It must handle both pre-admission and active coordinator loss.
+
+  It must retire guardian journals before recording completion. Report
+  supervised sampling and possible resource overshoot explicitly. Never project
+  Linux cgroup or hard-quota claims. Installed support selects this backend only
+  on exact qualified native Mac kernels.
 - `execution-intent.ts` owns inert execution requirements: exact command and
   explicit path arguments, read-only projections, captured input capabilities,
   network choice, resource limits, storage and output bounds. Literal arguments
   never undergo path relocation. Intent alone grants no execution authority.
-  `execution-plan.ts` lowers these requirements to the two host mechanisms;
-  it imports no recipe, admission, provider, Run protocol or controller policy.
+  `execution-plan.ts` lowers these requirements to the two host mechanisms. It
+  imports no recipe, admission, provider, Run protocol or controller policy.
   Selected native environment paths relocate once as absolute scalar paths or
-  JSON string values. Preserve physical installation paths, component boundaries,
-  JSON escaping and literal text; replacement output must never be relocated again.
-  Native Mac startup qualification consumes this lowering instead of a second translator.
-  Read-only workers with captured inputs still allocate bounded Mac input storage
-  without payload write grants; workers using only retained projections need
-  no volume. The stdin-only HTTP worker uses exact runtime/worker files and literal
-  root cwd without readonly or writable trees, captured inputs or a volume. Scope
-  sealing permits that fixed cwd only without storage or tree grants, and scope
-  preparation requires both tree grant lists to be empty;
-  other cwd choices retain their exact directory-projection check.
-  Backend sealing still validates identities, live capabilities and enforcement.
+  JSON string values.
+
+  Preserve physical installation paths, component boundaries, JSON escaping and
+  literal text. Replacement output must never be relocated again. Native Mac
+  startup qualification consumes this lowering instead of a second translator.
+  Read-only workers with captured inputs still allocate bounded Mac input
+  storage without payload write grants. Workers using only retained projections
+  need no volume. The stdin-only HTTP worker uses exact runtime/worker files and
+  literal root cwd without readonly or writable trees, captured inputs or a
+  volume.
+
+  Scope sealing permits that fixed cwd only without storage or tree grants, and
+  scope preparation requires both tree grant lists to be empty. Other cwd
+  choices retain their exact directory-projection check. Backend sealing still
+  validates identities, live capabilities and enforcement.
   `flow-execution-intent.ts` translates Jig recipes for both root and child
-  Flows; command, HTTP, ACP, preparation and evaluator callers select their own
+  Flows. Command, HTTP, ACP, preparation and evaluator callers select their own
   requirements without constructing host plans. Keep budgets and grants with
-  those callers, and physical paths, resolver mounts and volume layout with
-  host translation. Preserve platform-specific receipt evidence.
-  `execution-process.ts` owns protocol-independent process streams, exit and
-  fencing evidence and typed host-observed preparation expiry. Classify evaluator
-  preparation deadlines from this trusted type, never a matching arbitrary code
-  or elapsed cleanup time. Run/0 consumes that interface; backends never depend on
-  the Run session implementation. Agent launcher location bindings use private
-  `JIG_AGENT_HOME` and `JIG_AGENT_WORK`; their fallback locations remain unchanged.
+  those callers, and physical paths, resolver mounts and volume layout with host
+  translation.
+
+  Preserve platform-specific receipt evidence. `execution-process.ts` owns
+  protocol-independent process streams, exit and fencing evidence and typed
+  host-observed preparation expiry. Classify evaluator preparation deadlines
+  from this trusted type, never a matching arbitrary code or elapsed cleanup
+  time. Run/0 consumes that interface. Backends never depend on the Run session
+  implementation. Agent launcher location bindings use private `JIG_AGENT_HOME`
+  and `JIG_AGENT_WORK`.
+
+  Their fallback locations remain unchanged.
 - `execution-backend.ts` is the closed private Linux/macOS selection boundary.
-  Persist each backend's discriminated owner and receipt records without flattening
-  their evidence. Dispatch sealing, admission, recovery, cancellation and exact
-  release only when the backend and authenticated owner allocation agree.
-  Lower an intent only for that selected backend. Execution locations and
-  mechanism setup allowances are queried through this boundary; they confer
-  no filesystem authority and never extend caller-owned parent deadlines. Logical
-  recipe identity remains separate from the backend's physical launch paths;
-  this is not a public backend or extension interface. Shared owner journals live
-  under `.jig/private-root-owners`; prerelease hosts must not recreate the former
-  Linux-named directory as a compatibility path.
+  Persist each backend's discriminated owner and receipt records without
+  flattening their evidence. Dispatch sealing, admission, recovery, cancellation
+  and exact release only when the backend and authenticated owner allocation
+  agree. Lower an intent only for that selected backend. Execution locations and
+  mechanism setup allowances are queried through this boundary. They confer no
+  filesystem authority and never extend caller-owned parent deadlines.
+
+  Logical recipe identity remains separate from the backend's physical launch
+  paths. This is not a public backend or extension interface. Shared owner
+  journals live under `.jig/private-root-owners`. Prerelease hosts must not
+  recreate the former Linux-named directory as a compatibility path.
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
-  Reject overlap between host control, immutable inputs and writable trees;
-  keep the narrow sysctl/process-information rules. Only explicit network
-  authority enables resolver access and the DNS Mach service. Formatting paths
-  does not validate their live filesystem identity or authorize execution.
+  Reject overlap between host control, immutable inputs and writable trees. Keep
+  the narrow sysctl/process-information rules. Only explicit network authority
+  enables resolver access and the DNS Mach service. Formatting paths does not
+  validate their live filesystem identity or authorize execution.
 - `macos-scope-execution.ts` owns guardian-local admission and supervised
   resources after durable ownership exists. Keep the native execution gate
-  closed until explicit admission; account for exited-task CPU and repeatedly
-  fence the complete coalition before reporting settlement. Sampled memory,
-  task limits and CPU throttling can overshoot; record sampling evidence and
-  fail closed on sustained accounting uncertainty. Native exit status and
-  kernel emptiness are independent requirements, including after crashes.
+  closed until explicit admission. Account for exited-task CPU and repeatedly
+  fence the complete coalition before reporting settlement. Sampled memory, task
+  limits and CPU throttling can overshoot. Record sampling evidence and fail
+  closed on sustained accounting uncertainty. Native exit status and kernel
+  emptiness are independent requirements, including after crashes.
+
   Incomplete samples and CPU regressions share the existing 500 ms uncertainty
-  bound. Preserve the CPU high-water/time baseline across regressions; the next
+  bound. Preserve the CPU high-water/time baseline across regressions. The next
   nonregressing reading charges accumulated CPU and elapsed refill. Continue
   charging observable CPU during incomplete membership samples. Final settlement
-  requires complete accounting at or above that baseline; recovery may confirm
+  requires complete accounting at or above that baseline. Recovery may confirm
   cleanup without establishing a payload result.
+
   After admission, a payload's unread stdin may close with EPIPE without
-  invalidating its native exit evidence. Other stream errors still fail closed;
-  neither EPIPE nor pipe closure substitutes for the status frame or fencing.
+  invalidating its native exit evidence. Other stream errors still fail closed.
+  Neither EPIPE nor pipe closure substitutes for the status frame or fencing.
 - `macos-native-supervisor.ts` and `macos-guardian-client.ts` own finite,
-  unprivileged user-domain jobs. Keep control, stdin, stdout and stderr separate;
-  kernel UID/PID/version bind every connection to its peer. Journal before
-  admission, apply the native profile before continuation, and retain cleanup
-  ownership through cancellation, coordinator loss and blocked output. Bound
-  aggregate output before forwarding it. The ten-second admission wait ends at
-  admission; storage and input preparation then use the original operation
-  deadline, without extending it. Native readiness and image-tool bounds remain
-  separate. Recovery removes the authenticated
-  job and socket allocation only after kernel fencing. `macos-control-channel.ts`
-  bounds private frames and queued messages; none of these modules is a public
-  backend extension point or an installed-support claim.
-  Preserve a validated authenticated terminal if job retirement needs recovery,
-  but expose it only after recovery confirms fencing and storage cleanup. Lost
-  streams remain lost; a missing terminal remains unknown. Native receipts retain
-  the known stop reason and record cleanup recovery independently. Persistent
-  job-removal uncertainty still rejects completion and retains owner journals.
+  unprivileged user-domain jobs. Keep control, stdin, stdout and stderr
+  separate. Kernel UID/PID/version bind every connection to its peer. Journal
+  before admission, apply the native profile before continuation, and retain
+  cleanup ownership through cancellation, coordinator loss and blocked output.
+  Bound aggregate output before forwarding it. The ten-second admission wait
+  ends at admission.
+
+  Storage and input preparation then use the original operation deadline,
+  without extending it. Native readiness and image-tool bounds remain separate.
+  Recovery removes the authenticated job and socket allocation only after kernel
+  fencing. `macos-control-channel.ts` bounds private frames and queued messages.
+  None of these modules is a public backend extension point or an
+  installed-support claim. If job retirement needs recovery, preserve a
+  validated authenticated terminal.
+
+  Expose it only after recovery confirms fencing and storage cleanup. Lost
+  streams remain lost. A missing terminal remains unknown. Native receipts
+  retain the known stop reason and record cleanup recovery independently.
+  Persistent job-removal uncertainty still rejects completion and retains owner
+  journals.
 - `macos-guardian-diagnostics.ts` supplies opt-in, asynchronous-scope host-test
   evidence when the guardian client enters recovery. Record its phase, failing
   step and a closed cause before discarding the original error. Never emit raw
   errors, paths, tokens, payloads or received frames. Observer failures cannot
-  affect settlement; the evidence grants no authority and changes no public
+  affect settlement. The evidence grants no authority and changes no public
   terminal, receipt or recovery rule. Guardian terminal frames also carry a
-  closed failure step and cause, or null on ordinary completion. Validate both
-  against fixed names before reporting a pre-readiness error code through the
-  existing root host-test observer. Never forward native exception messages or
-  arbitrary error codes across this channel. Exact storage-recovery refusal
-  messages have fixed labels for directory, journal, backing, allocation and
-  recovery-tool fencing boundaries. Live image mapping refusals distinguish fixed
-  count, owner, sector size/count, encryption and entity-shape labels without
-  exposing rejected metadata. The exact predicates and subsequent authenticated
-  backing requirement stay mandatory. Only the enumerated filesystem errno and
-  Node/DOM abort shapes become fixed categories; unknown or unreadable fields
-  stay OTHER. These labels diagnose refusal and never authorize recovery or
-  imply its cause was established by a successful rerun.
-  Project Command qualification logs these
-  events. Portable tests cover redaction and scope isolation; the native
-  guardian-loss test verifies reporting and recovery with a throwing observer.
-  Agent lifecycle fault qualification scopes the same closed recovery observer
-  to each case and names the fixed scenario before dispatch. Failed cases retain
-  their project and installed fixture; recursive fixture removal requires the
-  completed result and residue assertions, never swallowed settlement failure.
-  Native injected storage and scope-preparation failures verify the returned
-  diagnostic after actual fencing and storage cleanup.
+  closed failure step and cause, or null on ordinary completion.
+
+  Validate both against fixed names before reporting a pre-readiness error code
+  through the existing root host-test observer. Never forward native exception
+  messages or arbitrary error codes across this channel. Exact storage-recovery
+  refusal messages have fixed labels for directory, journal, backing, allocation
+  and recovery-tool fencing boundaries. Live image mapping refusals distinguish
+  fixed count, owner, sector size/count, encryption and entity-shape labels
+  without exposing rejected metadata. The exact predicates and subsequent
+  authenticated backing requirement stay mandatory. Only the enumerated
+  filesystem errno and Node/DOM abort shapes become fixed categories.
+
+  Unknown or unreadable fields stay OTHER. These labels diagnose refusal and
+  never authorize recovery or imply its cause was established by a successful
+  rerun. Project Command qualification logs these events. Portable tests cover
+  redaction and scope isolation. The native guardian-loss test verifies
+  reporting and recovery with a throwing observer. Agent lifecycle fault
+  qualification scopes the same closed recovery observer to each case and names
+  the fixed scenario before dispatch.
+
+  Failed cases retain their project and installed fixture. Recursive fixture
+  removal requires the completed result and residue assertions, never swallowed
+  settlement failure. Native injected storage and scope-preparation failures
+  verify the returned diagnostic after actual fencing and storage cleanup.
   Before payload readiness, the guardian's own operation timer records expiry
-  only when it was the first stop cause, for both payload setup and the
-  recovery-only guardian. Abort-shaped errors alone remain ABORTED and never
-  establish operation expiry. Transport the recorded closed cause after
-  fenced cleanup; cancellation, lost control and tool failure do not become
-  deadlines. Unconfirmed cleanup still overrides the preparation diagnostic.
-  Ordinary tests compile the same injected guardian constructions so source
-  matching and import errors fail before native qualification.
+  only when expiry was the first stop cause. This rule applies to both payload
+  setup and the recovery-only guardian. Abort-shaped errors alone remain ABORTED
+  and never establish operation expiry.
+
+  Transport the recorded closed cause after fenced cleanup. Cancellation, lost
+  control and tool failure do not become deadlines. Unconfirmed cleanup still
+  overrides the preparation diagnostic. Ordinary tests compile the same injected
+  guardian constructions so source matching and import errors fail before native
+  qualification.
 - `macos-sandbox-profile.ts` grants read-only system libraries and Unicode data
   under `/usr/share/icu` for JavaScriptCore's lazy locale operations. Writable
   projections cannot overlap these runtime roots. Host control remains excluded.
-  Only the verified Codex profile may select exact preference-service lookup
-  and read-only daemon/current-UID notification-counter pages. This grants no
-  preference reads, writes, other IPC or networking; preserve the flag through
-  intent lowering, sealing and guardian message validation. On Intel build
-  23E224 the pages are qualified as 16 KiB invalidation counters, including
-  cross-domain change activity. Other OS profiles need independent qualification.
-  `macos-codex-preferences.ts` runs the authenticated installed observer in a
-  fresh bounded process during provider selection and each launch/restoration,
-  outside resource/installation caches. Forced policy or unavailable observation
-  refuses execution with a closed actionable cause. This is an observation
-  boundary, not continuous MDM enforcement. Codex HOME relocates to private tmp.
+  Only the verified Codex profile may select exact preference-service lookup and
+  read-only daemon/current-UID notification-counter pages. This grants no
+  preference reads, writes, other IPC or networking. Preserve the flag through
+  intent lowering, sealing and guardian message validation.
+
+  On Intel build 23E224 the pages are qualified as 16 KiB invalidation counters,
+  including cross-domain change activity. Other OS profiles need independent
+  qualification. `macos-codex-preferences.ts` runs the authenticated installed
+  observer in a fresh bounded process during provider selection and each
+  launch/restoration, outside resource/installation caches. Forced policy or
+  unavailable observation refuses execution with a closed actionable cause. This
+  is an observation boundary, not continuous MDM enforcement. Codex HOME
+  relocates to private tmp.
+
   Reject Rosetta and arm64 in the universal observer, and retain its native
   self-deadline after coordinator loss. Inherited sandbox uncertainty also
   refuses observation. Missing observer support is an installation failure.
-- [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native pre-exec boundary. Clear inherited Mach
-  rights and descriptors, apply the selected profile, report private readiness,
-  and wait for admission before execution. Close all child control handoffs
-  before exec; the trusted parent reports actual waitpid evidence separately
-  from payload output. It does not own admission storage, resource supervision,
-  recovery, or installation authority. These private components do not enable
-  the installed macOS host independently.
-- Installed Bun authentication, rootless acquisition, delegation,
-  containment, supervision, and execution. Missing or invalid installed release
-  files produce closed repair evidence; supported-host failures remain distinct.
+- [`../../support/macos-exec.c`](../../support/macos-exec.c) is the native
+  pre-exec boundary. Clear inherited Mach rights and descriptors, apply the
+  selected profile, report private readiness, and wait for admission before
+  execution. Close all child control handoffs before exec. The trusted parent
+  reports actual waitpid evidence separately from payload output. It does not
+  own admission storage, resource supervision, recovery, or installation
+  authority. These private components do not enable the installed macOS host
+  independently.
+- Installed Bun authentication, rootless acquisition, delegation, containment,
+  supervision, and execution. Missing or invalid installed release files produce
+  closed repair evidence. Supported-host failures remain distinct.
 - Native client launchers, reviewed runtime policy, private authentication and
   bounded process ownership. Ordinary Agent packages own method preparation,
-  response interpretation and optional updates; no Agent method runs inside
-  the coordinator.
-  `codex-installation.ts` resolves the current official npm Codex launcher and
-  Volta's recorded Npm installation to the declared native platform package.
-  Read only bounded regular metadata, at most 64 KiB per record and 32 package
-  ancestors; never execute a dispatcher, JavaScript launcher or package manager.
+  response interpretation and optional updates. No Agent method runs inside the
+  coordinator. `codex-installation.ts` resolves the current official npm Codex
+  launcher and Volta's recorded Npm installation to the declared native platform
+  package. Read only bounded regular metadata, at most 64 KiB per record and 32
+  package ancestors. Never execute a dispatcher, JavaScript launcher or package
+  manager.
+
   Metadata and inferred native paths stay outside project routes even with an
   explicit wrapper override. An existing invalid nearest package cannot fall
   back to another installation. Only native executable/support bytes enter the
-  provider identity and execution projection; launch never rediscovers metadata.
+  provider identity and execution projection. Launch never rediscovers metadata.
 - `private-acp-resources.ts` captures operator configuration before project
   loading and resolves only each target's exact granted clients. Selected
-  runtime identities enter the recipe and review; launch revalidates their
-  bytes and authentication. SDK unavailable clients retain per-target readiness;
-  CLI review's typed selected-ACP refusal stops before avoidable target preparation.
+  runtime identities enter the recipe and review. Launch revalidates their bytes
+  and authentication. SDK unavailable clients retain per-target readiness. CLI
+  review's typed selected-ACP refusal stops before avoidable target preparation.
   Reject native destinations under sandbox-reserved paths during selection with
-  the closed location diagnostic; share sealing's path predicate. Preflight
-  neither mounts files nor replaces launch-time validation.
-  Cache selected configurations by client and granted model together; a grant
-  model does not change authentication mode or mutate the operator snapshot.
+  the closed location diagnostic.
+
+  Share sealing's path predicate. Preflight neither mounts files nor replaces
+  launch-time validation. Cache selected configurations by client and granted
+  model together. A grant model does not change authentication mode or mutate
+  the operator snapshot.
 - `project-resource-qualification.ts` qualifies exact selected ACP grants before
   avoidable execution preparation, then propagates refusal through captured Flow
   routes. It never chooses a substitute. `resource-qualification-evidence.ts`
   binds closed client/slot causes to exact requests, policies and unavailable
-  child dispositions; admission checks the witness and refuses ready parents of
+  child dispositions. Admission checks the witness and refuses ready parents of
   unavailable children. A closed display diagnostic is not expected-refusal
   provenance: direct known predicates may mark it, wrappers default to fatal.
   Abort, corruption, arbitrary I/O, owner faults and unconfirmed cleanup cannot
-  become per-target availability. The private `review-agent-setup.ts` report
-  carries at most 1 MiB of read-only policy, captured location and recipient facts,
-  with omitted counts and a reserved primary blocker. Authoritative typed refusal
-  survives omission of every presentation row. Known rejected executable overrides
-  survive native and Codex error wrapping only as a closed field-name fact; private
-  qualification uses a WeakSet on current failure objects so persisted readiness
-  causes and evidence identities stay unchanged. Honest ready/default-target facts
-  guide successful non-ACP feature-limited review; never use them as the ACP gate.
-  No source-edit bytes, root edit
-  identity, publication owner or correction loop belongs in this report.
-  `project-session-controller.ts` invokes `onAgentReadiness` after selected-resource
-  qualification and before avoidable target execution preparation. The CLI throws
-  its private `ProjectAdministrationError` with fixed
-  `JIG_REVIEW_AGENT_UNAVAILABLE` marker here and catches only that typed marker
-  with observed ACP refusal; SDK plan/apply semantics stay
-  unchanged. Arbitrary failures and cleanup uncertainty keep their own diagnostics.
+  become per-target availability.
+
+  The private `review-agent-setup.ts` report carries at most 1 MiB of read-only
+  policy, captured location and recipient facts, with omitted counts and a
+  reserved primary blocker. Authoritative typed refusal survives omission of
+  every presentation row. Known rejected executable overrides survive native and
+  Codex error wrapping only as a closed field-name fact. Private qualification
+  uses a WeakSet on current failure objects so persisted readiness causes and
+  evidence identities stay unchanged. Honest ready/default-target facts guide
+  successful non-ACP feature-limited review. Never use them as the ACP gate.
+
+  No source-edit bytes, root edit identity, publication owner or correction loop
+  belongs in this report. `project-session-controller.ts` invokes
+  `onAgentReadiness` after selected-resource qualification and before avoidable
+  target execution preparation. The CLI throws its private
+  `ProjectAdministrationError` with fixed `JIG_REVIEW_AGENT_UNAVAILABLE` marker
+  here and catches only that typed marker with observed ACP refusal. SDK
+  plan/apply semantics stay unchanged. Arbitrary failures and cleanup
+  uncertainty keep their own diagnostics.
 - `acp-setup-diagnostics.ts` owns closed client/stage setup diagnostics and
-  corrective hints. Preserve known failures through planning and CLI rendering;
-  raw exceptions, private paths and credentials never become recovery text.
-  Keep cause separate from guidance. Installation and sandbox-helper advice
-  follows the installed Linux or qualified macOS host; rendering does not probe
-  clients, choose another installation, or change containment authority.
+  corrective hints. Preserve known failures through planning and CLI rendering.
+  Raw exceptions, private paths and credentials never become recovery text. Keep
+  cause separate from guidance. Installation and sandbox-helper advice follows
+  the installed Linux or qualified macOS host. Rendering does not probe clients,
+  choose another installation, or change containment authority.
+
   Codex helper discovery and runtime inspection preserve the sandbox stage,
-  distinct from inspection of the selected client's installation.
-  Planning locates a verified client literal in immutable captured Binding or
-  named-policy source; imported/computed selections use verified context or an
+  distinct from inspection of the selected client's installation. Planning
+  locates a verified client literal in immutable captured Binding or
+  named-policy source. Imported/computed selections use verified context or an
   honest captured file/slot fallback. The bounded lexical recognizer is owned by
   `src/project/agent-source-location.ts` under the package instructions. Never
   infer literal provenance from equal evaluated values or text matches.
-  Executable discovery failures do not imply
-  an absent installation: preserve rejected override facts without its value,
-  retain selected-client repair and detect alternatives passively.
+  Executable discovery failures do not imply an absent installation: preserve
+  rejected override facts without its value, retain selected-client repair and
+  detect alternatives passively.
 - `finite-acp-policy.ts` authorizes each native write for one finite ACP
   conversation. `native-agent-turn-policy.ts` owns Jig's default and allowed
-  turn range for grant validation, controller dispatch and finite ACP enforcement.
-  Only omission uses the default; explicit invalid values remain refusals.
-  Independent Agent transport contracts retain their own wire validation.
-  `finite-acp-resource.ts` owns bounded framing, private startup
-  and authentication, and essential channel delivery. Ordinary Agent Flows own
-  protocol dialogue and answer interpretation. The resource reports actual
-  termination only; `root-finite-acp-controller.ts` owns its durable lifetime,
-  cancellation, fencing and recovery.
-  Negotiate typed native diagnostics without adding client authority. Project
-  warnings as closed notices, never answer chunks or raw private metadata;
-  authoritative errors remain failures even before session creation or after a turn.
+  turn range for grant validation, controller dispatch and finite ACP
+  enforcement. Only omission uses the default. Explicit invalid values remain
+  refusals. Independent Agent transport contracts retain their own wire
+  validation. `finite-acp-resource.ts` owns bounded framing, private startup and
+  authentication, and essential channel delivery.
+
+  Ordinary Agent Flows own protocol dialogue and answer interpretation. The
+  resource reports actual termination only. `root-finite-acp-controller.ts` owns
+  its durable lifetime, cancellation, fencing and recovery. Negotiate typed
+  native diagnostics without adding client authority. Project warnings as closed
+  notices, never answer chunks or raw private metadata. Authoritative errors
+  remain failures even before session creation or after a turn.
+
   Preserve closed native-session/protocol failure explanations after possible
   dispatch without exposing exception text or weakening uncertainty and cleanup.
   Failed finite ACP operations identify the last host execution phase using
-  fixed text; starting a client does not establish remote dispatch.
-  Native error text/data remain private. The authentic runtime retains its
-  host-selected client identity; only Codex's demonstrated `session/new` managed
-  preference error shape maps to the closed reason specified in `finite-acp.md`.
-  Build a fresh constant projection and discard raw fields/private guidance.
-  The reason is an attributed native report, never permission to retry or a
+  fixed text. Starting a client does not establish remote dispatch. Native error
+  text/data remain private. The authentic runtime retains its host-selected
+  client identity. Only Codex's demonstrated `session/new` managed preference
+  error shape maps to the closed reason specified in `finite-acp.md`.
+
+  Build a fresh constant projection and discard raw fields/private guidance. The
+  reason is an attributed native report, never permission to retry or a
   diagnosis of sandbox policy, credentials, effects, or cleanup.
-- Channel integration resolves admitted package contracts and binds root
-  output, exact child endpoints, or finite ACP resource endpoints. Unused incoming
-  rights may move onward; each child and effect retains its own participant identity.
-  Child input, recipe, capacity and sealed-owner checks precede atomic transfer.
-  Receiver disposal preserves an unused writer's transfer rights, not delivery;
-  a disposed direct receiver makes later sends fail disconnected. Root and child
-  contracts share one bounded cache.
-  Slot/channel creation references resolve the invoking package's declared
-  dependency agreement, never provider files; resolution creates no call or
-  additional rights and shares the same cache as direct package-local paths.
-  Broadcast subscription authority remains with the source creator; subscribers
-  have isolated buffers and failures under unchanged aggregate lifetime bounds.
-  Agent updates accept direct or broadcast writers through the same admitted
-  named contract. ACP ingress is separately bounded and never
-  blocks its protocol reader; failed progress does not manufacture failed work.
-  The installed writer bounds live stdout/stderr and cancels on delivery loss.
-  Read-only dashboard provenance is broker-captured accepted-send identity,
-  retained on pending sends; it never enters public channel envelopes. Host call
-  observations carry only actual own operation identity, parent, slot, bounded
-  intent, state/time and safe cause. Optional observation exceptions cannot
-  change dispatch or settlement. Successful root execution-owner admission emits
-  one private best-effort dispatch observation before exchange, independent of
-  update ports or views. The CLI owns and joins asynchronous screen entry; earlier
-  refusals remain ordinary diagnostics. Explicit result inspection owns one bounded
-  immutable copy of verified delivery bytes; it never reopens destination files,
-  retains an execution owner or extends a Flow's deadline. Release preview
-  buffers and private presentation connections on every exit.
+- Channel integration resolves admitted package contracts and binds root output,
+  exact child endpoints, or finite ACP resource endpoints. Unused incoming
+  rights may move onward. Each child and effect retains its own participant
+  identity. Child input, recipe, capacity and sealed-owner checks precede atomic
+  transfer. Receiver disposal preserves an unused writer's transfer rights, not
+  delivery. A disposed direct receiver makes later sends fail disconnected.
+
+  Root and child contracts share one bounded cache. Slot/channel creation
+  references resolve the invoking package's declared dependency agreement, never
+  provider files. Resolution creates no call or additional rights and shares the
+  same cache as direct package-local paths. Broadcast subscription authority
+  remains with the source creator. Subscribers have isolated buffers and
+  failures under unchanged aggregate lifetime bounds. Agent updates accept
+  direct or broadcast writers through the same admitted named contract.
+
+  ACP ingress is separately bounded and never blocks its protocol reader. Failed
+  progress does not manufacture failed work. The installed writer bounds live
+  stdout/stderr and cancels on delivery loss. Read-only dashboard provenance is
+  broker-captured accepted-send identity, retained on pending sends. It never
+  enters public channel envelopes. Host call observations carry only actual own
+  operation identity, parent, slot, bounded intent, state/time and safe cause.
+
+  Optional observation exceptions cannot change dispatch or settlement.
+  Successful root execution-owner admission emits one private best-effort
+  dispatch observation before exchange, independent of update ports or views.
+  The CLI owns and joins asynchronous screen entry. Earlier refusals remain
+  ordinary diagnostics. Explicit result inspection owns one bounded immutable
+  copy of verified delivery bytes. It never reopens destination files, retains
+  an execution owner or extends a Flow's deadline.
+
+  Release preview buffers and private presentation connections on every exit.
   Command reports retain aggregate-bounded diagnostics with host-assigned call
   paths, independently of root-process stderr. Settled root notifications let
-  interrupted commands report known terminals without reopening closed authority.
+  interrupted commands report known terminals without reopening closed
+  authority.
 - Read-only target inspection projects `boundReadAttachments` as retained names
-  only, so invocation templates omit captured reads without reopening live
-  Binding paths or exposing private file projection handles.
+  only. Invocation templates therefore omit captured reads without reopening
+  live Binding paths or exposing private file projection handles.
 - Project commands use reviewed Binding policy, sealed candidate bytes,
-  installed Bun, and a collector outside candidate execution. Command owner
-  rows and independent supervision survive coordinator loss without replay.
+  installed Bun, and a collector outside candidate execution. Command owner rows
+  and independent supervision survive coordinator loss without replay.
 - Command and HTTP effects share the contained-effect owner and recovery path.
-  Deadline failures that lack a proved result identify the static effect type,
-  observed phase, and effective limiting budget without exposing worker errors,
-  asserting remote non-delivery, or changing uncertainty and cleanup semantics.
-  On a repeated operation ID, resolve and settle its retained owner before
-  returning a pre-dispatch deadline claim; a prior owner remains uncertain even
-  when the retry's effective deadline has elapsed.
+  Deadline failures without a proved result identify the static effect type,
+  observed phase, and effective limiting budget. They must not expose worker
+  errors or assert remote non-delivery. They must preserve uncertainty and
+  cleanup semantics. On a repeated operation ID, resolve and settle its retained
+  owner before returning a pre-dispatch deadline claim. A prior owner remains
+  uncertain even when the retry's effective deadline has elapsed.
+
   HTTP, command and finite ACP grants resolve at Binding slots and are pinned in
-  review and recipe identity. Optional catalog files are captured project proposals. The
-  apply boundary checks explicit authority approval for new/changed recipients
-  or policies; it never infers consent from file access or normal --yes. The fixed
-  HTTP worker receives only one request's credential over private stdin; it imports
-  no authored code. The collector validates its bounded result after fencing. No redirect, proxy,
+  review and recipe identity. Optional catalog files are captured project
+  proposals. The apply boundary checks explicit authority approval for
+  new/changed recipients or policies. It never infers consent from file access
+  or normal --yes. The fixed HTTP worker receives only one request's credential
+  over private stdin. It imports no authored code.
+
+  The collector validates its bounded result after fencing. No redirect, proxy,
   automatic retry or raw credential projection is permitted. Remote effects
   remain possible after an unsuccessful local result.
 
@@ -745,623 +870,713 @@ child calls, project commands, delegated HTTP, and Agent providers.
 - Every `Private*` export remains package-private and is not an extension SPI.
 - `linux-rootless-delegation.ts` forwards an outer installed-command interrupt
   through its authenticated transient-scope lifetime socket to the inner CLI.
-  Keep that socket open for cooperative cancellation and confirmed cleanup;
-  its closure remains the independent emergency scope fence.
+  Keep that socket open for cooperative cancellation and confirmed cleanup. Its
+  closure remains the independent emergency scope fence.
 - Explicit dashboard inspection has no local idle or absolute expiry. It remains
-  read-only until q, contextual Escape or settled keyboard Ctrl-C. Literal filter
-  keys retain their existing meanings. Any inherited finite presentation deadline
-  still applies and cannot be refreshed by input, repaint or preview completion;
-  live presentation expiry returns to ordinary output without requesting
-  cancellation. File publication and preview retention never waive an explicit
-  command timer. Select immutable delivery inspection before capture/publication,
-  even while screen entry waits for successful root admission. External interruption after
-  settlement closes presentation with the existing interruption exit status;
-  keyboard Ctrl-C after settlement only closes inspection. Frozen result facts
-  and all actual execution/cleanup deadlines remain unchanged.
-  Standalone saved inspection owns no execution lifetime or local expiry on any
-  supported host; any earlier inherited constraint still applies.
-  It exits 0 for a valid consistent report even if recorded execution failed,
-  1 for unavailable/invalid reports, incomplete files or output failure, and
-  2 for external interruption. JSON remains the unchanged recorded value;
-  current verification findings stay on stderr. Normal inspection closure
-  never changes recorded Run facts or grants authority to repeat work.
+  read-only until q, contextual Escape or settled keyboard Ctrl-C. Literal
+  filter keys retain their existing meanings. Any inherited finite presentation
+  deadline still applies and cannot be refreshed by input, repaint or preview
+  completion. Live presentation expiry returns to ordinary output without
+  requesting cancellation. File publication and preview retention never waive an
+  explicit command timer.
+
+  Select immutable delivery inspection before capture/publication, even while
+  screen entry waits for successful root admission. External interruption after
+  settlement closes presentation with the existing interruption exit status.
+  Keyboard Ctrl-C after settlement only closes inspection. Frozen result facts
+  and all actual execution/cleanup deadlines remain unchanged. Standalone saved
+  inspection owns no execution lifetime or local expiry on any supported host.
+  Any earlier inherited constraint still applies.
+
+  Its exit codes are:
+  - 0 for a valid consistent report, even if recorded execution failed.
+  - 1 for unavailable/invalid reports, incomplete files or output failure.
+  - 2 for external interruption. JSON remains the unchanged recorded value.
+    Current verification findings stay on stderr. Normal inspection closure
+    never changes recorded Run facts or grants authority to repeat work.
 - The optional installed-startup diagnostic accepts only a private local trace
-  destination, activates after rootless-host acquisition, and removes its
-  selector from operator configuration before opening a project session. It
+  destination. It activates after rootless-host acquisition. Before opening a
+  project session, it removes its selector from operator configuration. It
   records fixed phase names and monotonic durations in an exclusive mode-0600
-  file with bounded size; it records no source, Flow input, arguments,
-  environment values, provider output, or filesystem paths. Capture failure
-  must not change the Run outcome. This is maintainer-only profiling, not
-  telemetry, a runtime option, or a supported extension point.
-  Its planning trace distinguishes support verification, envelope startup,
-  execution/settlement and workspace capture; nested spans must not be summed.
-  Finite ACP phases separate revalidation, containment, launch, exchange, release
-  and recovery; they neither record native content nor establish remote dispatch.
-  Contained-effect phases record coordinator planning/revalidation, allocation,
-  sealing, launch, collection and settlement, including failed allocation and
-  recovery cleanup. A phase may contain several separately paired awaits.
-  Launch includes backend storage/input preparation; collection includes stream
-  draining, enforcement and backend cleanup, not just payload CPU time. Owner
-  settlement remains separate. Mac backend spans separate guardian preparation
-  from admission at their existing coordinator awaits. They cover root and child
-  Flow launches as well as contained effects; aggregate counts identify no
-  individual operation. No selector or trace is passed to a child, and
-  the existing 512-span/192-byte record bounds remain unchanged.
+  file with bounded size. It records no source, Flow input, arguments,
+  environment values, provider output, or filesystem paths. Capture failure must
+  not change the Run outcome.
+
+  This is maintainer-only profiling, not telemetry, a runtime option, or a
+  supported extension point. Its planning trace distinguishes support
+  verification, envelope startup, execution/settlement and workspace capture.
+  Nested spans must not be summed. Finite ACP phases separate revalidation,
+  containment, launch, exchange, release and recovery. They neither record
+  native content nor establish remote dispatch. Contained-effect phases record
+  coordinator planning/revalidation, allocation, sealing, launch, collection and
+  settlement, including failed allocation and recovery cleanup.
+
+  A phase may contain several separately paired awaits. Launch includes backend
+  storage/input preparation. Collection includes stream draining, enforcement
+  and backend cleanup, not just payload CPU time. Owner settlement remains
+  separate. Mac backend spans separate guardian preparation from admission at
+  their existing coordinator awaits. They cover root and child Flow launches as
+  well as contained effects.
+
+  Aggregate counts identify no individual operation. No selector or trace is
+  passed to a child, and the existing 512-span/192-byte record bounds remain
+  unchanged.
 - Approved-snapshot inspection uses SQLite read-only/query-only access and a
   consistent read transaction, never schema initialization, recovery, or a
-  coordinator. Reuse filesystem identity and retained-artifact verification;
-  reject unreadable state instead of repairing it. Only explicit public target
-  fields leave the store; private recipes and authority records remain private.
-  Optional target descriptions come from verified retained package metadata,
-  not visible source. Completion omits description capture and environment probes;
-  the interactive chooser requests descriptions without acquiring authority.
-  Environment inspection shares Run's recipe identity calculation but returns
-  inert comparison evidence, never an authenticated executable recipe. Compare
-  current support without cgroup acquisition or namespace execution; Run retains
-  full launch revalidation. Include selected child identities, isolate unrelated
+  coordinator. Reuse filesystem identity and retained-artifact verification.
+  Reject unreadable state instead of repairing it. Only explicit public target
+  fields leave the store. Private recipes and authority records remain private.
+  Optional target descriptions come from verified retained package metadata, not
+  visible source.
+
+  Completion omits description capture and environment probes. The interactive
+  chooser requests descriptions without acquiring authority. Environment
+  inspection shares Run's recipe identity calculation but returns inert
+  comparison evidence, never an authenticated executable recipe. Compare current
+  support without cgroup acquisition or namespace execution. Run retains full
+  launch revalidation. Include selected child identities, isolate unrelated
   targets, and report failed comparisons as unchecked without private causes.
+
   Compact reviews may suppress repeated ACP selections across source edits only
-  under identical package paths and resolved slots, by recomputing both retained
-  recipe and observation digests with an authentic current environment. The shared
-  identity calculation returns inert hashes, never an executable recipe; unknown
-  or changed environments retain the selection. This display proof changes no
-  approval, persistence or launch revalidation. An explicit review client operand
-  always retains authored/effective selection context, even when policy is unchanged.
-- One resolved slot table pins exact Flow targets or qualified native invocations.
-  Inert portable lock decoding checks attachment map shape and target references;
-  Candidate/5 and Plan/2 decoding check complete maps against both target requests'
-  declared ports and access. Artifact reacquisition independently binds every
-  request's attachment interface to verified retained Package/0 metadata before
-  admission or execution. Keep package declarations out of the portable lock.
-  `project-feature-qualification.ts` qualifies the selected graph from captured
-  support/requirement metadata, without preparing execution or choosing alternatives.
-  Feature-refusal evidence pins the caller and selected provider requests, including
-  their retained package bytes; live source edits cannot alter that evidence.
-  Admission independently checks each feature-refusal disposition and its evidence;
-  unrelated targets retain their own readiness. Empty recipe sets use inert host
-  support identity. Explicit review `agentOverride` is captured before qualification
-  and changes only `client` in every selected normalized ACP policy. Bind it into
-  capture identity and the ordinary effective lock; strict decoding requires a
-  fixed supported client, nonzero selected ACP policies and agreement of all slots.
-  Cross-client pinned models, incompatible retention and zero selections refuse;
-  preserve these three closed refusal codes through the candidate diagnostic
-  boundary with their project-relative location. Same-client policy still qualifies.
-  Inspection reports retained origin, Run never
-  substitutes it, and later review never inherits it from lock or admission.
-  An explicit typed route must match its provider's offered contract; it cannot
+  under identical package paths and resolved slots. Suppression requires
+  recomputing both retained recipe and observation digests with an authentic
+  current environment. The shared identity calculation returns inert hashes,
+  never an executable recipe. Unknown or changed environments retain the
+  selection. This display proof changes no approval, persistence or launch
+  revalidation. An explicit review client operand always retains
+  authored/effective selection context, even when policy is unchanged.
+- One resolved slot table pins exact Flow targets or qualified native
+  invocations. Inert portable lock decoding checks attachment map shape and
+  target references. Candidate/5 and Plan/2 decoding check complete maps against
+  both target requests' declared ports and access. Artifact reacquisition
+  independently binds every request's attachment interface to verified retained
+  Package/0 metadata before admission or execution. Keep package declarations
+  out of the portable lock. `project-feature-qualification.ts` qualifies the
+  selected graph from captured support/requirement metadata, without preparing
+  execution or choosing alternatives.
+
+  Feature-refusal evidence pins the caller and selected provider requests,
+  including their retained package bytes. Live source edits cannot alter that
+  evidence. Admission independently checks each feature-refusal disposition and
+  its evidence. Unrelated targets retain their own readiness. Empty recipe sets
+  use inert host support identity. Explicit review `agentOverride` is captured
+  before qualification and changes only `client` in every selected normalized
+  ACP policy.
+
+  Bind it into capture identity and the ordinary effective lock. Strict decoding
+  requires a fixed supported client, nonzero selected ACP policies and agreement
+  of all slots. Cross-client pinned models, incompatible retention and zero
+  selections refuse. Preserve these three closed refusal codes through the
+  candidate diagnostic boundary with their project-relative location.
+  Same-client policy still qualifies. Inspection reports retained origin, Run
+  never substitutes it, and later review never inherits it from lock or
+  admission.
+
+  An explicit typed route must match its provider's offered contract. It cannot
   fall back or turn a claimed native descriptor into package-held authority.
   Project defaults resolve ordinary routes before admission, including direct
   Flow routes. Lock projection and complete graph checks retain those choices.
   Markdown reasoning derives its reserved Agent requirement during inert
   inspection and executes through that same table. Installed interpreter bytes
-  participate in runtime identity; Markdown resources never trigger installation.
+  participate in runtime identity.
+
+  Markdown resources never trigger installation.
 - Unconfirmed cleanup or fencing is fatal to the owning invocation even if code
   catches its operation error. A conclusively cleaned child failure remains
-  recoverable with ordinary language handling; no result-acknowledgement ledger.
-- A current root Run may reacquire its exact pending fence for a bounded interval
-  inside one ownership-settlement attempt; exhaustion remains `PROJECT_BUSY`.
-  Root status reports that failed attempt instead of silently treating polling
-  as permission to retry. A stale pending-work snapshot may
-  encounter `RUN_ALREADY_TERMINAL`; accept that refusal only after loading the
+  recoverable with ordinary language handling. No result-acknowledgement ledger.
+- A current root Run may reacquire its exact pending fence for a bounded
+  interval inside one ownership-settlement attempt. Exhaustion remains
+  `PROJECT_BUSY`. Root status reports that failed attempt instead of silently
+  treating polling as permission to retry. A stale pending-work snapshot may
+  encounter `RUN_ALREADY_TERMINAL`. Accept that refusal only after loading the
   matching durable terminal under the current coordinator, without redispatch.
-  Keep failed durable work for coordinator recovery; polling
-  or draining does not clear that failure or authorize another dispatch.
+  Keep failed durable work for coordinator recovery.
+
+  Polling or draining does not clear that failure or authorize another dispatch.
 - A new coordinator may retry an older Run's unconfirmed fence for a bounded
-  interval while reacquiring that same durable Run. It never creates another
-  Run or treats pending fencing as a terminal; exhaustion remains `PROJECT_BUSY`
+  interval while reacquiring that same durable Run. It never creates another Run
+  or treats pending fencing as a terminal. Exhaustion remains `PROJECT_BUSY`
   through the project-session boundary instead of becoming an internal error.
 - Strictly parse, bound, snapshot, and authenticate values crossing a trust
   boundary. Decoding inert bytes must not mint authority.
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,
   execute. Never execute mutable project source. Installed-support evidence
-  follows the operator's verification policy below; execution authority and
+  follows the operator's verification policy below. Execution authority and
   lifecycle observations remain fresh.
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
 - Dedicated trusted launchers restrict inherited descriptors synchronously
-  before each execution hop, including before Bubblewrap. Keep only stdio
-  and exact setup/input handoffs; refusal to enforce the restriction fails
-  closed. Do not mutate the coordinator's descriptor table or leave host
-  descriptors accessible through a sandbox-visible trusted parent.
+  before each execution hop, including before Bubblewrap. Keep only stdio and
+  exact setup/input handoffs. Refusal to enforce the restriction fails closed.
+  Do not mutate the coordinator's descriptor table or leave host descriptors
+  accessible through a sandbox-visible trusted parent.
 - Stage only captured manifests, the supplied root lock, and root-declared
-  bounded `.patch` files for Bun installation. Patch paths are descriptor-captured
-  without links, match the locked declarations, and remain exact retained inputs;
-  Bun applies them, not a Jig patch engine. Recheck bytes and preserve source identity;
-  materialize other authored files afterward. They must not trigger config
-  loading, preloads, or foreign-lock migration. Supplied locks remain frozen.
-  Missing-lock resolution requires explicit trusted per-review permission,
-  separate from Run approval, before acquisition. Never persist that grant or
-  infer it from project input, `--yes`, or an earlier review. Validate the
-  generated graph before frozen installation; retain its exact bytes privately.
-  The worker derives scratch paths from its trusted launch working directory,
-  never rewritten worker or consumer source. Select the native lock version for
-  the pinned runtime (Linux Bun 1.3.3 or qualified Mac Bun 1.4.2). Linux reads
-  text lock version 1; Mac reads versions 1 and 2 and emits version 2. Keep the
-  same source/provenance checks and exact supplied bytes without translating
-  locks; unsupported formats retain a distinct closed diagnostic. Missing-lock resolution
-  uses `--omit=dev` so production-only installation does not suppress publication
-  of the new lock; the subsequent install stays frozen and script-disabled.
+  bounded `.patch` files for Bun installation. Patch paths are
+  descriptor-captured without links, match the locked declarations, and remain
+  exact retained inputs. Bun applies them, not a Jig patch engine. Recheck bytes
+  and preserve source identity. Materialize other authored files afterward. They
+  must not trigger config loading, preloads, or foreign-lock migration.
+
+  Supplied locks remain frozen. Missing-lock resolution requires explicit
+  trusted per-review permission, separate from Run approval, before acquisition.
+  Never persist that grant or infer it from project input, `--yes`, or an
+  earlier review. Validate the generated graph before frozen installation.
+  Retain its exact bytes privately. The worker derives scratch paths from its
+  trusted launch working directory, never rewritten worker or consumer source.
+
+  Select the native lock version for the pinned runtime (Linux Bun 1.3.3 or
+  qualified Mac Bun 1.4.2). Linux reads text lock version 1. Mac reads versions
+  1 and 2 and emits version 2. Keep the same source/provenance checks and exact
+  supplied bytes without translating locks. Unsupported formats retain a
+  distinct closed diagnostic. Missing-lock resolution uses `--omit=dev` so
+  production-only installation does not suppress publication of the new lock.
+
+  The subsequent install stays frozen and script-disabled.
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.
   Resolve a selected package's declared workspace above the Jig application
   before using workspace declarations inside it. The nearest qualifying outer
-  root must directly declare the selected package; owning only the application
-  does not add undeclared Flows. Without a qualifying outer root, use the nearest
-  declared enclosing workspace within the application, or the selected package's
-  own workspace. Keep the same bounded ancestor discovery; stop at directory
-  aliases without invalidating a declared workspace below one.
+  root must directly declare the selected package. Owning only the application
+  does not add undeclared Flows. Without a qualifying outer root, use the
+  nearest declared enclosing workspace within the application, or the selected
+  package's own workspace. Keep the same bounded ancestor discovery.
+
+  Stop at directory aliases without invalidating a declared workspace below one.
   Preserve members' own `workspaces` declarations as inert metadata during an
-  ancestor-root install. Only that root's patterns define captured membership;
-  member declarations neither expand it nor invalidate unrelated consumers.
+  ancestor-root install. Only that root's patterns define captured membership.
+  Member declarations neither expand it nor invalidate unrelated consumers.
   Discover an ancestor workspace for exact versions as well as `workspace:`
-  declarations; matching local members use Bun's normal substitution, while
-  exact dependencies outside a declared workspace remain standalone. Recheck
-  metadata, retain exact regular files, and recapture on review even when the
-  Flow is unchanged. Preserve the pinned hoisted install's workspace-relative
-  paths and dependency scopes. Retain only
-  exact installer aliases to selected member roots. Bun preparation owns member
-  and dependency semantics; admission carries bytes and layout as one execution
-  artifact. Recipes derive the launch command. Materialization receives only
-  regular bytes and exact runtime-independent aliases; verification and cleanup
-  handle recorded aliases without following them. Package/0 stays
-  regular-file-only. Runs receive no live workspace authority. Bun owns
-  installation, not a parallel Jig resolver.
-  A Bun lock may record `workspace:*` when an exact manifest version selects a
-  same-name local member at that exact version. Treat that as fresh only when
-  the validated lock resolution names the captured member and its version equals
-  the exact request; ranges and mismatches remain stale.
-  Discover declared ancestor workspaces for exact public-version dependencies
-  as well as explicit workspace requests. An ordinary registry dependency with
-  no enclosing workspace remains standalone; explicit workspace requests still
-  require declared membership.
-  Reuse workspace preparation only from this Jig project's active admission:
-  match freshly captured installer inputs and current preparation support to
-  retained dependency evidence. Assemble fresh source with verified installed
-  bytes, then plan and review the new execution identity independently. Never share
+  declarations. Matching local members use Bun's normal substitution, while
+  exact dependencies outside a declared workspace remain standalone.
+
+  Recheck metadata, retain exact regular files, and recapture on review even
+  when the Flow is unchanged. Preserve the pinned hoisted install's
+  workspace-relative paths and dependency scopes. Retain only exact installer
+  aliases to selected member roots. Bun preparation owns member and dependency
+  semantics. Admission carries bytes and layout as one execution artifact.
+  Recipes derive the launch command.
+
+  Materialization receives only regular bytes and exact runtime-independent
+  aliases. Verification and cleanup handle recorded aliases without following
+  them. Package/0 stays regular-file-only. Runs receive no live workspace
+  authority. Bun owns installation, not a parallel Jig resolver. A Bun lock may
+  record `workspace:*` when an exact manifest version selects a same-name local
+  member at that exact version.
+
+  Treat that as fresh only when both conditions hold. The validated lock
+  resolution names the captured member. Its version equals the exact request.
+  Ranges and mismatches remain stale. Discover declared ancestor workspaces for
+  exact public-version dependencies as well as explicit workspace requests. An
+  ordinary registry dependency with no enclosing workspace remains standalone.
+
+  Explicit workspace requests still require declared membership. Reuse workspace
+  preparation only from this Jig project's active admission: match freshly
+  captured installer inputs and current preparation support to retained
+  dependency evidence. Assemble fresh source with verified installed bytes, then
+  plan and review the new execution identity independently. Never share
   preparation between Jig projects under one workspace. Recapture source on
-  every review; manifest, lock, patch, membership or preparation-support changes
-  invalidate reuse. Source-only edits reuse dependencies, never source or authority.
-  Missing evidence requires preparation; missing/corrupt admitted bytes fail
-  closed. Reuse performs no network activity and does not retain a network grant.
+  every review. Manifest, lock, patch, membership or preparation-support changes
+  invalidate reuse.
+
+  Source-only edits reuse dependencies, never source or authority. Missing
+  evidence requires preparation. Missing/corrupt admitted bytes fail closed.
+  Reuse performs no network activity and does not retain a network grant.
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 - The finite resource enforces native protocol and prompt bounds before writes.
-  ACP grants default to one turn; maxTurns explicitly permits up to eight serial
-  turns without resetting aggregate limits. Consume cancellation racing idle
-  settlement without native dispatch. Missing interruption settlement fences the
-  resource after five seconds; a notification alone cannot authorize another turn.
-  Leading-slash prompts are rejected because clients interpret them as control
-  commands; a method's prefix is not the authority safeguard.
+  ACP grants default to one turn. `maxTurns` explicitly permits up to eight
+  serial turns without resetting aggregate limits. Consume cancellation racing
+  idle settlement without native dispatch. Missing interruption settlement
+  fences the resource after five seconds. A notification alone cannot authorize
+  another turn.
+
+  Reject leading-slash prompts because clients interpret them as control
+  commands. A method's prefix is not the authority safeguard.
 - The finite ACP peer refuses permission requests with the protocol's cancelled
   outcome, never a peer-supplied option ID. Permission refusal does not issue
-  session control against an identity supplied by the request; Run cancellation
+  session control against an identity supplied by the request. Run cancellation
   remains tied to the owned session and host fencing.
-- Native Codex subscription access comes from the current operator's
-  file-backed Codex login. Project only its short-lived bearer; never embed a
-  development login, retain its refresh token, mount `CODEX_HOME`, or expose a
-  host keyring to Agent execution.
-  The private native launcher passes subscription bearer/account state through
-  a one-use in-memory bootstrap to the pinned adapter. Its app-server login uses
-  `chatgptAuthTokens` and ephemeral credential storage; never write `auth.json`
-  inside the execution volume. Qualify this unstable native operation against
-  the selected client. Offline synthetic tokens prove the login handshake only;
-  they do not qualify online subscription routing or model execution.
-  Its constrained profile disables Code Mode and its helper host; unsupported
-  optional tool startup must not inject private-path warnings into Agent answers.
-- Codex's nested sandbox uses an unprivileged Bubblewrap selected from its
+- Native Codex subscription access comes from the current operator's file-backed
+  Codex login. Project only its short-lived bearer. Never embed a development
+  login, retain its refresh token, mount `CODEX_HOME`, or expose a host keyring
+  to Agent execution. The private native launcher passes subscription
+  bearer/account state through a one-use in-memory bootstrap to the pinned
+  adapter. Its app-server login uses `chatgptAuthTokens` and ephemeral
+  credential storage. Never write `auth.json` inside the execution volume.
+
+  Qualify this unstable native operation against the selected client. Offline
+  synthetic tokens prove the login handshake only. They do not qualify online
+  subscription routing or model execution. Its constrained profile disables Code
+  Mode and its helper host. Unsupported optional tool startup must not inject
+  private-path warnings into Agent answers.
+- Codex's nested sandbox uses an unprivileged Bubblewrap. Selection uses its
   declarative binary wrapper's PATH prefix and operator PATH, excluding project
-  routes, or the matching bundled helper when no eligible PATH helper exists.
-  `JIG_BWRAP_PATH` selects only outer containment. Never substitute a system
-  helper at the vendor bundle path; keep bundled fallback off PATH to preserve
-  Codex's vendor digest check.
+  routes. If no eligible PATH helper exists, selection uses the matching bundled
+  helper. `JIG_BWRAP_PATH` selects only outer containment. Never substitute a
+  system helper at the vendor bundle path. Keep bundled fallback off PATH to
+  preserve Codex's vendor digest check.
 - Codex, Claude Code, and Pi inspect supported ELF metadata without executing
-  it. Codex and Claude also support the bounded declarative binary wrapper;
-  Pi retains its unwrapped standalone layout and project-excluded sibling assets.
-  Resolve loader-owned libraries through the interpreter's canonical location;
-  retain individual executable, loader, and
-  library files at installation paths, identify them under the selected
-  verification policy, and revalidate before launch. Identify each native file
-  before reading its metadata, open nonblocking and verify the opened file is
-  regular before parsing. Pathname substitution must not wait for a pipe writer.
-  Inspection remains provisional until provider construction checks that
-  interval under the same policy. The exported ELF reader is a private static
-  inspection seam, not a provider, runtime validation or public API.
-  Every native factory must verify the complete inspection against its authentic
-  provider before returning it. Do not add an intermediate full-file hash pass
-  or claim metadata reuse establishes fresh byte evidence. This comparison never
-  replaces launch-time filesystem eligibility and installation verification.
-  Reject unsupported or project-selected dependencies; never mount a
-  whole installation/store or import ambient loader variables. Each native
-  launcher removes Bun's private loader override before starting its client.
+  it. Codex and Claude also support the bounded declarative binary wrapper. Pi
+  retains its unwrapped standalone layout and project-excluded sibling assets.
+  Resolve loader-owned libraries through the interpreter's canonical location.
+  Retain individual executable, loader, and library files at installation paths.
+  Identify them under the selected verification policy.
+
+  Revalidate before launch. Identify each native file before reading its
+  metadata, open nonblocking and verify the opened file is regular before
+  parsing. Pathname substitution must not wait for a pipe writer. Inspection
+  remains provisional until provider construction checks that interval under the
+  same policy. The exported ELF reader is a private static inspection seam, not
+  a provider, runtime validation or public API. Every native factory must verify
+  the complete inspection against its authentic provider before returning it.
+
+  Do not add an intermediate full-file hash pass or claim metadata reuse
+  establishes fresh byte evidence. This comparison never replaces launch-time
+  filesystem eligibility and installation verification. Reject unsupported or
+  project-selected dependencies. Never mount a whole installation/store or
+  import ambient loader variables. Each native launcher removes Bun's private
+  loader override before starting its client.
 - `macos-agent-runtime.ts` supplies the qualified native Mac installation
-  inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices, including the
-  SDK's LIB64 library-width flag. The exact SIP-protected `/usr/bin/sandbox-exec`
-  additionally admits Apple's native arm64e slice on qualified Apple Silicon;
-  operator-selected Agent binaries still require baseline slices. Metadata opens
-  nonblocking and verifies the opened file is regular before parsing. Inspect exact
-  third-party libraries, loader/executable-relative paths and inherited run paths. Consult
-  the active OS dyld cache for system libraries; never fabricate file identities
-  for cache-only images or load selected libraries into the coordinator. Reject
-  embedded loader variables, ambiguous identities, unsupported commands and
-  project routes. Provider construction must compare the inspection interval,
-  and launch must revalidate files and the qualified OS mechanism. This private
-  inspector does not independently enable installed Mac providers.
-  Native writable projections supply their own temporary directory. Claude's
-  native launcher also sets `CLAUDE_CODE_TMPDIR` to that bounded private root;
-  neither general nor client-specific temporary files may fall back to host `/tmp`.
-- Keep known channel-declaration, Agent-configuration and dependency-preparation failures actionable
-  through closed diagnostic codes and project-relative locations, never raw
-  provider or worker messages. SDK missing Agent support affects only selected
-  targets and their dependents; CLI review refuses any observed typed selected ACP
-  prerequisite before preparing target execution, unchanged success or admission.
-  Missing root writable authority for Run Checkpoint retains
-  `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate and directs the
-  caller to its invocation attachment declaration; do not hide it as `INTERNAL`.
+  inspector: bounded baseline x86-64 or ARM64 Mach-O and universal slices,
+  including the SDK's LIB64 library-width flag. The exact SIP-protected
+  `/usr/bin/sandbox-exec` additionally admits Apple's native arm64e slice on
+  qualified Apple Silicon. Operator-selected Agent binaries still require
+  baseline slices. Metadata opens nonblocking and verifies the opened file is
+  regular before parsing. Inspect exact third-party libraries,
+  loader/executable-relative paths and inherited run paths. Consult the active
+  OS dyld cache for system libraries.
+
+  Never fabricate file identities for cache-only images or load selected
+  libraries into the coordinator. Reject embedded loader variables, ambiguous
+  identities, unsupported commands and project routes. Provider construction
+  must compare the inspection interval, and launch must revalidate files and the
+  qualified OS mechanism. This private inspector does not independently enable
+  installed Mac providers. Native writable projections supply their own
+  temporary directory. Claude's native launcher also sets `CLAUDE_CODE_TMPDIR`
+  to that bounded private root.
+
+  Neither general nor client-specific temporary files may fall back to host
+  `/tmp`.
+- Keep known channel-declaration, Agent-configuration and dependency-preparation
+  failures actionable through closed diagnostic codes and project-relative
+  locations. Never expose raw provider or worker messages. SDK missing Agent
+  support affects only selected targets and their dependents. CLI review refuses
+  any observed typed selected ACP prerequisite before preparing target
+  execution, unchanged success or admission. Missing root writable authority for
+  Run Checkpoint retains `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate
+  and directs the caller to its invocation attachment declaration. Do not hide
+  it as `INTERNAL`.
+
   Unsupported Volta selections retain the existing wrapper diagnostic, including
   Claude/Pi and Codex installations outside the supported static npm profile.
-  Preserve that cause through Codex opening without executing the dispatcher
-  or choosing another installation. The operator may select the actual native binary.
-  The private project-session acquisition and operation callbacks permit
+  Preserve that cause through Codex opening without executing the dispatcher or
+  choosing another installation. The operator may select the actual native
+  binary. The private project-session acquisition and operation callbacks permit
   selected host tests to observe only a fixed phase or operation and bounded
-  error class/code chain; never include raw messages, paths, or rejected values
+  error class/code chain. Never include raw messages, paths, or rejected values
   in that evidence. Root, child Flow, and contained-effect failure observation
-  follows the same rule: classify the active private phase and error chain
-  before test output, without changing terminal settlement, replay, or cleanup.
-  Contained effects also report a confirmed fence's unexpected stop reason,
-  even when no exception occurred; payload output cannot replace missing native
-  terminal evidence. Project Command lifecycle proofs enable this observer.
-  Configuration evaluator failures preserve closed support, launch, envelope,
-  settlement or protocol codes and the captured declaration location. Never
-  project raw launcher exceptions or infer a timeout cause from unavailability.
-  Evaluator launch errors retain their original cause privately so the existing
-  operation observer can project the closed class/code chain. Lifecycle host
-  tests observe plan/apply failures as well as execution failures; public errors
-  keep the evaluator code and declaration location without the private chain.
-  Manifest policy errors retain closed causes and JSON pointers, never rejected
-  source values or invalid names. Workspace manifest locations are relative to
-  the project (including bounded ancestor paths), not the selected Flow; do not
-  rebase them twice. These display locations grant no file access.
+  follows the same rule.
+
+  Before test output, classify the active private phase and error chain.
+  Preserve terminal settlement, replay, and cleanup rules. Contained effects
+  also report a confirmed fence's unexpected stop reason, even when no exception
+  occurred. Payload output cannot replace missing native terminal evidence.
+  Project Command lifecycle proofs enable this observer. Configuration evaluator
+  failures preserve closed support, launch, envelope, settlement or protocol
+  codes and the captured declaration location.
+
+  Never project raw launcher exceptions or infer a timeout cause from
+  unavailability. Evaluator launch errors retain their original cause privately
+  so the existing operation observer can project the closed class/code chain.
+  Lifecycle host tests observe plan/apply failures as well as execution
+  failures. Public errors keep the evaluator code and declaration location
+  without the private chain. Manifest policy errors retain closed causes and
+  JSON pointers, never rejected source values or invalid names. Workspace
+  manifest locations are relative to the project (including bounded ancestor
+  paths), not the selected Flow.
+
+  Do not rebase them twice. These display locations grant no file access.
   Unreadable retained state has a distinct closed diagnostic from unsafe
-  filesystem ownership. Preserve it on failed acquisition; never infer permission
-  to reset admission or bypass cleanup from a decoding failure.
-- A reproduced root recipe that differs from its approval is a known pre-execution
-  refusal: retain host-only REVIEW_REQUIRED with flowStarted=false,
-  and direct the operator to review. Do not collapse it to EXECUTION_FAILED or
-  infer this reason from arbitrary failures. Recovery and cancellation keep their
-  existing precedence. Flow wire failures cannot emit this code; never replay work or claim no execution after a sandbox began.
-  Root execution compares the actual sealed owner's mechanism identity with the
-  reviewed recipe before admission, using sealing's fresh observation instead of
-  a duplicate pre-seal observation. Retain and settle the sealed owner on refusal;
-  final admission still verifies installation support under operator policy
-  and freshly revalidates invocation authority.
+  filesystem ownership. Preserve it on failed acquisition. Never infer
+  permission to reset admission or bypass cleanup from a decoding failure.
+- A reproduced root recipe that differs from its approval is a known
+  pre-execution refusal. Retain host-only REVIEW_REQUIRED with
+  flowStarted=false. Direct the operator to review. Do not collapse it to
+  EXECUTION_FAILED or infer this reason from arbitrary failures. Recovery and
+  cancellation keep their existing precedence. Flow wire failures cannot emit
+  this code.
+
+  Never replay work or claim no execution after a sandbox began. Root execution
+  compares the actual sealed owner's mechanism identity with the reviewed recipe
+  before admission, using sealing's fresh observation instead of a duplicate
+  pre-seal observation. Retain and settle the sealed owner on refusal. Final
+  admission still verifies installation support under operator policy and
+  freshly revalidates invocation authority.
 - Review projects only explicit public policy and allowlisted non-secret Agent
   selections. Environment-only target changes name the execution environment,
-  distinguish unchanged source/dependencies/policy, and explain the new approval.
-  Combined fingerprints cannot identify individual historical components; disclose
-  that limit instead of inventing a component diff or displaying opaque identities.
-  A change-first display omits empty categories and uses shared YAML field
-  rendering, with complete signed additions/removals and contextual diffs.
-  `--details` uses the same sectioned diff renderer with unchanged records and
-  fields included as context. Never serialize change bookkeeping or wrap policy
-  in current/proposed snapshots for human review.
-  It must retain every changed record; full
-  policy remains available without revealing private recipes or consent tokens.
+  distinguish unchanged source/dependencies/policy, and explain the new
+  approval. Combined fingerprints cannot identify individual historical
+  components. Disclose that limit instead of inventing a component diff or
+  displaying opaque identities. A change-first display omits empty categories
+  and uses shared YAML field rendering, with complete signed additions/removals
+  and contextual diffs. `--details` uses the same sectioned diff renderer with
+  unchanged records and fields included as context.
+
+  Never serialize change bookkeeping or wrap policy in current/proposed
+  snapshots for human review. It must retain every changed record. Full policy
+  remains available without revealing private recipes or consent tokens.
   Missing-target suggestions come from the retained admitted revision, never a
   live filesystem scan, and cannot grant authority or select a replacement.
-- Deadlines and cancellation fence descendants, settle each terminal once,
-  and complete bounded cleanup. Do not replay uncertain operations.
+- Deadlines and cancellation fence descendants, settle each terminal once, and
+  complete bounded cleanup. Do not replay uncertain operations.
 - The independent Linux supervisor polls bounded owned kernel process state.
   Confirmed core dumping fences that exact cgroup without waiting for the Run
-  deadline. Keep the private crash reason separate from the actual reaped signal;
-  neither payload stderr nor a reused foreign PID establishes an owned crash.
-- Durable transitions use exact identities and conflict-safe commits;
-  recovery must not create duplicate owners or official Runs.
-- Root attachments use invocation-owned descriptors and canonical file identity;
-  hashes alone never grant file access. Per-run captured bytes are not retained
+  deadline. Keep the private crash reason separate from the actual reaped
+  signal. Neither payload stderr nor a reused foreign PID establishes an owned
+  crash.
+- Durable transitions use exact identities and conflict-safe commits. Recovery
+  must not create duplicate owners or official Runs.
+- Root attachments use invocation-owned descriptors and canonical file identity.
+  Hashes alone never grant file access. Per-run captured bytes are not retained
   artifacts. Before package code starts, the trusted inner launcher rechecks
   every projected file's byte count and digest against the admitted identity.
   Child contexts receive only complete reviewed maps from their immediate
-  caller; native Agent contexts receive no attachment or destination authority.
+  caller. Native Agent contexts receive no attachment or destination authority.
+
   The admitted-interface mapping check precedes root allocation. Its closed
   failure projects only bounded declared/supplied names for missing reads,
-  invalid mappings, bound overrides and missing writable destinations; combined
+  invalid mappings, bound overrides and missing writable destinations. Combined
   retained/per-run file-limit evidence remains separately typed. Never infer
   paths, source freshness or no-dispatch evidence from arbitrary errors.
 - Reviewed Binding read selections reuse the bounded file capture controls and
   retained artifact store. Bind source, manifest and tree identity to the exact
-  configuration; revalidate at admission and project retained bytes at execution,
-  never live sources. Runtime mappings cannot override them. Combined retained
-  and per-run input stays within the root file budget; no implicit inheritance,
-  executable discovery, library resolver, network or credential authority.
+  configuration. Revalidate at admission and project retained bytes at
+  execution, never live sources. Runtime mappings cannot override them. Combined
+  retained and per-run input stays within the root file budget. No implicit
+  inheritance, executable discovery, library resolver, network or credential
+  authority.
 - Keep execution settlement separate from delivery. Retain bounded output after
-  writer fencing; publish once without replacement through the independent
+  writer fencing. Publish once without replacement through the independent
   command owner. Coordinator loss must remove unpublished staging. Late failure
   preserves a known terminal or publication and never authorizes replay.
   Cancellation allows at most 60 seconds of cooperative trusted-coordinator
-  settlement; absolute command expiry shortens that wait with a 250 ms kill
-  grace. Never extend either bound on later signals or change payload deadlines.
-  Confirmed interrupted settlement may publish its terminal and accepted
-  checkpoint, not final Flow files; unconfirmed cleanup cannot authorize delivery.
-  Reap the exact trusted child after escalation; independent cgroup fencing
-  still owns payload cleanup.
-- Exact child slots may select a Flow or a bounded Binding with its own admitted
-  settings, ordinary invocation routes and reviewed command, HTTP or finite ACP
-  grants. An effect belongs to that child
-  context, not the root's operation namespace; fence and drain it before
-  releasing the child owner. Every child Flow uses its own admitted slot
-  maps; private nested Flow identifiers include their parent identity.
+  settlement.
+
+  Absolute command expiry shortens that wait with a 250 ms kill grace. Never
+  extend either bound on later signals or change payload deadlines. Confirmed
+  interrupted settlement may publish its terminal and accepted checkpoint, not
+  final Flow files. Unconfirmed cleanup cannot authorize delivery. Reap the
+  exact trusted child after escalation. Independent cgroup fencing still owns
+  payload cleanup.
+- Exact child slots may select a Flow or a bounded Binding. Each target has its
+  own admitted settings, ordinary invocation routes and reviewed command, HTTP
+  or finite ACP grants. An effect belongs to that child context, not the root's
+  operation namespace. Fence and drain it before releasing the child owner.
+  Every child Flow uses its own admitted slot maps. Private nested Flow
+  identifiers include their parent identity.
 - Roots admit two Flow branches or one exclusive effect. Reserve each whole
-  branch's longest admitted Flow path plus one effect against the fixed aggregate
-  root budget before dispatch; retain its
-  reservation until confirmed fencing and cleanup. Kernel envelope limits and
-  the recipe-bound reservation policy must agree. Each child admits one Flow or
-  effect. Derive maximum branch depth from the fixed aggregate envelope, reserving
-  the root and an effect too; never add resources merely to allow deeper calls.
-  The envelope accommodates two two-level branches or one five-level branch
-  with their effects. There is no
-  queue, borrowing, recursive budget, or public scheduler. An ancestor fence
-  prevents all further descendant dispatch; recovery drains descendants before
+  branch's longest admitted Flow path plus one effect against the fixed
+  aggregate root budget before dispatch. Retain its reservation until confirmed
+  fencing and cleanup. Kernel envelope limits and the recipe-bound reservation
+  policy must agree. Each child admits one Flow or effect. Derive maximum branch
+  depth from the fixed aggregate envelope, reserving the root and an effect too.
+
+  Never add resources merely to allow deeper calls. The envelope accommodates
+  two two-level branches or one five-level branch with their effects. There is
+  no queue, borrowing, recursive budget, or public scheduler. An ancestor fence
+  prevents all further descendant dispatch. Recovery drains descendants before
   releasing each Flow owner and its branch reservation.
 - Channel operations have separate finite transport capacity, not worker slots.
   Unsupported delivery or invocation wiring rejects before dispatch. Observation
-  grants no session control; FLOW endpoint rights and source-owner lifetime
-  remain authoritative. Keep channel state command-local, not durable replay state.
+  grants no session control. FLOW endpoint rights and source-owner lifetime
+  remain authoritative. Keep channel state command-local, not durable replay
+  state.
 - Run Checkpoint uses one separate bounded control operation, not a worker
   reservation. Only the root's independent output owner accepts immutable
   aggregate bytes before acknowledgement. Bind exact Run, admitted method,
   captured input, project identity and coordinator epoch before dispatch.
-  Interrupted publication uses accepted bytes only after complete fencing;
-  recovery may settle that exact older Run but never submit or replay work.
-  Keep rejected replacement, lost acknowledgement, owner lifetime, output
-  collision and cleanup failure distinct. The owner retains no history.
+  Interrupted publication uses accepted bytes only after complete fencing.
+  Recovery may settle that exact older Run but never submit or replay work. Keep
+  rejected replacement, lost acknowledgement, owner lifetime, output collision
+  and cleanup failure distinct.
+
+  The owner retains no history.
 - A project command receives immutable text and runtime mounts only: no Flow
   package, network, credential, or arbitrary executable. Host observations are
-  process evidence, not an independent test verdict. Candidate bytes are copied
-  from sealed descriptors into named files in a bounded private tmpfs, made
+  process evidence, not an independent test verdict. Copy candidate bytes from
+  sealed descriptors into named files in a bounded private tmpfs. Make them
   read-only before payload execution so Bun can resolve modules safely.
-- Fail closed on unsupported hosts, detected identity changes, missing enforcement,
-  malformed protocol, cleanup failure, or unverifiable provenance.
+- Fail closed on unsupported hosts, detected identity changes, missing
+  enforcement, malformed protocol, cleanup failure, or unverifiable provenance.
   Hold the trusted entry until the coordinator validates cgroup membership and
-  any output handoff; short-lived commands must not race that check. Close the
-  private continuation gate before candidate execution.
-  Drain buffered supervisor control after process exit within a fixed bound;
-  exit alone neither disproves a pending receipt nor establishes fencing.
-- Resolve Jig's outer containment and system-management tools from fixed locations, or
-  Bubblewrap from the operator's absolute `JIG_BWRAP_PATH`, never ambient `PATH`. An explicit
-  selection receives the same validation and cannot fall back on failure.
-  Run loader support mounts the real glibc files, not a shim or whole Nix store.
+  any output handoff. Short-lived commands must not race that check. Close the
+  private continuation gate before candidate execution. Drain buffered
+  supervisor control after process exit within a fixed bound. Exit alone neither
+  disproves a pending receipt nor establishes fencing.
+- Resolve Jig's outer containment and system-management tools from fixed
+  locations. Bubblewrap may instead use the operator's absolute
+  `JIG_BWRAP_PATH`. Never use ambient `PATH` for these selections. An explicit
+  selection receives the same validation and cannot fall back on failure. Run
+  loader support mounts the real glibc files, not a shim or whole Nix store.
   File-capture FFI and executable runtime support use the same loader selection.
+
   The fixed trusted Bubblewrap feature probe uses only read-only system runtime
-  roots, never the host root or sysfs tree; its bootstrap mounts are not payload
+  roots, never the host root or sysfs tree. Its bootstrap mounts are not payload
   authority or proof of a Run's filesystem isolation.
 
 ## Work Guidance
 
-- Under the prerelease rule, replace old formats completely; do not retain
+- Under the prerelease rule, replace old formats completely. Do not retain
   readers, migrations, or aliases.
-- Add negative, hostile, race, restart, and cleanup evidence for
-  trust-boundary changes.
-- Never start a fork storm, memory-pressure payload, or similarly hostile code
-  until preflight proves complete delegation and the launcher guarantees that
-  the payload begins inside its finished owner envelope.
+- Add negative, hostile, race, restart, and cleanup evidence for trust-boundary
+  changes.
+- Hostile code includes fork storms, memory-pressure payloads, and similarly
+  hostile workloads. Never start such code before preflight proves complete
+  delegation. The launcher must also guarantee that the payload begins inside
+  its finished owner envelope.
 - Do not weaken production checks for an unprovisioned unit test. Use private
   injection seams for units and the proof host for kernel behavior.
 - A provider adapter may narrow common Agent authority, never widen it.
-- API-backed Agent behavior belongs to the ordinary Agent package and its
-  exact HTTP grant. Native Codex, Claude Code, and Pi retain constrained ACP
-  launch and authentication support. An endpoint, credential, provider, or
-  model used in development must not become a product default.
-- Native Codex, Claude Code, and Pi use a snapshot of the operator
-  environment captured before project loading. Absolute client overrides are
-  authoritative; otherwise search absolute PATH entries in order, excluding the
-  actual project tree and ancestor dependency directories through every symlink
-  hop. Review may show the resolved operator executable path, never credentials
-  or private retained paths. Launch revalidates the selected executable and
-  support against reviewed identity under installation verification policy;
-  it never repeats PATH discovery.
+- API-backed Agent behavior belongs to the ordinary Agent package and its exact
+  HTTP grant. Native Codex, Claude Code, and Pi retain constrained ACP launch
+  and authentication support. An endpoint, credential, provider, or model used
+  in development must not become a product default.
+- Native Codex, Claude Code, and Pi use a snapshot of the operator environment
+  captured before project loading. Absolute client overrides are authoritative.
+  Otherwise search absolute PATH entries in order, excluding the actual project
+  tree and ancestor dependency directories through every symlink hop. Review may
+  show the resolved operator executable path, never credentials or private
+  retained paths. Launch revalidates the selected executable and support against
+  reviewed identity under installation verification policy. It never repeats
+  PATH discovery.
 - Keep each native client a thin profile over the common ACP lifecycle. A new
   client must not require FLOW changes, and a public provider/customization SPI
   requires independent installed consumers to earn its shape.
-- Close missing evidence with focused tests; do not remove a selected client
+- Close missing evidence with focused tests. Do not remove a selected client
   solely because prerelease live coverage lags.
 - Optimize startup from measured command-entry-to-Flow-execution traces. Count
   repeated file reads and separate Agent acquisition, project recovery, sealing,
-  and launch. Combine redundant checks only at explicit verification boundaries;
-  preserve durable recovery and independent launch checks. Use disposable reviewed
-  consumer projects for before/after measurements, never alter a user's approval
-  or replay their work to benchmark startup.
+  and launch. Combine redundant checks only at explicit verification boundaries.
+  Preserve durable recovery and independent launch checks. Use disposable
+  reviewed consumer projects for before/after measurements, never alter a user's
+  approval or replay their work to benchmark startup.
 - `installation-verification.ts` owns command-scoped operator policy and the
   bounded installation cache. The installed CLI resolves `--verification` over
   `JIG_VERIFICATION`, falling back to cached, before opening the command scope.
   Pass prepared command arguments, the private preparation-complete marker and
-  their optional selected admission through file-owner and delegation reexecution.
-  The retained inspection callback exposes only owned canonical writable-target
-  selectors with that same admission, without public DTOs or package recapture.
-  Select omitted writable output once under the canonical OS-temporary parent
-  before file-owner selection; preserve no-output/unreviewed decisions too.
-  Keep anchored exclusions, publication and packet retention with the delivery owner.
-  Root submission rejects changed approval before
-  allocation; the private admission marker can only constrain, never grant, execution.
-  Entrypoint defaults and interactive target choices survive reexecution; preserve the effective verification policy through delegation,
-  file delivery and recovery. Strict
-  freshly hashes at every boundary, and fast accepts cached path identities
-  without freshness checks. Cached compares inode/device, ownership/mode/link
-  count, size and nanosecond mtime/ctime on every lookup. Hash misses and check
-  metadata before/after; never reuse atime as freshness evidence. Private calls
-  outside an explicit command scope remain strict.
-  Register the actual project before opening support. Cache storage must be
-  owner-private and outside project routes; invalid or unsafe cache falls back
-  to hashing. Inspection never writes it. Snapshot policy before project loading,
-  isolate concurrent contexts, and preserve it through launch and recovery.
-  Cache no credentials, packages, attachments, approval or containment authority.
-  Mode alone must not alter recipe identity for unchanged installations.
+  their optional selected admission through file-owner and delegation
+  reexecution. The retained inspection callback exposes only owned canonical
+  writable-target selectors with that same admission, without public DTOs or
+  package recapture. Select omitted writable output once under the canonical
+  OS-temporary parent before file-owner selection. Preserve no-output/unreviewed
+  decisions too.
+
+  Keep anchored exclusions, publication and packet retention with the delivery
+  owner. Root submission rejects changed approval before allocation. The private
+  admission marker can only constrain, never grant, execution. Entrypoint
+  defaults and interactive target choices survive reexecution. Preserve the
+  effective verification policy through delegation, file delivery and recovery.
+  Strict freshly hashes at every boundary, and fast accepts cached path
+  identities without freshness checks.
+
+  Cached compares inode/device, ownership/mode/link count, size and nanosecond
+  mtime/ctime on every lookup. Hash misses and check metadata before/after.
+  Never reuse atime as freshness evidence. Private calls outside an explicit
+  command scope remain strict. Register the actual project before opening
+  support. Cache storage must be owner-private and outside project routes.
+
+  Invalid or unsafe cache falls back to hashing. Inspection never writes it.
+  Snapshot policy before project loading, isolate concurrent contexts, and
+  preserve it through launch and recovery. Cache no credentials, packages,
+  attachments, approval or containment authority. Mode alone must not alter
+  recipe identity for unchanged installations.
 
 - `raw-directory.ts` preserves byte names for Linux descriptor enumeration.
   Pinned Bun can return byte arrays instead of Dirent objects for buffer
-  encoding; acquire missing type metadata with no-follow stat of the raw leaf
+  encoding. Acquire missing type metadata with no-follow stat of the raw leaf
   beneath the held directory. Consumers retain strict UTF-8 validation and
-  descriptor-relative admission; never substitute lossy decoded names.
+  descriptor-relative admission. Never substitute lossy decoded names.
 
 ## Verification
 
-- `../../scripts/native-support.mjs` regenerates and checks both descriptor bridge
-  digest pins (`macos-descriptor-files.ts` and `installed-bun-support.ts`) together
-  with the checked-in native assets. `../../support/AGENTS.md` owns the canonical
-  rebuild and exact-toolchain byte comparison. Never refresh only one pin.
+- `../../scripts/native-support.mjs` regenerates and checks both descriptor
+  bridge digest pins (`macos-descriptor-files.ts` and
+  `installed-bun-support.ts`) together with the checked-in native assets.
+  `../../support/AGENTS.md` owns the canonical rebuild and exact-toolchain byte
+  comparison. Never refresh only one pin.
 
-- Native Mac profiles are closed to Intel Darwin 23.4.0 build
-  23E224 and hosted Intel/Apple Silicon Darwin 24.6.0 build 24G830. Select
-  architecture-native Bun and Mach-O slices; never
-  treat Rosetta execution as Apple Silicon qualification.
+- Native Mac profiles are closed to Intel Darwin 23.4.0 build 23E224 and hosted
+  Intel/Apple Silicon Darwin 24.6.0 build 24G830. Select architecture-native Bun
+  and Mach-O slices. Never treat Rosetta execution as Apple Silicon
+  qualification.
 - The SDK-compiled descriptor bridge selects Intel and Apple Silicon's native
-  stat and directory ABIs. Coalition CPU ledger values are Mach
-  ticks: convert with the kernel's `mach_timebase_info` ratio before comparing
-  nanosecond limits or recording evidence. Per-process rusage units stay unchanged.
+  stat and directory ABIs. Coalition CPU ledger values are Mach ticks: convert
+  with the kernel's `mach_timebase_info` ratio before comparing nanosecond
+  limits or recording evidence. Per-process rusage units stay unchanged.
 - `openat` and `fcntl` use the packaged fixed-signature native bridge rather
   than calling variadic libc through FFI. Verify its exact digest before dlopen
-  and bind it into installed-support identity; no consumer compiler is required.
+  and bind it into installed-support identity. No consumer compiler is required.
 
-- `execution-intent.test.ts` checks cross-host lowering, literal/path separation,
-  empty input roots, output locations, network authority, and read-only workers.
-  `execution-backend.test.ts` rejects mismatched owner allocations before dispatch.
-  Native and installed-consumer qualification still establish actual enforcement.
+- `execution-intent.test.ts` checks cross-host lowering, literal/path
+  separation, empty input roots, output locations, network authority, and
+  read-only workers. `execution-backend.test.ts` rejects mismatched owner
+  allocations before dispatch. Native and installed-consumer qualification still
+  establish actual enforcement.
 - Run the directly corresponding `packages/jig/test/` files, then
   `bun test packages/jig`. Resource qualification and CLI setup/approval tests
-  verify fail-fast typed refusal independent of bounded diagnostics and unchanged
-  SDK target readiness. Project linking/capture and lock tests verify all-selected
-  client construction, preserved source/other policy, capture identity and strict
-  retained `agentOverride` origin.
-- `workspace-progress.test.ts` covers operator-controlled inspection, private
-  deadline minima, trusted dispatch versus initial refusal, effective machine
-  modes, queued screen entry/restoration, phase-aware interruption, escaped cause batching and full
-  final diagnostics with injected streams and clocks. These portable cases do
-  include one owned Bun-to-Bun expired-constraint regression, but do not qualify
-  host-clock adjustments, terminal restoration or actual
-  command expiry on another supported host. The native file-delivery inspection
-  cases separately verify immutable bytes, explicit command limits and terminal
-  restoration after sustained inspection.
+  verify fail-fast typed refusal independent of bounded diagnostics and
+  unchanged SDK target readiness. Project linking/capture and lock tests verify
+  all-selected client construction, preserved source/other policy, capture
+  identity and strict retained `agentOverride` origin.
+- `workspace-progress.test.ts` uses injected streams and clocks. It covers
+  operator-controlled inspection, private deadline minima, trusted dispatch
+  versus initial refusal, effective machine modes, and queued screen
+  entry/restoration. It also covers phase-aware interruption, escaped cause
+  batching and full final diagnostics. These portable cases include one owned
+  Bun-to-Bun expired-constraint regression. They do not qualify host-clock
+  adjustments, terminal restoration or actual command expiry on another
+  supported host. The native file-delivery inspection cases separately verify
+  immutable bytes, explicit command limits and terminal restoration after
+  sustained inspection.
 - On the qualified Intel macOS kernel, `JIG_MACOS_PROCESS_TEST=1` enables
   `macos-process-controls.test.ts` and `macos-execution.test.ts` with the
   candidate native runtime outside an enclosing sandbox. They use finite
-  user-domain launchd jobs, exact cleanup and an unrelated-process sentinel;
-  the execution test compiles its native fixture with the local Apple toolchain.
+  user-domain launchd jobs, exact cleanup and an unrelated-process sentinel. The
+  execution test compiles its native fixture with the local Apple toolchain.
   `macos-captured-bytes.test.ts` covers anonymous read-only capture on macOS.
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
   guardian loss. Controlled CPU faults check recovery from transient within-read
   and between-sample regressions, sustained uncertainty refusal and strict final
-  accounting while retaining real kernel ownership and authenticated cleanup.
-  Portable framing cases live in `macos-control-channel.test.ts`.
-  Buffered unread stdin must preserve the payload's actual nonzero exit and
-  output after confirmed fencing.
+  accounting.
+
+  They retain real kernel ownership and authenticated cleanup. Portable framing
+  cases live in `macos-control-channel.test.ts`. Buffered unread stdin must
+  preserve the payload's actual nonzero exit and output after confirmed fencing.
   These checks are primitive evidence, not installed-host conformance.
   `macos-descriptor-files.test.ts` compiles SDK layout assertions and checks
   identity across directory replacement, raw enumeration and exclusive
   publication. `package-capture.test.ts` runs shared source-capture cases on the
-  qualified Mac when opted in; Linux retains filesystem-specific byte-name and
-  case-sensitive collision fixtures.
-  `activation-admission-store.test.ts` exercises real SQLite durability and
-  recovery on both hosts. `package-materialization.test.ts` includes fresh-process
-  reacquisition, interrupted cleanup and the Darwin chmod-before-rename window.
-  `macos-volume.test.ts` covers bounded shared capacity with sandboxed native
-  writers, backing-file denial, journal and inode forgery refusal, case-sensitive
-  names, relocated image recovery without deleting the alternate host directory,
-  fresh-process recovery, and repeated exact cleanup without administrator
-  access. It preserves failed allocations when recovery cannot be confirmed.
-  `macos-preparation.test.ts` runs the unchanged preparer and a retained ordinary
-  TypeScript dependency consumer in native guardians with bounded storage. It
-  checks ignored install scripts, production dependency selection, source-write
-  and private-file denial, and complete cleanup. Project workspace preparation
-  tests use the worker's real working-directory interface without source rewriting.
+  qualified Mac when opted in.
+
+  Linux retains filesystem-specific byte-name and case-sensitive collision
+  fixtures. `activation-admission-store.test.ts` exercises real SQLite
+  durability and recovery on both hosts. `package-materialization.test.ts`
+  includes fresh-process reacquisition, interrupted cleanup and the Darwin
+  chmod-before-rename window. `macos-volume.test.ts` covers bounded shared
+  capacity with sandboxed native writers, backing-file denial, journal and inode
+  forgery refusal, and case-sensitive names. It covers relocated image recovery
+  without deleting the alternate host directory, fresh-process recovery, and
+  repeated exact cleanup without administrator access. It preserves failed
+  allocations when recovery cannot be confirmed. `macos-preparation.test.ts`
+
+  runs the unchanged preparer and a retained ordinary TypeScript dependency
+  consumer in native guardians with bounded storage. It checks ignored install
+  scripts, production dependency selection, source-write and private-file
+  denial, and complete cleanup. Project workspace preparation tests use the
+  worker's real working-directory interface without source rewriting.
   `bun-native-preparation.test.ts` runs transitive locked/unlocked preparation
-  and non-registry lock rejection on both hosts. Mac checks frozen version-1
-  and version-2 locks without changing authored bytes; unsupported formats retain
-  their own diagnostic. Its cgroup-observed coordinator
-  loss cases remain Linux-specific.
+  and non-registry lock rejection on both hosts. Mac checks frozen version-1 and
+  version-2 locks without changing authored bytes. Unsupported formats retain
+  their own diagnostic.
+
+  Its cgroup-observed coordinator loss cases remain Linux-specific.
   `macos-agent-runtime.test.ts` checks malformed and universal Mach-O metadata,
-  project-excluded transitive lookup, cache membership and changed support bytes.
-  `native-agent-metadata.test.ts` uses bounded fresh-process named-pipe
+  project-excluded transitive lookup, cache membership and changed support
+  bytes. `native-agent-metadata.test.ts` uses bounded fresh-process named-pipe
   regressions for both ELF and Mach-O readers, verifying prompt refusal without
   executing the selected files or removing them before inspection settles.
   Deployment targets must not exceed the already qualified host kernel’s
-  `kern.osproductversion`; SDK defaults cannot inherit another candidate’s ceiling.
-  Its opted-in SDK-linked fixture proves that inspection does not invoke library
-  constructors. ELF metadata fixtures retain their separate Linux-format coverage.
+  `kern.osproductversion`. SDK defaults cannot inherit another candidate’s
+  ceiling. Its opted-in SDK-linked fixture proves that inspection does not
+  invoke library constructors.
+
+  ELF metadata fixtures retain their separate Linux-format coverage.
   `macos-descriptor-handoff.test.ts` uses an independent SDK-native sender to
   assert socket/message layouts, split and malformed frames, rights cleanup and
   rejection of writable files. It also verifies anonymous capture, renamed
-  directory identity, kernel peer versions, cancellation and endpoint collisions.
-  `file-input.test.ts` and `bound-attachments.test.ts` exercise shared capture and
-  retained resources on Linux and qualified Mac. Mac cases reject private-state
-  case aliases and copied/closed capture handles; the volume test also rejects
-  selected descendants crossing mounts. Linux filesystem and Nix loader cases
-  remain Linux-only and require their own runner.
-  `macos-guardian-storage.test.ts` qualifies journal-before-tool admission,
-  descriptor collection after detached-descendant fencing, collection lifetime,
-  interrupted creation, coordinator/guardian loss and a failed recovery guardian.
-  Expiry during the final recovery drain refuses success, retains journals,
-  and permits an ordinary fresh guardian to finish cleanup before retirement.
-  Every cleanup attempt keeps its exact journals until fencing is confirmed.
-  An actual coordinator paused inside the storage allocator before intent and
-  killed by the test proves empty pre-journal recovery without moving any existing
-  crash barrier. Whole-file native checks also preserve partial/foreign entries
-  and refuse a first or late owner journal, retirement markers, public/link/replaced
-  or mounted storage. Ordinary
-  source checks construct that exact injected allocator without native execution.
-  `macos-guardian-input.test.ts` runs ordinary TypeScript relative imports and
-  binary/empty reads from the immutable projection, denies source writes and
-  private data, refuses changed/closed captures before execution, and recovers
-  after source handles have already closed.
+  directory identity, kernel peer versions, cancellation and endpoint
+  collisions. `file-input.test.ts` and `bound-attachments.test.ts` exercise
+  shared capture and retained resources on Linux and qualified Mac. Mac cases
+  reject private-state case aliases and copied/closed capture handles. The
+  volume test also rejects selected descendants crossing mounts.
+
+  Linux filesystem and Nix loader cases remain Linux-only and require their own
+  runner. `macos-guardian-storage.test.ts` qualifies journal-before-tool
+  admission, descriptor collection after detached-descendant fencing, collection
+  lifetime, interrupted creation, coordinator/guardian loss and a failed
+  recovery guardian. Expiry during the final recovery drain refuses success,
+  retains journals, and permits an ordinary fresh guardian to finish cleanup
+  before retirement. Every cleanup attempt keeps its exact journals until
+  fencing is confirmed. An actual coordinator paused inside the storage
+  allocator before intent and killed by the test proves empty pre-journal
+  recovery without moving any existing crash barrier. Whole-file native checks
+  also preserve partial/foreign entries and refuse a first or late owner
+  journal, retirement markers, public/link/replaced or mounted storage.
+
+  Ordinary source checks construct that exact injected allocator without native
+  execution. `macos-guardian-input.test.ts` runs ordinary TypeScript relative
+  imports and binary/empty reads from the immutable projection. It denies source
+  writes and private data. It refuses changed/closed captures before execution.
+  It recovers after source handles have already closed.
   `captured-output.test.ts` covers source removal, binary/empty bytes, immutable
   readers, purpose separation, aggregate bounds, invalid trees and cancellation.
+
   The native input/guardian test also verifies an output snapshot after its
-  original filesystem image and collector have been released.
-  Portable `file-delivery.test.ts` cases cover post-source-removal binary output,
+  original filesystem image and collector have been released. Portable
+  `file-delivery.test.ts` cases cover post-source-removal binary output,
   forged/closed snapshots, cancelled retention, collisions, parent replacement
   and complete staging cleanup. Independent command transport cases additionally
   require their platform's qualified process ownership and descriptor transfer.
-  `delivery-inspection.test.ts` covers serial excerpt/aggregate limits, inherited
-  deadline minima and preview cutoff, empty/no-publication retirement, pure map
-  release, pending operation joins, ACK loss/late completion, expected versus
-  accidental disconnect, and memoized descriptor-close failure with private
-  streams/clocks. These portable cases do not establish actual native peer
-  authentication, endpoint release, parent recovery fencing or installed browser
-  composition; those remain platform/installed qualification gates.
+  `delivery-inspection.test.ts` covers serial excerpt/aggregate limits,
+  inherited deadline minima, preview cutoff, empty/no-publication retirement and
+  pure map release. It also covers pending operation joins, ACK loss/late
+  completion, expected versus accidental disconnect, and memoized
+  descriptor-close failure. These checks use private streams/clocks.
+
+  These portable cases do not establish actual native peer authentication,
+  endpoint release, parent recovery fencing or installed browser composition.
+  Those remain platform/installed qualification gates.
   `execution-output.test.ts` verifies fencing/release/cleanup order, capture
   refusal, missing collectors and cleanup failure. Directory and snapshot loan
   cases require one actual close, sticky typed uncertainty and retained original
-  handles after caller references leave. Native guardian input evidence
-  and terminal cleanup recovery cover retained bytes after storage removal;
-  the latter injects transient and persistent job-retirement refusal with actual
+  handles after caller references leave. Native guardian input evidence and
+  terminal cleanup recovery cover retained bytes after storage removal. The
+  latter injects transient and persistent job-retirement refusal with actual
   bounded output collection, preserving refusal until removal is confirmed.
-  Session collectors validate captured empty directories too; controller faults distinguish expected
-  snapshot-profile refusal from unexpected snapshot I/O failure.
-  The complete file-delivery suite also runs on qualified Mac: it covers the
-  independent process, authenticated parent rejection, renamed input roots,
-  immutable output transfer, cooperative interruption, forced escalation and
-  coordinator loss during staging. Stopped fixtures explicitly ignore SIGTERM
-  so both kernels exercise escalation; use exact owned fixture PIDs only.
-  `macos-owner-lock.test.ts` checks independent-process exclusion, release on
-  coordinator death and lock replacement. `macos-backend-state.test.ts` checks
-  fresh-process recovery of committed state, cancelled admission, exact final
-  receipt retention, interrupted writes, atomic release recovery and authentication
-  failures, including coordinator death during release-marker publication and
-  unsafe or proofless release staging. Independent subprocesses verify prompt
-  refusal of unread named pipes in final/pending state and release records,
-  guardian owner journals and authenticated socket journals.
-  Both subprocess fixtures compile in ordinary tests. Synthetic ledger receipts
-  do not qualify backend cleanup or installed execution.
-  `macos-native-backend.test.ts` qualifies sealing, immutable-path
+
+  Session collectors validate captured empty directories too. Controller faults
+  distinguish expected snapshot-profile refusal from unexpected snapshot I/O
+  failure. The complete file-delivery suite also runs on qualified Mac. It
+  covers the independent process, authenticated parent rejection, renamed input
+  roots and immutable output transfer. It also covers cooperative interruption,
+  forced escalation and coordinator loss during staging. Stopped fixtures
+  explicitly ignore SIGTERM so both kernels exercise escalation.
+
+  Use exact owned fixture PIDs only. `macos-owner-lock.test.ts` checks
+  independent-process exclusion, release on coordinator death and lock
+  replacement. `macos-backend-state.test.ts` checks fresh-process recovery of
+  committed state, cancelled admission, exact final receipt retention,
+  interrupted writes, atomic release recovery and authentication failures. These
+  checks include coordinator death during release-marker publication and unsafe
+  or proofless release staging. Independent subprocesses verify prompt refusal
+  of unread named pipes in final/pending state and release records, guardian
+  owner journals and authenticated socket journals. Both subprocess fixtures
+  compile in ordinary tests.
+
+  Synthetic ledger receipts do not qualify backend cleanup or installed
+  execution. `macos-native-backend.test.ts` qualifies sealing, immutable-path
   binding, prepared and active admission, bounded output after storage removal,
-  durable final receipts, unused-owner recovery, prepared/active coordinator-loss
-  recovery and exact owner release. It is backend integration evidence, not
-  installed-host conformance.
-  The recovery fixture checks authenticated boot separation and keeps coalition
-  fencing restricted to the current boot. Simulating a signed prior-boot journal
-  does not qualify actual reboot, disk-image disappearance or post-boot reacquisition;
-  those require a controlled native reboot to claim actual reboot qualification.
+  durable final receipts, unused-owner recovery, prepared/active
+  coordinator-loss recovery and exact owner release. It is backend integration
+  evidence, not installed-host conformance. The recovery fixture checks
+  authenticated boot separation and keeps coalition fencing restricted to the
+  current boot. Simulating a signed prior-boot journal does not qualify actual
+  reboot, disk-image disappearance or post-boot reacquisition. Those require a
+  controlled native reboot to claim actual reboot qualification.
+
   Package-level support promotion and exact-revision release gates are owned by
-  `packages/jig/AGENTS.md` and `.github/AGENTS.md`; simulated boot evidence must
+  `packages/jig/AGENTS.md` and `.github/AGENTS.md`. Simulated boot evidence must
   never be reported as a completed reboot test.
 - Containment, delegation, preparation, process-lifecycle, or Agent authority
   changes require the provisioned hostile-host suite and residue check.
@@ -1370,57 +1585,60 @@ child calls, project commands, delegated HTTP, and Agent providers.
   `JIG_NATIVE_AGENT_STARTUP=1` with absolute `JIG_CODEX_STARTUP_PATH`,
   `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH` enables
   `test/native-agent-startup.test.ts` after building. It tests genuine native
-  ACP startup and API sessions with networking disabled and dummy credentials;
+  ACP startup and API sessions with networking disabled and dummy credentials.
   Codex subscription startup separately checks the in-memory login handshake.
-  missing selections fail instead of silently skipping. This is startup evidence,
-  separate from live model calls and the hostile-host gate.
+  missing selections fail instead of silently skipping. This is startup
+  evidence, separate from live model calls and the hostile-host gate.
 - Run real-host suites sequentially within one delegated cgroup. Their strict
-  acquisition and residue checks intentionally reject other concurrent Runs;
-  the ordinary suite also includes host tests when delegation is present.
+  acquisition and residue checks intentionally reject other concurrent Runs. The
+  ordinary suite also includes host tests when delegation is present.
 
 - Basic HTTP and Agent lifecycle observation waits cover native setup and
-  settlement: Mac uses 60 seconds for admission observations and 75 seconds
-  for terminal settlement, including cleanup. Linux retains its existing waits.
-  Aggregate scenario tests allow each independently bounded Run to settle;
-  these test windows never expand workload enforcement limits.
-- Mac command and Agent composition fixtures explicitly select five-minute Runs and allow
-  75 seconds of settlement observation afterward. Their independent coordinator
-  fixtures select the same budget; deep branch admission observation allows
-  three minutes before deliberate cancellation/loss. This covers nested native
-  setup while production defaults and deliberate short-deadline checks stay
-  unchanged; aggregate test bounds account for their multiple independent Runs.
+  settlement. Mac uses 60 seconds for admission observations and 75 seconds for
+  terminal settlement, including cleanup. Linux retains its existing waits.
+  Aggregate scenario tests allow each independently bounded Run to settle. These
+  test windows never expand workload enforcement limits.
+- Mac command and Agent composition fixtures explicitly select five-minute Runs
+  and allow 75 seconds of settlement observation afterward. Their independent
+  coordinator fixtures select the same budget. Deep branch admission observation
+  allows three minutes before deliberate cancellation/loss. This covers nested
+  native setup while production defaults and deliberate short-deadline checks
+  stay unchanged. Aggregate test bounds account for their multiple independent
+  Runs.
 - `root-flow-call-controller.test.ts` isolates injected allocation failures in a
   subprocess. Unexpected lifecycle allocation failures report the `allocation`
-  phase without changing the original exception; capacity refusal stays an
+  phase without changing the original exception. Capacity refusal stays an
   ordinary resource-exhausted result, and observer failures cannot affect it.
 - Finite ACP failures report their private preparation, sealing, admission,
   protocol, settlement or cleanup phase through the existing closed host-test
-  observer, including nested Flow calls. Observer exceptions cannot change
-  the terminal or interrupt cleanup. Post-protocol collection, session storage
-  and receipt cancellation report settlement; output descriptor-close failures
-  report cleanup. Lifecycle repeat-success checks assert
-  the Agent result as well as the outer Flow terminal.
-  Project-session host-test causes distinguish fixed Mac cleanup refusals behind
-  an unconfirmed fence. Storage recovery retains its guardian's closed failure
-  step and cause behind the unconfirmed-cleanup error. The exported classifier
-  remains a private test seam;
-  raw messages and unreadable message getters cannot become evidence. These
-  codes change neither the public terminal nor recovery authority.
-  The same exact-message classifier recognizes six fixed native output
-  collection, cleanup, missing-capture, deadline and finite-file-profile causes.
-  Nested secret canaries and message near-matches must remain absent from its
-  bounded class/code projection. Contained repair host tests observe guardian
-  recovery per invocation and wrap only the existing snapshot-ready await with
-  a fixed `output-capture` failure phase, then rethrow the same error even if
-  observation fails. Capture, delivery and cleanup limits and outcomes stay
-  unchanged; successful diagnostic reruns do not explain an earlier failure.
+  observer, including nested Flow calls. Observer exceptions cannot change the
+  terminal or interrupt cleanup. Post-protocol collection, session storage and
+  receipt cancellation report settlement. Output descriptor-close failures
+  report cleanup. Lifecycle repeat-success checks assert the Agent result as
+  well as the outer Flow terminal. Project-session host-test causes distinguish
+  fixed Mac cleanup refusals behind an unconfirmed fence.
+
+  Storage recovery retains its guardian's closed failure step and cause behind
+  the unconfirmed-cleanup error. The exported classifier remains a private test
+  seam. Raw messages and unreadable message getters cannot become evidence.
+  These codes change neither the public terminal nor recovery authority. The
+  same exact-message classifier recognizes six fixed native output collection,
+  cleanup, missing-capture, deadline and finite-file-profile causes. Nested
+  secret canaries and message near-matches must remain absent from its bounded
+  class/code projection.
+
+  Contained repair host tests observe guardian recovery per invocation. They
+  wrap only the existing snapshot-ready await with a fixed `output-capture`
+  failure phase. They then rethrow the same error even if observation fails.
+  Capture, delivery and cleanup limits and outcomes stay unchanged. Successful
+  diagnostic reruns do not explain an earlier failure.
 - Mac repair application qualification uses the public guide’s five-minute Run
   budget and allows setup and cleanup outside it. Linux keeps its existing
-  two/three-minute fixture budgets; production defaults remain unchanged.
-- Mac host conformance also enables the shared workspace preparation reuse and
-  public CLI workspace dependency cases, plus installed command, HTTP Agent,
-  Markdown, continuation and interruption checks. Linux-only preparation
-  cgroup recovery cases retain their Linux proof-host opt-in.
+  two/three-minute fixture budgets. Production defaults remain unchanged.
+- Mac host conformance enables shared workspace preparation reuse and public CLI
+  workspace dependency cases. It also enables installed command, HTTP Agent,
+  Markdown, continuation and interruption checks. Linux-only preparation cgroup
+  recovery cases retain their Linux proof-host opt-in.
 
 ## Child DOX Index
 

@@ -61,7 +61,7 @@ export function validateAssignments(photos: Photo[], input: unknown): RenamedPho
     const previousLabel = eventLabelsByFolder.get(eventFolder)
     if (previousLabel !== undefined && previousLabel !== event) {
       throw new TypeError(
-        'Different event labels normalize to the same group; choose one consistent label.',
+        'Different event labels normalize to the same group. Choose one consistent label.',
       )
     }
 

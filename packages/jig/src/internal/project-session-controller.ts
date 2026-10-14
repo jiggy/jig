@@ -960,7 +960,7 @@ export function projectError(
   if (error instanceof RootAdministrationError && error.code === 'PROJECT_BUSY') {
     return new ProjectAdministrationError(
       'PROJECT_BUSY',
-      'project changed or is busy; retry the operation',
+      'project changed or is busy. Retry the operation',
     )
   }
   if (error instanceof CheckError) {
@@ -972,7 +972,7 @@ export function projectError(
     ) {
       return new ProjectAdministrationError(
         'PROJECT_BUSY',
-        'project changed or is busy; retry the operation',
+        'project changed or is busy. Retry the operation',
       )
     }
     if (error.code === 'LOCK_MISMATCH') {

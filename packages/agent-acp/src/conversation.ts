@@ -32,7 +32,7 @@ export async function converse(
     if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 65_536)
       throw new OperationError(
         'RESOURCE_EXHAUSTED',
-        'A conversation reply exceeds 64 KiB; request a smaller answer',
+        'A conversation reply exceeds 64 KiB. Request a smaller answer',
       )
     const timeout = AbortSignal.timeout(5_000)
     try {

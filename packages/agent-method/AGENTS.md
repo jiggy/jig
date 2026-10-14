@@ -9,84 +9,95 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - `src/` owns prompt preparation, structured schema checking, JSON/0 decoding,
   result assembly, the optional package Skill reader, and ordinary Run/0 wiring.
-- The root `FLOW.ts` invokes the bundled runtime; it performs no implicit Skill reads.
-- `contracts/http-request/` mirrors the ordinary
-  Flow's exact delegated HTTP interface. Canonical descriptors live under
-  `docs/jig/spec/contracts/`.
+- The root `FLOW.ts` invokes the bundled runtime. It performs no implicit Skill
+  reads.
+- `contracts/http-request/` mirrors the ordinary Flow's exact delegated HTTP
+  interface. Canonical descriptors live under `docs/jig/spec/contracts/`.
 - Package source, declarations, built runtime, licenses, tests, and build
   instructions form one release artifact.
-- `justfile` owns explicit builds and ordinary `bun pm pack` distribution.
-  Bun converts declared workspace versions to registry versions when packing;
-  no dependency archives or private installation convention are included.
+- `justfile` owns explicit builds and ordinary `bun pm pack` distribution. Bun
+  converts declared workspace versions to registry versions when packing. The
+  artifact includes no dependency archives or private installation convention.
 
 ## Local Contracts
 
 - Pure exports perform no provider dispatch or filesystem access. The separate
   `./skills` export reads only explicitly selected package-local Skill trees.
-- `./conversation` composes the public Agent Run contract through ordinary
-  calls and channels. It owns correlation, local endpoint disposal and an
-  uncancelled invocation waiter; it imports no native or private host code.
-  Received turn outcomes and final invocation settlement remain distinct.
-  Final receipt presence must match the initial session request; malformed or
-  unsolicited receipts fail without discarding settled turn evidence.
-  Callback or cleanup failures retain received turns in `AgentConversationError`.
-  Its bounded summary preserves the first already-exposed Error message without
-  invoking getters or traversing arbitrary causes. Diagnostic display replaces
-  malformed Unicode; full original errors remain available.
-  Optional synchronous `onEvent` owns its public update channel and reports
-  observation loss separately from execution settlement. It never privately
-  echoes filtered data or requires a Log grant. Async routing uses `events`.
-  Resolve commands, replies and updates through the caller's declared Agent
-  slot; callers do not supply a separately synchronized contract directory.
+- `./conversation` composes the public Agent Run contract through ordinary calls
+  and channels. It owns correlation, local endpoint disposal and an uncancelled
+  invocation waiter. It imports no native or private host code. Received turn
+  outcomes and final invocation settlement remain distinct. Final receipt
+  presence must match the initial session request. Malformed or unsolicited
+  receipts fail without discarding settled turn evidence.
+
+  Callback or cleanup failures retain received turns in
+  `AgentConversationError`. Its bounded summary preserves the first
+  already-exposed Error message without invoking getters or traversing arbitrary
+  causes. Diagnostic display replaces malformed Unicode. Full original errors
+  remain available. Optional synchronous `onEvent` owns its public update
+  channel and reports observation loss separately from execution settlement. It
+  never privately echoes filtered data or requires a Log grant.
+
+  Async routing uses `events`. Resolve commands, replies and updates through the
+  caller's declared Agent slot. Callers do not supply a separately synchronized
+  contract directory.
 - Session requests are invocation metadata, separate from rendered instructions
-  and transport requests. `prepareAgent` validates and snapshots them;
-  `finishAgent` assembles answer facts only. `checkAgentResult` validates optional
-  final session receipts without granting authority or reading retained state.
-  Unavailable receipts require one of the contract's closed retention reasons;
-  neither missing reasons nor arbitrary diagnostic text are accepted.
-  Follow-up conversation prompts cannot change session intent; the receipt belongs
-  to final invocation settlement, never an individual turn reply.
+  and transport requests. `prepareAgent` validates and snapshots them.
+  `finishAgent` assembles answer facts only. `checkAgentResult` validates
+  optional final session receipts without granting authority or reading retained
+  state. Unavailable receipts require one of the contract's closed retention
+  reasons. The library accepts neither missing reasons nor arbitrary diagnostic
+  text.
+
+  Follow-up conversation prompts cannot change session intent. The receipt
+  belongs to final invocation settlement, never an individual turn reply.
   Optional `lifetime: 'run'` on a new retention request restricts continuation
-  to its owning root. Restore inherits lifetime; the host owns enforcement and
+  to its owning root. Restore inherits lifetime. The host owns enforcement and
   deletion, not this library or the method.
-- The HTTP Flow rejects conversational mode and any session request before resource dispatch. Its
-  shared Agent contract does not imply support for native continuing sessions.
-  Its metadata declares `supports: []`; one-shot consumers need no optional
-  feature requirements. The shared descriptor catalog never grants a feature.
+- The HTTP Flow rejects conversational mode and any session request before
+  resource dispatch. Its shared Agent contract does not imply support for native
+  continuing sessions. Its metadata declares `supports: []`. One-shot consumers
+  need no optional feature requirements. The shared descriptor catalog never
+  grants a feature.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or
-  Responses exchange through its HTTP slot. Closed API/model/token settings
-  are checked before dispatch. `structuredOutput: 'json-schema'` explicitly
-  adds the API's strict schema request; prompt mode is the default. Both modes
-  check results locally and never fall back or retry on rejection.
-  HTTP failures retain closed status-derived diagnostics and corrective guidance;
-  only an exact allowlisted API parameter name may be projected from rejection.
-  Provider error text, headers and rejected values never enter diagnostics.
-  A response establishes neither remote effect rollback nor safe replay.
-  Endpoint, credentials and request policy belong to the host grant. No retries,
-  native Agent dependency, channel projection or direct networking. Skill contents
-  and guidance arrive as explicit caller data, not host-authenticated provenance.
-  `FLOW.contract.json` offers the exact Agent Run interface; an unsupported
-  optional channel rejects before HTTP dispatch.
+  Responses exchange through its HTTP slot. The Flow checks closed
+  API/model/token settings before dispatch. `structuredOutput: 'json-schema'`
+  explicitly adds the API's strict schema request. Prompt mode is the default.
+  Both modes check results locally and never fall back or retry on rejection.
+  HTTP failures retain closed status-derived diagnostics and corrective
+  guidance.
+
+  Only an exact allowlisted API parameter name may be projected from rejection.
+  Provider error text, headers and rejected values never enter diagnostics. A
+  response establishes neither remote effect rollback nor safe replay. Endpoint,
+  credentials and request policy belong to the host grant. No retries, native
+  Agent dependency, channel projection or direct networking. Skill contents and
+  guidance arrive as explicit caller data, not host-authenticated provenance.
+  `FLOW.contract.json`
+
+  offers the exact Agent Run interface. An unsupported optional channel rejects
+  before HTTP dispatch.
 - `settings.schema.json` owns API/model/token/output-mode authoring validation.
   The HTTP call requests decoded JSON/0 responses. Its 8 MiB request / 12 MiB
   response ceilings do not increase the operator's smaller default grant or
-  JSON/0 value limits; reject oversized requests before dispatch, never truncate.
+  JSON/0 value limits. Reject oversized requests before dispatch, never
+  truncate.
 - Preserve the shared 64-group, 1,024-item, 1 MiB content and 1 MiB rendered
   prompt limits. Reject duplicate selections, invalid UTF-8 and symlinks.
-- Runtime dependencies are bundled; installed consumers need no build hook.
+- Runtime dependencies are bundled. Installed consumers need no build hook.
 - The source workspace uses `workspace:*` for SDK development. Extracted source
   uses the packed versioned development dependencies and an ordinary Bun lock.
   Publish dependencies before packages that require them for source rebuilds.
 - The ordinary ACP package imports this same method. `checkAgentResult` lets
-  consumers independently check any selected
-  Agent's dynamic structured result; it grants no authority or provenance.
-  Its validated `AgentResult` is assignable to portable FLOW JSON without a
-  cast; arbitrary exceptions and non-JSON values are not.
+  consumers independently check any selected Agent's dynamic structured result.
+  It grants no authority or provenance. Its validated `AgentResult` is
+  assignable to portable FLOW JSON without a cast. Arbitrary exceptions and
+  non-JSON values are not.
 
 ## Work Guidance
 
-- Keep the bounded JSON/0 codec and schema profile local; no sibling private
-  imports or general provider/schema framework.
+- Keep the bounded JSON/0 codec and schema profile local. Do not use sibling
+  private imports or a general provider/schema framework.
 - Update source and rebuild the corresponding packed runtime when adapting the
   method. Do not edit generated `dist/` files.
 

@@ -61,7 +61,7 @@ def missing(receipt: dict, download=fetch) -> list[str]:
         if name in found or name not in receipt["files"] or file.get("yanked"):
             raise ValueError("unexpected, duplicate, or yanked registry artifact")
         if file["digests"]["sha256"] != receipt["files"][name]:
-            raise ValueError("immutable registry bytes differ; bump the package version")
+            raise ValueError("immutable registry bytes differ. Bump the package version")
         url = urllib.parse.urlsplit(file["url"])
         if url.scheme != "https" or url.netloc != "files.pythonhosted.org":
             raise ValueError("unexpected distribution origin")

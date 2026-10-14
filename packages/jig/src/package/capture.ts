@@ -95,7 +95,7 @@ async function captureDirectory(source: string, contained: boolean): Promise<Cap
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PACKAGE_CAPTURE_UNAVAILABLE',
-      'this host has no qualified filesystem source adapter; use a supported Jig host',
+      'this host has no qualified filesystem source adapter. Use a supported Jig host',
     )
   }
 
@@ -137,7 +137,7 @@ export async function captureOpenedPackageDirectory(
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PACKAGE_CAPTURE_UNAVAILABLE',
-      'this host has no qualified opened-directory capture; use a supported Jig host',
+      'this host has no qualified opened-directory capture. Use a supported Jig host',
     )
   }
 

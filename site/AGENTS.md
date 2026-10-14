@@ -9,59 +9,63 @@ Jig public sites.
 
 - `docs/flow/` and `docs/jig/` own published prose and specifications.
 - `flow/` and `jig/` own their site-specific navigation, styles, and public-root
-  files. Each site's `diagrams.css` fits guide SVGs to the reading column;
-  source diagrams remain with their owning guide under `docs/`.
-- Each site's `public/mark.svg` is its selected monochrome emblem. Keep its
-  path geometry identical in `mark-light.svg` and `favicon.svg`; those files
-  provide the light-on-dark and browser-icon treatments. Jig uses the striped
-  switch mark; FLOW uses its unstriped counterpart.
+  files. Each site's `diagrams.css` fits guide SVGs to the reading column.
+  Source diagrams remain with their owning guide under `docs/`.
+- Each site's `public/mark.svg` is its selected monochrome emblem. Keep its path
+  geometry identical in `mark-light.svg` and `favicon.svg`. Those files provide
+  the light-on-dark and browser-icon treatments. Jig uses the striped switch
+  mark. FLOW uses its unstriped counterpart.
 - Each site's `public/logo.svg` and `logo-light.svg` are transparent standalone
   lockups pairing that site's emblem with its Quicksand wordmark. Their PNG
   counterparts are transparent 4× raster exports of the SVGs. These are
   downloadable brand assets, not replacements for the accessible live-text
   wordmarks in the site navigation.
-- Each site's `public/` directory also serves static hero overview assets
-  (`flow-intro.mp4`, `flow-intro-poster.jpg`, `jig-intro.mp4`, `jig-intro-poster.jpg`)
-  copied into dist outputs for the landing page hero video players.
+- Each site's `public/` directory serves static hero overview assets:
+  `flow-intro.mp4`, `flow-intro-poster.jpg`, `jig-intro.mp4`, and
+  `jig-intro-poster.jpg`. Builds copy these assets into dist outputs for the
+  landing page hero video players.
 - Site headers compose those marks with the live product wordmarks in the shared
-  theme. Keep the two sites' mark assets separate; their visual distinction is
+  theme. Keep the two sites' mark assets separate. Their visual distinction is
   intentional, while wordmark typography and balanced lockup proportions are
   owned by `theme/`.
-- FLOW publishes SDK guides at `/guide/python` and `/guide/typescript`, Markdown
-  authoring at `/guide/markdown`, Skill compatibility at `/guide/skills`,
-  language and runtime matrix at `/guide/runtimes`, and host/platform integration
-  at `/guide/platforms`. Navigation, `llms.txt`, and site assembly keep these routes reachable. Jig introduces
-  composition at `/guide/contact-import`; its navigation, generated index, and
-  assembly gate keep that walkthrough reachable.
-  The bounded factory walkthrough is published at `/guide/software-factory`.
-- `theme/` owns the shared default-theme extension; `landing.css` owns shared
-  landing and reading presentation. Both deployment triggers include these inputs.
-- `package.json` and `bun.lock` own shared pinned site tooling; `justfile` owns
+- FLOW publishes SDK guides at `/guide/python` and `/guide/typescript`. Other
+  routes cover Markdown authoring (`/guide/markdown`), Skill compatibility
+  (`/guide/skills`), the language/runtime matrix (`/guide/runtimes`), and
+  host/platform integration (`/guide/platforms`). Navigation, `llms.txt`, and
+  site assembly keep these routes reachable. Jig introduces composition at
+  `/guide/contact-import`. Its navigation, generated index, and assembly gate
+  keep that walkthrough reachable. The bounded factory walkthrough is published
+  at `/guide/software-factory`.
+- `theme/` owns the shared default-theme extension. `landing.css` owns shared
+  landing and reading presentation. Both deployment triggers include these
+  inputs.
+- `package.json` and `bun.lock` own shared pinned site tooling. `justfile` owns
   the FLOW and Jig Rspress build and development server recipes.
 
 ## Local Contracts
 
 - Never maintain copied prose or machine schemas here.
-- Jig's pricing navigation links to `/pricing`, a site page at `docs/jig/pricing.md`
-  that explains free and paid use in plain language. That page links to the canonical
-  `PRICING.md` and `LICENSE.md` as the authoritative terms.
+- Jig's pricing navigation links to `/pricing`, a site page at
+  `docs/jig/pricing.md` that explains free and paid use in plain language. That
+  page links to the canonical `PRICING.md` and `LICENSE.md` as the authoritative
+  terms.
 - Exclude repository `AGENTS.md` work contracts from public documentation
   routes.
 - Keep origins, navigation, public roots, schemas, contracts, and deployment
   artifacts separate between FLOW and Jig.
 - Apply `docs/AGENTS.md`'s human-facing identity-URL rule to both sites without
   replacing machine-resource responses with HTML. Jig contract routes serve
-  Markdown from `docs/jig/contracts/`; sibling `<name>/contract.json` downloads
-  preserve exact invocation bundles, including descriptor-relative channel files. Check both the human pages and machine
-  downloads.
-- `scripts/build-site.sh` owns fresh staging, exact artifact copying,
-  inventory enforcement, and cross-site exclusion.
-  Jig's reporting landing page, descriptor download and license are copied
-  from the portable profile owner; never regenerate an equivalent descriptor.
+  Markdown from `docs/jig/contracts/`. Sibling `<name>/contract.json` downloads
+  preserve exact invocation bundles, including descriptor-relative channel
+  files. Check both the human pages and machine downloads.
+- `scripts/build-site.sh` owns fresh staging, exact artifact copying, inventory
+  enforcement, and cross-site exclusion. Jig's reporting landing page,
+  descriptor download and license are copied from the portable profile owner.
+  Never regenerate an equivalent descriptor.
 - Rspress generates `.md` companions, `llms.txt`, and `llms-full.txt` from the
   public pages. Do not maintain separate copies of agent-facing prose.
-- Reconcile navigation, generated indexes, workflow path filters, and build mappings
-  whenever public routes or artifacts change.
+- Reconcile navigation, generated indexes, workflow path filters, and build
+  mappings whenever public routes or artifacts change.
 - Generated dependency trees, site builds, and deployment artifacts are not
   source.
 
@@ -73,15 +77,15 @@ Jig public sites.
   teams. Use Rspress's navigation, search, code rendering, and Markdown export
   with focused extensions. Judge presentation against excellent product sites,
   documentation coverage against supported tasks, and simplicity by real paths
-  to useful results; avoid unsupported competitive claims.
-- Use Rspress’s native Shiki highlighting with One Dark Pro for dark-mode
-  code blocks and One Light for light mode on both sites. Shared native color
-  replacements preserve their hues while improving token contrast.
-  `landing.css` must apply the emitted dark token variables under `html.rp-dark`;
-  selecting two palettes in configuration alone does not switch their styles.
+  to useful results. Avoid unsupported competitive claims.
+- Use Rspress’s native Shiki highlighting on both sites. Use One Dark Pro for
+  dark-mode code blocks. Use One Light for light mode. Shared native color
+  replacements preserve their hues while improving token contrast. `landing.css`
+  must apply the emitted dark token variables under `html.rp-dark`. Selecting
+  two palettes in configuration alone does not switch their styles.
 - Keep guide diagrams as static images with the existing image zoom. Preserve
   ordinary Markdown, theme inheritance, mobile containment, and image aspect
-  ratios; no embedded diagram viewer is needed for the reading path.
+  ratios. No embedded diagram viewer is needed for the reading path.
 
 ## Verification
 
@@ -91,4 +95,5 @@ Jig public sites.
 
 ## Child DOX Index
 
-- [theme/AGENTS.md](theme/AGENTS.md) — Shared layout extension without product prose.
+- [theme/AGENTS.md](theme/AGENTS.md) — Shared layout extension without product
+  prose.

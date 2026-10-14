@@ -207,7 +207,7 @@ export async function withAgentConversation<T>(
             if (returned && typeof (returned as PromiseLike<unknown>).then === 'function') {
               void Promise.resolve(returned).catch(() => undefined)
               throw new TypeError(
-                'onEvent must be synchronous; use events for asynchronous channel processing',
+                'onEvent must be synchronous. Use events for asynchronous channel processing',
               )
             }
           }

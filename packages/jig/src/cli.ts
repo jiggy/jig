@@ -425,7 +425,7 @@ async function executeCommand(
       runtime.writeError(
         renderDiagnostic(
           'JIG_COMMAND_INTERRUPTED',
-          'The command was interrupted. Inspect any result and completed steps before starting new work; cancellation does not undo completed effects.',
+          'The command was interrupted. Inspect any result and completed steps before starting new work. Cancellation does not undo completed effects.',
         ),
       )
       return 2
@@ -826,7 +826,7 @@ async function executeSavedResultInspect(
       runtime.writeError(
         renderDiagnostic(
           'JIG_RESULT_INSPECTION_FAILED',
-          'Saved inspection could not finish or deliver its output. The recorded result is unchanged; no work was started.',
+          'Saved inspection could not finish or deliver its output. The recorded result is unchanged. No work was started.',
           'Saved inspection failed',
         ),
       )
@@ -2152,7 +2152,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     runtime.writeError(
       renderDiagnostic(
         'JIG_COMMAND_UNAVAILABLE',
-        'The installed Jig runtime is incomplete or invalid. Restore the complete installation; inspect any result or effects before retrying. See https://jig.md/guide/#install.',
+        'The installed Jig runtime is incomplete or invalid. Restore the complete installation. Inspect any result or effects before retrying. See https://jig.md/guide/#install.',
       ),
     )
     return 2

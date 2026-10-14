@@ -77,7 +77,7 @@ export function batchJobs(value: unknown): Job[] {
           job.cancelAfterMs > 300_000))
     )
       throw new TypeError(
-        'Each job needs a unique id, a relative project directory, and a known check set; method must name a reviewed method; optional cancellation is 1–300,000 ms.',
+        'Each job needs a unique id, a relative project directory, and a known check set. The method must name a reviewed method. Optional cancellation is 1–300,000 ms.',
       )
     checkName(job.checks)
   }

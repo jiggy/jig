@@ -2284,7 +2284,7 @@ describe('finite Jig project commands', () => {
     expect(events).toEqual(['acquire:/project', 'start', 'status', 'pause', 'close'])
     expect(invocation.output).toBe('')
     expect(invocation.error).toBe(
-      'Command interrupted\n\n  The command was interrupted. Inspect any result and completed steps before starting new work; cancellation does not undo completed effects.\n\n  Diagnostic code: JIG_COMMAND_INTERRUPTED\n',
+      'Command interrupted\n\n  The command was interrupted. Inspect any result and completed steps before starting new work. Cancellation does not undo completed effects.\n\n  Diagnostic code: JIG_COMMAND_INTERRUPTED\n',
     )
   })
   for (const [suiteCaseIndex, suiteCaseValue] of [false, true].entries()) {

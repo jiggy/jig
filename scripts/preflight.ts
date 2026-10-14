@@ -21,7 +21,7 @@ export function requireMacHost(host: {
     (['x64', 'arm64'].includes(host.arch) && host.kernel === '24.6.0' && host.build === '24G830')
   if (!selected || host.uid === undefined || host.uid === 0) {
     throw Error(
-      'Native preflight requires an unprivileged operator on an exact supported Mac host; use hosted Mac CI for other hosts.',
+      'Native preflight requires an unprivileged operator on an exact supported Mac host. Use hosted Mac CI for other hosts.',
     )
   }
   if (

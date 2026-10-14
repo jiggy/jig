@@ -384,7 +384,7 @@ class Interpreter {
     } catch {
       throw new OperationError(
         'INVALID_RESULT',
-        'The reasoner returned a malformed decision; interpretation stopped without repair.',
+        'The reasoner returned a malformed decision. Interpretation stopped without repair.',
       )
     }
     this.decisions.push(snapshot(decision as unknown as JsonValue))
@@ -614,7 +614,7 @@ class Interpreter {
     } catch (error) {
       if (!(error instanceof MarkdownLimitError)) throw error
       throw new MarkdownLimitError(
-        'A settled effect exceeded the remaining value budget; its complete value was not retained.',
+        'A settled effect exceeded the remaining value budget. Its complete value was not retained.',
         {
           operationId,
           settled: true,

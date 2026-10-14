@@ -112,7 +112,7 @@ export async function importContract(
     if (!Buffer.from(descriptor).equals(Buffer.from(await captured.read(name, 262_144))))
       unavailable(
         'CONTRACT_IMPORT_CHANGED',
-        'The source descriptor changed during capture; retry with stable files.',
+        'The source descriptor changed during capture. Retry with stable files.',
       )
     const documents = new Map<string, Uint8Array>()
     for (const path of references) documents.set(path, await captured.read(path, 262_144))
@@ -169,7 +169,7 @@ export async function importContract(
     if ((error as NodeJS.ErrnoException).code === 'EEXIST')
       invalid(
         'CONTRACT_IMPORT_EXISTS',
-        'Choose a new destination directory; the existing destination was not replaced.',
+        'Choose a new destination directory. The existing destination was not replaced.',
       )
     if (error instanceof CheckError) throw error
     return unavailable(

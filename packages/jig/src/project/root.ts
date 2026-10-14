@@ -19,7 +19,7 @@ export async function openPrivateProjectRoot(projectRoot: string): Promise<Priva
   if (process.platform !== 'linux' && process.platform !== 'darwin') {
     unavailable(
       'PROJECT_ROOT_UNAVAILABLE',
-      'project capture is unavailable on this host; use a supported Jig host',
+      'project capture is unavailable on this host. Use a supported Jig host',
     )
   }
   const requestedPath = resolve(projectRoot)

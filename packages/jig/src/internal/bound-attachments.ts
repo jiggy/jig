@@ -116,7 +116,7 @@ export async function captureBoundAttachments(
       'PROJECT_BINDING_ATTACHMENTS_INVALID',
       error instanceof PrivateFileInputError
         ? error.message
-        : 'cannot capture the selected Binding files; use stable, bounded project directories without links or protected state',
+        : 'cannot capture the selected Binding files. Use stable, bounded project directories without links or protected state',
     )
   } finally {
     if (parent !== undefined) closeSync(parent)
@@ -176,7 +176,7 @@ export async function openBoundAttachments(
     close()
     invalid(
       'RUN_BOUND_ATTACHMENTS_UNAVAILABLE',
-      'reviewed attachment bytes are missing or invalid; review the project again',
+      'reviewed attachment bytes are missing or invalid. Review the project again',
     )
   }
 }

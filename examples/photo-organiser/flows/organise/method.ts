@@ -44,7 +44,7 @@ export async function organisePhotos(
       throw new TypeError('The grouping Flow omitted its reason for stopping.')
     }
     updates?.notice(
-      'Photo grouping could not complete; no copies were prepared. See the final cause.',
+      'Photo grouping could not complete. No copies were prepared. See the final cause.',
       'error',
     )
     return { outcome: groupingResponse.outcome, output: { reason } }

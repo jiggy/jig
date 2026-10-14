@@ -373,7 +373,7 @@ export async function executePrivateContainedEffect(
         )
           throw new Error('credential echo')
       } catch {
-        return failed('INVALID_RESULT', 'HTTP response rejected; remote effects may have occurred')
+        return failed('INVALID_RESULT', 'HTTP response rejected. Remote effects may have occurred')
       }
       if ('failure' in result)
         return failed(

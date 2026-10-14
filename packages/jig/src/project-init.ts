@@ -85,7 +85,7 @@ export async function createFlow(
     throw new ProjectInitError(
       'invalid',
       'JIG_NEW_INVALID',
-      'Supply at most 16 distinct --use slot=source declarations. Slots use up to 64 lowercase letters, digits and single hyphens; sources select Jig standard agreements, local descriptors or installed npm packages.',
+      'Supply at most 16 distinct --use slot=source declarations. Slots use up to 64 lowercase letters, digits and single hyphens. Sources select Jig standard agreements, local descriptors or installed npm packages.',
     )
   signal?.throwIfAborted()
   let sdk = GREETING_SDK_VERSION
@@ -150,7 +150,7 @@ export async function createFlow(
         throw new ProjectInitError(
           'invalid',
           'JIG_NEW_EXISTS',
-          'That Flow directory already exists. Choose a different name; existing files were not changed.',
+          'That Flow directory already exists. Choose a different name. Existing files were not changed.',
         )
       throw error
     }
@@ -172,7 +172,7 @@ export async function createFlow(
         throw new CheckError(
           'invalid',
           'JIG_NEW_CONTRACT',
-          'A used slot requires an invocation contract; declare channel agreements under channels instead.',
+          'A used slot requires an invocation contract. Declare channel agreements under channels instead.',
           source,
         )
       declarations[slot] = { contract: `./contracts/${slot}/${basename(imported.descriptor)}` }
@@ -231,7 +231,7 @@ export async function createFlow(
       throw new ProjectInitError(
         'invalid',
         'JIG_NEW_EXISTS',
-        'That Flow directory already exists. Choose a different name; existing files were not changed.',
+        'That Flow directory already exists. Choose a different name. Existing files were not changed.',
       )
     throw new ProjectInitError(
       'unavailable',

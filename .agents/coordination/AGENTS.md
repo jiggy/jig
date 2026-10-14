@@ -10,7 +10,7 @@ gate.
 
 - `ROADMAP.md` gives a concise, high-level overview of outcome order and the
   next steps.
-- `inbox/*.md` holds postponed tasks that have not yet been triaged.
+- `inbox/*.md` holds postponed tasks that await triage.
 - Specifications own current behavior.
 - Temporary execution plans, diagnostics and evidence remain in `.tmp/`.
 
@@ -19,8 +19,9 @@ gate.
 - Keep the roadmap small, direct, and focused on the next high-level outcomes.
   Do not expand it into a complete list of upcoming work.
 - Add postponed tasks to `inbox/` before triage. Record known context without
-  implying that scope, priority, or implementation has been approved.
-- An inbox item preserves work; it does not authorize implementation or spending.
+  implying approval of scope, priority, or implementation.
+- An inbox item preserves work. It does not authorize implementation or
+  spending.
 
 ## Work Guidance
 
