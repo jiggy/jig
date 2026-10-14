@@ -36,6 +36,9 @@ Jig public sites.
   `/guide/contact-import`. Its navigation, generated index, and assembly gate
   keep that walkthrough reachable. The bounded factory walkthrough is published
   at `/guide/software-factory`.
+
+  Conversation navigation separates the two-turn tutorial, control, handoff, and
+  native restoration into their owning guides.
 - `theme/` owns the shared default-theme extension. `landing.css` owns shared
   landing and reading presentation. Both deployment triggers include these
   inputs.

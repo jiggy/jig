@@ -8,18 +8,23 @@ An application can ask an Agent to draft an incident brief, supply a correction,
 and obtain a revised answer in the same native conversation. The application
 chooses when to continue. The operator bounds how many turns may run.
 
-Use the ordinary [native Agent package](agents.md#local-clients). In its
-Binding, allow two turns with an inline policy:
+## Before you start
+
+You need Jig on a [supported host](index.md#supported-host), Bun, and an
+authenticated supported native client. Follow
+[native Agent setup](agents.md#local-clients) to create the project. The HTTP
+Agent package does not implement continuing conversations.
+
+In the native Agent Binding, allow two turns with an inline policy:
 
 ```ts
 slots: { native: { kind: 'acp', client: 'codex', maxTurns: 2 } },
 ```
 
 Choose your installed client and model. This is not a product default. Review
-the changed grant. One-shot calls remain unchanged. The HTTP Agent package does
-not implement continuing conversations and rejects them before dispatch.
+the changed grant. One-shot calls remain unchanged.
 
-## Build a two-turn Flow
+## 1. Create the caller
 
 Start with a project configured through
 [native client setup](agents.md#local-clients). Create the caller from that
@@ -43,20 +48,9 @@ Jig separately prepares reviewed execution dependencies.
 In `bindings/agent.ts`, set the native slot to
 `{ kind: 'acp', client: 'codex', maxTurns: 2 }`. Add `requires` as shown below
 to the generated `agent` slot in `flows/worker/FLOW.meta.json`. Replace
-`flows/worker/FLOW.ts` with the complete caller below. Then run:
+`flows/worker/FLOW.ts` with the complete caller below.
 
-```sh
-jig review --allow-resolution-network
-jig run flow:flows/worker --input '{"facts":"Recovery at 09:48; cause unknown.","correction":"Reconciled recovery time: 09:47. Keep the cause uncertain."}'
-```
-
-Review shows the code, dependencies and two-turn authority before approval.
-Resolution permission can contact dependency-selected destinations before that
-approval. See [dependency preparation](dependencies.md). For later edits, review
-again. Inspect the returned turn's `type` and `result.outcome`: a clean
-conversation close alone does not establish a successful revision.
-
-## Declare and implement the caller
+## 2. Declare and implement the caller
 
 The caller declares an `agent` slot using the complete
 [Agent Run contract bundle](../spec/agent-run.md), imported in the step above.
@@ -126,6 +120,21 @@ await handle(async run => {
 })
 ```
 
+## 3. Review and run
+
+```sh
+jig review --allow-resolution-network
+jig run flow:flows/worker --input '{"facts":"Recovery at 09:48; cause unknown.","correction":"Reconciled recovery time: 09:47. Keep the cause uncertain."}'
+```
+
+Review shows the code, dependencies and two-turn authority before approval.
+Resolution permission can contact dependency-selected destinations before that
+approval. See [dependency preparation](dependencies.md). For later edits, review
+again. Inspect the returned turn's `type` and `result.outcome`: a clean
+conversation close alone does not establish a successful revision.
+
+## 4. Check the result
+
 The caller's `done` means it returned a settled conversation packet. Inspect
 `output.turn` to distinguish an answer from an unsuccessful or cancelled turn.
 Operational errors still fail the Run. `completed.value` is the callback result,
@@ -146,275 +155,23 @@ again if you change the caller. If the initial turn is `blocked` or `limit`,
 this caller returns that turn without requesting a revision. A clean settlement
 does not turn that outcome into an answer.
 
-To interrupt an active turn, call `conversation.prompt(...)`, then await
-`conversation.interrupt()` and that same prompt's promise. It is safe to request
-interruption immediately: the helper waits for the prompt acknowledgement before
-sending the interrupt. `accepted` means the request was accepted, not that the
-turn was cancelled. Natural completion can win, in which case the control may be
-`not-running` and the prompt still returns its result. Leaving a live turn
-unfinished at callback return fails rather than detaching it.
-`AgentConversationError` retains received `turns`, any known `settlement`, and
-both primary and cleanup `errors`.
+## If the tutorial does not complete
 
-Ordinary `try/catch` remains sufficient. Its failure summary includes the first
-exposed error's bounded message. Inspect the retained `errors` when deliberately
-recovering. Optional `onEvent` filters or displays public updates synchronously
-without manual channel setup. Inspect `completed.observation?.status`:
-`incomplete` preserves observation errors without replacing the actual execution
-result. Asynchronous routing can instead use a caller-created `events` writer.
-
-Do not combine it with `onEvent`. There is no privileged host echo of filtered
-text.
-
-## Connect the channels directly
-
-The helper uses only the public contract. Other languages and implementations
-can compose it directly. Inside a Flow, allocate two named direct channels and
-pass opposite ends to the Agent. `conversation: true` starts turn zero. The
-following excerpt assumes validated `facts` and `correction` strings from the
-application's input:
-
-```ts
-const commands = await run.channel({
-  contract: { slot: 'agent', channel: 'commands' },
-})
-const replies = await run.channel({
-  contract: { slot: 'agent', channel: 'replies' },
-})
-const work = run.call({
-  operationId: 'incident-brief', slot: 'agent',
-  input: { instructions: `Draft a short incident brief from these facts: ${facts}`, conversation: true },
-  channels: { commands: commands.receive, replies: replies.send },
-}).then(
-  result => ({ result }),
-  error => ({ error }),
-)
-```
-
-Consume replies while the call runs. After the `result` for turn zero, inspect
-its complete `result.outcome` and `result.output`. A completed draft permits an
-explicit follow-up:
-
-```ts
-await commands.send.send({
-  type: 'prompt', turn: 1,
-  input: { instructions: `Revise the brief using this correction: ${correction}` },
-})
-```
-
-An `accepted` control is not an answer. Wait for the correlated `result`,
-`cancelled`, or `error` reply for turn one. Then close the settled conversation:
-
-```ts
-await commands.send.send({ type: 'close', turn: 1 })
-await commands.send.close()
-// Consume the correlated accepted-close reply, then await the actual invocation.
-const completed = await work
-if ('error' in completed) throw completed.error
-// { outcome: 'done', output: { turns: 2 } } establishes conversation settlement,
-// not that both answers were successful or factually correct.
-```
-
-Never wait only for a reply: race each pending read against `work` and the Run's
-cancellation signal. A rejected call may have no connected reply producer.
-Dispose the endpoints kept locally (`commands.send` and `replies.receive`).
-Endpoints offered in the call's `channels` map belong to host-owned terminal
-cleanup, even if the call fails before any reply arrives. Do not guess transfer
-from received messages or close every endpoint after a failed call.
-
-Using a call-specific abort signal cancels the local wait promptly. Awaiting
-that cancelled promise does not prove that the Agent has stopped. The SDK
-retains wire settlement and the host accounts for owned cleanup before
-publishing the root result. Normal conversation close followed by the actual,
-non-cancelled invocation result is the path for confirmed settlement before
-starting subsequent work. These are ordinary
-[call and channel lifecycle rules](channels.md), not a new Agent-specific SDK.
-An application should retain every answer it actually received and distinguish
-incomplete work from a finished revision.
-
-## Interrupt without replacing the conversation
-
-Keep the follow-up promise, request interruption, then await that same promise:
-
-```ts
-const turn = conversation.prompt({ instructions: 'Continue the draft.' })
-const control = await conversation.interrupt()
-const settled = await turn
-```
-
-The control reply (`accepted` or `not-running`) is not the turn result. The
-settled turn is either `cancelled` or an ordinary `result` if completion won the
-race. Do not start subsequent work until the turn promise settles.
-
-At the channel level, send `{type: 'interrupt', turn: 1}` while turn one is
-running. Its accepted reply means the method accepted that control. Only the
-later `cancelled` reply establishes native turn settlement. A completion racing
-interruption can instead return an ordinary result. Wait for either terminal
-turn reply before continuing.
-
-Busy or stale controls are rejected, not queued. The host independently refuses
-prompts beyond `maxTurns`. A native interruption that does not settle within
-five seconds terminates the client. It does not enable another prompt.
-
-Connect the optional `events` channel to show selected text or plans. Its values
-carry the turn number, but progress can be incomplete and never substitutes for
-the essential replies. A failed progress display need not stop the conversation.
-
-## Hand work to a fresh conversation
-
-An application can use these controls for an application-owned summary handoff.
-One worker drafts, while another publishes preliminary analysis through an
-ordinary FLOW channel and continues preparing independent review questions.
-Ordinary commentary uses a follow-up in the same conversation. A validated
-replacement of source files or appended instructions triggers handoff:
-
-1. Interrupt the predecessor if it is still active.
-2. Await the actual turn.
-3. Request a summary in the same conversation.
-4. Settle the predecessor.
-5. Start one successor.
-
-The parent connects the workers directly. No logging service or host scheduler
-is involved:
-
-```ts
-const { replacement, ...context } = run.input
-const revisions = await run.channel({ contract: './contracts/revisions.json' })
-const results = await Promise.allSettled([
-  run.call({ operationId: 'draft', slot: 'worker',
-    input: { role: 'draft', context },
-    channels: { revisions: revisions.receive } }),
-  run.call({ operationId: 'review', slot: 'worker',
-    input: { role: 'independent', context, ...(replacement ? { replacement } : {}) },
-    channels: { updates: revisions.send } }),
-])
-```
-
-Both start with the initial facts and instructions. The optional `replacement`
-contains separately supplied files and ordered instructions for the reviewer to
-publish. Model output cannot create that authority. The successor receives the
-latest validated context separately from the model's summary and review notes.
-Neither generated text can replace instructions or extend authority. The example
-also retains each branch's result when the other fails.
-
-Its finite update batch must finish before successor dispatch, so accepted
-updates cannot be silently left behind. Drafting requests at most three model
-turns, review at most two, all within the original root deadline and host
-grants.
-
-That is a new conversation with explicit context, not native session
-restoration. Its root input is a supplied snapshot, not an interactive
-instruction inbox. File text is data, not live workspace access. The worker's
-optional revision channel can carry updated files and appended instructions from
-another parent. An unwired or cleanly empty channel needs no replacement. Its
-output is for human review, not permission to publish.
-
-Interruption can prevent the final packet from arriving. This demonstrates
-lifecycle and context preservation, not that summary handoff improves model
-answers.
-
-## Restore after a clean close
-
-A later Run can request the earlier native conversation through an opaque
-reference. The published Agent and Jig alphas include this interface. Qualify
-the installed client's save-and-restore path before relying on it. The initial
-retention profile is Codex 0.154.0. Successful live follow-up alone does not
-qualify restoration.
-
-In the Agent Binding, separately grant retention and review the changed
-authority:
-
-```ts
-slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } }
-```
-
-Request retention in the initial Agent input. A one-shot call needs no
-conversation channels:
-
-```ts
-const first = await run.call({
-  operationId: 'draft', slot: 'agent',
-  input: {
-    instructions: `Draft an incident brief from these facts: ${facts}`,
-    session: { retain: true },
-  },
-})
-```
-
-Check the ordinary answer, then inspect the final `first.output.session`.
-`{status:'retained',reference}` provides a UUID to keep as application data.
-`{status:'unavailable',reason}` means no reusable state was committed. An
-otherwise valid answer remains usable. Receipt availability requires actual
-clean native exit, validated collection and complete cleanup, so accepting a
-close command or receiving the answer does not predict it. Forced closure cannot
-retain a session.
-
-Use `reason` to explain what happened without rerunning completed work:
-
-| Reason | Next step |
+| Observation | Next action |
 | --- | --- |
-| `not-cleanly-closed` | Use the answer. Investigate why native shutdown needed termination. |
-| `missing-history` | Use the answer. Check that the installed native client supports the qualified history profile. |
-| `unsupported-history` | Use the answer. Compare the native version and history features with the [collection profile](../spec/finite-acp.md#retained-native-state). |
-| `capacity` | Keep the answer. Available snapshots are bounded and expire after 24 hours. |
+| Review stops at a selected client prerequisite | Follow [client-check recovery](agents.md#repair-a-client-check). No new approval exists. |
+| The initial turn is `blocked` or `limit` | Read that turn's output. This caller does not request a revision. |
+| A turn returns `cancelled` or `error` | Preserve the turn and settlement evidence. Follow [conversation control](conversation-control.md#handle-errors-and-observation-loss). |
+| Execution, delivery, or cleanup is uncertain | Use [Results and recovery](results.md). Do not automatically replay work. |
+| The revised text is incorrect | Check the supplied facts and correction. Application code owns factual validation. |
 
-An unavailable receipt is not a reusable reference. Storage or cleanup errors
-remain invocation failures, not optional retention loss.
+## Continue with a different task
 
-In a later authorized Run, pass the retained reference with the next
-instructions:
-
-```ts
-const revision = await run.call({
-  operationId: 'revise', slot: 'agent',
-  input: {
-    instructions: `Revise the incident brief using this correction: ${correction}`,
-    session: { restore: retainedReference },
-  },
-})
-```
-
-`retainedReference` is the UUID from the previous receipt. The host restores the
-native conversation and reapplies current reviewed configuration before the new
-prompt. It uses current credentials separately from conversation data. The
-previous transcript is not submitted again as application input, and a failed
-restoration does not silently start a fresh conversation.
-
-Each reference can be claimed once. Use the new final receipt for any successor.
-Do not retry the old reference after a failed claim. Restoration requires the
-same authorized recipient and ancestry in the same protected project with the
-matching native profile. Changed accepted code or configuration may invalidate
-access. A reference identifies state and grants no permission by itself.
-
-For correction within one root Run, request
-`session: {retain: true, lifetime: 'run'}`. The reference survives the Agent
-call and can be restored after separate checks. Restoration inherits this
-lifetime. References cannot cross root Runs, and root settlement removes their
-stored state. Omit `lifetime` only when later Runs need the conversation. Both
-modes require the same reviewed retention grant and bounds.
-
-The project retains at most 16 available snapshots of at most 8 MiB each.
-References expire after 24 hours. Physical pruning happens on the next store
-access. The profile retains only bounded validated native conversation records,
-never credentials, arbitrary workspaces or tool authority. Expiry is not a
-secure-erasure guarantee.
-
-For a continuing conversation, put `session` beside `instructions` in its
-initial input. The receipt is in the final invocation output—
-`completed.settlement.output.session` when using the helper—and never in an
-individual turn reply. Later prompt controls cannot request another retention
-policy. The HTTP Agent package rejects session requests before dispatch.
-
-If session handling is required by the complete method, also add `sessions` to
-its Agent dependency's `requires` list. This checks implementation claims. It
-does not replace the native retention grant or guarantee a successor receipt. A
-settings-conditional session path can retain ordinary runtime refusal and
-authored recovery without making every one-shot call require sessions.
-
-The [Agent Run contract](../spec/agent-run.md#retaining-a-native-conversation)
-defines the request and receipt.
-[Finite ACP](../spec/finite-acp.md#retained-native-state) defines native
-qualification, authorization and cleanup.
+| Task | Guide |
+| --- | --- |
+| Interrupt a turn or connect channels without the helper | [Control a conversation](conversation-control.md) |
+| Move validated context to a fresh conversation | [Hand work to a fresh conversation](conversation-handoff.md) |
+| Retain and restore native conversation state | [Retain and restore a conversation](conversation-restoration.md) |
 
 ## Limits
 
@@ -423,8 +180,9 @@ reply delivery fails after five seconds rather than silently losing a result.
 All turns share the original deadline, byte budgets, and native owner. The
 maximum grant is eight turns. No current conversation can extend its own grant.
 
-Each live invocation remains finite. Explicit restoration does not grant durable
-replay, automatic handoff or native workspace tools. The
+Each live invocation remains finite.
+[Native restoration](conversation-restoration.md) does not grant durable replay,
+automatic handoff or native workspace tools. The
 [exact contract](../spec/agent-run.md#continuing-conversations) defines
 controls, failure cases, and the separate final result. Client startup, live
 follow-up, interruption, and restoration need distinct qualification. Support

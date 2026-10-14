@@ -182,7 +182,7 @@ In the Agent Binding's `bindings/agent.ts`, explicitly grant native retention:
 slots: { native: { kind: 'acp', client: 'codex', retainSessions: true } },
 ```
 
-Review these changes before running. [Native restoration](conversations.md#restore-after-a-clean-close)
+Review these changes before running. [Native restoration](conversation-restoration.md)
 requires qualified matching artifacts; the HTTP Agent does not support it.
 The default repair configuration remains unchanged.
 

@@ -26,11 +26,18 @@ use-case and orchestration hypotheses.
   setup section. Review readiness and installed-client session qualification
   remain distinct. Neither proves model execution. Exact native selection limits
   belong in `spec/finite-acp.md`.
-- `guide/conversations.md` owns bounded follow-up, interruption, native
-  retention, restoration, and application-owned summary handoff. It
-  distinguishes control replies, final settlement, turn answers, and retention
-  receipts. Published interfaces do not establish installed-client
-  qualification.
+- `guide/conversations.md` owns the complete two-turn tutorial, expected
+  results, and basic recovery. Show all required source before review and
+  execution.
+- `guide/conversation-control.md` owns interruption, direct channel composition,
+  helper errors, and observation loss.
+- `guide/conversation-handoff.md` owns application-authorized context transfer
+  after predecessor settlement. It does not claim that summaries improve
+  answers.
+- `guide/conversation-restoration.md` owns native retention, restoration, final
+  receipts, one-use references, and lifetime bounds. Published interfaces do not
+  establish installed-client qualification. Turn answers are not retention
+  receipts.
 - `guide/dependencies.md` owns dependency preparation guidance. Its workspace
   examples follow `spec/project-policy.md`'s root selection, direct membership,
   and supported lock formats.

@@ -110,7 +110,7 @@ fail visibly. A failed claimed invocation does not make its old reference
 reusable. The project permits 16 available snapshots of at most 8 MiB each,
 with 24-hour logical expiry and pruning on the next store access. State excludes
 credentials and arbitrary workspaces; expiry is not a secure-erasure promise.
-See the [restoration guide](https://jig.md/guide/conversations#restore-after-a-clean-close)
+See the [restoration guide](https://jig.md/guide/conversation-restoration)
 for calls and [Finite ACP](https://jig.md/spec/finite-acp#retained-native-state)
 for exact authorization, collection and settlement requirements.
 

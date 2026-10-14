@@ -21,6 +21,10 @@ const sidebar = [
     items: [
       { text: 'Choose an Agent', link: '/guide/agents' },
       { text: 'Reuse the Agent method', link: '/guide/agent-method' },
+      { text: 'Revise in one conversation', link: '/guide/conversations' },
+      { text: 'Control a conversation', link: '/guide/conversation-control' },
+      { text: 'Hand work to a fresh conversation', link: '/guide/conversation-handoff' },
+      { text: 'Retain and restore a conversation', link: '/guide/conversation-restoration' },
       { text: 'Flow dependencies', link: '/guide/dependencies' },
       { text: 'Author contracts', link: '/guide/contracts' },
       { text: 'Markdown methods', link: '/guide/markdown' },

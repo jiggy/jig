@@ -26,6 +26,8 @@ your application while keeping authority and consequences explicit.
 | Check whether my host can run Jig | [Supported hosts](./index.md#supported-host) |
 | Adjust startup verification, terminal appearance, or other settings | [Settings and configuration](./configuration.md) |
 | Choose a model, API, or native client | [Choose an Agent](./agents.md) |
+| Revise an answer in one Agent conversation | [Two-turn conversation](./conversations.md) |
+| Interrupt a turn, transfer context, or restore native state | [Conversation control](./conversation-control.md), [handoff](./conversation-handoff.md), and [restoration](./conversation-restoration.md) |
 | Import libraries or share local packages | [Flow dependencies](./dependencies.md) |
 | Supply source files and deliver artifacts | [Working with files](./files.md) |
 | Show progress in a terminal or another application | [Live progress](./channels.md) |
