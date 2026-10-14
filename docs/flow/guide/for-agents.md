@@ -1,13 +1,13 @@
 ---
 title: Documentation for agents
-description: Read FLOW's exact public meaning as Markdown, with an index and complete bundle generated from the documentation.
+description: Read FLOW's public specifications and guides as Markdown. Use the index to select pages or read the complete bundle.
 ---
 
 # Read FLOW as Markdown
 
 Agents and developers share the same public source of truth. Each page has a
-plain-text Markdown version, and the site publishes a generated index and
-full-content bundle. Reading them requires no account or API key.
+plain-text Markdown version. The site generates an index and a complete bundle.
+You need no account or API key to read them.
 
 | Resource | Use it for |
 | --- | --- |
@@ -22,9 +22,9 @@ plain-text version. The HTML page `/spec/run-protocol` corresponds to
 
 ## The architecture to preserve
 
-Executable Flows put code, Agent judgment, and mixed methods behind one input,
-outcome, and result boundary. Compose through the method's contract; do not
-require a different calling model just because its implementation uses an Agent.
+Executable Flows give code, Agent judgment, and mixed methods one boundary for
+input, outcome, and result. Compose through the method's contract.
+Do not require a different calling model because its implementation uses an Agent.
 FLOW owns the portable boundary. Jig owns local authority and execution lifecycle.
 A shared interface does not establish equal judgment, cost, or required powers.
 
@@ -34,7 +34,8 @@ See [why FLOW exists](./understand.md) and the
 ## A focused starting instruction
 
 ```text title="Documentation context"
-Read https://flow.jig.md/llms.txt and fetch the pages relevant to my task.
+Read https://flow.jig.md/llms.txt.
+Fetch the pages relevant to my task.
 Use the exact public specification for package or protocol requirements.
 Keep FLOW independent of host admission, providers, credentials, and policy.
 Distinguish SDK availability from a host's supported implementations.
@@ -61,6 +62,6 @@ The specifications are prerelease. A source SDK candidate may not yet be
 published, and a host may support only a subset of implementations. Use a
 qualified revision and report missing support directly.
 
-The public Markdown includes explanatory pages and normative specifications;
-the latter define exact requirements. The site does not include internal
+The public Markdown includes explanatory pages and normative specifications.
+The normative specifications define exact requirements. The site does not include internal
 repository instructions or transfer a method author's authority to its reader.

@@ -2,10 +2,10 @@
 
 ## Purpose
 
-Owns the product compass, doctrine, audience and communication strategy,
-first-time engineering orientation, recovery, long-term planning, and optional
-historical field notes that maintainers need, plus project-maintained skills
-for external libraries.
+This directory owns the product compass, doctrine, audience strategy,
+communication strategy, and first-time engineering orientation.
+It also owns recovery, long-term planning, optional historical field notes for
+maintainers, and project-maintained skills for external libraries.
 
 ## Ownership
 
@@ -25,7 +25,7 @@ for external libraries.
   working method.
 - `coordination/` owns project coordination records. Its
   `ROADMAP.md` gives a compact, high-level view of outcome order and the next
-  steps; its `inbox/` holds postponed tasks that have not yet been triaged.
+  steps. Its `inbox/` holds postponed tasks that await triage.
 - `suspended-experiments.md` points to deleted experiments only when their
   evidence may be useful under an explicit reconsideration gate.
 - `field-notes/` preserves selected first-person causal evidence without making
@@ -38,12 +38,12 @@ for external libraries.
 
 ## Local Contracts
 
-- A skill describes how an agent should use an actual public interface; it
-  does not create or extend that interface.
+- A skill describes how an agent should use an actual public interface.
+  It does not create or extend that interface.
 - Scoped work rules belong in the applicable `AGENTS.md`. Repository-wide
   engineering workflow and rationale belong in `maintainer-guide.md`, required
-  by the root entrypoint; product rationale belongs in the doctrine and recovery
-  landmarks in `suspended-experiments.md`.
+  by the root entrypoint. Product rationale belongs in the doctrine.
+  Recovery landmarks belong in `suspended-experiments.md`.
 - Edit the compass, doctrine, audience, communication guide, maintainer guide,
   roadmap, and recovery index in place. Keep dated snapshots, current blockers,
   and release anomalies in `.tmp/`.
@@ -51,12 +51,12 @@ for external libraries.
   first-hand causality that Git and the living records cannot. It remains
   non-normative, is never default reading, and must not carry current status.
 - Keep purpose, audience strategy, and communication in their separate owners.
-  Purpose and the compass reference the strategy documents; target segments
-  and editorial choices do not define product purpose or public contracts.
-  Audience strategy owns the opportunity of bringing Agents into production
-  software; communication explains the design conviction and its benefits.
-- Keep product identity decisions in `brand.md`; public communication follows
-  that system without adding publisher names to product marks.
+  Purpose and the compass reference the strategy documents.
+  Target segments and editorial choices do not define product purpose or public contracts.
+  Audience strategy owns the opportunity of bringing Agents into production software.
+  Communication explains the design conviction and its benefits.
+- Keep product identity decisions in `brand.md`.
+  Public communication follows that system without adding publisher names to product marks.
 - Keep the compass a concise entrypoint and the doctrine the home of detailed
   product reasoning. Current behavior, implementation mechanics, roadmap
   order, and research catalogues retain their existing owners.
@@ -72,18 +72,21 @@ for external libraries.
 
 ## Work Guidance
 
+- Apply the technical English rules in
+  [maintainer-guide.md](maintainer-guide.md#write-clear-technical-english).
 - Prefer updating an existing owner over duplicating the same rule in several
   internal files.
 - Use the compass's distinct aspiration, core ideas, and product promises.
   Describe Jig's agency for human and software consumers without implying
   that a consumer can grant itself authority.
 - Teach concepts without assuming project history. Keep the maintainer guide
-  efficient to load. Split out a subject only when it
+  efficient to load. Give a subject a separate document only when it
   acquires a distinct durable owner or verification contract.
-- Keep the roadmap tied to the doctrine and limited to a small, direct overview
-  of outcomes and the next steps. Do not expand it into a complete task list or
+- Keep the roadmap tied to the doctrine.
+  Limit it to a small, direct overview of outcomes and the next steps.
+  Do not expand it into a complete task list or
   subsystem inventory. Put postponed, untriaged tasks in
-  `coordination/inbox/*.md`; release status, active execution plans and
+  `coordination/inbox/*.md`. Release status, active execution plans and
   blockers remain in `.tmp/`.
 
 ## Verification
@@ -95,7 +98,7 @@ for external libraries.
 - [brand.md](brand.md) — Selected Jig and FLOW product identity and visual
   system.
 - [doctrine/AGENTS.md](doctrine/AGENTS.md) — Product purpose, FLOW and Jig
-  reasoning, and cross-product judgment; the compass remains the entrypoint.
+  reasoning, and cross-product judgment. The compass remains the entrypoint.
 - [coordination/AGENTS.md](coordination/AGENTS.md) — Project roadmap and
   untriaged postponed-task inbox.
 - [field-notes/AGENTS.md](field-notes/AGENTS.md) — Optional non-normative

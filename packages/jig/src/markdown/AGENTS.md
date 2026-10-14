@@ -43,6 +43,8 @@ the operator's authority and execution ownership intact.
 
 ## Work Guidance
 
+- Apply the maintainer guide's technical English rules to the interpreter
+  template. Preserve every operand condition, authority boundary, and result requirement.
 - Keep the selected sequential profile; no generic workflow expressions,
   scheduler, native tools, endpoint transfer or live own-call observation.
 - Preserve exact source and value content; exhaustion is visible, never silent
@@ -50,7 +52,7 @@ the operator's authority and execution ownership intact.
 
 ## Verification
 
-- `bun test packages/jig/test/markdown-parser.test.ts packages/jig/test/markdown-runtime.test.ts packages/jig/test/markdown-worker.test.ts`
+- `bun test packages/jig/test/portable/markdown-parser.test.ts packages/jig/test/portable/markdown-runtime.test.ts packages/jig/test/portable/markdown-worker.test.ts`
 - Worker tests build current source, exchange ordinary FLOW/0 messages and
   validate the actual native Agent response-schema profile without a provider.
 - The installed public-CLI regression runs on the provisioned Linux proof host

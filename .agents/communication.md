@@ -198,6 +198,11 @@ help a reader make a decision.
 
 ## Editorial review
 
+Apply the [technical English rules](maintainer-guide.md#write-clear-technical-english)
+to technical explanations, procedures, and Agent instructions.
+Preserve the voice and narrative of creative and marketing copy.
+Clarity edits must preserve product claims, conditions, and uncertainty.
+
 Before delivering an entrypoint, check that a new reader can explain the
 product and its value in their own words. Review these concrete properties:
 

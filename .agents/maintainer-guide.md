@@ -695,6 +695,46 @@ reports, not when addressing the owner directly.
 A skipped test, filtered hostile case, timed-out aggregate, or interrupted
 suite is not a pass. State the exact evidence that completed.
 
+## Write clear technical English
+
+Clear instructions support agency: people and software must understand their
+authority, the result, and the next permitted action.
+Use the [ASD-STE100 skill](skills/asd-ste100/SKILL.md) for project technical text.
+
+- Apply its strict rules to procedures, Agent instructions, prompts, tool
+  descriptions, error messages, and operational status reports.
+- Apply its structural rules to technical guides, READMEs, specifications, and
+  explanatory prose. Treat dictionary-dependent word choices as advice.
+- Preserve the voice of creative and marketing copy. The
+  [communication guide](communication.md) owns public positioning and narrative.
+- Use active voice. Name the actor when responsibility matters.
+- Give one instruction per sentence. Limit instructions to 20 words and
+  descriptions to 25 words. Keep each paragraph about one topic, with at most
+  six sentences.
+- Use lists for three or more steps or conditions. Put conditions before the
+  actions they control.
+- Use simple verb forms. Replace phrasal verbs and action nouns with direct
+  verbs. Do not use semicolons in prose.
+- Use one name for each concept. Define necessary technical terms before use.
+  Limit noun clusters to three words. Keep subjects, verbs, and articles explicit.
+- Preserve every fact, scope, condition, exception, and degree of certainty.
+  Keep distinctions between requirements, recommendations, permission, and possibility.
+  Preserve exact identifiers, commands, schemas, quotations, and license terms.
+- If simpler wording loses required meaning, retain that meaning and explain
+  the departure. Keep compound verb forms when they carry necessary uncertainty
+  or current relevance.
+- Check changed technical text with the skill's linter. Review its findings
+  against the source meaning. The linter does not prove full ASD-STE100 compliance.
+
+The skill does not contain the official approved-word dictionary. Do not claim
+dictionary compliance or certified ASD-STE100 compliance from these checks.
+
+For a focused check, supply the changed files:
+
+```sh
+python .agents/skills/asd-ste100/scripts/ste-lint.py path/to/document.md
+```
+
 ## Find authoritative sources
 
 Use the `jiggy` GitHub organization and npm names under `@jigging/*` until the

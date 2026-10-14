@@ -1,13 +1,13 @@
 ---
 title: Documentation for agents
-description: Discover and consume Jig's public documentation as focused Markdown, with authority and support boundaries preserved.
+description: Read Jig's public documentation as Markdown. Select context for your task and preserve authority and support boundaries.
 ---
 
 # Give your Agent the right context
 
 The same documentation is available to people and software. Fetch a focused
 guide for one task, or use the full bundle when you need broad context.
-No account, API key, or JavaScript execution is required to read these files.
+You need no account, API key, or JavaScript execution to read these files.
 
 | Resource | Use it for |
 | --- | --- |
@@ -23,22 +23,23 @@ content. **View Markdown** opens the plain-text page. For example,
 
 ## The architecture to preserve
 
-Executable Flows put code, Agent judgment, and mixed methods behind one input,
-outcome, and result boundary. Compose through the method's contract; do not
-require a different calling model just because its implementation uses an Agent.
+Executable Flows give code, Agent judgment, and mixed methods one boundary for
+input, outcome, and result. Compose through the method's contract.
+Do not require a different calling model because its implementation uses an Agent.
 FLOW owns the portable boundary. Jig owns local authority and execution lifecycle.
 A shared interface does not establish equal judgment, cost, or required powers.
 
 See [how Jig works](./understand.md) and
-[one caller, three implementations](./contact-import.md). Changing an implementation
-or Binding still needs review; a matching contract does not authorize new bytes.
+[one caller, three implementations](./contact-import.md). Changes to an implementation
+or Binding still need review. A matching contract does not authorize new bytes.
 
 ## Start from the user's task
 
 A useful starting instruction for an Agent working in your own project:
 
 ```text title="Documentation context"
-Read https://jig.md/llms.txt and fetch the pages needed for my task.
+Read https://jig.md/llms.txt.
+Fetch the pages needed for my task.
 Begin with the task map and supported-host requirements.
 Use documented public interfaces and the exact supported package revision.
 Keep domain logic in the application or Flow. Let the operator select Agents,
@@ -69,5 +70,5 @@ A generated answer is not execution evidence. A package name is not permission.
 An interrupted or uncertain operation is not an instruction to replay it.
 Use [results and recovery](./results.md) to decide the appropriate next step.
 
-The index and bundle are generated from public pages. Internal repository work
-contracts are excluded; your project can keep its own instructions separately.
+The site generates the index and bundle from public pages.
+It excludes internal repository work contracts. Your project can keep its own instructions separately.

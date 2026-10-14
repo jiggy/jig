@@ -9,7 +9,7 @@ catalogues for FLOW and Jig.
 
 - `flow/` owns portable FLOW meaning and explanatory FLOW guidance.
 - `jig/` owns Jig host contracts, current guidance, and product research.
-- `site/` renders and publishes this content; it does not own its meaning.
+- `site/` renders and publishes this content. It does not own its meaning.
 - `AGENTS.md` is repository-operational metadata and is not public site
   content.
 
@@ -22,30 +22,37 @@ catalogues for FLOW and Jig.
   specifications. Research records hypotheses and evidence gates,
   never availability or roadmap commitments.
 - Link to the canonical owner instead of duplicating rules across documents.
-- Check `LICENSES.md` before moving content between documentation classes;
-  their licenses differ.
-- Every project-controlled public HTTP(S) URI that names a Jig or FLOW concept
-  without specifying a machine-fetched resource must serve a human-friendly
-  explanatory page. Explain what the identifier means, why the reader might
-  encounter it, and where to find the canonical specification, usage guidance,
-  and any downloadable machine artifact. An unrelated homepage is not enough.
+- Check `LICENSES.md` before moving content between documentation classes.
+  Their licenses differ.
+- A project-controlled public HTTP(S) URI that names a Jig or FLOW concept must
+  serve a human-friendly explanatory page.
+  This rule excludes URIs that specify a machine-fetched resource.
+  Explain the identifier's meaning. Explain why the reader might encounter it.
+  Link to the canonical specification, usage guidance, and any downloadable machine artifact.
+  An unrelated homepage is not enough.
 - Software comparing an identity URI is not the same as fetching that URI.
-  These pages do not participate in matching or grant authority; never add
-  runtime fetching to make an identifier browsable. URLs designated for schemas,
+  These pages do not participate in matching or grant authority.
+  Never add runtime fetching to make an identifier browsable. URLs designated for schemas,
   descriptors, or other machine resources keep their exact format and bytes,
   with human guidance at a separate address. This is our publication rule, not
   a new requirement on independent FLOW implementers or third-party identifiers.
 
 ## Work Guidance
 
+- Apply the [technical English rules](../.agents/maintainer-guide.md#write-clear-technical-english)
+  to technical documentation and Agent instructions.
+- Preserve exact public requirements, identifiers, examples, and uncertainty
+  when changing prose.
+
 - Read the [communication guide](../.agents/communication.md) and its audience
   reference before writing public entrypoints. Each section should answer a
-  question raised by the preceding section; use connected examples to explain
-  capability compounding and programmable execution before architectural detail.
-  Keep ambition distinct from demonstrated support and preserve safeguards.
-  Address the developer directly on landing pages, name Skills when using that
-  familiar bridge, and lead with callable composition. Keep enterprise operating
-  concerns in relevant guides; explain execution boundaries after their useful role.
+  question raised by the preceding section.
+  Use connected examples to explain capability compounding and programmable execution before architectural detail.
+  Keep ambition distinct from demonstrated support. Preserve safeguards.
+- Address the developer directly on landing pages.
+  Name Skills when using that familiar bridge. Lead with callable composition.
+  Keep enterprise operating concerns in relevant guides.
+  Explain execution boundaries after explaining their useful role.
 - Organize navigation around starting, building, understanding, and reference.
   Tutorials should include an expected result and one useful modification.
 - Write for the reader's decision or task. Introduce unfamiliar concepts in
@@ -54,14 +61,15 @@ catalogues for FLOW and Jig.
   its meaning in generated Markdown, including inactive interactive examples.
   Agent guidance routes to exact contracts and respects existing authorization.
 - Keep current support visibly separate from future research.
-- Keep diagrams focused on one reader question, with short labels, meaningful
-  alternative text, and adjacent prose that preserves the important limits.
-  Prefer static SVGs in guides; use the site's existing image zoom instead of
+- Keep diagrams focused on one reader question.
+  Use short labels and meaningful alternative text.
+  Preserve the important limits in adjacent prose.
+  Prefer static SVGs in guides. Use the site's existing image zoom instead of
   embedding a separate viewer or adding diagram controls to the reading path.
 - Keep each Archify `*.diagram.json` beside its exported SVG and owning guide.
-  Edit the JSON, validate and deliver with the repository Archify skill, then
-  export SVG through that delivered viewer and preserve the Archify MIT notice
-  in an SVG comment. Keep HTML previews, screenshots,
+  Edit the JSON. Check the diagram with the repository Archify skill.
+  Deliver the diagram with that skill. Export SVG through the delivered viewer.
+  Preserve the Archify MIT notice in an SVG comment. Keep HTML previews, screenshots,
   and validation receipts in `.tmp/`. Never hand-edit generated SVG geometry.
   Diagrams explain their owning prose and do not establish new contracts.
 
@@ -70,10 +78,10 @@ catalogues for FLOW and Jig.
 - Build each affected public site into a fresh directory with
   `scripts/build-site.sh`.
 - When adding or changing a project-owned identity URL, include its explanatory
-  route and links in site verification; check deployed availability separately
-  from local build success.
-- For diagram changes, follow Archify's artifact and browser checks, inspect
-  both themes, and check the actual guide at desktop and mobile widths. Keep
+  route and links in site verification.
+  Check deployed availability separately from local build success.
+- For diagram changes, follow Archify's artifact and browser checks.
+  Inspect both themes. Check the actual guide at desktop and mobile widths. Keep
   automated browser evidence separate from perceptual visual review.
 
 ## Child DOX Index
