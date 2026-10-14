@@ -4,111 +4,173 @@ title: Results and recovery
 
 # Results and recovery
 
-Jig reports execution status separately from the method's application outcome.
-Use both to decide what happened and whether another action is appropriate.
-For your first successful invocation, start with [the quickstart](./index.md).
+Read the execution status, method outcome, delivered output and cleanup evidence
+before deciding what to do next. These facts answer different questions. The
+[quickstart](index.md) shows a successful first invocation.
 
 ## Read results and diagnose failures
 
-`jig <command> --help` explains that command's options and examples. Invalid
-syntax is diagnosed even when the host cannot execute Runs. Errors identify a
-relevant project-relative location where available and suggest a safe next step.
-A missing target lists targets from the approved revision; Jig never picks one
-for you.
+| Fact | Question | Meaning |
+| --- | --- | --- |
+| Execution status | Did the invocation complete? | The host reports execution, failure or uncertainty. |
+| Method outcome and output | Did the method achieve its objective? | A completed method can return `blocked` or `limit`. |
+| Delivery, when requested | Did Jig save the result and files? | A result is separate from confirmed packet delivery. |
+| Cleanup evidence | Did owned work settle? | Requested cancellation is separate from confirmed cleanup. |
 
-`jig run` without a target uses the approved project `entrypoint` and its default
-arguments. Without an entrypoint, terminals offer a numbered chooser and scripts
-must supply a target. Press Enter to cancel the chooser. Both paths run the
-approved revision, not unreviewed edits.
+An application field such as `success` is method data. It is not a host verdict.
+A successful execution does not prove that the application achieved its
+objective.
 
-Targets declaring writable deliverables receive a fresh packet destination in
-operating-system temporary storage when `--out` is omitted. Jig reports the path
-on stderr, including in machine-output mode. Temporary packets remain after exit,
-but the operating system may clear them. Use `--out DIRECTORY` for a chosen
-retained location that does not already exist; Jig never overwrites a packet.
-Result-only targets return stdout without creating a packet by default, and can
-use `--out` to save their execution record too.
+Human output shows these facts before the application answer. Small answers
+appear as YAML. For large answers in a confirmed packet, read `result.json` for
+the complete output and checkpoint evidence. If delivery is uncertain, the
+terminal keeps result evidence visible. The packet also retains input manifests
+and digests when delivery succeeds. Existing result directories are never
+replaced.
+
+Writable targets receive a fresh temporary packet when `--out` is omitted. The
+operating system may clear that storage. Use `--out DIRECTORY` for a new
+retained destination. Result-only targets return stdout by default. See
+[file delivery](files.md#receive-one-packet) for destination requirements.
+
+### Choose the next action
+
+| Observed fact | Next step |
+| --- | --- |
+| The method returns `blocked` or `limit` | Read its output and reason before choosing further work. |
+| `REVIEW_REQUIRED` | Review the changed execution environment. Inspect the proposal. Approve the revision before explicitly starting a new Run. |
+| An input mismatch | Compare your input with the approved schema using `jig inspect <target>`. |
+| Failure with retained diagnostics | Read the reported cause and inspect any effects before starting new work. |
+| Missing terminal, uncertain effects or unconfirmed cleanup | Preserve the evidence and settle owned work before another action. |
+| A selected Agent prerequisite stops review | Follow [client-check recovery](agents.md#repair-a-client-check). |
+
+These steps do not grant authority to replay work. Cancellation cannot reverse a
+completed consequence or retract an accepted remote request.
+
+### Check the approved target and input
 
 Use `jig inspect` to list targets in the last approved revision. Use
-`jig inspect binding:repair` (or an exact `flow:` target) to read its invocation
-contract, settings schema, configured settings, resolved slots, resource grants,
-and attachments. The contract includes input, outcomes and channels.
-An approved review client selection appears as effective ACP policies and retained
-`agentOverride` origin. It is not inferred from current source and does not become
-a preference for a later review.
-`--json` or redirected stdout returns JSON.
-The terminal view starts with invocation guidance: required input fields,
-placeholder file paths, and channel requirements. Replace the placeholders
-with your own data matching the complete schema; Jig does not guess values.
-Inspection compares approval with current local execution identities, including
-selected children. It reports `environment-matches`, `review-required`, or
-`unchecked` when verification is unavailable. Missing Agent configuration can
-leave Agent-using targets unchecked without hiding their retained interfaces.
-It performs no provider requests, source evaluation, dependency preparation,
-state recovery or approval. Matching identities do not promise source freshness,
-launch readiness or remote availability; Run still revalidates before execution.
-Use `jig review` to review edits or a changed environment. Snapshot reads return
-exit 0 even when review is required; scripts should examine `state`.
-Without local approval, it reports `unreviewed`, even if a portable lock exists.
+`jig inspect <target>` to read its contract, settings, slots, grants and
+attachments. The contract includes input, outcomes and channels. The terminal
+starts with required input fields, placeholder paths and channel requirements.
+`--json` or redirected stdout returns JSON. Replace example placeholders with
+data that satisfies the complete schema.
 
-An input mismatch is checked against the **approved** schema. Use
-`jig inspect <target>` to compare that schema with your input. If you edited the
-Flow or its schema, review and approve those changes with `jig review` first.
-If the approved schema is already correct, fix the input; reviewing again does
-not make an invalid value valid. For an `enum` error, choose one of the field's
-declared values.
+Jig does not guess values or choose a target for you.
 
-Type errors identify the value's location and, where available, its expected
-and received JSON types. They do not print the rejected value. For example,
-`Expected string; received object.` means the caller should pass a JSON string,
-not wrap it in an object. `jig inspect <target>` shows the approved input contract.
+Inspection compares approved execution identities with the current local
+environment, including selected children. Its `state` is:
 
-Interactive stdout leads with execution and application outcome, plus packet
-delivery and unconfirmed cleanup when present. Small application results follow
-as syntax-highlighted YAML. Unseen diagnostic text has its own section, grouped
-by the invocation that reported it, with any capture truncation made explicit.
-When a full packet was
-written, large results and checkpoint evidence stay in `result.json`; the
-terminal points there and reports the delivered file count instead of printing
-patches and check logs again. If packet delivery is uncertain, the terminal
-keeps the result visible. A failed Run ends with its cause and next action.
-Complete packet evidence, including input file manifests and digests, remains
-in `result.json` when delivery succeeds.
-Diagnostics already printed live are counted in the final summary rather than
-printed again. A null checkpoint means no progress was retained and is omitted
-from the terminal view; the machine record keeps that exact value.
-In a TUI, diagnostic text retained in a collapsed Activity entry
-may not have been read. Its complete bounded final evidence remains visible.
-The [workspace controls](channels.md#observe-the-work) explain expandable reports,
-attributed causes and read-only result inspection. Closing that
-workspace restores the terminal before Jig prints the final result.
-Lists and multiline text use ordinary YAML formatting;
-strings remain quoted where needed to retain exact values.
-Application fields such as `success` are data, not host verdicts. With `--receive`, channel text
-streams continuously under labelled headings. Use `--json` for raw records in
-a terminal. Redirected stdout automatically contains exact JSON, or NDJSON
-when `--receive` is selected. Stderr
-carries diagnostics and, on a terminal, elapsed status and cancellation updates.
-Piped stdout remains machine-readable. Interactive terminals show one active
-status line and use color for headings and outcomes. Set `NO_COLOR=1` or
-`TERM=dumb` for plain output without animation; redirected streams are always
-plain. An explicitly selected eligible TUI with NO_COLOR uses screen
-controls without color. Errors put the explanation and next action before the diagnostic code.
-The [CLI experience contract](../spec/cli-experience.md) defines these guarantees. Ctrl-C requests cancellation; wait for cleanup before starting new
-work. An interruption or uncertain result is not permission to blindly retry.
-When a settled terminal is available after interruption, Jig emits it with
-`command: {status: 'interrupted'}` and exits 2. The execution status is preserved
-even if completion won the race. An interrupted command may still exit without
-a JSON result if no terminal or output connection remains; scripts must handle
-that absence without retrying work automatically.
+| State | Meaning |
+| --- | --- |
+| `environment-matches` | The compared local identities match. |
+| `review-required` | A known mismatch requires review. |
+| `unchecked` | Comparison could not complete, including missing Agent configuration. |
+| `unreviewed` | No local approval exists, even if a portable lock exists. |
 
-`runDiagnostics` retains bounded root and child stderr with an `operations`
-call path identifying each emitter. Check its aggregate `truncated` flag and
-each entry's `stderrTruncated` before treating it as complete. The terminal's
-existing `diagnostics` field describes only root-process stderr. Neither field
-is an Agent answer or proof that the application achieved its objective.
+Snapshot reads return exit 0 even when review is required. Scripts must examine
+`state`. Inspection performs no provider requests, source evaluation, dependency
+preparation, state recovery or approval. Matching identities do not establish
+source freshness, launch readiness or remote availability. Run still revalidates
+before execution. Inspection retains an approved review-client selection and its
+origin.
 
-### Reopen a saved result
+See [client selection](agents.md#switching) for its review-only scope.
+
+An input mismatch uses the approved schema. If you changed source or schemas,
+review and approve those changes first. If the approved schema is correct, fix
+the input. For an `enum` error, use one of the declared values. Type errors
+report expected and received JSON types without printing rejected values. For
+example, `Expected string; received object.` requires a JSON string rather than
+an object.
+
+Use `jig <command> --help` for syntax and examples. Errors identify a
+project-relative location when available and suggest a safe next step. See
+[entrypoint configuration](configuration.md#project-entrypoint) for target
+selection.
+
+### Read diagnostics and machine output
+
+Use `--json` for raw records in a terminal. Redirected stdout contains JSON, or
+NDJSON with `--receive`. Stderr carries diagnostics and terminal progress. With
+`--receive`, live channel text uses labelled headings. Channel completion does
+not establish execution or application success.
+
+`runDiagnostics` retains bounded root and child stderr. Each entry's
+`operations` path identifies its emitter. Check aggregate `truncated` and
+per-entry `stderrTruncated` before treating it as complete. The separate
+`diagnostics` field describes root-process stderr only. Neither field is an
+Agent answer or proof of task success.
+
+The terminal groups unseen diagnostics by invocation and discloses truncation.
+It counts text already printed live rather than printing it again. Collapsed TUI
+Activity entries may still contain unread text. Full bounded evidence remains
+available in the final result. A null checkpoint means no progress was retained.
+The terminal omits it, while the machine record keeps it.
+
+See [workspace controls](channels.md#observe-the-work) for expanded reports and
+inspection. See [terminal appearance](configuration.md#terminal-appearance) for
+colors and plain output. The
+[CLI experience contract](../spec/cli-experience.md) defines exact presentation
+requirements.
+
+### Handle interruption
+
+Ctrl-C requests cancellation. Wait for cleanup before starting new work. When an
+authoritative terminal is available, Jig preserves its execution status, adds
+`command: {status: 'interrupted'}` and exits 2. Completion may have won the race
+before cancellation. An interrupted command can exit without JSON when no
+terminal or output connection remains. Scripts must handle that absence without
+automatic replay.
+
+## Recover from execution failure
+
+A `REVIEW_REQUIRED` diagnostic means the current execution environment differs
+from the approved revision. No Flow started for that Run. Run `jig review`,
+inspect and approve the proposed revision, then explicitly start a new Run. A
+Jig rebuild, runtime change, Agent configuration change, or changed sandbox
+support can require review even when your project source is unchanged. In
+machine output this is host-only `code: "REVIEW_REQUIRED"` with
+`details.reason: "EXECUTION_ENVIRONMENT_CHANGED"` and
+`details.flowStarted: false`. Review distinguishes environment-only changes from
+source, prepared dependency, and permission changes.
+
+The retained combined fingerprint does not identify which individual historical
+component changed. Review states this evidence limit.
+
+An `EXECUTION_FAILED` result with no captured diagnostic text does not establish
+whether the Flow started. The public result contains no more specific cause.
+Keep the command and diagnostic code for investigation and inspect any effects
+before starting new work.
+
+A `DEADLINE_EXCEEDED` result for a contained HTTP request or Project Command may
+name the worker phase. It may identify which configured limit capped the
+effective deadline: root Run, parent Flow, HTTP grant, or Project Command limit.
+This identifies the work and budget involved. It does not prove whether a remote
+request was accepted or whether a command had side effects. Inspect retained
+evidence before starting a new Run. Increasing `--timeout` helps only when the
+root Run was the limiting budget and the work can finish within the other
+limits.
+
+The diagnostic instead says the operation was not dispatched when both
+conditions apply:
+
+- The effective deadline elapsed before dispatch.
+- Jig has no unresolved owner for an earlier attempt with the same operation ID.
+  A retry with a retained prior owner is reported as uncertain after Jig settles
+  that owner. A deadline after launch also retains the uncertainty warning and
+  the host's collected cleanup evidence.
+
+A protocol error means the Flow did not complete Run/0 correctly. Check its SDK
+revision and stdout use. Inspect the result and any effects before running
+again. After changing source or dependencies, review the changes first.
+
+`INVALID_RESULT` can mean that a Flow's final value failed its declared contract
+or that a method rejected a result from one of its operations. Read the reported
+cause before changing a schema. For example, an Agent method can reject an HTTP
+provider response while the Flow's own result contract is unchanged.
+
+## Reopen a saved result
 
 ```sh
 jig inspect --result ./result-packet --display tui
@@ -116,165 +178,44 @@ jig inspect --result ./result-packet --display web
 ```
 
 This opens **Recorded result**, **Files** and **Diagnostics** without starting a
-Run, reading project authority or contacting providers. Omit `--display`
-for a plain report. `--json` or redirected stdout returns the decoded report
-unchanged. The directory you select supplies the evidence; a recorded destination
-inside `result.json` does not redirect inspection elsewhere.
+Run, reading project authority or contacting providers. Omit `--display` for a
+plain report. `--json` or redirected stdout returns the decoded report
+unchanged. The directory you select supplies the evidence. A recorded
+destination inside `result.json` does not redirect inspection elsewhere.
 
 Saved values are recorded local claims, not newly authenticated execution facts.
-File previews use immutable captured bytes checked against the saved manifest;
-matching digests establish consistency with that manifest. Missing or mismatched
+File previews use immutable captured bytes checked against the saved manifest.
+Matching digests establish consistency with that manifest. Missing or mismatched
 files are reported, while already verified previews remain available. Live Flow
-tabs and call history are not retained in current packets and are not reconstructed.
-The TUI inspector asks before leaving with `q` or keyboard Ctrl-C, with **Stay**
-selected. Escape returns within the TUI. Inspection remains subject to any
-explicit enclosing command limit. Input/output failure or external interruption
-also closes it and releases its retained evidence.
-For web, open the private link printed on terminal stderr and choose **Close
-inspection** to leave. Browser disconnection does not cancel or close it.
-Selecting a captured file shows its contents. PNG, JPEG and supported SVG files
-show an image preview in the browser and coloured blocks in the TUI. SVG previews
-use a bundled font and may differ from the original typography. Images above the
-preview limits remain available in the result packet. Empty, non-text, unavailable and
-clipped files have distinct explanations. Expanded search covers the retained
-excerpt, not bytes outside it. Saved values keep their recorded provenance.
+tabs and call history are not retained in current packets and are not
+reconstructed. The TUI inspector asks before leaving with `q` or keyboard
+Ctrl-C, with **Stay** selected.
 
-Exit 0 means the saved report and files were read consistently, even if that report
-records a failed Run. Exit 1 means invalid or unavailable evidence, incomplete
-file verification, or output failure; exit 2 means external interruption. Always
-examine the recorded execution and application outcome before deciding what to do.
+Escape returns within the TUI. Inspection remains subject to any explicit
+enclosing command limit. Input/output failure or external interruption also
+closes it and releases its retained evidence. For web, open the private link
+printed on terminal stderr and choose **Close inspection** to leave. Browser
+disconnection does not cancel or close it. Selecting a captured file shows its
+contents.
 
-A `REVIEW_REQUIRED` diagnostic means the current execution environment differs
-from the approved revision. No Flow started for that Run. Run `jig review`, inspect
-and approve the proposed revision, then explicitly start a new Run. A Jig rebuild,
-runtime change, Agent configuration change, or changed sandbox support can require
-review even when your project source is unchanged. In machine output this is
-host-only `code: "REVIEW_REQUIRED"` with
-`details.reason: "EXECUTION_ENVIRONMENT_CHANGED"` and `details.flowStarted: false`.
-Review distinguishes environment-only changes from source, prepared dependency,
-and permission changes. The retained combined fingerprint does not identify which
-individual historical component changed; review states this evidence limit.
+PNG, JPEG and supported SVG files show an image preview in the browser and
+coloured blocks in the TUI. SVG previews use a bundled font and may differ from
+the original typography. Images above the preview limits remain available in the
+result packet. Empty, non-text, unavailable and clipped files have distinct
+explanations. Expanded search covers the retained excerpt, not bytes outside it.
+Saved values keep their recorded provenance.
 
-An `EXECUTION_FAILED` result with no captured diagnostic text does not establish
-whether the Flow started. The public result contains no more specific cause;
-keep the command and diagnostic code for investigation and inspect any effects
-before starting new work.
-
-A `DEADLINE_EXCEEDED` result for a contained HTTP request or Project Command may
-name the worker phase and which configured limit capped its effective deadline:
-the root Run, parent Flow, HTTP grant, or Project Command limit. This identifies
-the work and budget involved; it does not prove whether a remote request was
-accepted or whether a command had side effects. Inspect retained evidence before
-starting a new Run. Increasing `--timeout` helps only when the root Run was the
-limiting budget and the work can finish within the other limits.
-
-If the effective deadline had already elapsed before the operation was
-dispatched, and Jig has no unresolved owner for an earlier attempt with the same
-operation ID, the diagnostic instead says the operation was not dispatched. A
-retry with a retained prior owner is reported as uncertain after Jig settles
-that owner; a deadline after launch also retains the uncertainty warning and
-the host's collected cleanup evidence.
-
-A protocol error means the Flow did not complete Run/0 correctly. Check its
-SDK revision and stdout use, then inspect the result and any effects before
-running again. After changing source or dependencies, review the changes first.
-
-`INVALID_RESULT` can mean that a Flow's final value failed its declared contract
-or that a method rejected a result from one of its operations. Read the reported
-cause before changing a schema: for example, an Agent method can reject an HTTP
-provider response while the Flow's own result contract is unchanged.
-
-Execution completion is different from task success: a method can execute
-correctly and return an application outcome such as `blocked`. Inspect the
-outcome, output, and exit status. When a packet destination is selected, also
-inspect the separate delivery status. Existing output directories are never
-replaced. An explicit `--out` must name a new destination for another Run;
-omitted output on a writable target selects a fresh temporary destination.
-
-### Agent setup failures during review
-
-A selected ACP prerequisite failure stops the entire `jig review` before new
-approval, including an otherwise unchanged review. This applies in terminals,
-scripts and `--yes` use, even when a code target is ready or an input might avoid
-the selected Agent branch. An unselected missing client does not block review.
-Any earlier approved code and client remain unchanged; Run still performs its
-normal admission and environment checks.
-
-The error identifies the known cause, selected client and affected Binding/slot.
-Its location refers to the captured source: a verified client literal when
-known, selection context for a computed expression, or the Binding file and
-logical slot when no exact client line is known. Named policies point to their
-captured JSON file and identify affected recipients. The next review captures
-your edits afresh.
-
-Repair the selected client's installation or exported path override. A rejected
-`CODEX_PATH`, `CLAUDE_PATH` or `PI_PATH` is an override problem, not proof that the
-client is uninstalled; an explicit override does not fall back to `PATH`.
-Codex's supported npm and Volta layouts resolve to their native executable
-without running the launcher. Shell aliases and functions are not executables.
-An unsupported wrapper needs its underlying native file; helper and other setup
-failures have their own repair guidance.
-
-Executable failures may list passively detected supported alternatives, labelled
-as executable detection only. They do not establish authentication, qualification
-or compatibility. To change clients permanently, edit the named policy or inline
-Binding shown by the diagnostic and review again. You may instead use an explicit
-[`jig review --agent codex`](agents.md#switching) proposal for every selected ACP
-policy. Preserve turn limits and choose model/retention changes deliberately.
-No interactive correction or automatic source write occurs. Retry guidance does
-not add networking or authority approval on your behalf.
-
-Review checks prerequisites without starting a Flow or calling a model. It may
-have prepared dependencies or performed separately requested contract generation
-before failure. No new approval is recorded. `--details` expands the retained
-observed report, discloses its bounds and identifies checks that did not finish;
-it does not run extra checks. `jig review --json` is unsupported. Run and inspection
-keep their existing machine-output options.
-
-`--allow-resolution-network` produces one warning covering dependency preparation
-for the entire review. Per-package progress still identifies which package is
-being prepared. This permission gives Runs no network access.
+Exit 0 means the saved report and files were read consistently, even if that
+report records a failed Run. Exit 1 means invalid or unavailable evidence,
+incomplete file verification, or output failure. Exit 2 means external
+interruption. Always examine the recorded execution and application outcome
+before deciding what to do.
 
 ## If retained state cannot be opened
 
 `PROJECT_STATE_INVALID` means `.jig` is incompatible with the current build or
 damaged. Reinstalling dependencies does not change that state. Preserve `.jig`
-and `jig.lock` for recovery; once prior work is confirmed stopped and cleaned up,
-move them outside the project and run `jig review` for fresh approval. Keep the
-source and dependency locks. If cleanup is uncertain, recover the owned work
+and `jig.lock` for recovery. Once prior work is confirmed stopped and cleaned
+up, move them outside the project and run `jig review` for fresh approval. Keep
+the source and dependency locks. If cleanup is uncertain, recover the owned work
 before replacing its state.
-
-### Reading review changes
-
-Review shows a field diff: `-` is the previous or removed value, and `+` is
-its proposed replacement or addition. Nested headings keep each changed field
-in context. Unchanged fields are omitted; `jig review --details` retains the
-complete previous and proposed public policy.
-
-A target can need renewed approval when its retained execution identity or a
-selected child changes even though its public fields are identical. Review
-explains this instead of repeating identical blocks. Private execution
-identities remain private. Object key ordering alone is ignored; array order
-is significant.
-
-### Syntax colors
-
-Structured review, inspection and Run output highlights keys, strings, numbers, and literals.
-Choose accents to match your terminal background:
-
-```sh
-JIG_THEME=one-dark jig review
-JIG_THEME=one-light jig review
-JIG_THEME=macchiato jig review
-```
-
-One Dark is the default. Use `export JIG_THEME=one-light` in your shell profile
-for a persistent preference. This is a shell setting, not a `jig.ts` field, so
-it also applies before a project loads. Truecolor terminals receive the full
-palette; other color terminals use 256-color approximations or basic accents.
-`NO_COLOR`, `TERM=dumb`, and redirected output remain plain. Run JSON/NDJSON
-is never highlighted.
-
-Palettes use [Atom One Dark](https://github.com/atom/one-dark-syntax),
-[Atom One Light](https://github.com/atom/one-light-syntax), and
-[Catppuccin Macchiato](https://catppuccin.com/palette/) foreground accents.

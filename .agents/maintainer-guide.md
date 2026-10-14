@@ -211,36 +211,12 @@ those choices on this host.
 
 ### Dependency preparation and local development
 
-Review is the Run-admission-neutral point where exact locked artifacts may be
-fetched and a private execution snapshot materialized after relevant source
-changes. This is not an installation into the project or host. `jig run`
-performs no fetching, dependency materialization, lifecycle script, or ambient
-runtime discovery. It consumes only retained admitted bytes.
-
-The supported preparation is deliberately narrower than a general package
-manager. It accepts exact integrity-bearing packages from the fixed default npm
-registry under script-disabled, contained policy. The detailed source rules and
-limits belong in [`project-policy.md`](../docs/jig/spec/project-policy.md).
-
-Missing authored locks require explicit per-review resolution-network
-permission. It permits dependency-selected requests before graph validation,
-including host-reachable private services. Final Run approval cannot undo them.
-`--yes` does not grant it. Generated locks stay in retained execution bytes, not
-visible source. Supplied locks are never silently repaired.
-
-Exact active admission reuse needs no fresh resolution. Unlocked source alone
-does not promise the same dependency versions on another host.
-
-Unreleased code is not forced through a public registry. Package-local source
-modules can be imported directly. `workspace:` dependencies use ordinary Bun
-workspace declarations. Review captures local dependencies and prepares their
-root-locked graph with Bun. It retains canonical paths and exact private aliases
-between captured members. It does not copy a library into each dependency slot.
-
-It recaptures workspace dependencies on each review. Unchanged Flow source does
-not authorize reuse of an older local library. Builds remain the author's
-toolchain responsibility. File, Git, or symlink dependencies are not runtime
-escape hatches. Jig owns capture and admission, not a new package manager.
+Review captures exact dependencies and prepares retained execution bytes. Run
+consumes admitted bytes without fetching, installation, lifecycle scripts, or
+ambient runtime discovery. For preparation changes, read
+[project policy](../docs/jig/spec/project-policy.md#4-flow-members-and-direct-targets).
+It owns source restrictions, locks, resolution-network permission, workspace
+capture, reuse, and preparation limits.
 
 Keep workspace development connected to current source through declared
 workspace dependencies and ordinary explicit builds. Do not pack and unpack
@@ -338,82 +314,57 @@ New kernel profiles require their own qualification before support expands.
 
 ### Composition
 
-A Binding gives one Flow package a reusable project-local configuration. Its
-**child slots** name a closed set of exact `flow:<path>` or `binding:<id>`
-targets from the same admitted generation. A child uses its selected target's
-settings, ordinary Agent route, and reviewed resource grants. Parent
-configuration is not inherited. Selected child Bindings may expose further Flow
-slots within the fixed root resource budget. At runtime, a Flow can call only
-its slots.
+A Binding configures one Flow package and its exact child slots. Children use
+their own admitted settings, routes, grants, and remaining root deadline.
+Applications own concurrency through ordinary promises. Jig supplies no queue or
+scheduler. Cleanup drains an effect before releasing its specialist owner.
 
-It cannot search a catalogue, invent targets, or acquire scheduler authority.
-Child and Agent scopes inherit the remaining root deadline and cannot extend it.
-A root may await two sibling specialists. Each child may await one Flow or
-effect. The unchanged aggregate ceiling permits two two-level branches or one
-five-level branch, including their effect allowances. Complete branches reserve
-capacity before dispatch and hold it until cleanup.
+For composition changes, read
+[Bindings](../docs/jig/spec/project-policy.md#5-bindings) and
+[Direct Run](../docs/jig/spec/project-policy.md#8-direct-run). They own exact
+selection, branch reservations, aggregate limits, deadlines, and cleanup.
+[Run/0](../docs/flow/spec/run-protocol.md) owns process-boundary identity, join,
+conflict, cancellation, deadline, and uncertainty.
+[Checkpoints](../docs/jig/spec/run-checkpoint.md) own bounded root evidence
+retention while workers remain active.
 
-Root worker effects remain exclusive. Root-owned
-[checkpoints](../docs/jig/spec/run-checkpoint.md) use separate bounded control
-capacity to retain completed evidence while workers remain active. Durable
-whole-branch reservations bound aggregate resources before dispatch and stay
-held through fencing and cleanup. Application promises own concurrency. Jig
-supplies no queue or scheduler. Their operation identities and durable ownership
-remain distinct.
+Internal graphs remain ordinary Flow implementation. Add orchestration,
+selection languages, or child-history products only when exact slots and
+ordinary structured values cannot express a real application.
 
-Cleanup drains the effect before releasing its specialist owner.
+Read the responsible contract before changing an effect:
 
-Run/0 owns request identity, join, conflict, cancellation, deadline, and
-uncertainty behavior across the process boundary. Internal graphs remain
-ordinary Flow implementation. Add recursive orchestration, selection languages,
-or child-history products only when a real application cannot be expressed with
-exact slots and ordinary structured values.
+| Effect | Contract | Responsibility boundary |
+| --- | --- | --- |
+| Project Command | [Project Command](../docs/jig/spec/project-command.md) | The trusted collector returns actual output and termination. Applications own independent assertions. |
+| HTTP Request | [HTTP Request](../docs/jig/spec/http-request.md) | The trusted worker holds credentials and network access. Authored methods remain keyless and offline. |
 
-Project Command is a Jig-owned effect for a Binding's reviewed Bun invocations
-against bounded immutable candidate text. A trusted collector outside candidate
-execution returns actual output and termination. Candidates receive no Agent
-credentials, network, installation, or host repository. Repository test output
-is not an independent verdict. Applications check captured behavior under their
-own unchanged assertions. The exact contract belongs in
-[`project-command.md`](../docs/jig/spec/project-command.md).
-
-HTTP Request supplies delegated endpoint access through ordinary invocation. An
-operator grant fixes the exact request destination, method, optional bearer
-reference, body constraints and limits. Its Binding slot selects inline policy
-or a named captured JSON grant. Source proposes. The existing admission path
-requires explicit approval for new/changed resource authority. An admitted
-generation does not change when a grant source file changes.
-
-The trusted worker holds the credential and network while authored methods
-remain keyless and offline. The
-[HTTP contract](../docs/jig/spec/http-request.md) owns exact behavior, including
-remote uncertainty and endpoint trust. This does not make authored code part of
-the host's trusted implementation or introduce raw-secret or arbitrary-process
-delegation.
+Source proposes resource authority. The existing admission path requires
+explicit approval for new or changed authority. An admitted generation does not
+change when a grant source file changes. Effect contracts do not grant authored
+code raw secrets, arbitrary process delegation, or trusted host status.
+Repository test output is not an independent verdict.
 
 ### Agent calls
 
-A named **Invocation Contract** describes an exact interface for independently
-maintained consumers and implementations. It is offered by a Flow's optional
-`FLOW.contract.json` and required through a package-local `uses` reference.
-**Agent Run** is such an interface, implemented by an ordinary Flow and consumed
-through the same Run/0 `flow/call` as an exact Flow dependency. It is not a new
-FLOW method, model authority, or public provider framework. The public value
-contract belongs in [`agent-run.md`](../docs/jig/spec/agent-run.md).
+An **Invocation Contract** names an exact interface for independent consumers
+and implementations. **Agent Run** is an ordinary Flow interface, called through
+an exact Run/0 slot. It creates no FLOW method, model authority, or public
+provider framework.
 
-`@jigging/agent-method` owns the reusable preparation and interpretation code,
-with a complete ordinary Flow entrypoint. Its keyless method owns one text-only
-Chat Completions or Responses request through an HTTP grant, with reviewed
-model/token settings. The ordinary `@jigging/agent-acp` package uses the same
-pure code and drives a granted finite native conversation. Both accept explicit
-Skill contents and guidance, not host-attested caller provenance. Consumers
-check replacement results with the pure library or application validation. A
-specialist calls either method through its own exact slot or a reviewed project
-default.
+Before changing Agent behavior, read [Agent Run](../docs/jig/spec/agent-run.md),
+[HTTP Request](../docs/jig/spec/http-request.md), and
+[Finite ACP](../docs/jig/spec/finite-acp.md) as applicable. They own values,
+endpoint authority, native grants, credential separation, and settlement.
+[Agent setup](../docs/jig/guide/agents.md) owns operator configuration.
+[Agent method](../docs/jig/guide/agent-method.md) owns caller inputs and pure
+library reuse.
 
-The ACP package projects optional updates through ordinary channels. The host
-neither prepares Agent prompts nor reconstructs answers. Endpoint permissions,
-credentials and cleanup remain host-owned.
+`@jigging/agent-method` owns HTTP preparation, answer interpretation, and its
+ordinary Flow entrypoint. `@jigging/agent-acp` reuses that pure code for finite
+native conversations and optional channel updates. The host neither prepares
+Agent prompts nor reconstructs answers. Consumers validate replacement results
+independently.
 
 The Flow supplies bounded instructions, optional explicit Skill contents and
 guidance, and an optional bounded result schema. Native calls cannot select the

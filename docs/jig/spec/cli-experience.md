@@ -8,7 +8,25 @@ notice, diagnostic, progress display, and installed-launcher failure. It
 makes usable control an observable requirement;
 [project policy](project-policy.md) retains authority over admission and lifecycle.
 
+## Find the relevant requirement
+
+| Task | Required sections |
+| --- | --- |
+| Import an agreement | [Contract import](#contract-import) |
+| Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
+| Present live work | [Progress and observation](#progress-and-observation), [workspace navigation](#workspace-navigation), [automatic output](#automatic-output) |
+| Present a result | [Experience acceptance](#experience-acceptance), [diagnostics and interruption](#diagnostic-evidence-and-interruption) |
+| Change review output | [Implementation and review ownership](#implementation-and-review-ownership), [review client selection](#review-client-selection) |
+| Explain Agent prerequisites | [Agent setup during review](#agent-setup-during-review) |
+| Present file evidence | [Invocation files and fresh evidence](#invocation-files-and-fresh-evidence) |
+| Change CLI behavior | [Experience acceptance](#experience-acceptance), plus every affected section |
+
+[Project policy](project-policy.md) owns admission and execution authority.
+[Web display](web-display.md) owns browser access and transport requirements.
+
 ## Required experience
+
+### Contract import
 
 `jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>` is explicit offline
 authoring. It captures and validates one standalone channel descriptor, or an invocation descriptor and its exact
@@ -33,6 +51,8 @@ The installed catalog checks each exact supported digest. A copied standard
 agreement is a project-owned snapshot, never a runtime resolver, implementation
 selection or authority grant. Reporting retains its MPL-2.0 license.
 
+### Progress and observation
+
 The optional [reporting profile](reporting.md) shares stderr presentation
 with host progress and diagnostics. Resolve entrypoint/operator arguments first:
 effective `--receive` retains ordinary stdout channel behavior, `--json` disables
@@ -46,6 +66,8 @@ establish success. Accepted notice jobs survive ordinary source retirement while
 obsolete repaints are superseded. Host stopping/terminal presentation fences late
 Flow updates. Exact bounds, separate allocation policy and output failure remain
 governed by that profile and [channels](channels.md).
+
+### Display selection
 
 Operator-only `--display auto|plain|tui|web` controls Run presentation. Auto
 selects TUI when stdin, stdout and stderr are terminals, raw input is available,
@@ -72,6 +94,8 @@ bounded data and excerpt access, never host execution or filesystem authority.
 Ordinary Jig installation includes its presentation; Flow declarations remain
 display-neutral.
 
+### Browser activation
+
 Explicit web requires terminal stderr, independently of stdin, stdout, TERM and
 color support. Otherwise use ordinary plain presentation without exposing a
 private launch link in redirected output. It prepares its local listener before
@@ -81,6 +105,8 @@ effective reception take precedence before preparing a listener. Redirected
 Run stdout retains exact final JSON while terminal stderr can provide web
 inspection. The [web display contract](web-display.md) owns local access,
 transport bounds, browser navigation and presentation lifetime.
+
+### Host and application observations
 
 The shell presents host execution, cleanup, delivery and complete known safe
 causes separately from attributed domain reports. Execution is the actual observed
@@ -92,6 +118,8 @@ with full causes one action away from every view; leaving restores the screen an
 commits complete retained essential causes before final stdout. Sticky attention
 and visible incompleteness survive view retirement. Narrow layouts shrink
 workspace before hiding the cause and disclose clipping.
+
+### Workspace navigation
 
 The explicit workspace groups host Execution, Activity and Delivered files separately
 from every attributed application view. Saved inspection has exactly one Recorded
@@ -125,6 +153,8 @@ preview, adds space, scrolling and literal search of the retained excerpt, and
 never claims to search uncaptured bytes. Selection and capture generations fence
 late completion; busy selection retries only the latest identity.
 
+### Evidence hierarchy
+
 The hierarchy separates list identity and brief observations, selected additional
 context, and explicitly expanded evidence or invocation identity. Call details
 retain readable UTC observation time; reviewed slot and original operation identity
@@ -132,6 +162,8 @@ belong to explicit expansion. Wide Execution rows may show common-scale interval
 from first to latest actual observation. Invalid or reversed clocks have no span.
 These intervals are observations, never inferred execution duration, progress,
 commands, results or domain verdicts.
+
+### Terminal appearance
 
 Navigation, headings, declared labels, typed values, measured counts and host
 states have distinct foreground roles. Active calls use an accent, returned calls
@@ -142,6 +174,8 @@ colors without interpreting their words as status or commands. Color-free
 presentation preserves every distinction through wording and hierarchy. Large
 empty panes must not exhaust the encoded frame budget or hide exit controls;
 actual content overflow still discloses clipping.
+
+### Navigation and inspection lifetime
 
 Narrow layouts keep collapsed rows
 and Enter opens full detail. Returned tree branches collapse by default; active,
@@ -187,6 +221,8 @@ ended/incomplete context and exit promptly. Prefer the current root landing view
 otherwise its first retained view in accepted order. Never resurrect retired
 views or repeat an unchanged summary merely because observation ended.
 
+### Automatic output
+
 The automatic inline region is a compact work projection, not a reduced interactive
 workspace. Show target, observed stage/time, the attributed root summary, up to four
 actual root branches and current activities. Call joins use publisher-scoped operation
@@ -197,6 +233,8 @@ context after leaving TUI. Do not dump collection row details or every report he
 Plain scrollback prints the initial root summary once, meaningful activity transitions,
 notices and causes, then a changed root summary at settlement. Other views remain
 available in TUI/web. Final evidence remains independent of optional updates.
+
+### Experience acceptance
 
 1. **Task first.** Identify the requested task and relevant project or target.
    Name stages in ordinary language. Internal lifecycle and implementation
@@ -387,6 +425,8 @@ available in TUI/web. Final evidence remains independent of optional updates.
     Verify byte-exact machine records, diagnostic safety, complete changed
     policy, and no premature success. An unfamiliar reader must be able to
     identify the outcome and next action from the transcript alone.
+
+### Installation verification help
 
 Help for review, Run and inspection exposes the operator's
 `--verification cached|strict|fast` argument and names cached as the default.

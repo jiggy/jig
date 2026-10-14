@@ -20,35 +20,25 @@ use-case and orchestration hypotheses.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
-- `guide/agents.md` owns ordinary Agent Flow selection, explicit operator
-  resource configuration, host-specific installation/helper recovery, and
-  current adapter limitations. Setup guidance distinguishes review-only
-  prerequisite checks, CLI refusal of any observed selected ACP prerequisite,
-  and SDK per-target readiness. It also distinguishes manual recovery and
-  explicit review-only client selection from uncertain native Run failures.
-  Simple native policies are inline. Named policies earn their separate file
-  through reuse or management. Codex installation guidance covers static
-  npm/Volta native selection and defers its exact metadata bounds and exclusions
-  to `spec/finite-acp.md`.
-
-  Keep installed-client session qualification limits distinct from successful
-  launcher discovery and review. Neither proves model execution.
-  `guide/conversations.md` owns bounded same-session follow-up and interruption.
-  It explains the distinction between control replies and final settlement. It
-  also owns explicit native retention and restoration under a separately
-  reviewed grant. It distinguishes final retention receipts from turn answers
-  and published interface availability from installed-client qualification, and
-  explains application-owned summary handoff. `guide/dependencies.md`
-
-  owns package dependency preparation guidance. Keep its workspace examples
-  aligned with `spec/project-policy.md`'s root selection, direct membership and
-  supported lock-format rules.
-- `guide/configuration.md` owns the settings reference, including terminal
-  appearance, operator configuration, and links to authored project settings.
-  Its startup verification section teaches operator-selected cached, strict and
-  fast installation verification. Keep defaults and tradeoffs aligned with
-  execution policy and `SECURITY.md`. Never imply fast skips Flow approval or
-  sandbox enforcement.
+- `guide/agents.md` owns API and native setup, operator selection, resource
+  configuration, installation recovery, review checks, and current adapter
+  limits. Setup instructions belong here. Other guides link to the relevant
+  setup section. Review readiness and installed-client session qualification
+  remain distinct. Neither proves model execution. Exact native selection limits
+  belong in `spec/finite-acp.md`.
+- `guide/conversations.md` owns bounded follow-up, interruption, native
+  retention, restoration, and application-owned summary handoff. It
+  distinguishes control replies, final settlement, turn answers, and retention
+  receipts. Published interfaces do not establish installed-client
+  qualification.
+- `guide/dependencies.md` owns dependency preparation guidance. Its workspace
+  examples follow `spec/project-policy.md`'s root selection, direct membership,
+  and supported lock formats.
+- `guide/configuration.md` owns settings, entrypoint selection, terminal
+  appearance, review change notation, and cached, strict, and fast installation
+  verification. Keep verification defaults and limits aligned with execution
+  policy and `SECURITY.md`. Fast mode does not skip Flow approval or sandbox
+  enforcement.
 - `guide/files.md` explains per-run files, review-pinned Binding resources, and
   their shared read attachment interface. It covers automatic temporary packets
   for writable targets, stdout-only result targets, explicit retained
@@ -73,9 +63,11 @@ use-case and orchestration hypotheses.
 - `use-cases.md` records outcome-oriented product hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
-- `guide/results.md` owns result interpretation, scripting failures, and
-  retained-state recovery, including recorded packet inspection without starting
-  execution. The quickstart links to it after the first outcome.
+- `guide/results.md` owns execution, application outcome, delivery, cleanup,
+  failure diagnosis, and retained-state recovery. Saved inspection starts no
+  execution. Agent setup recovery belongs in `guide/agents.md`. Settings and
+  appearance belong in `guide/configuration.md`. The quickstart links to results
+  after the first outcome.
 - `index.md` and `guide/understand.md` introduce Agent work inside applications
   through the common Flow boundary and Jig's microkernel-inspired
   responsibilities. The landing page follows a suggestion into application

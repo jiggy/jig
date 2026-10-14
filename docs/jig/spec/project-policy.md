@@ -12,6 +12,21 @@ The governing rule is:
 > Source proposes. One aggregate compare-and-set admits. Immutable generations
 > execute.
 
+## Find the relevant policy
+
+| Task | Required sections |
+| --- | --- |
+| Author a project | [Layout](#1-project-layout), [sources](#2-project-sources), [declarations](#3-author-declarations) |
+| Select packages and prepare dependencies | [Flow members and targets](#4-flow-members-and-direct-targets), [workspace capture](#workspace-dependency-capture), [prepared execution](#prepared-execution-and-limits) |
+| Configure a reusable target | [Bindings](#5-bindings), [default providers](#default-providers-by-contract), [resource grants](#resource-grants) |
+| Review a change | [Candidate and planning](#6-candidate-and-planning), [review client selection](#review-client-selection), [editing behavior](#10-editing-behavior) |
+| Admit reviewed bytes | [Lock and local admission](#7-lock-and-local-admission) |
+| Execute and settle work | [Direct Run](#8-direct-run), [execution envelope](#9-execution-envelope) |
+| Supply or retain files | [Child file runs](#child-file-runs), [Binding attachments](#reviewed-binding-attachments), [root file Runs](#root-file-runs) |
+| Verify host enforcement | [Installation verification](#installation-verification-policy), [containment and lifetime](#containment-and-lifetime), [required conformance](#11-required-conformance) |
+
+These routes identify related requirements. Requirements accumulate across the selected lifecycle.
+
 ## 1. Project layout
 
 `jig --version` writes the package version embedded at build time followed by
@@ -859,6 +874,8 @@ The CLI handles that distinction; it is not a user-selected protocol mode.
 
 ## 8. Direct Run
 
+### Target selection and submission
+
 Only an exact target in the current admitted generation can start. Target
 identity is explicit:
 
@@ -892,6 +909,8 @@ The host launches one Run/0 process from the exact admitted package bytes in
 the selected contained host envelope. It validates the returned outcome and the complete
 result against `FLOW.contract.json` outcomes and its `result` schema. A success is
 published only after the complete process tree is fenced, reaped, and cleaned.
+
+### Child calls and branch capacity
 
 While a direct Flow or Binding Run remains open, its package may use Run/0
 `flow/call` with one of that target's admitted slot names. Jig resolves the name only to the
@@ -945,6 +964,8 @@ utilization accounting. Every descendant remains within the root deadline.
 The reservation policy participates in each exact launch recipe identity;
 a changed policy requires renewed review before execution.
 
+### Agent and command effects
+
 An Agent-using root or child uses `flow/call` through its exact Agent Run slot,
 selecting an ordinary Flow implementation. Input carries instructions, optional
 explicit Skill contents and guidance, and an optional response Schema/0 value. The result is
@@ -979,6 +1000,8 @@ active-operation limit and its containing deadlines. Independent assertions
 remain application policy; repository test logs cannot establish an
 independent verdict. Commands confer no shell, network, installation,
 credential, or writable host-repository authority.
+
+### Settlement and interruption
 
 A Run is `pending` until it has one durable terminal:
 

@@ -75,7 +75,7 @@ semantic display model and renderers, and optional contract authoring toolchain.
 - [jiggy-flow/AGENTS.md](jiggy-flow/AGENTS.md) — Independently released Python
   Run SDK/0 package.
 - [jig/AGENTS.md](jig/AGENTS.md) — Public Jig authoring package and installed
-  secure host.
+  secure host, with required scoped implementation and qualification guidance.
 - [display-model/AGENTS.md](display-model/AGENTS.md) — Readonly semantic
   snapshots and pure display meaning, independent of Jig and renderer state.
 - [display-web/AGENTS.md](display-web/AGENTS.md) — Browser rendering, bounded

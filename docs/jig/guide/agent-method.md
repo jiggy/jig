@@ -6,16 +6,17 @@ title: Reuse the Agent method
 
 The published `@jigging/agent-method` alpha packages one bounded Agent method
 for reuse as a pure TypeScript library or an ordinary Flow. It renders
-instructions and selected guidance, prepares a bounded structured schema,
-decodes the returned JSON presentation, checks its shape and assembles the
+instructions and selected guidance, then prepares a bounded structured schema.
+It decodes the returned JSON presentation and checks its shape. It assembles the
 complete `done`, `blocked` or `limit` result.
 
-Install the [published package](https://www.npmjs.com/package/@jigging/agent-method)
-with an authored Bun lock, or build the complete archive from
+Install the
+[published package](https://www.npmjs.com/package/@jigging/agent-method) with an
+authored Bun lock, or build the complete archive from
 [reviewed source](https://github.com/jiggy/jig/tree/main/packages/agent-method).
-The packed Flow includes its runtime, library and FLOW SDK,
-descriptors, source, declarations and licenses. Running that Flow needs no
-consumer build hook or unpublished runtime dependency.
+The packed Flow includes its runtime, library and FLOW SDK, descriptors, source,
+declarations and licenses. Running that Flow needs no consumer build hook or
+unpublished runtime dependency.
 
 ## Choose the entrypoint
 
@@ -27,17 +28,19 @@ consumer build hook or unpublished runtime dependency.
 
 Both implementations offer the exact Agent Run contract. A project default or
 explicit Binding route chooses the ordinary Flow. The HTTP method's settings
-choose a model and token cap; its HTTP slot receives endpoint authority from
-the operator. The ACP method follows the configuration of its native grant. Skill names
-and paths describe supplied data, not host-attested provenance. Consumers check
-structured results independently of the selected implementation.
+choose a model and token cap. Its HTTP slot receives endpoint authority from the
+operator. The ACP method follows the configuration of its native grant. Skill
+names and paths describe supplied data, not host-attested provenance.
+
+Consumers check structured results independently of the selected implementation.
 
 For baseline one-shot work, the ordinary Agent dependency needs no optional
 requirements. A method that needs events, conversation control or session
-requests declares the corresponding [required behavior](../spec/agent-run.md#declare-required-agent-behavior)
-in its dependency metadata. The HTTP package declares no optional support;
-the ACP package declares all three mechanisms. Matching these claims does not
-establish current native support, grant authority or a successful result.
+requests declares the corresponding
+[required behavior](../spec/agent-run.md#declare-required-agent-behavior) in its
+dependency metadata. The HTTP package declares no optional support. The ACP
+package declares all three mechanisms. Matching these claims does not establish
+current native support, grant authority or a successful result.
 
 ## Invoke the ordinary Flow
 
@@ -52,19 +55,20 @@ Its input is:
 }
 ```
 
-`skills` carries complete selected UTF-8 contents, including `SKILL.md` for
-each Skill. Omission supplies none. The public `readPackageSkills` reader can
-load explicit trees from the caller's own captured package. Plain `guidance` preserves the supplied order and
-requires unique nonempty labels. A label describes text, not provenance,
-permission or a Skill manifest. Selected Skills and guidance labels occupy
-separate namespaces.
+`skills` carries complete selected UTF-8 contents, including `SKILL.md` for each
+Skill. Omission supplies none. The public `readPackageSkills` reader can load
+explicit trees from the caller's own captured package. Plain `guidance`
+preserves the supplied order and requires unique nonempty labels. A label
+describes text, not provenance, permission or a Skill manifest. Selected Skills
+and guidance labels occupy separate namespaces.
 
-Together, Skills and guidance are bounded to 64 groups and 1,024 files/text items;
-their UTF-8 content plus instructions is bounded to 1 MiB. Selected Skills and files are sorted canonically;
-duplicates and invalid UTF-8 reject. The final rendered prompt, including
-instructions and schema guidance, has its own 1 MiB bound.
-Structured schemas use the [bounded profile](../spec/agent-run.md#structured-output-profile)
-and at most 256 KiB of canonical JSON/0.
+Together, Skills and guidance are bounded to 64 groups and 1,024 files/text
+items. Their UTF-8 content plus instructions is bounded to 1 MiB. Selected
+Skills and files are sorted canonically. Duplicates and invalid UTF-8 reject.
+The final rendered prompt, including instructions and schema guidance, has its
+own 1 MiB bound. Structured schemas use the
+[bounded profile](../spec/agent-run.md#structured-output-profile) and at most
+256 KiB of canonical JSON/0.
 
 Keep a small response schema used by one call beside that call, inline or as a
 local `responseSchema` constant. Extract a substantial or reused shape into an
@@ -73,95 +77,67 @@ ordinary adjacent file with a descriptive name, such as
 the Flow's complete public result. There is no required schemas directory or
 `FLOW.response.json` declaration. Keep its explicit dialect, supported profile
 and independent result/domain checks intact. Dynamic choices, such as an enum of
-eligible routes, remain ordinary code. A schema import does not authorize a
-cross-Flow dependency.
+eligible routes, remain ordinary code.
+
+A schema import does not authorize a cross-Flow dependency.
 
 When related interfaces actually share constraints, optional
 [`@agentResponse` generation](contracts.md#one-model-related-outputs) can reduce
 repeated declarations. Distinct public and Agent shapes stay distinct when their
 constraints differ. Change managed projections through their source declaration
-and explicit regeneration; placement advice does not permit moving or deleting
+and explicit regeneration. Placement advice does not permit moving or deleting
 owned outputs behind the authoring tool.
 
-For Jig, declare `@jigging/agent-method` in the project's `package.json`
-dependencies. Use `workspace:*` for source in your Bun workspace or a selected
-published version with its Bun lock. Configure its ordinary Binding:
+Configure the ordinary Flow once with [API access](agents.md#api-access) or
+[a native client](agents.md#local-clients). This guide covers the caller's
+input, result checks and library reuse after that setup.
 
-```ts
-import { defineJig, discover } from '@jigging/jig'
-
-export default defineJig({
-  flows: discover('./flows'),
-  bindings: discover('./bindings'),
-  defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' },
-})
-```
-
-The `npm:` selector uses declared dependency preparation, not traversal of the
-live installation tree. With one eligible configured provider the project
-mapping is optional. It remains useful for an explicit choice among providers.
-
-Create `bindings/agent.ts`:
-
-```ts
-import { defineBinding } from '@jigging/jig'
-
-export default defineBinding({
-  package: 'npm:@jigging/agent-method',
-  settings: { model: 'your-model', maxCompletionTokens: 4096 },
-  slots: {
-    http: {
-      kind: 'http', method: 'POST',
-      url: 'https://api.openai.com/v1/chat/completions',
-      bearerEnv: 'OPENAI_API_KEY',
-    },
-  },
-})
-```
-
-Choose a model supported by the endpoint and supply the named credential in the
-operator environment. No native Agent configuration is needed. Review the exact
-[grant](../spec/grants.md), then invoke the Binding:
+For the configured `binding:agent`, invoke the method with explicit
+instructions:
 
 ```sh
-jig review
 jig run binding:agent --input '{"instructions":"Explain a useful way to check an assumption."}'
 ```
 
-The Flow builds one non-streaming Chat Completions request by default and calls its exact
-`http` slot. Jig holds the credential and network access; the package interprets
-the HTTP status, response text and stop reason. The method returns the complete
-`{ outcome: 'done' | 'blocked' | 'limit', output: { text, structured? } }`.
-A successful structured method result contains the validated `structured`
-value. Operational errors remain execution errors. The installed Jig command
-wraps this invocation result in its ordinary Run terminal, which also reports
-host execution status. Tool requests, malformed data and non-200 HTTP statuses
-remain failures. Nothing is retried automatically. A refused answer is `blocked`;
-token exhaustion is `limit`.
+### HTTP outcomes
+
+The HTTP Flow builds one non-streaming Chat Completions request by default and
+calls its exact `http` slot. Jig holds the credential and network access. The
+package interprets the HTTP status, response text and stop reason. The method
+returns the complete
+`{ outcome: 'done' | 'blocked' | 'limit', output: { text, structured? } }`. A
+successful structured method result contains the validated `structured` value.
+Operational errors remain execution errors.
+
+The installed Jig command wraps this invocation result in its ordinary Run
+terminal, which also reports host execution status. Tool requests, malformed
+data and non-200 HTTP statuses remain failures. Nothing is retried
+automatically. A refused answer is `blocked`. Token exhaustion is `limit`.
 
 ### Diagnose a failed request
 
-HTTP failures name the selected API and status, explain which configuration to
-check, and retain status-derived facts in the operation error's `details`:
-`phase`, `api`, `status`, `category`, and `retry: "not-attempted"`. An optional
+HTTP failures name the selected API and status, and explain which configuration
+to check. The operation error's `details` retains status-derived facts: `phase`,
+`api`, `status`, `category`, and `retry: "not-attempted"`. An optional
 `parameter` names only an exact recognized API field reported by the provider.
-For example, HTTP 422 points to the Agent Binding's model, API format, output
-mode and token settings. Without a recognized parameter, the exact cause
-remains unknown. HTTP 404 may
-mean an unavailable model or an incorrect endpoint. Neither diagnosis invents
-a provider cause or prints its error body.
+For example, HTTP 422 points to these Agent Binding settings: model, API format,
+output mode and token settings. Without a recognized parameter, the exact cause
+remains unknown. HTTP 404 may mean an unavailable model or an incorrect
+endpoint.
+
+Neither diagnosis invents a provider cause or prints its error body.
 
 Use the originating operation path to identify the selected method and Binding.
 An HTTP response establishes that the endpoint responded, not that remote work
 was undone or safe to replay. Transport uncertainty remains a separate host
 failure. Correct configuration explicitly and review changed settings or grants
-before starting new work; the method never switches providers or retries.
+before starting new work. The method never switches providers or retries.
 
 ### Use an OpenAI-compatible gateway
 
 The same Flow can call an OpenAI-compatible gateway by changing its model,
-endpoint URL, and operator credential. For example, OpenRouter documents a
-Chat Completions endpoint and a dynamic free-model route:
+endpoint URL, and operator credential. For example, OpenRouter documents a Chat
+Completions endpoint and a dynamic free-model route:
 
 ```ts
 settings: { model: 'openrouter/free', maxCompletionTokens: 4096 },
@@ -176,7 +152,7 @@ slots: {
 
 See [OpenRouter's API instructions](https://openrouter.ai/openrouter/free/apps)
 and [route details](https://openrouter.ai/openrouter/free). The route selects
-from the provider's currently available free models; availability, data policy,
+from the provider's currently available free models. Availability, data policy,
 and model quality are provider-controlled and may change. This is a development
 configuration, not a stable model choice or a quality guarantee.
 
@@ -185,19 +161,21 @@ guide the admitted method. To enforce them against malicious method code, add
 matching constraints in the HTTP grant's `bodySchema`. The endpoint still owns
 its billing and data policy. See [HTTP Request](../spec/http-request.md).
 
-Set `api: 'responses'` in the Binding settings and grant the exact `/v1/responses`
-endpoint to use Responses instead. `structuredOutput: 'json-schema'` requests
-the selected API's strict schema format; the default `'prompt'` requests the
-shape in instructions. Both modes validate returned data locally and fail on
-unsupported responses. Neither establishes semantic correctness.
+Set `api: 'responses'` in the Binding settings and grant the exact
+`/v1/responses` endpoint to use Responses instead.
+`structuredOutput: 'json-schema'` requests the selected API's strict schema
+format. The default `'prompt'` requests the shape in instructions. Both modes
+validate returned data locally and fail on unsupported responses. Neither
+establishes semantic correctness.
 
 HTTP grants default to a 256 KiB request and 1 MiB response. For larger explicit
-context or answers, set `requestBytes` up to 8 MiB and `responseBytes` up to 12 MiB
-in the reviewed HTTP slot. The method requests `response: 'json'`, so a structured
-API response is passed as data rather than wrapped in another JSON string.
-The shared 1 MiB rendered-prompt and 8 MiB text limits still apply, as do JSON/0's
-complete-value bounds, the grant's timeout (at most 60 seconds), and the Run
-deadline. Requests are rejected, not truncated.
+context or answers, change the reviewed HTTP slot. Set `requestBytes` up to 8
+MiB. Set `responseBytes` up to 12 MiB. The method requests `response: 'json'`,
+so a structured API response is passed as data rather than wrapped in another
+JSON string. The shared 1 MiB rendered-prompt and 8 MiB text limits still apply.
+
+JSON/0's complete-value bounds, the grant's timeout (at most 60 seconds), and
+the Run deadline also apply. Requests are rejected, not truncated.
 
 ## Reuse the library
 
@@ -217,17 +195,17 @@ const result = finishAgent(prepared, response)
 
 `yourTransport` stands for the implementation's own transport code, not a Jig
 API or an implicit service. The HTTP and ACP packages provide concrete examples
-using ordinary granted slots. `prepared.request` is ordinary data, with
-`prompt` and optional `responseSchema`; it grants no execution rights.
-Neither pure function performs a provider call or reads files. The optional
-second preparation argument uses `SkillText` values shaped as
+using ordinary granted slots. `prepared.request` is ordinary data, with `prompt`
+and optional `responseSchema`. It grants no execution rights. Neither pure
+function performs a provider call or reads files. The optional second
+preparation argument uses `SkillText` values shaped as
 `{ name, files: [{ path, text }] }`.
 
 The separate `@jigging/agent-method/skills` export provides
-`readPackageSkills(packageRoot: URL, names)` for explicit bounded reads.
-The caller supplies its own literal package URL.
-This reader does not authenticate a Jig caller or acquire another package's
-source. Its exact API and build instructions live in the package README.
+`readPackageSkills(packageRoot: URL, names)` for explicit bounded reads. The
+caller supplies its own literal package URL. This reader does not authenticate a
+Jig caller or acquire another package's source. Its exact API and build
+instructions live in the package README.
 
 Consumers of an Agent implementation can validate its result independently:
 
@@ -245,28 +223,32 @@ honest blocked or limited answer, and throws on malformed results. Application
 checks still decide whether a schema-valid answer is useful or true.
 
 The finite ACP resource rejects prompts beginning with `/` after whitespace
-before native dispatch: these clients interpret them as control commands.
-See the [finite authority profile](../spec/finite-acp.md#finite-acp-authority-profile).
+before native dispatch: these clients interpret them as control commands. See
+the
+[finite authority profile](../spec/finite-acp.md#finite-acp-authority-profile).
 
 Use [ordinary workspace dependencies](dependencies.md#local-workspace-packages)
 for development in the source workspace. To adapt the shared method, edit its
 source, build and test it, then pack the complete artifact using its documented
 package recipe. Extract that archive into a fresh Flow directory for Jig review
-and adoption. The package excludes development `node_modules` and `bun.lock`;
-the development lock's local `file:` SDK dependency is not a supported Jig
+and adoption. The package excludes development `node_modules` and `bun.lock`.
+The development lock's local `file:` SDK dependency is not a supported Jig
 runtime-preparation input. The packed runtime needs no such preparation.
-Keep source and rebuilt runtime together; do not hand-edit generated files.
+
+Keep source and rebuilt runtime together. Do not hand-edit generated files.
 
 ## Composition and observations
 
-A Jig root can call this Flow directly or through a specialist's ordinary
-slot. Each Flow uses its own admitted routes; the Agent's HTTP grant remains separate
+A Jig root can call this Flow directly or through a specialist's ordinary slot.
+Each Flow uses its own admitted routes. The Agent's HTTP grant remains separate
 from the specialist's authority. Two direct Agent siblings fit the root budget.
 A specialist → Agent branch uses two child levels. Two such branches fit the
-fixed aggregate reservation; a third sibling is rejected rather than queued.
-Deeper methods are allowed when their complete branch fits the same budget;
-they do not receive additional resources. Aggregate resources and the
-remaining root deadline apply. See [project policy](../spec/project-policy.md).
+fixed aggregate reservation.
+
+A third sibling is rejected rather than queued. Deeper methods are allowed when
+their complete branch fits the same budget. They do not receive additional
+resources. Aggregate resources and the remaining root deadline apply. See
+[project policy](../spec/project-policy.md).
 
 For a specialist accepting a text input, the existing SDK call is sufficient:
 
@@ -280,13 +262,13 @@ await handle(run => run.call({
 }))
 ```
 
-Declare the exact Agent Run requirement in its metadata. The project default
-above resolves it without a specialist Binding. An application's Binding can
-select `slots: { specialist: 'flow:flows/specialist' }`. An explicit specialist
-Binding may instead set `slots: { agent: 'binding:another-agent' }`.
-Each call returns the method's
-ordinary outcome and output; a failed descendant call throws through `run.call`
-and may be handled with normal `try/catch` after cleanup.
+Declare the exact Agent Run requirement in its metadata. The
+[configured project default](agents.md#api-access) resolves it without a
+specialist Binding. An application's Binding can select
+`slots: { specialist: 'flow:flows/specialist' }`. An explicit specialist Binding
+may instead set `slots: { agent: 'binding:another-agent' }`. Each call returns
+the method's ordinary outcome and output. A failed descendant call throws
+through `run.call` and may be handled with normal `try/catch` after cleanup.
 
 The shared contract declares optional Agent updates, but this text-only HTTP
 implementation does not support them. A requested channel fails before HTTP
@@ -297,5 +279,5 @@ Markdown uses the same project default, or an explicit Binding can select
 structured decision before activating an exact authored recipe.
 
 Other finite Run/0 hosts can supply the same exact HTTP Request interface under
-their own authority. Library reuse, unchanged Flow consumption,
-and Agent answer quality require separate evidence.
+their own authority. Library reuse, unchanged Flow consumption, and Agent answer
+quality require separate evidence.
