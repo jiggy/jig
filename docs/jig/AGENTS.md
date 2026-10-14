@@ -38,7 +38,8 @@ use-case and orchestration hypotheses.
   receipts, one-use references, and lifetime bounds. Published interfaces do not
   establish installed-client qualification. Turn answers are not retention
   receipts.
-- `guide/dependencies.md` owns dependency preparation guidance. Its workspace
+- `guide/dependencies.md` starts with a complete library example and owns
+  dependency preparation guidance. Its workspace
   examples follow `spec/project-policy.md`'s root selection, direct membership,
   and supported lock formats.
 - `guide/configuration.md` owns settings, entrypoint selection, terminal
@@ -46,12 +47,14 @@ use-case and orchestration hypotheses.
   verification. Keep verification defaults and limits aligned with execution
   policy and `SECURITY.md`. Fast mode does not skip Flow approval or sandbox
   enforcement.
-- `guide/files.md` explains per-run files, review-pinned Binding resources, and
+- `guide/files.md` starts with a complete file-copy example and explains
+  per-run files, review-pinned Binding resources, and
   their shared read attachment interface. It covers automatic temporary packets
   for writable targets, stdout-only result targets, explicit retained
   destinations, actionable admitted file mappings, retention and static child
   file mappings.
-- `guide/agent-method.md` explains the reusable method's pure library and
+- `guide/agent-method.md` starts with direct invocation and a complete caller.
+  It explains the reusable method's pure library and
   published ordinary Agent Run artifact. It covers reviewed-source adoption,
   explicit caller context, local private response-schema placement and
   independent consumer result validation. Small one-call schemas stay beside
@@ -157,6 +160,12 @@ use-case and orchestration hypotheses.
 - Preserve the current uniform record shape within each catalogue.
 
 ## Work Guidance
+
+- Start task guides with prerequisites, one complete example, expected results,
+  and recovery. Put optional configuration and exact reference details afterward.
+  Name the author or operator when their responsibilities differ.
+  Keep authority conditions and failure limits beside the actions they constrain.
+  Use ordinary language for consequences and link to exact contract owners.
 
 - The software-factory guide awaits replacement. Exclude it from structural style
   checks until recreation. Restore the check when recreating the guide.

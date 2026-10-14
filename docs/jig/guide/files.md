@@ -4,52 +4,143 @@ title: Working with files
 
 # Working with files
 
-Give a Flow the files it needs and receive its deliverables without writing
-your own capture or export program. Jig supplies the file boundary; the Flow
-decides what its files mean.
+Give a Flow read access to selected files and collect its output in a new result
+directory. This example copies one UTF-8 text file. Your original stays outside
+the Flow's write access.
+
+## Before you start
+
+Use a project from the [quickstart](index.md) on a supported host. The author
+declares which files the Flow needs. The operator selects the input directory
+and output destination.
+
+## Author a file Flow
+
+Create the Flow from your project root:
 
 ```sh
-jig run binding:repair --input @issue.json --attach source=./src
+jig new copy
 ```
 
-`--input @issue.json` snapshots bounded JSON from an operator-selected regular
-file, then parses it before project execution. Inline JSON continues to work.
-This data file is not an execution attachment, so its parent may use ordinary
-filesystem or path aliases; the selected file itself cannot be a symbolic
-link. `--attach source=./src` supplies the directory to the
-admitted Flow's declared `source` read attachment. If the Flow declares writable
-deliverables, Jig saves a new packet in operating-system temporary storage and
-reports its destination on stderr. The operating system may clear that storage;
-add `--out ./review` for a chosen retained location that does not already exist.
-Relative paths are relative to your command directory.
+If `jig.ts` uses explicit membership, add `flows/copy` to its `flows` list.
+Create `flows/copy/FLOW.contract.json`:
+
+```json
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "attachments": { "source": "read", "deliverables": "read-write" }
+}
+```
+
+Replace `flows/copy/FLOW.ts`:
+
+```ts
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { handle } from '@jigging/flow'
+
+await handle(async run => {
+  const text = await readFile(join(run.attachments.source.path, 'note.txt'), 'utf8')
+  await writeFile(join(run.attachments.deliverables.path, 'note.txt'), text, 'utf8')
+  return { outcome: 'done', output: { file: 'note.txt' } }
+})
+```
+
+The Flow uses the supplied attachment paths. It does not import Jig or choose
+host paths.
+
+## Review and run the copy
+
+Create a small input directory, then review and run:
+
+```sh
+mkdir input
+printf 'Hello from a file.\n' > input/note.txt
+jig review --allow-resolution-network
+jig run flow:flows/copy --attach source=./input --out ./copy-result
+cat copy-result/files/note.txt
+```
+
+The starter declares the FLOW SDK dependency. If its lock is missing, review
+needs the resolution permission shown above. That permission may contact
+dependency-selected destinations before approval. Read
+[dependency preparation](dependencies.md#fresh-resolution-and-network-access)
+before granting it.
+
+Inspect the source and proposed authority before approving execution.
+
+Expect `Hello from a file.` in the copied file. The Run should report execution
+status `succeeded`, outcome `done`, and confirmed delivery. The packet contains:
+
+```text
+copy-result/
+  result.json       Jig's execution record and file manifest
+  files/note.txt    The copied text
+```
+
+For another Run, choose a new destination. Jig never overwrites an existing
+result directory. Try changing the input text. Per-run inputs are captured
+afresh without source review.
+
+Review again if you change the Flow or its contract.
+
+## If the copy does not complete
+
+| Observation | Action |
+| --- | --- |
+| Input or attachment validation fails | Correct the input and declared mapping. These checks fail before package dispatch. |
+| `note.txt` is absent | Supply that file in the selected input directory. Inspect the reported execution failure before new work. |
+| The destination already exists | Choose a new directory. A repeated command starts new work. It does not resume delivery. |
+| Delivery or cleanup is uncertain | Inspect the destination and retained evidence. Follow [Results and recovery](results.md) before further work. |
+| Ctrl-C interrupts the command | Wait for cleanup. An interruption may leave no terminal packet and does not prove the handler started. |
+
+Execution and delivery are separate facts. An accepted execution result can
+survive failed delivery. A delivered file does not prove application
+correctness. See [delivery and interruption](#understand-failures) for
+checkpoints and exact failure behavior.
 
 ## Choose what to share
 
-Without selectors, Jig captures regular files throughout the chosen directory.
-To share less, repeat `--select` with exact relative paths:
+Use `--attach NAME=DIRECTORY` for each declared read attachment. Relative paths
+resolve from the command directory. Without selectors, Jig captures regular
+files throughout the chosen directory. Repeat `--select` to restrict capture to
+exact relative paths:
 
 ```sh
 jig run flow:flows/analyze --attach source=../project \
   --select source=src/main.ts --select source=README.md --out ./analysis
 ```
 
-Unselected subtrees are not enumerated. Jig preserves binary and empty files;
-empty directories are omitted. Symlinks, multiply linked files, special files,
-protected host state, and nested mounts are rejected. Select intentionally:
-capture does not detect secrets, and a Flow with Agent authority may send
-selected contents to its operator-configured provider.
+Unselected subtrees are not enumerated. Capture preserves binary and empty
+files. Empty directories are omitted. Symlinks, multiply linked files, special
+files, protected host state, and nested mounts are rejected.
 
-The current limit is eight declared attachments, including any writable one.
-Input totals are bounded to 64 files, 8 MiB, 256 tree entries, 16 path components,
-and 512 UTF-8 bytes per relative path.
-The captured bytes are immutable during the Run; they are not a live mount
-of your directory or a claim of an atomic repository revision.
+Capture does not detect secrets. A Flow with Agent authority may send selected
+content to its configured provider. Select only the files you intend to share.
+
+Captured bytes stay unchanged during the Run. They are not a live directory
+mount or an atomic repository snapshot. Input limits are eight declared
+attachments, including any writable one, and these aggregate bounds:
+
+| Limit | Maximum |
+| --- | --- |
+| Files | 64 |
+| Bytes | 8 MiB |
+| Tree entries | 256 |
+| Path components | 16 |
+| Relative path length | 512 UTF-8 bytes |
+
+`--input @question.json` supplies JSON input from a selected regular file.
+Inline JSON also works. Jig captures and parses it before execution. It is not a
+file attachment.
+
+Its parent may use ordinary path aliases, but the selected file cannot be a
+symlink.
 
 ## Keep a resource with a Binding
 
-Use `--attach` for files chosen for each job. For a shared reference dataset or
-self-contained tool bundle that should change only after review, select it in
-the Binding instead:
+For reference data that should change only after review, declare it in a
+Binding:
 
 ```ts
 import { defineBinding } from '@jigging/jig';
@@ -60,41 +151,32 @@ export default defineBinding({
 });
 ```
 
-The Flow declares `reference: "read"` in its contract and reads
-`run.attachments.reference.path` as usual. Its code does not need to know whether
-those files came from a Binding or a per-run selection.
+The Flow declares `reference: "read"` and uses `run.attachments.reference.path`.
+Paths in the Binding resolve from the project root. Review shows the complete
+file manifest and digest. Approval keeps that captured copy.
 
-```sh
-jig review
-jig run binding:analyze --input @question.json
-```
-
-Here the declaration is `bindings/analyze.ts`; paths resolve from the project
-root. Review shows the selected tree's digest and complete file manifest.
-Approval pins its bytes: later edits or deletion of the original directory do
-not change an already reviewed Run. Review again to propose new contents. Each
-Binding can select a different resource for the same unchanged Flow.
+Later edits or deletion of the source directory do not change approved Runs.
+Review again to propose new contents.
 
 A bound name cannot be overridden with `--attach`. Other read attachments still
-need per-run mappings. Combined inputs share the same 64-file/8-MiB limit.
-Only the selected root Binding receives its resources automatically. Direct
-`flow:` calls do not borrow them; a child needs an explicit reviewed mapping.
+need per-run mappings. Combined inputs share the same 64-file/8-MiB limit. Only
+the selected root Binding receives its resources automatically.
 
-Select small, intentional directories. Their complete regular-file trees are
-captured, without links or implicit exclusions, and retained in protected
-storage even if you decline execution approval. This is not secret storage.
+Direct `flow:` calls do not borrow them. Children need explicit mappings.
 
-Tool bundles are ordinary code, not a new permission class. A bundled script
-can run using Jig's installed Bun within the Flow's existing sandbox. Jig does
-not discover or copy a native installation's libraries, preserve executable
-permissions, or grant paths embedded in a binary. Direct access also cannot
-restrict a tool to particular arguments. See the
-[exact resource boundary](../spec/project-policy.md#reviewed-binding-attachments).
+Capture retains the complete selected regular-file trees even if you decline
+execution approval. Bound resources are not secret storage. Choose small,
+intentional directories. Tool bundles are ordinary code under existing sandbox
+permissions.
+
+See the
+[resource boundary](../spec/project-policy.md#reviewed-binding-attachments) for
+native binaries, executable permissions, and argument restrictions.
 
 ## Compose file work
 
-Keep file-processing Flows independently runnable. In a caller Binding, map
-only the attachments each child needs:
+Keep children independently runnable. In the caller Binding, map only the
+attachments each child needs:
 
 ```ts
 slots: {
@@ -108,124 +190,79 @@ slots: {
 },
 ```
 
-The caller and child declare `source: "read"` and `deliverables: "read-write"`.
-The child receives the caller's immutable `source` view and an empty output.
-Call it with ordinary
-`await run.call({ operationId: 'copy-1', slot: 'copy', input })`. After successful child
-completion and cleanup, its complete output appears in the caller's
-`deliverables/copies` folder. The caller can read and combine those files before
-finishing its own output. Every child attachment needs a mapping; paths and
-settings cannot be chosen through the call input.
+Caller and child declare `source: "read"` and `deliverables: "read-write"`. The
+child receives the caller's captured source and an empty output. Call it with
+`await run.call({ operationId: 'copy-1', slot: 'copy', input })`. After
+successful completion and cleanup, its complete files appear in the caller's
+`deliverables/copies` folder.
 
-Sibling children may run concurrently with different destination folders.
-The total final caller output must still fit its file and byte limits.
-An existing folder is never overwritten. A committed folder cannot be reused
-by a later child call, even if the caller deletes it. Failed or cancelled work
-publishes no partial folder; cancellation racing a completed commit may leave
-the complete folder with a cancelled or uncertain call response. Jig does not
-retry such work automatically.
+Every child attachment needs a mapping. Call input cannot choose paths or
+settings.
+
+Use distinct child destinations. Existing or previously committed folders cannot
+be reused. Failed or cancelled work publishes no partial folder. Cancellation
+racing a completed commit may leave the complete folder with a cancelled or
+uncertain response.
+
+Inspect evidence before further work. Jig does not retry automatically.
+[Child file policy](../spec/project-policy.md#child-file-runs) owns mapping,
+shared limits, commit, and cleanup requirements.
 
 ## Receive one packet
 
-Omit `--out` when a reviewed root target declares writable deliverables: Jig
-chooses a fresh packet directory in operating-system temporary storage for each
-invocation and reports the exact destination on stderr, including with `--json`.
-Earlier packets remain intact, but the operating system may clear temporary
-storage. Use `--out ./review` to choose a retained location. It replaces any
-entrypoint output default and never overwrites an existing destination. The
-chosen destination stays identical through command reexecution; a refusal does
-not automatically retry work or choose another path.
+A writable root attachment starts empty and is limited to 16 MiB, enforced while
+the Flow writes. Jig collects output after execution is fenced and its result
+accepted. The original input directory stays outside write access. These limits
+are current Jig policy for small file jobs, not FLOW requirements or proved
+optimums.
 
-A root Flow may declare one writable attachment. It begins empty and is
-limited to 16 MiB. Jig supplies its contained path and collects files only
-after execution is fenced and the result accepted. A Flow with no writable
-attachment returns its result on stdout without creating a packet by default;
-it can still use `--out` to save its execution record.
+| Choice | Result |
+| --- | --- |
+| Writable target without `--out` | A fresh temporary packet. Jig reports its path on stderr, including with `--json`. The operating system may clear it. |
+| Result-only target without `--out` | The result on stdout, without a packet. |
+| Either target with `--out DIR` | A new packet at the chosen destination, replacing any entrypoint output default. |
 
-Starting empty keeps your originals outside the Flow's write authority. The
-size, file-count, and path limits bound memory, storage, and capture/export work.
-Their current values are conservative Jig policy for small file jobs—not FLOW
-requirements or demonstrated optimums. The output ceiling is enforced while
-the Flow writes, not just checked afterward.
+The destination must be absent, have an existing supported parent, and lie
+outside every per-run input root. For `--attach source=.`, choose a sibling
+destination. `--out ./review` would be inside that input root. The destination
+stays fixed through command reexecution.
 
-The output destination must not exist, must have an existing supported parent,
-and must be outside every per-run input root. Reviewed Binding source directories
-are not reopened at execution. For example, use a sibling destination
-with `--attach source=.`; `--out ./review` would be inside that root.
+Refusal does not automatically retry work or choose another path. Binding source
+directories are not reopened during execution.
 
-```text
-review/
-  result.json       Jig's execution record and file manifest
-  files/            The Flow's deliverables
-```
-
-The host record identifies the Run, admitted method/configuration, canonical
-JSON input, captured files, and exported file sizes and SHA-256 digests.
-It does not expose private host identities or include a digest of itself.
-Exported directories are private (`0700`) and files are owner-readable/writable
-(`0600`). A Flow's own `files/result.json` is just a deliverable, not host status.
+`result.json` contains the host's execution record and captured/exported file
+manifests and digests. A Flow's own `files/result.json` is a deliverable, not
+host status. Use [recorded result inspection](results.md#reopen-a-saved-result)
+to read a saved packet without starting work.
 
 ## Understand failures
 
-`status` describes execution; `delivery` describes publication.
-`delivery.source` distinguishes `final` files, retained `checkpoint` files, and
-`none`. A known successful terminal can survive coordinator loss even when only
-an earlier checkpoint's files remain available.
+`status` describes execution. `delivery` describes packet publication.
+`delivery.source` is `final`, `checkpoint`, or `none`. An application outcome
+such as `blocked` can include useful files.
 
-An application outcome such as `blocked` may include useful files. A failed
-process, invalid result, or cancelled execution exports no partial scratch files. A Flow using
-[Run Checkpoint](../spec/run-checkpoint.md) can instead save explicit progress:
-its latest accepted files are delivered after cleanup, with the failed/lost
-execution status intact. `result.json` identifies that checkpoint separately,
-or records `checkpoint: null` if none was accepted. An invalid output
-tree fails delivery without changing an already accepted execution outcome.
+Failed, invalid, or cancelled execution exports no partial scratch files.
 
-Publication exposes one complete packet without replacing an existing path.
-This is atomic visibility, not a promise of persistence through power loss.
-Cancellation removes unfinished file-copy staging. After confirmed cleanup,
-Jig can still save the interrupted Run's terminal record without Flow files.
-Cancellation after publication does not retract the packet. The ordinary stdout record matches
-the packet, but a later cleanup or acknowledgement failure can add a CLI error.
-After connection loss, delivery may be unknown even though a packet exists.
-If file metadata makes the report exceed JSON/0 limits, `JIG_REPORT_LIMIT`
-preserves the execution terminal on stdout and reports delivery separately on
-stderr; inspect the destination before starting new work.
+A [checkpoint-enabled Flow](../spec/run-checkpoint.md) can retain explicit
+progress. After cleanup, Jig delivers its latest accepted checkpoint with the
+failed or lost execution status intact. The record identifies that checkpoint or
+keeps `checkpoint: null` when none was accepted. Without confirmed cleanup,
+delivery fails.
 
-Invalid input, missing attachment mappings, and a destination already occupied
-at preparation time fail before package dispatch. For a checkpoint-enabled Run,
-the separate delivery owner recovers that exact Run's cleanup after coordinator
-loss, then publishes accepted progress or explicit absence. If cleanup cannot
-be confirmed, it reports failure instead. For other Runs, coordinator loss may
-leave no terminal record; the owner removes unpublished staging.
-Repeating the command always starts new work, never resumes an export.
+Other lost Runs may have no terminal record.
 
-Use Ctrl-C (SIGINT) to interrupt the command. `JIG_COMMAND_INTERRUPTED` may
-arrive without a terminal packet; it does not prove that the Flow handler
-started or received a cancellation signal.
+Publication exposes one complete packet, with no power-loss persistence
+guarantee. Cancellation removes unfinished copy staging but does not retract a
+published packet. Connection loss can leave delivery unknown even when the
+packet exists. `JIG_REPORT_LIMIT` keeps the terminal on stdout and reports
+delivery separately on stderr.
 
-`--timeout` bounds Run execution (30 seconds by default). Attachment capture and
-export check separate 10- and 20-second budgets within the command's bounded
-host overhead; cleanup is not skipped when either budget expires.
+Inspect the destination before new work. Repeating the command always starts new
+work.
 
-## Author a file Flow
-
-Declare portable attachments in `FLOW.contract.json`, then use the paths in
-`run.attachments` through the ordinary FLOW SDK:
-
-```json
-{
-  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
-  "attachments": { "source": "read", "deliverables": "read-write" }
-}
-```
-
-Your method reads `run.attachments.source.path` and writes under
-`run.attachments.deliverables.path`. It does not import Jig or choose host
-paths. See the [tested-patch application](./tested-patch.md) for a complete
-method with its own text validation and evidence checks.
-
-Root invocations, including configured Bindings, accept files from the operator.
-Child slots can use files through the complete static mappings shown above.
-Each child has separate outputs; the host imports accepted files into the
-declared parent folder before the call returns. Exact limits and lifecycle
-guarantees are in the [project policy](../spec/project-policy.md#child-file-runs).
+`--timeout` bounds execution, with a 30-second default. Capture, export, and
+cleanup have separate bounds.
+[Root file policy](../spec/project-policy.md#root-file-runs) owns exact
+collection, publication, modes, report limits, and interruption behavior.
+[Results and recovery](results.md) explains how to act on execution and delivery
+uncertainty.

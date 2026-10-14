@@ -49,7 +49,7 @@ bounds. The generated JSON still governs actual invocation validation.
 Small private Agent response schemas usually belong beside their single call;
 substantial or reused schemas may use an ordinary descriptive adjacent file.
 They do not become `FLOW.*` declarations or the Flow's public result envelope.
-See [response schema authoring](agent-method.md#invoke-the-ordinary-flow).
+See [response schema authoring](agent-method.md#request-a-structured-answer).
 
 When two interfaces actually share constraints, decorate a closed model with
 `@agentResponse("./proposal.schema.json")` to request a standalone Agent response

@@ -4,167 +4,192 @@ title: Flow dependencies
 
 # Flow dependencies
 
-A Flow can reuse libraries while keeping its reviewed execution reproducible.
-The alpha runs `FLOW.ts` with Jig's installed Bun runtime. Imports may reference
-supported Bun/Node built-ins, package-local files, or prepared production dependencies.
+Use a library from an approved Flow. This example escapes HTML characters
+in `<note>` with `escape-html`.
 
-Prepared execution trees are bounded to 32 MiB and 4,096 file/alias records.
-Declare what the Flow imports at runtime as production dependencies. Tools used
-only to develop or launch the project belong in `devDependencies`; a workspace
-Flow can have its own manifest and runtime dependencies. Preparation-limit
-errors identify the manifest to inspect; review does not silently omit a
-declared runtime dependency to make the tree fit.
+## Before you start
+
+Use a project from the [quickstart](index.md) and Bun 1.3.3 for authoring. Jig
+runs `FLOW.ts` with its installed Bun runtime. A Flow can import supported
+Bun/Node built-ins, its own files, and declared production dependencies.
 
 ## Published packages
 
-Place `package.json` beside `FLOW.ts` and declare your dependencies there. If
-the package supplies a matching Bun text `bun.lock`, review installs it frozen:
+### 1. Add the dependency
+
+From the project root:
+
+```sh
+jig new escape
+bun add --cwd flows/escape escape-html@1.0.3
+```
+
+Bun records the dependency in `flows/escape/package.json` and writes its lock.
+Keep both files with the Flow. Runtime imports belong in `dependencies`.
+Development-only tools belong in `devDependencies`.
+
+If `jig.ts` uses explicit membership, add `flows/escape` to its `flows` list.
+
+### 2. Use the library
+
+Replace `flows/escape/FLOW.ts`:
+
+```ts
+import escapeHtml from 'escape-html'
+import { handle } from '@jigging/flow'
+
+await handle(run => {
+  if (typeof run.input !== 'string') throw new TypeError('Supply a string.')
+  return { outcome: 'done', output: escapeHtml(run.input) }
+})
+```
+
+### 3. Review and run
 
 ```sh
 jig review
+jig run flow:flows/escape --input '"<note>"'
 ```
 
-If it has no lock, explicitly permit fresh resolution for this review:
+Review may fetch the locked packages. It disables installation scripts and asks
+for approval before execution. Run uses the approved copy without fetching or
+installing packages.
+
+### 4. Check the result
+
+Expect execution status `succeeded`, method outcome `done`, and output
+`&lt;note&gt;`. Try input `"A & B"`. Expect `A &amp; B`. Review again if you
+change the code or dependencies.
+
+## If preparation fails
+
+| Observation | Action |
+| --- | --- |
+| No authored lock exists | Decide whether to permit fresh resolution for this review. Read the network conditions below. |
+| The supplied lock is stale or invalid | Update it with Bun. Review again. Jig does not repair it implicitly. |
+| `PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED` | Use a [supported lock format](#lock-formats). Changing dependency sources cannot fix the format. |
+| A workspace member or build output is missing | Correct the declaration or build the library. Jig does not fall back to npm. |
+| The prepared tree exceeds its limit | Inspect the reported manifest and runtime dependencies. Jig does not silently omit dependencies. |
+| Approved bytes are missing or corrupt | Preserve the reported evidence. Jig refuses instead of resolving packages again. |
+
+## Fresh resolution and network access
+
+When no lock exists, the operator can permit fresh resolution for this review:
 
 ```sh
 jig review --allow-resolution-network
 ```
 
-Jig resolves and validates the dependency graph, installs with lifecycle
-scripts disabled, and retains the generated lock and exact dependency bytes
-privately. It does not write `bun.lock` or `node_modules` into your Flow.
-Execution still requires the normal review approval. `--yes` answers that
-approval only; it never grants resolution networking.
+Bun can contact dependency-selected destinations before Jig validates the
+resolved graph, including host-reachable private and loopback services.
+Declining execution or failing resolution cannot undo those requests. The flag
+does not filter destinations or authorize network access during Runs. `--yes`
+approves execution only.
 
-The extra permission is significant: Bun can contact dependency-selected
-destinations, including private-network or loopback services reachable from
-your host, before Jig can validate the resolved graph. Requests cannot be
-undone if resolution fails or you decline execution. The flag is not a
-destination filter and does not enable Git, file, tarball, or
-custom-registry dependencies. Known unsupported root declarations are rejected
-before resolution; unsupported transitive dependencies may fail after requests.
-Jig names each Flow before starting its resolution.
+`--yes` does not grant resolution permission.
 
-Prefer an authored lock when sharing reproducible dependencies across machines.
-You can optionally generate one with Bun 1.3.3:
+Only supported default-registry dependencies are accepted. Git, file, tarball,
+and custom-registry dependencies remain unsupported. Known unsupported root
+declarations fail before resolution. Transitive declarations may fail after
+requests.
+
+Jig identifies each Flow before resolution.
+
+Jig retains generated locks and prepared packages privately. Review does not
+write `bun.lock` or `node_modules` into your Flow. Separate machines resolving
+unlocked source may select different versions. `jig.lock` identifies source.
+
+It is not the generated dependency lock.
+
+## Lock formats
+
+Prefer an authored lock when sharing dependencies across machines. To create one
+without a local installation tree:
 
 ```sh
 bun install --lockfile-only
 ```
 
-Its version-1 text lock works on both supported Linux and Mac hosts. Mac also
-accepts version-2 text locks produced by Bun 1.4.2. Jig installs supported
-locks frozen without conversion. An unsupported format has the diagnostic
-`PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED`; changing dependency sources cannot
-correct a format mismatch.
+This command may use the network and Bun's cache. Run it beside the package
+manifest with a supported Bun version:
 
-This authoring command may use the network and Bun's cache; it writes `bun.lock`
-without creating a local `node_modules` tree. The FLOW package contains the
-manifest and lock, not an installed dependency tree.
+| Authoring version | Text lock | Supported hosts |
+| --- | --- | --- |
+| Bun 1.3.3 | Version 1 | Linux and Mac |
+| Bun 1.4.2 | Version 2 | Mac |
 
-During `jig review`, Jig fetches locked registry artifacts and prepares a
-private execution snapshot. Even frozen installation needs network access for
-locked artifacts; the extra flag permits fresh resolution, not merely internet
-access. Invalid or stale supplied locks are errors even with the flag. Correct
-those locks explicitly; Jig never silently replaces them.
+Jig installs valid supplied locks frozen, without conversion. Frozen
+installation still fetches locked registry artifacts. Resolution permission
+permits fresh version selection. It is not permission merely to fetch locked
+bytes.
 
-`jig run` uses the admitted snapshot without fetching or installing. Later
-reviews reuse verified dependencies when the manifest, authored lock and
-preparation support still match. Code-only edits produce a fresh execution
-snapshot without reinstalling. Settings and permissions still receive ordinary
-review; they do not themselves reinstall dependencies. For unchanged unlocked
-inputs, reuse keeps the previously approved generated lock and dependency
-selection. Changed dependency inputs or preparation support require fresh
-preparation, with explicit resolution permission if there is no authored lock.
-The permission lasts only for this review. Declined preparation is not admitted
-reuse. Missing or corrupt admitted bytes fail closed instead of being silently
-resolved again. Separate machines resolving unlocked source may select different
-versions: `jig.lock` identifies source, not a generated dependency lock.
+Invalid or stale locks remain errors even with that permission.
 
 ## Local workspace packages
 
-Use Bun workspaces to share a library before publishing it. Include the Flow
-and library in the ancestor `package.json` workspace list:
+Use ordinary Bun workspaces to share a library before publishing it. Declare the
+Flow and library in the ancestor root:
 
 ```json
 { "private": true, "workspaces": ["apps/*/flows/*", "packages/*"] }
 ```
 
-The Flow's dependency is ordinary Bun configuration:
+Declare the dependency in the Flow:
 
 ```json
 { "dependencies": { "my-library": "workspace:*" } }
 ```
 
-An exact version such as `"my-library": "0.1.0-alpha.3"` also selects a
-same-name local workspace member at that version. Jig captures the declared
-ancestor workspace for either form; outside one, the exact version follows the
-registry dependency path. This lets a downloaded example retain its public
-package version while a checkout tests matching local candidates.
+1. Run `bun install` at the workspace root.
+2. Build libraries whose exports point to generated files.
+3. Run `jig review` from the Jig application.
 
-Run `bun install` at the workspace root and build libraries whose exports
-point to generated files. Then run `jig review` from the Jig application.
-No publication, copied library, or per-Flow installation is needed.
+No publication, copied library, or separate Flow installation is needed. An
+exact dependency version also selects a same-name workspace member at that
+version. Outside a declared workspace, that exact version uses registry
+preparation.
 
-The Jig application itself may live at the workspace root or in a declared
-member. Declare `npm:` Flow targets in that application's `dependencies`;
-root applications need not move into a member directory. Root dependency
-selection captures metadata and selected packages, not the whole repository.
-An application can keep its own `workspaces` declaration for standalone use.
-When the outer workspace declares the selected application or Flow, review
-uses that outer root and its local packages. Include nested Flows explicitly
-in the outer workspace list; the application's declaration does not expand it.
+The Jig application can be the root or a declared member. Declare its `npm:`
+Flow targets in that application's `dependencies`. When the outer workspace
+declares the application or Flow, its membership list controls selection.
+Include nested Flows explicitly.
 
-If a supplied lock is stale, review identifies the manifest and mismatched
-field. Update the authored lock with Bun and review again; Jig never repairs
-a supplied lock implicitly.
+An application's own workspace list cannot expand the outer root. An application
+may retain its own workspace declaration for standalone use.
 
-Review captures the root manifest and lock, member manifests, and the selected
-local dependency sources. A library's `files` list limits its captured source;
-without one, its ordinary files are captured except `.git` and `node_modules`.
-Capture never follows the local installation's links. Bun prepares the captured
-graph with scripts disabled. Jig preserves its hoisted dependency layout and
-workspace aliases within the retained snapshot, so nested versions and shared
-library instances keep their usual resolution behavior.
-Registry dependencies still use the locked default-registry policy above.
+### Capture, reuse, and supported boundaries
 
-Workspace source is recaptured on each review. When installer inputs and
-preparation support still match, Jig reuses that project's approved dependencies
-without installing or resolving again. Editing Flow or library code assembles
-new source with those verified dependencies and requires ordinary review.
-Manifest, lock, patch or selected-membership changes require preparation.
-Preparation is never shared between separate Jig projects, even in the same
-workspace. Existing admissions continue using their original bytes.
-When fresh preparation needs a missing root lock,
-it requires explicit resolution permission; stale supplied locks require updating.
+Review captures declared workspace inputs and selected local sources. Existing
+approvals keep their original bytes. Review again after code, dependency, or
+patch changes. Preparation may reuse that project's approved dependencies when
+installer inputs and preparation support still match.
 
-Root `patchedDependencies` is supported for exact package versions and bounded
-root-relative `.patch` files. Jig captures those files, applies them through
-Bun during preparation, and retains their exact bytes with the installation.
-Changing a patch requires review; existing admissions retain the previous bytes.
+It is never shared between Jig projects.
 
-Workspace members must have unique names and safe relative paths. Local member
-locks, filesystem links, dependency overrides, member-level patches, and catalogs
-are not supported. Missing members or build outputs fail explicitly, without
-falling back to npm. This is review-time capture, not live workspace access
-during a Run.
-Preparation uses Jig's pinned Bun hoisted linker; it does not import the local
-installation or provide an isolated-linker mode. Module-relative files stay
-beside their modules. A Run's working directory remains disposable scratch.
-Ancestor runtime configuration outside selected packages, such as a root
-`tsconfig.json`, is not captured.
+Build exported files before review. Missing members or outputs fail without
+registry fallback. Members need unique names and safe relative paths. Root
+`patchedDependencies` supports exact versions and bounded root-relative `.patch`
+files.
 
-The repository examples use this workspace path. Follow the checkout's
+Member locks, filesystem links, overrides, member-level patches, and catalogs
+are unsupported. The local installation is not an execution input. A Run's
+working directory is disposable scratch.
+
+[Workspace capture](../spec/project-policy.md#workspace-dependency-capture) owns
+root selection, captured files, aliases, linker behavior, and patch handling.
+[Prepared execution](../spec/project-policy.md#prepared-execution-and-limits)
+owns reuse conditions and preparation bounds. Follow the checkout's
 [development setup](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell)
-once, then review and run an example from its own directory. For a standalone
-distributed Flow, use published dependency versions or distribute its workspace.
+before running repository examples. Distribute a standalone Flow with published
+dependency versions or its declared workspace.
 
-Package-local source may also be imported relatively. A package without external
-dependencies needs neither a dependency manifest nor a lock for execution.
+## Limits and other package files
 
-Optional invocation input and complete-result schemas belong in `FLOW.contract.json`;
-implementation settings use `settings.schema.json`. They follow
-[FLOW Schema/0](https://flow.jig.md/spec/schema-files). A `FLOW.md` package uses
-the bundled interpreter and needs no SDK dependency or installation. Its
-resources do not trigger dependency preparation. See [execution policy](../spec/project-policy.md) for
-the exact dependency preparation and admission rules.
+Prepared trees are limited to 32 MiB and 4,096 file/alias records. A package
+with no external dependencies needs neither a dependency manifest nor a lock for
+execution. Relative imports of its own source files remain supported.
+
+A `FLOW.md` package uses the bundled interpreter and needs no SDK dependency or
+installation. Its resources do not trigger dependency preparation.
+[Project policy](../spec/project-policy.md#4-flow-members-and-direct-targets)
+owns the exact capture, preparation, reuse, and admission requirements.
