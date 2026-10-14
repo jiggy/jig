@@ -192,6 +192,10 @@ export function privateCliHumanText(
           rendered = privateCliHeading(wrapped, 'success', true)
         else if (/^ {2}Unavailable:/.test(line) && /^ {4}\S/.test(lines[index + 1] ?? ''))
           rendered = privateCliHeading(wrapped, 'warning', true)
+        else if (/^ {2}Agent unavailable:/.test(line))
+          rendered = privateCliHeading(wrapped, 'warning', true)
+        else if (/^ {2}(?:Next step|Or use (?:Codex|Claude Code|Pi))$/.test(line))
+          rendered = privateCliHeading(wrapped, 'info', true)
         else if (/^(Error:|Review could not finish|Run failed|Execution lost)/.test(line))
           rendered = privateCliHeading(wrapped, 'error', true)
         else if (
@@ -203,7 +207,7 @@ export function privateCliHumanText(
         else if (/^(Project ready|Created |Execution completed)/.test(line))
           rendered = privateCliHeading(wrapped, 'success', true)
         else if (
-          /^\s*(?:Diagnostic code:|Category:|Executable:|Diagnostics:|"digest": "sha256:|Unavailable:|Flows needing live updates|Prepared files and dependency layout are unchanged\.|Flow source, prepared dependencies, settings and permissions are unchanged\.)/.test(
+          /^\s*(?:Diagnostic code:|Category:|Executable:|Diagnostics:|(?:Selection(?: context)?(?: \(exact client line unknown\))?|Named policy(?: \(exact client line unknown\))?|Client|Setup details):|"digest": "sha256:|Unavailable:|Flows needing live updates|Prepared files and dependency layout are unchanged\.|Flow source, prepared dependencies, settings and permissions are unchanged\.)/.test(
             line,
           ) ||
           /^(Unchanged policy is omitted|Remembered locally\.)/.test(line)

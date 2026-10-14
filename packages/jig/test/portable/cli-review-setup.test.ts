@@ -155,7 +155,11 @@ describe('review prerequisite refusal and explicit client selection', () => {
           expect(events).toEqual(['acquire:source', 'qualification', 'close'])
           expect(run.errors.join('')).toContain('Review could not finish')
           expect(run.errors.join('')).toContain('bindings/model.ts')
-          expect(run.errors.join('')).toContain('Any existing approval remains unchanged')
+          expect(run.errors.join('')).toContain(
+            args.includes('--details')
+              ? 'Any existing approval remains unchanged'
+              : 'Previous approval unchanged',
+          )
           expect(run.output.join('')).not.toContain('Project ready')
           expect(run.output.join('')).not.toContain('Exact candidate')
         })
@@ -170,7 +174,7 @@ describe('review prerequisite refusal and explicit client selection', () => {
       )
       expect(await main(['review', '--yes'], run.options)).toBe(2)
       expect(events).not.toContain('apply')
-      expect(run.errors.join('')).toContain('Pi is selected')
+      expect(run.errors.join('')).toContain('Pi executable not found')
     }))
   test('other feature unavailability is not an ACP refusal; unchanged review succeeds', async () =>
     fixture(async (root) => {
@@ -268,6 +272,25 @@ describe('review prerequisite refusal and explicit client selection', () => {
         '$ jig review --agent pi --allow-resolution-network --generate-contracts --verification strict',
       )
       expect(refusal.errors.join('')).not.toContain('--yes')
+      expect(refusal.errors.join('')).toContain(
+        '$ jig review --agent codex --allow-resolution-network --generate-contracts --verification strict',
+      )
+      expect(refusal.errors.join('')).not.toContain('--allow-authority-changes')
+    }))
+  test('alternative commands retain quoted project text and never rewrite an agent-like path', async () =>
+    fixture(async (root) => {
+      const run = invocation(root, hostWith(blocked, []))
+      const project = "./project --agent pi 'quoted' $(echo unsafe)"
+      expect(
+        await main(['review', project, '--agent', 'pi', '--verification', 'strict'], run.options),
+      ).toBe(2)
+      const command = run.errors
+        .join('')
+        .split('\n')
+        .find((line) => line.includes('--agent codex'))
+      const quotedProject = String.raw`'./project --agent pi '\''quoted'\'' $(echo unsafe)'`
+      expect(command).toBe(`    $ jig review ${quotedProject} --agent codex --verification strict`)
+      expect(command).not.toContain('--allow-resolution-network')
     }))
 })
 

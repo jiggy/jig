@@ -54,6 +54,16 @@ All selected domain requirements still apply.
   truncated issue rows. Inspection discloses retained availability separately
   from environment freshness. Chooser selects ready routes only.
 
+  Ordinary Agent setup errors show a short cause, captured location and copyable
+  recovery commands. Keep source provenance, full installation rules and manual
+  policy edits under `--details`. Build alternative commands from parsed review
+  arguments, preserving project quoting and explicit permissions. Never replace
+  client-like text inside a quoted project path.
+
+  Style the failure heading red, the missing prerequisite amber and recovery
+  headings prominently. Use ordinary command syntax colours and secondary
+  location/code text. Colour-free output retains every fact and command.
+
   Installing a client requires renewed review before an unavailable retained
   route can run. Review also separates source capture, per-package dependency
   capture, preparation/reuse and review retention, with stage-local timing.

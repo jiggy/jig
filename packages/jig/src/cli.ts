@@ -976,17 +976,28 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
   }
   const unsafeRetryPath =
     parsed.project.length > 4096 || /[\p{Cc}\u2028\u2029]/u.test(parsed.project)
-  const retry = [
-    'jig',
-    'review',
-    ...(parsed.project === runtime.currentDirectory
-      ? []
-      : [unsafeRetryPath ? 'PROJECT_DIRECTORY' : shellWord(parsed.project)]),
-    ...(parsed.agent === undefined ? [] : ['--agent', parsed.agent]),
-    ...(parsed.allowResolutionNetwork ? ['--allow-resolution-network'] : []),
-    ...(parsed.generate ? ['--generate-contracts'] : []),
-    ...(parsed.verification === undefined ? [] : ['--verification', parsed.verification]),
-  ].join(' ')
+  const reviewCommand = (agent = parsed.agent) =>
+    [
+      'jig',
+      'review',
+      ...(parsed.project === runtime.currentDirectory
+        ? []
+        : [unsafeRetryPath ? 'PROJECT_DIRECTORY' : shellWord(parsed.project)]),
+      ...(agent === undefined ? [] : ['--agent', agent]),
+      ...(parsed.allowResolutionNetwork ? ['--allow-resolution-network'] : []),
+      ...(parsed.generate ? ['--generate-contracts'] : []),
+      ...(parsed.verification === undefined ? [] : ['--verification', parsed.verification]),
+    ].join(' ')
+  const retry = reviewCommand()
+  const setupPresentation = {
+    details: parsed.details,
+    retryCommand: retry,
+    agentRetryCommands: {
+      codex: reviewCommand('codex'),
+      claude: reviewCommand('claude'),
+      pi: reviewCommand('pi'),
+    },
+  }
   const result = await withProjectSession(
     parsed.project,
     runtime,
@@ -1004,9 +1015,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
         )
           throw error
         runtime.progress.complete(true)
-        runtime.writeError(
-          renderReviewAgentSetup(readiness, { details: parsed.details, retryCommand: retry }),
-        )
+        runtime.writeError(renderReviewAgentSetup(readiness, setupPresentation))
         return 2
       }
       runtime.signal?.throwIfAborted()
@@ -1014,9 +1023,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
       // A private injected host may return after observation. The CLI still
       // refuses before both unchanged success and admission.
       if (readiness?.selectedAcpUnavailable) {
-        runtime.writeError(
-          renderReviewAgentSetup(readiness, { details: parsed.details, retryCommand: retry }),
-        )
+        runtime.writeError(renderReviewAgentSetup(readiness, setupPresentation))
         return 2
       }
       if (plan.state === 'unchanged') return 0

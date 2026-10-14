@@ -655,46 +655,57 @@ and unconfirmed cleanup retain their existing fatal behavior.
 Retain the authoritative typed qualification cause independently of bounded
 presentation. An incomplete, absent or saturated issue report cannot permit
 approval. Do not substitute a generic unavailable-target count for an ACP cause.
-State that an observed selected Agent prerequisite stopped project review, and
-that a ready code entrypoint does not bypass it. Do not claim that skipped or
-remaining checks completed. Prior admission remains unchanged and never bypasses
-current Run admission or environment checks. No Flow or model call starts.
-Review may already have prepared dependencies or written explicitly requested
-`--generate-contracts` outputs; it promises no new approval and no automatic ACP
-policy write, not that no other work occurred.
 
-The ordinary error presents, in order:
+State that the selected Agent prerequisite stopped project review. Detailed
+output explains that a ready code entrypoint does not bypass it. Do not claim
+that skipped or remaining checks completed. Prior admission remains unchanged
+and never bypasses current Run admission or environment checks. No Flow or model
+call starts.
 
-1. A concise title and known cause, retaining the existing diagnostic code and
-   unavailable-setup exit 2.
-2. The captured policy location, affected Binding/slot and effective selected
-   client. Inline policies identify the Binding; named policies identify their
-   JSON file and compactly list affected recipients. If a review argument supplied
-   the client, distinguish that origin from the source client.
-3. Passively detected alternatives only for executable-unavailable failures,
-   labelled as executable detection, not authentication, native qualification or
-   universal compatibility. Discovery executes no client and reads no secrets.
-4. Repair for the selected client's installation or rejected path override,
-   alongside conditional manual source changes or explicit review-client selection
-   for detected alternatives. An unusable explicit override is not proof of a
-   missing installation; identify the override name, never its value, when known.
-   Otherwise use honest override-or-PATH wording. Other setup causes receive their
-   own repair, and unknown/internal failures retain uncertainty and safe public
-   diagnostics. Mention model pins or retention only when present, preserve turn
-   limits and never rank clients or imply compatible retention.
-5. One shell-word-formatted retry command for the same project and explicitly
-   requested review options. Never add networking, `--yes` or
-   `--allow-authority-changes` to recovery advice. Commands retain a readable `$`
-   prefix/plain fallback; paths never become shell operators.
-6. No new approval, any existing approval unchanged, and no Flow started.
+Review may already have prepared dependencies or written outputs explicitly
+requested with `--generate-contracts`. No new approval or automatic ACP policy
+edit occurs. Other review work may have occurred.
 
-Place repair and the exact retry before report accounting. Compact output retains
-known omissions and uncompleted checks; complete observed counts and limit
-reassurance belong under `--details`. For a detected executable alternative,
-an unpinned policy without retention may suggest adding or replacing `--agent`
-on the shown retry. Explain its global scope, unchanged source and need to repeat
-it on later reviews. Other policies can refuse the choice; detection never
-promises authentication or readiness.
+The ordinary error leads with the selected client's known cause and captured
+policy location. Inline policies identify their Binding file and slot. Named
+policies identify their JSON file and compactly list affected recipients.
+Computed or unknown locations retain their uncertainty. An explicit client
+override distinguishes the effective client from the source client.
+
+Show a short selected-client repair and a complete retry command. For executable
+failures, an unpinned policy without retention may also show commands for detected
+alternatives. Label detection as executable discovery, with login and readiness
+unchecked.
+
+Explain each alternative's scope across native Agent policies, unchanged
+source and need to repeat the flag. Other policies can refuse that choice.
+Discovery executes no client and reads no secrets.
+
+Commands preserve the same project and explicitly requested review options.
+Alternative commands replace only the client argument. Never add networking,
+`--yes` or `--allow-authority-changes` to recovery advice. Commands retain a
+readable `$` prefix and plain fallback. Quote project paths as shell words.
+Never replace text inside a quoted project path to construct another command.
+
+An unusable explicit override is not proof of a missing installation. Identify
+the override name, never its value, and explain that PATH was not used.
+Other executable repairs name the selected override and PATH. Other
+setup causes receive their own repair. Unknown failures retain uncertainty.
+Model pins and retention restrictions remain visible when they prevent a suggested
+client switch.
+
+Retain the diagnostic code, unavailable-setup exit 2, unchanged prior approval,
+and absence of Flow or model execution. Put recovery before report accounting.
+Compact output discloses known omissions and unfinished checks. Point to
+`--details` for source provenance, full recipient context, installation rules,
+manual source edits and complete retained report accounting. Detailed output
+preserves model, retention and turn-limit guidance when relevant.
+
+Use red for the failure heading and amber for the unavailable Agent cause.
+Emphasize action headings and apply ordinary command syntax colours.
+Locations, diagnostic codes and the details hint are secondary. Colour never
+implies an alternative is ready. Plain, redirected and colour-disabled output
+retain the same facts and commands.
 
 Locations MUST refer to immutable source captured for this candidate. A direct
 non-overridden declaration or JSON policy may use a syntactically verified client
