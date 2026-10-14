@@ -50,6 +50,7 @@ const sidebar = [
       { text: 'For agents', link: '/guide/for-agents' },
       { text: 'Concepts and questions', link: '/guide/concepts' },
       { text: 'Results and recovery', link: '/guide/results' },
+      { text: 'Acknowledgements', link: '/acknowledgements' },
     ],
   },
   {
