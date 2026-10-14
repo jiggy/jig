@@ -49,7 +49,12 @@ async function fixture() {
     await mkdir(directory, { recursive: true })
     await writeFile(
       join(directory, 'package.json'),
-      JSON.stringify({ name, version: '0.1.0-alpha.1', publishConfig: { access: 'public' } }),
+      JSON.stringify({
+        name,
+        version: '0.1.0-alpha.1',
+        publishConfig: { access: 'public' },
+        ...(kind === 'jig' ? { devDependencies: { '@jigging/flow': '0.1.0-alpha.1' } } : {}),
+      }),
     )
   }
   execute('git', ['init', '--quiet', repository])
@@ -104,6 +109,14 @@ async function fixture() {
         ])
         return ''
       }
+      return ''
+    }
+    if (command === join(bin, 'npm') && args[0] === 'pack') {
+      const directory = args[args.indexOf('--pack-destination') + 1]
+      const sdk = join(repository, 'packages/flow-sdk')
+      run(join(bin, 'bun'), ['pm', 'pack', '--ignore-scripts', '--destination', directory], {
+        cwd: sdk,
+      })
       return ''
     }
     if (command === join(bin, 'npm')) return ''
@@ -251,7 +264,7 @@ test('qualifier consumes exact frozen FLOW bytes for Bun/Node smoke and ordinary
     assert.ok(
       !f.calls.some((call) => call.args.includes('--destination') || call.args.includes('build')),
     )
-    const smoke = f.calls.find((call) => call.args[0] === 'packages/flow-sdk/test/package-smoke.ts')
+    const smoke = f.calls.find((call) => call.args[0] === 'scripts/test-flow-dependency.ts')
     assert.equal(
       smoke.options.env.FLOW_SDK_PACKAGE_ARCHIVE,
       join(directory, 'flow-sdk', result.archive.split('/').at(-1)),

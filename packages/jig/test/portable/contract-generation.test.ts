@@ -84,10 +84,7 @@ test('real bundled compiler publishes contracts through the host manager', async
   const root = await fixture()
   await writeFile(
     join(root, 'flow/FLOW.contract.tsp'),
-    await readFile(
-      new URL('../../flow-authoring/test/fixtures/progress.tsp', suiteTestUrl),
-      'utf8',
-    ),
+    await readFile(new URL('../fixtures/flow-conformance/progress.tsp', import.meta.url), 'utf8'),
   )
   await prepare(root, true, {
     compile: (source, signal) =>
@@ -112,7 +109,7 @@ test('real bundled compiler publishes contracts through the host manager', async
 test('bundled compiler reuses a borrowed agreement without generating or owning it', async () => {
   const root = await fixture()
   const source = (
-    await readFile(new URL('../../flow-authoring/test/fixtures/progress.tsp', suiteTestUrl), 'utf8')
+    await readFile(new URL('../fixtures/flow-conformance/progress.tsp', import.meta.url), 'utf8')
   ).replace(/@channelContract\([\s\S]*?\)\s*@closed model Progress \{[\s\S]*?\}/, '')
   await writeFile(join(root, 'flow/FLOW.contract.tsp'), source)
   const agreement = JSON.stringify({
@@ -137,7 +134,7 @@ test('bundled compiler reuses a borrowed agreement without generating or owning 
 test('unrelated JSON fixtures do not limit borrowed-channel generation', async () => {
   const root = await fixture()
   const source = (
-    await readFile(new URL('../../flow-authoring/test/fixtures/progress.tsp', suiteTestUrl), 'utf8')
+    await readFile(new URL('../fixtures/flow-conformance/progress.tsp', import.meta.url), 'utf8')
   ).replace(/@channelContract\([\s\S]*?\)\s*@closed model Progress \{[\s\S]*?\}/, '')
   await writeFile(join(root, 'flow/FLOW.contract.tsp'), source)
   const agreement = JSON.stringify({

@@ -54,6 +54,12 @@ test('example Jig dependencies match current public package versions', async () 
     if (manifest.name?.startsWith('@jigging/')) packages.set(manifest.name, manifest)
   }
 
+  const jig = await loadManifest('packages/jig/package.json')
+  packages.set('@jigging/flow', {
+    name: '@jigging/flow',
+    version: jig.devDependencies?.['@jigging/flow'],
+  })
+
   for (const path of examplePaths) {
     const manifest = await loadManifest(path)
     for (const section of dependencySections) {

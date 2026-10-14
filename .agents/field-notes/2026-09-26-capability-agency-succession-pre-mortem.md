@@ -87,7 +87,7 @@ FLOW and Jig are sibling branches. Making Jig convenient cannot silently make
 FLOW depend on Jig. A lower-level conflict needs resolution at its owning
 level, not a clever reinterpretation or an exception hidden in an example.
 
-The [shared purpose](../doctrine/purpose.md), [FLOW branch](../doctrine/flow.md),
+The [shared purpose](../doctrine/purpose.md), [FLOW branch](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md),
 [Jig branch](../doctrine/jig.md) and [design judgment](../doctrine/design-judgment.md)
 own this reasoning. This historical note cannot select an API merely by
 appealing to the same values.

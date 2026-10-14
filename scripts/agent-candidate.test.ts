@@ -92,7 +92,6 @@ test('the source gate refuses missing prerequisites before starting builds', asy
     }
     for (const [pythonStatus, dependencyStatus, expected, diagnostic] of [
       ['1', '0', 1, 'Install Python release tools'],
-      ['0', '1', 1, 'Install protocol fixtures'],
       ['0', '0', 79, ''],
     ] as const) {
       await writeFile(calls, '')
@@ -267,7 +266,7 @@ test('the actual source evidence program records every stage and refuses unsucce
       if (target.id === 'source-python') {
         await Bun.write(
           join(directory, `source-reports/${target.id}.txt`),
-          'Ran 1 test in 0.01s\n\nOK\n'.repeat(4) +
+          'Ran 1 test in 0.01s\n\nOK\n' +
             target.testInventory
               .map((file: string) => `CI Python source file complete: ${file}\n`)
               .join(''),
@@ -298,7 +297,7 @@ test('the actual source evidence program records every stage and refuses unsucce
       expect(receipt.results[0].id).toBe(target.id)
       expect(receipt.results[0].observedSkipped).toBe(0)
       expect(receipt.results[0].executedCount).toBe(
-        target.id === 'source-python' ? 4 : target.testInventory.length,
+        target.id === 'source-python' ? 1 : target.testInventory.length,
       )
     }
     const aggregate = ci.jobs.test.steps.find((step: any) => step.run?.includes('--scope ci'))
@@ -446,42 +445,24 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   }
 })
 
-test('Python publication reuses the exact CI-qualified candidate', async () => {
-  const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text()) as any
-  const workflow = Bun.YAML.parse(
-    await Bun.file(join(root, '.github/workflows/pypi-publish.yml')).text(),
-  ) as any
+test('Python reporting uses frozen distributions and the published FLOW dependency', async () => {
+  const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text())
   expect(
-    ci.jobs['python-build'].steps.some(
-      (step: any) =>
-        step.run?.includes('build-python-sdk.py') && step.run.includes('--candidate --build-only'),
+    ci.jobs['python-build'].steps.some((step) =>
+      step.run?.includes('pip download --no-deps jiggy-flow==0.1.0a7'),
     ),
   ).toBeTrue()
-  expect(ci.jobs['python-installed'].needs).toContain('python-build')
-  expect(workflow.jobs.build).toBeUndefined()
-  expect(workflow.jobs.qualify).toBeUndefined()
-  expect(workflow.jobs.prepare.needs).toBe('authorize')
-  for (const job of [workflow.jobs.prepare, workflow.jobs.verify]) {
-    const download = job.steps.find((step: any) =>
-      step.uses?.startsWith('actions/download-artifact'),
-    )
-    expect(download.with['artifact-ids']).toBe(
-      '${{ needs.authorize.outputs.candidate_artifact_id }}',
-    )
-    expect(download.with.name).toBeUndefined()
-    expect(download.with['merge-multiple']).toBeTrue()
-    expect(download.with['run-id']).toBe('${{ github.event.workflow_run.id }}')
-    expect(download.with['github-token']).toBe('${{ github.token }}')
-  }
-  for (const id of ['python-build', 'python-installed', 'source-tests']) {
-    const candidates = ci.jobs[id].steps.filter((step: any) =>
-      step.with?.name?.startsWith('python-'),
-    )
-    expect(candidates).toHaveLength(2)
-    for (const step of candidates) {
-      expect(step.with.name).toContain('-r${{ github.run_id }}-a${{ github.run_attempt }}')
-    }
-  }
+  expect(
+    ci.jobs['python-installed'].steps.some((step) =>
+      step.run?.includes('packages/jiggy-reporting/tests/package_smoke.py'),
+    ),
+  ).toBeTrue()
+  expect(
+    ci.jobs['python-installed'].steps.some((step) =>
+      step.run?.includes('packages/jiggy-flow/tests/package_smoke.py'),
+    ),
+  ).toBeFalse()
+  expect(await Bun.file(join(root, '.github/workflows/pypi-publish.yml')).exists()).toBeFalse()
 })
 
 test('Linux host scope preserves complete qualification and always reports its final check', async () => {
@@ -581,7 +562,12 @@ test('Linux host scope preserves complete qualification and always reports its f
   for (const key of ['ARTIFACT_RESULT', 'SUITE_RESULT']) {
     for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
       const child = spawnSync('/bin/sh', ['-c', shardGate.run], {
-        env: { ARTIFACT_RESULT: 'success', SUITE_RESULT: 'success', [key]: result },
+        env: {
+          PATH: process.env.PATH,
+          ARTIFACT_RESULT: 'success',
+          SUITE_RESULT: 'success',
+          [key]: result,
+        },
       })
       expect(child.status).toBe(result === 'success' ? 0 : 1)
     }
@@ -781,7 +767,6 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   const publish = Bun.YAML.parse(
     await Bun.file(join(root, '.github/workflows/npm-publish.yml')).text(),
   ) as any
-  const pypi = await Bun.file(join(root, '.github/workflows/pypi-publish.yml')).text()
   const trigger = workflowTriggers(live).workflow_run
   const qualification = live.jobs.qualification
   const matrix = qualification.strategy.matrix.include
@@ -883,7 +868,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(
     publishAuthorization.steps.some((step: any) => step.run?.includes('release-readiness.mjs')),
   ).toBeTrue()
-  expect(pypi.includes('require-native-agent-api-qualification.sh')).toBeFalse()
+  expect(await Bun.file(join(root, '.github/workflows/pypi-publish.yml')).exists()).toBeFalse()
 })
 
 test('native acquisition passes exact source and optional upstream run, and preserves refusal', async () => {

@@ -36,24 +36,23 @@ const xml = (cases) =>
 const testcase = (name, child = '') =>
   `<testcase name="${name}" classname="suite" file="packages/jig/test/portable.test.ts" line="1">${child}</testcase>`
 
-test('full source Python proof requires its exact files and four positive suites', async (t) => {
+test('full source Python proof requires its exact files and the positive reporting suite', async (t) => {
   const f = await fixture(t)
   const files = [
     'packages/jiggy-flow/tests/test_one.py',
     'packages/jiggy-reporting/tests/test_two.py',
   ]
   const text =
-    pythonReport.repeat(4) +
-    files.map((file) => `CI Python source file complete: ${file}\n`).join('')
+    pythonReport + files.map((file) => `CI Python source file complete: ${file}\n`).join('')
   const transcript = await f.put('python.txt', text)
   assert.equal(
     (await observedCount({ transcript, targetId: 'source-python', testFiles: files })).count,
-    12,
+    3,
   )
   for (const bad of [
     text.replace(files[0], 'foreign.py'),
     text + `CI Python source file complete: ${files[0]}\n`,
-    pythonReport.repeat(4),
+    pythonReport,
     text.replace('OK\n', 'FAILED (failures=1)\n'),
   ]) {
     await f.put('python.txt', bad)
@@ -193,8 +192,8 @@ test('JUnit case identity cannot receive duplicate credit through a changed repo
 test('source evidence observes complete Python suites and rejects prerequisite skips outside Bun JUnit', async (t) => {
   const f = await fixture(t)
   const junit = await f.put('source.xml', xml(testcase('runs')))
-  const pythonTranscript = await f.put('source.txt', pythonReport.repeat(4))
-  assert.equal((await observedCount({ junit, pythonTranscript })).count, 13)
+  const pythonTranscript = await f.put('source.txt', pythonReport)
+  assert.equal((await observedCount({ junit, pythonTranscript })).count, 4)
   for (const text of [
     pythonReport.repeat(3),
     pythonReport.repeat(3) + pythonReport.replace('OK\n', 'OK (skipped=1)\n'),

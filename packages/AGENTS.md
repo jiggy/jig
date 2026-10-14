@@ -2,8 +2,8 @@
 
 ## Purpose
 
-Contains the independently built FLOW SDKs, reusable Agent methods, Jig host,
-semantic display model and renderers, and optional contract authoring toolchain.
+Contains Jig-specific reusable Agent methods, the Jig host,
+semantic display model and renderers, and their qualification inputs.
 
 ## Ownership
 
@@ -27,14 +27,14 @@ semantic display model and renderers, and optional contract authoring toolchain.
 
   Application-only method packages may use `workspace:*` for explicit source
   composition.
-- Use the root Just modules (`just flow::build`, `just display_model::build`,
+- Use the root Just modules (`just display_model::build`,
   `just display_web::build`, `just display_tui::build`, `just jig::build`) or
   run package recipes locally. `pack` builds explicitly. Manifests have no build
   or packing lifecycle scripts. Just is development tooling, not an installed
   Jig or FLOW dependency.
-- TypeScript and Python FLOW SDKs implement the same Run SDK/0 and Run/0 wire
-  semantics. Language ergonomics may differ only where the specifications allow
-  it.
+- FLOW SDKs and independent authoring are versioned external dependencies.
+  Build and test without a FLOW checkout.
+- Flavored Flows and reporting profiles remain Jig-owned despite runtime portability.
 - Only manifest-declared exports are public. Test seams and exported internal
   symbols do not create an API.
 - Generated, installed, cache, and packaging-output directories are not source
@@ -46,8 +46,8 @@ semantic display model and renderers, and optional contract authoring toolchain.
 
 - Start with the narrow package check, then test packed artifacts rather than
   relying only on workspace resolution.
-- Shared wire changes require both SDKs, Jig, conformance, and specifications to
-  be reviewed together.
+- Shared wire changes require coordination with the FLOW SDK, conformance, and specification owners.
+  Adopt exact released artifacts after that review.
 
 ## Verification
 
@@ -67,13 +67,6 @@ semantic display model and renderers, and optional contract authoring toolchain.
   dialogue and public ACP resource framing, without credentials or launch
   authority.
 
-- [flow-authoring/AGENTS.md](flow-authoring/AGENTS.md) — Optional TypeSpec
-  mapping toolchain, generated contracts, Agent projections and editor types.
-
-- [flow-sdk/AGENTS.md](flow-sdk/AGENTS.md) — Public TypeScript Run SDK/0
-  package.
-- [jiggy-flow/AGENTS.md](jiggy-flow/AGENTS.md) — Independently released Python
-  Run SDK/0 package.
 - [jig/AGENTS.md](jig/AGENTS.md) — Public Jig authoring package and installed
   secure host, with required scoped implementation and qualification guidance.
 - [display-model/AGENTS.md](display-model/AGENTS.md) — Readonly semantic

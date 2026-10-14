@@ -2,7 +2,6 @@
     just --list
 
 @build: clean
-    just --justfile ../flow-sdk/justfile build
     just --justfile ../reporting/justfile build
     bun node_modules/typescript/bin/tsc -p tsconfig.json
     cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .

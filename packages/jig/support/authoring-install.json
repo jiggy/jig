@@ -3,6 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "dependencies": {
-    "@jigging/flow-authoring": "file:./flow-authoring.tgz"
+    "@jigging/flow-authoring": "0.1.0-alpha.1"
   }
 }

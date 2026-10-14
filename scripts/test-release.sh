@@ -41,9 +41,6 @@ fi
 if has_stage source-python; then
   "$python_bin" -c 'import build,twine,mypy' >/dev/null 2>&1 || { echo "Install Python release tools: build==1.3.0 twine==6.2.0 mypy==1.18.2" >&2; exit 1; }
 fi
-if has_stage source-protocol; then
-  (cd conformance/run-0 && bun --no-env-file -e 'import.meta.resolve("ajv/dist/2020.js");import.meta.resolve("@jigging/sley");') >/dev/null 2>&1 || { echo "Install protocol fixtures: bun install --cwd conformance/run-0 --frozen-lockfile" >&2; exit 1; }
-fi
 
 temporary_parent=$(CDPATH= cd -- "${TMPDIR:-/tmp}" && pwd -P)
 release_tmp=$(mktemp -d "$temporary_parent/jig-release.XXXXXX")
@@ -63,7 +60,6 @@ if has_stage source-portable; then
   just jig::build
   archive_packages="flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig"
 elif has_stage source-protocol || has_stage source-applications; then
-  just flow::build
   just reporting::build
   just agent::build
   just acp::build
@@ -79,6 +75,9 @@ for package in $archive_packages; do
   mkdir -p "$release_tmp/artifacts/$package"
   if [ -n "${CI_CANDIDATE_BUNDLE:-}" ]; then
     cp "$CI_CANDIDATE_BUNDLE/$package/"*.tgz "$release_tmp/artifacts/$package/"
+  elif [ "$package" = flow-sdk ]; then
+    sdk_version=$("$FLOW_NODE" -p 'JSON.parse(require("fs").readFileSync("packages/jig/package.json","utf8")).devDependencies["@jigging/flow"]')
+    npm pack "@jigging/flow@$sdk_version" --ignore-scripts --pack-destination "$release_tmp/artifacts/flow-sdk"
   elif [ "$package" = jig ]; then
     bun packages/jig/scripts/pack.ts --destination "$release_tmp/artifacts/jig"
   else
@@ -100,7 +99,6 @@ done
 set --
 for package in $archive_packages; do for archive in "$release_tmp/artifacts/$package/"*.tgz; do set -- "$@" "$archive"; done; done
 archive_digests "$@" > "$release_tmp/archive-digests"
-if has_stage source-protocol && ! has_stage source-portable; then just authoring::build; fi
 
 run_bun_stage() {
   stage_id=$1
@@ -127,15 +125,7 @@ source_portable_stage() {
 }
 source_protocol_stage() {
   run_bun_stage source-protocol
-  set --
-  while IFS= read -r test_file; do
-    case "$test_file" in *.node.mjs) set -- "$@" "./$test_file" ;; esac
-  done < "$release_tmp/source-protocol.files"
-  [ "$#" -gt 0 ] || { echo "Source protocol requires actual Node authoring files" >&2; exit 1; }
-  "$FLOW_NODE" --test --test-reporter ./scripts/ci/source-node-reporter.mjs "--test-reporter-destination=$report_directory/source-authoring.xml" "$@"
-  "$python_bin" scripts/ci/merge-source-junit.py "$release_tmp/source-protocol-combined.xml" "$report_directory/source-protocol.xml" "$report_directory/source-authoring.xml" --files "$release_tmp/source-protocol.files"
-  cp "$release_tmp/source-protocol-combined.xml" "$report_directory/source-protocol.xml"
-  if [ -z "${CI_CANDIDATE_BUNDLE:-}" ]; then bun packages/flow-sdk/test/package-smoke.ts; fi
+  bun scripts/test-flow-dependency.ts
   bun packages/reporting/test/package-smoke.ts
 }
 source_applications_stage() {
@@ -241,18 +231,15 @@ source_python_stage() {
   set -- --target source-python --profile "$source_profile"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "${GITHUB_SHA:?Missing tested source}"; fi
   "$FLOW_NODE" scripts/ci/suite-inventory.mjs "$@" > "$release_tmp/source-python.files"
-python_run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-flow/src "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group packages/jiggy-flow
-
-python_run env PYTHONDONTWRITEBYTECODE=1 "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group conformance/run-0/python-peer
-
-# Both installed Python distributions run the SDK suite and typed consumer.
+# Reporting consumes the independently published Python FLOW SDK.
 python_dist=${CI_PYTHON_DISTRIBUTIONS:-"$release_tmp/python-dist"}
 python_reporting_dist=${CI_PYTHON_REPORTING_DISTRIBUTIONS:-"$release_tmp/python-reporting-dist"}
 if [ -z "${CI_PYTHON_DISTRIBUTIONS:-}" ]; then
-  "$python_bin" scripts/build-python-sdk.py "$python_dist"
+  mkdir -p "$python_dist"
+  "$python_bin" -m pip download --no-deps jiggy-flow==0.1.0a7 --dest "$python_dist"
 fi
-python_run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-reporting/src "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group packages/jiggy-reporting
-PYTHONPATH=packages/jiggy-flow/src:packages/jiggy-reporting/src \
+python_run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-reporting/src "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group packages/jiggy-reporting
+PYTHONPATH=packages/jiggy-reporting/src \
   "$python_bin" -m mypy --strict packages/jiggy-reporting/src/jiggy/reporting
 if [ -z "${CI_PYTHON_REPORTING_DISTRIBUTIONS:-}" ]; then
   "$python_bin" -m build --outdir "$python_reporting_dist" packages/jiggy-reporting
@@ -260,7 +247,6 @@ if [ -z "${CI_PYTHON_REPORTING_DISTRIBUTIONS:-}" ]; then
   "$python_bin" packages/jiggy-reporting/tests/package_smoke.py \
     "$python_reporting_dist"/*.whl "$python_reporting_dist"/*.tar.gz "$python_dist"/*.whl
 fi
-python_run "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group scripts/test_pypi_release.py
 
 }
 if has_stage source-portable; then source_portable_stage; fi

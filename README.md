@@ -1,4 +1,4 @@
-# Jig and FLOW
+# Jig
 
 **Build with Agents as naturally as you build with code.**
 
@@ -27,7 +27,7 @@ For larger applications, try [a tested patch](docs/jig/guide/tested-patch.md) or
 
 The shared aspiration is to **expand human possibility**. FLOW pursues
 **capability compounding**; Jig pursues **agency through power under control**.
-[Why FLOW exists](docs/flow/guide/understand.md) and
+[Why FLOW exists](https://flow.jig.md/guide/understand) and
 [how Jig works](docs/jig/guide/understand.md) explain the architecture behind them.
 
 ## Quickstart
@@ -70,4 +70,4 @@ changes need another review.
 
 Jig is prerelease software. See the guides for the current supported surface.
 Licenses are mapped in [LICENSES.md](LICENSES.md); FLOW's public stewardship is
-described in [Governance.md](Governance.md).
+described in [FLOW governance](https://github.com/jiggy/flow/blob/main/Governance.md).

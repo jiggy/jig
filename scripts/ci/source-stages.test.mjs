@@ -30,6 +30,18 @@ function fixture(t, targets = 'source-portable,source-protocol') {
   writeFileSync(script, readFileSync(new URL('../test-release.sh', import.meta.url)))
   const events = join(root, 'events')
   executable('just', '#!/bin/sh\nprintf "build:%s\\n" "$1" >> "$FIXTURE_EVENTS"\n')
+  mkdirSync(join(root, 'packages/jig'), { recursive: true })
+  writeFileSync(
+    join(root, 'packages/jig/package.json'),
+    JSON.stringify({ devDependencies: { '@jigging/flow': '0.1.0-alpha.1' } }),
+  )
+  executable(
+    'npm',
+    `#!${process.execPath}
+const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
+const out=args[args.indexOf('--pack-destination')+1];fs.writeFileSync(path.join(out,'fixture.tgz'),'frozen fixture');fs.appendFileSync(process.env.FIXTURE_EVENTS,'pack\\n');
+`,
+  )
   executable('uname', '#!/bin/sh\nprintf "Linux\\n"\n')
   executable('git', '#!/bin/sh\nprintf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n"\n')
   const python = executable(
@@ -101,7 +113,7 @@ test('source stages run serially after one shared build on both supported shells
     )
     assert.ok(events.indexOf('build:jig::build') < events.indexOf('portable-start'))
     assert.ok(events.indexOf('portable-done') < events.indexOf('protocol-start'))
-    for (const file of ['source-portable.xml', 'source-protocol.xml', 'source-authoring.xml'])
+    for (const file of ['source-portable.xml', 'source-protocol.xml'])
       assert.ok(existsSync(join(f.reports, file)))
     for (const name of ['jig', 'display-model', 'display-web', 'display-tui'])
       assert.ok(events.includes(`consumer:packages/${name}/test/package-smoke.ts`))
@@ -147,22 +159,18 @@ test('a failed source stage stops later stages and cannot produce successful arc
   assert.deepEqual(readdirSync(f.temp), [])
 })
 
-test('protocol-only execution owns its authoring prerequisite without running portable tests', (t) => {
+test('protocol-only execution builds Jig methods and consumes the external SDK without portable tests', (t) => {
   const f = fixture(t, 'source-protocol'),
     result = f.run()
   assert.equal(result.status, 0, result.stderr)
   const events = f.events()
   assert.deepEqual(
     events.filter((event) => event.startsWith('build:')),
-    [
-      'build:flow::build',
-      'build:reporting::build',
-      'build:agent::build',
-      'build:acp::build',
-      'build:authoring::build',
-    ],
+    ['build:reporting::build', 'build:agent::build', 'build:acp::build'],
   )
-  assert.ok(events.indexOf('build:authoring::build') < events.indexOf('protocol-start'))
+  assert.ok(
+    !events.some((event) => event.includes('authoring::build') || event.includes('flow::build')),
+  )
   assert.ok(!events.includes('portable-start'))
   assert.deepEqual(readdirSync(f.temp), [])
 })

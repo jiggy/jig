@@ -1,18 +1,20 @@
 name: Publish npm prereleases
-
 run-name: Reconcile qualified npm prereleases
-
-on:
+"true":
   workflow_run:
-    workflows: [CI, Linux host conformance, macOS hosted candidates, Native Agent API qualification]
-    types: [completed]
+    workflows:
+      - CI
+      - Linux host conformance
+      - macOS hosted candidates
+      - Native Agent API qualification
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       source_revision:
         description: Exact main-push source revision to reconcile
         required: true
         type: string
-
 jobs:
   authorize:
     name: Require same-revision release qualification
@@ -26,23 +28,19 @@ jobs:
       source_revision: ${{ steps.ready.outputs.source_revision }}
       producer_run_id: ${{ steps.ready.outputs.producer_run_id }}
       producer_run_attempt: ${{ steps.ready.outputs.producer_run_attempt }}
-      ready_flow: ${{ steps.ready.outputs.ready_flow }}
       ready_host: ${{ steps.ready.outputs.ready_host }}
       candidate_artifact_id: ${{ steps.ready.outputs.candidate_artifact_id }}
       candidate_artifact_digest: ${{ steps.ready.outputs.candidate_artifact_digest }}
       candidate_receipt_sha256: ${{ steps.ready.outputs.candidate_receipt_sha256 }}
-      flow_snapshot: ${{ steps.ready.outputs.flow_snapshot }}
       host_snapshot: ${{ steps.ready.outputs.host_snapshot }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           ref: ${{ github.event.repository.default_branch }}
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '24'
-
+          node-version: "24"
       - name: Verify current-attempt source and candidate readiness
         id: ready
         env:
@@ -55,30 +53,27 @@ jobs:
           else
             node scripts/ci/release-readiness.mjs --github-output "$GITHUB_OUTPUT"
           fi
-
-  publish:
-    name: Publish independent FLOW SDK candidate
-    needs: authorize
-    if: needs.authorize.outputs.ready_flow == 'true'
+  publish_host:
+    name: Publish host-qualified Agent and Jig candidates
+    needs:
+      - authorize
+    if: needs.authorize.outputs.ready_host == 'true'
     concurrency:
-      group: npm-prerelease-flow
+      group: npm-prerelease-host
       cancel-in-progress: false
       queue: max
-    env:
-      RELEASE_GROUP: flow
-      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
-      EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
-      QUALIFICATION_SNAPSHOT: ${{ needs.authorize.outputs.flow_snapshot }}
     environment: npm
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
       actions: read
       id-token: write
-    outputs: &release_outputs
-      flow_new: ${{ steps.release.outputs.flow_new }}
-      flow_state: ${{ steps.release.outputs.flow_state }}
-      flow_version: ${{ steps.release.outputs.flow_version }}
+    env:
+      RELEASE_GROUP: host
+      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
+      EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
+      QUALIFICATION_SNAPSHOT: ${{ needs.authorize.outputs.host_snapshot }}
+    outputs:
       jig_new: ${{ steps.release.outputs.jig_new }}
       jig_state: ${{ steps.release.outputs.jig_state }}
       jig_version: ${{ steps.release.outputs.jig_version }}
@@ -88,12 +83,11 @@ jobs:
       acp_new: ${{ steps.release.outputs.acp_new }}
       acp_state: ${{ steps.release.outputs.acp_state }}
       acp_version: ${{ steps.release.outputs.acp_version }}
-    steps: &publish_steps
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          node-version: '24'
+          node-version: "24"
           registry-url: https://registry.npmjs.org
-
       - name: Require trusted-publishing npm
         run: |
           set -eu
@@ -107,16 +101,14 @@ jobs:
           }
           NODE
           printf 'npm %s\n' "$npm_version"
-
       - name: Download exact persisted candidates
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           artifact-ids: ${{ needs.authorize.outputs.candidate_artifact_id }}
           merge-multiple: true
           path: ${{ runner.temp }}/candidates
           github-token: ${{ github.token }}
           run-id: ${{ needs.authorize.outputs.producer_run_id }}
-
       - name: Publish or converge qualified package group
         id: release
         env:
@@ -132,10 +124,10 @@ jobs:
           const snapshot = JSON.parse(process.env.QUALIFICATION_SNAPSHOT ?? 'null');
           const repository = process.env.GITHUB_REPOSITORY;
           if (snapshot?.schemaVersion !== 1 || snapshot.repository !== repository ||
-              snapshot.group !== process.env.RELEASE_GROUP || snapshot.sourceRevision !== process.env.SOURCE_REVISION ||
+              snapshot.group !== 'host' || process.env.RELEASE_GROUP !== 'host' || snapshot.sourceRevision !== process.env.SOURCE_REVISION ||
               snapshot.candidate?.receiptSha256 !== process.env.EXPECTED_RECEIPT_SHA256 ||
-              !Array.isArray(snapshot.runs) || snapshot.runs.length !== (snapshot.group === 'flow' ? 1 : 4) ||
-              !Array.isArray(snapshot.artifacts) || snapshot.artifacts.length !== (snapshot.group === 'flow' ? 1 : 7))
+              !Array.isArray(snapshot.runs) || snapshot.runs.length !== 4 ||
+              !Array.isArray(snapshot.artifacts) || snapshot.artifacts.length !== 7)
             throw new Error('Invalid authorized qualification snapshot');
           const api = (path) => JSON.parse(execFileSync('gh', ['api', path], {
             encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
@@ -265,7 +257,6 @@ jobs:
             visibility_attempts=100
             visibility_delay_seconds=10
             case "$package_kind" in
-              flow) archive_kind=flow-sdk ;;
               agent) archive_kind=agent-method ;;
               acp) archive_kind=agent-acp ;;
               jig) archive_kind=jig ;;
@@ -437,7 +428,6 @@ jobs:
           # Keep the independent SDK outside Jig's host qualification path.
           # Each group preflights its complete set before any registry mutation.
           case "$RELEASE_GROUP" in
-            flow) package_kinds=flow ;;
             host) package_kinds="agent acp jig" ;;
             *) echo "unknown release group" >&2; exit 1 ;;
           esac
@@ -445,59 +435,37 @@ jobs:
           for PREFLIGHT in true false; do
             for kind in $package_kinds; do
               case "$kind" in
-                flow) publish_candidate flow @jigging/flow ;;
                 agent) publish_candidate agent @jigging/agent-method ;;
                 acp) publish_candidate acp @jigging/agent-acp ;;
                 jig) publish_candidate jig @jigging/jig ;;
               esac
             done
           done
-
-  publish_host:
-    name: Publish host-qualified Agent and Jig candidates
-    needs: [authorize, publish]
-    if: needs.authorize.outputs.ready_host == 'true'
-    concurrency:
-      group: npm-prerelease-host
-      cancel-in-progress: false
-      queue: max
-    environment: npm
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    permissions:
-      actions: read
-      id-token: write
-    env:
-      RELEASE_GROUP: host
-      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
-      EXPECTED_RECEIPT_SHA256: ${{ needs.authorize.outputs.candidate_receipt_sha256 }}
-      QUALIFICATION_SNAPSHOT: ${{ needs.authorize.outputs.host_snapshot }}
-    outputs: *release_outputs
-    steps: *publish_steps
-
-  tag:
-    name: Tag published source and create package releases
-    needs: [authorize, publish]
+  tag_host:
+    name: Tag host-qualified packages and create releases
+    needs:
+      - authorize
+      - publish_host
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     env:
-      RELEASE_GROUP: flow
+      RELEASE_GROUP: host
       SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
-      FLOW_NEW: ${{ needs.publish.outputs.flow_new }}
-      FLOW_STATE: ${{ needs.publish.outputs.flow_state }}
-      FLOW_VERSION: ${{ needs.publish.outputs.flow_version }}
+      FLOW_NEW: ${{ needs.publish_host.outputs.flow_new }}
+      FLOW_STATE: ${{ needs.publish_host.outputs.flow_state }}
+      FLOW_VERSION: ${{ needs.publish_host.outputs.flow_version }}
       GH_TOKEN: ${{ github.token }}
-      JIG_NEW: ${{ needs.publish.outputs.jig_new }}
-      JIG_STATE: ${{ needs.publish.outputs.jig_state }}
-      JIG_VERSION: ${{ needs.publish.outputs.jig_version }}
-      AGENT_NEW: ${{ needs.publish.outputs.agent_new }}
-      AGENT_STATE: ${{ needs.publish.outputs.agent_state }}
-      AGENT_VERSION: ${{ needs.publish.outputs.agent_version }}
-      ACP_NEW: ${{ needs.publish.outputs.acp_new }}
-      ACP_STATE: ${{ needs.publish.outputs.acp_state }}
-      ACP_VERSION: ${{ needs.publish.outputs.acp_version }}
-    steps: &tag_steps
+      JIG_NEW: ${{ needs.publish_host.outputs.jig_new }}
+      JIG_STATE: ${{ needs.publish_host.outputs.jig_state }}
+      JIG_VERSION: ${{ needs.publish_host.outputs.jig_version }}
+      AGENT_NEW: ${{ needs.publish_host.outputs.agent_new }}
+      AGENT_STATE: ${{ needs.publish_host.outputs.agent_state }}
+      AGENT_VERSION: ${{ needs.publish_host.outputs.agent_version }}
+      ACP_NEW: ${{ needs.publish_host.outputs.acp_new }}
+      ACP_STATE: ${{ needs.publish_host.outputs.acp_state }}
+      ACP_VERSION: ${{ needs.publish_host.outputs.acp_version }}
+    steps:
       - name: Create or verify annotated package tags
         run: |
           set -eu
@@ -540,9 +508,6 @@ jobs:
           }
 
           case "$RELEASE_GROUP" in
-            flow)
-              converge_tag "flow-v$FLOW_VERSION" "@jigging/flow $FLOW_VERSION" "$FLOW_NEW" "$FLOW_STATE"
-              ;;
             host)
               converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW" "$AGENT_STATE"
               converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW" "$ACP_STATE"
@@ -550,7 +515,6 @@ jobs:
               ;;
             *) exit 1 ;;
           esac
-
       - name: Link published packages from GitHub Releases
         run: |
           set -eu
@@ -601,10 +565,6 @@ jobs:
           }
 
           case "$RELEASE_GROUP" in
-            flow)
-              create_release flow "$FLOW_VERSION" 'TypeScript SDK for FLOW Run/0.' \
-                "npm install @jigging/flow@$FLOW_VERSION" 'https://flow.jig.md/guide/' "$FLOW_STATE"
-              ;;
             host)
               create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
                 "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method' "$AGENT_STATE"
@@ -615,27 +575,3 @@ jobs:
               ;;
             *) exit 1 ;;
           esac
-
-  tag_host:
-    name: Tag host-qualified packages and create releases
-    needs: [authorize, publish_host]
-    runs-on: ubuntu-24.04
-    permissions:
-      contents: write
-    env:
-      RELEASE_GROUP: host
-      SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
-      FLOW_NEW: ${{ needs.publish_host.outputs.flow_new }}
-      FLOW_STATE: ${{ needs.publish_host.outputs.flow_state }}
-      FLOW_VERSION: ${{ needs.publish_host.outputs.flow_version }}
-      GH_TOKEN: ${{ github.token }}
-      JIG_NEW: ${{ needs.publish_host.outputs.jig_new }}
-      JIG_STATE: ${{ needs.publish_host.outputs.jig_state }}
-      JIG_VERSION: ${{ needs.publish_host.outputs.jig_version }}
-      AGENT_NEW: ${{ needs.publish_host.outputs.agent_new }}
-      AGENT_STATE: ${{ needs.publish_host.outputs.agent_state }}
-      AGENT_VERSION: ${{ needs.publish_host.outputs.agent_version }}
-      ACP_NEW: ${{ needs.publish_host.outputs.acp_new }}
-      ACP_STATE: ${{ needs.publish_host.outputs.acp_state }}
-      ACP_VERSION: ${{ needs.publish_host.outputs.acp_version }}
-    steps: *tag_steps

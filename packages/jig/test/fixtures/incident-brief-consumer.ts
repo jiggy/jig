@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import { cp, mkdir, mkdtemp, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -45,7 +46,7 @@ export async function qualifyIncidentBrief(): Promise<void> {
     if (archive === undefined) {
       await command(
         [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', dir],
-        resolve(import.meta.dir, '../../../', name),
+        name === 'flow-sdk' ? flowSdkDirectory : resolve(import.meta.dir, '../../../', name),
       )
       const archives = (await readdir(dir)).filter((name) => name.endsWith('.tgz'))
       expect(archives).toHaveLength(1)

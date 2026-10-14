@@ -48,7 +48,7 @@ product expresses those principles in its own domain.
 Portability enables compounding without guaranteeing improvement. Agency
 includes delegated software work without granting a model the power to
 authorize itself. Ownership and replaceability make control practical.
-These principles are developed in the [FLOW](doctrine/flow.md) and
+These principles are developed in the [FLOW](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md) and
 [Jig](doctrine/jig.md) branches.
 
 For Jig, usable control includes understandable review and results, and
@@ -70,7 +70,7 @@ and execution policy. No package or chooser acquires those powers by naming
 them.
 
 FLOW gives executable methods
-[one compositional boundary for code and Agents](doctrine/flow.md#one-compositional-model-for-code-and-agents):
+[one compositional boundary for code and Agents](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md#one-compositional-model-for-code-and-agents):
 the caller uses the method's contract whether its implementation uses code,
 Agent judgment, or both. Jig supplies local authority and accountable execution
 around that boundary. This connects capability compounding to power under control.

@@ -6,6 +6,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 ## Ownership
 
+- FLOW specifications, SDKs, conformance, and independent authoring release from `jiggy/flow`.
+- This repository freezes released FLOW inputs for Jig qualification. It never publishes FLOW packages.
+- Pages builds and deploys Jig directly. No deployment dispatch repository is required.
+
+
 - `workflows/` owns automation triggers, permissions, jobs, and retained
   artifacts.
 - Checked-in justfiles and scripts own reusable build and test logic.
@@ -52,11 +57,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Preserve `test` as a fail-closed aggregate of every CI job and its observed
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual runs require complete host coverage.
-- npm candidates cover FLOW, HTTP Agent, ACP Agent and Jig. Publish in that
-  dependency order. FLOW publishes after its successful main-push CI run. The
-  Agent/Jig group additionally requires same-revision host and native gates.
-  Both groups use the isolated trusted publisher in `npm-publish.yml`. First
-  publication requires each package's npm setup.
+- npm publication covers HTTP Agent, ACP Agent and Jig, in that dependency
+  order, after same-revision CI, host and native gates. FLOW releases from its
+  own repository. First publication requires each package's npm setup.
 
   Installed qualification installs its required tooling without rebuilding
   source packages. Generated implementation comes from the frozen archives.
@@ -72,10 +75,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Publish Agent/Jig npm candidates only after all required gates succeed for the
   exact source revision. These gates are CI, complete Linux Host Conformance,
   complete hosted Intel and Apple Silicon Mac conformance, and Native Agent API
-  Qualification. FLOW SDK npm publication and source tagging are independent of
-  those Jig gates. Python also uses its own CI-qualified artifacts. Each group
-  preflights its own archives before mutation. A host failure cannot block FLOW
-  publication.
+  Qualification. Preflight every selected host archive before mutation.
 - CI runs its complete fixed source, site, Python and npm profiles. Source
   targets run serially in one workspace after shared builds and archive
   freezing, with separate complete reports for each stage. A failed stage stops
@@ -98,30 +98,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   remains unchanged.
 - Jig GitHub release notes link the matching tagged source archive and build
   instructions. Npm remains the runnable distribution.
-- Python publication qualifies the exact retained wheel/sdist on its supported
-  interpreter/OS matrix. Read-only jobs prepare and verify registry bytes. The
-  isolated OIDC publisher executes no repository code. Duplicate-upload skipping
-  never substitutes for digest verification. CI SDK and reporting artifacts
-  include source, producer run and attempt. A short Python-only readiness check
-  binds all six installed profiles, source execution and the final CI gate.
-
-  It binds them to the successful current main-push attempt, original SDK
-  artifact ID/digest and source-bound distribution receipt. Prepare and
-  post-publication verification retrieve that immutable SDK artifact. The
-  checkout-free publisher revalidates the snapshot after approvals/queueing and
-  checks each pending archive against the original receipt before mutation. A
-  delayed success event cannot authorize an unfinished or failed rerun.
 - CI separately freezes the experimental Python reporting wheel/sdist and checks
   them against the same SDK wheel on the interpreter/OS matrix. These artifacts
   are qualification inputs, not added publication candidates. Host
   installed-update checks also receive the frozen reporting npm archive.
-- After npm or PyPI convergence and source tagging, create missing
+- After npm convergence and source tagging, create missing
   package-specific GitHub prereleases. Include exact registry version links,
   install commands, and docs. Preserve existing release notes on retries. Never
   present source archives as the installable package.
 - Keep FLOW and Jig site publication independent.
 - The CI site job checks documentation metadata, local links, source anchors,
-  changed technical paragraphs, and both rendered sites before recording success.
+  changed technical paragraphs, and the rendered Jig site before recording success.
   PR style checks use the base SHA. Push checks use the previous SHA.
   Manual checks use the checked revision's parent. Missing baselines fail.
 
@@ -168,8 +155,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Failed operational-baseline command transcripts are retained for seven days.
   Upload only the explicit transcript files, not consumer trees, admission
   databases, credentials, or retained native state.
-- Build the current FLOW SDK before host fixtures that exercise SDK-authored
-  Flows. A Jig-only installation does not produce the SDK's generated output.
+- Install the declared public FLOW SDK before host fixtures that exercise
+  SDK-authored Flows. Source tests resolve its public distribution.
 - Host conformance includes Agent method and contract-authoring source changes.
   Consume the built SDK, HTTP Agent, ACP Agent, reporting, display model/web/TUI
   and Jig archives from the canonical producer. Pass
@@ -198,7 +185,6 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   success. This wait permits up to 600 seconds within the job's 15-minute
   budget. Keep every test and profile.
 
-  FLOW/Python qualification remains independent.
 
   Measure queue effects separately. This head start does not guarantee Python
   Mac work has completed or establish faster native execution. Each isolated
@@ -267,9 +253,6 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   cases and incomplete Mac shard assignment before host qualification.
 - `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
   with controlled registry responses, including reverse completion and retries.
-- `node --test scripts/ci/python-readiness.test.mjs scripts/ci/python-publish.test.mjs`
-  exercises current-attempt Python authorization and the actual protected
-  publisher's inert validation code without registry mutations.
 
 ## Child DOX Index
 

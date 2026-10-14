@@ -318,7 +318,7 @@ describe('Schema/0 evaluation', () => {
   })
 })
 test('published Schema/0 meta-schema has the canonical identity', async () => {
-  const url = new URL('../../../docs/flow/spec/machine/schema-0.json', suiteTestUrl)
+  const url = new URL('../fixtures/flow-conformance/schema-0.json', import.meta.url)
   const value = JSON.parse(await readFile(url, 'utf8')) as JsonObject
   expect(value.$id).toBe(SCHEMA_1_URI)
   expect(value.$schema).toBe('https://json-schema.org/draft/2020-12/schema')

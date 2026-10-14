@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from '../fixtures/flow-dependency'
 import { expect, test } from 'bun:test'
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -63,11 +64,16 @@ test('installed typed views preserve clean and lost automatic and explicit obser
       name === 'jig'
         ? [process.execPath, 'scripts/pack.ts', '--destination', destination]
         : [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', destination],
-      join(packageRoot, '..', name),
+      name === 'flow-sdk' ? flowSdkDirectory : join(packageRoot, '..', name),
       'archive-pack',
     )
     const manifest = JSON.parse(
-      await readFile(join(packageRoot, '..', name, 'package.json'), 'utf8'),
+      await readFile(
+        name === 'flow-sdk'
+          ? join(flowSdkDirectory, 'package.json')
+          : join(packageRoot, '..', name, 'package.json'),
+        'utf8',
+      ),
     )
     return join(
       destination,

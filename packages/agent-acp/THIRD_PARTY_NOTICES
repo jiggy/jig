@@ -7,7 +7,7 @@ versioned @jigging/agent-method package and at
 https://github.com/jiggy/jig/tree/main/packages/agent-method.
 
 @jigging/flow, Apache-2.0. Its license is included as licenses/flow.LICENSE.
-SDK source is available at https://github.com/jiggy/jig/tree/main/packages/flow-sdk.
+SDK source is available at https://github.com/jiggy/flow/tree/main/packages/flow-sdk.
 The package manifest declares development dependency versions for source
 rebuilds. Runtime execution needs no installation or build hook.
 

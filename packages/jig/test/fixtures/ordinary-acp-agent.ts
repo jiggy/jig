@@ -1,3 +1,4 @@
+import { flowSdkRuntimeDirectory, flowSdkDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import { cp, lstat, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -68,7 +69,7 @@ export async function writeOrdinaryAcpAgent(
 export async function writeConversationCaller(root: string): Promise<void> {
   const flow = join(root, 'flows/conversation')
   await mkdir(flow, { recursive: true })
-  await cp(join(import.meta.dir, '../../../flow-sdk/dist'), join(flow, 'sdk'), {
+  await cp(flowSdkRuntimeDirectory, join(flow, 'sdk'), {
     recursive: true,
   })
   await cp(
@@ -454,7 +455,8 @@ async function installWorkspaceArtifact(
   await mkdir(artifacts, { recursive: true })
   let archive = process.env[archiveVariable]
   if (archive === undefined) {
-    const packageDirectory = join(import.meta.dir, `../../../${name}`)
+    const packageDirectory =
+      name === 'flow-sdk' ? flowSdkDirectory : join(import.meta.dir, `../../../${name}`)
     const pack = Bun.spawn(
       [
         process.execPath,

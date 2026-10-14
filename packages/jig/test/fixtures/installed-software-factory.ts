@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
@@ -56,11 +57,16 @@ export async function qualifyInstalledSoftwareFactory(
       name === 'jig'
         ? [process.execPath, 'scripts/pack.ts', '--destination', destination]
         : [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', destination],
-      join(packageRoot, '..', name),
+      name === 'flow-sdk' ? flowSdkDirectory : join(packageRoot, '..', name),
       'archive-pack',
     )
     const manifest = JSON.parse(
-      await readFile(join(packageRoot, '..', name, 'package.json'), 'utf8'),
+      await readFile(
+        name === 'flow-sdk'
+          ? join(flowSdkDirectory, 'package.json')
+          : join(packageRoot, '..', name, 'package.json'),
+        'utf8',
+      ),
     )
     return join(
       destination,

@@ -116,7 +116,12 @@ if [[ -n "$candidate_receipt" ]]; then
 else
   for package in flow-sdk reporting agent-method agent-acp display-model display-web display-tui; do
     mkdir "$scratch/$package"
-    bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
+    if [[ "$package" == flow-sdk ]]; then
+      sdk_version=$(node -p 'require("./packages/jig/package.json").devDependencies["@jigging/flow"]')
+      npm pack "@jigging/flow@$sdk_version" --ignore-scripts --pack-destination "$scratch/$package"
+    else
+      bun pm pack --cwd "packages/$package" --ignore-scripts --destination "$scratch/$package"
+    fi
   done
   mkdir "$scratch/jig"
   (cd packages/jig && bun scripts/pack.ts --destination "$scratch/jig")

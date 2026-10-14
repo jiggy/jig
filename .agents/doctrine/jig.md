@@ -46,7 +46,7 @@ internal control and each application's purpose to its author.
 We believe explicit execution boundaries let Agent intelligence become a
 composable part of software, while keeping authority and responsibility with
 the system's owners. FLOW supplies
-[one compositional model for code and Agents](flow.md#one-compositional-model-for-code-and-agents);
+[one compositional model for code and Agents](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md#one-compositional-model-for-code-and-agents);
 Jig supplies the authority and accountable execution lifecycle around those
 methods. Agents should be first-class participants in applications: software
 can invoke their work, combine it with other methods, and handle its outcome

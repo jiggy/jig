@@ -4,6 +4,6 @@ algorithms are adapted from Jig. Their source is included in src/.
 
 The complete dist/flow.js runtime bundles @jigging/flow, the FLOW Run/0 SDK,
 under the Apache License 2.0. Its license is included in licenses/flow.LICENSE.
-SDK source is available from https://github.com/jiggy/jig/tree/main/packages/flow-sdk.
+SDK source is available from https://github.com/jiggy/flow/tree/main/packages/flow-sdk.
 
 No provider SDK is included in this package.

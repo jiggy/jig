@@ -2,12 +2,12 @@ import { test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 test('public Agent results compose with FLOW JSON without casts', async () => {
   const method = fileURLToPath(new URL('../', import.meta.url))
-  const flow = fileURLToPath(new URL('../../flow-sdk/', import.meta.url))
+  const flow = dirname(dirname(fileURLToPath(import.meta.resolve('@jigging/flow'))))
   const consumer = await mkdtemp(join(tmpdir(), 'agent-public-types-'))
   try {
     await mkdir(join(consumer, 'node_modules/@jigging'), { recursive: true })

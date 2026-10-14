@@ -17,7 +17,7 @@ This is the note I would want to find after returning with no memory of the
 work. It preserves causal understanding rather than an active task queue,
 release receipt, specification, or additional authority. The
 [product compass](../product-compass.md), [shared purpose](../doctrine/purpose.md),
-[FLOW doctrine](../doctrine/flow.md), [Jig doctrine](../doctrine/jig.md),
+[FLOW doctrine](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md), [Jig doctrine](../doctrine/jig.md),
 [design judgment](../doctrine/design-judgment.md), applicable instructions, and
 current public contracts outrank it.
 

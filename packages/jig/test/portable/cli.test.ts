@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from './../fixtures/flow-dependency'
 import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 import { describe, expect, test } from 'bun:test'
@@ -329,9 +330,7 @@ test('default init writes an ordinary editable SDK Flow without installing or ap
     expect(await readFile(join(directory, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
       'import { handle } from "@jigging/flow"',
     )
-    const sdkManifest = JSON.parse(
-      await readFile(new URL('../../../flow-sdk/package.json', import.meta.url), 'utf8'),
-    )
+    const sdkManifest = JSON.parse(await readFile(join(flowSdkDirectory, 'package.json'), 'utf8'))
     expect(JSON.parse(await readFile(join(directory, 'flows/hello/package.json'), 'utf8'))).toEqual(
       { private: true, dependencies: { '@jigging/flow': sdkManifest.version } },
     )
