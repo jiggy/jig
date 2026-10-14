@@ -67,6 +67,11 @@ use-case and orchestration hypotheses.
   package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides. The shared diagram workflow is in `docs/AGENTS.md`.
+- `acknowledgements.md` owns public acknowledgements, separate from the short
+  root README. Credit documented work rather than promises or unanswered
+  invitations; distinguish completed handovers from unsuccessful recovery
+  efforts. Keep thanks concise; use recorded handles and profile links without
+  adding preference-confirmation commentary.
 - `use-cases.md` records outcome-oriented product hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
