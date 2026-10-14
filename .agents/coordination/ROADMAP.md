@@ -32,11 +32,13 @@ this roadmap.
 
 ## Next steps
 
-1. Make existing specialist composition easier to adopt through ordinary
-   installed packages and understandable public guidance.
-2. Let consumer needs identify the next useful application increment; reuse
-   delivered conversation, channel and retained-progress interfaces before
-   proposing new host mechanisms.
+1. Define a coherent host foundation for local adaptive artifact-producing
+   applications: recoverable invocation, reusable file composition and controlled
+   dependency-backed evaluation.
+2. Qualify that supported envelope through maintainer-owned installed evidence
+   and separate public-only consumers before release; external application teams
+   must not wait through each host correction. Reuse delivered conversation,
+   channel and retained-progress interfaces rather than duplicate them.
 
 The [coordination inbox](inbox/) records the postponed contract-discovery and
 conversation/handoff adoption work. Its entries are not implementation approval

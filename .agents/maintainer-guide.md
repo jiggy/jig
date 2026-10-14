@@ -526,6 +526,12 @@ not independent design-probe evidence. A directory name or sub-agent label does
 not establish independence: report the consumer's actual prior context, inputs,
 assistance, and access boundaries.
 
+Host release qualification is maintainer-owned. Prepare and qualify an explicit
+supported capability envelope before asking external application teams to rely
+on it; do not make their daily development depend on continuous host repair.
+Organize unfamiliar public-only consumption separately from platform work.
+Field feedback informs later decisions asynchronously, not readiness by agreement.
+
 A good probe shows that published pieces compose and exposes concrete usability
 gaps. It does not establish domain accuracy, privacy suitability, provider
 fitness, professional benefit, or ecosystem value without an evaluation built

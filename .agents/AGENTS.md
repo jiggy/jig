@@ -21,8 +21,9 @@ and project-maintained skills for external libraries.
   proportions, and implementation asset map.
 - `maintainer-guide.md` introduces the engineering model, its governing
   principles, operational invariants, focused modular Flow creation, simple
-  implementations and public interfaces, holistic product/UX review, and working
-  method. Detailed product mechanics stay in their linked specifications.
+  implementations and public interfaces, holistic product/UX review,
+  maintainer-owned host qualification, and working method. Detailed product
+  mechanics stay in their linked specifications.
 - `coordination/` owns project coordination records. Its `ROADMAP.md` gives a
   compact, high-level view of outcome order and the next steps. Its `inbox/`
   holds postponed tasks that await triage.
