@@ -18,6 +18,18 @@ diagnostics, authenticated evidence access and lifetime. The independent
 and fixed assets; it consumes `@jigging/display-model` snapshots without importing
 Jig. Its bounded display interface grants no HTTP server or execution authority.
 
+Root-publisher application pages precede an Inspector group containing
+Execution, Activity, delivered files and attributed child views. Sections
+compose an authored page: reports, facts and progress appear together, and
+collections show every column in a horizontally scrollable table. Filtering,
+sorting, stable selection, full record details and typed evidence navigation
+remain available. Details open on request rather than occupying the initial
+application screen.
+
+Host facts, attention, observation loss and Close remain visible across pages.
+Directly invoking a child makes that invocation the root. Its own view becomes
+primary. Recorded-packet navigation retains its explicit host roles.
+
 The display requires terminal stderr; stdin need not be a terminal. JSON and
 explicit channel reception win before server preparation. Run stdout may be
 redirected and still receives its unchanged exact final result. Saved inspection
@@ -155,31 +167,48 @@ Child-only declarations remain unavailable until the parent delivers/remaps
 actual evidence. The independent host file inventory does not attribute its
 bytes to an unavailable authored reference.
 
-Capture retains at most 64 files /16 MiB under the existing confined file policy.
-Live settled inspection transfers at most 64 previews with 512 KiB aggregate
-retained content. Text excerpts remain at most 4 KiB each, charged as UTF-16
-storage. One active browser preview contains one text excerpt or one validated
-raster image. Production file-image decoding remains unavailable until its
-execution owner can independently enforce cancellation; saved files remain usable
-outside the display. The private renderer candidate accepts at most 64 KiB of
-PNG/JPEG or SVG source and returns PNG within 384 by 1024 pixels and 64 KiB.
-External references and entities are refused; its bundled fonts supply text.
-Candidate rendering tests do not establish execution-lifetime qualification.
+Capture retains at most 64 files /16 MiB under the existing confined file
+policy. Live settled inspection transfers at most 64 previews with 512 KiB
+aggregate retained content. Text excerpts remain at most 4 KiB each, charged
+as UTF-16 storage. One active browser preview contains one text excerpt or one
+validated raster image.
+
+A fixed disposable process accepts at most 64 KiB of PNG/JPEG or SVG source.
+It returns PNG within 384 by 1024 pixels and 64 KiB. Its main thread owns a
+five-second deadline and an open input-pipe lifetime lease, independently of
+the decoder thread. Pipe loss or cancellation kills the whole process. Its
+actual exit precedes reuse.
+
+The pinned renderer limits Wasm memory to 5 MiB, cumulative imported byte
+copies to 1 MiB and decoded text to 1 MiB. These are image-content limits, not
+a hard quota on the Bun runtime's total resident memory. External references
+and entities are refused. Bundled fonts supply text.
+
+At most one renderer runs per command, with no queue. Saved inspection spends
+at most ten seconds preparing images. Remaining files keep textual/non-text
+fallbacks. Malformed, oversized or stalled images lose only their optional
+preview, while complete saved files remain usable.
+
 The browser renders validated raster data in an image element, never authored
-SVG markup, and retains no image object URL or file/network access.
-Empty, image, non-text, unavailable and clipped evidence are distinct states. Content is primary;
-path, byte count, verified-delivery/recorded-capture provenance and limits are
-secondary. Preserve diff whitespace with addition/removal/context roles and a
-plain fallback. Text previews detect common formats from the captured filename;
-unknown filenames use bounded shebang, diff and complete-JSON signals before
-falling back to plain text. Both renderers share detection and lexical colouring
-for CSV/TSV, JSON, YAML, Markdown and common source files. Colouring is a reading
-aid, not syntax validation. No grammar, file or network lookup is performed.
-Web CSV/TSV previews offer Table/Raw views for complete rectangular excerpts of
-at most 500 rows and 64 columns, respecting quoted delimiters and multiline
-fields. Clipped, malformed and oversized tables retain raw text. Literal search
-shows the raw excerpt, preserving its whitespace and match locations.
-Expansion adds space, scrolling and search of retained text.
+SVG markup, and retains no image object URL or file/network access. Empty,
+image, non-text, unavailable and clipped evidence are distinct states. Content
+is primary. Path, byte count, verified-delivery/recorded-capture provenance
+and limits are secondary.
+
+Preserve diff whitespace with addition/removal/context roles and a plain
+fallback. Text previews detect common formats from the captured filename.
+Unknown filenames use bounded shebang, diff and complete-JSON signals before
+falling back to plain text. Both renderers share detection and lexical
+colouring for CSV/TSV, JSON, YAML, Markdown and common source files.
+
+Colouring is a reading aid, not syntax validation. No grammar, file or network
+lookup is performed. Web CSV/TSV previews offer Table/Raw views for complete
+rectangular excerpts of at most 500 rows and 64 columns. They respect quoted
+delimiters and multiline fields. Clipped, malformed and oversized tables
+retain raw text.
+
+Literal search shows the raw excerpt, preserving its whitespace and match
+locations. Expansion adds space, scrolling and search of retained text.
 
 Provide a compact host shell, visible focus, keyboard and pointer navigation,
 responsive layouts, readable selected context, view overflow navigation and

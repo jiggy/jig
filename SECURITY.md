@@ -142,6 +142,14 @@ Lost retirement acknowledgment or uncertain cleanup closes inspection and retain
 known execution/delivery facts with a separate command-cleanup failure. Saved
 inspection checks file consistency without authenticating recorded report claims.
 
+Image previews use fixed bundled decoder code in a fresh process, with one active
+renderer per command. Cancellation and the independent child watchdog kill the
+whole process, including busy Wasm; input-pipe loss independently stops it after
+parent death. Actual process exit precedes reuse. Source,
+pixel, output, Wasm memory and cumulative imported-content limits bound image
+work. These are not a hard quota on total Bun resident memory. Failed previews
+preserve immutable textual evidence and saved-file access.
+
 Application limits bound snapshots, client counts, stream queues and preview
 suppliers after native parsing. They do not enforce a hard process memory/socket
 quota on headers, ingress buffers or native copies before the handler. Local

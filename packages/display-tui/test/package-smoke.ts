@@ -188,7 +188,7 @@ try {
   assert.equal(reads,1);
   const preview=await display.frame({...viewport,color:true});assert(preview.text.includes('Frozen excerpt'));
   assert(Buffer.byteLength(preview.text)<=32768);
-  display.input(new TextEncoder().encode('v'+String.fromCharCode(27)+'[Hjj'+String.fromCharCode(13)));
+  display.input(new TextEncoder().encode('v'+String.fromCharCode(27)+'[F'+String.fromCharCode(13)));
   assert((await display.frame(viewport)).text.includes('report.txt'));
   display.input(new TextEncoder().encode(String.fromCharCode(9)));
   for(let index=0;index<reservedIds.length;index++) {

@@ -157,7 +157,7 @@ function inertSvg(text: string, depth: number, budget: SvgBudget): boolean {
   return true
 }
 
-/** Exactly one call per fresh thread; failed Wasm state is never reused. */
+/** Exactly one call per fresh decoder process; failed Wasm state is never reused. */
 export async function privateRenderImage(
   bytes: Buffer,
   observe?: (allocations: { copies: number; decodedText: number }) => void,

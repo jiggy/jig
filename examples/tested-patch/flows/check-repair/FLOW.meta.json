@@ -1,0 +1,4 @@
+{
+  "name": "tested-patch-check-repair",
+  "description": "Validate repair evidence against the captured project and fixed cases."
+}

@@ -14,7 +14,7 @@ prepares their execution dependencies. Download this directory and follow
 [Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
 The inline native policy in `bindings/agent.ts` selects Pi as an example.
 Edit that Binding and review again for a lasting client preference. Inspect `issue.json`,
-`bindings/specialist.ts`, and `flows/project/logs-cases.json`.
+`bindings/specialist.ts`, and `flows/read-project/logs-cases.json`.
 From this directory:
 
 ```sh
@@ -48,20 +48,20 @@ specialist’s separate closed phase records for explicit channel consumers. Nei
 establishes acceptance.
 
 The synthetic fixture is an HTTP log reporter with defects in parsing and
-aggregation. Open `files/summary.txt` inside the reported destination. A passing repair produces
+aggregation. Open `files/review/summary.txt` inside the reported destination. A passing repair produces
 `review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
 `result.json` records candidate identities, command output and termination,
 and independent acceptance results. Review the patch before applying it.
 
 ## Follow the work
 
-**Repair** retains the requested goal and editable scope. **Checks** separates the
-original failure from each proposal's repository and independent acceptance checks.
-Worker reports stay provisional until the project caller validates identities and
-recomputes the verdicts. **Evidence** links to the complete `goal.txt`, summaries and
-retained proposals; only an accepted candidate earns `review.patch`. Selecting a
-delivered file shows its content. The reusable specialist offers Repair and Checks
-without claiming that its caller has accepted a patch.
+**Patch review** keeps the requested issue, permitted edits, current stage,
+original → candidate check comparison, and complete review files together.
+The coordinator captures source, calls the repair specialist, delegates independent
+evidence acceptance, then exports patches. It shows checked verdicts only after
+`check-repair` validates command identities and recomputes every result.
+Worker views remain provisional in Inspector. Only accepted evidence earns
+`review/review.patch`; unsuccessful proposals remain inspectable.
 
 Add `--display tui` for a terminal workspace or `--display web` for the same
 views in a browser. Open the private link printed after execution starts. The completed inspector
@@ -69,14 +69,31 @@ stays open until you explicitly close it; leaving a live display does not cancel
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.
 
+## Follow the composition
+
+| Flow | Responsibility |
+| --- | --- |
+| `project` | Coordinate the task and publish the application page. |
+| `read-project` | Capture bounded source and reviewed acceptance cases. |
+| `repair` | Reproduce the defect, request bounded proposals and execute fixed checks. |
+| `check-repair` | Validate source/candidate/command identities and recompute acceptance. |
+| `export-patch` | Format supplied review data and write patches without applying them. |
+
+Among the child methods, only `read-project` receives source access.
+Only `export-patch` receives a writable
+attachment; its folder is imported into `deliverables/review`. The checker and
+repair specialist receive JSON data. The exporter formats supplied review data;
+when called independently its files are caller claims, not proof of acceptance.
+The application's checker establishes acceptance before export.
+
 ## Follow the evidence
 
-1. The root captures the selected files and fixed acceptance cases.
+1. `read-project` captures the selected files and fixed acceptance cases.
 2. The repair specialist reproduces an independent failure before asking an Agent.
 3. The Agent proposes complete replacements for permitted source paths.
 4. Reviewed Bun commands execute against the candidate in separate containment.
-5. Independent assertions check collected CLI behavior. The root validates the
-   evidence and constructs a patch from passing replacements.
+5. `check-repair` validates complete evidence and recomputes verdicts.
+6. `export-patch` constructs patches from that accepted review data.
 
 There are at most two Agent proposals. The acceptance expectations stay fixed.
 Repository tests can be interfered with by candidate code; the independent

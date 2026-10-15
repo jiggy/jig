@@ -1175,7 +1175,7 @@ test('settlement offers the landing result without moving an operator who has na
     delivery: 'written',
   })
   model.setWorkspacePhase('settled')
-  expect(model.row?.id).toBe('a')
+  expect(model.record?.kind).toBe('summary')
   model.setNow(65000)
   expect(viewerFrame(model, 120, 45, false, true).lines[1]).toContain('elapsed 30s')
   for (const surface of ['activity', 'overview']) {
@@ -1195,7 +1195,7 @@ test('settlement offers the landing result without moving an operator who has na
   expect(noHint.surface).toBe('activity')
   noHint.setWorkspacePhase('settled')
   expect(noHint.surface).toBe(displayViewKey(JSON.stringify(['root', 'first-result'])))
-  expect(noHint.row?.id).toBe('a')
+  expect(noHint.record?.kind).toBe('summary')
 })
 
 test('wide collections use spare width and peek a sole selected artifact with literal context', () => {

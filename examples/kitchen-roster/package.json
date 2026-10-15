@@ -1,0 +1,13 @@
+{
+  "name": "kitchen-roster-example",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/agent-acp": "0.1.0-alpha.10"
+  },
+  "devDependencies": {
+    "@jigging/flow": "0.1.0-alpha.13",
+    "@jigging/reporting": "0.1.0-alpha.1",
+    "@jigging/agent-method": "0.1.0-alpha.8"
+  }
+}

@@ -224,6 +224,13 @@ workspace views through the same optional `jig:reporting` agreement and
 scoped publisher. There is no new channel, FLOW operation, domain task ontology,
 executable widget, arbitrary layout language or execution-changing control.
 
+An application coordinator can publish one root landing view throughout its
+work, composing domain state into ordered sections. Renderers present this as
+an application page. Child views remain available with the host inspection
+tools. The same child invoked directly can provide its own primary page.
+Presentation never changes the invocation result, host status or evidence
+access.
+
 `view` contains `id`, `title`, `summary`, `sections`, optional `landing: true`
 and optional own-call `operationId`. `retire-view` contains `id`. A section has
 optional title and blocks. Blocks are literal reports with optional references,

@@ -368,8 +368,13 @@ These links locate module rules. All selected domain requirements still apply.
 
   Validate both against fixed names before reporting a pre-readiness error code
   through the existing root host-test observer. Never forward native exception
-  messages or arbitrary error codes across this channel. Exact storage-recovery
-  refusal messages have fixed labels for directory, journal, backing, allocation
+  messages or arbitrary error codes across this channel.
+
+  Scope preparation distinguishes fixed configuration, accounting, handoff,
+  fencing and readiness
+  causes. Readiness reports only its closed stop reason, without raw exit evidence.
+  Exact storage-recovery refusal messages have fixed labels for directory,
+  journal, backing, allocation
   and recovery-tool fencing boundaries. Live image mapping refusals distinguish
   fixed count, owner, sector size/count, encryption and entity-shape labels
   without exposing rejected metadata. The exact predicates and subsequent

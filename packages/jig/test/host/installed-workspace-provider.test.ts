@@ -221,12 +221,44 @@ for (const location of ['member', 'root', 'nested'] as const) {
         },
       )
       const manifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
-      await putApp('package.json', { ...manifest, name: 'changed-without-updating-lock' })
+      const changedManifest = { ...manifest, name: 'changed-without-updating-lock' }
+      if (rootApplication) {
+        const authoredLock = await readFile(join(directory, 'bun.lock'), 'utf8')
+        await putApp('package.json', { ...changedManifest, version: '2.0.0' })
+        const metadataReview = await run(['review', '--yes'])
+        expect(metadataReview.exit, metadataReview.stdout + metadataReview.stderr).toBe(0)
+        expect(await readFile(join(directory, 'bun.lock'), 'utf8')).toBe(authoredLock)
+        // A real root dependency change still requires an explicit lock update.
+        await putApp('package.json', {
+          ...changedManifest,
+          version: '2.0.0',
+          dependencies: { ...manifest.dependencies, 'is-number': '6.0.0' },
+        })
+      } else {
+        await putApp('package.json', changedManifest)
+      }
+      const beforeRefusal = await readFile(join(project, 'jig.lock'), 'utf8')
       const stale = await run(['review', '--yes'])
       expect(stale.exit, stale.stdout + stale.stderr).not.toBe(0)
       expect(stale.stderr).toContain('PACKAGE_BUN_LOCK_STALE')
-      expect(stale.stderr).toContain('/name')
+      expect(stale.stderr).toContain(rootApplication ? '/dependencies' : '/name')
       expect(stale.stderr).not.toContain('changed-without-updating-lock')
+      const lockRoot = rootApplication ? '.' : '../..'
+      const lockPath = rootApplication ? 'bun.lock' : '../../bun.lock'
+      expect(stale.stderr).toContain(`Dependency lock: "${lockPath}"`)
+      const repair = /\$ (bun install --lockfile-only --ignore-scripts --cwd '[^']+')/.exec(
+        stale.stderr,
+      )
+      expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(beforeRefusal)
+      expect(repair?.[1]).toBe(`bun install --lockfile-only --ignore-scripts --cwd '${lockRoot}'`)
+      if (repair?.[1] === undefined) throw new Error('Missing public lock repair command')
+      execFileSync('/bin/sh', ['-c', repair[1]], {
+        cwd: project,
+        timeout: 30_000,
+        stdio: 'pipe',
+      })
+      const repaired = await run(['review', '--yes'])
+      expect(repaired.exit, repaired.stdout + repaired.stderr).toBe(0)
       passed = true
     } finally {
       if (passed) await rm(directory, { recursive: true, force: true })

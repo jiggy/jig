@@ -29,9 +29,11 @@ with their producer. This package owns readonly display data and pure meaning.
   rejects malformed/oversized data and does not claim to authenticate evidence.
 - IDs are bounded opaque values. Display labels and authored paths do not join
   publishers, grant file access or certify results. Recorded roles are explicit.
-- `displayDestinations` consumes original semantic IDs and tags view destination
-  keys with `displayViewKey`. Built-in keys stay disjoint. Never replace
-  snapshot or reference IDs with those renderer destination keys.
+- `displayDestinations` consumes original semantic IDs and tags view
+  destination keys with `displayViewKey`. Supplied root/publisher identities
+  place root views before host and child inspection destinations. Labels never
+  establish ancestry. Built-in keys stay disjoint. Never replace snapshot or
+  reference IDs with those renderer destination keys.
 - Pure observation intervals never infer execution durations or domain verdicts.
 
 ## Work Guidance

@@ -1,31 +1,31 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import { Worker } from 'node:worker_threads'
-import {
-  privateCandidateThreadImagePreview as candidateImagePreview,
-  privateImagePreview,
-} from '../../src/internal/image-preview.js'
+import { fileURLToPath } from 'node:url'
+import { privateImagePreview } from '../../src/internal/image-preview.js'
 import {
   PRIVATE_PREVIEW_LIMITS,
   privateValidImagePreview,
 } from '../../src/internal/image-preview-policy.js'
 import { validDisplayImage } from '@jigging/display-model'
 import { createContactSheet } from '../../../../examples/photo-organiser/flows/contact-sheet/rendering.js'
-import { svg, fixture } from '../image-preview.fixture.js'
 
-test('candidate renderer: captured SVG becomes bounded PNG and raster input is normalised inside the renderer', async () => {
-  const image = (await candidateImagePreview(
+const svg = (body: string, dimensions = 'width="32" height="16"') =>
+  Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" ${dimensions}>${body}</svg>`)
+
+test('process renderer: captured SVG becomes bounded PNG and raster input is normalised inside the renderer', async () => {
+  const image = (await privateImagePreview(
     svg('<rect width="32" height="16" fill="red"/><text x="1" y="12">Hi</text>'),
   ))!
   expect(privateValidImagePreview(image)).toBeTrue()
   expect(image.mime).toBe('image/png')
   expect([image.width, image.height]).toEqual([384, 192])
-  const roundTrip = (await candidateImagePreview(Buffer.from(image.base64, 'base64')))!
+  const roundTrip = (await privateImagePreview(Buffer.from(image.base64, 'base64')))!
   expect(privateValidImagePreview(roundTrip)).toBeTrue()
   expect([roundTrip.width, roundTrip.height]).toEqual([384, 192])
   expect(
     privateValidImagePreview(
-      await candidateImagePreview(
+      await privateImagePreview(
         Buffer.from(
           '<!-- chart attribution -->' + svg('<rect width="32" height="16"/>').toString(),
         ),
@@ -33,13 +33,14 @@ test('candidate renderer: captured SVG becomes bounded PNG and raster input is n
     ),
   ).toBeTrue()
 })
-test('candidate renderer: photo images render from owned SVG data and external references are refused', async () => {
+
+test('process renderer: photo images render from owned SVG data and external references are refused', async () => {
   const photo = readFileSync(
     new URL('../../../../examples/photo-organiser/fixtures/photos/IMG_0201.svg', import.meta.url),
   )
   expect(
     privateValidImagePreview(
-      await candidateImagePreview(
+      await privateImagePreview(
         svg(
           `<image width="32" height="16" href="data:image/svg+xml;base64,${photo.toString('base64')}"/>`,
         ),
@@ -52,9 +53,10 @@ test('candidate renderer: photo images render from owned SVG data and external r
     '../selected.svg',
     '#fragment&amp;escape',
   ])
-    expect(await candidateImagePreview(svg(`<image href="${href}"/>`))).toBeUndefined()
+    expect(await privateImagePreview(svg(`<image href="${href}"/>`))).toBeUndefined()
 })
-test('candidate renderer: the complete cookbook contact sheet retains all twelve before-and-after rows', async () => {
+
+test('process renderer: the complete cookbook contact sheet retains all twelve before-and-after rows', async () => {
   const root = new URL('../../../../examples/photo-organiser/fixtures/photos/', import.meta.url)
   const photos = JSON.parse(readFileSync(new URL('photos.json', root), 'utf8'))
   const images = new Map<string, Buffer>(
@@ -67,56 +69,66 @@ test('candidate renderer: the complete cookbook contact sheet retains all twelve
     ...photo,
     destination: `Grouped/${photo.file}`,
   }))
-  const image = (await candidateImagePreview(
+  const image = (await privateImagePreview(
     Buffer.from(createContactSheet(photos, renamed, images)),
   ))!
   expect(privateValidImagePreview(image)).toBeTrue()
   expect([image.width, image.height]).toEqual([384, 579])
   expect(Buffer.from(image.base64, 'base64').length).toBeLessThanOrEqual(65536)
 })
-test('candidate renderer: oversized input, unsafe fitted surfaces and malformed raster data lose only their preview', async () => {
+
+test('process renderer: oversized input, unsafe fitted surfaces and malformed raster data lose only their preview', async () => {
   expect(
-    await candidateImagePreview(Buffer.alloc(PRIVATE_PREVIEW_LIMITS.sourceBytes + 1)),
+    await privateImagePreview(Buffer.alloc(PRIVATE_PREVIEW_LIMITS.sourceBytes + 1)),
   ).toBeUndefined()
-  expect(await candidateImagePreview(Buffer.from('ordinary text'))).toBeUndefined()
-  expect(await candidateImagePreview(svg('', 'width="1" height="100000"'))).toBeUndefined()
-  expect(await candidateImagePreview(svg('', 'width="1024" height="4096"'))).toBeUndefined()
-  const image = (await candidateImagePreview(svg('<rect width="32" height="16"/>')))!
+  expect(await privateImagePreview(Buffer.from('ordinary text'))).toBeUndefined()
+  expect(await privateImagePreview(svg('', 'width="1" height="100000"'))).toBeUndefined()
+  expect(await privateImagePreview(svg('', 'width="1024" height="4096"'))).toBeUndefined()
+  const image = (await privateImagePreview(svg('<rect width="32" height="16"/>')))!
   const bytes = Buffer.from(image.base64, 'base64')
   bytes.writeUInt32BE(100000, 16)
-  expect(await candidateImagePreview(bytes)).toBeUndefined()
+  expect(await privateImagePreview(bytes)).toBeUndefined()
   expect(validDisplayImage({ ...image, mime: 'image/svg+xml' })).toBeFalse()
   expect(privateValidImagePreview({ ...image, width: 385 })).toBeFalse()
 })
-test('candidate renderer: nested image source and decoded raster budgets are aggregate, and refusal does not poison later jobs', async () => {
-  const raster = (await candidateImagePreview(svg('<rect width="32" height="16" fill="red"/>')))!
+
+test('process renderer: nested image source and decoded raster budgets are aggregate, and refusal does not poison later jobs', async () => {
+  const raster = (await privateImagePreview(svg('<rect width="32" height="16" fill="red"/>')))!
   const body = `<image width="32" height="16" href="data:image/png;base64,${raster.base64}"/>`
-  expect(privateValidImagePreview(await candidateImagePreview(svg(body)))).toBeTrue()
-  expect(await candidateImagePreview(svg(body.repeat(6)))).toBeUndefined()
+  expect(privateValidImagePreview(await privateImagePreview(svg(body)))).toBeTrue()
+  expect(await privateImagePreview(svg(body.repeat(6)))).toBeUndefined()
   expect(
-    await candidateImagePreview(svg('<image href="data:image/png;base64,AAAA"/>')),
+    await privateImagePreview(svg('<image href="data:image/png;base64,AAAA"/>')),
   ).toBeUndefined()
   const dense = Array.from({ length: 2000 }, (_, index) => `<path d="M0 ${index}h1000"/>`).join('')
-  expect(await candidateImagePreview(svg(dense, 'width="384" height="1024"'))).toBeUndefined()
+  expect(await privateImagePreview(svg(dense, 'width="384" height="1024"'))).toBeUndefined()
   expect(
     privateValidImagePreview(
-      await candidateImagePreview(svg('<rect width="32" height="16" fill="blue"/>')),
+      await privateImagePreview(svg('<rect width="32" height="16" fill="blue"/>')),
     ),
   ).toBeTrue()
 })
-test('candidate renderer: cancelled or concurrent renderer reservations cannot allocate another heap', async () => {
+
+test('process renderer: cancelled or concurrent renderer reservations cannot allocate another heap', async () => {
   const abort = new AbortController()
-  const pending = candidateImagePreview(svg('<rect width="32" height="16"/>'), abort.signal)
-  expect(await candidateImagePreview(svg('<rect width="32" height="16"/>'))).toBeUndefined()
+  const pending = privateImagePreview(svg('<rect width="32" height="16"/>'), abort.signal)
+  expect(await privateImagePreview(svg('<rect width="32" height="16"/>'))).toBeUndefined()
   abort.abort()
   expect(await pending).toBeUndefined()
   expect(
-    privateValidImagePreview(await candidateImagePreview(svg('<rect width="32" height="16"/>'))),
+    privateValidImagePreview(await privateImagePreview(svg('<rect width="32" height="16"/>'))),
   ).toBeTrue()
 })
-test('unqualified production renderer reports unavailable without starting a thread', async () => {
-  expect(await privateImagePreview(svg('<rect width="32" height="16"/>'))).toBeUndefined()
+
+test('production renderer enables bounded image previews', async () => {
+  expect(
+    privateValidImagePreview(await privateImagePreview(svg('<rect width="32" height="16"/>'))),
+  ).toBeTrue()
 })
+
+const fixture = fileURLToPath(
+  new URL('../fixtures/image-preview-lifetime-worker.ts', import.meta.url),
+)
 test('renderer import guards charge before individual and aggregate content allocations', async () => {
   const worker = new Worker(fixture, { workerData: 'allocation', env: {} })
   const exited = new Promise<void>((resolve) => worker.once('exit', () => resolve()))

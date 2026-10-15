@@ -1,0 +1,4 @@
+{
+  "name": "support-case-check-credit",
+  "description": "Check duplicate-credit eligibility against supplied account facts."
+}

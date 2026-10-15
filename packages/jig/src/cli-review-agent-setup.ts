@@ -7,12 +7,19 @@ import type {
 import type { AcpGrant } from './project/grants.js'
 
 const CLIENT_NAMES = { codex: 'Codex', claude: 'Claude Code', pi: 'Pi' } as const
+const CLIENT_PATHS = { codex: 'CODEX_PATH', claude: 'CLAUDE_PATH', pi: 'PI_PATH' } as const
 const RENDER_BYTES = 131_072
+
+interface SetupPresentation {
+  readonly details: boolean
+  readonly retryCommand: string
+  readonly agentRetryCommands: Readonly<Record<AcpGrant['client'], string>>
+}
 
 /** Read-only human facts; the CLI supplies an already shell-quoted manual retry command. */
 export function renderReviewAgentSetup(
   report: PrivateAgentReadinessReport | undefined,
-  options: { readonly details: boolean; readonly retryCommand: string },
+  options: SetupPresentation,
 ): string {
   if (report === undefined || !report.selectedAcpUnavailable) return ''
   const issueLimit = options.details ? report.issues.length : 3
@@ -38,7 +45,10 @@ export function renderReviewAgentSetup(
       omittedGroups++
       continue
     }
-    const block = renderIssue(issue, recipientLimit, RENDER_BYTES - bytes - 16_384)
+    const budget = RENDER_BYTES - bytes - 16_384
+    const block = options.details
+      ? renderIssue(issue, recipientLimit, budget)
+      : renderCompactIssue(issue, options, recipientLimit, budget)
     if (rendered.length > 0 && bytes + Buffer.byteLength(block) > RENDER_BYTES - 16_384) {
       omittedGroups++
       continue
@@ -47,7 +57,11 @@ export function renderReviewAgentSetup(
     bytes += Buffer.byteLength(block)
   }
   if (rendered.length === 0 && report.primaryIssue !== undefined)
-    rendered.push(renderIssue(report.primaryIssue, 0, RENDER_BYTES - 16_384))
+    rendered.push(
+      options.details
+        ? renderIssue(report.primaryIssue, 0, RENDER_BYTES - 16_384)
+        : renderCompactIssue(report.primaryIssue, options, 0, RENDER_BYTES - 16_384),
+    )
   const limits = [
     ...(options.details
       ? [
@@ -87,7 +101,98 @@ export function renderReviewAgentSetup(
         ? ['  Use --details with the same review options to show more retained observed facts.']
         : []),
   ]
-  return `Review could not finish\n\n${rendered.length === 0 ? '  A selected Agent prerequisite is unavailable. Its detailed source context was not retained.\n' : rendered.join('\n')}\n  After correcting the selected installation or policy, review again:\n\n  $ ${options.retryCommand}\n\n${limits.length === 0 ? '' : `${limits.join('\n')}\n\n`}  Locations refer to captured source; the next review checks your edits afresh.\n  This prerequisite stops project review, including code-only entrypoints.\n  No new approval was recorded. Any existing approval remains unchanged.\n  No Flow or model call started.\n`
+  if (options.details)
+    return `Review could not finish\n\n${rendered.length === 0 ? '  A selected Agent prerequisite is unavailable. Its detailed source context was not retained.\n' : rendered.join('\n')}\n  After correcting the selected installation or policy, review again:\n\n  $ ${options.retryCommand}\n\n${limits.length === 0 ? '' : `${limits.join('\n')}\n\n`}  Locations refer to captured source; the next review checks your edits afresh.\n  This prerequisite stops project review, including code-only entrypoints.\n  No new approval was recorded. Any existing approval remains unchanged.\n  No Flow or model call started.\n`
+  const fallback = `  A selected Agent prerequisite is unavailable.\n\n  Next step\n    $ ${options.retryCommand}\n`
+  return `Review could not finish\n\n${rendered.length === 0 ? fallback : rendered.join('\n')}\n${limits.length === 0 ? '' : `${limits.join('\n')}\n\n`}  No new approval. Previous approval unchanged. No Flow or model call started.\n  Setup details: add --details to your review command.\n`
+}
+
+function renderCompactIssue(
+  issue: PrivateAgentReadinessIssue,
+  options: SetupPresentation,
+  recipientLimit: number,
+  byteBudget: number,
+): string {
+  const name = CLIENT_NAMES[issue.client]
+  const executable = issue.code === `PROJECT_ACP_${issue.client.toUpperCase()}_EXECUTABLE`
+  let cause = ACP_SETUP_CAUSES[issue.code] ?? 'The selected Agent configuration is unavailable.'
+  let repair =
+    ACP_SETUP_HINTS[issue.code]?.replace(
+      / Then retry jig review\. No Flow was started by this review\.$/,
+      '',
+    ) ?? 'Check the selected Agent configuration.'
+  if (executable) {
+    cause = `${name} executable not found.`
+    repair = `Install ${name}, add it to PATH, or set ${CLIENT_PATHS[issue.client]} to its absolute executable path.`
+  }
+  if (issue.rejectedOverride !== undefined) {
+    cause = `${issue.rejectedOverride} was rejected. PATH was not used.`
+    repair = `Set ${issue.rejectedOverride} to an absolute ${name} executable, or unset it to use PATH.`
+  }
+  const location = issue.location
+  let coordinate = ''
+  if (location.line !== undefined) {
+    coordinate = `:${location.line}`
+    if (location.column !== undefined) coordinate += `:${location.column}`
+  }
+  let label = issue.source === 'named' ? 'Named policy' : 'Selection'
+  if (location.kind === 'selection-context') label = 'Selection context'
+  if (location.kind === 'unlocated') label += ' (exact client line unknown)'
+  const lines = [
+    `  Agent unavailable: ${cause}`,
+    `  ${label}: ${asciiJsonString(location.path)}${coordinate}; slot ${asciiJsonString(issue.slot)}.`,
+  ]
+  if (issue.override !== undefined)
+    lines.push(
+      `  Client: ${asciiJsonString(issue.client)} from --agent ${issue.override}; source: ${asciiJsonString(issue.sourceClient)}.`,
+    )
+  // Inline source already identifies its Binding. Shared policies need their recipients too.
+  let omitted = issue.omittedRecipients
+  let retained = 0
+  let bytes = Buffer.byteLength(lines.join('\n'))
+  for (const recipient of issue.recipients) {
+    const row = `  Affects: ${asciiJsonString(`binding:${recipient.binding}`)}; slot ${asciiJsonString(recipient.slot)}.`
+    if (retained >= recipientLimit || bytes + Buffer.byteLength(row) > byteBudget - 8192) {
+      omitted++
+      continue
+    }
+    if (issue.source === 'named' || issue.recipients.length > 1) lines.push(row)
+    retained++
+    bytes += Buffer.byteLength(row) + 1
+  }
+  if (omitted > 0)
+    lines.push(
+      `  ${omitted} known direct recipient${omitted === 1 ? ' is' : 's are'} omitted from this view.`,
+    )
+  lines.push('', '  Next step', `    ${repair}`, `    $ ${options.retryCommand}`)
+  if (executable) {
+    if (issue.policy.model !== undefined)
+      lines.push('    This policy pins a model. Edit the policy before switching clients.')
+    if (issue.policy.retainSessions === true)
+      lines.push(
+        '    This policy requests Codex session retention. Edit it before switching clients.',
+      )
+    const canSwitch = issue.policy.model === undefined && issue.policy.retainSessions !== true
+    if (canSwitch) {
+      for (const client of executableAlternatives(issue)) {
+        lines.push(
+          '',
+          `  Or use ${CLIENT_NAMES[client]}`,
+          '    Executable found; login and readiness not checked.',
+          `    $ ${options.agentRetryCommands[client]}`,
+          `    All native Agent policies; source unchanged. Repeat --agent ${client} next review.`,
+        )
+      }
+    }
+  }
+  lines.push('', `  Diagnostic code: ${issue.code}`)
+  return `${lines.join('\n')}\n`
+}
+
+function executableAlternatives(issue: PrivateAgentReadinessIssue): AcpGrant['client'][] {
+  return [...new Set(issue.alternatives)]
+    .filter((client) => client !== issue.client && Object.hasOwn(CLIENT_NAMES, client))
+    .sort()
 }
 
 /** Source versus effective client is visible before consent, including unchanged reviews. */
@@ -201,11 +306,7 @@ function renderIssue(
       `  ${omittedRecipients} known direct recipient${omittedRecipients === 1 ? ' is' : 's are'} omitted from this view.`,
     )
   const executable = issue.code === `PROJECT_ACP_${issue.client.toUpperCase()}_EXECUTABLE`
-  const alternatives = executable
-    ? [...new Set(issue.alternatives)]
-        .filter((client) => client !== issue.client && Object.hasOwn(CLIENT_NAMES, client))
-        .sort()
-    : []
+  const alternatives = executable ? executableAlternatives(issue) : []
   if (alternatives.length > 0)
     lines.push(
       `  Detected alternatives: ${alternatives.map((client) => asciiJsonString(client)).join(', ')} (executables found; authentication and readiness not checked).`,

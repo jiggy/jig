@@ -82,6 +82,9 @@ and portable reporting data without a Jig host or execution owner.
 
 ## Work Guidance
 
+- Root pages precede Inspector by supplied publisher identity. Render authored
+  section reports and facts in place, retain collection detail and artifact peeks,
+  and preserve the compact fallback, frame ceiling and every inspection control.
 - Preserve useful context, dense rows, full causes, visible action feedback,
   reference return, sole-artifact peek, narrow exits and color-free
   distinctions.

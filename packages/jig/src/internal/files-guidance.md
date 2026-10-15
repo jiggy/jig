@@ -208,15 +208,30 @@ These links locate module rules. All selected domain requirements still apply.
   remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 4 KiB
   each and 512 KiB aggregate retained content. Charge text as UTF-16 storage.
 
-  Text, empty, image, non-text, unavailable and clipped states remain distinct.
-  `image-preview-policy.ts` owns the shared finite capture/transport limits.
-  Complete image sources add bytes only within that same retention budget.
-  Production decoding remains unavailable: the private thread candidate cannot
-  interrupt Wasm on qualified Bun. Its renderer tests establish bounded output,
-  not independent fencing. Worker, renderer and font bytes are pinned and
-  bundled.
+  Text, empty, image, non-text, unavailable and clipped states remain
+  distinct. `image-preview-policy.ts` owns the shared finite capture/transport
+  limits. Complete image sources add bytes only within that same retention
+  budget. `image-preview-child.ts` runs the decoder in a disposable process.
 
-  Preserve text and saved-file fallback while qualification is incomplete. Late
+  Before returning images, reserve every file's text fallback and charge encoded
+  replies as UTF-16 storage. Repeated previews reuse the same reservation.
+  Images that exceed the aggregate reply budget retain their file fallback.
+
+  A separate main-thread watchdog limits each image to five seconds. Stdin
+  remains open as a lifetime lease. Input length frames the image without
+  closing that pipe. EOF or pipe failure kills the process, including a busy
+  decoder thread.
+
+  `image-preview.ts` kills and joins it on cancellation or output overflow.
+  Release the command reservation only after settlement. Carry earlier preview
+  cutoffs through the private command to the decoder timer. Drain its reply
+  under the separate total deadline before retirement.
+
+  Pinned Wasm, copy and decoded-text limits bound content, not total Bun RSS.
+  Saved-image preparation has a ten-second aggregate limit. Worker, renderer
+  and font bytes remain pinned.
+
+  Preserve text and saved-file fallback for malformed or stalled images. Late
   or failed previews stay unavailable. They do not retract a known publication.
   The map never reopens a destination or invokes file RPC. Capture/retirement
   errors are closed command-cleanup failures, separate from known execution and
@@ -264,9 +279,10 @@ These links locate module rules. All selected domain requirements still apply.
 
   Only an exactly matching rendered root entry replaces the root envelope.
   Capture truncation disclosures precede excerpts, and human clipping never
-  changes exact JSON inspection. Saved preview preparation closes file
-  descriptors before asynchronous decoding and releases retained text/image
-  buffers on cancellation or close.
+  changes exact JSON inspection. Plain/JSON saved inspection skips image decoding.
+  Saved preview preparation closes file descriptors before asynchronous decoding.
+  One ten-second capture deadline covers file verification and optional image
+  decoding. Cancellation or close releases retained text and image buffers.
 
 - Read-only target inspection projects `boundReadAttachments` as retained names
   only. Invocation templates therefore omit captured reads without reopening

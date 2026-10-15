@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
+import { type DisplaySnapshot, displayViewKey } from '@jigging/display-model'
 import type { Collection, Reference } from '@jigging/reporting'
-import { displayViewKey, type DisplaySnapshot } from '@jigging/display-model'
 import {
   PrivateBrowserClock,
   privateBrowserLiteral,
@@ -134,12 +134,12 @@ test('saved navigation exposes one report, file inventory and diagnostics withou
   data.mode = 'live-run'
   data.views = [{ ...view, value: { ...view.value, id: 'files', title: 'Files' } }]
   expect(privateBrowserTabs(data).map((tab) => tab.id)).toEqual([
+    displayViewKey(view.id),
     'overview',
     'activity',
     'files',
-    displayViewKey(view.id),
   ])
-  expect(privateBrowserTabs(data).at(-1)?.application).toBe(true)
+  expect(privateBrowserTabs(data)[0]?.application).toBe(true)
 })
 
 test('peek counts hidden cells and detail references and deduplicates complete typed identities', () => {
@@ -277,4 +277,22 @@ test('elapsed freezes while stale and equal revision resumes without inventing d
   expect(clock.read(6010)).toBe(3000)
   clock.observe(2, 9000, false, true, 6010)
   expect(clock.read(9000)).toBe(9000)
+})
+
+test('root pages precede Inspector and the same child becomes primary when invoked directly', () => {
+  const data = snapshot()
+  const child = { ...view, id: 'child-view', sourceId: 'child', sourceLabel: 'Child method' }
+  data.views = [child, view]
+  const tabs = privateBrowserTabs(data)
+  expect(tabs.map((tab) => tab.id)).toEqual([
+    displayViewKey(view.id),
+    'overview',
+    'activity',
+    'files',
+    displayViewKey(child.id),
+  ])
+  expect(tabs.filter((tab) => tab.application).map((tab) => tab.source)).toEqual(['Root publisher'])
+  data.rootSourceId = 'child'
+  expect(privateBrowserTabs(data)[0]?.id).toBe(displayViewKey(child.id))
+  expect(privateBrowserTabs(data)[0]?.application).toBeTrue()
 })

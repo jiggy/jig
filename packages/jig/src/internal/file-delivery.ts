@@ -32,7 +32,7 @@ import {
 } from './file-input.js'
 import { PRIVATE_CAPTURE_CHUNK_BYTES } from './file-input-policy.js'
 import { privateImagePreview, privateImageSourceCandidate } from './image-preview.js'
-import { PRIVATE_PREVIEW_LIMITS } from './image-preview-policy.js'
+import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
 import type {
   RetainedRunCheckpoint,
   RunCheckpointIdentity,
@@ -82,6 +82,8 @@ export interface PrivateDeliveryConnection {
 export interface PrivateDeliveryInspectionOptions {
   /** Epoch-referenced process-monotonic milliseconds, never a renewed allowance. */
   readonly deadline: number
+  /** Earlier decoder cutoff; the RPC still has until deadline to drain its reply. */
+  readonly previewDeadline?: number
   readonly signal?: AbortSignal
 }
 export type PrivateDeliveryInspectionPreview = Readonly<{
@@ -119,6 +121,8 @@ export class PrivateFileDeliveryOwner {
   #preparing = false
   #publishing = false
   #previewFiles: Map<string, PreviewFile> | undefined
+  readonly #previewCharges = new Map<PreviewFile, number>()
+  #inspectionBytes = 0
   #retainPreview = false
   #close: Promise<void> | undefined
   #preparation: Promise<void> | undefined
@@ -137,24 +141,38 @@ export class PrivateFileDeliveryOwner {
       ? undefined
       : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
   }
-  inspectionPreview(path: string): Promise<PrivateDeliveryInspectionPreview> {
+  inspectionPreview(path: string, deadline?: number): Promise<PrivateDeliveryInspectionPreview> {
     privateFilePath(path)
     const file = this.#close ? undefined : this.#previewFiles?.get(path)
     if (!file) return Promise.resolve({ state: 'unavailable', bytes: 0, clipped: false })
-    const job = this.#inspectionPreview(file)
+    const job = this.#inspectionPreview(file, deadline)
     this.#previewJobs.add(job)
     void job.finally(() => this.#previewJobs.delete(job)).catch(() => {})
     return job
   }
-  async #inspectionPreview(file: PreviewFile): Promise<PrivateDeliveryInspectionPreview> {
+  async #inspectionPreview(
+    file: PreviewFile,
+    deadline?: number,
+  ): Promise<PrivateDeliveryInspectionPreview> {
     const { contents, bytes } = file
     const image =
       contents.length === bytes
-        ? await privateImagePreview(contents, this.#previewCancellation.signal)
+        ? await privateImagePreview(contents, this.#previewCancellation.signal, deadline)
         : undefined
     if (this.#previewCancellation.signal.aborted)
       return { state: 'unavailable', bytes, clipped: false }
-    if (image) return { state: 'image', image, bytes, clipped: false }
+    if (image) {
+      // Keep every text fallback available. Repeated requests cannot spend a
+      // reservation twice or release an image already returned to the caller.
+      const reserved = this.#previewCharges.get(file) ?? 0
+      const charge = privatePreviewStringBytes(image.base64)
+      const extra = Math.max(0, charge - reserved)
+      if (this.#inspectionBytes + extra <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
+        this.#previewCharges.set(file, Math.max(reserved, charge))
+        this.#inspectionBytes += extra
+        return { state: 'image', image, bytes, clipped: false }
+      }
+    }
     return this.#textPreview(file)
   }
   #textPreview({ contents, bytes }: PreviewFile): PrivateDeliveryInspectionPreview {
@@ -447,7 +465,14 @@ export class PrivateFileDeliveryOwner {
       await publishPrivateDirectory(this.#parent, name, this.#leaf)
       this.#published = true
       this.#stage = undefined
-      if (this.#retainPreview) this.#previewFiles = previews
+      if (this.#retainPreview) {
+        this.#previewFiles = previews
+        for (const file of previews.values()) {
+          const charge = privatePreviewStringBytes(this.#textPreview(file).text ?? '')
+          this.#previewCharges.set(file, charge)
+          this.#inspectionBytes += charge
+        }
+      }
       keptPreviews = this.#retainPreview
       return delivery
     } catch {
@@ -482,6 +507,8 @@ export class PrivateFileDeliveryOwner {
       parent = this.#parent,
       stage = this.#stage
     this.#previewFiles = undefined
+    this.#previewCharges.clear()
+    this.#inspectionBytes = 0
     this.#parent = undefined
     this.#stage = undefined
     for (const preview of previews?.values() ?? []) preview.contents.fill(0)

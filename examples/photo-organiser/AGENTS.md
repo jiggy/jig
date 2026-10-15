@@ -7,10 +7,14 @@ while application checks and operator authority control file effects.
 
 ## Ownership
 
-- `flows/organise` owns the short coordinating method, `catalogue.ts` source
-  capture, `plan.ts` proposal/child-result acceptance and path checks, and
-  `view.ts` Photo box projection. It calls grouping and both independent file
-  Flows. It writes no files.
+- `flows/organise` owns the short coordinating method. Its `catalogue.ts` owns source
+  capture. Its `plan.ts` owns proposal/child-result acceptance and path checks.
+  Its `view.ts` projects Photo box throughout reading, grouping, checking,
+  copying, rendering and stopped outcomes.
+
+  The completed page leads with
+  contact-sheet and manifest references. It calls grouping and both
+  independent file Flows. It writes no files.
 - `flows/group` owns the caption-only grouping contract, one Agent call and its
   provisional grouping view in `view.ts`. It returns assignments or an explicit
   cause. It neither imports the organiser nor acquires file access.
@@ -53,15 +57,16 @@ while application checks and operator authority control file effects.
   file methods keep the same contracts when called as standalone root Flows.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary
   packet. Retained `--out` paths must be new.
-- TUI and web share the exact public reporting contract and artifact references.
-  Each Flow uses `withReporting`/`Reporter` from `@jigging/reporting` and
-  carries the complete current `jig:reporting` descriptor and license under
-  `contracts/reporting`. Image previews await runtime qualification. Open the
-  result packet's contact sheet in an ordinary browser or image viewer. Do not
-  introduce an example-only viewer.
+- TUI and web share the exact public reporting contract and artifact
+  references. Each Flow uses `withReporting`/`Reporter` from
+  `@jigging/reporting` and carries the complete current `jig:reporting`
+  descriptor and license under `contracts/reporting`. The shared web preview
+  rasterises the captured contact sheet. Original SVG resolution remains
+  available in the packet. Terminal evidence keeps its textual fallback. Do
+  not introduce an example-only viewer.
 - Fixture SVGs are inert synthetic illustrations. Supported user inputs are
-  bounded PNG/JPEG files with explicit sidecars. No claim of pixel understanding
-  or general image decoding.
+  bounded PNG/JPEG files with explicit sidecars. No claim of pixel
+  understanding or general image decoding.
 
 ## Work Guidance
 

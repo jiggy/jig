@@ -1,36 +1,17 @@
 import { handle } from '@jigging/flow'
 import { withReporting } from '@jigging/reporting'
-import { caseView, chargesView } from './dashboard.ts'
 import { resolve } from './resolve.ts'
 
 await handle((run) =>
-  withReporting(run, 'progress', async (updates) => {
-    const input = run.input as unknown as Parameters<typeof caseView>[0]
-    const view = updates.view('case', { title: 'Case', landing: true })
-    const charges = updates.view('charges', { title: 'Charges' })
-    view.update(caseView(input, false))
-    charges.update(chargesView(input))
-    updates.activity('assessment', 'Interpreting the disputed charge')
+  withReporting(run, 'progress', async (reporter) => {
     try {
-      const result = await resolve(run)
-      if (result.outcome !== 'done') {
-        const cause =
-          (result.output as { reason?: string } | undefined)?.reason ?? 'No reason supplied.'
-        updates.notice(
-          `Assessment ${result.outcome}: ${[...cause].slice(0, 512).join('')}${[...cause].length > 512 ? ' [excerpt; full cause in the result]' : ''}`,
-          'error',
-        )
-      }
-      view.update(caseView(input, false, result))
-      return result
+      return await resolve(run, reporter)
     } catch (error) {
-      updates.notice(
-        'Case handling failed. No credit has been issued; inspect the final diagnostic.',
+      reporter.notice(
+        'Case handling failed. No credit or message was sent; inspect the final diagnostic.',
         'error',
       )
       throw error
-    } finally {
-      updates.clear('assessment')
     }
   }),
 )

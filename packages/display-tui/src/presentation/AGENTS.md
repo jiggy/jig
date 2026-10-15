@@ -28,6 +28,9 @@ input, native allocation and output remain with their existing owners.
 
 ## Work Guidance
 
+- Application projection composes full block content in authored section
+  order. Dense inspection lists and optional collection/evidence context
+  remain separate.
 - Keep semantic presentation separate from actual I/O and execution authority.
 
 ## Verification

@@ -7,8 +7,13 @@ after executed checks and independent acceptance.
 
 ## Ownership
 
-- `flows/project/` captures one small project, invokes one repair specialist,
-  checks returned evidence, and writes final deliverables.
+- `flows/project/` owns the short coordinator and typed Patch review page.
+- `flows/read-project/` owns bounded source capture and reviewed check-set data.
+- `flows/check-repair/` validates evidence identities and recomputes acceptance.
+- `flows/export-patch/` formats supplied accepted review data and writes
+  patches in its own output folder, imported at `deliverables/review`.
+  Independent export treats supplied verdicts as caller claims. It never
+  establishes acceptance.
 - `flows/repair/` owns proposal validation, at most two Agent calls, reviewed
   command execution, and independent checks of collected output.
 - `bindings/` selects the repair leaf and fixed Bun test/CLI commands.
@@ -30,11 +35,11 @@ after executed checks and independent acceptance.
 
 - Complexity cap: one issue, one specialist, one final patch/evidence result.
   Batch scheduling, resident monitoring, recording, and checkpoints are outside
-  this example. A separate example must justify its own lesson before adding
-  them.
-- The root alone receives read-only source and writable deliverables. Accept 16
-  UTF-8 files totaling 64 KiB and at most eight existing editable JS/TS source
-  paths.
+  this example. A separate example must justify its own lesson before adding them.
+- The root maps read-only source to `read-project` and writable output to
+  `export-patch`. Neither the specialist nor checker receives attachments.
+  Accept 16 UTF-8 files totaling 64 KiB and at most eight existing editable
+  JS/TS source paths.
 - The leaf takes JSON files and fixed cases. Its `agent` slot calls an ordinary
   Agent Flow. `tests` and `cli` use independently reviewed command grants.
   Operator selection belongs in `bindings/agent.ts`. `jig.ts` supplies that
@@ -55,29 +60,34 @@ after executed checks and independent acceptance.
   Every proposal and evaluation uses the original files and cases.
 - Require every stat-sized attachment file to be read completely, and reject
   wholly empty captured projects before dispatch.
-- Repository tests can be interfered with by candidate code. Independent
-  assertions compare collected CLI output and exit without importing code or
-  trusting pass flags.
-- Validate base/candidate and command identities before constructing patches
-  from replacement text. Compare decoded JSON evidence by content, independently
-  of object prototypes. Only accepted evidence earns `review.patch`. Failed
-  proposals remain inspectable. Do not apply or merge anything.
+- Repository tests can be interfered with by candidate code. Independent assertions
+  compare collected CLI output and exit without importing code or trusting pass flags.
+- `check-repair` validates base/candidate and command identities before
+  `export-patch` constructs patches from replacement text. Compare decoded
+  JSON evidence by content, independently of object prototypes. Only accepted
+  evidence earns `review.patch`. Failed proposals remain inspectable. Do not
+  apply or merge anything.
 - Cancellation, deadlines, uncertainty, unavailable support, and cleanup
   failures propagate without retries. Final file delivery does not promise
   interruption recovery. Repair failure details keep method attempts alongside
   any supplied underlying `operationDetails`. Neither establishes a successful
   check.
 
-- Package-local `dashboard.ts` projections offer Repair, Checks and root
-  Evidence through the optional canonical `updates` channel. FLOW entrypoints
-  own scoped publishers, activity and failure notices. Pure methods retain their
-  exact results and policy. The existing reporting profile serves terminal and
-  web without display code. Tests validate complete escaped items, provisional
-  meanings and evidence links.
-- The root writes complete `goal.txt` only after returned evidence validates.
-  Its Checks verdicts are independent. Worker Checks remain provisional and may
-  reference only their own calls. The private `progress` phase protocol remains
-  separate from the optional `updates` dashboard channel.
+- The coordinator’s `dashboard.ts` projects a small typed state into one Patch
+  review page with issue, scope, independently validated comparison and files
+  through `updates`. Extracted methods offer independent views through
+  `progress`. The repair specialist keeps provisional Repair and Checks views
+  through `updates`. FLOW entrypoints own scoped publishers, activity and
+  failure notices.
+
+  Pure methods retain their exact results and policy. The existing reporting
+  profile serves terminal and web without display code. Tests validate
+  complete escaped items, provisional meanings and evidence links.
+- The exporter writes complete `goal.txt` only after the coordinator receives
+  accepted evidence. The root comparison uses recomputed checker verdicts.
+  Worker Checks remain provisional and may reference only their own calls. The
+  private `progress` phase protocol remains separate from the optional
+  `updates` dashboard channel.
 
 ## Work Guidance
 

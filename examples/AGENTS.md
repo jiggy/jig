@@ -59,14 +59,18 @@ authored examples, not independent consumer evidence or promoted Starters.
   separately from claims about registry availability.
 - Every implemented Flow offers optional domain views through the public
   reporting package and a complete copied offline descriptor. Keep projections
-  inside the owning package. No sibling Flow or host-private imports. Lists
-  identify work, selection adds context, and typed references lead to evidence.
-  Bound complete encoded items and disclose excerpts/totals. Preserve full
-  results.
+  inside the owning package. No sibling Flow or host-private imports. The
+  coordinator owns a cohesive root landing page showing the application's
+  purpose, domain state, progress and stopped reasons.
 
-  Reports remain provisional until application checks accept them, and blocking
-  failures must be noticed while healthy work continues. TUI and web consume the
-  same declarations.
+  Publish accepted results only after domain checks. Child views remain useful
+  for inspection and independent invocation. Sections compose the page,
+  collections identify work, selection adds context, and typed references lead
+  to evidence. Bound complete encoded items and disclose excerpts/totals.
+
+  Preserve full results. Reports remain provisional until application checks
+  accept them, and blocking failures must be noticed while healthy work
+  continues. TUI and web consume the same declarations.
 - Agents, models, credentials, and execution policy remain operator choices.
   Agent-using applications choose an ordinary provider by contract or exact
   slot. The operator declares its dependency and configures its resource grants.
@@ -105,10 +109,14 @@ authored examples, not independent consumer evidence or promoted Starters.
 ## Work Guidance
 
 - Cookbook code prioritises readability over compactness. Use descriptive names,
-  explicit steps and focused validation errors. Avoid single-letter domain
-  names, giant mixed validation conditions, nested ternaries and compressed
-  markup. Explain why a schema or boundary exists where the reader encounters
-  it.
+  explicit steps and focused validation errors. Avoid single-letter domain names,
+  giant mixed validation conditions, nested ternaries and compressed markup.
+  Explain why a schema or boundary exists where the reader encounters it.
+- Keep Flows small enough to understand as a whole, with one orthogonal
+  responsibility. Give each a self-explaining verb-and-object name, narrow inputs
+  and an explicit result. Apply the same simplicity to dashboards: project a small
+  typed application state through plain functions, with no generic page
+  framework or hidden logic.
 
 - Prefer experienced authors and reviewers with full project context. Examples
   should show users how to use the public interfaces well. They do not need the
@@ -148,8 +156,7 @@ authored examples, not independent consumer evidence or promoted Starters.
   Check that Flow boundaries, contracts, powers and focused tests demonstrate
   high modularity, and verify the complete composed application separately.
 
-- Run
-  `bun test examples/photo-organiser/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/software-factory/test`
+- Run `bun test examples/kitchen-roster/test examples/photo-organiser/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/software-factory/test`
   after workspace setup. Private handoff checks live in
   `packages/jig/test/fixtures/incident-brief/test` and remain in the packed
   release gate. The release gate repeats these application checks against the
@@ -161,8 +168,9 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Child DOX Index
 
-- [photo-organiser/AGENTS.md](photo-organiser/AGENTS.md) — Checked photo copies,
-  event grouping and a before-and-after contact sheet.
+- [kitchen-roster/AGENTS.md](kitchen-roster/AGENTS.md) — Volunteer preferences with independently checked scheduling constraints and a CSV export.
+
+- [photo-organiser/AGENTS.md](photo-organiser/AGENTS.md) — Checked photo copies, event grouping and a before-and-after contact sheet.
 
 - [support-case/AGENTS.md](support-case/AGENTS.md) — Agent interpretation of a
   disputed charge, checked by application-owned credit policy.

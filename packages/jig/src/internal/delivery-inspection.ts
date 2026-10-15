@@ -212,10 +212,10 @@ export async function privateCaptureDeliveryInspection(
       try {
         // The RPC keeps the total bound so a preview-cutoff reply can be drained
         // before the serialized retirement request. Its late text is discarded.
-        const preview = await privateBoundInspection(delivery.inspectionPreview(file.path, bound), {
-          ...bound,
-          deadline: previewDeadline,
-        })
+        const preview = await privateBoundInspection(
+          delivery.inspectionPreview(file.path, { ...bound, previewDeadline }),
+          { ...bound, deadline: previewDeadline },
+        )
         const textSize = preview.text === undefined ? 0 : Buffer.byteLength(preview.text)
         const size =
           (preview.text === undefined ? 0 : privatePreviewStringBytes(preview.text)) +

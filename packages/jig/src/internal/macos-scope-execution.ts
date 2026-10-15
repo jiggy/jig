@@ -388,9 +388,9 @@ export async function preparePrivateMacosScope(input: {
     const identity = await Promise.race([
       ready,
       completion.then((result) => {
-        throw new Error(
-          `macOS scope ended before readiness (${result.reason}, exit ${result.exitCode ?? 'null'}, signal ${result.signal ?? 'null'})`,
-        )
+        throw new Error(`macOS scope ended before readiness (${result.reason})`, {
+          cause: new Error(`exit ${result.exitCode ?? 'null'}, signal ${result.signal ?? 'null'}`),
+        })
       }),
     ])
     const sameRoot = owner.retainMember(identity.pid, identity.version)

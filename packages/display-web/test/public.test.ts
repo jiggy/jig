@@ -101,7 +101,7 @@ test('public renderer exports consume semantic views, call uncertainty and expli
   })
   expect(browserResolve(snapshot, 'child-source', reference).kind).toBe('unavailable')
   expect(browserCallSpans(snapshot.calls).spans.get('call')?.milliseconds).toBe(19)
-  expect(browserTabs(snapshot).at(-1)?.source).toBe('Root method')
+  expect(browserTabs(snapshot)[0]?.source).toBe('Root method')
 })
 
 test('public navigation reaches opaque-name views and built-in surfaces independently while references keep original identities', () => {

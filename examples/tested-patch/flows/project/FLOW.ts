@@ -1,6 +1,6 @@
 import { handle } from '@jigging/flow'
 import { withReporting } from '@jigging/reporting'
-import { repairFiles } from './files.ts'
+import { repairFiles } from './method.ts'
 
 await handle((run) =>
   withReporting(run, 'updates', async (updates) => {

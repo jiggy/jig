@@ -1,0 +1,4 @@
+{
+  "name": "export-roster",
+  "description": "Write supplied checked roster rows to one exclusively created CSV."
+}

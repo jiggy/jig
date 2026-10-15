@@ -1,0 +1,4 @@
+{
+  "name": "contact-import-read-contacts",
+  "description": "Read and validate one bounded contact CSV."
+}

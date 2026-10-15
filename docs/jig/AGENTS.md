@@ -41,7 +41,8 @@ use-case and orchestration hypotheses.
 - `guide/dependencies.md` starts with a complete library example and owns
   dependency preparation guidance. Its workspace
   examples follow `spec/project-policy.md`'s root selection, direct membership,
-  and supported lock formats.
+  and supported lock formats. Stale-lock recovery identifies the authored lock
+  and workspace. Resolution permission does not update a supplied lock.
 - `guide/configuration.md` owns settings, entrypoint selection, terminal
   appearance, review change notation, and cached, strict, and fast installation
   verification. Keep verification defaults and limits aligned with execution

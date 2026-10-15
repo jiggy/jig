@@ -36,6 +36,8 @@ export interface ProjectAdministrationDiagnostic {
   readonly path: string
   readonly pointer?: string
   readonly typeMismatch?: SchemaTypeMismatch
+  /** Authored dependency lock location, relative to the reviewed project. */
+  readonly lockPath?: string
 }
 
 export interface ProjectPlanRequest {
@@ -222,7 +224,7 @@ function normalizeProjectAdministrationDiagnostic(
     throw new TypeError('project diagnostic is invalid')
   }
   const actual = Reflect.ownKeys(value)
-  const allowed = ['code', 'path', 'pointer', 'typeMismatch']
+  const allowed = ['code', 'path', 'pointer', 'typeMismatch', 'lockPath']
   if (
     actual.some((key) => typeof key !== 'string' || !allowed.includes(key)) ||
     !actual.includes('code') ||
@@ -245,30 +247,25 @@ function normalizeProjectAdministrationDiagnostic(
   }
 
   const path = fields.path
-  try {
-    // A workspace may be above the project. Only these closed manifest
-    // diagnostics may name an ancestor; this is display data, not a file route.
-    const manifestCause =
-      /^PACKAGE_BUN_MANIFEST_(SHAPE|FIELD|DEPENDENCIES|NAME|SOURCE|PATCH)$/.test(code)
-    const ancestor =
-      manifestCause && typeof path === 'string' ? /^(?:\.\.\/)+/.exec(path)?.[0] : undefined
-    const local = ancestor === undefined ? path : (path as string).slice(ancestor.length)
-    validateProjectPath(local, 'project diagnostic path')
-    if (
-      ancestor !== undefined &&
-      (ancestor.length / 3 > 32 ||
-        Buffer.byteLength(path as string) > 1024 ||
-        (path as string).split('/').length > 64 ||
-        !(path as string).endsWith('/package.json'))
-    )
-      throw new TypeError('invalid workspace diagnostic path')
-    if (local.split('/').some(isProtectedProjectPath))
-      throw new TypeError('protected diagnostic path')
-  } catch {
-    throw new TypeError('project diagnostic path is invalid')
+  const ancestorFiles =
+    code === 'PACKAGE_BUN_LOCK_STALE'
+      ? ['package.json', 'bun.lock']
+      : /^PACKAGE_BUN_MANIFEST_(SHAPE|FIELD|DEPENDENCIES|NAME|SOURCE|PATCH)$/.test(code)
+        ? ['package.json']
+        : []
+  validateDiagnosticPath(path, ancestorFiles)
+
+  let lockPath: string | undefined
+  if (actual.includes('lockPath')) {
+    if (code !== 'PACKAGE_BUN_LOCK_STALE' || typeof fields.lockPath !== 'string') {
+      throw new TypeError('project diagnostic lock path is invalid')
+    }
+    validateDiagnosticPath(fields.lockPath, ['bun.lock'])
+    if (fields.lockPath.split('/').at(-1) !== 'bun.lock') {
+      throw new TypeError('project diagnostic lock path is invalid')
+    }
+    lockPath = fields.lockPath
   }
-  // The validator above has also checked the ancestor-relative display form.
-  if (typeof path !== 'string') throw new TypeError('project diagnostic path is invalid')
 
   let pointer: string | undefined
   if (actual.includes('pointer')) {
@@ -307,5 +304,31 @@ function normalizeProjectAdministrationDiagnostic(
     path,
     ...(pointer === undefined ? {} : { pointer }),
     ...(typeMismatch === undefined ? {} : { typeMismatch }),
+    ...(lockPath === undefined ? {} : { lockPath }),
   })
+}
+
+/** Bounded display locations; these never authorize filesystem access. */
+function validateDiagnosticPath(
+  path: unknown,
+  ancestorFiles: readonly string[],
+): asserts path is string {
+  try {
+    if (typeof path !== 'string') throw new TypeError('invalid diagnostic path')
+    const ancestor = ancestorFiles.length === 0 ? undefined : /^(?:\.\.\/)+/.exec(path)?.[0]
+    const local = ancestor === undefined ? path : path.slice(ancestor.length)
+    validateProjectPath(local, 'project diagnostic path')
+    if (
+      ancestor !== undefined &&
+      (ancestor.length / 3 > 32 ||
+        Buffer.byteLength(path) > 1024 ||
+        path.split('/').length > 64 ||
+        !ancestorFiles.includes(local.split('/').at(-1)!))
+    )
+      throw new TypeError('invalid workspace diagnostic path')
+    if (local.split('/').some(isProtectedProjectPath))
+      throw new TypeError('protected diagnostic path')
+  } catch {
+    throw new TypeError('project diagnostic path is invalid')
+  }
 }

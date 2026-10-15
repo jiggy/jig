@@ -1,5 +1,7 @@
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { expect, spyOn, test } from 'bun:test'
 import * as fs from 'node:fs'
 import { link, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
@@ -13,9 +15,12 @@ import {
   privateSavedResultViews,
 } from '../../src/cli-saved-result-presentation.js'
 import { sha256 } from '../../src/internal/file-input.js'
+import * as imagePreview from '../../src/internal/image-preview.js'
+import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 import { privateCaptureSavedResult } from '../../src/internal/saved-result.js'
 import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
 import { settleTestCommand } from '.././fixtures/bounded-command.js'
+
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-saved-result-')))
   try {
@@ -624,7 +629,8 @@ test('recorded multiline expansion preserves trailing spaces and blank lines', a
       capture.close()
     }
   }))
-test('an unavailable image renderer preserves immutable SVG text after the original file changes', async () =>
+
+test('saved image previews remain immutable after the original SVG changes', async () =>
   fixture(async (root) => {
     const svg = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
@@ -633,8 +639,8 @@ test('an unavailable image renderer preserves immutable SVG text after the origi
     const capture = await privateCaptureSavedResult(root)
     try {
       const before = capture.preview('chart.svg')!
-      expect(before.image).toBeUndefined()
-      expect(before.text).toContain('<svg')
+      expect(before.image?.mime).toBe('image/png')
+      expect(before.image?.width).toBe(384)
       await writeFile(join(root, 'files/chart.svg'), 'replacement')
       expect(capture.preview('chart.svg')).toEqual(before)
       capture.close()
@@ -643,3 +649,62 @@ test('an unavailable image renderer preserves immutable SVG text after the origi
       capture.close()
     }
   }))
+
+test('plain and machine saved inspection can skip optional decoding while retaining the captured text', async () =>
+  fixture(async (root) => {
+    const svg = Buffer.from(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16"/></svg>',
+    )
+    await packet(root, { 'chart.svg': svg })
+    const capture = await privateCaptureSavedResult(root, undefined, false)
+    try {
+      expect(capture.preview('chart.svg')?.image).toBeUndefined()
+      expect(capture.preview('chart.svg')?.text).toBe(svg.toString())
+    } finally {
+      capture.close()
+    }
+  }))
+
+for (const spent of [9900, 10_001]) {
+  test(`saved image preparation keeps the original deadline after ${spent} ms of capture`, async () =>
+    fixture(async (root) => {
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')
+      await packet(root, { 'chart.svg': svg })
+      const rootInode = fs.statSync(root, { bigint: true }).ino
+      const actualNow = performance.now.bind(performance)
+      const actualClose = fs.closeSync
+      let offset = 0
+      const now = spyOn(performance, 'now').mockImplementation(() => actualNow() + offset)
+      const close = spyOn(fs, 'closeSync').mockImplementation((fd) => {
+        const info = fs.fstatSync(fd, { bigint: true })
+        actualClose(fd)
+        if (info.isDirectory() && info.ino === rootInode) offset = spent
+      })
+      const cutoffs: number[] = []
+      const decoder = spyOn(imagePreview, 'privateImagePreview').mockImplementation(
+        async (_bytes, _signal, deadline) => {
+          cutoffs.push(deadline! - privatePresentationNow())
+          return undefined
+        },
+      )
+      try {
+        const capture = await privateCaptureSavedResult(root)
+        try {
+          expect(capture.complete).toBeTrue()
+          expect(capture.preview('chart.svg')?.text).toBe(svg.toString())
+          expect(capture.preview('chart.svg')?.image).toBeUndefined()
+          expect(cutoffs).toHaveLength(spent < 10_000 ? 1 : 0)
+          if (cutoffs.length) {
+            expect(cutoffs[0]).toBeGreaterThan(0)
+            expect(cutoffs[0]).toBeLessThanOrEqual(100)
+          }
+        } finally {
+          capture.close()
+        }
+      } finally {
+        decoder.mockRestore()
+        close.mockRestore()
+        now.mockRestore()
+      }
+    }))
+}

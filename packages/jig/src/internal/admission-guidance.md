@@ -227,9 +227,16 @@ These links locate module rules. All selected domain requirements still apply.
 
   Treat that as fresh only when both conditions hold. The validated lock
   resolution names the captured member. Its version equals the exact request.
-  Ranges and mismatches remain stale. Discover declared ancestor workspaces for
-  exact public-version dependencies as well as explicit workspace requests. An
-  ordinary registry dependency with no enclosing workspace remains standalone.
+  Ranges and mismatches remain stale.
+
+  Compare member name/version and all dependency maps with the lock. Exclude
+  root name/version metadata because Bun does not maintain it as dependency
+  selection. Retain the complete root manifest in source and preparation
+  identity. This rule does not rewrite locks or omit review.
+
+  Discover declared ancestor workspaces for exact public-version dependencies
+  as well as explicit workspace requests. An ordinary registry dependency with
+  no enclosing workspace remains standalone.
 
   Explicit workspace requests still require declared membership. Reuse workspace
   preparation only from this Jig project's active admission: match freshly
@@ -283,9 +290,16 @@ These links locate module rules. All selected domain requirements still apply.
   paths), not the selected Flow.
 
   Do not rebase them twice. These display locations grant no file access.
-  Unreadable retained state has a distinct closed diagnostic from unsafe
-  filesystem ownership. Preserve it on failed acquisition. Never infer
-  permission to reset admission or bypass cleanup from a decoding failure.
+  Stale-lock errors retain the authored lock location from verified capture.
+  Include project-root dependency adoption.
+
+  Keep this display context outside preparation identity and worker messages.
+  Public projection retains it so the CLI can identify the workspace that
+  needs repair. Unreadable retained state has a distinct closed diagnostic
+  from unsafe filesystem ownership. Preserve it on failed acquisition.
+
+  Never infer permission to reset admission or bypass cleanup from a decoding
+  failure.
 
 - A reproduced root recipe that differs from its approval is a known
   pre-execution refusal. Retain host-only REVIEW_REQUIRED with

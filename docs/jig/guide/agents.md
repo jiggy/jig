@@ -262,8 +262,14 @@ might avoid the selected Agent branch. An unselected missing client does not
 block review. Any earlier approved code and client remain unchanged. Run still
 performs its normal admission and environment checks.
 
-The error identifies the known cause, selected client and affected Binding/slot.
-Its location refers to captured source:
+The error shows the cause, selected client, captured location and a complete
+retry command. Missing executable errors may also offer commands for detected
+alternatives. Detection does not confirm login or readiness. The command keeps
+your review options and applies the chosen client to all native Agent policies.
+Repeat its client flag on later reviews.
+
+Add `--details` for source provenance, complete installation guidance and
+affected recipient context. Its locations refer to captured source:
 
 - A verified client literal, when known.
 - Selection context for a computed expression.
