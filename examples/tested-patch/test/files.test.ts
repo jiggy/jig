@@ -103,6 +103,22 @@ test('decoded JSON evidence accepts null-prototype records and rejects changed v
   decoded.output.attempts[0].evaluation.acceptance[0].passed = false
   expect(() => checkRepair(input, decoded)).toThrow('contradicts collected command behavior')
 })
+test('checker rejects replacement executables, scripts and extra reviewed-command arguments', async () => {
+  const { result } = await syntheticRepair()
+  for (const [index, invocation] of [
+    [0, ['node', 'test', 'test/project.test.ts']],
+    [0, ['bun', 'test', 'unrelated.test.ts']],
+    [0, ['bun', 'test', 'test/project.test.ts', '--only']],
+    [0, ['bun', 'test']],
+    [1, ['node', 'src/cli.ts', ...input.cases[0]!.args]],
+    [1, ['bun', 'different-cli.ts', ...input.cases[0]!.args]],
+    [1, ['bun', 'src/cli.ts', ...input.cases[0]!.args, '--other']],
+  ] as const) {
+    const altered = structuredClone(result)
+    altered.output.attempts[0]!.evaluation.commands[index]!.invocation = [...invocation]
+    expect(() => checkRepair(input, altered)).toThrow('complete reviewed command')
+  }
+})
 test('failed attempts remain inspectable and are never renamed review-ready', async () => {
   const root = await directory(),
     { result } = await syntheticRepair({ success: false })

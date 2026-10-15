@@ -1092,7 +1092,9 @@ export function viewerFrame(
           secondaryPrefix?: string
         }[] = [],
         tables = new Map<string, ReturnType<typeof viewerTableColumns>>()
-      const applicationPage = Boolean(model.selected && !model.selected.role)
+      const applicationPage = Boolean(
+        model.selected && !model.selected.role && model.selected.publisher === model.rootSourceId,
+      )
       const sideBySide =
           (!applicationPage ||
             Boolean(model.record?.row) ||

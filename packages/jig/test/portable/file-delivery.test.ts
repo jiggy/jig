@@ -1,5 +1,7 @@
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { expect, spyOn, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { closeSync } from 'node:fs'
@@ -18,15 +20,21 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { capturePrivateOutput } from '../../src/internal/captured-output.js'
+import { privateCaptureDeliveryInspection } from '../../src/internal/delivery-inspection.js'
 import {
   PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
   privateOwnFileCommand,
 } from '../../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
 import { privateOpenFileRoot } from '../../src/internal/file-input.js'
+import * as imagePreview from '../../src/internal/image-preview.js'
+import {
+  PRIVATE_PREVIEW_LIMITS,
+  privatePreviewStringBytes,
+} from '../../src/internal/image-preview-policy.js'
 import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
-import { fixture, record, fixturePid, waitUntilStopped } from '.././file-delivery.fixture.js'
+import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
 
 test('packet streaming cannot renew time already spent in its native delivery phase', async () =>
   fixture(async (root) => {
@@ -168,6 +176,75 @@ test('image source retention shares one aggregate budget and reserves every text
     } finally {
       await owner.close()
       capture.close()
+    }
+  }))
+test('encoded image replies preserve text fallbacks within the complete inspection budget', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source')
+    await mkdir(source)
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>'
+    for (let index = 0; index < 4; index++) await writeFile(join(source, `image-${index}.svg`), svg)
+    await writeFile(join(source, 'notes.txt'), 'Text stays available. '.repeat(500))
+    const fd = privateOpenFileRoot(source)
+    const output = capturePrivateOutput(fd)
+    closeSync(fd)
+    // Model a valid, near-limit renderer reply. Decoder validation has its own
+    // process tests; this case exercises the real delivery-to-inspection seam.
+    const png = Buffer.alloc(50 * 1024)
+    png.set([137, 80, 78, 71, 13, 10, 26, 10])
+    png.write('IHDR', 12, 'ascii')
+    png.writeUInt32BE(1, 16)
+    png.writeUInt32BE(1, 20)
+    const image = {
+      mime: 'image/png' as const,
+      width: 1,
+      height: 1,
+      base64: png.toString('base64'),
+    }
+    const decoder = spyOn(imagePreview, 'privateImagePreview').mockResolvedValue(image)
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    owner.enableInspection()
+    try {
+      await owner.prepare(join(root, 'packet'), [])
+      const receipt = await owner.publish(record, { kind: 'snapshot', capture: output })
+      expect(receipt.status).toBe('written')
+      // Repeated peeks reserve the same file only once.
+      expect((await owner.inspectionPreview('image-0.svg')).state).toBe('image')
+      expect((await owner.inspectionPreview('image-0.svg')).state).toBe('image')
+      const capture = await privateCaptureDeliveryInspection(
+        {
+          prepare: async () => {},
+          publish: async () => {
+            throw new Error('Already published')
+          },
+          inspectionPreview: (path, options) =>
+            owner.inspectionPreview(path, options.previewDeadline),
+          retire: () => owner.close(),
+        },
+        receipt,
+      )
+      try {
+        expect(capture.files.map((file) => file.state)).toEqual([
+          'image',
+          'image',
+          'image',
+          'text',
+          'text',
+        ])
+        expect(capture.preview('image-3.svg')?.text).toBe(svg)
+        expect(capture.preview('notes.txt')?.clipped).toBeTrue()
+        const charged = capture.files.reduce((total, file) => {
+          const preview = capture.preview(file.path)!
+          return total + privatePreviewStringBytes(preview.image?.base64 ?? preview.text ?? '')
+        }, 0)
+        expect(charged).toBeLessThanOrEqual(PRIVATE_PREVIEW_LIMITS.retainedBytes)
+      } finally {
+        capture.close()
+      }
+    } finally {
+      decoder.mockRestore()
+      await owner.close()
+      output.close()
     }
   }))
 test('delivery close joins pending preparation and memoizes exact descriptor cleanup failure', async () =>

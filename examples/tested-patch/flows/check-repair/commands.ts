@@ -25,16 +25,12 @@ export function checkCommands(
     const expectedInput = index === 0 ? '' : input.cases[index - 1]!.stdin
     if (command.stdinDigest !== hashText(expectedInput))
       throw new TypeError('Command stdin differs from the fixed case.')
-    if (!Array.isArray(command.invocation) || command.invocation[0] !== 'bun') {
-      throw new TypeError('Command invocation does not match the reviewed method.')
-    }
-    if (index === 0 && command.invocation[1] !== 'test')
-      throw new TypeError('The repository command is not the reviewed test command.')
-    if (
-      index > 0 &&
-      !isDeepStrictEqual(command.invocation.slice(2), input.cases[index - 1]!.args)
-    ) {
-      throw new TypeError('CLI arguments differ from the fixed acceptance case.')
+    const expectedInvocation =
+      index === 0
+        ? ['bun', 'test', 'test/project.test.ts']
+        : ['bun', 'src/cli.ts', ...input.cases[index - 1]!.args]
+    if (!isDeepStrictEqual(command.invocation, expectedInvocation)) {
+      throw new TypeError('Command invocation does not match the complete reviewed command.')
     }
     for (const stream of [command.stdout, command.stderr]) {
       if (!stream || typeof stream.text !== 'string' || typeof stream.truncated !== 'boolean') {

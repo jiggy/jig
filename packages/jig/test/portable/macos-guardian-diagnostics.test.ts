@@ -400,3 +400,38 @@ test('image mapping subcauses retain exact closed transport and never replace th
     expect(caught).toBe(original)
   }
 })
+
+test('scope preparation preserves closed causes after fenced cleanup without raw evidence', () => {
+  const refusals = [
+    ['macOS scope is not initially empty', 'SCOPE_NOT_EMPTY'],
+    ['invalid macOS scope limits', 'SCOPE_LIMITS'],
+    ['invalid macOS native launch', 'SCOPE_LAUNCH'],
+    ['macOS working directory is outside its directory projections', 'SCOPE_CWD'],
+    ['macOS initial accounting is incomplete', 'SCOPE_INITIAL_ACCOUNTING'],
+    ['macOS launch handoffs are unavailable', 'SCOPE_HANDOFFS'],
+    ['macOS descendant fencing is unconfirmed', 'SCOPE_FENCING'],
+    ['macOS final resource accounting is unconfirmed', 'SCOPE_FINAL_ACCOUNTING'],
+    ['macOS scope ended before readiness (payload_exit)', 'SCOPE_EARLY_EXIT'],
+    ['macOS scope ended before readiness (cancelled)', 'SCOPE_CANCELLED'],
+    ['macOS scope ended before readiness (coordinator_lost)', 'SCOPE_COORDINATOR_LOST'],
+    ['macOS scope ended before readiness (deadline)', 'SCOPE_DEADLINE'],
+    ['macOS scope ended before readiness (setup_failed)', 'SCOPE_SETUP_FAILED'],
+    ['macOS scope ended before readiness (memory_limit)', 'SCOPE_MEMORY_LIMIT'],
+    ['macOS scope ended before readiness (process_limit)', 'SCOPE_PROCESS_LIMIT'],
+    ['macOS scope ended before readiness (cpu_limit)', 'SCOPE_CPU_LIMIT'],
+    ['macOS scope ended before readiness (accounting_failed)', 'SCOPE_ACCOUNTING_FAILED'],
+  ] as const
+  for (const [message, cause] of refusals) {
+    const original = new Error(message, {
+      cause: new Error('private-path credential-canary exit 255'),
+    })
+    const failure = privateMacosGuardianFailure('scope-preparation', original)
+    expect(failure).toEqual({ step: 'scope-preparation', cause })
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(JSON.stringify(failure)))).toEqual(
+      failure,
+    )
+    expect(JSON.stringify(failure)).not.toMatch(/private|credential|255/)
+    for (const near of [message + ' private-path', message.toUpperCase()])
+      expect(privateMacosGuardianFailure('scope-preparation', new Error(near)).cause).toBe('OTHER')
+  }
+})

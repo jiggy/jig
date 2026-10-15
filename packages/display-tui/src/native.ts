@@ -680,7 +680,9 @@ export class NativeRenderer {
         : ''
     const teaserWidth = (cells: number) => Math.max(1, cells - 6 - terminalWidth(selectedPrefix))
     model.local.teaserWidth = teaserWidth(available)
-    const applicationPage = Boolean(model.selected && !model.selected.role)
+    const applicationPage = Boolean(
+      model.selected && !model.selected.role && model.selected.publisher === model.rootSourceId,
+    )
     const wide =
       (!applicationPage ||
         Boolean(model.record?.row) ||

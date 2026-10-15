@@ -32,7 +32,7 @@ import {
 } from './file-input.js'
 import { PRIVATE_CAPTURE_CHUNK_BYTES } from './file-input-policy.js'
 import { privateImagePreview, privateImageSourceCandidate } from './image-preview.js'
-import { PRIVATE_PREVIEW_LIMITS } from './image-preview-policy.js'
+import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
 import type {
   RetainedRunCheckpoint,
   RunCheckpointIdentity,
@@ -121,6 +121,8 @@ export class PrivateFileDeliveryOwner {
   #preparing = false
   #publishing = false
   #previewFiles: Map<string, PreviewFile> | undefined
+  readonly #previewCharges = new Map<PreviewFile, number>()
+  #inspectionBytes = 0
   #retainPreview = false
   #close: Promise<void> | undefined
   #preparation: Promise<void> | undefined
@@ -159,7 +161,18 @@ export class PrivateFileDeliveryOwner {
         : undefined
     if (this.#previewCancellation.signal.aborted)
       return { state: 'unavailable', bytes, clipped: false }
-    if (image) return { state: 'image', image, bytes, clipped: false }
+    if (image) {
+      // Keep every text fallback available. Repeated requests cannot spend a
+      // reservation twice or release an image already returned to the caller.
+      const reserved = this.#previewCharges.get(file) ?? 0
+      const charge = privatePreviewStringBytes(image.base64)
+      const extra = Math.max(0, charge - reserved)
+      if (this.#inspectionBytes + extra <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
+        this.#previewCharges.set(file, Math.max(reserved, charge))
+        this.#inspectionBytes += extra
+        return { state: 'image', image, bytes, clipped: false }
+      }
+    }
     return this.#textPreview(file)
   }
   #textPreview({ contents, bytes }: PreviewFile): PrivateDeliveryInspectionPreview {
@@ -452,7 +465,14 @@ export class PrivateFileDeliveryOwner {
       await publishPrivateDirectory(this.#parent, name, this.#leaf)
       this.#published = true
       this.#stage = undefined
-      if (this.#retainPreview) this.#previewFiles = previews
+      if (this.#retainPreview) {
+        this.#previewFiles = previews
+        for (const file of previews.values()) {
+          const charge = privatePreviewStringBytes(this.#textPreview(file).text ?? '')
+          this.#previewCharges.set(file, charge)
+          this.#inspectionBytes += charge
+        }
+      }
       keptPreviews = this.#retainPreview
       return delivery
     } catch {
@@ -487,6 +507,8 @@ export class PrivateFileDeliveryOwner {
       parent = this.#parent,
       stage = this.#stage
     this.#previewFiles = undefined
+    this.#previewCharges.clear()
+    this.#inspectionBytes = 0
     this.#parent = undefined
     this.#stage = undefined
     for (const preview of previews?.values() ?? []) preview.contents.fill(0)

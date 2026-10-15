@@ -84,6 +84,8 @@ const currentLocal = (): PrivateBrowserLocal => {
   return local.get(destinationKey)!
 }
 const view = () => privateBrowserView(client?.body, destinationKey)
+const isApplicationPage = () =>
+  privateBrowserTabs(client?.body).some((tab) => tab.id === destinationKey && tab.application)
 const records = (): PrivateBrowserRecord[] => {
   const selected = view()
   return selected ? privateBrowserRecords(selected, currentLocal()) : []
@@ -258,7 +260,7 @@ function focusSelectedEntry(): void {
     ?.focus()
 }
 function focusDetailReturn(): void {
-  const breakpoint = view() ? '(max-width: 1000px)' : '(max-width: 599px)'
+  const breakpoint = isApplicationPage() ? '(max-width: 1000px)' : '(max-width: 599px)'
   if (matchMedia(breakpoint).matches)
     document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
 }
@@ -427,6 +429,179 @@ function Block({
     block.items.map((item, index) => h(Field, { key: index, ...item, record })),
   )
 }
+function recordTeaser(record: PrivateBrowserRecord): ComponentChildren {
+  if (record.row && record.collection)
+    return record.collection.columns
+      .slice(0, 3)
+      .map((column) =>
+        h(
+          'div',
+          { key: column.key, class: 'card-field' },
+          h('span', { class: 'label' }, literal(column.label)),
+          h(
+            'span',
+            {},
+            literal(teaser(privateBrowserValue(record.row!.cells[column.key] ?? null), 110)),
+          ),
+        ),
+      )
+  if (record.block?.kind === 'progress') return h(Progress, { block: record.block })
+  if (record.block?.kind === 'facts')
+    return literal(
+      `${record.block.items.length} supplied ${record.block.items.length === 1 ? 'fact' : 'facts'}`,
+    )
+  return literal(teaser(record.block?.kind === 'report' ? record.block.text : (record.text ?? '')))
+}
+function InspectorList(): ComponentChildren {
+  const selected = view()
+  if (!selected) return null
+  const state = currentLocal()
+  const supplied = records()
+  const collectionKeys = new Set<string>()
+  return h(
+    'section',
+    { class: 'records', 'aria-label': 'Supplied entries' },
+    h('h2', {}, literal(selected.value.title)),
+    h(
+      'p',
+      { class: 'source' },
+      literal(selected.sourceLabel),
+      ' · ',
+      selected.ended ? literal(selected.ended) : 'Observed view',
+      ' · ',
+      observationTime(selected.updatedAt),
+    ),
+    supplied.flatMap((record) => {
+      const first = record.collection && !collectionKeys.has(record.collection.id)
+      if (record.collection) collectionKeys.add(record.collection.id)
+      const heading =
+        first && record.collection
+          ? h(
+              'div',
+              { key: `collection:${record.collection.id}`, class: 'collection-heading' },
+              h('h3', {}, literal(record.collection.title)),
+              h(
+                'p',
+                { class: 'secondary' },
+                `${record.collection.rows.length} retained${record.collection.total === undefined ? '' : ` / ${record.collection.total} reported`}`,
+              ),
+              h(
+                'div',
+                { class: 'collection-controls' },
+                h(
+                  'label',
+                  {},
+                  'Filter supplied records',
+                  h('input', {
+                    value: state.filters.get(record.collection.id) ?? '',
+                    placeholder: 'Find a record…',
+                    onInput: (event: Event) => {
+                      humanNavigation = true
+                      state.filters.set(
+                        record.collection!.id,
+                        (event.target as HTMLInputElement).value,
+                      )
+                      const next = records()
+                      state.selected = privateBrowserSurvivingSelection(
+                        previousKeys.get(destinationKey) ?? [],
+                        state.selected,
+                        next.map((item) => item.key),
+                      )
+                      previousKeys.set(
+                        destinationKey,
+                        next.map((item) => item.key),
+                      )
+                      redraw()
+                    },
+                  }),
+                ),
+                h(
+                  'label',
+                  {},
+                  'Sort',
+                  h(
+                    'select',
+                    {
+                      value: state.sorts.get(record.collection.id)?.key ?? '',
+                      onChange: (event: Event) => {
+                        humanNavigation = true
+                        const key = (event.target as HTMLSelectElement).value
+                        if (key) state.sorts.set(record.collection!.id, { key, descending: false })
+                        else state.sorts.delete(record.collection!.id)
+                        redraw()
+                      },
+                    },
+                    h('option', { value: '' }, 'Supplied order'),
+                    record.collection.columns.map((column) =>
+                      h('option', { key: column.key, value: column.key }, literal(column.label)),
+                    ),
+                  ),
+                ),
+                state.sorts.has(record.collection.id)
+                  ? button(
+                      state.sorts.get(record.collection.id)!.descending
+                        ? 'Descending'
+                        : 'Ascending',
+                      () => {
+                        humanNavigation = true
+                        const sort = state.sorts.get(record.collection!.id)!
+                        state.sorts.set(record.collection!.id, {
+                          ...sort,
+                          descending: !sort.descending,
+                        })
+                        redraw()
+                      },
+                    )
+                  : null,
+              ),
+              h(
+                'div',
+                { class: 'column-headings', 'aria-hidden': true },
+                record.collection.columns
+                  .slice(0, 3)
+                  .map((column) => h('span', { key: column.key }, literal(column.label))),
+              ),
+            )
+          : null
+      return [
+        heading,
+        h(
+          'div',
+          { key: record.key },
+          record.section ? h('small', { class: 'secondary' }, literal(record.section)) : null,
+          button(
+            h(
+              'span',
+              {},
+              record.row ? null : h('strong', {}, literal(record.title)),
+              h('span', { class: 'card-observation' }, recordTeaser(record)),
+            ),
+            () => select(record.key),
+            {
+              class: `record ${record.row ? 'collection-row' : ''} ${state.selected === record.key ? 'selected' : ''}`,
+              'aria-pressed': state.selected === record.key,
+              'aria-label':
+                record.row && record.collection
+                  ? privateBrowserLiteral(
+                      record.collection.columns
+                        .slice(0, 3)
+                        .map(
+                          (column) =>
+                            `${column.label}: ${privateBrowserValue(record.row!.cells[column.key] ?? null)}`,
+                        )
+                        .join('; '),
+                    )
+                  : undefined,
+              'data-record': record.key,
+              onKeyDown: recordKeyDown,
+            },
+          ),
+        ),
+      ]
+    }),
+  )
+}
+
 function ApplicationList(): ComponentChildren {
   const selected = view()
   if (!selected) return null
@@ -1817,9 +1992,9 @@ function App(): ComponentChildren {
                     : h(
                         'div',
                         {
-                          class: `application-workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                          class: `${isApplicationPage() ? 'application-workspace' : 'workspace'} ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
                         },
-                        h(ApplicationList, {}),
+                        isApplicationPage() ? h(ApplicationList, {}) : h(InspectorList, {}),
                         state.detailOpen ? h(SelectedDetail, {}) : null,
                       ),
         ),

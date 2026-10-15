@@ -417,3 +417,35 @@ test('application pages show full reports and every fact in authored sections be
   model.acceptView('child', view([], 'checks', false))
   expect(model.destinations().at(-1)?.group).toBe('run')
 })
+
+test('child facts stay in Inspector context while the root renders them in its page', () => {
+  const model = new FixtureModel()
+  const supplied = view([
+    {
+      kind: 'facts',
+      items: [
+        { label: 'First field', value: 'Visible value' },
+        { label: 'Second field', value: 'Context value' },
+        { label: 'Third field', value: 'More context' },
+      ],
+    },
+  ])
+  model.acceptView('root', supplied)
+  model.acceptView('child', supplied)
+  model.select(displayViewKey(JSON.stringify(['root', supplied.id])))
+  expect(viewerFrame(model, 100, 30, false, true).lines.join('\n')).toContain(
+    'Second field: Context value',
+  )
+  model.select(displayViewKey(JSON.stringify(['child', supplied.id])))
+  model.selectRecord('block:0:0')
+  const child = viewerFrame(model, 100, 30, false, true).lines.join('\n')
+  expect(child).toContain('Facts ▸')
+  expect(child).not.toContain('Second field: Context value')
+  expect(viewerDetailParts(model, model.record!, true)).toContainEqual({
+    kind: 'field',
+    label: 'Second field',
+    value: 'Context value',
+  })
+  expect(viewerFrame(model, 140, 30, false, true).lines.join('\n')).toContain('Context value')
+  model.close()
+})

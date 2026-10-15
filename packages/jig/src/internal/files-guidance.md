@@ -213,6 +213,10 @@ These links locate module rules. All selected domain requirements still apply.
   limits. Complete image sources add bytes only within that same retention
   budget. `image-preview-child.ts` runs the decoder in a disposable process.
 
+  Before returning images, reserve every file's text fallback and charge encoded
+  replies as UTF-16 storage. Repeated previews reuse the same reservation.
+  Images that exceed the aggregate reply budget retain their file fallback.
+
   A separate main-thread watchdog limits each image to five seconds. Stdin
   remains open as a lifetime lease. Input length frames the image without
   closing that pipe. EOF or pipe failure kills the process, including a busy
@@ -277,8 +281,8 @@ These links locate module rules. All selected domain requirements still apply.
   Capture truncation disclosures precede excerpts, and human clipping never
   changes exact JSON inspection. Plain/JSON saved inspection skips image decoding.
   Saved preview preparation closes file descriptors before asynchronous decoding.
-  It spends at most ten seconds on optional images. Cancellation or close releases
-  retained text and image buffers.
+  One ten-second capture deadline covers file verification and optional image
+  decoding. Cancellation or close releases retained text and image buffers.
 
 - Read-only target inspection projects `boundReadAttachments` as retained names
   only. Invocation templates therefore omit captured reads without reopening
