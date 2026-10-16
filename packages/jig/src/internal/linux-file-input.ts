@@ -13,6 +13,7 @@ import {
   sha256,
 } from './file-input-policy.js'
 import { resolvePrivateLinuxHostLoaderSync } from './linux-host-paths.js'
+import { privateDescriptorByteDigest } from './descriptor-byte-stream.js'
 
 const CLOSED_SEALS = 0x0f
 const F_DUPFD_CLOEXEC = 1030
@@ -214,7 +215,7 @@ export function privateVerifyLinuxSealedFile(
     info.nlink !== 0 ||
     info.size !== bytes ||
     (result(calls().symbols.fcntl!(fd, 1034, 0)) & CLOSED_SEALS) !== CLOSED_SEALS ||
-    sha256(readFileSync(`/proc/self/fd/${fd}`)) !== digest
+    privateDescriptorByteDigest(fd, bytes) !== digest
   )
     throw new TypeError('captured input descriptor changed')
 }

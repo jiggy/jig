@@ -4,6 +4,7 @@ import type { FileHandle } from 'node:fs/promises'
 import {
   PRIVATE_CAPTURE_CHUNK_BYTES,
   PRIVATE_FILE_LIMITS,
+  PRIVATE_READ_INPUT_BYTES,
   privateFilePath,
 } from './file-input-policy.js'
 import {
@@ -18,6 +19,7 @@ import {
 import {
   normalizePrivateReadInputAliases,
   normalizePrivateReadInputDirectories,
+  normalizePrivateInputEmptyDirectories,
   type PrivateReadInputAlias,
 } from './read-input-projection.js'
 
@@ -64,7 +66,7 @@ export function normalizePrivateMacosInputs(
     privateFilePath(entry.path.slice(separator + 1))
     const path = entry.path
     bytes += entry.bytes
-    if (names.has(path) || bytes > PRIVATE_FILE_LIMITS.bytes)
+    if (names.has(path) || bytes > PRIVATE_READ_INPUT_BYTES)
       throw new TypeError('macOS captured input exceeds its bounds')
     names.add(path)
     const parts = path.split('/')
@@ -95,9 +97,13 @@ export async function projectPrivateMacosInputs(
   bundle: PrivateMacosReceivedDescriptors | undefined,
   signal: AbortSignal,
   inputAliases: readonly PrivateReadInputAlias[] = [],
+  inputEmptyDirectories: readonly string[] = [],
 ): Promise<void> {
   const roots = normalizePrivateMacosInputDirectories(inputDirectories)
   const files = normalizePrivateMacosInputs(manifest, roots, inputAliases)
+  const emptyDirectories = normalizePrivateInputEmptyDirectories(
+    inputEmptyDirectories, roots, files.map((file) => file.path),
+  )
   const aliases = normalizePrivateReadInputAliases(
     inputAliases,
     roots,
@@ -116,6 +122,21 @@ export async function projectPrivateMacosInputs(
       signal.throwIfAborted()
       privateMacosMkdirAt(root.fd, name, 0o700)
       directories.set(name, await privateMacosOpenAt(root.fd, name, DIRECTORY))
+    }
+    for (const path of emptyDirectories) {
+      const parts = path.split('/')
+      let parent = root
+      for (let count = 1; count <= parts.length; count++) {
+        const key = parts.slice(0, count).join('/')
+        let directory = directories.get(key)
+        if (directory === undefined) {
+          const name = parts[count - 1]!
+          privateMacosMkdirAt(parent.fd, name, 0o700)
+          directory = await privateMacosOpenAt(parent.fd, name, DIRECTORY)
+          directories.set(key, directory)
+        }
+        parent = directory
+      }
     }
     for (const [index, file] of files.entries()) {
       signal.throwIfAborted()

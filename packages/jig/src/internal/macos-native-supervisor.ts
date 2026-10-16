@@ -44,6 +44,7 @@ import {
   requirePrivateMacosScopeLimits,
 } from './macos-scope-execution.js'
 import {
+  normalizePrivateInputEmptyDirectories,
   normalizePrivateReadInputAliases,
   type PrivateReadInputAlias,
 } from './read-input-projection.js'
@@ -63,6 +64,7 @@ export interface PrivateMacosGuardianStart {
   readonly storage?: PrivateMacosGuardianStorage
   readonly inputs?: readonly PrivateMacosInputIdentity[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
   readonly inputAliases?: readonly PrivateReadInputAlias[]
 }
 export interface PrivateMacosGuardianRecovery {
@@ -114,6 +116,7 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
       'storage',
       'inputs',
       'inputDirectories',
+      'inputEmptyDirectories',
       'inputAliases',
     ]
       .filter((key) => value !== null && typeof value === 'object' && Object.hasOwn(value, key))
@@ -160,6 +163,9 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
   ) {
     const roots = normalizePrivateMacosInputDirectories(record.inputDirectories)
     const files = normalizePrivateMacosInputs(record.inputs, roots, record.inputAliases)
+    normalizePrivateInputEmptyDirectories(
+      (record.inputEmptyDirectories ?? []) as string[], roots, files.map((file) => file.path),
+    )
     normalizePrivateReadInputAliases(
       record.inputAliases ?? [],
       roots,
@@ -410,6 +416,7 @@ async function supervise(
         inputBundle,
         cancellation.signal,
         configuration.inputAliases,
+        configuration.inputEmptyDirectories,
       )
       inputBundle?.close()
       inputBundle = undefined

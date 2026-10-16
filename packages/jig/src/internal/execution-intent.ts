@@ -32,6 +32,7 @@ export interface PrivateExecutionIntent {
     readonly destination: string
   }[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
   readonly output?: boolean
   /** Private same-filesystem stages for reviewed writable child routes. */
   readonly outputImports?: true

@@ -45,14 +45,6 @@ export function privateFlowExecutionIntent(
       { source: packageRoot, destination: recipe.packageDestination, kind: 'tree' },
     ],
     ...files,
-    ...(Object.values(recipe.request.slots).some(
-      (route) =>
-        route.kind === 'flow' &&
-        route.attachments !== undefined &&
-        Object.values(route.attachments).some((mapping) => 'into' in mapping),
-    )
-      ? { outputImports: true as const }
-      : {}),
     storageBytes: 512 * 1024 * 1024,
     maxOutputBytes,
   }
