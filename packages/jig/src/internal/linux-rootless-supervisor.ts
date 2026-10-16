@@ -1,5 +1,6 @@
 import { type ChildProcess, spawn } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
+import { normalizePrivateInputEmptyDirectories } from './read-input-projection.js'
 import {
   closeSync,
   fstatSync,
@@ -79,6 +80,7 @@ interface Configuration {
     readonly digest: string
   }[]
   readonly inputDirectories: readonly string[]
+  readonly inputEmptyDirectories: readonly string[]
   readonly inputAliases: readonly { readonly name: string; readonly target: string }[]
   readonly bunPath: string
   readonly bunHostLibraryPath: string
@@ -969,10 +971,12 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   for (const mount of configuration.readOnlyMounts)
     result.push('--ro-bind', mount.source, mount.destination)
   if (configuration.inputDirectories.length > 0)
-    result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-input')
+    result.push('--size', String(32 * 1024 * 1024), '--tmpfs', '/jig-input')
   const aliasNames = new Set(configuration.inputAliases.map((alias) => `/jig-input/${alias.name}`))
   for (const path of configuration.inputDirectories)
     if (!aliasNames.has(path)) result.push('--dir', path)
+  for (const path of configuration.inputEmptyDirectories)
+    result.push('--dir', path)
   // Copy sealed bytes into named inodes, then freeze the whole private tree.
   // Unlinked bind-data inodes break Bun's module realpath resolution.
   for (const file of configuration.capturedInputs)
@@ -1148,6 +1152,7 @@ function requireStart(value: unknown): Configuration {
     'environment',
     'limits',
     'inputDirectories',
+    'inputEmptyDirectories',
     'inputAliases',
     'mechanismDigest',
     'nestedUserNamespaces',
@@ -1234,6 +1239,14 @@ function requireStart(value: unknown): Configuration {
   ) {
     throw new Error('invalid rootless supervisor configuration')
   }
+  normalizePrivateInputEmptyDirectories(
+    configuration.inputEmptyDirectories.map((path) => {
+      if (!path.startsWith('/jig-input/')) throw new Error('invalid input directory')
+      return path.slice('/jig-input/'.length)
+    }),
+    configuration.inputDirectories.map((path) => path.slice('/jig-input/'.length)),
+    configuration.capturedInputs.map((file) => file.destination.slice('/jig-input/'.length)),
+  )
   {
     const aliases = configuration.inputAliases
     const names = new Set(aliases.map((alias) => alias?.name))

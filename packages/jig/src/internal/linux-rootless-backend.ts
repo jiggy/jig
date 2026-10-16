@@ -30,7 +30,7 @@ import {
 import { PRIVATE_OUTPUT_PATH } from './execution-intent.js'
 import { closePrivateExecutionOutput } from './execution-output.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
-import { PRIVATE_FILE_LIMITS } from './file-input-policy.js'
+import { PRIVATE_FILE_LIMITS, PRIVATE_READ_INPUT_BYTES } from './file-input-policy.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateInstallationFileDigest } from './installation-verification.js'
@@ -113,6 +113,7 @@ export interface PrivateLinuxLaunchPlan {
   readonly outputImports?: boolean
   readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
 }
 
 interface SealedLaunchPlan
@@ -129,6 +130,7 @@ interface SealedLaunchPlan
   readonly outputImports: boolean
   readonly capturedInputs: readonly SealedInput[]
   readonly inputDirectories: readonly string[]
+  readonly inputEmptyDirectories: readonly string[]
   readonly inputAliases: readonly PrivateReadInputAlias[]
 }
 
@@ -618,7 +620,7 @@ export class PrivateLinuxCgroupBackend {
     const data = requireSealedOwner(sealedOwner, this, plan)
     await requireSealedMounts(data.sealedPlan.readOnlyMounts)
     for (const file of data.sealedPlan.capturedInputs)
-      privateVerifyLinuxSealedFile(file.fd, file.bytes, file.digest)
+      privateVerifyLinuxSealedFile(file.fd, file.bytes, file.digest, PRIVATE_READ_INPUT_BYTES)
     const currentMechanism = await this.#observeMechanism()
     requirePrivateLinuxMechanismUnchanged(data.mechanism, currentMechanism)
     await requireOwnerState(data.identity)
@@ -1650,6 +1652,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
       digest: file.digest,
     })),
     inputDirectories: data.sealedPlan.inputDirectories,
+    inputEmptyDirectories: data.sealedPlan.inputEmptyDirectories,
     inputAliases: data.sealedPlan.inputAliases,
     bunPath: data.mechanism.support.trustedCoordinatorBunPath,
     bunHostLibraryPath: data.mechanism.support.trustedCoordinatorLibraryPath,
@@ -1837,6 +1840,10 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
       input: file.input,
     })),
     directories: inputDirectories.map((path) => path.replace(/^\/jig-input\//, '')),
+    emptyDirectories: (value.inputEmptyDirectories ?? []).map((path) => {
+      if (!path.startsWith('/jig-input/')) throw new TypeError('invalid input directory')
+      return path.slice('/jig-input/'.length)
+    }),
   })
   const capturedInputs = projection.files.map((file) => ({
     ...requirePrivateCapturedInput(file.input),
@@ -1845,7 +1852,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   if (
     capturedInputs.length > PRIVATE_FILE_LIMITS.files ||
     inputDirectories.length > 8 ||
-    capturedInputs.reduce((sum, file) => sum + file.bytes, 0) > PRIVATE_FILE_LIMITS.bytes ||
+    capturedInputs.reduce((sum, file) => sum + file.bytes, 0) > PRIVATE_READ_INPUT_BYTES ||
     new Set(capturedInputs.map((file) => file.destination)).size !== capturedInputs.length ||
     new Set(inputDirectories).size !== inputDirectories.length ||
     inputDirectories.some(
@@ -1867,7 +1874,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     ) {
       throw new TypeError('invalid captured input destination')
     }
-    privateVerifyLinuxSealedFile(file.fd, file.bytes, file.digest)
+    privateVerifyLinuxSealedFile(file.fd, file.bytes, file.digest, PRIVATE_READ_INPUT_BYTES)
   }
   return Object.freeze({
     runId: value.runId,
@@ -1881,6 +1888,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     outputImports,
     capturedInputs: Object.freeze(capturedInputs.map((file) => Object.freeze({ ...file }))),
     inputDirectories: Object.freeze(inputDirectories),
+    inputEmptyDirectories: Object.freeze(projection.emptyDirectories.map((path) => `/jig-input/${path}`)),
     inputAliases: projection.aliases,
   })
 }

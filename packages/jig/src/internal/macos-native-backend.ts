@@ -99,6 +99,7 @@ export interface PrivateMacosLaunchPlan {
   readonly storage?: PrivateMacosGuardianStorage
   readonly capturedInputs?: readonly PrivateMacosCapturedInput[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
 }
 interface SealedInput {
   readonly path: string
@@ -115,6 +116,7 @@ interface SealedPlan extends Omit<PrivateMacosLaunchPlan, 'capturedInputs' | 'en
   readonly environment: Readonly<Record<string, string>>
   readonly capturedInputs: readonly SealedInput[]
   readonly inputDirectories: readonly string[]
+  readonly inputEmptyDirectories: readonly string[]
   readonly inputAliases: readonly PrivateReadInputAlias[]
   readonly immutablePaths: readonly SealedImmutablePath[]
 }
@@ -235,6 +237,7 @@ export class PrivateMacosBackend {
         (plan.capturedInputs ?? []).map(({ path, input }) => Object.freeze({ path, input })),
       ),
       inputDirectories: Object.freeze([...(plan.inputDirectories ?? [])]),
+      inputEmptyDirectories: Object.freeze([...(plan.inputEmptyDirectories ?? [])]),
     })
     const [mechanism, sealedPlan] = await Promise.all([
       this.observeMechanism(),
@@ -779,6 +782,7 @@ async function sealPlan(
   const projection = planPrivateReadInputProjection({
     files: value.capturedInputs ?? [],
     directories: inputDirectories,
+    emptyDirectories: value.inputEmptyDirectories ?? [],
   })
   const captures = normalizePrivateMacosInputs(
     projection.files.map(({ path, input }) => {
@@ -825,6 +829,7 @@ async function sealPlan(
     ...(storage === undefined ? {} : { storage }),
     capturedInputs: Object.freeze(captures),
     inputDirectories,
+    inputEmptyDirectories: projection.emptyDirectories,
     inputAliases: projection.aliases,
     immutablePaths: Object.freeze(immutablePaths),
   })
@@ -870,6 +875,7 @@ function guardianConfiguration(
       : {
           inputs: data.sealedPlan.capturedInputs,
           inputDirectories: data.sealedPlan.inputDirectories,
+          inputEmptyDirectories: data.sealedPlan.inputEmptyDirectories,
           inputAliases: data.sealedPlan.inputAliases,
         }),
   })
@@ -882,6 +888,7 @@ function guardianInputs(
     planPrivateReadInputProjection({
       files: plan.capturedInputs ?? [],
       directories: plan.inputDirectories ?? [],
+      emptyDirectories: plan.inputEmptyDirectories ?? [],
     }).files.map((file) => Object.freeze({ path: file.path, input: file.input })),
   )
 }

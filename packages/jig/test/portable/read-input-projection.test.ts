@@ -79,6 +79,29 @@ test('whole-view planning preserves empty roots and freezes the derived recipe',
     input.close()
   }
 })
+test('whole artifact views retain empty descendants and never alias different directory layouts', () => {
+  const input = capturePrivateInput(Buffer.from('x'))
+  try {
+    const files = [{ path: 'first/file', input }, { path: 'second/file', input }]
+    const common = { files, directories: ['first', 'second'] }
+    const distinct = planPrivateReadInputProjection({
+      ...common, emptyDirectories: ['first/empty/nested', 'second/other'],
+    })
+    expect(distinct.aliases).toEqual([])
+    expect(distinct.emptyDirectories).toEqual(['first/empty/nested', 'second/other'])
+    const identical = planPrivateReadInputProjection({
+      ...common, emptyDirectories: ['first/empty/nested', 'second/empty/nested'],
+    })
+    expect(identical.aliases).toEqual([{ name: 'second', target: 'first' }])
+    expect(identical.emptyDirectories).toEqual(['first/empty/nested'])
+    for (const emptyDirectories of [
+      ['first/file'], ['first/file/child'], ['outside/directory'], ['first/../escape'],
+      ['first/empty', 'first/empty'],
+    ]) expect(() => planPrivateReadInputProjection({ ...common, emptyDirectories })).toThrow()
+  } finally {
+    input.close()
+  }
+})
 test('projection refuses decoded or closed captures, conflicting paths and independent excess', () => {
   const input = capturePrivateInput(Buffer.from('x'))
   const captures: PrivateCapturedInput[] = []

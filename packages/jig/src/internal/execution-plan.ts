@@ -26,6 +26,7 @@ export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): Priva
     ...(intent.outputImports === undefined ? {} : { outputImports: intent.outputImports }),
     ...(intent.capturedInputs === undefined ? {} : { capturedInputs: intent.capturedInputs }),
     ...(intent.inputDirectories === undefined ? {} : { inputDirectories: intent.inputDirectories }),
+    ...(intent.inputEmptyDirectories === undefined ? {} : { inputEmptyDirectories: intent.inputEmptyDirectories }),
   }
 }
 
@@ -132,6 +133,7 @@ export function privateMacosExecutionPlan(
       path: inputPath(destination),
     })),
     inputDirectories: (intent.inputDirectories ?? []).map(inputPath),
+    inputEmptyDirectories: (intent.inputEmptyDirectories ?? []).map(inputPath),
   }
 }
 

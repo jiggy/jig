@@ -12,7 +12,9 @@ import {
 } from '../../src/internal/captured-output.js'
 import { privateOpenFileRoot } from '../../src/internal/file-input.js'
 import {
+  capturePrivateArtifactInput,
   capturePrivateInput,
+  readPrivateCapturedInput,
   requirePrivateCapturedInput,
 } from '../../src/internal/input-capture.js'
 
@@ -76,6 +78,19 @@ test('output and invocation captures have separate authority and byte bounds', a
     const captured = capturePrivateOutput(fd)
     try {
       expect(readPrivateCapturedOutput(captured)[0]!.contents.equals(bytes)).toBe(true)
+      const file = captured.files[0]!
+      expect(() => capturePrivateArtifactInput(captured, { ...file })).toThrow('original')
+      const input = capturePrivateArtifactInput(captured, file)
+      try {
+        expect(input.purpose).toBe('artifact-input')
+        expect(requirePrivateCapturedInput(input).bytes).toBe(bytes.length)
+        expect(readPrivateCapturedInput(input).equals(bytes)).toBe(true)
+      } finally {
+        input.close()
+      }
+      const cancelled = new AbortController()
+      cancelled.abort()
+      expect(() => capturePrivateArtifactInput(captured, file, cancelled.signal)).toThrow()
     } finally {
       captured.close()
     }
