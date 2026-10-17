@@ -51,6 +51,10 @@ These deterministic checks and `captured-output.test.ts`'s manifest/selection
 cases do not qualify native enforcement, durable controller recovery or installed
 consumer behavior.
 
+`host/project-feature-admission.test.ts` uses the actual configuration evaluator.
+Feature linking and admission retain all ordinary source and native requirements.
+The portable profile must not replace that evaluator.
+
 Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
 Protected acceptance, replacement and save limits require actual SQLite ownership.
 Native command loss, independent fencing and installed recovery remain host gates.
@@ -59,6 +63,12 @@ Native command loss, independent fencing and installed recovery remain host gate
 Its ordinary process adapter reports no native fencing.
 Valid protocol exchanges must still refuse execution success without qualified fencing.
 Native lifecycle suites own successful execution and complete descendant cleanup.
+
+Portable presentation and delivery inspection cases check pure rendering, stored
+bytes and actual elapsed completion limits. They do not prove authenticated
+capture, retirement acknowledgements or native cleanup.
+Saved-result cases use actual files, descriptors and subprocess output.
+Hardware I/O failure windows require separate evidence.
 
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.

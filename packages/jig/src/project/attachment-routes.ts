@@ -1,16 +1,16 @@
+import type { PrivateRetainedGrantedSlot } from '../internal/project-evaluation-retention.js'
 import type {
   BindingAttachmentInterface,
   BindingAttachmentMap,
   BindingAttachmentMapping,
 } from './author.js'
-import type { GrantedSlot } from './grants.js'
 import type { RunTargetIdentity } from './package-project.js'
 export interface MappedFlowRoute {
   readonly kind: 'route'
   readonly target: RunTargetIdentity
   readonly attachments: BindingAttachmentMap
 }
-export type ProjectSlotTarget = RunTargetIdentity | GrantedSlot | MappedFlowRoute
+export type ProjectSlotTarget = RunTargetIdentity | PrivateRetainedGrantedSlot | MappedFlowRoute
 
 // Negative end lookahead excludes a final newline accepted by JavaScript `$`.
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/

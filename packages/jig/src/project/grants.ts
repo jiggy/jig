@@ -2,7 +2,6 @@ import {
   isPrivateNativeTurnAllowance,
   PRIVATE_NATIVE_TURN_POLICY,
 } from '../internal/native-agent-turn-policy.js'
-import type { PrivateRetainedProjectEvaluation } from '../internal/project-evaluation-retention.js'
 import { canonicalJson, type JsonObject } from '../json.js'
 import type { SchemaValue } from '../schema/types.js'
 import { snapshotJsonObject } from './author-value.js'
@@ -117,7 +116,6 @@ export interface GrantedSlot {
   readonly kind: 'grant'
   readonly policy: GrantPolicy
   readonly name?: string
-  readonly evaluation?: PrivateRetainedProjectEvaluation
 }
 
 /** A declaration is policy data, never an active handle or permission by itself. */

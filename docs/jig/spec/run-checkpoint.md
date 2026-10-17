@@ -87,6 +87,12 @@ save was accepted. On normal success, `files/` contains the accepted final
 native output and selected forwarded artifacts. The checkpoint remains
 separately identified in `result.json`.
 
+If the root has no writable attachments and selects no final artifact results,
+the packet uses the latest accepted checkpoint's files.
+Without an accepted checkpoint, its file source is `none`.
+An empty tree from a declared writable attachment remains a final output source.
+These choices never change the successful execution terminal.
+
 `delivery.source` names the exported file source: `final`, `checkpoint`, or
 `none`. If the coordinator disappears after a successful terminal was committed
 but before final files were delivered, known success is preserved.

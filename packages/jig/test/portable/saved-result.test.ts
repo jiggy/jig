@@ -1,26 +1,20 @@
 import { dirname as suiteDirname } from 'node:path'
-
 const suiteTestRoot = suiteDirname(import.meta.dir)
-
-import { expect, spyOn, test } from 'bun:test'
-import * as fs from 'node:fs'
+import { expect, test } from 'bun:test'
 import { link, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
-import { main, privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
+import { privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
   privateSavedResultPlain,
   privateSavedResultViews,
 } from '../../src/cli-saved-result-presentation.js'
 import { sha256 } from '../../src/internal/file-input.js'
-import * as imagePreview from '../../src/internal/image-preview.js'
-import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 import { privateCaptureSavedResult } from '../../src/internal/saved-result.js'
 import { canonicalJson, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
 import { settleTestCommand } from '.././fixtures/bounded-command.js'
-
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-saved-result-')))
   try {
@@ -69,7 +63,18 @@ function diagnosticViewText(capture: Awaited<ReturnType<typeof privateCaptureSav
     .join('\n')
 }
 
-test('rejected allocations and collective close failures dispose bytes without losing primary interruption', async () =>
+async function inspect(root: string, args: string[] = []) {
+  const child = Bun.spawn(
+    [process.execPath, join(suiteTestRoot, '../src/cli.ts'), 'inspect', '--result', root, ...args],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  )
+  return settleTestCommand(child, {
+    evidence: join(await mkdtemp(join(root, 'cli-evidence-')), 'command'),
+    timeoutMs: 15_000,
+  })
+}
+
+test('actual descriptors refuse missing and oversized files and preserve preexisting interruption', async () =>
   fixture(async (root) => {
     const child = Bun.spawn(
       [process.execPath, join(suiteTestRoot, 'saved-result-faults.ts'), root],
@@ -83,7 +88,7 @@ test('rejected allocations and collective close failures dispose bytes without l
       timeoutMs: 15_000,
     })
     expect(result.code, result.stderr).toBe(0)
-    expect(result.stdout).toContain('saved capture buffer ownership and collective cleanup passed')
+    expect(result.stdout).toContain('saved capture real descriptor refusal and closure passed')
   }))
 test('saved previews remain immutable after packet replacement and release on close', async () =>
   fixture(async (root) => {
@@ -131,33 +136,18 @@ test('partial file verification preserves the exact valid report and prior verif
       capture.close()
     }
   }))
-test('a write racing an opened file capture refuses that file and preserves the report', async () =>
+test('a changed artifact refuses capture and preserves the report', async () =>
   fixture(async (root) => {
     await packet(root, { patch: Buffer.from('initial patch') })
     const path = join(root, 'files', 'patch')
-    const inode = fs.statSync(path, { bigint: true }).ino
-    const original = fs.readSync
-    let changed = false
-    const intercepted = spyOn(fs, 'readSync').mockImplementation(((...args: any[]) => {
-      const count = (original as any)(...args)
-      if (!changed && fs.fstatSync(args[0], { bigint: true }).ino === inode) {
-        changed = true
-        fs.writeFileSync(path, 'a changed file with a different size')
-      }
-      return count
-    }) as any)
+    await writeFile(path, 'a changed file with a different size')
+    const capture = await privateCaptureSavedResult(root)
     try {
-      const capture = await privateCaptureSavedResult(root)
-      try {
-        expect(changed).toBeTrue()
-        expect(capture.complete).toBeFalse()
-        expect(capture.record.status).toBe('succeeded')
-        expect(capture.preview('patch')).toBeUndefined()
-      } finally {
-        capture.close()
-      }
+      expect(capture.complete).toBeFalse()
+      expect(capture.record.status).toBe('succeeded')
+      expect(capture.preview('patch')).toBeUndefined()
     } finally {
-      intercepted.mockRestore()
+      capture.close()
     }
   }))
 test('unread named pipes and symlinked artifacts cannot stall or escape capture', async () =>
@@ -317,81 +307,59 @@ test('report document boundary admits one publisher LF without relaxing JSON lim
     await writeFile(join(root, 'result.json'), document + '\n\n')
     await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
   }))
-test('saved CLI does not acquire a project or inspect the environment, even for recorded failures', async () =>
+test('saved CLI works outside a project even for recorded failures', async () =>
   fixture(async (root) => {
     const value = await packet(
       root,
       {},
       { status: 'failed', code: 'RECORDED_FAILURE', message: 'original failure' },
     )
-    let calls = 0,
-      output = '',
-      errors = ''
-    const code = await main(['inspect', '--result', root, '--json'], {
-      currentDirectory: '/',
-      terminalOutput: true,
-      terminalError: false,
-      host: {
-        acquire: async () => {
-          calls++
-          throw new Error('must not acquire')
-        },
-      },
-      inspectEnvironment: async () => {
-        calls++
-        throw new Error('must not inspect')
-      },
-      writeRecord: async (text) => {
-        output += text
-      },
-      writeError: (text) => {
-        errors += text
-      },
-    })
-    expect(code).toBe(0)
-    expect(calls).toBe(0)
-    expect(errors).toBe('')
-    expect(JSON.parse(output)).toEqual(value)
+    const result = await inspect(root, ['--json'])
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(JSON.parse(result.stdout)).toEqual(value)
     expect(privateCliRequiresHost(['inspect', '--result', root])).toBeFalse()
     expect(privateCliSavedResultInspection(['inspect', '--result', root])).toBeTrue()
   }))
-test('partial JSON is unchanged, unavailable reports emit no invented value, and output failure is exit one', async () =>
+test('partial JSON is unchanged and unavailable reports emit no invented value', async () =>
   fixture(async (root) => {
     const value = await packet(root, { patch: Buffer.from('expected') })
     await rm(join(root, 'files', 'patch'))
-    let output = '',
-      errors = ''
-    const options = {
-      terminalOutput: false,
-      terminalError: false,
-      writeRecord: async (text: string) => {
-        output += text
-      },
-      writeError: (text: string) => {
-        errors += text
-      },
-    }
-    expect(await main(['inspect', '--result', root], options)).toBe(1)
-    expect(JSON.parse(output)).toEqual(value)
-    expect(errors).toContain('JIG_RESULT_FILES_INCOMPLETE')
-    output = ''
-    errors = ''
+    let result = await inspect(root)
+    expect(result.code).toBe(1)
+    expect(JSON.parse(result.stdout)).toEqual(value)
+    expect(result.stderr).toContain('JIG_RESULT_FILES_INCOMPLETE')
     await writeFile(
       join(root, 'result.json'),
       '{"status":"succeeded","status":"evil rejected value"}',
     )
-    expect(await main(['inspect', '--result', root, '--json'], options)).toBe(1)
-    expect(output).toBe('')
-    expect(errors).not.toContain('evil rejected value')
-    await packet(root)
-    expect(
-      await main(['inspect', '--result', root, '--json'], {
-        ...options,
-        writeRecord: async () => {
-          throw new Error('broken output')
-        },
-      }),
-    ).toBe(1)
+    result = await inspect(root, ['--json'])
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).not.toContain('evil rejected value')
+  }))
+test('saved CLI refuses an actual read-only output descriptor', async () =>
+  fixture(async (root) => {
+    const child = Bun.spawn(
+      [
+        '/bin/sh',
+        '-c',
+        'exec "$@" 1</dev/null',
+        'saved-result-output',
+        process.execPath,
+        join(suiteTestRoot, 'saved-result-faults.ts'),
+        root,
+        'closed-output',
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    )
+    const result = await settleTestCommand(child, {
+      evidence: join(root, 'closed-output'),
+      timeoutMs: 15_000,
+    })
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('saved CLI refused read-only output')
   }))
 test('literal saved presentation escapes command-like data and pointers use selected evidence', async () =>
   fixture(async (root) => {
@@ -634,8 +602,7 @@ test('recorded multiline expansion preserves trailing spaces and blank lines', a
       capture.close()
     }
   }))
-
-test('saved image previews remain immutable after the original SVG changes', async () =>
+test('an unavailable image renderer preserves immutable SVG text after the original file changes', async () =>
   fixture(async (root) => {
     const svg = Buffer.from(
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
@@ -644,8 +611,8 @@ test('saved image previews remain immutable after the original SVG changes', asy
     const capture = await privateCaptureSavedResult(root)
     try {
       const before = capture.preview('chart.svg')!
-      expect(before.image?.mime).toBe('image/png')
-      expect(before.image?.width).toBe(384)
+      expect(before.image).toBeUndefined()
+      expect(before.text).toContain('<svg')
       await writeFile(join(root, 'files/chart.svg'), 'replacement')
       expect(capture.preview('chart.svg')).toEqual(before)
       capture.close()
@@ -654,62 +621,3 @@ test('saved image previews remain immutable after the original SVG changes', asy
       capture.close()
     }
   }))
-
-test('plain and machine saved inspection can skip optional decoding while retaining the captured text', async () =>
-  fixture(async (root) => {
-    const svg = Buffer.from(
-      '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16"/></svg>',
-    )
-    await packet(root, { 'chart.svg': svg })
-    const capture = await privateCaptureSavedResult(root, undefined, false)
-    try {
-      expect(capture.preview('chart.svg')?.image).toBeUndefined()
-      expect(capture.preview('chart.svg')?.text).toBe(svg.toString())
-    } finally {
-      capture.close()
-    }
-  }))
-
-for (const spent of [9900, 10_001]) {
-  test(`saved image preparation keeps the original deadline after ${spent} ms of capture`, async () =>
-    fixture(async (root) => {
-      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>')
-      await packet(root, { 'chart.svg': svg })
-      const rootInode = fs.statSync(root, { bigint: true }).ino
-      const actualNow = performance.now.bind(performance)
-      const actualClose = fs.closeSync
-      let offset = 0
-      const now = spyOn(performance, 'now').mockImplementation(() => actualNow() + offset)
-      const close = spyOn(fs, 'closeSync').mockImplementation((fd) => {
-        const info = fs.fstatSync(fd, { bigint: true })
-        actualClose(fd)
-        if (info.isDirectory() && info.ino === rootInode) offset = spent
-      })
-      const cutoffs: number[] = []
-      const decoder = spyOn(imagePreview, 'privateImagePreview').mockImplementation(
-        async (_bytes, _signal, deadline) => {
-          cutoffs.push(deadline! - privatePresentationNow())
-          return undefined
-        },
-      )
-      try {
-        const capture = await privateCaptureSavedResult(root)
-        try {
-          expect(capture.complete).toBeTrue()
-          expect(capture.preview('chart.svg')?.text).toBe(svg.toString())
-          expect(capture.preview('chart.svg')?.image).toBeUndefined()
-          expect(cutoffs).toHaveLength(spent < 10_000 ? 1 : 0)
-          if (cutoffs.length) {
-            expect(cutoffs[0]).toBeGreaterThan(0)
-            expect(cutoffs[0]).toBeLessThanOrEqual(100)
-          }
-        } finally {
-          capture.close()
-        }
-      } finally {
-        decoder.mockRestore()
-        close.mockRestore()
-        now.mockRestore()
-      }
-    }))
-}

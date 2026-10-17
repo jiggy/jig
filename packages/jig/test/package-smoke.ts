@@ -703,7 +703,7 @@ const project = defineJig(input);
 const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker", files: { target: "flow:./flows/files", attachments: { source: { from: "source" }, output: { into: "output", directory: "copies" } } }, tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
+  slots: { worker: "flow:./flows/worker", files: { target: "flow:./flows/files", attachments: { source: { from: "source" }, output: { create: true } } }, tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
 };
 const binding = defineBinding(bindingInput);
 void project;
