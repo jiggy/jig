@@ -204,6 +204,19 @@ These links locate module rules. All selected domain requirements still apply.
   Invalid final files retain the known execution terminal and never authorize
   replay.
 
+  Checkpoint snapshot validation compares each ordered path, byte count and digest.
+  Decoded JSON object key order never changes manifest identity.
+
+  Linux snapshot transfer uses the existing token-authenticated command control.
+  Import the held descriptor through the trusted coordinator's `/proc` reader.
+  Require an anonymous regular file and all immutable memfd seals.
+
+  Both platforms verify exact bounded manifest paths, byte counts and hashes
+  before creating a new immutable snapshot.
+  Keep original and imported handles alive through publication acknowledgement.
+  Decoded metadata alone grants no output authority.
+  Mac acquisition still requires its authenticated received-descriptor bundle.
+
   Its memoized close joins original prepare/publication, consumes held
   references before cleanup and closes the destination parent even if staging
   cleanup fails. The same failure remains observable on racing or repeated

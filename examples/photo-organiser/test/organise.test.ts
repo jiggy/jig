@@ -1,42 +1,23 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assertResponseSchema, prepareAgent } from '@jigging/agent-method'
-import type { Artifact, Attachment, JsonValue, RunContext, RunResult } from '@jigging/flow'
-import { REPORTING_CONTRACT, validateReportingMessage } from '@jigging/reporting'
-import { createPhotoContactSheet } from '../flows/contact-sheet/method.ts'
-import { copyPhotos } from '../flows/copy-photos/method.ts'
-import { groupPhotos } from '../flows/group/method.ts'
+import { validateReportingMessage } from '@jigging/reporting'
+import { contactSheetView } from '../flows/contact-sheet/view.ts'
+import { copiesView } from '../flows/copy-photos/view.ts'
 import responseSchema from '../flows/group/proposal.schema.json'
-import { readCatalogue } from '../flows/organise/catalogue.ts'
-import { organisePhotos } from '../flows/organise/method.ts'
-import { checkProposal, type RenamedPhoto } from '../flows/organise/plan.ts'
+import { groupingView } from '../flows/group/view.ts'
+import { capturePhotos, readCatalogue } from '../flows/organise/catalogue.ts'
+import {
+  checkContactSheetOutput,
+  checkCopiedPhotos,
+  checkProposal,
+} from '../flows/organise/plan.ts'
 import { photosView } from '../flows/organise/view.ts'
 
-type TestOrganiserRun = {
-  input: JsonValue
-  signal: AbortSignal
-  attachments: Record<string, Attachment>
-  call: RunContext['call']
-}
-
-const catalogue = readCatalogue(
-  await Bun.file(join(import.meta.dir, '../fixtures/photos/photos.json')).json(),
-)
-
-test('all photo Flows carry the exact licensed public reporting contract', async () => {
-  const descriptor = await readFile(
-    new URL(import.meta.resolve('@jigging/reporting/reporting.json')),
-  )
-  const license = await readFile(new URL(import.meta.resolve('@jigging/reporting/LICENSE')))
-
-  for (const flow of ['organise', 'group', 'copy-photos', 'contact-sheet']) {
-    const contractFolder = join(import.meta.dir, '..', 'flows', flow, 'contracts', 'reporting')
-    expect(await readFile(join(contractFolder, 'reporting.json'))).toEqual(descriptor)
-    expect(await readFile(join(contractFolder, 'LICENSE'))).toEqual(license)
-  }
-})
+const fixtureFolder = join(import.meta.dir, '../fixtures/photos')
+const catalogue = readCatalogue(await Bun.file(join(fixtureFolder, 'photos.json')).json())
 
 function fixtureEvent(caption: string): string {
   if (caption.includes('birthday')) {
@@ -48,379 +29,171 @@ function fixtureEvent(caption: string): string {
   return 'Lake picnic'
 }
 
+// Ordinary proposal data exercises application acceptance, not an Agent reply.
 const proposal = {
   assignments: catalogue.map((photo) => ({ id: photo.id, event: fixtureEvent(photo.caption) })),
 }
-async function withRun(
-  assertion: (
-    run: TestOrganiserRun,
-    outputFolder: string,
-    exportFinal: (result: RunResult) => Promise<void>,
-  ) => Promise<void>,
-) {
-  const root = await mkdtemp(join(tmpdir(), 'photo-organiser-'))
-  const outputFolder = join(root, 'output')
-  await mkdir(outputFolder)
-  const snapshots = new Map<Artifact, string>()
-  const run: TestOrganiserRun = {
-    input: {},
-    signal: new AbortController().signal,
-    attachments: {
-      source: { path: join(import.meta.dir, '../fixtures/photos'), access: 'read' },
-    },
-    call: async (request) => {
-      if (request.slot === 'group') {
-        return groupPhotos({
-          input: request.input,
-          signal: run.signal,
-          call: async () => ({
-            outcome: 'done',
-            output: { structured: proposal },
-          }),
-        })
-      }
-
-      // Application composition only: real leaf code writes separate temporary
-      // outputs. Synthetic references model final selection, not native rights.
-      // Sealing, isolation and export require a separately admitted host Run.
-      if (request.slot !== 'copy-photos' && request.slot !== 'contact-sheet') {
-        throw new Error('The fixture received an unknown file-method slot.')
-      }
-      const childFolder = join(root, request.slot)
-      await mkdir(childFolder)
-      const source = run.attachments.source
-      if (source === undefined) {
-        throw new Error('The file-method fixture needs its source attachment.')
-      }
-      const childRun = {
-        input: request.input,
-        signal: run.signal,
-        attachments: {
-          source,
-          files: { path: childFolder, access: 'read-write' as const },
-        },
-      }
-      expect(request.attachments).toEqual({ files: { create: true } })
-      const result =
-        request.slot === 'copy-photos'
-          ? await copyPhotos(childRun)
-          : await createPhotoContactSheet(childRun)
-      const artifact = Object.freeze({ reference: `synthetic:${request.operationId}` }) as Artifact
-      snapshots.set(artifact, childFolder)
-      return { ...result, artifacts: { files: artifact } }
-    },
-  }
-  try {
-    await assertion(run, outputFolder, async (result) => {
-      for (const [name, artifact] of Object.entries(result.artifactResults ?? {})) {
-        const folder = snapshots.get(artifact)
-        if (folder === undefined || (name !== 'copies' && name !== 'overview')) {
-          throw new Error('The application selected an unknown final artifact.')
-        }
-        await rename(folder, join(outputFolder, name))
-      }
-    })
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
+const plan = checkProposal(catalogue, proposal)
+const firstAssignment = proposal.assignments[0]
+const secondPhoto = catalogue[1]
+if (firstAssignment === undefined || secondPhoto === undefined) {
+  throw new Error('The fixture needs at least two photos and their assignments.')
 }
-test('checked copies preserve original bytes, group files and deliver a visible before/after sheet', async () =>
-  withRun(async (run, outputFolder, exportFinal) => {
-    const result = await organisePhotos(run)
-    expect(result.outcome).toBe('done')
-    expect(Object.keys(result.artifactResults ?? {}).sort()).toEqual(['copies', 'overview'])
-    expect(await readdir(outputFolder)).toEqual([])
-    await exportFinal(result)
-    const rows = (result.output as { photos: RenamedPhoto[] }).photos
-    expect(rows).toHaveLength(12)
-    for (const photo of rows) {
-      expect(await readFile(join(outputFolder, photo.destination))).toEqual(
-        await readFile(join(run.attachments.source!.path, photo.file)),
-      )
-    }
-    expect(result.output).toMatchObject({
-      manifest: 'copies/manifest.csv',
-      contactSheet: 'overview/contact-sheet.svg',
-    })
-    expect(photosView(rows, true).sections[0]?.blocks[1]).toMatchObject({
-      references: [
-        { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
-        { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
-      ],
-    })
-    expect(await readFile(join(outputFolder, 'copies/manifest.csv'), 'utf8')).toContain(
-      'id,original,event,date,copy',
-    )
-    const sheet = await readFile(join(outputFolder, 'overview/contact-sheet.svg'), 'utf8')
-    expect(sheet.match(/<image /g)).toHaveLength(24)
-    expect(sheet).toContain('Original order and names')
-    expect(sheet).toContain('Grouped copies')
-  }))
 
-test('file Flows receive checked assignments only, after grouping, with no runtime paths', async () =>
-  withRun(async (run) => {
-    const originalCall = run.call
-    const slots: string[] = []
-    run.call = async (request) => {
-      slots.push(request.slot)
-      if (request.slot !== 'group') {
-        const input = request.input as { assignments: { id: string; event: string }[] }
-        expect(Object.keys(input)).toEqual(['assignments'])
-        expect(input.assignments).toHaveLength(12)
-        for (const assignment of input.assignments) {
-          expect(Object.keys(assignment)).toEqual(['id', 'event'])
-        }
-      }
-      return originalCall(request)
-    }
-    expect((await organisePhotos(run)).outcome).toBe('done')
-    expect(slots).toEqual(['group', 'copy-photos', 'contact-sheet'])
-  }))
-
-test('copy metadata can be reordered without changing the accepted collection', async () =>
-  withRun(async (run) => {
-    const originalCall = run.call
-    run.call = async (request) => {
-      const result = await originalCall(request)
-      if (request.slot === 'copy-photos') {
-        const output = result.output as { photos: RenamedPhoto[] }
-        output.photos.reverse()
-      }
-      return result
-    }
-    const result = await organisePhotos(run)
-    expect(result.outcome).toBe('done')
-    expect((result.output as { photos: RenamedPhoto[] }).photos.map((photo) => photo.id)).toEqual(
-      checkProposal(catalogue, proposal).map((photo) => photo.id),
-    )
-  }))
-
-for (const slot of ['copy-photos', 'contact-sheet']) {
-  for (const failure of [
-    'throw',
-    'cancel',
-    'incomplete',
-    'unexpected-outcome',
-    'changed-path',
-    'missing-artifact',
-  ]) {
-    test(`${slot} ${failure} prevents a completed collection without replay`, async () =>
-      withRun(async (run) => {
-        const originalCall = run.call
-        const calls: string[] = []
-        const cancellation = new AbortController()
-        run.signal = cancellation.signal
-        run.call = async (request) => {
-          calls.push(request.slot)
-          if (request.slot !== slot) {
-            return originalCall(request)
-          }
-          if (failure === 'throw') {
-            throw new Error('uncertain file Flow dispatch')
-          }
-          if (failure === 'cancel') {
-            cancellation.abort()
-            return { outcome: 'done', output: {} }
-          }
-          if (failure === 'unexpected-outcome') {
-            return { outcome: 'blocked', output: { reason: 'cannot proceed' } }
-          }
-          if (failure === 'missing-artifact') {
-            const result = await originalCall(request)
-            return { outcome: result.outcome, output: result.output }
-          }
-          const count = failure === 'incomplete' ? 11 : 12
-          if (slot === 'copy-photos') {
-            const photos = checkProposal(catalogue, proposal)
-            if (failure === 'changed-path') {
-              const firstPhoto = photos[0]
-              if (firstPhoto === undefined) {
-                throw new Error('The fixture needs at least one photo.')
-              }
-              firstPhoto.destination = 'unreviewed/image.svg'
-            }
-            return { outcome: 'done', output: { count, photos, manifest: 'manifest.csv' } }
-          }
-          const contactSheet =
-            failure === 'changed-path' ? '../unreviewed.svg' : 'contact-sheet.svg'
-          return { outcome: 'done', output: { count, contactSheet } }
-        }
-        await expect(organisePhotos(run)).rejects.toThrow()
-        expect(calls.filter((calledSlot) => calledSlot === slot)).toHaveLength(1)
-        if (slot === 'copy-photos') {
-          expect(calls).toEqual(['group', 'copy-photos'])
-        }
-      }))
+test('all photo Flows carry the exact licensed public reporting contract', async () => {
+  const descriptor = await readFile(
+    new URL(import.meta.resolve('@jigging/reporting/reporting.json')),
+  )
+  const license = await readFile(new URL(import.meta.resolve('@jigging/reporting/LICENSE')))
+  for (const flow of ['organise', 'group', 'copy-photos', 'contact-sheet']) {
+    const folder = join(import.meta.dir, '..', 'flows', flow, 'contracts', 'reporting')
+    expect(await readFile(join(folder, 'reporting.json'))).toEqual(descriptor)
+    expect(await readFile(join(folder, 'LICENSE'))).toEqual(license)
   }
-}
+})
+
+test('the accepted plan accounts for every original with deterministic safe destinations', () => {
+  expect(plan).toHaveLength(12)
+  expect(new Set(plan.map((photo) => photo.id))).toEqual(
+    new Set(catalogue.map((photo) => photo.id)),
+  )
+  for (const photo of plan) {
+    const eventFolder = photo.event.toLowerCase().replaceAll(' ', '-')
+    expect(photo.destination).toBe(`${eventFolder}/${photo.date}_${eventFolder}_${photo.id}.svg`)
+  }
+  expect(checkProposal(catalogue, { assignments: [...proposal.assignments].reverse() })).toEqual(
+    plan,
+  )
+})
+
 for (const [name, invalidProposal] of [
-  ['duplicate IDs', { assignments: proposal.assignments.map(() => proposal.assignments[0]!) }],
+  ['duplicate IDs', { assignments: proposal.assignments.map(() => firstAssignment) }],
   ['missing photo', { assignments: proposal.assignments.slice(1) }],
   [
     'unknown ID',
     {
-      assignments: proposal.assignments.map((photo, photoIndex) =>
-        photoIndex === 0 ? { ...photo, id: 'unknown' } : photo,
+      assignments: proposal.assignments.map((photo, index) =>
+        index === 0 ? { ...photo, id: 'unknown' } : photo,
       ),
     },
   ],
   [
     'path injection',
-    { assignments: proposal.assignments.map((photo) => ({ ...photo, event: '../escape' })) },
+    {
+      assignments: proposal.assignments.map((photo) => ({ ...photo, event: '../escape' })),
+    },
   ],
   [
     'normalization collision',
     {
-      assignments: proposal.assignments.map((photo, photoIndex) => ({
+      assignments: proposal.assignments.map((photo, index) => ({
         ...photo,
-        event: photoIndex === 0 ? 'Lake picnic' : 'Lake-picnic',
+        event: index === 0 ? 'Lake picnic' : 'Lake-picnic',
       })),
     },
   ],
   ['unexpected fields', { ...proposal, command: 'delete' }],
 ] as const) {
-  test(`rejects ${name} before writing any output`, async () =>
-    withRun(async (run, outputFolder) => {
-      run.call = async () => ({
-        outcome: 'done',
-        output: invalidProposal,
-      })
-      await expect(organisePhotos(run)).rejects.toThrow()
-      expect(await readdir(outputFolder)).toEqual([])
-    }))
+  test(`proposal acceptance rejects ${name}`, () => {
+    expect(() => checkProposal(catalogue, invalidProposal)).toThrow()
+  })
 }
-for (const outcome of ['blocked', 'limit', 'error', 'cancel'] as const) {
-  test(`preserves ${outcome} without replay or files`, async () =>
-    withRun(async (run, outputFolder) => {
-      let calls = 0
-      const controller = new AbortController()
-      run.signal = controller.signal
-      run.call = async () => {
-        calls++
-        if (outcome === 'error') {
-          throw Error('uncertain dispatch')
-        }
-        if (outcome === 'cancel') {
-          controller.abort()
-          return { outcome: 'done', output: proposal }
-        }
-        return { outcome, output: { reason: 'cannot proceed' } }
-      }
-      if (outcome === 'error' || outcome === 'cancel') {
-        await expect(organisePhotos(run)).rejects.toThrow()
-      } else {
-        expect((await organisePhotos(run)).outcome).toBe(outcome)
-      }
-      expect(calls).toBe(1)
-      expect(await readdir(outputFolder)).toEqual([])
-    }))
+
+test('copy metadata acceptance permits reordering without changing the plan', () => {
+  const before = structuredClone(plan)
+  checkCopiedPhotos(plan, { count: 12, photos: [...plan].reverse(), manifest: 'manifest.csv' })
+  expect(plan).toEqual(before)
+})
+
+for (const [name, output] of [
+  ['incomplete count', { count: 11, photos: plan, manifest: 'manifest.csv' }],
+  ['missing photo', { count: 12, photos: plan.slice(1), manifest: 'manifest.csv' }],
+  [
+    'changed destination',
+    {
+      count: 12,
+      photos: plan.map((photo, index) =>
+        index === 0 ? { ...photo, destination: 'unreviewed/image.svg' } : photo,
+      ),
+      manifest: 'manifest.csv',
+    },
+  ],
+  ['duplicate identity', { count: 12, photos: plan.map(() => plan[0]), manifest: 'manifest.csv' }],
+  ['changed manifest', { count: 12, photos: plan, manifest: '../manifest.csv' }],
+  ['extra field', { count: 12, photos: plan, manifest: 'manifest.csv', checked: true }],
+] as const) {
+  test(`copy metadata acceptance rejects ${name}`, () => {
+    expect(() => checkCopiedPhotos(plan, output)).toThrow()
+  })
 }
-test('refuses unsafe paths, duplicate source identities and invalid dates', () => {
-  for (const change of [
-    { file: '../image.svg' },
-    { date: '2026-02-30' },
-    { id: catalogue[1]!.id },
+
+test('contact sheet metadata acceptance requires the complete count and exact relative path', () => {
+  checkContactSheetOutput(12, { count: 12, contactSheet: 'contact-sheet.svg' })
+  for (const output of [
+    { count: 11, contactSheet: 'contact-sheet.svg' },
+    { count: 12, contactSheet: '../unreviewed.svg' },
+    { count: 12, contactSheet: 'contact-sheet.svg', checked: true },
   ]) {
+    expect(() => checkContactSheetOutput(12, output)).toThrow()
+  }
+})
+
+test('refuses unsafe paths, duplicate source identities and invalid dates', () => {
+  for (const change of [{ file: '../image.svg' }, { date: '2026-02-30' }, { id: secondPhoto.id }]) {
     expect(() =>
       readCatalogue(
-        catalogue.map((photo, photoIndex) => (photoIndex === 0 ? { ...photo, ...change } : photo)),
+        catalogue.map((photo, index) => (index === 0 ? { ...photo, ...change } : photo)),
       ),
     ).toThrow()
   }
 })
-test('missing source photo fails before paid work', async () =>
-  withRun(async (run, outputFolder) => {
-    const root = await mkdtemp(join(tmpdir(), 'photo-missing-'))
-    try {
-      await writeFile(join(root, 'photos.json'), JSON.stringify(catalogue))
-      run.attachments.source = { path: root, access: 'read' }
-      let calls = 0
-      run.call = async () => {
-        calls++
-        throw Error('unexpected')
-      }
-      await expect(organisePhotos(run)).rejects.toThrow()
-      expect(calls).toBe(0)
-      expect(await readdir(outputFolder)).toEqual([])
-    } finally {
-      await rm(root, { recursive: true, force: true })
-    }
-  }))
-test('both Flow views satisfy the exact public channel contract', async () => {
-  const { withReporting } = await import('@jigging/reporting')
-  const writes: unknown[] = []
-  // Each invoked Flow owns a distinct publisher and its own landing view.
-  for (const grouping of [false, true]) {
-    await withReporting(
-      {
-        signal: new AbortController().signal,
-        channels: {
-          progress: {
-            direction: 'send',
-            contract: REPORTING_CONTRACT,
-            delivery: 'broadcast',
-            send: async (update: unknown) => {
-              writes.push(update)
-            },
-            close: async () => {},
-          },
-        },
-      },
-      'progress',
-      async (updates) => {
-        if (grouping) {
-          await groupPhotos(
-            {
-              input: { photos: catalogue.map(({ id, date, caption }) => ({ id, date, caption })) },
-              signal: new AbortController().signal,
-              call: async () => ({
-                outcome: 'done',
-                output: { structured: proposal },
-              }),
-            },
-            updates,
-          )
-        } else {
-          updates
-            .view('photos', { title: 'Photo box', landing: true })
-            .update(photosView(checkProposal(catalogue, proposal), true))
-        }
-      },
-    )
-  }
-  expect(writes.length).toBeGreaterThan(0)
-  for (const item of writes) {
-    validateReportingMessage(item)
+
+test('source capture reads all real fixture bytes', async () => {
+  const captured = await capturePhotos(fixtureFolder, new AbortController().signal)
+  expect(captured.photos).toEqual(catalogue)
+  for (const photo of catalogue) {
+    expect(captured.images.get(photo.id)).toEqual(await readFile(join(fixtureFolder, photo.file)))
   }
 })
 
-test('the emitted request passes the actual ACP Agent preparation and schema profile', async () =>
-  withRun(async (run) => {
-    assertResponseSchema(responseSchema)
-    let prepared = false
-    const originalCall = run.call
-    run.call = async (request) => {
-      if (request.slot !== 'group') {
-        return originalCall(request)
-      }
-      expect(JSON.stringify(request.input)).not.toContain('.svg')
-      return groupPhotos({
-        input: request.input,
-        signal: run.signal,
-        call: async (agentRequest) => {
-          expect(agentRequest.slot).toBe('agent')
-          const task = prepareAgent(agentRequest.input)
-          expect(task.request.responseSchema).toEqual(responseSchema)
-          prepared = true
-          return { outcome: 'done', output: { structured: proposal } }
-        },
-      })
-    }
-    expect((await organisePhotos(run)).outcome).toBe('done')
-    expect(prepared).toBe(true)
-  }))
+test('source capture rejects a catalogue whose original is missing', async () => {
+  const folder = await mkdtemp(join(tmpdir(), 'photo-missing-'))
+  try {
+    await writeFile(join(folder, 'photos.json'), JSON.stringify(catalogue))
+    await expect(capturePhotos(folder, new AbortController().signal)).rejects.toThrow()
+  } finally {
+    await rm(folder, { recursive: true, force: true })
+  }
+})
 
-test('the ACP regression check rejects the originally shipped schema', () => {
+test('all four pure view projections satisfy the public reporting schema', () => {
+  for (const snapshot of [
+    photosView(),
+    photosView(plan, true),
+    groupingView(12),
+    groupingView(12, true),
+    copiesView(),
+    copiesView(plan, true),
+    contactSheetView(),
+    contactSheetView(12, true),
+  ]) {
+    validateReportingMessage({ kind: 'view', id: 'photos', title: 'Photos', ...snapshot })
+  }
+  expect(photosView(plan, true).sections[0]?.blocks[1]).toMatchObject({
+    references: [
+      { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+      { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
+    ],
+  })
+})
+
+test('the private response schema passes the public Agent preparation validator', () => {
+  assertResponseSchema(responseSchema)
+  const task = prepareAgent({ instructions: 'Group captions by event.', responseSchema })
+  expect(task.request.responseSchema).toEqual(responseSchema)
+})
+
+test('the ACP regression check rejects unsupported response schemas', () => {
   const original = structuredClone(responseSchema) as Record<string, unknown>
   delete original.$schema
   expect(() => assertResponseSchema(original as typeof responseSchema)).toThrow(
@@ -434,7 +207,7 @@ test('the ACP regression check rejects the originally shipped schema', () => {
 test('all twelve fixtures differ visually beyond their ID labels', async () => {
   const scenes = await Promise.all(
     catalogue.map(async (photo) =>
-      (await readFile(join(import.meta.dir, '../fixtures/photos', photo.file), 'utf8')).replace(
+      (await readFile(join(fixtureFolder, photo.file), 'utf8')).replace(
         /<text[^>]*>.*?<\/text>/g,
         '',
       ),
@@ -442,31 +215,3 @@ test('all twelve fixtures differ visually beyond their ID labels', async () => {
   )
   expect(new Set(scenes).size).toBe(12)
 })
-
-for (const outcome of ['blocked', 'limit', 'cancel', 'error'] as const) {
-  test(`grouping preserves Agent ${outcome} without retry`, async () => {
-    const controller = new AbortController()
-    let calls = 0
-    const run = {
-      input: { photos: catalogue.map(({ id, date, caption }) => ({ id, date, caption })) },
-      signal: controller.signal,
-      call: async () => {
-        calls++
-        if (outcome === 'error') {
-          throw Error('uncertain Agent dispatch')
-        }
-        if (outcome === 'cancel') {
-          controller.abort()
-          return { outcome: 'done', output: { structured: proposal } }
-        }
-        return { outcome, output: { text: 'cannot proceed' } }
-      },
-    }
-    if (outcome === 'error' || outcome === 'cancel') {
-      await expect(groupPhotos(run)).rejects.toThrow()
-    } else {
-      expect(await groupPhotos(run)).toEqual({ outcome, output: { reason: 'cannot proceed' } })
-    }
-    expect(calls).toBe(1)
-  })
-}

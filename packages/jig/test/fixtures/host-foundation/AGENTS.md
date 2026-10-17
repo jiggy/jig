@@ -35,6 +35,11 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 - Preserve failed consumers, exact archive digests, and bounded private command
   transcripts. Delete successful temporary roots only after terminal cleanup and
   exported-byte assertions. Command exit alone is not cleanup evidence.
+- Driver failures report fixed application stages and public client or terminal
+  error codes. Preserve the original exception and exclude tickets, receipts,
+  inputs, diagnostic payloads, and private state from this summary.
+- Exact repeated exports reconcile their original delivery. Collision checks use
+  a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic
   iteration proves artifact/evaluation composition, not adaptation quality.
 - Cancellation and client-death cases await a real reviewed HTTP request.

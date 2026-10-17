@@ -347,11 +347,18 @@ export class PrivateFileDeliveryOwner {
           throw new TypeError('checkpoint publication requires its settled Run')
         if (checkpointCapture !== undefined) {
           const capture = requirePrivateCapturedOutput(checkpointCapture)
+          const manifest = checkpoint.manifest
           if (
-            checkpoint.manifest === undefined ||
-            JSON.stringify(
-              capture.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
-            ) !== JSON.stringify(checkpoint.manifest)
+            manifest === undefined ||
+            capture.files.length !== manifest.length ||
+            capture.files.some((file, index) => {
+              const retained = manifest[index]!
+              return (
+                file.path !== retained.path ||
+                file.bytes !== retained.bytes ||
+                file.digest !== retained.digest
+              )
+            })
           )
             throw new TypeError('checkpoint snapshot differs from retained manifest')
           files.push(

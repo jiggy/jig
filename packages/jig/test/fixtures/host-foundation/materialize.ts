@@ -84,6 +84,24 @@ export function foundationEnvironment(): NodeJS.ProcessEnv {
   return result
 }
 
+function clientFailureSummary(stderr: string): string | undefined {
+  const encoded = /^Foundation client failure: (\{[^\n]{1,1024}\})$/m.exec(stderr)?.[1]
+  if (encoded === undefined) return undefined
+  try {
+    const value = JSON.parse(encoded)
+    const summary: Record<string, string | boolean> = {}
+    for (const key of ['application', 'stage', 'mode', 'terminalCode', 'code', 'operation']) {
+      if (typeof value[key] === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value[key]))
+        summary[key] = value[key]
+    }
+    if (typeof value.uncertain === 'boolean') summary.uncertain = value.uncertain
+    if (summary.application && summary.stage) return JSON.stringify(summary)
+  } catch {
+    // Diagnostic parsing never replaces the original bounded command failure.
+  }
+  return undefined
+}
+
 export function foundationCommands(evidence: string) {
   let sequence = 0
   return async (args: string[], cwd: string, timeoutMs = 195_000) => {
@@ -101,10 +119,11 @@ export function foundationCommands(evidence: string) {
       graceMs: 10_000,
     })
     const diagnostic = /Diagnostic code: ([A-Z][A-Z0-9_]{0,63})\b/.exec(result.stderr)?.[1]
+    const clientFailure = clientFailureSummary(result.stderr)
     assert.equal(
       result.code,
       0,
-      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}; see ${evidence}`,
+      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}; see ${evidence}`,
     )
     return result
   }

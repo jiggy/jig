@@ -64,6 +64,12 @@ Its ordinary process adapter reports no native fencing.
 Valid protocol exchanges must still refuse execution success without qualified fencing.
 Native lifecycle suites own successful execution and complete descendant cleanup.
 
+`portable/finite-acp-resource.test.ts` exercises production policy and frame codecs
+with actual peer process streams. It does not mint native enforcement receipts.
+The native lifecycle suites own the resource's successful execution and fencing.
+`portable/execution-output.test.ts` uses actual descriptors and captured snapshots.
+Guardian collection and recovery need genuine native owners.
+
 Portable presentation and delivery inspection cases check pure rendering, stored
 bytes and actual elapsed completion limits. They do not prove authenticated
 capture, retirement acknowledgements or native cleanup.
@@ -73,6 +79,13 @@ Hardware I/O failure windows require separate evidence.
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
 Pins and delivery receipts must come from the production owner.
+
+`linux/file-command-snapshot.test.ts` checks real sealed descriptors and the
+independent publication process after source removal.
+Recorded packet inputs do not establish native execution or fencing.
+`host/installed-photo-organiser.test.ts` checks unchanged application Flows,
+frozen packages and a real deterministic caption task through the installed host.
+It remains separate from live Agent judgment and untested fault windows.
 
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory

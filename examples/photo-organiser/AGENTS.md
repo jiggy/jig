@@ -26,8 +26,9 @@ while application checks and operator authority control file effects.
   entrypoint.
 - `fixtures/photos` owns twelve visually distinct labelled synthetic
   illustrations and caption/date sidecars. Tests construct invalid proposals.
-- `test` owns deterministic application and channel checks. `README.md` owns the
-  user walkthrough.
+- `test` owns pure acceptance checks, actual file-method checks and the
+  deterministic caption-task Flow used by installed regression tests.
+  `README.md` owns the user walkthrough.
 
 ## Local Contracts
 
@@ -93,8 +94,13 @@ while application checks and operator authority control file effects.
   Never replace invocation, artifact grants or export with a test double.
 - `test/file-methods.test.ts` checks independent copy/sheet results, byte
   preservation, input/source rejection before writes, cancellation, exclusive
-  creation and the exact optional public views. Those application checks do not
+  creation. Pure view checks validate the optional public reporting values.
+  Those application checks do not
   establish native containment or standalone/mapped host execution.
+- `packages/jig/test/host/installed-photo-organiser.test.ts` qualifies the
+  unchanged four-Flow application with a real caption-task Flow and frozen packages.
+  It requires the actual native host and checks packet bytes and ownership residue.
+  It does not establish live Agent judgment or untested fault windows.
 - Agent response schemas declare FLOW Schema/0 and use its bounded Agent subset.
   Length and filename constraints remain in application code.
 - Reporting checks compare all four offline descriptor/license copies with the

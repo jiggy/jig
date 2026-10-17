@@ -478,16 +478,18 @@ These links locate module rules. All selected domain requirements still apply.
   user-domain launchd jobs, exact cleanup and an unrelated-process sentinel. The
   execution test compiles its native fixture with the local Apple toolchain.
   `macos-captured-bytes.test.ts` covers anonymous read-only capture on macOS.
+
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
-  guardian loss. Controlled CPU faults check recovery from transient within-read
-  and between-sample regressions, sustained uncertainty refusal and strict final
-  accounting.
+  guardian loss. CPU evidence comes from actual kernel accounting.
+  Accounting regression and sustained uncertainty claims require actual native
+  observations, never rewritten controls or invented readings.
 
   They retain real kernel ownership and authenticated cleanup. Portable framing
   cases live in `macos-control-channel.test.ts`. Buffered unread stdin must
   preserve the payload's actual nonzero exit and output after confirmed fencing.
   These checks are primitive evidence, not installed-host conformance.
+
   `macos-descriptor-files.test.ts` compiles SDK layout assertions and checks
   identity across directory replacement, raw enumeration and exclusive
   publication. `package-capture.test.ts` runs shared source-capture cases on the
@@ -538,17 +540,18 @@ These links locate module rules. All selected domain requirements still apply.
   Linux filesystem and Nix loader cases remain Linux-only and require their own
   runner. `macos-guardian-storage.test.ts` qualifies journal-before-tool
   admission, descriptor collection after detached-descendant fencing, collection
-  lifetime, interrupted creation, coordinator/guardian loss and a failed
-  recovery guardian. Expiry during the final recovery drain refuses success,
-  retains journals, and permits an ordinary fresh guardian to finish cleanup
-  before retirement. Every cleanup attempt keeps its exact journals until
-  fencing is confirmed. An actual coordinator paused inside the storage
-  allocator before intent and killed by the test proves empty pre-journal
-  recovery without moving any existing crash barrier. Whole-file native checks
-  also preserve partial/foreign entries and refuse a first or late owner
-  journal, retirement markers, public/link/replaced or mounted storage.
+  lifetime and actual guardian loss. Missing recovery executables preserve
+  authenticated storage for an ordinary retry.
+  Invalid mounts, closed descriptors and actual allocation collisions exercise
+  refusal without replacing native operations.
+  Empty authenticated allocation recovery does not prove every pre-journal crash window.
+
+  Every cleanup attempt keeps its exact journals until fencing is confirmed.
+  Whole-file native checks also preserve partial/foreign entries and refuse
+  owner journals, retirement markers and public/link/replaced or mounted storage.
 
   Do not replace the allocator or rewrite source for pre-journal recovery evidence.
+
   `macos-guardian-input.test.ts` runs ordinary TypeScript relative
   imports and binary/empty reads from the immutable projection. It denies source
   writes and private data. It refuses changed/closed captures before execution.
@@ -562,26 +565,29 @@ These links locate module rules. All selected domain requirements still apply.
   forged/closed snapshots, cancelled retention, collisions, parent replacement
   and complete staging cleanup. Independent command transport cases additionally
   require their platform's qualified process ownership and descriptor transfer.
-  `delivery-inspection.test.ts` covers serial excerpt/aggregate limits,
-  inherited deadline minima, preview cutoff, empty/no-publication retirement and
-  pure map release. It also covers pending operation joins, ACK loss/late
-  completion, expected versus accidental disconnect, and memoized
-  descriptor-close failure. Exercise real subprocess transport and actual deadlines, not private stream/clock replacements.
+  `delivery-inspection.test.ts` covers inherited deadline minima, actual elapsed
+  completion bounds, real file reads and descriptor retirement.
+  Authenticated capture, lost acknowledgements and transport retirement require
+  actual subprocess transport, not private stream or clock replacements.
 
   These portable cases do not establish actual native peer authentication,
   endpoint release, parent recovery fencing or installed browser composition.
   Those remain platform/installed qualification gates.
-  `execution-output.test.ts` verifies fencing/release/cleanup order, capture
-  refusal, missing collectors and cleanup failure. Directory and snapshot loan
-  cases require one actual close, sticky typed uncertainty and retained original
-  handles after caller references leave. Native guardian input evidence and
+
+  `execution-output.test.ts` uses actual output descriptors and captured snapshots.
+  Native guardian ordering and failures require genuine native lifecycle cases.
+  Directory and snapshot loans require one actual close, sticky typed uncertainty
+  and retained original handles after caller references leave.
+  Native guardian input evidence and
   terminal cleanup recovery cover retained bytes after storage removal. The
   latter requires actual bounded output collection and observable job-retirement races,
   preserving refusal until removal is confirmed.
 
-  Session collectors validate captured empty directories too. Controller faults
-  distinguish expected snapshot-profile refusal from unexpected snapshot I/O
-  failure. The complete file-delivery suite also runs on qualified Mac. It
+  Session collectors validate captured empty directories too.
+  Real oversized and multiply linked history files exercise profile refusal.
+  Unexpected hardware I/O failures require separate evidence.
+
+  The complete file-delivery suite also runs on qualified Mac. It
   covers the independent process, authenticated parent rejection, renamed input
   roots and immutable output transfer. It also covers cooperative interruption,
   forced escalation and coordinator loss during staging. Stopped fixtures

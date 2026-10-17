@@ -139,6 +139,15 @@ source_protocol_stage() {
   bun packages/reporting/test/package-smoke.ts
 }
 source_applications_stage() {
+copy_application_member() {
+  bun --no-env-file -e '
+    import { cp } from "node:fs/promises";
+    import { basename } from "node:path";
+    await cp(Bun.argv[1], Bun.argv[2], {
+      recursive: true, filter: path => basename(path) !== "node_modules",
+    });
+  ' "$1" "$2"
+}
 for application in photo-organiser tested-patch software-factory support-case contact-import incident-brief; do
   application_source="examples/$application"
   if [ "$application" = incident-brief ]; then
@@ -149,19 +158,13 @@ for application in photo-organiser tested-patch software-factory support-case co
   cp "$application_source/package.json" "$application_copy/"
   for member in flows test fixtures grants issue.json input.json batch.json; do
     if [ -e "$application_source/$member" ]; then
-      bun --no-env-file -e '
-        import { cp } from "node:fs/promises";
-        import { basename } from "node:path";
-        await cp(Bun.argv[1], Bun.argv[2], {
-          recursive: true, filter: path => basename(path) !== "node_modules",
-        });
-      ' "$application_source/$member" "$application_copy/$member"
+      copy_application_member "$application_source/$member" "$application_copy/$member"
     fi
   done
   if [ "$application" = software-factory ]; then
     mkdir -p "$application_copy/methods"
-    cp -R examples/tested-patch/flows/project "$application_copy/methods/project"
-    cp -R examples/tested-patch/flows/repair "$application_copy/methods/repair"
+    copy_application_member examples/tested-patch/flows/project "$application_copy/methods/project"
+    copy_application_member examples/tested-patch/flows/repair "$application_copy/methods/repair"
   fi
   bun -e '
     import { readdir, stat } from "node:fs/promises";
@@ -193,9 +196,15 @@ for application in photo-organiser tested-patch software-factory support-case co
       const manifest = await Bun.file(current).json();
       // Preserve the application plus Flow-member relationship from the source
       // repository workspace. Resolve each owning declaration, not ambient deps.
-      if (current === path)
+      if (current === path) {
         manifest.workspaces = manifests.some(current => current.includes("/methods/"))
           ? ["flows/*", "methods/*"] : ["flows/*"];
+        // Member file declarations alone do not bind the full Bun resolution graph.
+        manifest.overrides = {
+          ...manifest.overrides,
+          ...Object.fromEntries(Object.entries(candidates).map(([name, archive]) => [name, `file:${archive}`])),
+        };
+      }
       for (const section of ["dependencies", "devDependencies", "optionalDependencies"]) {
         for (const [name, version] of Object.entries(manifest[section] ?? {})) {
           if (candidates[name]) manifest[section][name] = `file:${candidates[name]}`;
