@@ -69,7 +69,7 @@ export function assertTypedObservation(
   )
     throw new Error('Factory observation must retain only its selected root view')
   const context = lost
-    ? `${lostObservation}; Live observation is incomplete; inspect the final result; application reports remain provisional`
+    ? `${lostObservation}; Live observation is incomplete. Inspect the final result; application reports remain provisional`
     : 'Observation ended; application reports remain provisional'
   if (lost) {
     if (

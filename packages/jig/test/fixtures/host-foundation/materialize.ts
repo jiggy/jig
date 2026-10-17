@@ -1,5 +1,5 @@
-import assert from 'node:assert/strict'
 import { constants, Database } from 'bun:sqlite'
+import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { copyFile, lstat, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -14,6 +14,8 @@ export interface FoundationArchives {
 }
 export interface FoundationQualification {
   delegatedCgroup?: string
+  linuxUserCgroup?: string
+  systemctl?: string
 }
 const packageRoot = resolve(import.meta.dir, '../../..')
 const schema = 'https://flow.jig.md/schemas/invocation-contract-0.schema.json'
@@ -29,12 +31,12 @@ export function requireFoundationOptIn(): void {
     throw Error('Installed host foundation requires opted-in qualified Linux or macOS native host')
 }
 
-/** Actual native acquisition; this does not provision delegation or launch a payload. */
+/** Observe support without acquiring the scope the installed command must own. */
 export async function qualifyFoundationHost(): Promise<FoundationQualification> {
   requireFoundationOptIn()
   const [
     { openPrivateInstalledBunHost },
-    { observePrivateExecutionBackendMechanism },
+    { inspectPrivateExecutionBackendSupport, observePrivateExecutionBackendMechanism },
     { installedBunLocation },
   ] = await Promise.all([
     import('../../../src/internal/installed-bun-host.js'),
@@ -42,10 +44,27 @@ export async function qualifyFoundationHost(): Promise<FoundationQualification> 
     import('../installed-bun-location.js'),
   ])
   const host = await openPrivateInstalledBunHost(installedBunLocation)
-  const observed = await observePrivateExecutionBackendMechanism(host.backend)
-  return 'authority' in observed && 'delegatedCgroup' in observed.authority
-    ? { delegatedCgroup: observed.authority.delegatedCgroup as string }
-    : {}
+  if (process.platform !== 'linux' || process.env.AGENT_DELEGATED_CGROUP !== undefined) {
+    const observed = await observePrivateExecutionBackendMechanism(host.backend)
+    return 'authority' in observed && 'delegatedCgroup' in observed.authority
+      ? { delegatedCgroup: observed.authority.delegatedCgroup as string }
+      : {}
+  }
+  // Installed-consumer CI deliberately supplies no inherited delegation. The
+  // public CLI must acquire its own transient user scope. Observing a direct
+  // backend here would incorrectly require that scope before the CLI runs.
+  await inspectPrivateExecutionBackendSupport(host.backend)
+  const { privateLinuxHostToolCandidates, resolvePrivateLinuxHostPath } = await import(
+    '../../../src/internal/linux-host-paths.js'
+  )
+  const uid = process.getuid!()
+  assert.ok(Number.isSafeInteger(uid) && uid > 0, 'Native consumer requires an unprivileged user')
+  const linuxUserCgroup = `/sys/fs/cgroup/user.slice/user-${uid}.slice/user@${uid}.service`
+  assert.equal(await realpath(linuxUserCgroup), linuxUserCgroup)
+  return {
+    linuxUserCgroup,
+    systemctl: await resolvePrivateLinuxHostPath(privateLinuxHostToolCandidates('systemctl')),
+  }
 }
 
 export function foundationEnvironment(): NodeJS.ProcessEnv {
@@ -310,6 +329,39 @@ export async function foundationResidue(
       .map((entry) => entry.name)
       .sort()
   }
+  if (process.platform === 'linux') {
+    assert.ok(qualification.linuxUserCgroup && qualification.systemctl)
+    const listed = await command(
+      [
+        qualification.systemctl,
+        '--user',
+        'list-units',
+        '--all',
+        '--plain',
+        '--no-legend',
+        'jig-*.scope',
+      ],
+      cwd,
+      10_000,
+    )
+    const residue = listed.stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => `unit:${line}`)
+    let directories = 0
+    const visit = async (directory: string): Promise<void> => {
+      assert.ok(++directories <= 4096, 'Native residue traversal exceeded its bound')
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue
+        const path = join(directory, entry.name)
+        if (entry.name.startsWith('jig-')) residue.push(`cgroup:${path}`)
+        await visit(path)
+      }
+    }
+    await visit(qualification.linuxUserCgroup)
+    return residue.sort()
+  }
   const listed = await command(['/bin/launchctl', 'list'], cwd, 10_000)
   return listed.stdout
     .split('\n')
@@ -337,7 +389,7 @@ export async function runInstalledFoundationApplication(options: {
       const path = new URL(request.url).pathname
       if (path === '/status') return Response.json(counts)
       if (path !== '/hold' || request.method !== 'POST') return new Response(null, { status: 404 })
-      const { episode } = await request.json() as { episode: string }
+      const { episode } = (await request.json()) as { episode: string }
       if (!Object.hasOwn(counts, episode)) return new Response(null, { status: 400 })
       counts[episode] = counts[episode]! + 1
       return new Promise<Response>((resolve) => {
@@ -361,12 +413,15 @@ export async function runInstalledFoundationApplication(options: {
   }
 }
 
-async function runFoundationApplication(options: {
-  directory: string
-  application: FoundationApplication
-  archives: FoundationArchives
-  qualification: FoundationQualification
-}, barrierURL: string): Promise<void> {
+async function runFoundationApplication(
+  options: {
+    directory: string
+    application: FoundationApplication
+    archives: FoundationArchives
+    qualification: FoundationQualification
+  },
+  barrierURL: string,
+): Promise<void> {
   const { directory, application, archives, qualification } = options
   await mkdir(directory)
   const command = foundationCommands(join(directory, 'commands'))
@@ -427,7 +482,14 @@ async function runFoundationApplication(options: {
   await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
   const lock = await digest(join(project, 'jig.lock'))
   await command(
-    [process.execPath, '--no-env-file', '--no-install', join(directory, 'client.ts'), cli, barrierURL],
+    [
+      process.execPath,
+      '--no-env-file',
+      '--no-install',
+      join(directory, 'client.ts'),
+      cli,
+      barrierURL,
+    ],
     project,
     application === 'documents' ? 600_000 : 300_000,
   )
@@ -439,9 +501,11 @@ async function runFoundationApplication(options: {
     assert.equal(verified.cancellationCleanup, 'confirmed')
     assert.equal(verified.deathCleanup, 'confirmed')
     assert.equal(verified.duplicateChild, true)
-    assert.equal(new Set([
-      verified.runId, verified.joinedRunId, verified.cancelledRunId, verified.deathRunId,
-    ]).size, 4)
+    assert.equal(
+      new Set([verified.runId, verified.joinedRunId, verified.cancelledRunId, verified.deathRunId])
+        .size,
+      4,
+    )
   }
   // Observe the real durable owner table independently of the application's
   // public cleanup observations and the platform-wide native inventory.
@@ -456,8 +520,9 @@ async function runFoundationApplication(options: {
     database.close()
   }
   assert.deepEqual(
-    (await readdir(join(project, '.jig/private-root-owners')))
-      .filter(name => /^(x-|c-)/.test(name)),
+    (await readdir(join(project, '.jig/private-root-owners'))).filter((name) =>
+      /^(x-|c-)/.test(name),
+    ),
     [],
     'Installed consumer left descendant owner storage',
   )

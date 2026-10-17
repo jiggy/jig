@@ -1,7 +1,6 @@
 const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
 
-import { expect, spyOn, test } from 'bun:test'
-import * as childProcess from 'node:child_process'
+import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { access, lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -21,7 +20,7 @@ import {
   type PrivateMacosLaunchPlan,
 } from '../../src/internal/macos-native-backend.js'
 
-test('backend retains known exit and recovered cleanup in its authenticated final receipt', async () => {
+test('backend retains a real payload failure in its authenticated final receipt and repeated recovery', async () => {
   const root = await mkdtemp('/private/tmp/jig-native-terminal-')
   const owners = join(root, 'owners')
   const work = join(root, 'work')
@@ -40,26 +39,6 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
   })
   let safeToRemove = false
   let component: Awaited<ReturnType<typeof backend.launch>> | undefined
-  let bootedOut: string | undefined
-  let injected = false
-  const original = childProcess.spawnSync
-  const interception = spyOn(childProcess, 'spawnSync').mockImplementation(((
-    ...args: unknown[]
-  ) => {
-    const result = Reflect.apply(original, childProcess, args)
-    const commandArgs = args[1] as readonly string[] | undefined
-    if (args[0] === '/bin/launchctl' && commandArgs?.[0] === 'bootout') bootedOut = commandArgs[1]
-    if (
-      !injected &&
-      args[0] === '/bin/launchctl' &&
-      commandArgs?.[0] === 'print' &&
-      commandArgs[1] === bootedOut
-    ) {
-      injected = true
-      return { ...result, status: 0 }
-    }
-    return result
-  }) as typeof childProcess.spawnSync)
   try {
     const beforeSealing = await readdir(allocation.directory)
     const plan: PrivateMacosLaunchPlan = {
@@ -126,7 +105,6 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
     component.stderr[Symbol.asyncIterator]()
     await component.closeInput()
     const [exit, receipt] = await Promise.all([component.completion, component.enforcement])
-    expect(injected).toBe(true)
     expect(exit).toMatchObject({
       exitCode: 17,
       signal: null,
@@ -137,9 +115,11 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
       exitCode: 17,
       signal: null,
       stopReason: 'payload_exit',
-      recovered: true,
-      outputLost: true,
+      recovered: false,
+      fenced: true,
     })
+    expect(await backend.recoverFence(component.owner)).toEqual(receipt)
+    expect(await backend.recoverFence(component.owner)).toEqual(receipt)
     const state = await openPrivateMacosBackendState(allocation)
     try {
       expect((await state.read()).final).toEqual(receipt)
@@ -150,7 +130,6 @@ test('backend retains known exit and recovered cleanup in its authenticated fina
     expect(await readdir(owners)).toEqual([])
     safeToRemove = true
   } finally {
-    interception.mockRestore()
     if (!safeToRemove && component !== undefined) {
       await component.terminate().catch(() => undefined)
       const receipt = await backend.recoverFence(component.owner)

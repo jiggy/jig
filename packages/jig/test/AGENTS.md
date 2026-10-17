@@ -55,6 +55,11 @@ Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
 Protected acceptance, replacement and save limits require actual SQLite ownership.
 Native command loss, independent fencing and installed recovery remain host gates.
 
+`portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
+Its ordinary process adapter reports no native fencing.
+Valid protocol exchanges must still refuse execution success without qualified fencing.
+Native lifecycle suites own successful execution and complete descendant cleanup.
+
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
 Pins and delivery receipts must come from the production owner.
@@ -124,12 +129,9 @@ platform-specific timer. Neither shares admission, execution or cleanup with the
 other.
 
 Project Command coordinator-loss recovery keeps a fresh eight-failure batch for
-each of its two bounded reopen attempts. The test spy retains closed causes and
-at most one fixed internal source label with positive line/column from the
-innermost bounded cause chain. Stack inspection is limited to 8 KiB and 32
-frames. Raw messages, stacks, paths, tokens and owner data are never emitted.
-Diagnostic failures cannot replace the original exception or change the
-sealed-owner crash barrier, recovery, cleanup, assertions or limits.
+each of its two bounded reopen attempts. Observe real acquisition failures
+without replacing native recovery. Diagnostic failures cannot replace the original
+exception or change the sealed-owner crash barrier, recovery, cleanup or limits.
 
 The installed factory's blocked proof and coupled checked/automatic proof use
 separate fresh consumers through the registration-free

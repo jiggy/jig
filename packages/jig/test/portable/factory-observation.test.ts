@@ -25,7 +25,7 @@ test('factory automatic observation accepts complete views or exact truthful los
         return true
       },
       (text) => {
-        model.setIncomplete('Live observation is incomplete; inspect the final result')
+        model.setIncomplete('Live observation is incomplete. Inspect the final result')
         output.push(`  Jig — observation incomplete:\n    ${text}`)
       },
       () => false,
@@ -113,7 +113,7 @@ test('factory automatic observation accepts complete views or exact truthful los
       'application reports are authoritative',
     ),
     loss.replace(
-      'Live observation is incomplete; inspect the final result',
+      'Live observation is incomplete. Inspect the final result',
       'Observation is complete',
     ),
     `${unchanged}    ${factorySummaries.Jobs[1]}\n`,

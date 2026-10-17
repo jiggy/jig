@@ -408,7 +408,7 @@ for (const lagged of [false, true]) {
       expect(text).toContain('application reports remain provisional')
       if (lagged) {
         expect(text).toContain(reason)
-        expect(text).toContain('Live observation is incomplete; inspect the final result')
+        expect(text).toContain('Live observation is incomplete. Inspect the final result')
         expect(text).not.toContain('Evidence checked')
         expect(text).not.toContain('Observation ended')
       } else {
@@ -734,7 +734,7 @@ test('automatic channel observer freezes accepted views after declared loss and 
       // Plain output selects one root summary; the model retains every accepted view above.
       expect(transcript).toContain('  Flow: jobs\n    Last accepted jobs\n')
       expect(transcript).toContain('Flow / jobs:')
-      expect(transcript).toContain('Live observation is incomplete; inspect the final result')
+      expect(transcript).toContain('Live observation is incomplete. Inspect the final result')
       expect(transcript).toContain('application reports remain provisional')
       expect(transcript).not.toContain('Last accepted checks')
       expect(transcript).not.toContain('Last accepted patches')
@@ -797,7 +797,7 @@ test('frozen views retain the newest accepted snapshot while warning delivery su
     releaseWarning.resolve()
     await presenter.settleDisplay({ status: 'succeeded', outcome: 'done' })
     expect(transcript).not.toContain('  Flow: Jobs\n    Newest accepted snapshot\n')
-    const frozenHeading = `  Flow / Jobs: ${loss}; Live observation is incomplete; inspect the final result; application reports remain provisional\n`
+    const frozenHeading = `  Flow / Jobs: ${loss}; Live observation is incomplete. Inspect the final result; application reports remain provisional\n`
     expect(transcript).toContain(`${frozenHeading}    Newest accepted snapshot\n`)
     expect(transcript).not.toContain(`${frozenHeading}    Initial accepted snapshot\n`)
     expect(presenter.model.workspace.facts?.execution).toBe('succeeded')
