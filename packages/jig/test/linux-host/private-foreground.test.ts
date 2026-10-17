@@ -1042,9 +1042,20 @@ describe.serial('private rootless project session', () => {
           .split(/\s+/)
           .filter(Boolean)
         const activeChildren: { pid: number; startTime: string; command: string }[] = []
+        // The launcher and inner supervisor also carry the payload argv.
+        // Match the complete bun-direct-run command for this root-entrypoint
+        // fixture, not a forwarded FLOW.ts argument in an ancestor's argv.
+        const payloadCommand =
+          [
+            '/jig-runtime/bun',
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            '/package/FLOW.ts',
+          ].join('\0') + '\0'
         for (const pid of pids) {
           const command = await readFile(`/proc/${pid}/cmdline`, 'utf8')
-          if (command.split('\0').some((argument) => argument.endsWith('/FLOW.ts'))) {
+          if (command === payloadCommand) {
             const status = await readFile(`/proc/${pid}/stat`, 'utf8')
             activeChildren.push({
               pid: Number(pid),

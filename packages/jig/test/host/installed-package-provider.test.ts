@@ -238,8 +238,8 @@ for await (const line of lines) {
         expect(sameTarget.exit).not.toBe(0)
         expect(sameTarget.stdout + sameTarget.stderr).not.toContain('JIG_OUTPUT_EXISTS')
         expect(sameTarget.stdout + sameTarget.stderr).toContain('JIG_RUN_FILES_INVALID')
-        // An invalid job remains invalid after a fresh review. Recovery guidance
-        // names the approved schema without diagnosing source freshness.
+        // An invalid job remains invalid after a fresh review. Guidance names
+        // approved input and channel declarations without guessing the cause.
         await put('job data.json', { job: 'third' })
         await put(
           'jig.ts',
@@ -251,9 +251,15 @@ for await (const line of lines) {
           if (output === 'rejected-after-review') await succeed(['review', '--yes'])
           const rejected = await invoke(['run', '--out', output, '--json'])
           expect(rejected.exit).toBe(1)
-          expect(rejected.stderr).toContain('approved target input schema')
-          expect(rejected.stderr).toContain('choices declared')
-          expect(rejected.stderr).toContain('If you edited the Flow or its schema')
+          expect(rejected.stderr).toContain('The input or channel request was rejected as invalid.')
+          expect(rejected.stderr).toContain(
+            "approved target's input schema and channel declarations",
+          )
+          expect(rejected.stderr).toContain('connect required output channels with --receive NAME')
+          expect(rejected.stderr).toContain('If you edited the Flow or its contract')
+          expect(rejected.stderr).not.toContain(
+            'Input does not match the approved target input schema',
+          )
           expect(rejected.stderr).not.toContain('Review required')
           const terminal = JSON.parse(rejected.stdout)
           expect(terminal).toMatchObject({

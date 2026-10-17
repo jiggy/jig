@@ -20,8 +20,8 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { RootAdministration, StartRootRunReceipt } from '../../src/administration/root.js'
-import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { privateDomainDigest } from '../../src/internal/identity.js'
+import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
@@ -296,7 +296,33 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
       name,
       async () => {
         const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-http-proof-')))
+        const caseStarted = performance.now()
+        // Closed, bounded observations only: never retain inputs, headers, paths,
+        // exception text or credential-bearing worker output in CI diagnostics.
+        type Phase =
+          | 'http-request-received'
+          | 'admission-applied'
+          | 'run-start-requested'
+          | 'run-start-returned'
+          | 'run-succeeded'
+          | 'run-non-success'
+        const phases: {
+          phase: Phase
+          elapsedMs: number
+          run?: number
+          parent?: boolean
+          requests: number
+        }[] = []
         const seen: { path: string; auth: string | null; method: string; body: string }[] = []
+        const observe = (phase: Phase, run?: number, parent?: boolean) => {
+          if (phases.length < 64)
+            phases.push({
+              phase,
+              elapsedMs: Math.round(performance.now() - caseStarted),
+              ...(run === undefined ? {} : { run, parent }),
+              requests: seen.length,
+            })
+        }
         const server = Bun.serve({
           hostname: '127.0.0.1',
           port: 0,
@@ -308,6 +334,7 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
               method: request.method,
               body: await request.text(),
             })
+            observe('http-request-received')
             if (path === '/wait')
               return await new Promise<Response>((resolve) =>
                 request.signal.addEventListener('abort', () => resolve(new Response('stopped')), {
@@ -361,6 +388,7 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
           expect(JSON.stringify(review)).toContain(`http://127.0.0.1:${server.port}/document`)
           expect(JSON.stringify(review)).not.toContain('private-http-test-token')
           await session.apply({ planDigest: plan.planDigest, allowAuthorityChanges: true })
+          observe('admission-applied')
           let count = 0
           const start = (input: unknown, id = 'reader') =>
             session!.rootAdministration.startRun({
@@ -368,8 +396,21 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
               target: { kind: 'binding', id },
               input: input as never,
             })
-          const run = async (input: unknown, id?: string) =>
-            terminal(session!.rootAdministration, await start(input, id))
+          const run = async (input: unknown, id?: string) => {
+            const ordinal = count + 1
+            observe('run-start-requested', ordinal, id === 'parent')
+            const receipt = await start(input, id)
+            observe('run-start-returned', ordinal, id === 'parent')
+            const result = await terminal(session!.rootAdministration, receipt)
+            observe(
+              result.state === 'terminal' && result.terminal.status === 'succeeded'
+                ? 'run-succeeded'
+                : 'run-non-success',
+              ordinal,
+              id === 'parent',
+            )
+            return result
+          }
           const valid = { slot: 'document', body: { text: 'question' } }
           if (scenario === 'input') {
             expect(await run(valid)).toMatchObject({
@@ -477,7 +518,10 @@ describe.serial('delegated HTTP through contained root and child Runs', () => {
           } finally {
             await server.stop(true)
             if (completed) await rm(root, { recursive: true, force: true })
-            else console.error(`Retained HTTP fixture: ${root}`)
+            else {
+              console.error('http-lifecycle-phases', JSON.stringify({ scenario, phases }))
+              console.error(`Retained HTTP fixture: ${root}`)
+            }
           }
         }
       },
