@@ -64,6 +64,9 @@ These links locate module rules. All selected domain requirements still apply.
   Output identity is boolean native-output intent, never an export path.
 
   Delivery remains separately owned. Do not restore staged child imports or destination-folder mutation controls.
+  Root packet selection includes native output only for declared writable ports.
+  Without final output, accepted checkpoint bytes remain eligible for packet delivery.
+  The root file owner still retires every retained native output handle.
 
 ### Attempt checkpoint and export
 

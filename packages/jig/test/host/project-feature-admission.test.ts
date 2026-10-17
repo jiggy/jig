@@ -32,29 +32,12 @@ function admissionScript(root: string): string {
   const module = (path: string) => JSON.stringify(new URL(path, suiteTestUrl).href)
   return `
     import assert from 'node:assert/strict';
-    import { mock } from 'bun:test';
     const d = (character) => 'sha256:' + character.repeat(64);
-    const { defineJig } = await import(${module('../src/project/author.js')});
-    const definition = defineJig({
-      flows: ['flows/consumer', 'flows/provider'],
-      defaultProviders: { ${JSON.stringify(contractId)}: 'flow:flows/provider' },
-    });
-    mock.module(${module('../src/project/author-evaluator.js')}, () => ({
-      evaluateAuthorClosureBatch: async (_options, _captured, entries) => entries.map(({ entryProjectPath, expected }) => ({
-        expected,
-        source: { entryProjectPath },
-        profile: { fixture: 'inert-feature-admission-unit' },
-        outputDigest: d('a'),
-        value: definition,
-      })),
-      evaluateAuthorClosure: async (_options, _captured, entryProjectPath, expected) => ({
-        expected,
-        source: { entryProjectPath },
-        profile: { fixture: 'inert-feature-admission-unit' },
-        outputDigest: d('a'),
-        value: definition,
-      }),
-    }));
+    const { openPrivateInstalledBunHost } =
+      await import(${module('../src/internal/installed-bun-host.js')});
+    const { installedBunLocation } =
+      await import(${module('./fixtures/installed-bun-location.js')});
+    const host = await openPrivateInstalledBunHost(installedBunLocation, {}, ${JSON.stringify(root)});
     const { retainPackageProject } = await import(${module('../src/project/retained-project.js')});
     const { buildPrivateActivationRequests, resolveRetainedPackageProjectObservation } =
       await import(${module('../src/project/package-resolution.js')});
@@ -67,7 +50,7 @@ function admissionScript(root: string): string {
     const retained = await retainPackageProject({
       projectRoot: ${JSON.stringify(root)},
       storeRoot: ${JSON.stringify(join(root, 'store'))},
-      evaluator: undefined,
+      evaluator: { backend: host.backend, installedSupport: host.installedBunSupport },
     });
     const requests = buildPrivateActivationRequests(retained.linked);
     const failures = privateProjectFeatureFailures(retained.linked);
@@ -340,9 +323,15 @@ describe('retained project feature admission evidence', () => {
       },
       [],
       async (_project, root) => {
-        await writeFile(join(root, 'jig.ts'), 'export default {};\n')
-        // Isolate the inert evaluator fixture from every other test's module cache.
-        // Capture, linking, planning observations, feature checks and admission stay real.
+        await writeFile(
+          join(root, 'jig.ts'),
+          `import { defineJig } from '@jigging/jig';
+export default defineJig({
+  flows: ['flows/consumer', 'flows/provider'],
+  defaultProviders: { ${JSON.stringify(contractId)}: 'flow:flows/provider' },
+});\n`,
+        )
+        // The child owns real retained declaration evaluation and native cleanup.
         const child = Bun.spawn([process.execPath, '--eval', admissionScript(root)], {
           stdout: 'pipe',
           stderr: 'pipe',
@@ -358,3 +347,11 @@ describe('retained project feature admission evidence', () => {
     )
   }, 20_000)
 })
+
+if (
+  !(
+    (process.platform === 'linux' && process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1') ||
+    (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
+  )
+)
+  throw Error('This suite requires opted-in native host qualification')

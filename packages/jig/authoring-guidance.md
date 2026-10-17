@@ -196,6 +196,9 @@ These links locate module rules. All selected domain requirements still apply.
   cannot override them. Keep this root-only profile and its bounds synchronized
   with `docs/jig/spec/project-policy.md`.
 
+- Public grant declarations contain authored policy, not retained host metadata.
+  Private linked grants retain evaluation operands through `PrivateRetainedGrantedSlot`.
+
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
   named JSON policies for meaningful reuse or independent management.
   `src/cli-review-agent-setup.ts` renders bounded read-only captured policy

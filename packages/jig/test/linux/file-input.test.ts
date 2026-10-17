@@ -1,5 +1,7 @@
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { expect, test } from 'bun:test'
 import { closeSync, fstatSync, readFileSync, readSync, writeSync } from 'node:fs'
 import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
@@ -109,22 +111,17 @@ test('unsupported filesystems have a closed actionable cause', () => {
   expect(() => privateOpenFileRoot('/proc')).toThrow(PrivateFileInputError)
   expect(() => privateOpenFileRoot('/proc')).toThrow('ext4, XFS, Btrfs, or tmpfs')
 })
-test('file capture uses NixOS glibc when the FHS loader is a shim', async () =>
+test('file capture resolves the actual system glibc without filesystem replacements', async () =>
   fixture(async (root) => {
     await writeFile(join(root, 'issue.json'), '{"issue":"capture this file"}')
-    // A fresh process isolates the fs mock and FFI cache from other tests.
-    // The shim has no adjacent libc; actual capture must use the system glibc.
+    // A fresh process exercises native library initialization, not a cached FFI handle.
     const program = `
-      import { mock } from 'bun:test';
-      import * as fs from 'node:fs';
-      const resolve = fs.realpathSync;
       const { resolvePrivateLinuxHostLoaderSync } = await import(${JSON.stringify(join(suiteTestRoot, '../src/internal/linux-host-paths.ts'))});
       const loader = resolvePrivateLinuxHostLoaderSync();
-      mock.module('node:fs', () => ({ ...fs, realpathSync(path, ...args) {
-        if (path === '/run/current-system/sw/share/nix-ld/lib/ld.so') return loader;
-        if (path === '/lib64/ld-linux-x86-64.so.2') return '/unavailable-nix-ld/lib/ld-linux-x86-64.so.2';
-        return resolve(path, ...args);
-      }}));
+      const { statSync } = await import('node:fs');
+      const { dirname, join } = await import('node:path');
+      if (!statSync(join(dirname(loader), 'libc.so.6')).isFile())
+        throw new Error('selected system loader has no adjacent glibc');
       const { privateCaptureAttachments } = await import(${JSON.stringify(join(suiteTestRoot, '../src/internal/file-input.ts'))});
       const { requirePrivateCapturedInput } = await import(${JSON.stringify(join(suiteTestRoot, '../src/internal/input-capture.ts'))});
       const capture = privateCaptureAttachments([{name:'source', directory:${JSON.stringify(root)}, select:[]}]);
@@ -147,6 +144,25 @@ test('file capture uses NixOS glibc when the FHS loader is a shim', async () =>
       new Response(child.stderr).text(),
     ])
     expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: 'issue.json\n', stderr: '' })
+  }))
+
+test('real filesystem aliases cannot redirect a captured root', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source')
+    const alias = join(root, 'alias')
+    await mkdir(source)
+    await writeFile(join(source, 'issue.json'), '{"issue":"original"}')
+    await symlink(source, alias)
+    expect(() => privateOpenFileRoot(alias)).toThrow(PrivateFileInputError)
+    expect(() => privateOpenFileRoot(join(root, 'absent'))).toThrow(PrivateFileInputError)
+    const capture = privateCaptureAttachments([{ name: 'source', directory: source, select: [] }])
+    try {
+      const file = capture.attachments[0]!.files[0]!
+      await writeFile(join(source, 'issue.json'), '{"issue":"changed"}')
+      expect(readPrivateCapturedInput(file.input).toString()).toBe('{"issue":"original"}')
+    } finally {
+      capture.close()
+    }
   }))
 
 if (process.platform !== 'linux') throw Error('This suite requires Linux')

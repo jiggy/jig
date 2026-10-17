@@ -1,10 +1,10 @@
-import { expect, spyOn, test } from 'bun:test'
+import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
 import {
   privateCanonicalJsonChunks,
   privateUtf8StringChunks,
 } from '../../src/internal/canonical-json-stream.js'
+import { canonicalJson, decodeJson1, JSON_1_LIMITS, type JsonValue } from '../../src/json.js'
 
 test('streamed canonical packets preserve ordering, escaping, numbers and scalar boundaries', () => {
   const value: JsonValue = {
@@ -26,37 +26,29 @@ test('streamed canonical packets preserve ordering, escaping, numbers and scalar
   // A fully advanced generator zeroes its borrowed backing.
   expect(chunks.every((chunk) => chunk.every((byte) => byte === 0))).toBe(true)
 })
-test('full JSON/0 publication uses one bounded buffer and keeps the portable byte ceiling', () => {
+test('full JSON/0 publication exposes bounded borrowed storage and keeps the portable byte ceiling', () => {
   const value = {
     a: 'a'.repeat(JSON_1_LIMITS.stringBytes),
     b: 'b'.repeat(JSON_1_LIMITS.stringBytes - 17),
   }
   const digest = createHash('sha256').update(canonicalJson(value)).digest('hex')
-  const allocations: number[] = []
-  const original = Buffer.alloc
-  const allocation = spyOn(Buffer, 'alloc').mockImplementation(((
-    size: number,
-    ...rest: unknown[]
-  ) => {
-    allocations.push(size)
-    return Reflect.apply(original, Buffer, [size, ...rest])
-  }) as typeof Buffer.alloc)
-  try {
-    const actual = createHash('sha256')
-    let total = 0
-    for (const chunk of privateCanonicalJsonChunks(value)) {
-      actual.update(chunk)
-      total += chunk.byteLength
-    }
-    expect(total).toBe(JSON_1_LIMITS.bytes - 2)
-    expect(actual.digest('hex')).toBe(digest)
-    expect(allocations).toEqual([65_536])
-    expect(() => privateCanonicalJsonChunks({ ...value, c: 'too large' }).next()).toThrow(
-      'maximum encoded bytes',
-    )
-  } finally {
-    allocation.mockRestore()
+  const actual = createHash('sha256')
+  let total = 0
+  let backing: ArrayBufferLike | undefined
+  for (const chunk of privateCanonicalJsonChunks(value)) {
+    expect(chunk.byteLength).toBeGreaterThan(0)
+    expect(chunk.byteLength).toBeLessThanOrEqual(65_536)
+    backing ??= chunk.buffer
+    expect(chunk.buffer).toBe(backing)
+    expect(chunk.buffer.byteLength).toBe(65_536)
+    actual.update(chunk)
+    total += chunk.byteLength
   }
+  expect(total).toBe(JSON_1_LIMITS.bytes - 2)
+  expect(actual.digest('hex')).toBe(digest)
+  expect(() => privateCanonicalJsonChunks({ ...value, c: 'too large' }).next()).toThrow(
+    'maximum encoded bytes',
+  )
 })
 test('invalid values fail before a first byte and early close zeroes borrowed contents', () => {
   expect(() => privateCanonicalJsonChunks({ a: '\ud800' }).next()).toThrow('surrogate')

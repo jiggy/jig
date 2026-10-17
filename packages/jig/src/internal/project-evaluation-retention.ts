@@ -3,6 +3,7 @@ import { types as utilTypes } from 'node:util'
 import { canonicalJson, type JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { normalizeProjectEvaluation, type ProjectEvaluation } from '../project/evaluation.js'
+import type { GrantedSlot } from '../project/grants.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   normalizePrivateBunExecutionLayout,
@@ -33,6 +34,11 @@ export interface PrivateRetainedProjectEvaluation {
     readonly recipe: PrivateProjectEvaluationRecipe
     readonly compiler: Readonly<Record<string, unknown>>
   }
+}
+
+/** Host-linked grants retain reviewed operands without changing authoring policy. */
+export interface PrivateRetainedGrantedSlot extends GrantedSlot {
+  readonly evaluation?: PrivateRetainedProjectEvaluation
 }
 
 function exact(value: unknown, keys: readonly string[]): Record<string, unknown> {

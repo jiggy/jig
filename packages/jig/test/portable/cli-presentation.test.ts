@@ -1,9 +1,4 @@
-import { describe, expect, spyOn, test } from 'bun:test'
-import {
-  ProjectAdministrationError,
-  type ProjectSession,
-} from '../../src/administration/project.js'
-import { main } from '../../src/cli.js'
+import { describe, expect, test } from 'bun:test'
 import {
   privateCliDiagnostic,
   privateCliHumanText,
@@ -24,8 +19,7 @@ function screen(text: string): string {
 }
 
 describe('CLI experience contract', () => {
-  test('completed stage durations measure each stage rather than command age', () => {
-    const clock = spyOn(performance, 'now').mockReturnValue(0)
+  test('completed stage durations measure each stage rather than command age', async () => {
     let output = ''
     const stop = new AbortController()
     const progress = new PrivateCliProgress(
@@ -37,21 +31,32 @@ describe('CLI experience contract', () => {
       true,
     )
     try {
+      const firstStart = performance.now()
       progress.stage('Capturing project source')
-      clock.mockReturnValue(4500)
+      const firstStarted = performance.now()
+      await Bun.sleep(180)
+      const firstBefore = performance.now()
       progress.complete(true)
+      const firstAfter = performance.now()
+      const secondStart = performance.now()
       progress.stage('Reusing approved dependencies')
-      clock.mockReturnValue(4600)
+      const secondStarted = performance.now()
+      const secondBefore = performance.now()
       progress.complete(true)
-      expect(screen(output)).toContain('Capturing project source (4.5s)')
-      expect(screen(output)).toContain('Reusing approved dependencies (0.1s)')
+      const secondAfter = performance.now()
+      const rendered = screen(output)
+      const first = Number(/Capturing project source \(([\d.]+)s\)/.exec(rendered)?.[1])
+      const second = Number(/Reusing approved dependencies \(([\d.]+)s\)/.exec(rendered)?.[1])
+      expect(first).toBeGreaterThanOrEqual((firstBefore - firstStarted) / 1000 - 0.051)
+      expect(first).toBeLessThanOrEqual((firstAfter - firstStart) / 1000 + 0.051)
+      expect(second).toBeGreaterThanOrEqual((secondBefore - secondStarted) / 1000 - 0.051)
+      expect(second).toBeLessThanOrEqual((secondAfter - secondStart) / 1000 + 0.051)
+      expect(first).toBeGreaterThan(second)
       progress.stage('Waiting for the Flow result')
-      clock.mockReturnValue(9000)
       stop.abort()
       expect(screen(output)).toContain('waiting for work to stop and clean up 0s')
     } finally {
       progress.close()
-      clock.mockRestore()
     }
   })
   test('inspection states keep section boundaries and distinguish warnings from matching identities', () => {
@@ -303,124 +308,6 @@ describe('CLI experience contract', () => {
       'Cancellation requested; waiting for work to stop and clean up\nError: Cleanup could not be confirmed',
     )
     expect(screen(text)).not.toContain('✓')
-  })
-  test('review never announces success until cleanup completes', async () => {
-    let output = '',
-      error = ''
-    let finish!: () => void
-    const closing = new Promise<void>((resolve) => {
-      finish = resolve
-    })
-    let reachedClose!: () => void
-    const reached = new Promise<void>((resolve) => {
-      reachedClose = resolve
-    })
-    const session = {
-      async plan() {
-        return { state: 'unchanged' }
-      },
-      async close() {
-        reachedClose()
-        await closing
-      },
-    } as unknown as ProjectSession
-    const pending = main(['review'], {
-      host: {
-        async acquire() {
-          return session
-        },
-      },
-      terminalOutput: false,
-      writeOutput: (text) => {
-        output += text
-      },
-      writeError: (text) => {
-        error += text
-      },
-    })
-    await reached
-    expect(output).toBe('')
-    finish()
-    expect(await pending).toBe(0)
-    expect(output).toStartWith('Project ready\n')
-    expect(output).toContain('No Flow was started')
-    expect(error).toBe('')
-  })
-
-  for (const stage of ['planning', 'cleanup'] as const) {
-    test(`a cancellation during ${stage} cannot announce unchanged review success`, async () => {
-      const stop = new AbortController()
-      let output = '',
-        error = ''
-      const session = {
-        async plan() {
-          if (stage === 'planning') stop.abort()
-          return { state: 'unchanged' }
-        },
-        async close() {
-          if (stage === 'cleanup') stop.abort()
-        },
-      } as unknown as ProjectSession
-      expect(
-        await main(['review'], {
-          signal: stop.signal,
-          terminalOutput: false,
-          host: {
-            async acquire() {
-              return session
-            },
-          },
-          writeOutput: (text) => {
-            output += text
-          },
-          writeError: (text) => {
-            error += text
-          },
-        }),
-      ).toBe(2)
-      expect(output).toBe('')
-      expect(error).toContain('Command interrupted')
-      expect(error).toContain('does not undo completed effects')
-    })
-  }
-
-  test('a failed review and uncertain cleanup preserve both causes without exposing internals', async () => {
-    let output = '',
-      error = ''
-    const session = {
-      async plan() {
-        throw new ProjectAdministrationError('INVALID_CANDIDATE', 'secret source', {
-          code: 'METADATA_DESCRIPTION',
-          path: 'flows/chat/FLOW.md',
-        })
-      },
-      async close() {
-        throw new Error('secret host path')
-      },
-    } as unknown as ProjectSession
-    expect(
-      await main(['review'], {
-        host: {
-          async acquire() {
-            return session
-          },
-        },
-        terminalOutput: false,
-        writeOutput: (text) => {
-          output += text
-        },
-        writeError: (text) => {
-          error += text
-        },
-      }),
-    ).toBe(2)
-    expect(output).toBe('')
-    expect(error).toContain('JIG_CLEANUP_FAILED')
-    expect(error).toContain('METADATA_DESCRIPTION')
-    expect(error).toContain('Location: "flows/chat/FLOW.md"')
-    expect(error).toContain('when present, description must be nonempty text')
-    expect(error).not.toContain('secret')
-    expect(error).not.toContain('\u001b')
   })
 })
 test('command actions remain distinct and unwrapped, while scalar data is preserved', () => {

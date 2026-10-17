@@ -263,9 +263,9 @@ Unknown execution or failed project closure retains original source-exit
 recovery. Local closure uses only the existing presentation end.
 
 Preserve the first finalization promise, its deadline and failure, known
-execution/delivery and the primary error. `cli-delivery-retirement.test.ts`
-checks these choices with controlled host and transport faults. It does not
-qualify native retirement. Initiate forced native connection cancellation before
+execution/delivery and the primary error. Installed lifecycle suites must exercise
+actual delivery and interruption. Pure policy checks do not qualify authenticated
+retirement or native cleanup. Initiate forced native connection cancellation before
 discarding response queues and join it after disposing subscriptions and
 buffers. Blocked-stream expiry retains admission until abort/cancel
 acknowledgement. Closing inspection releases preview waiters.
@@ -343,6 +343,9 @@ all evidence recorded, never reconstruct live views or authority, and preserve
 exact decoded JSON. Qualify partial file capture, framing/byte/path limits, link
 refusal, interruption, buffer release and output failure independently of
 recorded execution status.
+
+Both source and installed record writers await bounded output completion.
+An unwritable output descriptor cannot produce a successful inspection exit.
 
 ### Acceptance checks
 

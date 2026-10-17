@@ -43,6 +43,7 @@ import {
   inspectPrivateApprovedProject,
   type PrivateInspectionEnvironmentCheck,
 } from './internal/activation-admission-store.js'
+import { PrivateCliOutput } from './internal/cli-output.js'
 import { importContract } from './internal/contract-import.js'
 import {
   PRIVATE_INSPECTION_COMPLETION_MS,
@@ -2163,6 +2164,7 @@ export function publicTerminal(terminal: RootRunTerminal): JsonValue {
 }
 
 function cliRuntime(options: PrivateCliOptions): CliRuntime {
+  let recordOutput: PrivateCliOutput | undefined
   const writeError =
     options.writeError ??
     ((text: string) => {
@@ -2230,7 +2232,11 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
       progress.pause()
       await progress.flush()
       if (options.writeRecord) await options.writeRecord(text)
-      else writeOutput(text)
+      else if (options.writeOutput) writeOutput(text)
+      else {
+        recordOutput ??= new PrivateCliOutput(process.stdout, new AbortController())
+        await recordOutput.write(text)
+      }
     },
     writeOutput: (text) => {
       progress.pause()

@@ -1,5 +1,9 @@
 import { expect, test } from 'bun:test'
+import { closeSync } from 'node:fs'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import {
+  capturePrivateOutput,
   capturePrivateRetainedOutput,
   readPrivateCapturedOutput,
   requirePrivateCapturedOutput,
@@ -8,7 +12,8 @@ import {
   privateSnapshotExecutionOutput,
   resolvePrivateExecutionOutput,
 } from '../../src/internal/execution-output.js'
-import { sha256 } from '../../src/internal/file-input.js'
+import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
+import { privateOpenFileRoot, sha256 } from '../../src/internal/file-input.js'
 import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifact,
@@ -23,9 +28,117 @@ import {
   requirePrivateRootFileMapping,
 } from '../../src/internal/root-run-files.js'
 import type { PrivateActivationRequest } from '../../src/project/package-resolution.js'
+import { fixture } from '../file-delivery.fixture.js'
 
 const digest = `sha256:${'0'.repeat(64)}`
 const file = (path: string, bytes = 0) => ({ path, bytes, digest })
+
+test('successful checkpoint-only packets ignore undeclared native output and retain its retirement owner', async () =>
+  fixture(async (root) => {
+    const source = join(root, 'source')
+    await mkdir(source)
+    await writeFile(join(source, 'undeclared.txt'), 'not a final attachment')
+    const fd = privateOpenFileRoot(source)
+    const capture = capturePrivateOutput(fd)
+    closeSync(fd)
+    const files = new PrivateRootRunFiles([], false)
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    const request = {
+      attachments: {},
+      package: { digest },
+      settings: {},
+      slots: { progress: { kind: 'native', native: 'run-checkpoint' } },
+    } as unknown as PrivateActivationRequest
+    const runId = `sha256:${'a'.repeat(64)}`
+    const { context } = files.projection(runId, request, files.identity)
+    const output = privateSnapshotExecutionOutput(Promise.resolve(capture))
+    files.retainOutput(output)
+    // Ordinary packet data tests selection, not protected checkpoint acceptance.
+    const checkpoint = {
+      sequence: 16,
+      digest: sha256(Buffer.from('packet descriptor')),
+      identity: { runId, method: null, input: null },
+      evidence: { completed: true },
+      files: { 'saved.txt': 'latest saved aggregate' },
+    }
+    try {
+      expect(files.deliveryOutput()).toBeUndefined()
+      expect(files.output).toBe(output)
+      expect(requirePrivateCapturedOutput(capture).files.map((file) => file.path)).toEqual([
+        'undeclared.txt',
+      ])
+      const destination = join(root, 'packet')
+      await owner.prepare(destination, [])
+      const record = { status: 'succeeded', runId, outcome: 'done', output: null, checkpoint }
+      const receipt = await owner.publish(record, files.deliveryOutput(), checkpoint)
+      expect(receipt).toMatchObject({ status: 'written', source: 'checkpoint' })
+      expect(await readFile(join(destination, 'files/saved.txt'), 'utf8')).toBe(
+        'latest saved aggregate',
+      )
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))).toEqual({
+        ...record,
+        delivery: receipt,
+      })
+    } finally {
+      context.close()
+      await files.close()
+      await owner.close()
+    }
+    expect(() => requirePrivateCapturedOutput(capture)).toThrow()
+  }))
+
+for (const mode of ['none', 'empty-native', 'forwarded'] as const)
+  test(`root packet source selection preserves ${mode} output meaning`, async () =>
+    fixture(async (root) => {
+      const source = join(root, 'source')
+      await mkdir(source)
+      const fd = privateOpenFileRoot(source)
+      const capture = capturePrivateOutput(fd)
+      closeSync(fd)
+      const files = new PrivateRootRunFiles([], mode === 'empty-native')
+      const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+      const request = {
+        attachments: mode === 'empty-native' ? { files: 'read-write' } : {},
+        artifactResults: mode === 'forwarded' ? ['selected'] : [],
+        package: { digest },
+        settings: {},
+        slots: {},
+      } as unknown as PrivateActivationRequest
+      const { context } = files.projection('source-selection', request, files.identity)
+      const output = privateSnapshotExecutionOutput(Promise.resolve(capture))
+      files.retainOutput(output)
+      try {
+        if (mode === 'forwarded') {
+          const held = await capturePrivateFlowArtifact(context, output)
+          const reference = commitPrivateFlowArtifact(context, held)
+          files.retainArtifacts(context, ['selected'], { selected: reference })
+        }
+        const selected = files.deliveryOutput()
+        expect(selected === undefined).toBe(mode === 'none')
+        if (selected?.kind === 'linux-directory') throw new Error('expected snapshot output')
+        const packetOutput =
+          selected === undefined
+            ? undefined
+            : { kind: 'snapshot' as const, capture: await selected.ready }
+        const destination = join(root, 'packet')
+        await owner.prepare(destination, [])
+        expect(
+          await owner.publish(
+            { status: 'succeeded', runId: 'source-selection', outcome: 'done', output: null },
+            packetOutput,
+          ),
+        ).toMatchObject({
+          status: 'written',
+          source: mode === 'none' ? 'none' : 'final',
+          files: [],
+        })
+      } finally {
+        context.close()
+        await files.close()
+        await owner.close()
+      }
+      expect(() => requirePrivateCapturedOutput(capture)).toThrow()
+    }))
 
 test('checkpoint association selection needs no writable attachment and resolves only current root rights', async () => {
   const files = new PrivateRootRunFiles([], false)

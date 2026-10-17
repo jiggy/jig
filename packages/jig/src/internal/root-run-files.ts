@@ -340,7 +340,8 @@ export class PrivateRootRunFiles {
   /** Ordinary packet composition uses accepted final names, never a mutable broker. */
   deliveryOutput(signal?: AbortSignal): PrivateExecutionOutput | undefined {
     if (this.#close) throw new Error('Run file owner retired')
-    if (this.#artifactResultNames.length === 0) return this.#output
+    if (this.#artifactResultNames.length === 0)
+      return this.#outputAttachments.length === 0 ? undefined : this.#output
     if (this.#deliveryOutput !== undefined) return this.#deliveryOutput
     const native = this.#outputAttachments[0]
     const nativeSnapshot = native === undefined ? undefined : this.#artifacts[native]

@@ -121,6 +121,7 @@ export default defineBinding({package:'flows/root',slots:{
     directory,
   )
   const cli = join(directory, 'node_modules/.bin/jig')
+  await mkdir(join(project, 'flows/root/contracts'), { recursive: true })
   await command(
     [cli, 'import-contract', 'jig:run-checkpoint', 'flows/root/contracts/progress'],
     project,

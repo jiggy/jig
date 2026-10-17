@@ -1,4 +1,4 @@
-import { describe, expect, setDefaultTimeout, spyOn, test } from 'bun:test'
+import { describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { realpathSync } from 'node:fs'
 import {
@@ -18,7 +18,6 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { main, privateCliPrepareArguments } from '../../src/cli.js'
-import { CheckError } from '../../src/diagnostics.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -72,12 +71,15 @@ import {
   encodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../../src/internal/project-local-lock.js'
-import { attachPrivateRootAdministrationController } from '../../src/internal/root-administration-controller.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
 import { capturePackageDirectory } from '../../src/package/capture.js'
 import { restorePrivateActivationRequest } from '../../src/project/package-resolution.js'
 import { parseRun } from '../../src/run-arguments.js'
 
+// These are SQLite and decoder tests, not execution qualifications. Manually
+// recorded checkpoint values below are inert store inputs: they establish CAS,
+// ordering, retention and rollback only, never actual native admission, fencing,
+// cleanup, session creation, or successful execution. No controller executes them.
 const TABLES = [
   'admission_head',
   'admissions',
@@ -100,7 +102,7 @@ const TABLES = [
   'root_terminals',
 ] as const
 
-test('phase custody is append-only, sequential, conflict-safe and durable across reopen', async () => {
+test('stored phase packets are append-only, sequential, conflict-safe and durable across reopen', async () => {
   const fixture = await createFixture('ready')
   let coordinator: PrivateProjectCoordinator | undefined
   try {
@@ -155,7 +157,7 @@ test('phase custody is append-only, sequential, conflict-safe and durable across
     await expect(record('generate', 'cleanup')).rejects.toMatchObject({
       code: 'RUN_CHILD_OWNER_CONFLICT',
     })
-    // A cancelled native plan still needs fence and cleanup, even without sealing.
+    // Stored phase ordering requires fence and cleanup packets even without sealing.
     await record('generate', 'fence')
     await record('generate', 'cleanup')
     await expect(record('generate', 'sandbox')).rejects.toMatchObject({
@@ -218,7 +220,7 @@ test('phase custody is append-only, sequential, conflict-safe and durable across
   }
 }, 60_000)
 
-test('phase-only recovery settles old native plans but cannot start work and closes only exact history', async () => {
+test('replacement coordinator accepts exact old phase packets but refuses new-work packets', async () => {
   const fixture = await createFixture('ready')
   let coordinator: PrivateProjectCoordinator | undefined
   try {
@@ -936,6 +938,7 @@ async function submitReadyRun(
     deadlineUnixMs,
   })
 }
+// Raw UTF-8 session-store inputs, not a native client restoration receipt.
 function nativeSession() {
   const nativeId = '0194b66c-1800-7403-a21b-7ac00d721b0a'
   return {
@@ -952,6 +955,7 @@ async function prepareNativeSessionParent(
   await prepareNativeSessionLifecycle(fixture, coordinator, run.runId)
   return run.runId
 }
+// Satisfy the store's packet-order prerequisites only. No native owner exists.
 async function prepareNativeSessionLifecycle(
   fixture: Fixture,
   coordinator: PrivateProjectCoordinator,
@@ -977,7 +981,8 @@ function checkpoint(
     value,
   })
 }
-async function settleExecution(
+// Exercise durable terminal packet storage, never execute or settle native work.
+async function recordTerminalPackets(
   fixture: Fixture,
   coordinator: PrivateProjectCoordinator,
   runId: string,
@@ -1121,7 +1126,7 @@ function digest(label: string): string {
 }
 setDefaultTimeout(60_000)
 describe.serial('direct alpha activation store', () => {
-  test('temporary state deletion failure cannot commit a root terminal', async () => {
+  test('a competing SQLite writer prevents terminal storage and session deletion until retry', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -1138,24 +1143,16 @@ describe.serial('direct alpha activation store', () => {
         lifetime: 'run',
       })
       const terminal = successTerminal(null)
-      await settleExecution(fixture, coordinator, runId, terminal)
-      const sqlite = createRequire(import.meta.url)('bun:sqlite')
-      const query = sqlite.Database.prototype.query
-      const fault = spyOn(sqlite.Database.prototype, 'query').mockImplementation(function (
-        this: unknown,
-        sql: unknown,
-        ...args: unknown[]
-      ) {
-        if (sql === 'DELETE FROM native_sessions WHERE root_run_id = ?1')
-          throw new Error('injected temporary retention deletion failure')
-        return query.call(this, sql, ...args)
-      })
+      await recordTerminalPackets(fixture, coordinator, runId, terminal)
+      const writer = openSqlite(fixture.database, 'readwrite')
       try {
+        writer.exec('BEGIN IMMEDIATE')
         await expect(
           closePrivateRootExecution({ coordinator, projectRoot: fixture.root, runId, terminal }),
-        ).rejects.toThrow('injected temporary retention deletion failure')
+        ).rejects.toMatchObject({ code: 'ADMISSION_STATE_BUSY' })
       } finally {
-        fault.mockRestore()
+        writer.exec('ROLLBACK')
+        writer.close(true)
       }
       const database = openSqlite(fixture.database, 'readonly')
       try {
@@ -1177,7 +1174,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('recovery retains temporary state until confirmed fencing and cleanup', async () => {
+  test('replacement coordinator retains session rows until required close packets are stored', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -1225,7 +1222,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('Run-owned sessions restore only within that active root and do not accumulate after settlement', async () => {
+  test('Run-owned session rows are claimable only by their active root and deleted by terminal storage', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -1301,7 +1298,7 @@ describe.serial('direct alpha activation store', () => {
                 message: 'cancelled',
                 diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
               } as const)
-        await settleExecution(fixture, coordinator, parentRunId, terminal)
+        await recordTerminalPackets(fixture, coordinator, parentRunId, terminal)
         await closePrivateRootExecution({
           coordinator,
           projectRoot: fixture.root,
@@ -1607,199 +1604,6 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('root controller consumes a durable terminal when pending-work reacquisition loses the race', async () => {
-    const fixture = await createFixture('ready')
-    let coordinator: PrivateProjectCoordinator | undefined
-    let controller:
-      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
-      | undefined
-    let executions = 0
-    try {
-      await admit(fixture)
-      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-      controller = await attachPrivateRootAdministrationController({
-        projectRoot: fixture.root,
-        packageStoreRoot: fixture.store,
-        coordinator,
-        runTimeoutMs: 60_000,
-        async execute(runId, owner) {
-          executions++
-          const terminal = successTerminal({ accepted: true })
-          await settleExecution(fixture, owner, runId, terminal)
-          await closePrivateRootExecution({
-            coordinator: owner,
-            projectRoot: fixture.root,
-            runId,
-            terminal,
-          })
-          // Model a stale pending-work observation reaching the real
-          // reacquisition boundary after another task committed completion.
-          await reacquirePrivateRootExecutionWork({
-            coordinator: owner,
-            projectRoot: fixture.root,
-            packageStoreRoot: fixture.store,
-            runId,
-          })
-          throw new Error('terminal reacquisition unexpectedly succeeded')
-        },
-      })
-      const { runId } = await controller.administration.startRun({
-        submissionId: 'terminal-race',
-        target: { kind: 'flow', path: 'flows/run' },
-        input: { value: 'first' },
-      })
-      await controller.drain()
-      for (let poll = 0; poll < 4; poll++) {
-        expect(await controller.administration.runStatus({ runId })).toMatchObject({
-          runId,
-          state: 'terminal',
-          terminal: { status: 'succeeded', output: { accepted: true } },
-        })
-      }
-      expect(executions).toBe(1)
-      await controller.dispose()
-    } finally {
-      await controller?.dispose().catch(() => undefined)
-      await coordinator?.dispose()
-      await fixture.dispose()
-    }
-  })
-  test('current root work reacquires a transient pending fence without another Run', async () => {
-    const fixture = await createFixture('ready')
-    let coordinator: PrivateProjectCoordinator | undefined
-    let controller:
-      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
-      | undefined
-    let attempts = 0
-    try {
-      await admit(fixture)
-      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-      controller = await attachPrivateRootAdministrationController({
-        projectRoot: fixture.root,
-        packageStoreRoot: fixture.store,
-        coordinator,
-        runTimeoutMs: 60_000,
-        async execute(runId, owner) {
-          attempts++
-          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
-          const terminal = successTerminal({ accepted: true })
-          await settleExecution(fixture, owner, runId, terminal)
-          return {
-            state: 'terminal',
-            run: await closePrivateRootExecution({
-              coordinator: owner,
-              projectRoot: fixture.root,
-              runId,
-              terminal,
-            }),
-          }
-        },
-      })
-      const { runId } = await controller.administration.startRun({
-        submissionId: 'transient-pending-fence',
-        target: { kind: 'flow', path: 'flows/run' },
-        input: { value: 'first' },
-      })
-      await controller.drain()
-      expect(await controller.administration.runStatus({ runId })).toMatchObject({
-        runId,
-        state: 'terminal',
-        terminal: { status: 'succeeded', output: { accepted: true } },
-      })
-      expect(attempts).toBe(2)
-    } finally {
-      await controller?.dispose().catch(() => undefined)
-      await coordinator?.dispose()
-      await fixture.dispose()
-    }
-  })
-  for (const scenario of ['pending', 'throws', 'terminal-refusal-without-terminal'] as const) {
-    test(
-      `root status exposes ${scenario} settlement without silently rescheduling`,
-      async () => {
-        const fixture = await createFixture('ready')
-        let coordinator: PrivateProjectCoordinator | undefined
-        let controller:
-          | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
-          | undefined
-        let executions = 0
-        const originalMonotonic = performance.now
-        let settlementClock: ReturnType<typeof spyOn> | undefined
-        try {
-          await admit(fixture)
-          coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-          controller = await attachPrivateRootAdministrationController({
-            projectRoot: fixture.root,
-            packageStoreRoot: fixture.store,
-            coordinator,
-            runTimeoutMs: 60_000,
-            async execute() {
-              executions++
-              if (scenario === 'throws') throw new Error('private cleanup cause')
-              if (scenario === 'terminal-refusal-without-terminal') {
-                throw new CheckError('invalid', 'RUN_ALREADY_TERMINAL', 'unproved terminal')
-              }
-              if (scenario === 'pending' && executions === 2) {
-                // Two genuine mocked reacquisitions precede the unchanged 30s cutoff.
-                // No native executor or timer runs under this local observation.
-                const beyondSettlement = performance.now() + 30_001
-                settlementClock = spyOn(performance, 'now').mockReturnValue(beyondSettlement)
-              }
-              return { state: 'pending', reason: 'fence-unconfirmed' }
-            },
-          })
-          const { runId } = await controller.administration.startRun({
-            submissionId: 'failed-settlement',
-            target: { kind: 'flow', path: 'flows/run' },
-            input: { value: 'first' },
-          })
-          await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-          settlementClock?.mockRestore()
-          settlementClock = undefined
-          expect(performance.now).toBe(originalMonotonic)
-          const settledAttempts = executions
-          for (let poll = 0; poll < 4; poll++) {
-            const error = await controller.administration
-              .runStatus({ runId })
-              .catch((error) => error)
-            expect(error.code).toBe(scenario === 'pending' ? 'PROJECT_BUSY' : 'INTERNAL')
-            expect(JSON.stringify(error)).not.toContain('private cleanup cause')
-          }
-          if (scenario === 'pending') expect(settledAttempts).toBeGreaterThan(1)
-          else expect(settledAttempts).toBe(1)
-          expect(executions).toBe(settledAttempts)
-          expect(
-            (
-              await loadPrivateRootRunForCoordinator({
-                coordinator,
-                projectRoot: fixture.root,
-                runId,
-              })
-            ).state,
-          ).toBe('spawn-intent')
-          // A second admitted root is independent; the first failure does not
-          // turn the controller into a global execution lock.
-          if (scenario !== 'pending') {
-            await controller.administration.startRun({
-              submissionId: 'independent-settlement',
-              target: { kind: 'flow', path: 'flows/run' },
-              input: { value: 'second' },
-            })
-            await expect(controller.drain()).rejects.toThrow('did not settle cleanly')
-            expect(executions).toBe(2)
-          }
-          await expect(controller.dispose()).rejects.toThrow('did not settle cleanly')
-          expect(executions).toBe(scenario === 'pending' ? settledAttempts : 2)
-        } finally {
-          settlementClock?.mockRestore()
-          await controller?.dispose().catch(() => undefined)
-          await coordinator?.dispose()
-          await fixture.dispose()
-        }
-      },
-      scenario === 'pending' ? 75_000 : 60_000,
-    )
-  }
   for (const [suiteCaseIndex, suiteCaseValue] of (['ready', 'unavailable'] as const).entries()) {
     test(
       'omitted writable output selects one temporary packet from the retained %s interface' +
@@ -1932,7 +1736,7 @@ describe.serial('direct alpha activation store', () => {
               ).toEqual({ exitCode: 1 })
               expect(diagnostic).toContain('Temporary output storage is unavailable')
               expect(diagnostic).toContain('No Flow was started')
-              expect(diagnostic).toContain('Add --out ./result-packet to the same invocation')
+              expect(diagnostic).toMatch(/Add --out\s+\.\/result-packet to the same invocation/)
               const fallback = ['run', 'flow:flows/run', '--out', 'chosen']
               expect(
                 await privateCliPrepareArguments(fallback, { currentDirectory: fixture.root }),
@@ -2190,7 +1994,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('reserves two deep branches and fences descendants without disabling their sibling', async () => {
+  test('stored ancestor fence packets block descendant allocations but preserve sibling capacity', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -2415,7 +2219,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('reserves two deep branches atomically and retains capacity through fencing until cleanup', async () => {
+  test('reserves two deep branches atomically until their cleanup packets are stored', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -2508,7 +2312,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('retains only active child cleanup ownership', async () => {
+  test('retains only active child cleanup owner rows', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -2550,7 +2354,7 @@ describe.serial('direct alpha activation store', () => {
       ).rejects.toMatchObject({ code: 'RUN_CHILD_CAPACITY' })
 
       const terminal = successTerminal({ ok: true })
-      await settleExecution(fixture, coordinator, submitted.run.runId, terminal)
+      await recordTerminalPackets(fixture, coordinator, submitted.run.runId, terminal)
       await expect(
         closePrivateRootExecution({
           coordinator,
@@ -2633,7 +2437,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('scopes one nested Agent to its sealed Flow and retains both owners across coordinator loss', async () => {
+  test('scopes a nested Agent row to its parent Flow packets and retains rows across coordinator replacement', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -2774,7 +2578,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('deep branches reserve capacity and every active ancestor fences descendant dispatch', async () => {
+  test('deep branches reserve capacity and stored ancestor fence packets reject descendant allocations', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -2839,7 +2643,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('rejects new nested work after its Flow is fenced and rejects Agent parents', async () => {
+  test('rejects nested allocations after parent fence storage and rejects Agent parents', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -2917,7 +2721,7 @@ describe.serial('direct alpha activation store', () => {
         }),
       ).rejects.toMatchObject({ code: 'RUN_CHILD_PARENT_INACTIVE' })
       const fencedRoot = await submitReadyRun(fixture, coordinator, 'fenced-root-child')
-      await settleExecution(
+      await recordTerminalPackets(
         fixture,
         coordinator,
         fencedRoot.run.runId,
@@ -2936,7 +2740,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('compare-and-sets every child cleanup fact and exact close', async () => {
+  test('compare-and-sets every child cleanup packet and exact row close', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -3150,7 +2954,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('lets a replacement replay child facts but not seal old unowned work', async () => {
+  test('lets a replacement replay child packets but rejects new sandbox packets for old rows', async () => {
     const replayFixture = await createFixture('ready')
     let first: PrivateProjectCoordinator | undefined
     let replacement: PrivateProjectCoordinator | undefined
@@ -3358,7 +3162,7 @@ describe.serial('direct alpha activation store', () => {
       }
     }
   })
-  test('compare-and-sets one cumulative preparation cleanup proof', async () => {
+  test('compare-and-sets one cumulative preparation cleanup packet', async () => {
     const fixture = await createEmptyFixture()
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -3842,7 +3646,7 @@ describe.serial('direct alpha activation store', () => {
       coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
       const { run } = await submitReadyRun(fixture, coordinator, 'terminal-observation')
       const terminal = successTerminal({ checked: true })
-      await settleExecution(fixture, coordinator, run.runId, terminal)
+      await recordTerminalPackets(fixture, coordinator, run.runId, terminal)
       await closePrivateRootExecution({
         coordinator,
         projectRoot: fixture.root,
@@ -4074,7 +3878,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('enforces ordered write-once root lifecycle facts and one matching terminal', async () => {
+  test('enforces ordered write-once root checkpoint packets and one matching terminal row', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
     try {
@@ -4176,7 +3980,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('recovers older work as coordinator loss without redispatch', async () => {
+  test('reacquires older stored work without allocating another root or allowing new plan packets', async () => {
     const fixture = await createFixture('ready')
     let first: PrivateProjectCoordinator | undefined
     let replacement: PrivateProjectCoordinator | undefined
@@ -4282,67 +4086,6 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('retries a transient unconfirmed older fence without creating another Run', async () => {
-    const fixture = await createFixture('ready')
-    let first: PrivateProjectCoordinator | undefined
-    let replacement: PrivateProjectCoordinator | undefined
-    let controller:
-      | Awaited<ReturnType<typeof attachPrivateRootAdministrationController>>
-      | undefined
-    try {
-      await admit(fixture)
-      first = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-      const created = await submitReadyRun(fixture, first, 'recover-pending')
-      await first.dispose()
-      first = undefined
-      replacement = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
-      let attempts = 0
-      controller = await attachPrivateRootAdministrationController({
-        coordinator: replacement,
-        projectRoot: fixture.root,
-        packageStoreRoot: fixture.store,
-        runTimeoutMs: 60_000,
-        async execute(runId, owner) {
-          attempts++
-          if (attempts === 1) return { state: 'pending', reason: 'fence-unconfirmed' }
-          const terminal = {
-            status: 'lost' as const,
-            code: 'COORDINATOR_LOST' as const,
-            message: 'the prior coordinator disappeared before a proved result',
-          }
-          await checkpoint(fixture, owner, runId, 'provisional', terminal as unknown as JsonValue)
-          await checkpoint(fixture, owner, runId, 'release', { released: true })
-          await checkpoint(fixture, owner, runId, 'admitted', terminal as unknown as JsonValue)
-          return {
-            state: 'terminal',
-            run: await closePrivateRootExecution({
-              coordinator: owner,
-              projectRoot: fixture.root,
-              runId,
-              terminal,
-            }),
-          }
-        },
-      })
-      expect(attempts).toBe(2)
-      expect(await controller.administration.runStatus({ runId: created.run.runId })).toMatchObject(
-        { state: 'terminal', terminal: { status: 'lost' } },
-      )
-      const database = openSqlite(fixture.database, 'readonly')
-      try {
-        expect(database.query('SELECT count(*) AS count FROM root_runs').get()).toEqual({
-          count: 1,
-        })
-      } finally {
-        database.close(true)
-      }
-    } finally {
-      await controller?.dispose()
-      await replacement?.dispose()
-      await first?.dispose()
-      await fixture.dispose()
-    }
-  })
   test('fails closed on current Candidate, Plan, admission, and terminal corruption', async () => {
     const candidate = await createFixture()
     try {
@@ -4407,7 +4150,7 @@ describe.serial('direct alpha activation store', () => {
       coordinator = await openPrivateProjectCoordinator({ projectRoot: terminal.root })
       const submitted = await submitReadyRun(terminal, coordinator, 'corrupt-terminal')
       const value = successTerminal({ ok: true })
-      await settleExecution(terminal, coordinator, submitted.run.runId, value)
+      await recordTerminalPackets(terminal, coordinator, submitted.run.runId, value)
       await closePrivateRootExecution({
         coordinator,
         projectRoot: terminal.root,

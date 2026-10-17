@@ -100,7 +100,12 @@ export function foundationCommands(evidence: string) {
       timeoutMs,
       graceMs: 10_000,
     })
-    assert.equal(result.code, 0, `Installed foundation command ${sequence} failed; see ${evidence}`)
+    const diagnostic = /Diagnostic code: ([A-Z][A-Z0-9_]{0,63})\b/.exec(result.stderr)?.[1]
+    assert.equal(
+      result.code,
+      0,
+      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}; see ${evidence}`,
+    )
     return result
   }
 }
@@ -466,6 +471,7 @@ async function runFoundationApplication(
     flag: 'wx',
     mode: 0o600,
   })
+  await mkdir(join(project, 'flows/root/contracts'), { recursive: true })
   if (application === 'adaptive')
     await command(
       [cli, 'import-contract', 'jig:project-evaluation', 'flows/root/contracts/evaluation'],
@@ -479,7 +485,10 @@ async function runFoundationApplication(
   // Review the operator recipe once. All candidate iterations happen inside this admission.
   // The frozen public SDK is a declared source workspace without an authored
   // project lock. This explicit permission is review-only, never Run authority.
-  await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
+  await command(
+    [cli, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
+    project,
+  )
   const lock = await digest(join(project, 'jig.lock'))
   await command(
     [
