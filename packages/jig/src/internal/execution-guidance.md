@@ -216,6 +216,11 @@ These links locate module rules. All selected domain requirements still apply.
   journals live under `.jig/private-root-owners`. Prerelease hosts must not
   recreate the former Linux-named directory as a compatibility path.
 
+- The Linux backend observes rejections of eagerly created completion, evidence,
+  and termination-reason projections even when a consumer uses only some of them.
+  Return the original rejecting promises: observation must not replace failures
+  with success or weaken enforcement uncertainty.
+
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner rows
   and independent supervision survive coordinator loss without replay.

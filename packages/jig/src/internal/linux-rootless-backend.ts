@@ -785,6 +785,12 @@ export class PrivateLinuxCgroupBackend {
             stopReason: receipt.stopReason,
           }),
       )
+      const evidence = enforcement.then((receipt) => receipt.evidence)
+      const terminationReason = enforcement.then((receipt) => receipt.stopReason)
+      // Consumers may use only some projections. Keep rejection custody here
+      // while returning the original promises so every awaited failure survives.
+      for (const promise of [completion, evidence, terminationReason])
+        void promise.catch(() => undefined)
       return Object.freeze({
         ...(outputDirectory === undefined
           ? {}
@@ -805,8 +811,8 @@ export class PrivateLinuxCgroupBackend {
         stderr: streamBytes(supervisor.stderr),
         completion,
         enforcement,
-        evidence: enforcement.then((receipt) => receipt.evidence),
-        terminationReason: enforcement.then((receipt) => receipt.stopReason),
+        evidence,
+        terminationReason,
         write: async (bytes: Uint8Array): Promise<void> => {
           if (inputClosed) throw new Error('rootless Linux Run input is closed')
           await writeBytes(supervisor!.stdin, bytes)

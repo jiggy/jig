@@ -1,5 +1,5 @@
 import { test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -14,7 +14,7 @@ requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
 
 test('frozen installed exports reconcile written evidence and preserve real failed/cancelled checkpoints', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-installed-export-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-installed-export-')))
   let completed = false
   try {
     const archives = await freezeFoundationArchives(
