@@ -7,6 +7,7 @@ import channelContractSchema from '../../docs/flow/spec/machine/channel-contract
 import invocationContractSchema from '../../docs/flow/spec/machine/invocation-contract-0.schema.json'
 import schema from '../../docs/flow/spec/machine/run-0.schema.json'
 import errorRegistry from '../../docs/flow/spec/machine/run-0-errors.json'
+import artifactCases from './fixtures/artifacts.json'
 import featureCases from './fixtures/invocation-features.json'
 import cases from './fixtures/messages.json'
 
@@ -14,6 +15,44 @@ const ajv = new Ajv2020({ allErrors: true, strict: true })
 ajv.addSchema(schema)
 
 describe('Run/0 message schemas', () => {
+  test('finite artifacts use distinct closed handler, host and domain envelopes', () => {
+    for (const fixture of artifactCases) {
+      const validate = definition(fixture.definition)
+      expect(validate(fixture.value), JSON.stringify(fixture)).toBe(fixture.valid)
+    }
+    for (const name of ['artifactReferences', 'callAttachments']) {
+      const item = name === 'artifactReferences' ? 'a:1' : { create: true }
+      const map = Object.fromEntries(Array.from({ length: 256 }, (_, i) => [`port-${i}`, item]))
+      expect(definition(name)(map)).toBe(true)
+      expect(definition(name)({ ...map, extra: item })).toBe(false)
+    }
+    const validate = new Ajv2020({ strict: true, allowUnionTypes: true }).compile(
+      invocationContractSchema,
+    )
+    const base = { $schema: invocationContractSchema.$id }
+    expect(validate({ ...base, artifactResults: ['final'] })).toBe(true)
+    expect(validate({ ...base, operations: { make: { artifactResults: ['final'] } } })).toBe(true)
+    for (const artifactResults of [null, {}, ['final', 'final'], ['Bad'], ['a'.repeat(65)]])
+      expect(validate({ ...base, artifactResults })).toBe(false)
+    const release = {
+      jsonrpc: '2.0',
+      id: 'component:release',
+      method: 'flow/artifact/release',
+      params: { operationId: 'release:1', artifact: 'artifact:1' },
+    }
+    expect(definition('artifactReleaseRequest')(release)).toBe(true)
+    for (const params of [
+      { artifact: 'artifact:1' },
+      { operationId: 'release:1', artifact: 'artifact:1', path: '/host' },
+      { operationId: 'release:1', artifact: 'x'.repeat(129) },
+      { operationId: 'release:1', artifact: 'a\n' },
+    ])
+      expect(definition('artifactReleaseRequest')({ ...release, params })).toBe(false)
+    expect(definition('attachment')({ path: '/read', access: 'read', artifact: 'a:1' })).toBe(true)
+    expect(definition('attachment')({ path: '/out', access: 'read-write', artifact: 'a:1' })).toBe(
+      false,
+    )
+  })
   test('implementer guide wire examples match the normative message schemas', () => {
     const methods: Record<string, string> = {
       'flow/run': 'flowRunRequest',

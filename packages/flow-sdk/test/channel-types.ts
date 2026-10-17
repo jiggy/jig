@@ -1,4 +1,6 @@
 import type {
+  Artifact,
+  CallResult,
   ChannelBroadcast,
   ChannelEndpoint,
   ChannelOptions,
@@ -22,4 +24,21 @@ export async function channelTypes(run: RunContext, options: ChannelOptions): Pr
   // @ts-expect-error Broadcast has subscriptions rather than an implicit receiver.
   broadcast.receive
   void [direct, selectedDirect, receiver, dynamic, endpoint]
+  const made: CallResult = await run.call({
+    operationId: 'p1',
+    slot: 'producer',
+    input: null,
+    attachments: { files: { create: true } },
+  })
+  const artifact: Artifact = made.artifacts!.files!
+  await run.call({
+    operationId: 'e1',
+    slot: 'reader',
+    input: null,
+    attachments: { candidate: { read: artifact } },
+  })
+  await run.release({ operationId: 'release:1', artifact })
+  // @ts-expect-error A reference spelling cannot manufacture a held artifact.
+  const forged: Artifact = { reference: 'artifact:1' }
+  void forged
 }

@@ -1,16 +1,22 @@
+import { createHash } from 'node:crypto'
 import {
-  capturePrivateBytes,
   capturePrivateByteStream,
+  capturePrivateBytes,
   type PrivateCapturedBytes,
   readPrivateCapturedBytes,
   requirePrivateCapturedBytes,
 } from './captured-bytes.js'
-import { requirePrivateCapturedOutput, type PrivateCapturedOutput, type PrivateOutputFile } from './captured-output.js'
+import {
+  type PrivateCapturedOutput,
+  type PrivateOutputFile,
+  requirePrivateCapturedOutput,
+} from './captured-output.js'
 import { privateDescriptorByteChunks } from './descriptor-byte-stream.js'
-import { createHash } from 'node:crypto'
 
 /** Invocation-only authority: an output capture cannot substitute for an input. */
-export type PrivateCapturedInput = PrivateCapturedBytes<'input'> | PrivateCapturedBytes<'artifact-input'>
+export type PrivateCapturedInput =
+  | PrivateCapturedBytes<'input'>
+  | PrivateCapturedBytes<'artifact-input'>
 export function capturePrivateInput(bytes: Uint8Array): PrivateCapturedInput {
   return capturePrivateBytes(bytes, 'input')
 }
@@ -31,6 +37,7 @@ export function capturePrivateArtifactInput(
   file: PrivateOutputFile,
   signal?: AbortSignal,
 ): PrivateCapturedInput {
+  signal?.throwIfAborted()
   const held = requirePrivateCapturedOutput(snapshot)
   if (!held.files.includes(file))
     throw new TypeError('artifact input requires its original snapshot manifest member')
@@ -43,6 +50,7 @@ export function capturePrivateArtifactInput(
     }
     if (`sha256:${hash.digest('hex')}` !== file.digest)
       throw new Error('artifact snapshot file identity changed')
+    signal?.throwIfAborted()
     requirePrivateCapturedOutput(snapshot)
   }
   return capturePrivateByteStream(chunks(), 'artifact-input')

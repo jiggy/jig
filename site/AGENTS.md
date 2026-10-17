@@ -39,6 +39,9 @@ Jig public sites.
 
   Conversation navigation separates the two-turn tutorial, control, handoff, and
   native restoration into their owning guides.
+- Jig's client and evaluator references use `/spec/execution-client` and
+  `/spec/project-evaluation`. Assembly publishes the exact evaluator invocation
+  and recipe schema beside its human identity page. Downloads grant no authority.
 - `theme/` owns the shared default-theme extension. `landing.css` owns shared
   landing and reading presentation. Both deployment triggers include these
   inputs.

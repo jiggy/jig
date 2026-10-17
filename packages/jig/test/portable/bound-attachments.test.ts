@@ -30,6 +30,7 @@ import {
 } from '../../src/project/package-resolution.js'
 import { retainFlowSourcePackages } from '../../src/project/retained-flow.js'
 import { openPrivateProjectRoot } from '../../src/project/root.js'
+
 async function fixture(work: (root: string, store: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-bound-attachments-')))
   const store = join(root, 'store')
@@ -159,7 +160,7 @@ test('linked review, lock, request and projection pin the same read-only selecti
       expect(() =>
         requirePrivateRootFileMapping(request, {
           attachments: [{ name: 'tool', files: [] }],
-          output: null,
+          output: false,
         }),
       ).toThrow()
       const direct = buildPrivateActivationRequests(linked).find(
@@ -167,7 +168,7 @@ test('linked review, lock, request and projection pin the same read-only selecti
       )!
       expect(direct.boundAttachments).toBeUndefined()
       expect(() => requirePrivateRootFileMapping(direct, PRIVATE_EMPTY_FILE_IDENTITY)).toThrow()
-      const files = new PrivateRootRunFiles([], null)
+      const files = new PrivateRootRunFiles([], false)
       const opened = await openBoundAttachments(store, capturedAttachments)
       try {
         expect(() => files.projection('one', request, PRIVATE_EMPTY_FILE_IDENTITY)).toThrow(
@@ -180,8 +181,9 @@ test('linked review, lock, request and projection pin the same read-only selecti
           opened.attachments,
         )
         expect(projection.attachments).toEqual({
-          tool: { path: '/jig-input/tool', access: 'read' },
+          tool: { path: '/jig-input/tool', access: 'read', artifact: expect.any(String) },
         })
+        expect(projection.attachments.tool!.artifact!.length).toBeGreaterThan(0)
         expect(projection.plan.capturedInputs).toHaveLength(2)
       } finally {
         opened.close()
@@ -232,7 +234,7 @@ test('linked review, lock, request and projection pin the same read-only selecti
             },
           ],
         }),
-      ).toThrow('complete reviewed static attachment map')
+      ).toThrow('complete reviewed attachment map')
       const modified = structuredClone(request)
       ;(modified.boundAttachments!.tool as { source: string }).source = 'different'
       expect(() => restorePrivateActivationRequest(modified)).toThrow('digest')

@@ -1,13 +1,19 @@
-import { PRIVATE_PREVIEW_LIMITS, privateValidImagePreview } from './image-preview-policy.js'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { closeSync, fstatSync } from 'node:fs'
 import { type FileHandle, open } from 'node:fs/promises'
 import { connect, createServer, type Socket } from 'node:net'
 import { dirname, join } from 'node:path'
+import { parseAttemptFrame } from '../attempt-contract.js'
 import { privateCliStderrDiagnostic } from '../cli-presentation.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
-import { requirePrivateCapturedOutput } from './captured-output.js'
+import {
+  acquirePrivateAttemptRunCheckpointExport,
+  readPrivateAttemptRunCheckpoint,
+  releasePrivateAttemptExport,
+} from './activation-admission-store.js'
+import { copyPrivateAttemptExport } from './attempt-export-copier.js'
+import { capturePrivateRetainedOutput, requirePrivateCapturedOutput } from './captured-output.js'
 import {
   PRIVATE_INSPECTION_COMPLETION_MS,
   PrivateDeliveryAuthorityRetirement,
@@ -15,6 +21,7 @@ import {
   PrivateDeliveryInspectionError,
   privateBoundInspection,
 } from './delivery-inspection.js'
+import { closePrivateExecutionOutput } from './execution-output.js'
 import {
   type PrivateDeliveryConnection,
   type PrivateDeliveryInspectionOptions,
@@ -23,11 +30,13 @@ import {
   PrivateFileDeliveryOwner,
 } from './file-delivery.js'
 import { privateOpenFileRoot } from './file-input.js'
+import { PRIVATE_PREVIEW_LIMITS, privateValidImagePreview } from './image-preview-policy.js'
 import { sendPrivateMacosDescriptors } from './macos-descriptor-handoff.js'
 import { createPrivateMacosFileCommand, requirePrivateMacosFilePeer } from './macos-file-command.js'
+import { PrivateAttemptError } from './prepared-attempt-store.js'
 import {
   PrivateCheckpointRejected,
-  PrivateRunCheckpoints,
+  parseRunCheckpointIdentity,
   type RunCheckpointIdentity,
 } from './private-run-checkpoint.js'
 import {
@@ -120,7 +129,15 @@ function marker(): Marker | undefined {
 const address = (marker: Marker) =>
   marker.platform === 'linux' ? `\0${marker.socket}` : marker.socket
 export function privateNeedsFileOwner(arguments_: readonly string[]): boolean {
-  return arguments_[0] === 'run' && arguments_.includes('--out') && marker() === undefined
+  const exportsRetained =
+    arguments_.length === 3 &&
+    arguments_[0] === 'attempt' &&
+    arguments_[1] === 'export' &&
+    arguments_[2] === '--json'
+  return (
+    (exportsRetained || (arguments_[0] === 'run' && arguments_.includes('--out'))) &&
+    marker() === undefined
+  )
 }
 
 /** Stay outside the delegated execution scope and own only delivery resources. */
@@ -153,7 +170,12 @@ export async function privateOwnFileCommand(
   let cleanupFailed = false
   let prepared = false
   let recoveryFailed = false
-  let checkpoints: PrivateRunCheckpoints | undefined
+  let checkpoints:
+    | {
+        identity: RunCheckpointIdentity
+        latest?: import('./private-run-checkpoint.js').RetainedRunCheckpoint | undefined
+      }
+    | undefined
   let recovery: PrivateFileRecovery | undefined
   let projectFd: number | undefined
   let serverClose: Promise<void> | undefined
@@ -195,16 +217,10 @@ export async function privateOwnFileCommand(
       coordinatorLost.abort()
       failures.push(error)
     }
-    const checkpointOwner = checkpoints,
-      heldProject = projectFd
+    const heldProject = projectFd
     checkpoints = undefined
     projectFd = undefined
     recovery = undefined
-    try {
-      checkpointOwner?.close()
-    } catch (error) {
-      failures.push(error)
-    }
     try {
       if (heldProject !== undefined) closeSync(heldProject)
     } catch (error) {
@@ -281,6 +297,33 @@ export async function privateOwnFileCommand(
             serverSettlement ??= privateBoundInspection(serverClose!, options)
             await serverSettlement
             break
+          } else if (request.type === 'export-attempt') {
+            if (publication !== undefined || prepared || checkpoints !== undefined)
+              throw new Error('delivery already requested')
+            const input =
+              request.input as unknown as import('./attempt-export-copier.js').PrivateAttemptExportRequest
+            if (
+              !input ||
+              typeof input.projectRoot !== 'string' ||
+              typeof input.ticket !== 'string' ||
+              typeof input.destination !== 'string' ||
+              (input.source !== undefined &&
+                input.source !== 'final' &&
+                input.source !== 'checkpoint') ||
+              (input.artifactResult !== undefined && typeof input.artifactResult !== 'string')
+            )
+              throw new Error('invalid retained export')
+            if (request.cancelled === true) cancellation.abort()
+            // Do not bind retained export to the original Run's recovery owner.
+            // This process acquires, copies, records the outcome and retires pins.
+            publication = copyPrivateAttemptExport(input, owner, cancellation.signal).then(
+              (result) => send(socket, { ok: true, result } as unknown as JsonValue),
+              (error) =>
+                send(socket, {
+                  ok: false,
+                  ...(error instanceof PrivateAttemptError ? { exportCode: error.code } : {}),
+                }),
+            )
           } else if (request.type === 'prepare') {
             if (typeof request.destination !== 'string')
               throw new Error('invalid delivery preparation')
@@ -307,16 +350,13 @@ export async function privateOwnFileCommand(
           } else if (request.type === 'bind-checkpoint') {
             cancellation.signal.throwIfAborted()
             if (
-              !prepared ||
               checkpoints !== undefined ||
               typeof request.project !== 'string' ||
               !Number.isSafeInteger(request.epoch) ||
               Number(request.epoch) < 1
             )
               throw new Error('invalid checkpoint binding')
-            const selected = new PrivateRunCheckpoints(
-              request.identity as unknown as RunCheckpointIdentity,
-            )
+            const identity = parseRunCheckpointIdentity(request.identity)
             projectFd = privateOpenFileRoot(request.project)
             const info = fstatSync(projectFd, { bigint: true })
             recovery = {
@@ -324,21 +364,40 @@ export async function privateOwnFileCommand(
               device: String(info.dev),
               inode: String(info.ino),
               epoch: Number(request.epoch),
-              runId: selected.identity.runId,
+              runId: identity.runId,
             }
-            checkpoints = selected
+            checkpoints = { identity }
             send(socket, { ok: true })
           } else if (request.type === 'checkpoint') {
             cancellation.signal.throwIfAborted()
             if (checkpoints === undefined || publication !== undefined)
               throw new Error('checkpoint owner unavailable')
-            // Replacement is synchronous and bounded. A lost reply cannot undo accepted bytes.
-            const receipt = checkpoints.accept(request.input)
+            if (recovery === undefined) throw new Error('checkpoint binding unavailable')
+            const latest = await readPrivateAttemptRunCheckpoint({
+              projectRoot: recovery.project,
+              runId: checkpoints.identity.runId,
+            })
+            if (!latest) throw new Error('protected checkpoint unavailable')
+            const input =
+              request.input as unknown as import('./private-run-checkpoint.js').RunCheckpointInput
+            if (input.sequence !== latest.sequence) throw new Error('checkpoint mirror differs')
+            checkpoints.latest = latest
+            const receipt = { sequence: latest.sequence, digest: latest.digest }
             send(socket, { ok: true, receipt: receipt as unknown as JsonValue })
           } else if (request.type === 'publish') {
             if (publication !== undefined) throw new Error('delivery already requested')
             if (request.inspection === true) owner.enableInspection()
             if (request.cancelled === true) cancellation.abort()
+            if (checkpoints && recovery) {
+              try {
+                checkpoints.latest = await readPrivateAttemptRunCheckpoint({
+                  projectRoot: recovery.project,
+                  runId: checkpoints.identity.runId,
+                })
+              } catch {
+                checkpoints.latest = undefined
+              }
+            }
             const record = checkpointRecord(request.record!, checkpoints)
             // Only the trusted coordinator publishes, after settling its Run.
             // Cancellation may retain that record, not unfinished output files.
@@ -349,16 +408,44 @@ export async function privateOwnFileCommand(
               typeof record === 'object' &&
               !Array.isArray(record) &&
               !Object.hasOwn(record, 'cleanup')
-            const publish = (
+            const publish = async (
               output: import('./file-delivery.js').PrivateDeliveryOutput | undefined,
-            ) =>
-              owner.publish(
-                record,
-                output,
-                checkpoints?.latest,
-                checkpoints !== undefined || interruptedRecord,
-                coordinatorLost.signal,
-              )
+            ) => {
+              let retained: Awaited<ReturnType<typeof acquirePrivateAttemptRunCheckpointExport>>
+              if (output === undefined && checkpoints?.latest !== undefined && recovery) {
+                try {
+                  retained = await acquirePrivateAttemptRunCheckpointExport({
+                    projectRoot: recovery.project,
+                    runId: recovery.runId,
+                  })
+                } catch {}
+              }
+              let capture: ReturnType<typeof capturePrivateRetainedOutput> | undefined
+              try {
+                capture =
+                  retained === undefined ? undefined : capturePrivateRetainedOutput(retained)
+                return await owner.publish(
+                  record,
+                  output,
+                  retained?.record,
+                  checkpoints !== undefined || interruptedRecord,
+                  coordinatorLost.signal,
+                  undefined,
+                  capture,
+                )
+              } finally {
+                if (capture)
+                  await closePrivateExecutionOutput({
+                    kind: 'snapshot',
+                    ready: Promise.resolve(capture),
+                  })
+                if (retained && recovery)
+                  await releasePrivateAttemptExport({
+                    projectRoot: recovery.project,
+                    pinId: retained.pinId,
+                  })
+              }
+            }
             let delivered: Promise<PrivateDeliveryReceipt>
             if (native !== undefined) {
               if (Object.hasOwn(request, 'pid') || Object.hasOwn(request, 'outputFd'))
@@ -521,13 +608,49 @@ export async function privateOwnFileCommand(
           Math.min(presentationDeadline ?? Infinity, recoveryDeadline),
           recoveryDeadline,
         )
+        let retained: Awaited<ReturnType<typeof acquirePrivateAttemptRunCheckpointExport>>
+        try {
+          retained = await acquirePrivateAttemptRunCheckpointExport({
+            projectRoot: recovery.project,
+            runId: recovery.runId,
+          })
+        } catch {}
+        try {
+          checkpoints.latest = await readPrivateAttemptRunCheckpoint({
+            projectRoot: recovery.project,
+            runId: recovery.runId,
+          })
+        } catch {
+          checkpoints.latest = undefined
+        }
+        let capture: ReturnType<typeof capturePrivateRetainedOutput> | undefined
         const record = checkpointRecord(
           { ...recovered, ...checkpoints.identity } as JsonValue,
           checkpoints,
         )
-        const receipt = await completionBudget.join(
-          owner.publish(record, undefined, checkpoints.latest, true, recoveryCancellation.signal),
-        )
+        let receipt: PrivateDeliveryReceipt
+        try {
+          capture = retained === undefined ? undefined : capturePrivateRetainedOutput(retained)
+          receipt = await completionBudget.join(
+            owner.publish(
+              record,
+              undefined,
+              retained?.record,
+              true,
+              recoveryCancellation.signal,
+              undefined,
+              capture,
+            ),
+          )
+        } finally {
+          if (capture)
+            await closePrivateExecutionOutput({ kind: 'snapshot', ready: Promise.resolve(capture) })
+          if (retained)
+            await releasePrivateAttemptExport({
+              projectRoot: recovery.project,
+              pinId: retained.pinId,
+            })
+        }
         process.stdout.write(
           `${Buffer.from(canonicalJson({ ...(record as Record<string, JsonValue>), delivery: receipt } as unknown as JsonValue)).toString()}\n`,
         )
@@ -659,6 +782,17 @@ export function privateFileDeliveryConnection(
         fields.type === 'checkpoint'
       )
         throw new PrivateCheckpointRejected('checkpoint replacement was rejected')
+      if (
+        !next.done &&
+        fields.type === 'export-attempt' &&
+        (next.value as Record<string, JsonValue>).ok === false
+      ) {
+        const code = (next.value as Record<string, JsonValue>).exportCode
+        throw new PrivateAttemptError(
+          code === 'RESOURCE_EXHAUSTED' ? code : 'UNAVAILABLE',
+          'Retained export was not confirmed. Reconcile the same destination before requesting another delivery.',
+        )
+      }
       if (next.done || (next.value as Record<string, JsonValue>).ok !== true)
         throw new Error('file delivery boundary rejected the request')
       return next.value as Record<string, JsonValue>
@@ -782,6 +916,26 @@ export function privateFileDeliveryConnection(
       }
       destination = path
     },
+    async exportAttempt(input, signal) {
+      const cancel = () => send(socket, { type: 'cancel', token: selected.token })
+      signal?.addEventListener('abort', cancel, { once: true })
+      try {
+        const reply = await request({
+          type: 'export-attempt',
+          input: input as unknown as JsonValue,
+          cancelled: signal?.aborted ?? false,
+        })
+        parseAttemptFrame('export', {
+          protocolVersion: 1,
+          operation: 'export',
+          event: 'result',
+          value: reply.result,
+        })
+        return reply.result as unknown as import('../attempt-contract.js').AttemptResults['export']
+      } finally {
+        signal?.removeEventListener('abort', cancel)
+      }
+    },
     async bindCheckpoint(identity, project, epoch) {
       await request({
         type: 'bind-checkpoint',
@@ -852,7 +1006,13 @@ export function privateFileDeliveryConnection(
   }
 }
 
-function checkpointRecord(record: JsonValue, checkpoints?: PrivateRunCheckpoints): JsonValue {
+function checkpointRecord(
+  record: JsonValue,
+  checkpoints?: {
+    identity: RunCheckpointIdentity
+    latest?: import('./private-run-checkpoint.js').RetainedRunCheckpoint | undefined
+  },
+): JsonValue {
   if (checkpoints === undefined) return record
   const value = record as Record<string, JsonValue>
   if (value.runId !== checkpoints.identity.runId) throw new Error('checkpoint Run mismatch')

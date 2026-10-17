@@ -76,11 +76,14 @@ export class RunHostFatalOperationError extends Error {
 export interface RunAttachment {
   readonly path: string
   readonly access: 'read' | 'read-write'
+  readonly artifact?: string
 }
 
 export interface RunResult {
   readonly outcome: string
   readonly output: JsonValue
+  readonly artifactResults?: Readonly<Record<string, string>>
+  readonly artifacts?: Readonly<Record<string, string>>
 }
 
 export interface RunHostInvocation {
@@ -99,6 +102,9 @@ export interface RunHostCall {
   readonly intent?: string
   readonly input: JsonValue
   readonly channels?: Readonly<Record<string, string>>
+  readonly attachments?: Readonly<
+    Record<string, { readonly read: string } | { readonly create: true }>
+  >
 }
 
 export type RunHostOperationFailure = {
@@ -121,9 +127,10 @@ export interface RunHostOperationDispatcher {
   /** Private nonblocking consumer of bounded Flow diagnostics, never provider-private output. */
   onDiagnostic?(bytes: Uint8Array): void
   /** Root owner may revoke its whole channel scope; child-local failure is not root cancellation. */
-  onCancellation?(code: 'CANCELLED' | 'DEADLINE_EXCEEDED'): void
+  onCancellation?(code: 'CANCELLED' | 'DEADLINE_EXCEEDED' | 'UNAVAILABLE'): void
   /** Validate admitted package outcomes/schema before any implicit source seal. */
   validateResult?(result: RunResult): void
+  releaseArtifact?(reference: string): void
   call?(call: RunHostCall, signal: AbortSignal): Promise<RunHostOperationTerminal>
   /** Bounded metadata only; observation cannot change dispatch or its terminal. */
   onCall?(
@@ -138,6 +145,11 @@ export interface RunHostLimits {
   readonly stdoutBytes: number
   readonly stderrBytes: number
   readonly capturedStderrBytes: number
+}
+
+/** Private host timing, independent of the public deadline's clock coordinates. */
+export interface RunHostSessionOptions {
+  readonly remainingTimeMs?: () => number
 }
 
 export interface RunDiagnostics {
@@ -241,6 +253,7 @@ export class RunHostSession {
   private readonly componentIds = new Set<string>()
   private readonly operations = new Map<string, OperationRecord>()
   private readonly operationWaiters = new Map<string, OperationRecord>()
+  private readonly artifactReleaseWaiters = new Set<string>()
   private readonly channelRequests = new Map<string, AbortController>()
   private readonly stderrChunks: Uint8Array[] = []
   private readonly ownedTasks = new Set<Promise<void>>()
@@ -265,6 +278,7 @@ export class RunHostSession {
   private postResponseTermination = false
   private started = false
   private deadlineTimer?: ReturnType<typeof setTimeout>
+  private timingUnavailable = false
   private graceTimer?: ReturnType<typeof setTimeout>
   private abortListener?: () => void
 
@@ -273,6 +287,7 @@ export class RunHostSession {
     private readonly invocation: RunHostInvocation,
     limits: Partial<RunHostLimits> = {},
     private readonly dispatcher?: RunHostOperationDispatcher,
+    private readonly options: RunHostSessionOptions = {},
   ) {
     this.limits = Object.freeze({ ...DEFAULT_LIMITS, ...limits })
     validateLimits(this.limits)
@@ -289,8 +304,8 @@ export class RunHostSession {
     try {
       if (this.invocation.signal?.aborted) {
         this.observeCancellation('CANCELLED', 'root Run was cancelled before dispatch')
-      } else if (Date.now() >= this.invocation.deadlineUnixMs) {
-        this.observeCancellation('DEADLINE_EXCEEDED', 'root Run deadline elapsed before dispatch')
+      } else if (this.remainingTimeMs() <= 0) {
+        this.observeBudgetStop()
       } else {
         try {
           await this.sendFrame(rootRequest(this.invocation), () => {
@@ -554,14 +569,15 @@ export class RunHostSession {
       return
     }
 
-    if (request.method !== 'flow/call') {
+    if (request.method !== 'flow/call' && request.method !== 'flow/artifact/release') {
       this.queueResponse(request.id, errorMessage(request.id, -32601, 'Method not found'))
       return
     }
 
     let operation: ParsedOperation
     try {
-      operation = parseOperation(request)
+      operation =
+        request.method === 'flow/call' ? parseOperation(request) : parseArtifactRelease(request)
     } catch {
       this.queueResponse(request.id, errorMessage(request.id, -32602, 'Invalid params'))
       return
@@ -584,11 +600,21 @@ export class RunHostSession {
       return
     }
     if (prior !== undefined) {
+      if (request.method === 'flow/artifact/release') this.artifactReleaseWaiters.add(request.id)
       this.attachOperationWaiter(request.id, prior)
       return
     }
 
-    const dispatch = this.dispatcher?.call
+    if (request.method === 'flow/artifact/release') this.artifactReleaseWaiters.add(request.id)
+    const dispatch =
+      request.method === 'flow/artifact/release'
+        ? this.dispatcher?.releaseArtifact === undefined
+          ? undefined
+          : async (call: RunHostCall) => {
+              this.dispatcher!.releaseArtifact!(call.input as string)
+              return { status: 'succeeded' as const, result: { outcome: 'done', output: {} } }
+            }
+        : this.dispatcher?.call
     if (dispatch === undefined) {
       const terminal = failedOperation('UNAVAILABLE', 'no invocation dispatcher is installed')
       this.observeCall(operation.call, 'requested')
@@ -620,10 +646,12 @@ export class RunHostSession {
     const task = Promise.resolve()
       .then(() => {
         this.observeCall(operation.call, 'active')
-        return this.dispatcher!.call!(operation.call, record.controller.signal)
+        return dispatch.call(this.dispatcher, operation.call, record.controller.signal)
       })
       .then((terminal) => normalizeOperationTerminal(terminal))
       .catch((error) => {
+        if (error instanceof ChannelOperationError)
+          return failedOperation(error.code, error.message, error.details)
         if (error instanceof RunHostFatalOperationError) {
           this.localTerminal ??= {
             code: error.code,
@@ -893,7 +921,13 @@ export class RunHostSession {
   }
 
   private queueOperationResponse(id: string, terminal: NormalizedOperationTerminal): void {
-    this.queueResponse(id, operationResponse(id, terminal))
+    const release = this.artifactReleaseWaiters.delete(id)
+    this.queueResponse(
+      id,
+      release && terminal.status === 'succeeded'
+        ? { jsonrpc: '2.0', id, result: {} }
+        : operationResponse(id, terminal),
+    )
   }
 
   private abortOwnedOperations(): void {
@@ -957,29 +991,52 @@ export class RunHostSession {
   }
 
   private armDeadlineTimer(): void {
-    const remaining = this.invocation.deadlineUnixMs - Date.now()
+    const remaining = this.remainingTimeMs()
     if (remaining <= 0) {
-      queueMicrotask(() =>
-        this.observeCancellation('DEADLINE_EXCEEDED', 'root Run deadline elapsed'),
-      )
+      queueMicrotask(() => this.observeBudgetStop())
       return
     }
-    const delay = Math.min(remaining, 2_147_483_647)
+    const delay = Math.min(
+      remaining,
+      this.options.remainingTimeMs === undefined ? 2_147_483_647 : 25,
+    )
     this.deadlineTimer = setTimeout(() => {
-      if (Date.now() >= this.invocation.deadlineUnixMs) {
-        this.observeCancellation('DEADLINE_EXCEEDED', 'root Run deadline elapsed')
+      if (this.remainingTimeMs() <= 0) {
+        this.observeBudgetStop()
       } else {
         this.armDeadlineTimer()
       }
     }, delay)
   }
 
-  private observeCancellation(code: 'CANCELLED' | 'DEADLINE_EXCEEDED', message: string): void {
+  private remainingTimeMs(): number {
+    try {
+      const remaining =
+        this.options.remainingTimeMs?.() ?? this.invocation.deadlineUnixMs - Date.now()
+      if (!Number.isFinite(remaining)) throw new Error('host timing unavailable')
+      return remaining
+    } catch {
+      this.timingUnavailable = true
+      return 0
+    }
+  }
+
+  private observeBudgetStop(): void {
+    this.observeCancellation(
+      this.timingUnavailable ? 'UNAVAILABLE' : 'DEADLINE_EXCEEDED',
+      this.timingUnavailable ? 'host execution clock is unavailable' : 'root Run deadline elapsed',
+    )
+  }
+
+  private observeCancellation(
+    code: 'CANCELLED' | 'DEADLINE_EXCEEDED' | 'UNAVAILABLE',
+    message: string,
+  ): void {
     if (this.rootResponse !== undefined) {
       // A committed response wins a later cancellation. The absolute deadline
       // still bounds process cleanup, but only an actual forced termination
       // invalidates that response.
-      if (code === 'DEADLINE_EXCEEDED') {
+      if (code === 'DEADLINE_EXCEEDED' || code === 'UNAVAILABLE') {
         this.graceTimer ??= setTimeout(
           () => this.startTermination(),
           this.limits.cancellationGraceMs,
@@ -1055,6 +1112,9 @@ export class RunHostSession {
 
     if (this.protocolFailure !== undefined) {
       return failure('PROTOCOL_ERROR', this.protocolFailure)
+    }
+    if (exit?.stopReason === 'clock' && exit.fenced && exit.cleanupError === undefined) {
+      return failure('EXECUTION_FAILED', 'native execution clock became unavailable')
     }
     if (
       exit?.stopReason === 'core_dump' &&
@@ -1205,14 +1265,23 @@ function validateInvocation(invocation: RunHostInvocation): void {
       throw new TypeError('attachment must be an object')
     }
     const keys = Object.keys(attachment).sort()
-    if (keys.length !== 2 || keys[0] !== 'access' || keys[1] !== 'path') {
-      throw new TypeError('attachment must contain exactly path and access')
-    }
+    const expected = [
+      'access',
+      'path',
+      ...(Object.hasOwn(attachment, 'artifact') ? ['artifact'] : []),
+    ].sort()
+    if (keys.join('\0') !== expected.join('\0'))
+      throw new TypeError('attachment must contain path, access and optional read artifact')
     if (typeof attachment.path !== 'string' || attachment.path.length === 0) {
       throw new TypeError('attachment paths must be nonempty')
     }
     if (attachment.access !== 'read' && attachment.access !== 'read-write') {
       throw new TypeError('invalid attachment access')
+    }
+    if (Object.hasOwn(attachment, 'artifact')) {
+      if (attachment.access !== 'read')
+        throw new TypeError('writable attachment cannot hold an artifact')
+      requireWireId(attachment.artifact)
     }
   }
   if (typeof invocation.scratch !== 'string' || invocation.scratch.length === 0) {
@@ -1325,8 +1394,34 @@ function parseRootFailure(error: ParsedError['error']): RootFailure {
 
 function parseRunResult(value: JsonValue): RunResult {
   const object = requireObject(value, 'Run result')
-  requireExactKeys(object, ['outcome', 'output'])
-  return { outcome: requireLocalName(object.outcome), output: object.output! }
+  requireExactKeys(object, [
+    'outcome',
+    'output',
+    ...(Object.hasOwn(object, 'artifactResults') ? ['artifactResults'] : []),
+  ])
+  return {
+    outcome: requireLocalName(object.outcome),
+    output: object.output!,
+    ...(Object.hasOwn(object, 'artifactResults')
+      ? { artifactResults: parseArtifactReferences(object.artifactResults) }
+      : {}),
+  }
+}
+
+function parseCallResult(value: JsonValue): RunResult {
+  const object = requireObject(value, 'Call result')
+  requireExactKeys(object, [
+    'outcome',
+    'output',
+    ...(Object.hasOwn(object, 'artifacts') ? ['artifacts'] : []),
+  ])
+  return {
+    outcome: requireLocalName(object.outcome),
+    output: object.output!,
+    ...(Object.hasOwn(object, 'artifacts')
+      ? { artifacts: parseArtifactReferences(object.artifacts) }
+      : {}),
+  }
 }
 
 function parseOperation(request: ParsedRequest): ParsedOperation {
@@ -1334,6 +1429,7 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
   const keys = ['operationId', 'slot', 'input']
   if (Object.hasOwn(params, 'intent')) keys.push('intent')
   if (Object.hasOwn(params, 'channels')) keys.push('channels')
+  if (Object.hasOwn(params, 'attachments')) keys.push('attachments')
   requireExactKeys(params, keys)
   const operationId = requireWireId(params.operationId)
   const slot = requireLocalName(params.slot)
@@ -1355,8 +1451,61 @@ function parseOperation(request: ParsedRequest): ParsedOperation {
       ...(Object.hasOwn(params, 'channels')
         ? { channels: parseChannelReferences(params.channels) }
         : {}),
+      ...(Object.hasOwn(params, 'attachments')
+        ? { attachments: parseCallAttachments(params.attachments) }
+        : {}),
     }),
   }
+}
+
+/** Shared private wire validation; parsing a reference never supplies file authority. */
+export function parseArtifactReferences(
+  value: JsonValue | undefined,
+): Readonly<Record<string, string>> {
+  const object = requireObject(value, 'artifact references')
+  if (Object.keys(object).length > 256) throw new TypeError('too many artifact references')
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(object).map(([name, reference]) => [
+        requireLocalName(name),
+        requireWireId(reference),
+      ]),
+    ),
+  )
+}
+
+function parseArtifactRelease(request: ParsedRequest): ParsedOperation {
+  const params = requireObject(request.params, 'artifact release')
+  requireExactKeys(params, ['operationId', 'artifact'])
+  const operationId = requireWireId(params.operationId)
+  const reference = requireWireId(params.artifact)
+  return {
+    operationId,
+    signature: `release:${operationSignature(params)}`,
+    call: Object.freeze({ operationId, slot: 'artifact-release', input: reference }),
+  }
+}
+
+function parseCallAttachments(
+  value: JsonValue | undefined,
+): NonNullable<RunHostCall['attachments']> {
+  const object = requireObject(value, 'call attachments')
+  if (Object.keys(object).length > 256) throw new TypeError('too many call attachments')
+  return Object.freeze(
+    Object.fromEntries(
+      Object.entries(object).map(([name, value]) => {
+        requireLocalName(name)
+        const item = requireObject(value, 'call attachment')
+        if (Object.hasOwn(item, 'read')) {
+          requireExactKeys(item, ['read'])
+          return [name, Object.freeze({ read: requireWireId(item.read) })]
+        }
+        requireExactKeys(item, ['create'])
+        if (item.create !== true) throw new TypeError('invalid attachment creation')
+        return [name, Object.freeze({ create: true as const })]
+      }),
+    ),
+  )
 }
 
 function parseChannelReferences(value: JsonValue | undefined): Readonly<Record<string, string>> {
@@ -1428,7 +1577,7 @@ class InvalidDispatcherResult extends TypeError {}
 function normalizeOperationTerminal(value: RunHostOperationTerminal): NormalizedOperationTerminal {
   if (value.status === 'succeeded') {
     try {
-      const result = parseRunResult(
+      const result = parseCallResult(
         decodeJson1(canonicalJson(value.result as unknown as JsonValue)),
       )
       return Object.freeze({

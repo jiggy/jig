@@ -16,7 +16,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
 import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
-import { PrivateFileImportUnconfirmedError } from '../src/internal/execution-file-import.js'
 import { privateCaptureAttachments } from '../src/internal/file-input.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
@@ -37,6 +36,7 @@ import { ChannelBroker } from '../src/run/channels.js'
 import { RunHostSession } from '../src/run/session.js'
 import { deterministicAcpProgram } from './fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from './fixtures/installed-bun-location.js'
+
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 const delegatedCgroup = process.env.AGENT_DELEGATED_CGROUP
 const initialRootlessTemporaryState = new Set(
@@ -139,7 +139,7 @@ async function unavailableDescriptorRestrictionSupervisor(): Promise<{
 }
 async function outputDiagnosticSupervisor(
   tracePath: string,
-  fault?: 'projection' | 'commit-ack' | 'end-ack' | 'custody',
+  fault?: 'projection' | 'custody',
 ): Promise<{ path: string; root: string }> {
   let source = await readFile(
     new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url),
@@ -165,18 +165,6 @@ async function outputDiagnosticSupervisor(
       source,
       "  const publicDirectory = openSync('/jig-output/public', 0x10000 | 0x20000)\n",
       "  throw new Error('fixture: projection unavailable')\n  const publicDirectory = openSync('/jig-output/public', 0x10000 | 0x20000)\n",
-    )
-  if (fault === 'commit-ack')
-    source = replaceOnce(
-      source,
-      "        reply(stage.committed ? 'committed' : 'absent')\n",
-      "        if (!stage.committed) reply('absent')\n",
-    )
-  if (fault === 'end-ack')
-    source = replaceOnce(
-      source,
-      "        reply('closed')\n",
-      '        // fixture: withhold retirement acknowledgement\n',
     )
   if (fault === 'custody')
     source = replaceOnce(
@@ -427,29 +415,30 @@ async function waitForFence(backend: PrivateLinuxCgroupBackend, owner: unknown, 
     }
   }
 }
+
+export type { HostConfiguration }
 export {
-  HOSTILE,
-  delegatedCgroup,
-  initialRootlessTemporaryState,
-  hostConfiguration,
-  plan,
-  runtimeMounts,
+  childExit,
+  collect,
   createFixture,
-  unavailableDescriptorRestrictionSupervisor,
-  outputDiagnosticSupervisor,
-  deliberatelySignalledInnerSupervisor,
   delayedReadinessSupervisor,
   delayedReadyForwardingSupervisor,
+  delegatedCgroup,
+  deliberatelySignalledInnerSupervisor,
+  HOSTILE,
   heldContinuationSupervisor,
-  replaceOnce,
-  collect,
+  hostConfiguration,
+  initialRootlessTemporaryState,
   missing,
-  waitForMissing,
-  waitForPresent,
-  waitForNoRunCgroups,
+  outputDiagnosticSupervisor,
+  plan,
   readLine,
-  childExit,
+  replaceOnce,
   rootlessTemporaryEntry,
+  runtimeMounts,
+  unavailableDescriptorRestrictionSupervisor,
   waitForFence,
+  waitForMissing,
+  waitForNoRunCgroups,
+  waitForPresent,
 }
-export type { HostConfiguration }

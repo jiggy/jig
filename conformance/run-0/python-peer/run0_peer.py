@@ -215,6 +215,37 @@ def require_exact_object(value: Any, keys: set[str]) -> dict[str, Any]:
     return value
 
 
+def validate_artifact_value(definition: str, value: Any) -> Any:
+    """Independent closed artifact shapes; rights are a separate host decision."""
+    if definition in {"callAttachments", "artifactReferences"}:
+        if not isinstance(value, dict) or len(value) > 256:
+            raise ProtocolError("artifact map must have at most 256 members")
+        for name, item in value.items():
+            require_local_name(name)
+            if definition == "artifactReferences":
+                require_wire_id(item)
+            elif isinstance(item, dict) and set(item) == {"read"}:
+                require_wire_id(item["read"])
+            elif isinstance(item, dict) and set(item) == {"create"} and item["create"] is True:
+                pass
+            else:
+                raise ProtocolError("attachment must contain exactly read or create:true")
+    elif definition in {"runResult", "callResult", "domainResult"}:
+        if not isinstance(value, dict):
+            raise ProtocolError("artifact envelope must be an object")
+        field = {"runResult": "artifactResults", "callResult": "artifacts"}.get(definition)
+        keys = {"outcome", "output"}
+        if field in value:
+            keys.add(field)
+            validate_artifact_value("artifactReferences", value[field])
+        require_exact_object(value, keys)
+        require_local_name(value["outcome"])
+        normalize_json1(value["output"])
+    else:
+        raise ProtocolError("unknown artifact fixture definition")
+    return value
+
+
 def _validate_error(value: Any) -> None:
     if not isinstance(value, dict):
         raise ProtocolError("JSON-RPC error must be an object")

@@ -3,6 +3,11 @@ import type { PrivateExecutionIntent } from './execution-intent.js'
 import type { PrivateLinuxLaunchPlan } from './linux-rootless-backend.js'
 import type { PrivateMacosOwnerStateAllocationIdentity } from './macos-backend-state.js'
 import type { PrivateMacosLaunchPlan } from './macos-native-backend.js'
+import {
+  normalizePrivateProjectEvaluationWorkspace,
+  PRIVATE_EVALUATION_WORKSPACE_PATH,
+  privateEvaluationWritableRoots,
+} from './project-evaluation-workspace.js'
 
 /** Pure lowering only. Backends still authenticate, validate and seal all authority. */
 export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): PrivateLinuxLaunchPlan {
@@ -23,10 +28,18 @@ export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): Priva
     ...(intent.network === undefined ? {} : { network: intent.network }),
     ...(intent.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     ...(intent.output === undefined ? {} : { output: intent.output }),
-    ...(intent.outputImports === undefined ? {} : { outputImports: intent.outputImports }),
     ...(intent.capturedInputs === undefined ? {} : { capturedInputs: intent.capturedInputs }),
     ...(intent.inputDirectories === undefined ? {} : { inputDirectories: intent.inputDirectories }),
-    ...(intent.inputEmptyDirectories === undefined ? {} : { inputEmptyDirectories: intent.inputEmptyDirectories }),
+    ...(intent.inputEmptyDirectories === undefined
+      ? {}
+      : { inputEmptyDirectories: intent.inputEmptyDirectories }),
+    ...(intent.evaluationWorkspace === undefined
+      ? {}
+      : {
+          evaluationWorkspace: normalizePrivateProjectEvaluationWorkspace(
+            intent.evaluationWorkspace,
+          )!,
+        }),
   }
 }
 
@@ -40,9 +53,30 @@ export function privateMacosExecutionPlan(
   )
     throw new TypeError('invalid Codex preference notification intent')
   const data = join(allocation.directory, 'data')
-  const mappings = intent.projections.map(
-    ({ source, destination }) => [destination, source] as const,
-  )
+  const evaluationWorkspace = normalizePrivateProjectEvaluationWorkspace(intent.evaluationWorkspace)
+  const evaluationSource =
+    evaluationWorkspace === undefined
+      ? undefined
+      : intent.projections.find(
+          (projection) =>
+            projection.destination === PRIVATE_EVALUATION_WORKSPACE_PATH &&
+            projection.kind === 'tree',
+        )?.source
+  if (evaluationWorkspace !== undefined && evaluationSource === undefined)
+    throw new TypeError('evaluation workspace requires its immutable merged tree')
+  const mappings = intent.projections
+    .filter(
+      (projection) =>
+        evaluationWorkspace === undefined ||
+        projection.destination !== PRIVATE_EVALUATION_WORKSPACE_PATH,
+    )
+    .map(({ source, destination }) => [destination, source] as const)
+  if (evaluationWorkspace !== undefined) {
+    mappings.push(
+      ['/work', join(data, 'evaluation')],
+      [PRIVATE_EVALUATION_WORKSPACE_PATH, join(data, 'evaluation')],
+    )
+  }
   const orderedMappings = [...mappings].sort((a, b) => b[0].length - a[0].length)
   const path = (value: string): string => {
     // Most-specific mapping wins; a sibling sharing a prefix is never relocated.
@@ -99,23 +133,47 @@ export function privateMacosExecutionPlan(
       ],
       readOnlyTrees: [
         ...new Set([
-          ...intent.projections.filter((p) => p.kind === 'tree').map((p) => p.source),
+          ...intent.projections
+            .filter(
+              (p) =>
+                p.kind === 'tree' &&
+                (evaluationWorkspace === undefined ||
+                  p.destination !== PRIVATE_EVALUATION_WORKSPACE_PATH),
+            )
+            .map((p) => p.source),
+          ...(evaluationWorkspace === undefined ? [] : [join(data, 'evaluation')]),
           ...((intent.inputDirectories?.length ?? 0) > 0 ? [join(data, 'inputs')] : []),
         ]),
       ],
       writableTrees:
-        intent.readOnlyCwd === undefined
+        evaluationWorkspace !== undefined
           ? [
-              join(data, 'work'),
+              ...privateEvaluationWritableRoots(evaluationWorkspace).map((root) =>
+                join(data, 'evaluation', root),
+              ),
+              join(data, 'evaluation', 'scratch'),
               join(data, 'tmp'),
-              ...(intent.output ? [join(data, 'output')] : []),
             ]
-          : [],
+          : intent.readOnlyCwd === undefined
+            ? [
+                join(data, 'work'),
+                join(data, 'tmp'),
+                ...(intent.output ? [join(data, 'output')] : []),
+              ]
+            : [],
       protectedRoots: [join(allocation.directory, 'control')],
       network: intent.network ?? 'isolated',
       ...(intent.macosCodexPreferenceNotifications
         ? { codexPreferenceNotifications: true as const }
         : {}),
+      ...(evaluationWorkspace === undefined
+        ? {}
+        : {
+            evaluationWorkspace: {
+              phase: evaluationWorkspace.phase,
+              root: join(data, 'evaluation'),
+            },
+          }),
     },
     maxOutputBytes: intent.maxOutputBytes,
     ...(intent.readOnlyCwd === undefined || (intent.inputDirectories?.length ?? 0) > 0
@@ -123,8 +181,12 @@ export function privateMacosExecutionPlan(
           storage: {
             mountPath: data,
             bytes: intent.storageBytes,
-            collect: intent.output ? ('output' as const) : null,
-            ...(intent.outputImports === undefined ? {} : { imports: intent.outputImports }),
+            collect:
+              evaluationWorkspace !== undefined
+                ? ('evaluation' as const)
+                : intent.output
+                  ? ('output' as const)
+                  : null,
           },
         }
       : {}),
@@ -134,6 +196,11 @@ export function privateMacosExecutionPlan(
     })),
     inputDirectories: (intent.inputDirectories ?? []).map(inputPath),
     inputEmptyDirectories: (intent.inputEmptyDirectories ?? []).map(inputPath),
+    ...(evaluationWorkspace === undefined
+      ? {}
+      : {
+          evaluationWorkspace: { ...evaluationWorkspace, source: evaluationSource! },
+        }),
   }
 }
 

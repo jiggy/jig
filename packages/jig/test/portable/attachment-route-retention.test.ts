@@ -14,10 +14,11 @@ import {
   resolveInvocationSlots,
 } from '../../src/project/invocation-slots.js'
 import { compileSchemaFile } from '../../src/schema/index.js'
+
 const digest = `sha256:${'a'.repeat(64)}`
 const attachments = {
   source: { from: 'originals' },
-  files: { into: 'photos', directory: 'copies' },
+  files: { create: true },
 }
 const mappedRoute = {
   kind: 'route',
@@ -84,11 +85,11 @@ test('explicit Binding maps preserve complete review data through author normali
         copy: { target: 'flow:flows/child', attachments },
         other: {
           target: 'binding:child',
-          attachments: { files: { into: 'reports', directory: 'copies' } },
+          attachments: { files: { create: true } },
         },
       },
     }),
-  ).toThrow('duplicate')
+  ).not.toThrow()
 })
 test('the sealed declaration SDK bundles child maps without host module imports', async () => {
   const bundle = await Bun.build({
@@ -119,7 +120,7 @@ test('retained routes preserve maps while target lookup remains exact ordinary i
   expect(normalizeInvocationSlots(slots)).toEqual(slots)
   expect(flowSlotTargets(slots)).toEqual({ copy: mappedRoute.target })
   const wrong = structuredClone(slots) as any
-  wrong.copy.attachments.files.directory = 'overview'
+  wrong.copy.attachments.source = { supplied: 'read' }
   expect(canonicalJson(wrong)).not.toEqual(canonicalJson(slots as unknown as JsonValue))
   for (const replacement of [
     { ...slots.copy, attachments: {} },
@@ -139,10 +140,7 @@ test('lock route round trip retains maps, identities and every reviewed change',
       value.bindings.parent.slots.copy.attachments.source.from = 'reference'
     },
     (value: any) => {
-      value.bindings.parent.slots.copy.attachments.files.into = 'reports'
-    },
-    (value: any) => {
-      value.bindings.parent.slots.copy.attachments.files.directory = 'overview'
+      value.bindings.parent.slots.copy.attachments.source = { supplied: 'read' }
     },
   ]) {
     const value = structuredClone(lockValue)
@@ -156,7 +154,7 @@ test('lock route round trip retains maps, identities and every reviewed change',
   }
   expect(privateProjectLocalLockDigest(decode(reordered))).toBe(before)
 })
-test('lock routes refuse widened targets, duplicates, bare defaults and bound child resources', () => {
+test('lock routes refuse widened targets, bare defaults and bound child resources', () => {
   for (const mutate of [
     (value: any) => {
       value.bindings.parent.slots.copy.mappingDigest = digest
@@ -176,12 +174,6 @@ test('lock routes refuse widened targets, duplicates, bare defaults and bound ch
     },
     (value: any) => {
       value.bindings.parent.slots.copy.attachments = {}
-    },
-    (value: any) => {
-      value.bindings.parent.slots.second = {
-        ...mappedRoute,
-        attachments: { files: { into: 'reports', directory: 'copies' } },
-      }
     },
     (value: any) => {
       value.packages['flows/child'].slots = { next: mappedRoute }

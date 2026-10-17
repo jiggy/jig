@@ -70,10 +70,10 @@ await handle(async (run) => {
 This also protects console methods cached by that later module graph. It does
 not make raw stdout or inherited child stdout valid protocol output.
 
-Use `run.call({ operationId, slot, input, intent?, channels? }, options?)` for
+Use `run.call({ operationId, slot, input, intent?, channels?, attachments? }, options?)` for
 finite work through a local slot. `FlowCall` describes this request; the host
 selects its admitted implementation and determines which slots are available.
-Every normal reply is the complete `RunResult`, including declared domain
+Every normal reply is the complete `CallResult`, including declared domain
 refusals. Branch on `outcome` and use `output` explicitly:
 
 ```ts
@@ -102,6 +102,41 @@ The SDK permits at most 64 live wire requests and 65,536 request frames over
 one Run. When channels are present, it reserves capacity inside those limits
 for endpoint disposal. Saturated ordinary admission fails with
 `OperationError` code `RESOURCE_EXHAUSTED`.
+
+## Immutable artifact handoff
+
+On a host supporting finite attachments, produce and evaluate distinct immutable
+trees without choosing paths or creating a slot per attempt:
+
+```ts
+const produced = await run.call({
+  operationId: "p1", slot: "producer", input: { revision: 1 },
+  attachments: { files: { create: true } },
+});
+const files = produced.artifacts!.files!;
+const evaluated = await run.call({
+  operationId: "e1", slot: "evaluator", input: {},
+  attachments: { candidate: { read: files } },
+});
+return { outcome: "done", output: evaluated.output,
+  artifactResults: { final: files } };
+```
+
+The producer declares `attachments: {files:"read-write"}`, the evaluator
+`attachments: {candidate:"read"}`, and the coordinator declares
+`artifactResults:["final"]` in their invocation contracts. Initial readonly
+attachments also expose an optional held `artifact` for onward delegation.
+`Artifact` has readonly `reference` identity, no path and no public constructor.
+Only this Run's genuine host-supplied objects serialize as attachment rights;
+the host validates permission. Artifacts are not JSON domain data. Keep domain
+schemas limited to `{outcome, output}` and select forwarded trees explicitly.
+Exact duplicates preserve original refs and outcomes without allocating again.
+
+Ordinary root cleanup automatically retires live rights. Advanced
+`run.release({operationId:"release:1", artifact:files})` relinquishes additional
+read initiation, not already accepted sibling reads. Cancelled waits retain
+wire settlement. Old result replay never restores a released right; the host
+distinguishes replay from new reads.
 
 ## Direct channels
 

@@ -1,5 +1,7 @@
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { describe, expect, test } from 'bun:test'
 import {
   lstat,
@@ -26,7 +28,6 @@ import type {
   RootAdministration,
   RootRunStatus,
   RootRunTerminal,
-  StartRootRunRequest,
 } from '../../src/administration/root.js'
 import { RootAdministrationError } from '../../src/administration/root.js'
 import {
@@ -43,6 +44,9 @@ import { projectError as projectFailure } from '../../src/internal/project-sessi
 import { canonicalJson, JSON_1_LIMITS } from '../../src/json.js'
 import { EVALUATOR_HINTS } from '../../src/project/evaluator-diagnostics.js'
 import { createProject, type ProjectInitFileSystem } from '../../src/project-init.js'
+import { cliFixtureAcceptance, prepareCliFixtureRun } from '../cli-prepared.fixture.js'
+
+type PreparedCliRequest = Awaited<ReturnType<typeof prepareCliFixtureRun>>['canonicalRequest']
 const cli = resolve(suiteTestRoot, '../src/cli.ts')
 function withoutPresentationControls(text: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: Permit only SGR styling and the progress renderer's exact line-clear prefix, not arbitrary ANSI.
@@ -898,9 +902,9 @@ describe('finite Jig project commands', () => {
             ...session,
             rootAdministration: {
               ...session.rootAdministration,
-              async startRun(request) {
+              async startPreparedRun(request) {
                 options?.channelOutput?.dispatched?.()
-                return session.rootAdministration.startRun(request)
+                return session.rootAdministration.startPreparedRun(request)
               },
             },
           }
@@ -1468,7 +1472,9 @@ describe('finite Jig project commands', () => {
       output: { ok: true },
       diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
     }
-    let request: StartRootRunRequest | undefined
+    let request: PreparedCliRequest | undefined
+    let prepared: Awaited<ReturnType<typeof prepareCliFixtureRun>> | undefined
+    const approval = `sha256:${'c'.repeat(64)}`
     let acquisition: { readonly runTimeoutMs?: number } | undefined
     const host = fakeHost(
       fakeSession(events, {
@@ -1483,10 +1489,23 @@ describe('finite Jig project commands', () => {
         events.push('pause')
       },
       (value) => {
+        expect(prepared).toBeDefined()
         acquisition = value
       },
     )
-    const invocation = commandInvocation(host, { createSubmissionId: () => 'private-submission' })
+    const invocation = commandInvocation(
+      {
+        ...host,
+        async prepareRun(input) {
+          expect(events).toEqual([])
+          expect(input.expectedApproval).toBe(approval)
+          prepared = await prepareCliFixtureRun(input)
+          expect(events).toEqual([])
+          return prepared
+        },
+      },
+      { expectedAdmissionDigest: approval },
+    )
 
     expect(await main(['run', 'flow:./flows/work'], invocation.options)).toBe(0)
     expect(acquisition).toMatchObject({
@@ -1494,15 +1513,22 @@ describe('finite Jig project commands', () => {
       channelOutput: { receive: [] },
     })
     expect(request).toEqual({
-      submissionId: 'private-submission',
-      target: { kind: 'flow', path: 'flows/work' },
+      target: 'flow:flows/work',
       input: {},
+      expectedApproval: approval,
+      files: [],
+      constraints: { durationMs: 30_000, resultBytes: 1_048_576, artifactBytes: 0 },
+      outputIntent: { packet: false, receive: [] },
     })
+    expect(request).toBe(prepared?.canonicalRequest)
+    expect(Object.isFrozen(request)).toBe(true)
+    expect(Object.isFrozen(request?.input)).toBe(true)
     expect(events).toEqual(['acquire:/project', 'start', 'status', 'pause', 'status', 'close'])
     expect(events).not.toContain('plan:update')
     expect(JSON.parse(invocation.output)).toEqual(terminal)
     expect(invocation.output).not.toContain(digest)
-    expect(invocation.output).not.toContain('private-submission')
+    expect(invocation.output).not.toContain(prepared!.ticket)
+    expect(invocation.output).not.toContain(prepared!.requestDigest)
     expect(invocation.error).toBe('')
   })
   for (const [suiteCaseIndex, suiteCaseValue] of (['closed', 'failed'] as const).entries()) {
@@ -1845,7 +1871,7 @@ describe('finite Jig project commands', () => {
 
     for (const { input, timeoutMs, options } of cases) {
       const events: string[] = []
-      let request: StartRootRunRequest | undefined
+      let request: PreparedCliRequest | undefined
       let acquisition: { readonly runTimeoutMs?: number } | undefined
       const invocation = commandInvocation(
         fakeHost(
@@ -1860,17 +1886,14 @@ describe('finite Jig project commands', () => {
             acquisition = value
           },
         ),
-        {
-          createSubmissionId: () => 'timeout-submission',
-        },
       )
 
       expect(await main(['run', 'binding:review', ...options], invocation.options)).toBe(0)
       expect(acquisition).toMatchObject({ runTimeoutMs: timeoutMs, channelOutput: { receive: [] } })
-      expect(request).toEqual({
-        submissionId: 'timeout-submission',
-        target: { kind: 'binding', id: 'review' },
+      expect(request).toMatchObject({
+        target: 'binding:review',
         input: { case: input },
+        constraints: { durationMs: timeoutMs },
       })
       expect(invocation.error).toBe('')
     }
@@ -1884,7 +1907,7 @@ describe('finite Jig project commands', () => {
       const args = ['run', 'flow:flows/work', '--input', `@${join(alias, 'issue.json')}`]
       expect(privateCliCommandLifetimeMs(args)).toBe(330_000)
       await writeFile(file, '{"captured":true}')
-      let request: StartRootRunRequest | undefined
+      let request: PreparedCliRequest | undefined
       const events: string[] = []
       const invocation = commandInvocation(
         fakeHost(
@@ -2197,7 +2220,7 @@ describe('finite Jig project commands', () => {
     ]
     for (const [terminal, expectedExit] of cases) {
       const events: string[] = []
-      let request: StartRootRunRequest | undefined
+      let request: PreparedCliRequest | undefined
       const invocation = commandInvocation(
         fakeHost(
           fakeSession(events, {
@@ -2215,7 +2238,7 @@ describe('finite Jig project commands', () => {
           invocation.options,
         ),
       ).toBe(expectedExit)
-      expect(request?.target).toEqual({ kind: 'binding', id: 'review' })
+      expect(request?.target).toBe('binding:review')
       expect(request?.input).toEqual({ task: 'build', count: 2 })
       expect(JSON.parse(invocation.output)).toEqual(terminal)
       expect(Object.keys(JSON.parse(invocation.output))).not.toContain('runId')
@@ -2336,7 +2359,6 @@ describe('finite Jig project commands', () => {
           async (mode) => {
             const events: string[] = []
             const controller = new AbortController()
-            let submissionId = ''
             const terminal: RootRunTerminal =
               mode === 'succeeded'
                 ? {
@@ -2353,9 +2375,6 @@ describe('finite Jig project commands', () => {
                   }
             const session = fakeSession(events, {
               pendingObservations: Infinity,
-              captureRequest: (request) => {
-                submissionId = request.submissionId
-              },
             })
             const invocation = commandInvocation(
               {
@@ -2366,8 +2385,8 @@ describe('finite Jig project commands', () => {
                       await session.close()
                       options?.channelOutput?.terminal?.({
                         state: 'terminal',
-                        runId: digest,
-                        submissionId: mode === 'foreign' ? 'foreign' : submissionId,
+                        runId: mode === 'foreign' ? `sha256:${'f'.repeat(64)}` : digest,
+                        submissionId: 'unrelated-private-host-identity',
                         target: { kind: 'flow', path: 'flows/work' },
                         terminal,
                       })
@@ -2687,23 +2706,6 @@ describe('finite Jig project commands', () => {
     )
     expect(invocation.error).not.toContain('private parser detail')
   })
-  test('checkpoint attachment failures explain the required root output authority', async () => {
-    const events: string[] = []
-    const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private detail', {
-      code: 'PROJECT_CHECKPOINT_ATTACHMENT',
-      path: 'flows/diagnostic',
-    })
-    const invocation = commandInvocation(
-      fakeHost(fakeSession(events, { planFailure: failure }), events),
-    )
-    expect(await main(['review', '--yes'], invocation.options)).toBe(1)
-    expect(invocation.error).toContain('Location: "flows/diagnostic"')
-    expect(invocation.error).toContain(
-      'declare a read-write attachment in FLOW.contract.json for the root Flow that uses Run Checkpoint',
-    )
-    expect(invocation.error).toContain('Diagnostic code: PROJECT_CHECKPOINT_ATTACHMENT')
-    expect(invocation.error).not.toContain('private detail')
-  })
   test('author evaluation guidance includes the allowed project fields without echoing an exception', async () => {
     const events: string[] = []
     const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'secret /private/file', {
@@ -2989,7 +2991,7 @@ describe('finite Jig project commands', () => {
     readonly plan?: ProjectPlanResult
     readonly planFailure?: unknown
     readonly terminal?: RootRunTerminal
-    readonly captureRequest?: (request: StartRootRunRequest) => void
+    readonly captureRequest?: (request: PreparedCliRequest) => void
     readonly pendingObservations?: number
   }
   function fakeSession(events: string[], options: FakeSessionOptions = {}): ProjectSession {
@@ -3002,10 +3004,13 @@ describe('finite Jig project commands', () => {
       diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
     }
     const rootAdministration: RootAdministration = {
-      async startRun(request) {
+      async startRun() {
+        throw new Error('ordinary CLI must submit a prepared ticket')
+      },
+      async startPreparedRun(request) {
         events.push('start')
-        options.captureRequest?.(request)
-        return { runId: digest }
+        options.captureRequest?.(request.request)
+        return cliFixtureAcceptance(request, digest)
       },
       async runStatus(): Promise<RootRunStatus> {
         events.push('status')
@@ -3071,7 +3076,7 @@ describe('finite Jig project commands', () => {
   } {
     const capture = { output: '', error: '' }
     const options: PrivateCliOptions = {
-      host,
+      host: { prepareRun: prepareCliFixtureRun, ...host },
       currentDirectory: '/project',
       // The fake host models the inner installed command after argument ownership.
       runArgumentsPrepared: true,

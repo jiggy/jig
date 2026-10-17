@@ -27,7 +27,7 @@ async def run(context: RunContext) -> RunResult:
         intent="Research this request.",
         input=context.input,
     )
-    return child
+    return {"outcome": child["outcome"], "output": child["output"]}
 
 
 handle(run)
@@ -42,7 +42,7 @@ Cancelling a task awaiting `call()` sends the matching
 Run/0 cancellation notification.
 
 `call()` invokes a declared local slot and returns the complete
-`{"outcome": ..., "output": ...}` result. Domain outcomes such as `blocked` or
+`CallResult` with `outcome`, `output` and optional held `artifacts`. Domain outcomes such as `blocked` or
 `not-found` are normal data; interpret them explicitly. Operational failures raise
 `OperationError`. The optional `intent` is advisory metadata, separate from the
 application `input`. An omitted `channels` map and `channels={}` retain distinct
@@ -54,6 +54,40 @@ Optional `FLOW.meta.json` declares package metadata and dependency slots. Option
 attachments; `settings.schema.json` separately validates implementation settings.
 No descriptor is needed for unconstrained bounded input and a `done` result.
 
+## Immutable artifact handoff
+
+On a host supporting finite attachments:
+
+```python
+produced = await context.call(
+    operation_id="p1", slot="producer", input={"revision": 1},
+    attachments={"files": {"create": True}},
+)
+files = produced["artifacts"]["files"]
+evaluated = await context.call(
+    operation_id="e1", slot="evaluator", input={},
+    attachments={"candidate": {"read": files}},
+)
+return {"outcome": "done", "output": evaluated["output"],
+        "artifactResults": {"final": files}}
+```
+
+The producer declares `attachments: {"files":"read-write"}`, the evaluator
+`attachments: {"candidate":"read"}`, and the coordinator declares
+`artifactResults:["final"]` in their invocation contracts. Initial readonly
+attachment dictionaries expose optional `artifact` objects for onward delegation.
+An `Artifact` has readonly `reference` identity, no path and no public constructor.
+Copied dictionaries and guessed strings cannot manufacture SDK grants; the host
+validates rights. Artifacts are not JSON domain data. Result schemas see only
+`{"outcome": ..., "output": ...}`; select trees explicitly in `artifactResults`.
+Duplicates preserve original refs and outcomes without allocating again.
+
+Root cleanup automatically retires live rights. Advanced early release is
+`await context.release(operation_id="release:1", artifact=files)`. It ends new
+read initiation, not accepted sibling reads. Cancellation retains wire
+settlement; replay never resurrects a released right. No manual cleanup loop is
+required.
+
 ## Direct channels
 
 Channels exchange bounded JSON values while ordinary calls execute. On a host
@@ -62,12 +96,12 @@ without confusing progress completion with the Agent's result:
 
 ```python
 import asyncio
-from jiggy.flow import OperationError, RunContext, RunResult
+from jiggy.flow import CallResult, OperationError, RunContext, RunResult
 
 async def run(context: RunContext) -> RunResult:
     updates = await context.channel(contract="./contracts/public-updates.json")
 
-    async def invoke() -> RunResult:
+    async def invoke() -> CallResult:
         try:
             return await context.call(
                 operation_id="answer", slot="agent", input=context.input,
@@ -95,7 +129,8 @@ async def run(context: RunContext) -> RunResult:
         raise execution
     if isinstance(observed, BaseException):
         raise observed
-    return {"outcome": "done", "output": execution}
+    return {"outcome": "done", "output": {
+        "outcome": execution["outcome"], "output": execution["output"]}}
 ```
 
 The package-local contract describes message meaning; the host must support that exact contract before

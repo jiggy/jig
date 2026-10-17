@@ -9,12 +9,15 @@ import { PrivateOutputProfileError } from '../../src/internal/captured-output.js
 import * as history from '../../src/internal/codex-session-state.js'
 import * as direct from '../../src/internal/direct-run.js'
 import * as execution from '../../src/internal/execution-backend.js'
-import { PrivateFileImportUnconfirmedError } from '../../src/internal/execution-file-import.js'
-import { privateSnapshotExecutionOutput } from '../../src/internal/execution-output.js'
+import {
+  PrivateOutputRetirementUnconfirmedError,
+  privateSnapshotExecutionOutput,
+} from '../../src/internal/execution-output.js'
 import { PrivateFiniteAcpPolicyError } from '../../src/internal/finite-acp-policy.js'
 import * as resource from '../../src/internal/finite-acp-resource.js'
 import * as installed from '../../src/internal/installed-bun-support.js'
 import * as context from '../../src/internal/invocation-context.js'
+import { privateBootDeadlineFromUnix } from '../../src/internal/native-clock.js'
 import {
   FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
@@ -142,6 +145,10 @@ mock.module('../../src/internal/installed-bun-support.js', () => ({
 }))
 mock.module('../../src/internal/invocation-context.js', () => ({
   ...context,
+  privateInvocationBootDeadline: async (input: any, durationMs: number) =>
+    privateBootDeadlineFromUnix(
+      Math.min(input.parent.intent.deadlineUnixMs, Date.now() + durationMs),
+    ),
   requireParentTarget: target,
   requireParentFlowOwner: async () => {},
   protectedOwnerRoot: async () => '/protected/owners',
@@ -465,7 +472,7 @@ for (const failure of [
     assert.deepEqual(failures, ['cleanup'])
     assert.ok(error instanceof RunHostFatalOperationError)
     assert.equal(error.code, 'UNCERTAIN')
-    assert.ok(error.cause instanceof PrivateFileImportUnconfirmedError)
+    assert.ok(error.cause instanceof PrivateOutputRetirementUnconfirmedError)
     assert.equal(error.cause.cause, descriptorFailure)
     assert.equal(events.filter((event) => event === 'descriptor-close').length, 1)
   }

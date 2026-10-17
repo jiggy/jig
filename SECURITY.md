@@ -112,6 +112,46 @@ and termination do not prove that repository tests ran honestly: candidate
 code can interfere with their runner. Independent application assertions
 must inspect captured behavior without importing candidate code.
 
+The complementary Bun/TypeScript evaluator pins the reviewed recipe, compiler
+configuration and locked development dependency closure before candidate work.
+Its fixed generation, compilation and test phases use separate finite native
+owners. Candidate code receives immutable inputs and prior phase outputs, only
+the current phase's bounded writable roots, and scratch; it receives no installer,
+network, credentials or choice of host executable. Candidate codegen and tests
+remain untrusted computation. A passing phase is process evidence, not an
+independent application acceptance decision.
+
+### Submission identity, time and retained evidence
+
+The installed application client invokes the installed machine boundary; it
+neither embeds the native host nor reads protected state. Preparation issues an
+opaque project-bound ticket and freezes request meaning without dispatch.
+Acceptance atomically pins approval, request and bounded lifecycle/result
+capacity before execution. Lookup is observational. Exact accepted duplicates
+identify the original work; expiry, missing history, interrupted acknowledgment
+and cleanup uncertainty never authorize replacement work or automatic retry.
+Ticket possession identifies a record, not additional operator authority.
+
+Native enforcement uses a once-frozen boot identity and suspend-inclusive
+monotonic cutoff. Unix timestamps are presentation and retention hints, not
+execution authority. Clock loss or a changed boot fails execution closed while
+cleanup remains active; it is not reported as proof of elapsed deadline.
+Execution terminal, cleanup, retained bytes and delivery are independent facts.
+Checkpoint and final artifact bytes share the accepted retained allowance.
+Retirement commits before collection; unresolved execution and copier owners
+continue to hold their accounting and bytes.
+
+These recovery rules cover ordinary process loss under the documented protected
+storage assumptions. They do not defend against a trusted operator rolling back
+the protected database, keys and owner journals together, or against storage
+hardware violating durable-write guarantees. SQLite reservation chunks account
+for bounded page capacity, not unlimited physical disk availability: rollback
+journals still require filesystem space. I/O or filesystem exhaustion can leave
+an uncertain operation requiring reconciliation; deleting state or obtaining a
+new ticket is not a safe recovery instruction. Native clock, containment,
+crash-ordering and installed-consumer qualification remain separate evidence
+requirements; source tests alone do not establish them.
+
 ## Supported trust boundary
 
 ### Local browser inspection
@@ -269,27 +309,25 @@ existing sandbox, without subcommand restrictions, network or credentials.
 
 Each Flow has its own initially empty writable output. Linux uses a 16 MiB
 anonymous tmpfs; original held descriptors retain it beyond writer fencing.
-With writable child maps, the trusted launcher projects only its public subtree
-and closes privileged/control references before package execution. Hidden
-import stages share that original bounded tmpfs, outside the payload view.
-Payload writes are charged to its 256 MiB cgroup ceiling. Trusted import writes
-can be charged to the coordinator instead; the per-volume 16 MiB ceiling still
-applies. Removing a cgroup does not release retained pages before the last holder
-closes them. Mac uses the existing bounded 512 MiB per-Flow filesystem image,
-with output and denied import siblings on the original volume, under its
+Closed Linux evaluation projects a read-only public aggregate while retaining
+the original collector directory. Trusted setup closes privileged/control
+references before package execution; collection keeps ordinary no-XDEV checks.
+Payload writes are charged to its cgroup ceiling; the per-volume 16 MiB ceiling
+still applies. Removing a cgroup does not release retained pages before the last
+holder closes them. Mac uses the existing bounded 512 MiB per-Flow filesystem image,
+with output on the original volume, under its
 supervised process limits. This is a finite storage allocation, not a Linux
 memory-accounting claim.
 
 Final validation accepts at most 16 MiB of logical bytes, 64 singly linked
-regular files and 256 entries, including imported files and folder prefixes.
+regular files and 256 entries.
 It rejects oversized sparse files, links, special files and excess metadata.
-After accepted child results and writer fencing, bounded streaming copies go
-into inaccessible caller stages. Child/source/native/package ownership settles
-before the existing native caller owner arbitrates original deadlines,
-accepted cancellation and one no-replace rename. At most two stages belong to
-one caller; existing branch reservations still apply. Unconfirmed copy,
-commit or descriptor cleanup ends the caller and never releases its destination
-for retry. Recovery fences the caller without resuming its program.
+After accepted child results and writer fencing, the controller captures an
+immutable snapshot and confirms native/package/row cleanup before granting its
+caller a participant-scoped reference. Explicit held references authorize
+read-only delegation; paths and digests do not. No child output is copied into
+a caller-owned folder. Unconfirmed descriptor retirement stays fatal and
+uncertain even after native fencing; recovery never resumes the program.
 
 Finite caps bound hostile allocation and trusted capture/export work. The
 8 MiB input and 16 MiB output values are conservative host policy for small
@@ -303,14 +341,14 @@ an effect per branch and therefore admits fewer Flows. Whole immutable read
 aliases share the root's original <=64 captures/8 MiB; equal content alone does
 not authenticate a shared view. Each Flow materializes at most 8 MiB of unique
 read bytes (Linux input tmpfs ceiling 16 MiB). Linux's six output backings sum
-to at most 96 MiB, including private stages. Mac's six 512 MiB images sum to at
-most 3 GiB allocated storage, including scratch, input, public output and stages.
-There can be at most five live child import stages, since each owns one child
-edge; they do not allocate another volume or independent output allowance.
+to at most 96 MiB. Mac's six 512 MiB images sum to at most 3 GiB allocated
+storage, including scratch, input and output. Immutable artifact retention is
+separately root-bounded to sixteen snapshots and 256 MiB of snapshots plus
+materialized read views, with at most 256 live participant references.
 
 Existing Mac output collection may retain one <=16 MiB anonymous snapshot per
 Flow while its source volume retires, conservatively <=96 MiB across six
-Flows. Streaming capture and import borrow <=64 KiB per active stream rather
+Flows. Streaming capture borrows <=64 KiB per active stream rather
 than retaining whole-tree buffers. A root final packet may add <=16 MiB of
 file staging; accepted and replacing checkpoint aggregates can overlap, each with <=1 MiB
 of files and <=2 MiB canonical JSON under the existing checkpoint policy.

@@ -1,0 +1,34 @@
+import { handle, type JsonObject } from '@jigging/flow'
+
+await handle(async run => {
+  const input = run.input as JsonObject
+  const produced = await run.call({
+    operationId: 'produce-document', slot: 'producer', input,
+    attachments: { document: { create: true } },
+  })
+  if (produced.outcome !== 'done' || !produced.artifacts?.document)
+    throw Error('Document producer did not return an artifact')
+  const duplicate = await run.call({
+    operationId: 'produce-document', slot: 'producer', input,
+    attachments: { document: { create: true } },
+  })
+  if (duplicate.outcome !== 'done' ||
+      duplicate.artifacts?.document !== produced.artifacts.document)
+    throw Error('Duplicate child operation did not retain its original immutable artifact')
+  const validation = await run.call({
+    operationId: 'validate-document', slot: 'validator', input,
+    attachments: { document: { read: produced.artifacts.document } },
+  })
+  if (validation.outcome !== 'done' || (validation.output as JsonObject).valid !== true)
+    throw Error('Document validator refused the document')
+  // Hold a real delegated HTTP operation only after immutable child handoff.
+  // The external service observes dispatch before its client cancels or dies.
+  if (input.hold === 'cancel' || input.hold === 'death')
+    await run.call({
+      operationId: 'ready-barrier', slot: 'barrier', input: { body: { episode: input.hold } },
+    })
+  return {
+    outcome: 'done', output: { valid: true, readonly: true },
+    artifactResults: { document: produced.artifacts.document },
+  }
+})

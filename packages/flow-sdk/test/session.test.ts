@@ -144,6 +144,96 @@ function channelRoot(channels: JsonObject): JsonObject {
   return { ...request, params: { ...(request.params as JsonObject), channels } }
 }
 
+test('artifact calls project held objects and explicitly forward immutable output', async () => {
+  const transport = new MemoryTransport()
+  const session = new RunSession(transport, async (run) => {
+    const made = await run.call({
+      operationId: 'p1',
+      slot: 'producer',
+      input: null,
+      attachments: { files: { create: true } },
+    })
+    const files = made.artifacts!.files!
+    await run.call({
+      operationId: 'e1',
+      slot: 'reader',
+      input: null,
+      attachments: { source: { read: files } },
+    })
+    return { outcome: 'done', output: made.output, artifactResults: { final: files } }
+  })
+  const running = session.run()
+  transport.push(rootRequest())
+  await transport.waitForWrites(1)
+  expect((transport.message(0).params as JsonObject).attachments).toEqual({
+    files: { create: true },
+  })
+  transport.push({
+    jsonrpc: '2.0',
+    id: transport.message(0).id!,
+    result: { outcome: 'done', output: 1, artifacts: { files: 'sealed:1' } },
+  })
+  await transport.waitForWrites(2)
+  expect((transport.message(1).params as JsonObject).attachments).toEqual({
+    source: { read: 'sealed:1' },
+  })
+  transport.push({
+    jsonrpc: '2.0',
+    id: transport.message(1).id!,
+    result: { outcome: 'done', output: true },
+  })
+  await running
+  expect(transport.message(2).result).toEqual({
+    outcome: 'done',
+    output: 1,
+    artifactResults: { final: 'sealed:1' },
+  })
+})
+
+test('cancelled artifact release retains acknowledgement and released duplicate results cannot restore reads', async () => {
+  const transport = new MemoryTransport()
+  const session = new RunSession(transport, async (run) => {
+    const made = await run.call({ operationId: 'p1', slot: 'producer', input: null })
+    const artifact = made.artifacts!.files!
+    const controller = new AbortController()
+    const releasing = run.release(
+      { operationId: 'release:1', artifact },
+      { signal: controller.signal },
+    )
+    await transport.waitForWrites(2)
+    controller.abort()
+    await expect(releasing).rejects.toHaveProperty('code', 'CANCELLED')
+    const replay = await run.call({ operationId: 'p1', slot: 'producer', input: null })
+    expect(replay.artifacts!.files).toBe(artifact)
+    await expect(
+      run.call({
+        operationId: 'bad',
+        slot: 'reader',
+        input: null,
+        attachments: { source: { read: artifact } },
+      }),
+    ).rejects.toHaveProperty('code', 'PERMISSION_DENIED')
+    return { outcome: 'done', output: null }
+  })
+  const running = session.run()
+  transport.push(rootRequest())
+  await transport.waitForWrites(1)
+  const result = { outcome: 'done', output: null, artifacts: { files: 'sealed:1' } }
+  transport.push({ jsonrpc: '2.0', id: transport.message(0).id!, result })
+  await transport.waitForWrites(4)
+  expect(transport.message(1).method).toBe('flow/artifact/release')
+  transport.push({ jsonrpc: '2.0', id: transport.message(1).id!, result: {} })
+  transport.push({ jsonrpc: '2.0', id: transport.message(3).id!, result })
+  await transport.waitForWrites(5)
+  transport.push({
+    jsonrpc: '2.0',
+    id: transport.message(4).id!,
+    error: { code: -32000, message: 'released', data: { code: 'PERMISSION_DENIED' } },
+  })
+  await running
+  expect(transport.message(5).result).toEqual({ outcome: 'done', output: null })
+})
+
 function grant(endpoint: string, direction: 'send' | 'receive'): JsonObject {
   return {
     endpoint,

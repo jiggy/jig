@@ -15,6 +15,7 @@ const signals = Object.freeze({ stop: 17, continue: 19, kill: 9 })
 type NativeFunction = (...args: (number | bigint)[]) => number
 type NativeSymbol =
   | 'coalition_info_resource_usage'
+  | 'mach_continuous_time'
   | 'mach_timebase_info'
   | 'proc_pidinfo'
   | 'proc_listallpids'
@@ -47,6 +48,7 @@ function calls(): Native {
   }
   const library = ffi.dlopen('/usr/lib/libSystem.B.dylib', {
     coalition_info_resource_usage: { args: ['u64', 'ptr', 'u64'], returns: 'i32' },
+    mach_continuous_time: { args: [], returns: 'u64' },
     mach_timebase_info: { args: ['ptr'], returns: 'i32' },
     proc_pidinfo: { args: ['i32', 'i32', 'u64', 'ptr', 'i32'], returns: 'i32' },
     proc_listallpids: { args: ['ptr', 'i32'], returns: 'i32' },
@@ -129,9 +131,7 @@ function kernelString(native: Native, key: string): string {
   return bytes.subarray(0, end).toString('ascii')
 }
 
-function processIdentity(
-  pid: number,
-): { version: number; uniqueId: bigint; coalition: bigint } | undefined {
+function processIdentity(pid: number): { version: number; coalition: bigint } | undefined {
   const { ptr, symbols } = calls()
   const unique = Buffer.alloc(56)
   const coalitions = Buffer.alloc(40)
@@ -142,22 +142,8 @@ function processIdentity(
     return undefined
   return {
     version: unique.readUInt32LE(32),
-    uniqueId: unique.readBigUInt64LE(16),
     coalition: coalitions.readBigUInt64LE(0),
   }
-}
-
-/** Inert comparison only; the guardian issues continuity from an actual pre-exec member. */
-export function samePrivateMacosOwnedProcess(
-  original: Readonly<{ uniqueId: bigint; coalition: bigint }>,
-  observed: Readonly<{ uniqueId: bigint; coalition: bigint }> | undefined,
-): boolean {
-  return (
-    original.uniqueId > 0n &&
-    original.coalition > 0n &&
-    observed?.uniqueId === original.uniqueId &&
-    observed.coalition === original.coalition
-  )
 }
 
 function bootIdentity(): string {
@@ -165,6 +151,16 @@ function bootIdentity(): string {
   if (!/^[0-9A-Fa-f]{8}(?:-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}$/.test(result))
     throw new Error('macOS boot identity is invalid')
   return result.toLowerCase()
+}
+
+/** Boot-scoped elapsed time, including sleep; never an epoch/presentation clock. */
+export function privateMacosBootClock(): Readonly<{ bootId: string; monotonicMs: number }> {
+  const native = calls()
+  const ticks = BigInt(native.symbols.mach_continuous_time())
+  const milliseconds = (ticks * native.timeNumerator) / native.timeDenominator / 1_000_000n
+  if (milliseconds < 0n || milliseconds > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new Error('macOS continuous clock is unavailable')
+  return Object.freeze({ bootId: bootIdentity(), monotonicMs: Number(milliseconds) })
 }
 
 /** Inert identity for binding a guardian's private control connection. */
@@ -178,6 +174,19 @@ export function privateMacosCurrentProcessIdentity(): Readonly<{
   if (identity === undefined || uid === undefined || uid === 0)
     throw new Error('macOS coordinator identity is unavailable')
   return Object.freeze({ uid, pid: process.pid, version: identity.version })
+}
+
+/** Copy-only owner reconciliation. A complete qualified kernel PID enumeration
+ * may prove absence. A reused PID or an incomplete observation stays charged;
+ * this is not coalition fencing or proof of execution cleanup. */
+export function privateMacosCopyOwnerAbsent(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid < 1) return false
+  const { ptr, symbols } = calls()
+  const bytes = Buffer.alloc(MAX_PROCESSES * 4)
+  const count = symbols.proc_listallpids(ptr(bytes), bytes.length)
+  if (count < 1 || count >= MAX_PROCESSES) return false
+  for (let index = 0; index < count; index++) if (bytes.readInt32LE(index * 4) === pid) return false
+  return true
 }
 
 function usage(
@@ -296,7 +305,6 @@ export interface PrivateMacosCoalitionControl {
   sample(): PrivateMacosProcessSample
   signalMembers(signal: keyof typeof signals): number
   contains(pid: number, version: number): boolean
-  retainMember(pid: number, version: number): () => boolean
   /** Only this kernel observation, while the guardian lives, proves emptiness. */
   empty(): boolean
 }
@@ -344,28 +352,6 @@ export function acquirePrivateMacosCoalition(): PrivateMacosCoalitionControl {
         return false
       const current = processIdentity(pid)
       return current?.version === version && current.coalition === owner.coalition
-    },
-    retainMember(pid: number, version: number) {
-      validateOwner()
-      if (!Number.isSafeInteger(pid) || pid <= 1 || !Number.isSafeInteger(version) || version < 0)
-        throw new Error('macOS initial process continuity is unavailable')
-      const original = processIdentity(pid)
-      if (
-        original === undefined ||
-        original.version !== version ||
-        original.coalition !== owner.coalition ||
-        original.uniqueId <= 0n
-      )
-        throw new Error('macOS initial process continuity is unavailable')
-      return () => {
-        validateOwner()
-        // Exec changes audit PID version; process unique ID preserves birth identity.
-        const current = processIdentity(pid)
-        return (
-          samePrivateMacosOwnedProcess(original, current) &&
-          samePrivateMacosOwnedProcess(original, processIdentity(pid))
-        )
-      }
     },
     sample() {
       const start = performance.now()

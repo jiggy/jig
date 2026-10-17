@@ -11,6 +11,7 @@ import * as fileInput from '../../src/internal/file-input.js'
 import { PrivateRootRunFiles } from '../../src/internal/root-run-files.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 import type { JsonValue } from '../../src/json.js'
+import { cliFixtureAcceptance, prepareCliFixtureRun } from '../cli-prepared.fixture.js'
 
 interface CaseState {
   scenario: string
@@ -205,6 +206,7 @@ async function runCase(scenario: string, display: string) {
         signal: cancellation.signal,
         presentationDeadline,
         host: {
+          prepareRun: prepareCliFixtureRun,
           ...(scenario === 'no-delivery' ? {} : { delivery }),
           async acquire(_project, options) {
             events.push('acquire')
@@ -233,10 +235,10 @@ async function runCase(scenario: string, display: string) {
               )
             return {
               rootAdministration: {
-                async startRun() {
+                async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                   events.push('dispatched')
                   options?.channelOutput?.dispatched?.()
-                  return { runId }
+                  return cliFixtureAcceptance(request, runId)
                 },
                 async runStatus() {
                   if (

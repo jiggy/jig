@@ -1,14 +1,17 @@
 import { CheckError, invalid } from '../diagnostics.js'
 import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
-import { RUN_CHECKPOINT_CONTRACT_DIGEST } from '../internal/private-run-checkpoint.js'
+import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
+import {
+  normalizePrivateRetainedProjectEvaluation,
+  type PrivateRetainedProjectEvaluation,
+} from '../internal/project-evaluation-retention.js'
 import type { JsonObject, JsonValue } from '../json.js'
 import { type InspectedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
   type ProjectSlotTarget,
   validateBindingAttachmentMapForInterfaces,
-  validateDistinctBindingAttachmentDirectories,
 } from './attachment-routes.js'
 import type { BindingAttachmentMap } from './author.js'
 import {
@@ -53,6 +56,7 @@ export interface InjectedBindingDeclaration {
   readonly sourcePath: string
   readonly definition: unknown
   readonly capturedAttachments?: BoundAttachments
+  readonly capturedEvaluations?: Readonly<Record<string, PrivateRetainedProjectEvaluation>>
 }
 
 export interface PackageProjectInput {
@@ -103,6 +107,7 @@ interface PreparedBinding {
   readonly definition: BindingDefinition
   readonly flow: PreparedFlow
   readonly boundAttachments?: BoundAttachments
+  readonly evaluations?: Readonly<Record<string, PrivateRetainedProjectEvaluation>>
 }
 
 interface PreparedFlow {
@@ -283,7 +288,17 @@ export function linkPackageProject(
     )
   }
   validateChildGraph(
-    new Map(value.bindings.map((binding) => [binding.id, binding])),
+    new Map(
+      value.bindings.map((binding) => [
+        binding.id,
+        {
+          ...binding,
+          rootOnly: Object.values(flowByPath.get(binding.packagePath)!.value.uses).some(
+            isRunCheckpointContract,
+          ),
+        },
+      ]),
+    ),
     new Map(
       value.flows
         .filter((flow) => flow.directRun)
@@ -292,6 +307,7 @@ export function linkPackageProject(
           {
             packagePath: flow.provenance.projectPath,
             slots: flow.slots ?? {},
+            rootOnly: Object.values(flow.uses).some(isRunCheckpointContract),
           },
         ]),
     ),
@@ -456,16 +472,6 @@ export function projectInvocationRequirements(
       digest: reference.contract.digest,
       ...(declaration.requires === undefined ? {} : { requires: declaration.requires }),
     })
-    if (
-      id === 'https://jig.md/contracts/run-checkpoint' &&
-      reference.contract.digest === RUN_CHECKPOINT_CONTRACT_DIGEST &&
-      !Object.values(inspected.invocation?.attachments ?? {}).includes('read-write')
-    )
-      invalid(
-        'PROJECT_CHECKPOINT_ATTACHMENT',
-        'Run Checkpoint requires a root writable attachment',
-        packagePath,
-      )
   }
   return Object.freeze(output)
 }
@@ -485,6 +491,11 @@ function prepareBindings(
         typeof value === 'object' &&
         Object.hasOwn(value, 'capturedAttachments')
           ? ['capturedAttachments']
+          : []),
+        ...(value !== null &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'capturedEvaluations')
+          ? ['capturedEvaluations']
           : []),
       ],
       `bindings[${index}]`,
@@ -567,6 +578,17 @@ function prepareBindings(
       definition,
       flow,
       ...(Object.keys(boundAttachments).length === 0 ? {} : { boundAttachments }),
+      ...(record.capturedEvaluations === undefined
+        ? {}
+        : {
+            evaluations: Object.freeze(
+              Object.fromEntries(
+                Object.entries(
+                  snapshotJsonObject(record.capturedEvaluations, 'captured evaluations'),
+                ).map(([name, value]) => [name, normalizePrivateRetainedProjectEvaluation(value)]),
+              ),
+            ),
+          }),
     })
   })
   bindings.sort((left, right) => compareProjectPaths(left.id, right.id))
@@ -730,6 +752,7 @@ function linkBinding(
       packagePath: definition.package,
       uses: prepared.flow.value.uses,
       attachments: prepared.flow.inspected.invocation?.attachments ?? {},
+      ...(prepared.evaluations === undefined ? {} : { evaluations: prepared.evaluations }),
       selectors: {
         ...Object.fromEntries(
           Object.entries(selectedDefaults).map(([slot, target]) => [slot, targetSelector(target)]),
@@ -767,6 +790,7 @@ function linkFlowSlots(
     uses: LinkedFlow['uses']
     attachments: NonNullable<InspectedPackage['invocation']>['attachments']
     selectors: PackageBindingInput['slots']
+    evaluations?: Readonly<Record<string, PrivateRetainedProjectEvaluation>>
   },
   flowByPath: ReadonlyMap<string, PreparedFlow>,
   bindingById: ReadonlyMap<string, PreparedBinding>,
@@ -776,7 +800,7 @@ function linkFlowSlots(
   const slots: Record<string, ProjectSlotTarget> = Object.create(null)
   for (const [name, selector] of Object.entries(owner.selectors ?? {})) {
     const pointer = `/slots/${pointerToken(name)}`
-    const mapped = typeof selector === 'object' && 'attachments' in selector ? selector : undefined
+    const mapped = typeof selector === 'object' && 'target' in selector ? selector : undefined
     if (mapped === undefined && (typeof selector !== 'string' || selector.startsWith('grant:'))) {
       const resourceName = typeof selector === 'string' ? grantName(selector.slice(6)) : undefined
       const policy = resourceName === undefined ? selector : grants[resourceName]
@@ -791,6 +815,7 @@ function linkFlowSlots(
         kind: 'grant',
         policy: normalizeGrant(policy),
         ...(resourceName === undefined ? {} : { name: resourceName }),
+        ...(owner.evaluations?.[name] === undefined ? {} : { evaluation: owner.evaluations[name] }),
       })
       continue
     }
@@ -819,7 +844,7 @@ function linkFlowSlots(
     ) {
       invalid(
         'PROJECT_BINDING_SLOT_ATTACHMENTS_UNSUPPORTED',
-        `${label} slot ${name} declares file attachments and needs a complete reviewed static attachment map in its caller Binding`,
+        `${label} slot ${name} declares file attachments and needs a complete reviewed attachment map in its caller Binding`,
         declarationPath,
         pointer,
       )
@@ -873,17 +898,6 @@ function linkFlowSlots(
       attachments === undefined
         ? identity
         : Object.freeze({ kind: 'route', target: identity, attachments })
-  }
-  try {
-    validateDistinctBindingAttachmentDirectories(
-      Object.fromEntries(
-        Object.entries(slots).flatMap(([name, slot]) =>
-          slot.kind === 'route' ? [[name, slot.attachments]] : [],
-        ),
-      ),
-    )
-  } catch (error) {
-    invalid('PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID', errorText(error), declarationPath, '/slots')
   }
   return Object.freeze(slots)
 }

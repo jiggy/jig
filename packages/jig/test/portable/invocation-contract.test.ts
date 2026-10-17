@@ -42,6 +42,53 @@ function reject(value: unknown, code?: string): void {
 }
 
 describe('Invocation Contract/0', () => {
+  test('preserves allowed artifact result names separately from domain result schemas', () => {
+    const value = descriptor({
+      result: false,
+      attachments: { source: 'read', files: 'read-write' },
+      artifactResults: ['final', 'source'],
+    })
+    const parsed = parseInvocationContract(bytes(value))
+    expect(parsed.invocation?.artifactResults).toEqual(['final', 'source'])
+    expect(Object.isFrozen(parsed.invocation?.artifactResults)).toBe(true)
+    expect(parsed.invocation?.result).toBe(false)
+    expect(parsed.digest).not.toBe(
+      parseInvocationContract(bytes({ ...value, artifactResults: ['final'] })).digest,
+    )
+    expect(
+      parseInvocationContract(bytes(descriptor({ artifactResults: [] }))).invocation,
+    ).toHaveProperty('artifactResults', [])
+    const operations = { inspect: { artifactResults: ['final'] } }
+    expect(parseInvocationContract(bytes(named({ operations }))).descriptor.operations).toEqual(
+      operations,
+    )
+  })
+  test('bounds artifact results and rejects duplicate, invalid and writable-port names', () => {
+    const maximum = Array.from({ length: 256 }, (_, index) => `artifact-${index}`)
+    expect(
+      parseInvocationContract(bytes(descriptor({ artifactResults: maximum }))).invocation
+        ?.artifactResults,
+    ).toHaveLength(256)
+    for (const artifactResults of [
+      null,
+      {},
+      'final',
+      [1],
+      ['Final'],
+      ['final\n'],
+      ['a'.repeat(65)],
+      ['final', 'final'],
+      [...maximum, 'extra'],
+    ])
+      reject(descriptor({ artifactResults }))
+    reject(
+      descriptor({
+        attachments: { files: 'read-write' },
+        artifactResults: ['files'],
+      }),
+      'CONTRACT_ATTACHMENT',
+    )
+  })
   for (const [suiteCaseIndex, suiteCaseValue] of featureCases.valid.entries()) {
     test('preserves exact feature identity: $name' + ` (case ${suiteCaseIndex + 1})`, () =>
       Reflect.apply(

@@ -25,7 +25,6 @@ import { withPrivateInstallationVerification } from '../../src/internal/installa
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import type { PrivateInstalledBunLocation } from '../../src/internal/installed-bun-support.js'
 import {
-  PrivateRunCheckpoints,
   type RunCheckpointIdentity,
   type RunCheckpointInput,
 } from '../../src/internal/private-run-checkpoint.js'
@@ -33,6 +32,7 @@ import {
   closedTestErrorCauses,
   openPrivateProjectSession,
 } from '../../src/internal/project-session-controller.js'
+import { PrivateRunCheckpoints } from '../checkpoint.fixture.js'
 import { fixtureHost, MACOS_FIXTURE_SETTLEMENT_MS } from './agent-fixture-host.js'
 import {
   openDeterministicFiniteAcpHost,

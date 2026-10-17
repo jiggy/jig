@@ -211,7 +211,8 @@ The host's only request is:
 `channels`, when present, maps at most 256 `LocalName` entries to distinct
 host-granted endpoints defined below. Absence means an empty map.
 
-Each attachment has exactly:
+Each attachment has required `path` and `access`, and an optional readonly
+`artifact` reference as defined in section 4.1:
 
 ```json
 {
@@ -231,7 +232,8 @@ object in Run/0. The initial profile accepts no operation selector. A triggering
 fact belongs in `input`; lifecycle and authority
 evidence remain host-side.
 
-A successful result is exactly:
+A successful component result has required `outcome` and `output`, and only
+optional `artifactResults` (section 4.1):
 
 ```json
 {
@@ -262,7 +264,7 @@ While its root request is pending, the component may invoke a declared slot:
 ```
 
 Params have exactly the required `operationId`, `slot` and `input`, plus
-optional `intent` and `channels`. `slot` names one dependency declared by
+optional `intent`, `channels` and `attachments`. `slot` names one dependency declared by
 Package/0 metadata's `uses` map. A host supplies its exact Flow or native
 implementation; a slot is not a package address, implementation URI or request
 for catalogue discovery. A named dependency must match the selected
@@ -277,10 +279,11 @@ input or widening authority. Instructions belong in `input`.
 Optional `channels` maps at most 256 callee-declared `LocalName`s to held
 endpoint-reference strings. Omission and an explicit empty map remain distinct
 operation content. Validate selected-operation requirements and actual grants
-before atomic transfer or dispatch. There is no attachment-transfer parameter,
+before atomic transfer or dispatch. Optional `attachments` supplies finite
+immutable reads or fresh operation-owned outputs as defined below. There is no
 method selector or operation selector in this initial profile.
 
-A normal reply is directly the complete RunResult:
+A normal reply is directly the complete host CallResult:
 
 ```json
 {
@@ -311,6 +314,82 @@ retain their own qualified execution and cleanup owners. Hosts may impose smalle
 concurrency, depth, resources or retained-result budgets and report
 `RESOURCE_EXHAUSTED`; the Run/0 identity, replay, cancellation and lifetime rules
 still apply.
+
+### 4.1 Finite artifacts
+
+An artifact is an immutable finite tree whose backing and rights are owned by
+the host. An opaque reference is a request-token string (`wireId`: 1–128 ASCII
+bytes). It is scoped to a live participant; knowing or copying a spelling grants
+no authority. References contain no portable path, ticket, storage policy or
+host lifecycle identifier.
+
+`attachments`, when present on `flow/call`, is a closed map of at most 256
+callee-declared `LocalName` ports. Each value is exactly one of:
+
+```json
+{"read":"artifact:1"}
+```
+
+```json
+{"create":true}
+```
+
+`read` borrows an immutable tree held by the caller into a declared `read` port.
+`create` requests a fresh empty output at a declared `read-write` port for this
+operation. Unknown ports, wrong modes, malformed values, released references
+and references not held by the caller reject before effects. The host validates
+all required ports and route permissions. A static read and a supplied create
+may cover disjoint ports; two sources for the same port are ambiguous and reject.
+No mutable output becomes a read grant while its writer is live.
+
+The host CallResult contains required `outcome` and `output`, plus optional
+`artifacts`, a map of at most 256 `LocalName`s to opaque references. Writable
+port names identify sealed outputs; declared result names identify explicitly
+forwarded immutable outputs. A usable grant is exposed only after domain result
+validation, immutable capture and confirmed execution cleanup. A normal custom
+outcome follows the same rules as `done`; an empty tree is valid. Operational
+failure creates no newly usable grant.
+
+The component's `flow/run` success has required `outcome` and `output`, plus
+optional `artifactResults`, a map from declared result names to held references.
+It cannot send host `artifacts`. Each selected name must occur in the invoked
+contract's `artifactResults` array; selection may be a subset, including empty.
+The host validates participant rights, unreleased identity and declared names,
+then forwards the same immutable tree without copying, resealing or granting
+arbitrary rights. A result name must not collide with a writable output port.
+Invocation result schemas validate only `{outcome, output}`; host and handler
+artifact envelopes are separately validated, never domain data.
+
+Initial `flow/run` readonly attachments may additionally contain `artifact`,
+an opaque scoped read reference. The SDK exposes it as a held object for onward
+delegation. Writable attachments cannot contain `artifact`. The existing `path`
+is only the prepared sandbox-local attachment view, not an artifact field or
+portable reference. Hosts supporting artifact delegation supply a reference for
+each initial readonly attachment.
+
+Exact duplicate calls join before fresh output allocation and return the
+original complete outcome, output and artifact references. Changed mappings,
+including absent versus empty, conflict. Released references never regain
+initiation rights through replay: an exact settled duplicate may replay its
+original references, but cannot recreate grants or backing.
+
+The optional advanced request `flow/artifact/release` has exactly
+`{operationId, artifact}` and returns `{}`. It uses the same token grammar,
+participant-scoped operation identity, join/conflict and cancellation settlement
+rules as calls; method is part of identity, so a call and release cannot reuse
+one operation ID. Releasing ends that participant's right to initiate new
+readers or forward the artifact. Readers already accepted, including siblings,
+retain their independent borrowed rights through settlement. Exact release
+duplicates return the original result; release of an unheld reference rejects.
+An unsupported host returns method-not-found, never pretends to release.
+
+Ordinary callers need no manual release. Root completion or cancellation
+automatically retires live rights after owned readers settle. A host may retain
+selected final bytes under its own result policy, but retention is not detached
+execution or a live participant grant. Cancelled call waiters retain wire
+settlement: late replies must still validate and any late artifact backing
+remains owned until automatic root cleanup. Neither an SDK cancellation nor a
+released caller right revokes an accepted sibling's read.
 
 ## 5. Channels
 
@@ -481,7 +560,7 @@ UTF8("FLOW-Call/0\0") || RFC8785(complete validated flow/call params without ope
 
 The separator is one NUL byte. Remove only `operationId`; preserve all other
 members and optional-key presence. Slot, actual input, advisory intent and
-channel mappings retain distinct meaning. Omitted `channels` and `channels:{}`
+channel and attachment mappings retain distinct meaning. Omitted `channels` and `channels:{}`
 conflict under one identity. There is no empty-map or schema-default
 normalization. Transport request IDs and wait timing are not semantic input.
 
@@ -676,7 +755,9 @@ The TypeScript package `@jigging/flow` and Python distribution/import
 handle(handler)
 RunContext
 RunResult
+CallResult / Artifact
 call
+release (optional early artifact release)
 channel / channels and directional endpoint types
 OperationError
 JSON value types

@@ -46,10 +46,11 @@ while application checks and operator authority control file effects.
   rechecks every original and derived destination, and returns paths relative to
   its own `files` attachment. Each file method rejects caller assertions and
   supplied paths.
-- `bindings/organise.ts` lends `source` to each file Flow and maps its `files`
-  output into `photos/copies` or `photos/overview`. The coordinator checks both
-  complete results and adds these fixed prefixes to final paths and references.
-  Leaf paths and manifest rows remain relative to the leaf output. Independent
+- `bindings/organise.ts` lends `source` to each file Flow and authorizes fresh
+  operation-owned `files` outputs. The coordinator checks complete results and
+  forwards their sealed artifacts as `copies` and `overview`, without a writable
+  organiser attachment or copy/broker slot. Final names supply packet prefixes;
+  leaf paths and manifest rows stay relative to the leaf output. Independent
   file methods keep the same contracts when called as standalone root Flows.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary
   packet. Retained `--out` paths must be new.
@@ -87,10 +88,9 @@ while application checks and operator authority control file effects.
 
 - `bun test examples/photo-organiser/test` includes the public Agent preparation
   validator, so substitutes cannot bypass response-schema compatibility.
-- `test/organise.test.ts` checks four-Flow application composition, exact mapped
-  prefixes, child-result acceptance and failure/cancellation without replay. Its
-  deterministic call seam executes the real leaf methods in separate temporary
-  folders and models import visibility. It does not issue native authority.
+- Verify four-Flow composition through actual protocol processes or the installed
+  host. Check final prefixes, child acceptance and failure without replay.
+  Never replace invocation, artifact grants or export with a test double.
 - `test/file-methods.test.ts` checks independent copy/sheet results, byte
   preservation, input/source rejection before writes, cancellation, exclusive
   creation and the exact optional public views. Those application checks do not

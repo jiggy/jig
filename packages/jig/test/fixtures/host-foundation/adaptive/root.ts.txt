@@ -1,0 +1,61 @@
+import { handle, type Artifact, type JsonObject } from '@jigging/flow'
+
+await handle(async run => {
+  const task = run.input as { operand: number; multiplier: number }
+  if (task.operand !== 21 || task.multiplier !== 2) throw Error('Unsupported original task')
+  const cycles: JsonObject[] = []
+  let previous: JsonObject | undefined
+  let accepted: Artifact | undefined
+  let evidence: Artifact | undefined
+  let independentCheck: JsonObject | undefined
+  for (const cycle of [1, 2]) {
+    const produced = await run.call({
+      operationId: `p${cycle}`, slot: 'producer',
+      input: { cycle, ...(previous ? { previous } : {}) },
+      attachments: { candidate: { create: true } },
+    })
+    if (produced.outcome !== 'done' || !produced.artifacts?.candidate)
+      throw Error('Producer did not seal its candidate')
+    const candidate = produced.artifacts.candidate
+    const evaluated = await run.call({
+      operationId: `e${cycle}`, slot: 'evaluate', input: {},
+      attachments: { candidate: { read: candidate }, deliverables: { create: true } },
+    })
+    if (evaluated.outcome !== 'done' || !evaluated.artifacts?.deliverables)
+      throw Error('Evaluation did not return held deliverables')
+    const output = evaluated.output as JsonObject
+    const phases = output.phases as unknown as { phase: string; status: string; exitCode: number | null }[]
+    if (output.cleanup !== 'complete' || phases.length !== 3) throw Error('Incomplete evaluator evidence')
+    const compile = phases.find(p => p.phase === 'compile')!
+    if (cycle === 1) {
+      if (compile.status !== 'failed' || compile.exitCode === 0 ||
+          compile.exitCode === null ||
+          phases.find(p => p.phase === 'generate')!.status !== 'completed' ||
+          phases.find(p => p.phase === 'test')!.status !== 'skipped' ||
+          phases.find(p => p.phase === 'test')!.exitCode !== null)
+        throw Error('Candidate A must fail compilation before its tests')
+    } else {
+      if (phases.some(p => p.status !== 'completed' || p.exitCode !== 0))
+        throw Error('Candidate B did not complete all phases')
+      const checked = await run.call({
+        operationId: 'independent-check', slot: 'checker', input: task,
+        attachments: {
+          candidate: { read: candidate },
+          generated: { read: evaluated.artifacts.deliverables },
+        },
+      })
+      if (checked.outcome !== 'done' || (checked.output as JsonObject).accepted !== true)
+        throw Error('Independent checker refused candidate B')
+      independentCheck = checked.output as JsonObject
+      accepted = candidate
+      evidence = evaluated.artifacts.deliverables
+    }
+    cycles.push({ cycle, evidence: output })
+    previous = output
+  }
+  if (!accepted || !evidence || !independentCheck) throw Error('No accepted sealed candidate')
+  return {
+    outcome: 'done', output: { accepted: true, answer: 42, cycles, independentCheck },
+    artifactResults: { candidate: accepted, evidence },
+  }
+})

@@ -47,6 +47,8 @@ try {
     'package.json',
   ])
   assert.deepEqual((await readdir(join(installed, 'dist'))).sort(), [
+    'artifacts.d.ts',
+    'artifacts.js',
     'channels.d.ts',
     'channels.js',
     'index.d.ts',
@@ -211,6 +213,60 @@ await handle(async (run) => {
   }
 
   await writeFile(
+    join(consumer, 'artifact-flow.mjs'),
+    `import { handle } from "@jigging/flow";
+await handle(async run => {
+  const made = await run.call({operationId:"p1", slot:"producer", input:null,
+    attachments:{files:{create:true}}});
+  const files = made.artifacts.files;
+  if ("path" in files || !Object.isFrozen(files)) throw new Error("artifact is not opaque");
+  const checked = await run.call({operationId:"e1", slot:"evaluator", input:null,
+    attachments:{candidate:{read:files}, source:{read:run.attachments.source.artifact}}});
+  await run.release({operationId:"r1", artifact:run.attachments.source.artifact});
+  return {outcome:"done", output:checked.output, artifactResults:{final:files}};
+});
+`,
+  )
+  const artifactRequest = JSON.parse(request)
+  artifactRequest.params.attachments = {
+    source: { path: '/sandbox/source', access: 'read', artifact: 'initial:1' },
+  }
+  const artifactInput = [
+    artifactRequest,
+    {
+      jsonrpc: '2.0',
+      id: 'component:1',
+      result: { outcome: 'done', output: null, artifacts: { files: 'sealed:1' } },
+    },
+    { jsonrpc: '2.0', id: 'component:2', result: { outcome: 'done', output: { matches: true } } },
+    { jsonrpc: '2.0', id: 'component:3', result: {} },
+  ]
+    .map((value) => `${JSON.stringify(value)}\n`)
+    .join('')
+  for (const runtime of [bun, node]) {
+    const handled = await run([runtime, 'artifact-flow.mjs'], consumer, artifactInput, true)
+    assert.equal(handled.stderr, '')
+    const frames = handled.stdout
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    assert.deepEqual(frames.map((frame) => frame.method).slice(0, 3), [
+      'flow/call',
+      'flow/call',
+      'flow/artifact/release',
+    ])
+    assert.deepEqual(frames[1].params.attachments, {
+      candidate: { read: 'sealed:1' },
+      source: { read: 'initial:1' },
+    })
+    assert.deepEqual(frames[3].result, {
+      outcome: 'done',
+      output: { matches: true },
+      artifactResults: { final: 'sealed:1' },
+    })
+  }
+
+  await writeFile(
     join(consumer, 'application.mjs'),
     `console.log("packed application top-level log");
 const cachedLog = console.log.bind(console);
@@ -272,8 +328,8 @@ const runResult: RunResult = {
   outcome: "done",
   output: { value: 1 },
 };
-const directJson: JsonValue = runResult;
-const nestedJson: JsonValue = { result: runResult };
+const directJson: JsonValue = { outcome: runResult.outcome, output: runResult.output };
+const nestedJson: JsonValue = { result: directJson };
 void directJson;
 void nestedJson;
 void new OperationError("UNAVAILABLE");
@@ -293,7 +349,7 @@ async function channelTypes(run: RunContext, options: CallOptions): Promise<RunR
   const result = await work;
   const output = run.channels.output;
   if (output?.direction === "send") {
-    await output.send(result, options);
+    await output.send({ outcome: result.outcome, output: result.output }, options);
     await output.close(options);
   }
   const item: IteratorResult<JsonValue> = await receiver.next(options);

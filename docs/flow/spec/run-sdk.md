@@ -18,6 +18,7 @@ Both expose only:
 handle
 RunContext
 RunResult
+CallResult / Artifact
 OperationError
 JSON value types
 attachment types
@@ -31,7 +32,7 @@ The TypeScript projection additionally names `FlowCall`, `CallOptions`,
 arguments and uses ordinary task cancellation.
 
 `handle` receives this Flow's `flow/run` invocation. `run.call(...)` invokes a
-declared local slot through `flow/call` and returns its complete `RunResult`,
+declared local slot through `flow/call` and returns its complete `CallResult`,
 whether the host selects an ordinary Flow or a native implementation. Authors
 do not construct the host-supplied context. The initial single-operation profile
 accepts no method or operation selector.
@@ -79,6 +80,17 @@ type JsonValue =
 type RunResult = {
   readonly outcome: string;
   readonly output: JsonValue;
+  readonly artifactResults?: Readonly<Record<string, Artifact>>;
+};
+
+interface Artifact {
+  readonly reference: string;
+}
+
+type CallResult = {
+  readonly outcome: string;
+  readonly output: JsonValue;
+  readonly artifacts?: Readonly<Record<string, Artifact>>;
 };
 
 interface FlowCall {
@@ -87,6 +99,7 @@ interface FlowCall {
   readonly intent?: string;
   readonly input: JsonValue;
   readonly channels?: Readonly<Record<string, ChannelEndpoint>>;
+  readonly attachments?: Readonly<Record<string, {readonly read: Artifact} | {readonly create: true}>>;
 }
 
 interface RunContext {
@@ -98,7 +111,8 @@ interface RunContext {
   readonly deadlineUnixMs: number;
   readonly signal: AbortSignal;
 
-  call(call: FlowCall, options?: { signal?: AbortSignal }): Promise<RunResult>;
+  call(call: FlowCall, options?: { signal?: AbortSignal }): Promise<CallResult>;
+  release(request: {operationId: string; artifact: Artifact}, options?: CallOptions): Promise<void>;
 
   channel(options: ChannelOptions & { delivery: 'broadcast' }, callOptions?: CallOptions):
     Promise<ChannelBroadcast>;
@@ -143,6 +157,13 @@ cancellation or success.
 class RunResult(TypedDict):
     outcome: str
     output: JsonValue
+    artifactResults: NotRequired[Mapping[str, Artifact]]
+
+
+class CallResult(TypedDict):
+    outcome: str
+    output: JsonValue
+    artifacts: NotRequired[Mapping[str, Artifact]]
 
 
 class RunContext(Protocol):
@@ -172,7 +193,10 @@ class RunContext(Protocol):
         input: JsonValue,
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> RunResult: ...
+        attachments: CallAttachments | None = None,
+    ) -> CallResult: ...
+
+    async def release(self, *, operation_id: str, artifact: Artifact) -> None: ...
 
     async def channel(
         self,
@@ -208,7 +232,7 @@ containers; readonly or frozen outer declarations are authoring guidance, not
 a new runtime object model.
 
 Call fields are closed: `operationId`, `slot`, `input` and only optional
-`intent` and `channels`. Optional-key presence enters Run/0 identity; omitted
+`intent`, `channels` and `attachments`. Optional-key presence enters Run/0 identity; omitted
 channels and an explicit empty mapping remain distinct. TypeScript explicitly
 present `undefined` optional fields reject; Python `None` means omission for
 its optional keyword arguments. Intent is advisory metadata, never application
@@ -219,13 +243,70 @@ whose retry and deduplication meaning is defined by Run/0.
 
 ## 5. Results and errors
 
-`run.call` returns the complete `RunResult`, including its outcome. In
-TypeScript, `RunResult` is itself a `JsonValue` and may be retained directly
-inside another Run result without rebuilding or casting it. SDKs never unwrap
+`run.call` returns the complete `CallResult`, including its outcome and optional
+held `artifacts`. Artifact objects are not JSON/0 data; retain domain information
+using `{outcome: result.outcome, output: result.output}` and explicitly select
+forwarded artifacts in the handler's `artifactResults`. SDKs never unwrap
 output or translate declared outcomes into exceptions. Domain outcomes such as
 `blocked`, `limit` or `not-found` remain normal data; applications interpret them
 explicitly. A handler forwarding a result must declare any custom outcomes it
 can itself return.
+
+### Immutable artifact handoff
+
+An `Artifact` is an opaque, participant-held immutable tree with a readonly
+`reference` for identity comparison, no path and no public constructor. Only
+objects projected from host replies or initial readonly attachments can be used
+by that Run. The host, not SDK provenance, checks every actual right. Copied
+objects, guessed strings and objects from another Run cannot manufacture a held
+object. Released refs may serialize for exact replay; the host must distinguish
+replay from a new reader and reject new use without rights. Artifact objects are
+not domain JSON values.
+
+TypeScript attachment views retain `path` and `access`, with optional
+`artifact: Artifact` on a readonly view. Python uses the same keys in its
+`Attachment` typed dictionary (`run.attachments["source"]["artifact"]`).
+`CallAttachments` is a mapping to exactly `{"read": Artifact}` or
+`{"create": Literal[True]}`; readonly references can be delegated onward:
+
+```ts
+const made = await run.call({
+  operationId: "produce:1", slot: "producer", input: {},
+  attachments: { files: { create: true } },
+});
+const files = made.artifacts!.files!;
+const checked = await run.call({
+  operationId: "evaluate:1", slot: "evaluator", input: {},
+  attachments: { candidate: { read: files } },
+});
+return { outcome: "done", output: checked.output,
+  artifactResults: { final: files } };
+```
+
+```python
+made = await run.call(operation_id="produce:1", slot="producer", input={},
+                      attachments={"files": {"create": True}})
+files = made["artifacts"]["files"]
+checked = await run.call(operation_id="evaluate:1", slot="evaluator", input={},
+                         attachments={"candidate": {"read": files}})
+return {"outcome": "done", "output": checked["output"],
+        "artifactResults": {"final": files}}
+```
+
+The producer declares `files: read-write`, the evaluator `candidate: read`,
+and the coordinator declares `artifactResults: ["final"]`. A blocked branch may
+select no artifacts. Domain result schemas still see only `{outcome, output}`.
+Duplicate results preserve reference identity and do not create a new grant.
+Unknown ports and contract requirements remain host checks.
+
+Ordinary root cleanup automatically releases live rights, including late
+cancelled replies; authors need no cleanup loop. Advanced early release is
+`await run.release({operationId:"release:1", artifact: files})` or
+`await run.release(operation_id="release:1", artifact=files)`. Release settlement
+survives waiter cancellation and prevents additional reads or forwarding after
+acknowledgement. Accepted sibling readers continue. A replayed old result does
+not resurrect the released object. An unsupported optional release operation
+raises `OperationError("UNAVAILABLE")`; automatic cleanup still applies.
 
 Operational failure raises:
 
@@ -331,7 +412,7 @@ await handle(async (run) => {
     slot: "research",
     input: run.input,
   });
-  return child;
+  return { outcome: child.outcome, output: child.output };
 });
 ```
 
@@ -347,15 +428,16 @@ async def run(context: RunContext) -> RunResult:
         slot="research",
         input=context.input,
     )
-    return child
+    return {"outcome": child["outcome"], "output": child["output"]}
 
 
 handle(run)
 ```
 
 When a host binds `research`, JSON/0 `input` and any explicitly mapped channel
-rights cross through this SDK operation; the complete JSON/0 `RunResult`
-returns separately. Child context,
+or attachment rights cross through this SDK operation; the complete `CallResult`
+returns separately, with opaque artifact objects outside domain JSON.
+Child context,
 authorization, and resource policy belong to the host; the SDK creates no
 implicit inheritance.
 

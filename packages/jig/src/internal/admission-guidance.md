@@ -12,8 +12,41 @@ These links locate module rules. All selected domain requirements still apply.
 - [project-plan-review](#project-plan-review)
 - [project-resource-qualification](#project-resource-qualification)
 - [installation-verification](#installation-verification)
+- [prepared attempts and retention](#prepared-attempts-and-retention)
 
 ## Ownership
+
+### Prepared attempts and retention
+
+- `prepared-attempt-store.ts` owns protected ticket domain/key records, canonical
+  request/input blobs, acceptance quotas, retained artifacts, retirement watermark and finite export pins in admission SQLite.
+  `activation-admission-store.ts` retains descriptor custody and EXTRA-synced transactions.
+  Acceptance shares the original root allocation transaction. Missing prepared state never allocates work.
+  Retirement commits before deletion. Unresolved owners and unreleased copier pins block collection.
+
+- Prepared input, retained output, consumed metadata, outstanding reservations and row/index headroom share one 4 GiB logical budget.
+  Control consumption transactionally spends dedicated `attempt_reservations` rows of at most 1 MiB each.
+  Metadata writes never rebuild untouched control/result chunks.
+  Prepared rows retain only outstanding counters. Chunk row/index overhead counts toward the same budget.
+  New work cannot spend the protected final/fencing margin.
+
+- Terminal retention releases unused control/result allocations before inserting replacement bytes in the same transaction.
+  DELETE rollback journals still require filesystem space for original pages.
+  Reservation and page-capacity evidence do not establish durability through external filesystem exhaustion or hardware failure.
+  Failed writes retain ownership uncertainty and never authorize redispatch.
+
+- `submission-ticket.ts` authenticates opaque canonical claims only.
+  It owns no clock, persistence, expiry or authorization policy.
+  Possession grants no project access. Resetting state or keys must never revive an identity.
+  Read-only retention projection reports expiry without collection.
+
+  Across boots, use the protected new-boot anchor conservatively.
+  Clock loss makes byte availability unknown without erasing terminal or cleanup evidence.
+
+- `activation-admission-store.ts` supplies `readPrivateRootRun` through read-only/query-only SQLite.
+  Reuse complete Run/admission cross-checks without coordinator acquisition, dispatch, recovery or state repair.
+  Its private snapshot is neither a public lookup response nor proof of current execution ownership.
+  Checkpoint and export storage contracts are in [file guidance](files-guidance.md#attempt-checkpoint-and-export).
 
 ### contract-import
 
@@ -249,10 +282,9 @@ These links locate module rules. All selected domain requirements still apply.
   locations. Never expose raw provider or worker messages. SDK missing Agent
   support affects only selected targets and their dependents. CLI review refuses
   any observed typed selected ACP prerequisite before preparing target
-  execution, unchanged success or admission. Missing root writable authority for
-  Run Checkpoint retains `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate
-  and directs the caller to its invocation attachment declaration. Do not hide
-  it as `INTERNAL`.
+  execution, unchanged success or admission.
+  Run Checkpoint must follow its exact declared native interface and protected attempt association.
+  Do not infer checkpoint authority from a writable attachment or optional FLOW port.
 
   Unsupported Volta selections retain the existing wrapper diagnostic, including
   Claude/Pi and Codex installations outside the supported static npm profile.

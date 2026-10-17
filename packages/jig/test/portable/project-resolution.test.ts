@@ -166,6 +166,56 @@ async function withProject(
 }
 
 describe('private package resolution', () => {
+  test('pins inspected artifact result eligibility in direct and Binding activation requests', async () => {
+    await withProject(
+      {
+        'flows/artifact': {
+          ...run('artifact'),
+          'FLOW.contract.json': metadata({
+            $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+            artifactResults: ['final'],
+          }),
+        },
+      },
+      [binding('bindings/artifact.ts', { package: 'flows/artifact' })],
+      (project) => {
+        const requests = buildPrivateActivationRequests(project)
+        expect(requests).toHaveLength(2)
+        for (const request of requests) {
+          expect(request.artifactResults).toEqual(['final'])
+          expect(Object.isFrozen(request.artifactResults)).toBe(true)
+          expect(restorePrivateActivationRequest(JSON.parse(JSON.stringify(request)))).toEqual(
+            request,
+          )
+          const changed = { ...request, artifactResults: ['other'] }
+          expect(() => restorePrivateActivationRequest(changed)).toThrow('digest')
+          const { digest: _digest, ...body } = request
+          const signed = (fields: Record<string, unknown>) => {
+            const content = { ...body, ...fields }
+            return {
+              ...content,
+              digest: privateDomainDigest(
+                'JIG-Activation-Request/4',
+                content as unknown as JsonValue,
+              ),
+            }
+          }
+          const empty = restorePrivateActivationRequest(signed({ artifactResults: [] }))
+          expect(empty.artifactResults).toEqual([])
+          expect(empty.digest).not.toBe(request.digest)
+          expect(() =>
+            restorePrivateActivationRequest(
+              signed({
+                attachments: { final: 'read-write' },
+              }),
+            ),
+          ).toThrow('collides')
+          for (const artifactResults of [undefined, null, ['final', 'final'], ['Bad'], ['final\n']])
+            expect(() => restorePrivateActivationRequest(signed({ artifactResults }))).toThrow()
+        }
+      },
+    )
+  })
   test('authenticates inputs, canonically orders targets, and freezes results', async () => {
     await withProject(
       {

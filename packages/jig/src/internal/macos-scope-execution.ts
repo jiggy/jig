@@ -8,6 +8,12 @@ import {
   type PrivateMacosSandboxFiles,
   privateMacosSandboxProfile,
 } from './macos-sandbox-profile.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootDeadlineFromUnix,
+  privateBootRemaining,
+} from './native-clock.js'
 
 export interface PrivateMacosScopeLimits {
   readonly memoryBytes: number
@@ -15,6 +21,7 @@ export interface PrivateMacosScopeLimits {
   readonly cpuQuotaMicros: number
   readonly cpuPeriodMicros: number
   readonly deadlineUnixMs: number
+  readonly bootDeadline?: PrivateBootDeadline
   readonly cleanupTimeoutMs: number
 }
 export type PrivateMacosStopReason =
@@ -22,6 +29,7 @@ export type PrivateMacosStopReason =
   | 'cancelled'
   | 'coordinator_lost'
   | 'deadline'
+  | 'clock'
   | 'setup_failed'
   | 'memory_limit'
   | 'process_limit'
@@ -51,9 +59,7 @@ export interface PrivateMacosScopeExecution {
   readonly version: number
   readonly completion: Promise<PrivateMacosScopeResult>
   admit(): void
-  acceptsOutputImport(): boolean
-  outputImportRefusal(): string | null
-  stop(reason: 'cancelled' | 'coordinator_lost'): void
+  stop(reason: 'cancelled' | 'coordinator_lost' | 'deadline' | 'clock'): void
 }
 
 /** Inert result decoding; only an authenticated guardian can supply enforcement evidence. */
@@ -70,6 +76,7 @@ export function normalizePrivateMacosScopeResult(value: unknown): PrivateMacosSc
       'cancelled',
       'coordinator_lost',
       'deadline',
+      'clock',
       'setup_failed',
       'memory_limit',
       'process_limit',
@@ -115,18 +122,27 @@ export function normalizePrivateMacosScopeResult(value: unknown): PrivateMacosSc
 
 export function requirePrivateMacosScopeLimits(
   value: PrivateMacosScopeLimits,
-): Readonly<PrivateMacosScopeLimits> {
-  const limits = Object.freeze({ ...value })
+): Readonly<PrivateMacosScopeLimits & { readonly bootDeadline: PrivateBootDeadline }> {
+  const limits = Object.freeze({
+    ...value,
+    bootDeadline:
+      value.bootDeadline === undefined
+        ? privateBootDeadlineFromUnix(value.deadlineUnixMs)
+        : normalizePrivateBootDeadline(value.bootDeadline),
+  })
   if (
     Object.keys(limits).sort().join() !==
-      'cleanupTimeoutMs,cpuPeriodMicros,cpuQuotaMicros,deadlineUnixMs,memoryBytes,pids' ||
-    Object.values(limits).some((value) => !Number.isSafeInteger(value) || value <= 0) ||
+      'bootDeadline,cleanupTimeoutMs,cpuPeriodMicros,cpuQuotaMicros,deadlineUnixMs,memoryBytes,pids' ||
+    Object.entries(limits).some(
+      ([key, value]) =>
+        key !== 'bootDeadline' && (!Number.isSafeInteger(value) || (value as number) <= 0),
+    ) ||
     limits.memoryBytes > 512 * 1024 * 1024 ||
     limits.pids > 128 ||
     limits.cpuQuotaMicros > limits.cpuPeriodMicros ||
     limits.cpuPeriodMicros !== 100_000 ||
     limits.cleanupTimeoutMs > 5000 ||
-    limits.deadlineUnixMs - Date.now() > 86_400_000
+    privateBootRemaining(limits.bootDeadline) > 86_400_000
   )
     throw new TypeError('invalid macOS scope limits')
   return limits
@@ -180,7 +196,14 @@ export async function preparePrivateMacosScope(input: {
     )
   )
     throw new TypeError('macOS working directory is outside its directory projections')
-  const hardDeadline = performance.now() + Math.max(0, limits.deadlineUnixMs - Date.now())
+  const bootDeadline = normalizePrivateBootDeadline(limits.bootDeadline)
+  const clockStop = (): 'deadline' | 'clock' | undefined => {
+    try {
+      return privateBootRemaining(bootDeadline) <= 0 ? 'deadline' : undefined
+    } catch {
+      return 'clock'
+    }
+  }
   const initial = owner.sample()
   if (!initial.complete || initial.active !== 1n)
     throw new Error('macOS initial accounting is incomplete')
@@ -293,8 +316,9 @@ export async function preparePrivateMacosScope(input: {
     try {
       while (reason === undefined && !rootExited) {
         const now = performance.now()
-        if (now >= hardDeadline) {
-          stop('deadline')
+        const clockReason = clockStop()
+        if (clockReason !== undefined) {
+          stop(clockReason)
           break
         }
         const sample = owner.sample()
@@ -393,27 +417,15 @@ export async function preparePrivateMacosScope(input: {
         )
       }),
     ])
-    const sameRoot = owner.retainMember(identity.pid, identity.version)
-    const outputImportRefusal = () => {
-      if (!admitted) return 'not-admitted'
-      if (reason !== undefined) return 'scope-stopped'
-      if (rootExited) return 'root-exited'
-      if (performance.now() >= hardDeadline) return 'deadline'
-      if (!sameRoot()) return 'root-identity'
-      return null
-    }
     return Object.freeze({
       stdin,
       stdout,
       stderr,
       ...identity,
       completion,
-      acceptsOutputImport() {
-        return outputImportRefusal() === null
-      },
-      outputImportRefusal,
       admit() {
-        if (performance.now() >= hardDeadline) stop('deadline')
+        const clockReason = clockStop()
+        if (clockReason !== undefined) stop(clockReason)
         if (admitted || reason !== undefined || !owner.contains(identity.pid, identity.version))
           throw new Error('macOS scope is no longer admissible')
         admitted = true

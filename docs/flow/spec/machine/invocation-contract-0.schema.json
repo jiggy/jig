@@ -469,6 +469,12 @@
       },
       "maxProperties": 256
     },
+    "artifactResults": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/localName" },
+      "maxItems": 256,
+      "uniqueItems": true
+    },
     "definitions": {
       "type": "object",
       "propertyNames": {
@@ -496,6 +502,9 @@
         },
         "attachments": {
           "$ref": "#/$defs/attachments"
+        },
+        "artifactResults": {
+          "$ref": "#/$defs/artifactResults"
         }
       },
       "additionalProperties": false
@@ -533,6 +542,9 @@
         },
         "attachments": {
           "$ref": "#/$defs/attachments"
+        },
+        "artifactResults": {
+          "$ref": "#/$defs/artifactResults"
         }
       },
       "required": ["$schema"],

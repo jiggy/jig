@@ -105,11 +105,12 @@ Flow for a proposal. It accepts every assignment before calling either file Flow
 then checks their complete results before reporting a finished collection.
 `flows/group` receives only IDs, dates and captions, calls the ordinary Agent method once, and returns
 provisional assignments. Its contract declares no file attachments. The
-`bindings/organise.ts` maps the immutable `source` view to each file Flow and its
-independent `files` output into a different folder of the organiser's `photos`
-attachment. After each call completes and cleanup settles, Jig imports the whole
-child folder without overwriting caller files. `bindings/group.ts` selects the
-configured Agent. These declarations make each responsibility explicit.
+`bindings/organise.ts` maps the immutable `source` view to each file Flow and
+authorizes a fresh `files` output for each operation. After each call completes
+and cleanup settles, Jig supplies a sealed artifact. The organiser forwards the
+two artifacts as final results named `copies` and `overview`, without copying
+them into a writable organiser folder. `bindings/group.ts` selects the configured
+Agent. These declarations make each responsibility explicit.
 
 Inside the organiser, `method.ts` coordinates calls. `catalogue.ts` checks the
 source, `plan.ts` accepts assignments and checks child result metadata, and
@@ -121,8 +122,9 @@ renders the SVG independently from the original images. Both receive only checke
 `{assignments: [{id, event}]}` data, revalidate all originals and assignments, and
 remain independently callable root Flows with their own contracts and optional
 views. Their returned paths stay relative to their own `files` attachments;
-the organiser adds the `copies/` and `overview/` prefixes to its final paths and
-artifact references. The manifest describes paths relative to its `copies` folder.
+the organiser's final artifact names supply `copies/` and `overview/` packet
+prefixes. Artifact references name the selected tree and its output-relative path.
+The manifest describes paths relative to its `copies` folder.
 Small mechanical helpers remain ordinary modules inside their owning Flow;
 no Flow imports another Flow's private implementation.
 

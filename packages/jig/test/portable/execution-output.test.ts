@@ -8,14 +8,17 @@ import {
   PrivateOutputProfileError,
   readPrivateCapturedOutput,
 } from '../../src/internal/captured-output.js'
-import { PrivateFileImportUnconfirmedError } from '../../src/internal/execution-file-import.js'
-import { closePrivateExecutionOutput } from '../../src/internal/execution-output.js'
+import {
+  closePrivateExecutionOutput,
+  PrivateOutputRetirementUnconfirmedError,
+} from '../../src/internal/execution-output.js'
 import { privateOpenFileRoot } from '../../src/internal/file-input.js'
 import type {
   PrivateMacosGuardian,
   PrivateMacosGuardianResult,
 } from '../../src/internal/macos-guardian-client.js'
 import { retainPrivateMacosGuardianOutput } from '../../src/internal/macos-guardian-output.js'
+
 const terminal: PrivateMacosGuardianResult = {
   result: null,
   fenced: true,
@@ -67,7 +70,7 @@ test('directory source close is single-use, typed on uncertainty and retained un
     expect(second).toBe(first)
     if (uncertain) {
       const cause = await first.catch((error) => error)
-      expect(cause).toBeInstanceOf(PrivateFileImportUnconfirmedError)
+      expect(cause).toBeInstanceOf(PrivateOutputRetirementUnconfirmedError)
       expect(cause.cause).toBe(failure)
       expect(await second.catch((error) => error)).toBe(cause)
       expect(await closePrivateExecutionOutput(output).catch((error) => error)).toBe(cause)
@@ -109,7 +112,7 @@ test('snapshot source close preserves its original uncertainty without retry or 
     })
     const output = { kind: 'snapshot' as const, ready: Promise.resolve(capture) }
     const cause = await closePrivateExecutionOutput(output).catch((error) => error)
-    expect(cause).toBeInstanceOf(PrivateFileImportUnconfirmedError)
+    expect(cause).toBeInstanceOf(PrivateOutputRetirementUnconfirmedError)
     expect(cause.cause).toBe(failure)
     expect(await closePrivateExecutionOutput({ ...output }).catch((error) => error)).toBe(cause)
     expect(closes).toBe(1)
@@ -197,6 +200,41 @@ test('output profile failure preserves cleanup evidence while cleanup failure re
       await closePrivateExecutionOutput(owner.output)
     } finally {
       if (!releases) closeSync(fd)
+      await rm(root, { recursive: true, force: true })
+    }
+  }
+})
+test('fenced nonzero evaluation output survives cleanup recovery without granting generic success', async () => {
+  for (const collection of ['output', 'evaluation'] as const) {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-evaluation-output-recovery-')))
+    await writeFile(join(root, 'report'), 'compiler rejected candidate')
+    let fd = privateOpenFileRoot(root)
+    const result = {
+      ...exited,
+      result: { ...exited.result!, exitCode: 2 },
+    }
+    const owner = retainPrivateMacosGuardianOutput(
+      {
+        fenced: Promise.resolve({ ...result, outputFd: fd }),
+        completion: Promise.resolve({ ...result, recovered: true, outputLost: true }),
+        release() {
+          closeSync(fd)
+          fd = -1
+        },
+      } as PrivateMacosGuardian,
+      collection,
+    )
+    try {
+      expect((await owner.completion).result?.exitCode).toBe(2)
+      if (collection === 'evaluation') {
+        const capture = await owner.output.ready
+        expect(readPrivateCapturedOutput(capture)[0]!.contents.toString()).toBe(
+          'compiler rejected candidate',
+        )
+      } else await expect(owner.output.ready).rejects.toThrow('lost during cleanup')
+      await closePrivateExecutionOutput(owner.output)
+    } finally {
+      if (fd >= 0) closeSync(fd)
       await rm(root, { recursive: true, force: true })
     }
   }

@@ -16,6 +16,7 @@ export interface PrivateExecutionExit {
     | 'cancelled'
     | 'coordinator_lost'
     | 'deadline'
+    | 'clock'
     | 'payload_exit'
     | 'core_dump'
     | 'setup_failed'

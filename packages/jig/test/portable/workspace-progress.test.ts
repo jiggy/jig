@@ -5,10 +5,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { RootAdministrationError } from '../../src/administration/root.js'
 import { main, privateCliCommandLifetimeMs } from '../../src/cli.js'
-import { privateRunDisplay } from '../../src/run-arguments.js'
-import { CliDiagnostic } from '../../src/cli-usage.js'
 import { PrivateCliProgress, type PrivateProgressLifetime } from '../../src/cli-progress.js'
 import { privateAttentionReceipt } from '../../src/cli-run-model.js'
+import { CliDiagnostic } from '../../src/cli-usage.js'
 import {
   PRIVATE_PRESENTATION_CLOSE_RESERVE_MS,
   PRIVATE_PRESENTATION_DEADLINE_ENV,
@@ -17,6 +16,9 @@ import {
   privatePresentationNow,
   privateRootlessCommandLifetime,
 } from '../../src/internal/root-run-timeout-policy.js'
+import { privateRunDisplay } from '../../src/run-arguments.js'
+import { cliFixtureAcceptance, prepareCliFixtureRun } from '../cli-prepared.fixture.js'
+
 class Input extends EventEmitter {
   isRaw = false
   readableFlowing: boolean | null = null
@@ -154,13 +156,14 @@ test('missing native support falls back for auto but refuses explicit TUI before
         runArgumentsPrepared: true,
         dashboardInputStream: input as any,
         host: {
+          prepareRun: prepareCliFixtureRun,
           async acquire(_project: string, options: any) {
             return {
               rootAdministration: {
-                async startRun() {
+                async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                   started++
                   options.channelOutput.dispatched()
-                  return { runId: 'sha256:' + 'a'.repeat(64) }
+                  return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
                 },
                 async runStatus() {
                   return {
@@ -297,16 +300,17 @@ test('initial refusal never borrows stdin or writes alternate-screen controls', 
             terminalOutput: true,
             dashboardInputStream: input as any,
             host: {
+              prepareRun: prepareCliFixtureRun,
               async acquire() {
                 if (scenario.failure === 'acquire') throw new Error(scenario.name)
                 return {
                   rootAdministration: {
-                    async startRun() {
+                    async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                       if (scenario.failure === 'start')
                         throw new RootAdministrationError('UNAVAILABLE', 'Review is required', {
                           code: 'ADMISSION_MISSING',
                         })
-                      return { runId: 'sha256:' + 'a'.repeat(64) }
+                      return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
                     },
                     async runStatus() {
                       return {
@@ -365,16 +369,17 @@ test('trusted root dispatch opens short no-view Runs and updates-off; machine mo
       terminalOutput: false,
       dashboardInputStream: input as any,
       host: {
+        prepareRun: prepareCliFixtureRun,
         async acquire(_project: string, options: any) {
           expect(stderr).not.toContain(entered)
           expect(input.isRaw).toBeFalse()
           return {
             rootAdministration: {
-              async startRun() {
+              async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                 timeline.push('DISPATCH')
                 expect(Boolean(options.channelOutput.dispatched)).toBe(true)
                 options.channelOutput.dispatched?.()
-                return { runId: 'sha256:' + 'a'.repeat(64) }
+                return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
               },
               async runStatus() {
                 return {
@@ -455,14 +460,15 @@ test('post-dispatch observation failure closes inspection and retains original r
       terminalOutput: false,
       dashboardInputStream: input as any,
       host: {
+        prepareRun: prepareCliFixtureRun,
         async acquire(_project: string, options: any) {
           options.channelOutput.diagnostic(Buffer.from('EARLY_RETAINED_DIAGNOSTIC\n'), [])
           expect(stderr).not.toContain(entered)
           return {
             rootAdministration: {
-              async startRun() {
+              async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                 options.channelOutput.dispatched()
-                return { runId: 'sha256:' + 'a'.repeat(64) }
+                return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
               },
               async runStatus() {
                 throw new RootAdministrationError('UNAVAILABLE', 'private observation failure')
@@ -525,6 +531,7 @@ test('immutable inspection is enabled before delivery preparation and delayed sc
       terminalOutput: false,
       dashboardInputStream: input as any,
       host: {
+        prepareRun: prepareCliFixtureRun,
         delivery: {
           enableInspection() {
             inspection = true
@@ -545,9 +552,9 @@ test('immutable inspection is enabled before delivery preparation and delayed sc
         async acquire(_project: string, options: any) {
           return {
             rootAdministration: {
-              async startRun() {
+              async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                 options.channelOutput.dispatched()
-                return { runId: 'sha256:' + 'a'.repeat(64) }
+                return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
               },
               async runStatus() {
                 return {
@@ -612,13 +619,14 @@ test('an expanded-report failure keeps its known terminal open until the operato
     terminalOutput: false,
     dashboardInputStream: input as any,
     host: {
+      prepareRun: prepareCliFixtureRun,
       async acquire(_project: string, options: any) {
         return {
           rootAdministration: {
-            async startRun() {
+            async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
               options.channelOutput.dispatched()
               options.channelOutput.diagnostic(Buffer.from('d'.repeat(4096)), [])
-              return { runId: 'sha256:' + 'a'.repeat(64) }
+              return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
             },
             async runStatus() {
               return { runId: 'sha256:' + 'a'.repeat(64), state: 'terminal', terminal }
@@ -1290,10 +1298,11 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
         },
       }
       const host = {
+        prepareRun: prepareCliFixtureRun,
         async acquire(_project: string, options: any) {
           return {
             rootAdministration: {
-              async startRun() {
+              async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                 options.channelOutput.dispatched()
                 options.channelOutput.diagnostic(Buffer.from(diagnostic), [])
                 const source = options.channelOutput.updates.open('updates')
@@ -1304,7 +1313,7 @@ test('fullscreen final reporting preserves full bounded diagnostics and frozen s
                   summary: 'SUMMARY_SHOULD_NOT_REPLAY',
                   sections: [],
                 })
-                return { runId: 'sha256:' + 'a'.repeat(64) }
+                return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
               },
               async runStatus() {
                 return {

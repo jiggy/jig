@@ -426,8 +426,10 @@ describe('CLI experience contract', () => {
 test('command actions remain distinct and unwrapped, while scalar data is preserved', () => {
   const input =
     'Next step: Inspect the schema:\n  $ jig inspect \'binding:factory\'\nThen run jig review --details.\n  "output": |-\n    $ jig run\n    jig review\n'
-  const plain = privateCliHumanText(input, false, 24)
-  const color = privateCliHumanText(input, true, 24)
+  // This case asserts the basic ANSI palette, independently of the user's terminal.
+  const env = { TERM: 'xterm', JIG_THEME: 'one-dark' }
+  const plain = privateCliHumanText(input, false, 24, env)
+  const color = privateCliHumanText(input, true, 24, env)
   expect(strip(color)).toBe(plain)
   expect(plain).toContain("  $ jig inspect 'binding:factory'\n")
   expect(plain).toContain('jig review --details')

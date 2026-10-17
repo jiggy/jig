@@ -12,6 +12,7 @@ import {
   privateCliVerification,
   publicTerminal,
 } from './cli.js'
+import { executePrivateCliAttempt } from './cli-attempt-execution.js'
 import { privateCliStderrDiagnostic } from './cli-presentation.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import {
@@ -172,6 +173,55 @@ async function runWithEnvironment(
     }
   }
   if (!privateCliRequiresHost(arguments_)) {
+    if (arguments_[0] === 'attempt') {
+      if (privateNeedsFileOwner(arguments_))
+        return await privateOwnFileCommand(
+          [executablePath, ...BUN_POLICY, installedCliPath],
+          arguments_,
+          signal,
+          privateCliCommandLifetimeMs(arguments_),
+        )
+      const delivery = await privateConnectFileOwner()
+      const outputStop = new AbortController()
+      const stdout = new PrivateCliOutput(process.stdout, outputStop)
+      const stderr = new PrivateCliOutput(process.stderr, outputStop)
+      try {
+        const code = await main(arguments_, {
+          executeAttempt: executePrivateCliAttempt,
+          ...(delivery === undefined
+            ? {}
+            : {
+                host: {
+                  delivery,
+                  acquire: async () => {
+                    throw new Error('observational commands cannot acquire an execution host')
+                  },
+                },
+              }),
+          standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
+          signal: AbortSignal.any([outputStop.signal, ...(signal === undefined ? [] : [signal])]),
+          writeRecord: async (text) => {
+            await stderr.flush()
+            await stdout.write(text)
+          },
+          writeOutput: (text) => {
+            void stdout.write(text).catch(() => undefined)
+          },
+          writeError: (text) => {
+            void stderr.write(text).catch(() => undefined)
+          },
+          writeStderr: (text) => stderr.write(text),
+        })
+        await Promise.all([stdout.flush(), stderr.flush()])
+        return exit(signal?.aborted ? 2 : outputStop.signal.aborted ? 1 : code)
+      } finally {
+        try {
+          await Promise.all([stdout.flush(), stderr.flush()])
+        } finally {
+          delivery?.close()
+        }
+      }
+    }
     return exit(
       await main(arguments_, {
         standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
@@ -292,6 +342,7 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            executeAttempt: executePrivateCliAttempt,
             runArgumentsPrepared: process.env.JIG_PRIVATE_RUN_PREPARED === '1',
             presentationDeadline: privatePresentationDeadline(process.env),
             ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined

@@ -73,6 +73,7 @@ One operation object has only:
 | `outcomes` | Optional map of custom `LocalName` outcomes to nonempty descriptions. |
 | `channels` | Optional directional [Channel Contract/0 declarations](channel-contracts.md#1-declarations). |
 | `attachments` | Optional map of required caller-port `LocalName`s to exactly `read` or `read-write`. |
+| `artifactResults` | Optional array of at most 256 unique `LocalName`s selecting immutable outputs to forward. |
 
 `done` is implicit. Custom outcome descriptions contain 1–16,384 Unicode
 scalars; `done`, `failed`, `cancelled` and `error` cannot be declared custom
@@ -90,8 +91,14 @@ callee. Supply that mode or reject before effects. A read port remains read-only
 even over a writable source. Unknown mappings, implicit extra ports, host paths
 in the descriptor and automatic grant inheritance are forbidden. Private backing
 resources remain reviewed implementation dependencies; they are not undeclared
-caller requirements. The initial `flow/call` has no attachment-transfer field;
-an attachment-bearing route needs an independently qualified host mapping.
+caller requirements. Run/0 `flow/call.attachments` supplies held immutable reads
+and operation-owned fresh outputs. Host routes may also supply disjoint static
+ports; overlapping supplies reject. Artifact result names must be unique and
+must not collide with `read-write` port names. A handler selects any subset of
+declared names through `artifactResults`; the host validates held unreleased
+rights and returns those trees in `CallResult.artifacts`. Input/result schemas
+never validate opaque references or the host envelope: `result` sees exactly
+`{outcome, output}` even when a handler forwards artifacts.
 
 Input/result schemas use the closed embedded [Schema/0](schema-files.md)
 dialect, without a file-root `$schema`. Their references resolve solely against
@@ -288,8 +295,9 @@ does not create another invocation digest or a compatibility alias.
 
 The initial call is [Run/0 `flow/call`](run-protocol.md#4-flowcall), projected as
 `run.call(...)` in both SDKs. Required operation identity, slot and input plus
-optional advisory intent and channels produce one complete normal
-`{outcome, output}` result. There is no method selector, successful-value wrapper,
+optional advisory intent, channels and finite attachments produce one complete
+host CallResult: `{outcome, output, artifacts?}`. The domain result remains
+`{outcome, output}`. There is no method selector, successful-value wrapper,
 declared-error exception or automatic outcome conversion.
 
 Domain refusal is an explicitly declared normal outcome. For example, a

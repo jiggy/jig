@@ -243,6 +243,39 @@ function deferred<T>(): {
 }
 
 describe('private RunHostSession', () => {
+  test('host clock uncertainty is unavailable, not a proved elapsed deadline', async () => {
+    const process = new FakeProcess()
+    const running = new RunHostSession(process, invocation(), {}, undefined, {
+      remainingTimeMs: () => {
+        throw new Error('clock unavailable')
+      },
+    }).run()
+    expect(await running).toMatchObject({ status: 'failed', code: 'UNAVAILABLE' })
+  })
+  test('native clock-loss receipt cannot become a successful result or elapsed deadline', async () => {
+    const process = new FakeProcess()
+    const running = new RunHostSession(process, invocation()).run()
+    await process.nextHost()
+    process.emit(result({ claimed: 'done' }))
+    process.finish(0, null, 'clock')
+    expect(await running).toMatchObject({
+      status: 'failed',
+      code: 'EXECUTION_FAILED',
+      message: 'native execution clock became unavailable',
+    })
+  })
+  test('host remaining budget overrides wall deadline without changing the public request', async () => {
+    const process = new FakeProcess()
+    const publicDeadline = 1
+    const running = new RunHostSession(process, invocation(publicDeadline), {}, undefined, {
+      remainingTimeMs: () => 10_000,
+    }).run()
+    const frame = await process.nextHost()
+    expect((frame as JsonObject).params).toMatchObject({ deadlineUnixMs: publicDeadline })
+    process.emit(result({ ok: true }))
+    process.finish(0, null)
+    expect(await running).toMatchObject({ status: 'succeeded' })
+  })
   test('a confirmed crash explains pre-terminal EOF without fabricating its original signal', async () => {
     const process = new FakeProcess()
     const running = new RunHostSession(process, invocation()).run()
@@ -793,6 +826,7 @@ describe('private RunHostSession', () => {
       slot: 'research',
       intent: 'Research this',
       input: { subject: 'FLOW' },
+      attachments: { files: { create: true } },
     }
     process.emit(request('component:1', 'flow/call', params))
     process.emit(request('component:2', 'flow/call', params))
@@ -801,13 +835,111 @@ describe('private RunHostSession', () => {
 
     decision.resolve({
       status: 'succeeded',
-      result: { outcome: 'done', output: { answer: 42 } },
+      result: { outcome: 'done', output: { answer: 42 }, artifacts: { files: 'artifact-1' } },
     })
-    expect(await process.nextHost()).toMatchObject({ result: { outcome: 'done' } })
-    expect(await process.nextHost()).toMatchObject({ result: { outcome: 'done' } })
+    expect(await process.nextHost()).toMatchObject({
+      result: { outcome: 'done', artifacts: { files: 'artifact-1' } },
+    })
+    expect(await process.nextHost()).toMatchObject({
+      result: { outcome: 'done', artifacts: { files: 'artifact-1' } },
+    })
+    process.emit(request('component:3', 'flow/call', params))
+    expect(await process.nextHost()).toMatchObject({
+      result: { artifacts: { files: 'artifact-1' } },
+    })
+    expect(calls).toHaveLength(1)
     process.emit(result('parent'))
     process.finish(0)
     expect(await running).toMatchObject({ status: 'succeeded' })
+  })
+  test('read artifact projection, final selection and advanced release retain strict distinct envelopes', async () => {
+    const process = new FakeProcess()
+    const released: string[] = []
+    const validated: unknown[] = []
+    const running = new RunHostSession(
+      process,
+      {
+        ...invocation(),
+        attachments: { source: { path: '/input/source', access: 'read', artifact: 'initial-1' } },
+      },
+      {},
+      {
+        releaseArtifact(reference) {
+          released.push(reference)
+        },
+        validateResult(value) {
+          validated.push(value)
+        },
+      },
+    ).run()
+    expect(await process.nextHost()).toMatchObject({
+      params: {
+        attachments: { source: { artifact: 'initial-1' } },
+      },
+    })
+    const release = { operationId: 'release-1', artifact: 'initial-1' }
+    process.emit(request('release-request-1', 'flow/artifact/release', release))
+    expect(await process.nextHost()).toMatchObject({ result: {} })
+    process.emit(request('release-request-2', 'flow/artifact/release', release))
+    expect(await process.nextHost()).toMatchObject({ result: {} })
+    expect(released).toEqual(['initial-1'])
+    process.emit(
+      request('conflict', 'flow/call', { operationId: 'release-1', slot: 'work', input: null }),
+    )
+    expect(operationCode(await process.nextHost())).toBe('OPERATION_CONFLICT')
+    process.emit({
+      jsonrpc: '2.0',
+      id: 'host:1',
+      result: {
+        outcome: 'done',
+        output: null,
+        artifactResults: { final: 'initial-2' },
+      },
+    })
+    process.finish(0)
+    expect(await running).toMatchObject({
+      status: 'succeeded',
+      result: { artifactResults: { final: 'initial-2' } },
+    })
+    expect(validated).toEqual([
+      { outcome: 'done', output: null, artifactResults: { final: 'initial-2' } },
+    ])
+  })
+  test('attachment requests reject paths, mixed forms and invalid references without dispatch', async () => {
+    const process = new FakeProcess()
+    let dispatches = 0
+    const running = new RunHostSession(
+      process,
+      invocation(),
+      {},
+      {
+        async call() {
+          dispatches++
+          return { status: 'succeeded', result: { outcome: 'done', output: null } }
+        },
+      },
+    ).run()
+    await process.nextHost()
+    for (const [index, attachment] of [
+      { read: '/tmp/arbitrary' },
+      { create: false },
+      { create: true, read: 'ref' },
+      { read: 'ref', path: '/tmp/x' },
+    ].entries()) {
+      process.emit(
+        request(`invalid-${index}`, 'flow/call', {
+          operationId: `invalid-${index}`,
+          slot: 'work',
+          input: null,
+          attachments: { files: attachment },
+        }),
+      )
+      expect(rpcCode(await process.nextHost())).toBe(-32602)
+    }
+    expect(dispatches).toBe(0)
+    process.emit(result(null))
+    process.finish(0)
+    expect((await running).status).toBe('succeeded')
   })
   for (const [suiteCaseIndex, suiteCaseValue] of (
     ['undefined-member', 'nonfinite-number', 'cycle'] as const
@@ -1344,7 +1476,7 @@ describe('private RunHostSession', () => {
             source: { path: '/source', access: 'read', extra: true },
           } as unknown as RunHostInvocation['attachments'],
         }),
-    ).toThrow('exactly path and access')
+    ).toThrow('path, access and optional read artifact')
   })
   test('rejects scalar settings before writing flow/run', () => {
     const process = new FakeProcess()

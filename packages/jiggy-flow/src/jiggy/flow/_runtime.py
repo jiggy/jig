@@ -9,8 +9,10 @@ import threading
 import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any, Callable, Coroutine, Literal, TypeGuard, cast, overload
 
+from ._artifacts import _Artifacts
 from ._channels import (
     _Broadcast, _Endpoint, _Pair, _Receiver, _Sender, validate_channel_result, validate_grant,
 )
@@ -24,6 +26,9 @@ from ._json import (
     parse_json1,
 )
 from ._types import (
+    Artifact,
+    CallAttachments,
+    CallResult,
     Attachment,
     ChannelBroadcast,
     ChannelEndpoint,
@@ -109,14 +114,19 @@ class _RunContextImpl:
         input: JsonValue,
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> RunResult:
+        attachments: CallAttachments | None = None,
+    ) -> CallResult:
         return await self._client.call(
             operation_id=operation_id,
             slot=slot,
             input=input,
             intent=intent,
             channels=channels,
+            attachments=attachments,
         )
+
+    async def release(self, *, operation_id: str, artifact: Artifact) -> None:
+        await self._client.release(operation_id=operation_id, artifact=artifact)
 
     @overload
     async def channel(
@@ -200,7 +210,7 @@ def _validate_flow_run_params(value: Any) -> tuple[Any, Any, dict[str, Attachmen
     attachments: dict[str, Attachment] = {}
     for name, candidate in attachments_value.items():
         _require_local_name(name, "attachment name")
-        attachment = _require_exact_object(candidate, {"path", "access"}, {"path", "access"})
+        attachment = _require_exact_object(candidate, {"path", "access", "artifact"}, {"path", "access"})
         path = attachment["path"]
         access = attachment["access"]
         if not isinstance(path, str) or not path:
@@ -208,6 +218,10 @@ def _validate_flow_run_params(value: Any) -> tuple[Any, Any, dict[str, Attachmen
         if access not in {"read", "read-write"}:
             raise _InvalidParams("attachment access must be read or read-write")
         attachments[name] = {"path": path, "access": access}
+        if "artifact" in attachment:
+            if access != "read":
+                raise _InvalidParams("writable attachment cannot grant an artifact")
+            attachments[name]["artifact"] = _require_wire_id(attachment["artifact"], "artifact")  # type: ignore[typeddict-item]
     scratch = params["scratch"]
     if not isinstance(scratch, str) or not scratch:
         raise _InvalidParams("scratch must be a nonempty string")
@@ -239,14 +253,18 @@ def _validate_flow_run_params(value: Any) -> tuple[Any, Any, dict[str, Attachmen
     )
 
 
-def _validate_run_wire_result(value: Any) -> RunResult:
+def _validate_run_wire_result(value: Any) -> Any:
     try:
-        return _validate_run_result(value)
+        raw = _require_exact_object(value, {"outcome", "output", "artifacts"}, {"outcome", "output"})
+        result: dict[str, Any] = dict(_validate_run_result({"outcome": raw["outcome"], "output": raw["output"]}))
+        if "artifacts" in raw:
+            result["artifacts"] = _validate_artifact_references(raw["artifacts"])
+        return result
     except (Json1Error, _InvalidParams) as error:
         raise _InvalidParams("invalid Run result") from error
 
 
-def _flow_error_from_wire(value: Any) -> OperationError:
+def _flow_error_from_wire(value: Any, *, optional_release: bool = False) -> OperationError:
     if not isinstance(value, dict) or set(value) - {"code", "message", "data"}:
         raise _InvalidParams("invalid JSON-RPC error")
     if set(value) < {"code", "message"}:
@@ -270,11 +288,21 @@ def _flow_error_from_wire(value: Any) -> OperationError:
 
     if code not in _STANDARD_ERROR_CODES:
         raise _InvalidParams("unknown JSON-RPC error code")
+    if code == -32601 and optional_release:
+        return OperationError("UNAVAILABLE", "artifact early release is not supported")
     raise _InvalidParams("standard JSON-RPC errors cannot settle an outbound call")
+
+
+def _validate_artifact_references(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or len(value) > 256:
+        raise _InvalidParams("artifact references must contain at most 256 members")
+    return {_require_local_name(name, "artifact name"): _require_wire_id(ref, "artifact")
+            for name, ref in value.items()}
 
 
 class _Runtime:
     def __init__(self, handler: RunHandler, protocol_output: Any | None = None):
+        self._artifacts = _Artifacts()
         self._handler = handler
         self._protocol_output = protocol_output
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -530,6 +558,9 @@ class _Runtime:
         self._root_id = request_id
         self._root_phase = "open"
         self._accepting_calls = True
+        for attachment in attachments.values():
+            if "artifact" in attachment:
+                attachment["artifact"] = self._artifacts.grant(cast(Any, attachment["artifact"]))
         context = _RunContextImpl(
             input=input_value,
             settings=settings,
@@ -594,10 +625,14 @@ class _Runtime:
             return
         try:
             if "error" in frame:
-                result: Any = _flow_error_from_wire(frame["error"])
+                result: Any = _flow_error_from_wire(
+                    frame["error"], optional_release=pending.kind == "flow/artifact/release")
                 is_error = True
             elif pending.kind == "flow/call":
                 result = _validate_run_wire_result(frame["result"])
+                is_error = False
+            elif pending.kind == "flow/artifact/release":
+                result = _require_exact_object(frame["result"], set(), set())
                 is_error = False
             else:
                 result = validate_channel_result(pending.kind, frame["result"])
@@ -620,7 +655,19 @@ class _Runtime:
                 raise OperationError(self._termination_code)
             # Validate the exact response envelope before success-path cleanup;
             # its depth, node count and bytes also consume the JSON/0 limits.
-            validated = _validate_run_result(result)
+            raw = _require_exact_object(result, {"outcome", "output", "artifactResults"}, {"outcome", "output"})
+            validated: dict[str, Any] = dict(_validate_run_result({"outcome": raw["outcome"], "output": raw["output"]}))
+            if "artifactResults" in raw:
+                selected = raw["artifactResults"]
+                if not isinstance(selected, Mapping) or len(selected) > 256:
+                    raise _InvalidParams("artifactResults must be a bounded mapping")
+                try:
+                    validated["artifactResults"] = {
+                        _require_local_name(name, "artifact result"): self._artifacts.reference(artifact)
+                        for name, artifact in selected.items()
+                    }
+                except ValueError as error:
+                    raise _InvalidParams(str(error)) from error
             response = {
                 "jsonrpc": "2.0",
                 "id": self._root_id,
@@ -728,7 +775,8 @@ class _Runtime:
         input: Any,
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> RunResult:
+        attachments: CallAttachments | None = None,
+    ) -> CallResult:
         _require_wire_id(operation_id, "operation_id")
         _require_local_name(slot, "slot")
         params: dict[str, Any] = {
@@ -741,12 +789,43 @@ class _Runtime:
                 raise ValueError("intent must contain 1 to 16,384 Unicode scalars")
             params["intent"] = intent
         self._map_channels(params, channels)
+        if attachments is not None:
+            if not isinstance(attachments, Mapping) or len(attachments) > 256:
+                raise ValueError("attachments must be a bounded mapping")
+            mapped: dict[str, Any] = {}
+            for name, item in attachments.items():
+                _require_local_name(name, "attachment name")
+                if not isinstance(item, dict):
+                    raise ValueError("attachment must be a read or create object")
+                if set(item) == {"read"}:
+                    mapped[name] = {"read": self._artifacts.reference(item["read"], allow_released=True)}
+                elif set(item) == {"create"} and item["create"] is True:
+                    mapped[name] = {"create": True}
+                else:
+                    raise ValueError("attachment must contain exactly read or create:true")
+            params["attachments"] = mapped
         normalized = normalize_json1(params)
         assert isinstance(normalized, dict)
         encode_json1(normalized)
         result = await self._send_request("flow/call", "flow/call", normalized)
         assert isinstance(result, dict)
-        return cast(RunResult, result)
+        if "artifacts" in result:
+            result = {**result, "artifacts": MappingProxyType({
+                name: self._artifacts.grant(ref) for name, ref in result["artifacts"].items()
+            })}
+        return cast(CallResult, result)
+
+    async def release(self, *, operation_id: str, artifact: Artifact) -> None:
+        _require_wire_id(operation_id, "operation_id")
+        reference = self._artifacts.reference(artifact, allow_released=True)
+
+        def settled(result: Any, is_error: bool) -> None:
+            if not is_error:
+                self._artifacts.retire(reference)
+
+        await self._send_request("flow/artifact/release", "flow/artifact/release",
+                                 {"operationId": operation_id, "artifact": reference},
+                                 on_settle=settled)
 
     def _map_channels(self, params: dict[str, Any], channels: Mapping[str, ChannelEndpoint] | None) -> None:
         if channels is None:

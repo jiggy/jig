@@ -1,0 +1,16 @@
+import { handle } from '@jigging/flow'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+await handle(async run => {
+  const input = run.input as { title: string; lines: string[] }
+  const root = run.attachments.document!.path
+  const text = await readFile(join(root, 'brief.txt'), 'utf8')
+  if (text !== `${input.title}\n${input.lines.join('\n')}\n` ||
+      (await readFile(join(root, 'empty.bin'))).length !== 0)
+    throw Error('Document validation failed')
+  let denied = false
+  try { await writeFile(join(root, 'forbidden'), 'x', { flag: 'wx' }) } catch { denied = true }
+  if (!denied) throw Error('Validator received writable authority')
+  return { outcome: 'done', output: { valid: true, readonly: true } }
+})

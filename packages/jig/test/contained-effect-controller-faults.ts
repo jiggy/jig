@@ -5,25 +5,26 @@ import { Readable } from 'node:stream'
 import * as store from '../src/internal/activation-admission-store.js'
 import * as direct from '../src/internal/direct-run.js'
 import * as execution from '../src/internal/execution-backend.js'
-import { privateDomainDigest } from '../src/internal/identity.js'
-import { JSON_1_LIMITS } from '../src/json.js'
-import * as capture from '../src/internal/input-capture.js'
-import * as installed from '../src/internal/installed-bun-support.js'
-import * as context from '../src/internal/invocation-context.js'
 import {
   privateLinuxExecutionPlan,
   privateMacosExecutionPlan,
 } from '../src/internal/execution-plan.js'
 import { normalizeHttpGrant, openPrivateHttpGrants } from '../src/internal/http-grants.js'
+import { privateDomainDigest } from '../src/internal/identity.js'
+import * as capture from '../src/internal/input-capture.js'
+import * as installed from '../src/internal/installed-bun-support.js'
+import * as context from '../src/internal/invocation-context.js'
 import { privateMacosSandboxProfile } from '../src/internal/macos-sandbox-profile.js'
+import { privateBootDeadlineFromUnix } from '../src/internal/native-clock.js'
 import { HTTP_REQUEST_CONTRACT_DIGEST } from '../src/internal/private-http-request.js'
 import { privateProfileActivate, privateProfileFinish } from '../src/internal/private-profile.js'
 import {
-  PROJECT_COMMAND_LIMITS,
   PROJECT_COMMAND_CONTRACT_DIGEST,
   PROJECT_COMMAND_CONTRACT_ID,
   PROJECT_COMMAND_CONTRACT_VERSION,
+  PROJECT_COMMAND_LIMITS,
 } from '../src/internal/private-project-command.js'
+import { JSON_1_LIMITS } from '../src/json.js'
 
 const digest = (n: number) => `sha256:${n.toString(16).padStart(2, '0').repeat(32)}`
 const runId = digest(1)
@@ -115,6 +116,10 @@ mock.module('../src/internal/installed-bun-support.js', () => ({
 }))
 mock.module('../src/internal/invocation-context.js', () => ({
   ...context,
+  privateInvocationBootDeadline: async (input: any, durationMs: number) =>
+    privateBootDeadlineFromUnix(
+      Math.min(input.parent.intent.deadlineUnixMs, Date.now() + durationMs),
+    ),
   requireParentTarget: target,
   requireParentFlowOwner: async () => {},
   protectedOwnerRoot: async () => '/protected/owners',
@@ -297,6 +302,7 @@ row = {
       parentFlow: null,
       requestDigest: digest(4),
       deadlineUnixMs,
+      effectiveBootDeadline: privateBootDeadlineFromUnix(deadlineUnixMs),
       ownerAllocation: priorOwnerAllocation,
     },
   },
@@ -360,6 +366,7 @@ row = {
       parentFlow: null,
       requestDigest: digest(14),
       deadlineUnixMs: input.parent.intent.deadlineUnixMs,
+      effectiveBootDeadline: privateBootDeadlineFromUnix(input.parent.intent.deadlineUnixMs),
       ownerAllocation: recoveryOwner,
     },
   },
@@ -415,6 +422,7 @@ row = {
       parentFlow: null,
       requestDigest: digest(17),
       deadlineUnixMs: input.parent.intent.deadlineUnixMs,
+      effectiveBootDeadline: privateBootDeadlineFromUnix(input.parent.intent.deadlineUnixMs),
       ownerAllocation: {
         digest: digest(18),
         parent: '/protected/owners',

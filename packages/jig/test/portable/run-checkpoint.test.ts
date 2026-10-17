@@ -4,11 +4,11 @@ import { expect, test } from 'bun:test'
 import { readFile } from 'node:fs/promises'
 import {
   assertRunCheckpointContract,
-  PrivateRunCheckpoints,
   parseRunCheckpointInput,
   RUN_CHECKPOINT_CONTRACT_DIGEST,
 } from '../../src/internal/private-run-checkpoint.js'
 import { parseInvocationContract } from '../../src/invocation-contract.js'
+import { PrivateRunCheckpoints } from '../checkpoint.fixture.js'
 
 const identity = {
   runId: `sha256:${'a'.repeat(64)}`,
@@ -62,6 +62,28 @@ test('checkpoint rejects hidden authority, oversized data, invalid Unicode, and 
     { sequence: 1, evidence: null, files: { a: 'a'.repeat(1024 * 1024 + 1) } },
     { sequence: 1, evidence: 'a'.repeat(2 * 1024 * 1024), files: {} },
     { sequence: 17, evidence: null, files: {} },
+    { sequence: 1, evidence: null, files: {}, artifacts: { '../escape': 'opaque' } },
+    { sequence: 1, evidence: null, files: {}, artifacts: { selected: '' } },
+    {
+      sequence: 1,
+      evidence: null,
+      files: { 'artifacts/selected/data': 'collision' },
+      artifacts: { selected: 'opaque' },
+    },
   ])
     expect(() => parseRunCheckpointInput(value)).toThrow()
+})
+
+test('checkpoint optional associations are inert identities and text-only saves stay ordinary', () => {
+  expect(
+    parseRunCheckpointInput({ sequence: 1, evidence: null, files: {} }).artifacts,
+  ).toBeUndefined()
+  expect(
+    parseRunCheckpointInput({
+      sequence: 1,
+      evidence: null,
+      files: { 'review.txt': 'review' },
+      artifacts: { selected: 'opaque-held-reference' },
+    }).artifacts,
+  ).toEqual({ selected: 'opaque-held-reference' })
 })

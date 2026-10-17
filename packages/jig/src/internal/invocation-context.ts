@@ -9,7 +9,14 @@ import {
   listPrivateRootChildOwners,
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
+  privateAttemptRunDeadline,
 } from './activation-admission-store.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootDeadlineFromUnix,
+  readPrivateNativeClock,
+} from './native-clock.js'
 import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
 
 /** Bounded invocation ancestry, shared by every contained effect.
@@ -19,6 +26,48 @@ export interface PrivateInvocationContext {
   readonly parent: PrivateReacquiredRootExecutionWork
   readonly parentFlow?: PrivateParentFlow | undefined
   readonly coordinator: PrivateProjectCoordinator
+}
+
+/** Join protected root/parent budgets, never the caller's presentation scalar. */
+export async function privateInvocationBootDeadline(
+  input: PrivateInvocationContext,
+  durationMs: number,
+): Promise<PrivateBootDeadline> {
+  const accepted = await privateAttemptRunDeadline({
+    projectRoot: input.projectRoot,
+    runId: input.parent.run.runId,
+  })
+  const plan = input.parent.lifecycle.plan?.value as JsonObject | undefined
+  const root =
+    plan === undefined
+      ? (accepted ?? privateBootDeadlineFromUnix(input.parent.intent.deadlineUnixMs))
+      : normalizePrivateBootDeadline(plan.effectiveBootDeadline)
+  const deadlines = [root]
+  if (accepted !== undefined) deadlines.push(accepted)
+  if (input.parentFlow !== undefined) {
+    const owners = await listPrivateRootChildOwners({
+      coordinator: input.coordinator,
+      projectRoot: input.projectRoot,
+      parentRunId: input.parent.run.runId,
+    })
+    const parent = owners.find(
+      (owner) =>
+        owner.operationId === input.parentFlow!.operationId &&
+        owner.parentOperationId === input.parentFlow!.parent?.operationId,
+    )
+    const allocation = parent?.allocation.value as JsonObject | undefined
+    deadlines.push(normalizePrivateBootDeadline(allocation?.effectiveBootDeadline))
+  }
+  const now = readPrivateNativeClock()
+  return normalizePrivateBootDeadline({
+    bootId: root.bootId,
+    monotonicMs: deadlines.some((deadline) => deadline.bootId !== now.bootId)
+      ? 0
+      : Math.min(
+          now.monotonicMs + durationMs,
+          ...deadlines.map((deadline) => deadline.monotonicMs),
+        ),
+  })
 }
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/

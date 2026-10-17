@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import AsyncIterator, Awaitable, Callable, Literal, Protocol, TypeAlias, TypedDict, overload
+from typing import AsyncIterator, Awaitable, Callable, Literal, NotRequired, Protocol, TypeAlias, TypedDict, overload
 
 
 JsonScalar: TypeAlias = None | bool | int | float | str
@@ -47,14 +47,40 @@ class OperationError(Exception):
         super().__init__(self.message)
 
 
+class Artifact(Protocol):
+    """A host-supplied immutable tree held by one live invocation."""
+
+    @property
+    def reference(self) -> str: ...
+
+
 class Attachment(TypedDict):
     path: str
     access: AttachmentAccess
+    artifact: NotRequired[Artifact]
 
 
 class RunResult(TypedDict):
     outcome: str
     output: JsonValue
+    artifactResults: NotRequired[Mapping[str, Artifact]]
+
+
+class CallResult(TypedDict):
+    outcome: str
+    output: JsonValue
+    artifacts: NotRequired[Mapping[str, Artifact]]
+
+
+class ReadAttachment(TypedDict):
+    read: Artifact
+
+
+class CreateAttachment(TypedDict):
+    create: Literal[True]
+
+
+CallAttachments: TypeAlias = Mapping[str, ReadAttachment | CreateAttachment]
 
 
 class ChannelContractIdentity(TypedDict):
@@ -170,7 +196,10 @@ class RunContext(Protocol):
         input: JsonValue,
         intent: str | None = None,
         channels: Mapping[str, ChannelEndpoint] | None = None,
-    ) -> RunResult: ...
+        attachments: CallAttachments | None = None,
+    ) -> CallResult: ...
+
+    async def release(self, *, operation_id: str, artifact: Artifact) -> None: ...
 
 
 RunHandler: TypeAlias = Callable[[RunContext], Awaitable[RunResult]]

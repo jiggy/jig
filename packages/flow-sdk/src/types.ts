@@ -6,14 +6,30 @@ export type JsonObject = Readonly<Record<string, JsonValue>>
 
 export type AttachmentAccess = 'read' | 'read-write'
 
+declare const artifactBrand: unique symbol
+
+/** An invocation-held immutable tree. Only the host supplies artifact rights. */
+export interface Artifact {
+  readonly [artifactBrand]: true
+  readonly reference: string
+}
+
 export interface Attachment {
   readonly path: string
   readonly access: AttachmentAccess
+  readonly artifact?: Artifact
 }
 
 export type RunResult = {
   readonly outcome: string
   readonly output: JsonValue
+  readonly artifactResults?: Readonly<Record<string, Artifact>>
+}
+
+export type CallResult = {
+  readonly outcome: string
+  readonly output: JsonValue
+  readonly artifacts?: Readonly<Record<string, Artifact>>
 }
 
 export interface FlowCall {
@@ -22,6 +38,9 @@ export interface FlowCall {
   readonly intent?: string
   readonly input: JsonValue
   readonly channels?: Readonly<Record<string, ChannelEndpoint>>
+  readonly attachments?: Readonly<
+    Record<string, { readonly read: Artifact } | { readonly create: true }>
+  >
 }
 
 export interface CallOptions {
@@ -81,7 +100,11 @@ export interface RunContext {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
 
-  call(call: FlowCall, options?: CallOptions): Promise<RunResult>
+  call(call: FlowCall, options?: CallOptions): Promise<CallResult>
+  release(
+    request: { readonly operationId: string; readonly artifact: Artifact },
+    options?: CallOptions,
+  ): Promise<void>
   channel(
     options: ChannelOptions & { readonly delivery: 'broadcast' },
     callOptions?: CallOptions,

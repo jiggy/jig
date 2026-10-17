@@ -17,6 +17,7 @@ Channel agreements such as reporting belong under `channels`, rather than `uses`
 | --- | --- | --- |
 | [jig:agent-run](agent-run.md) | Invocation | Ask an operator-selected AI assistant for a bounded response. |
 | [jig:project-command](project-command.md) | Invocation | Run a reviewed project command and collect evidence. |
+| [jig:project-evaluation](project-evaluation.md) | Invocation | Generate, compile and test an immutable Bun/TypeScript candidate using reviewed dependencies. |
 | [jig:http-request](http-request.md) | Invocation | Make a request through a reviewed HTTP grant. |
 | [jig:run-checkpoint](run-checkpoint.md) | Invocation | Save settled results while other work continues. |
 | [jig:finite-acp](finite-acp.md) | Invocation | Use one bounded ACP conversation. |

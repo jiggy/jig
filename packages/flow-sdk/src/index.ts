@@ -3,9 +3,11 @@ import { stdioTransport } from './transport.js'
 import type { RunHandler } from './types.js'
 
 export type {
+  Artifact,
   Attachment,
   AttachmentAccess,
   CallOptions,
+  CallResult,
   ChannelBroadcast,
   ChannelCloseOptions,
   ChannelContractIdentity,

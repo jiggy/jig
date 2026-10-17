@@ -1,5 +1,7 @@
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { expect, spyOn, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { closeSync } from 'node:fs'
@@ -17,16 +19,70 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { capturePrivateOutput } from '../../src/internal/captured-output.js'
+import {
+  capturePrivateOutput,
+  capturePrivateRetainedOutput,
+} from '../../src/internal/captured-output.js'
+import { closePrivateExecutionOutput } from '../../src/internal/execution-output.js'
 import {
   PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
   privateOwnFileCommand,
 } from '../../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
-import { privateOpenFileRoot } from '../../src/internal/file-input.js'
-import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint.js'
+import { privateOpenFileRoot, sha256 } from '../../src/internal/file-input.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
-import { fixture, record, fixturePid, waitUntilStopped } from '.././file-delivery.fixture.js'
+import { PrivateRunCheckpoints } from '../checkpoint.fixture.js'
+import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
+
+test('associated checkpoint publication preserves failed execution and authenticates retained bytes', async () =>
+  fixture(async (root) => {
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    const bytes = Buffer.from([0, 255, 128])
+    const capture = capturePrivateRetainedOutput({
+      files: [{ path: 'artifacts/candidate/binary.bin', bytes, digest: sha256(bytes) }],
+      directories: ['artifacts', 'artifacts/candidate'],
+    })
+    const identity = { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null }
+    const checkpoint = {
+      sequence: 1,
+      digest: sha256(Buffer.from('checkpoint')),
+      identity,
+      evidence: null,
+      files: {},
+      artifacts: { candidate: 'opaque' },
+      manifest: [
+        { path: 'artifacts/candidate/binary.bin', bytes: bytes.length, digest: sha256(bytes) },
+      ],
+    }
+    const destination = join(root, 'checkpoint-packet')
+    try {
+      await owner.prepare(destination, [])
+      const receipt = await owner.publish(
+        {
+          status: 'failed',
+          runId: identity.runId,
+          code: 'FLOW_FAILED',
+          checkpoint,
+        },
+        undefined,
+        checkpoint,
+        true,
+        undefined,
+        undefined,
+        capture,
+      )
+      expect(receipt).toMatchObject({ status: 'written', source: 'checkpoint' })
+      expect(await readFile(join(destination, 'files/artifacts/candidate/binary.bin'))).toEqual(
+        bytes,
+      )
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
+        'failed',
+      )
+    } finally {
+      await owner.close()
+      await closePrivateExecutionOutput({ kind: 'snapshot', ready: Promise.resolve(capture) })
+    }
+  }))
 
 test('packet streaming cannot renew time already spent in its native delivery phase', async () =>
   fixture(async (root) => {

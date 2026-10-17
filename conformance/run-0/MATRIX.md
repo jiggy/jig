@@ -52,6 +52,8 @@ each behaviour.
 | Identified single-form invocation feature catalogs: shape, scope, names and bounds | `schema.test.ts`, shared `invocation-features.json` | Not independently repeated; no Python package inspector is claimed |
 | Exact feature catalog identity, including omission, empty catalog and changed descriptions | Jig `invocation-contract.test.ts`, shared `invocation-features.json` | `test_invocation_features.py`, independently derived bounded digest vectors |
 | Duplicate/unexpected reply rejection, outstanding-request EOF, close ordering and cancellation settlement | `conversation.test.ts`, both pairings | `test_conversation.py`, both pairings |
+| Closed finite attachment maps and distinct domain/handler/host artifact envelopes | `schema.test.ts`, shared `artifacts.json` | `test_artifacts.py`, independent shape validator |
+| Actual produced bytes, selected immutable evaluator reads, initial read delegation, exact replay without allocation, changed-map conflict, final forwarding and automatic rights cleanup | SDK projection/race tests; no separate Bun artifact host | `test_artifacts.py`, stdlib-only deterministic host launching both SDK producer/evaluator processes |
 
 The operation rows exercise small reference-peer ledgers implementing the
 Run/0 rules within one caller invocation per ledger. Separate ledgers admit the
@@ -60,6 +62,14 @@ remain different identities. They are not evidence that a durable production ope
 store exists. In particular, persistence across a host crash remains a Jig
 implementation responsibility rather than part of this component-facing
 corpus.
+
+The artifact host is independently implemented from Jig using public wire
+values and ordinary SDK processes. Its fixed finite routing, temporary trees
+and readonly mode bits are deterministic fixture policy, not containment.
+Sibling borrow/release ownership is checked directly; the process witness
+does not claim concurrent production scheduling, pending-duplicate storage
+reservation, crash durability or outside-Jig native qualification. Source
+SDK execution is not installed-artifact or independent consumer evidence.
 
 Selected terminal orderings are additionally tested against the private Jig
 host: result, cancellation, deadline, EOF, root-request and child-response
