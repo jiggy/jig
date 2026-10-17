@@ -8,7 +8,7 @@ version = "0.1.0a1"
 description = "Report progress, messages and application views through a portable FLOW channel"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["jiggy-flow==0.1.0a7"]
+dependencies = ["jiggy-flow==0.1.0a8"]
 license = "MPL-2.0"
 license-files = ["LICENSE"]
 

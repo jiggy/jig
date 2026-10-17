@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "@jigging/agent-method": "0.1.0-alpha.8",
-    "@jigging/flow": "0.1.0-alpha.13",
+    "@jigging/flow": "0.1.0-alpha.14",
     "@jigging/reporting": "0.1.0-alpha.1"
   }
 }
