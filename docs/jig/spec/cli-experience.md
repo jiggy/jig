@@ -866,8 +866,8 @@ closed typed error record, without rejected data or a fabricated execution
 terminal. Machine stdout contains only the operation's versioned records.
 
 Completing the request line is not closing the submit connection. The original
-submit owner retains its finite foreground connection through settlement;
-disconnecting it requests cancellation of that Run, not detached execution.
+submit owner retains its finite foreground connection through settlement.
+Disconnecting it requests cancellation of that Run, not detached execution.
 Duplicate observers receive the original acceptance without acquiring ownership,
 and observer disconnection cannot cancel the original Run or another root.
 

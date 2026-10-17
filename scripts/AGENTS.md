@@ -30,7 +30,7 @@ operational baselines, and public-site assembly.
   calls the standard Python build frontend directly.
 - `build-site.sh` includes the fixed evaluator invocation and recipe schema in
   its exact public inventory, alongside the client and evaluator reference
-  pages. Site assembly copies canonical bytes; it never regenerates contracts.
+  pages. Site assembly copies canonical bytes. It never regenerates contracts.
 - `preflight.ts` owns local pre-push regression checks. `just preflight` builds
   Jig and its dependencies. It runs quick tooling and portable source checks. On
   an exact supported unprivileged Mac with qualified Bun, it then runs every

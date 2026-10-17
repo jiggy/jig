@@ -24,27 +24,19 @@ export type PrivateAttemptExportRequest = AttemptRequests['export'] & {
   readonly projectRoot: string
 }
 
-const protectedStore = {
-  acquire: acquirePrivateAttemptExport,
-  reconcile: reconcilePrivateAttemptExportDelivery,
-  complete: completePrivateAttemptExportDelivery,
-  release: releasePrivateAttemptExport,
-}
-
 /** Runs in the independent file-command process. No execution/coordinator recovery,
  * descriptor transfer from the inner CLI, mutable packet read, or Flow dispatch. */
 export async function copyPrivateAttemptExport(
   input: PrivateAttemptExportRequest,
   owner: PrivateFileDeliveryOwner,
   outerAbortSignal?: AbortSignal,
-  store: typeof protectedStore = protectedStore,
 ): Promise<AttemptResults['export']> {
   const request = { ...input, destination: resolve(input.projectRoot, input.destination) }
   const source = input.source ?? 'final'
   outerAbortSignal?.throwIfAborted()
-  const previous = await store.reconcile(request)
+  const previous = await reconcilePrivateAttemptExportDelivery(request)
   if (previous) return previous
-  const pin = await store.acquire(request)
+  const pin = await acquirePrivateAttemptExport(request)
   const stop = new AbortController()
   const signal =
     outerAbortSignal === undefined ? stop.signal : AbortSignal.any([stop.signal, outerAbortSignal])
@@ -100,7 +92,7 @@ export async function copyPrivateAttemptExport(
       source === 'checkpoint' ? capture : undefined,
     )
     if (receipt.status !== 'written') {
-      await store.complete({
+      await completePrivateAttemptExportDelivery({
         projectRoot: request.projectRoot,
         pinId: pin.pinId,
         status: receipt.status,
@@ -129,7 +121,7 @@ export async function copyPrivateAttemptExport(
       }),
       source,
     }
-    await store.complete({
+    await completePrivateAttemptExportDelivery({
       projectRoot: request.projectRoot,
       pinId: pin.pinId,
       status: 'written',
@@ -159,7 +151,7 @@ export async function copyPrivateAttemptExport(
       } finally {
         try {
           if (!outcomeCommitted)
-            await store.complete({
+            await completePrivateAttemptExportDelivery({
               projectRoot: request.projectRoot,
               pinId: pin.pinId,
               status: publicationStarted ? 'unknown' : 'failed',
@@ -169,7 +161,10 @@ export async function copyPrivateAttemptExport(
             for (const file of artifact.files) file.bytes.fill(0)
           for (const file of pin.checkpoint?.files ?? []) file.bytes.fill(0)
           if (destinationRetired)
-            await store.release({ projectRoot: request.projectRoot, pinId: pin.pinId })
+            await releasePrivateAttemptExport({
+              projectRoot: request.projectRoot,
+              pinId: pin.pinId,
+            })
         }
       }
     }

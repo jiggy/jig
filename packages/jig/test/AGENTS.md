@@ -31,38 +31,40 @@ cases require the native opt-in. The ordinary installed mapped-files consumer
 remains a package-smoke obligation using frozen Jig and FLOW SDK archives.
 Its ordinary producer/reader project checks distinct operation outputs, duplicate
 reference identity, immutable explicit delegation and nested final forwarding.
+
 `portable/child-artifacts.test.ts` owns immutable operation-result authority,
 explicit delegation and final forwarding. Output-retirement and delivery suites
-own sticky close uncertainty and retained original handles; no child folder-copy
+own sticky close uncertainty and retained original handles. No child folder-copy
 or native stage-control compatibility path remains.
 
 `portable/project-evaluation-execution.test.ts` checks pure invocation,
 descriptor, identity, output and workspace rules. Phase advancement requires
 actual installed evaluator execution in the host suites.
+
 `portable/attempt-clock.test.ts` checks cross-process native clock coordinates
 and actual elapsed timers. Reboot, suspend and clock anomalies require separate
 native evidence. Never replace the production reader.
+
 `portable/project-evaluation-input.test.ts` checks authentic candidate authority,
 review drift, inert candidate configuration and immutable merged phase inputs.
 These deterministic checks and `captured-output.test.ts`'s manifest/selection
 cases do not qualify native enforcement, durable controller recovery or installed
 consumer behavior.
 
-`portable/run-checkpoint.test.ts`, `portable/prepared-attempt-store.test.ts`,
-`portable/root-run-files.test.ts` and `portable/file-delivery.test.ts` cover
-checkpoint shape, original SQLite reservation/replacement/reopen, current held
-rights without writable ports, and failed-terminal publication of immutable
-associated bytes. Native command loss,
-independent fencing and installed ticket recovery remain separate host gates.
-`portable/attempt-export.test.ts` checks protected delivery intent/outcome,
-read-only observation, real immutable publication and owned Bun copier-death
-reconciliation. Acquisition and pin retirement must use the real protected store.
+Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
+Protected acceptance, replacement and save limits require actual SQLite ownership.
+Native command loss, independent fencing and installed recovery remain host gates.
+
+`portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
+`host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
+Pins and delivery receipts must come from the production owner.
+
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
 restoration without changing retained source. The opted-in whole
 `linux-host/linux-rootless-run.test.ts` owns actual three-phase readonly work
 and output-aggregate containment, selected writable overlays, procfs cwd denial
-and original-collector capture after fencing; missing qualification prerequisites
+and original-collector capture after fencing. Missing qualification prerequisites
 must fail, never skip or substitute source evidence.
 
 `portable/project-evaluation-retention.test.ts` verifies descriptor-confined
@@ -83,8 +85,8 @@ FLOW owns their canonical meaning. Coordinate snapshot changes with the adopted 
 Follow the maintainer guide's
 [no-mocks rule](../../../.agents/maintainer-guide.md#test-real-boundaries-never-mocks).
 Use actual stores, processes and qualified native owners for lifecycle evidence.
-Keep any remaining migration gaps in `.tmp/`; never treat replacement behavior
-as passing product evidence.
+Keep remaining migration gaps in `.tmp/`. Never treat replacement behavior as
+passing product evidence.
 
 `scripts/ci/test-suites.json` owns whole-file applicability. The shared suite
 inventory refuses unknown or ambiguous files. Select suites before execution.

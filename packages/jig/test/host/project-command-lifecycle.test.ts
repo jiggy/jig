@@ -4,20 +4,15 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { constants, Database } from 'bun:sqlite'
-import { describe, expect, spyOn, test } from 'bun:test'
+import { describe, expect, test } from 'bun:test'
 import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type { RootAdministration, StartRootRunReceipt } from '../../src/administration/root.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { withPrivateMacosGuardianDiagnostics } from '../../src/internal/macos-guardian-diagnostics.js'
-import { PrivateMacosBackend } from '../../src/internal/macos-native-backend.js'
 import { projectCommandCandidateDigest } from '../../src/internal/private-project-command.js'
-import {
-  closedTestErrorCauses,
-  openPrivateProjectSession,
-} from '../../src/internal/project-session-controller.js'
+import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { PRIVATE_ROOT_RESOURCE_POLICY } from '../../src/internal/root-operation-limits.js'
 import type { JsonValue } from '../../src/json.js'
 import {
@@ -391,104 +386,17 @@ describe.serial('contained Project Command effect', () => {
         ...compositionHost,
         runTimeoutMs: Math.max(compositionHost.runTimeoutMs, 60_000),
       }
-      const recoverySources = [
-        'macos-native-backend.ts',
-        'macos-backend-state.ts',
-        'macos-guardian-client.ts',
-        'macos-process-controls.ts',
-        'macos-owner-state.ts',
-        'macos-guardian-storage.ts',
-        'macos-volume.ts',
-        'installation-verification.ts',
-      ].map((file) => {
-        const path = join(suiteTestRoot, '../src/internal', file)
-        return { file, paths: [path, pathToFileURL(path).href] }
-      })
-      const recoveryLocation = (
-        error: unknown,
-      ): { file: string; line: number; column: number } | null => {
-        try {
-          let current = error
-          for (let depth = 0; current instanceof Error && depth < 8; depth++) {
-            const cause = current.cause
-            if (cause instanceof Error) {
-              current = cause
-              continue
-            }
-            const stack = current.stack
-            if (typeof stack !== 'string') return null
-            const bounded = Buffer.from(stack.slice(0, 8192), 'utf8')
-              .subarray(0, 8192)
-              .toString('utf8')
-            for (const frame of bounded.split('\n').slice(1, 33)) {
-              if (!/^\s+at\s/.test(frame)) continue
-              for (const { file, paths } of recoverySources) {
-                for (const path of paths) {
-                  const index = frame.lastIndexOf(`${path}:`)
-                  if (index < 0 || (frame[index - 1] !== ' ' && frame[index - 1] !== '(')) continue
-                  const numbers = frame
-                    .slice(index + path.length)
-                    .match(/^:(\d{1,6}):(\d{1,6})\)?$/)
-                  if (!numbers) continue
-                  const line = Number(numbers[1])
-                  const column = Number(numbers[2])
-                  if (
-                    Number.isSafeInteger(line) &&
-                    line > 0 &&
-                    Number.isSafeInteger(column) &&
-                    column > 0
-                  )
-                    return { file, line, column }
-                }
-              }
-            }
-            return null
-          }
-        } catch {
-          // Private diagnostic getters and stack parsing cannot affect recovery.
-        }
-        return null
-      }
       let recoveryAttempt = 0
-      let fenceFailures: {
-        causes: readonly string[]
-        location: ReturnType<typeof recoveryLocation>
-      }[] = []
-      const originalRecoverFence = PrivateMacosBackend.prototype.recoverFence
-      const fenceSpy =
-        process.platform === 'darwin'
-          ? spyOn(PrivateMacosBackend.prototype, 'recoverFence').mockImplementation(async function (
-              this: PrivateMacosBackend,
-              owner: unknown,
-            ) {
-              try {
-                return await originalRecoverFence.call(this, owner)
-              } catch (error) {
-                try {
-                  if (fenceFailures.length < 8)
-                    fenceFailures.push({
-                      causes: closedTestErrorCauses(error),
-                      location: recoveryLocation(error),
-                    })
-                } catch {
-                  // Observation must preserve the original fencing failure.
-                }
-                throw error
-              }
-            })
-          : undefined
       const reopen = () => {
         recoveryAttempt = Math.min(2, recoveryAttempt + 1)
         const attempt = recoveryAttempt
-        fenceFailures = []
-        const failures = fenceFailures
         return openPrivateProjectSession({
           directory: root,
           host,
           onAcquisitionFailure: (evidence) =>
             console.error(
               'command-loss-acquisition',
-              JSON.stringify({ ...evidence, attempt, fenceFailures: failures }),
+              JSON.stringify({ ...evidence, attempt }),
             ),
         })
       }
@@ -558,7 +466,6 @@ describe.serial('contained Project Command effect', () => {
         await session?.close()
         await rm(root, { recursive: true, force: true })
       } catch (cleanupError) {
-        fenceSpy?.mockRestore()
         if (primaryError !== undefined)
           throw new AggregateError(
             [primaryError, cleanupError],
@@ -566,7 +473,6 @@ describe.serial('contained Project Command effect', () => {
           )
         throw cleanupError
       }
-      fenceSpy?.mockRestore()
       if (primaryError !== undefined) throw primaryError
     }),
     timeout,

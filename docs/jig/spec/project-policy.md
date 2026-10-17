@@ -401,13 +401,17 @@ none of the preparation count or output budget. One package accepts at most
 Source, author-closure, and prepared Package/0 artifacts share one protected
 content-addressed store. Its fixed limits are 192 MiB per canonical artifact
 and 1 GiB per project. Review may retain immutable evidence even when the Plan
-is later declined or superseded; that evidence still consumes the cap. The
+is later declined or superseded. That evidence still consumes the cap. The
 alpha performs no implicit garbage collection. Existing exact artifacts can
-be reused at the cap, but a new artifact fails closed. There is no selective
-reclamation command. State deletion is not a capacity-recovery or retry
-instruction: original execution and export custody must be settled before any
-explicit project retirement, and replacement state must use a fresh ticket
-domain. Missing history cannot establish that earlier effects did not occur.
+be reused at the cap, but a new artifact fails closed.
+
+There is no selective
+reclamation command.
+
+State deletion is not a capacity-recovery or retry instruction.
+Original execution and export custody must be settled before any explicit project retirement.
+Replacement state must use a fresh ticket domain.
+Missing history cannot establish that earlier effects did not occur.
 These archive bounds do not enlarge authored-source capture or execution
 resource limits. The larger archive envelope accommodates the reviewed
 evaluation dependency closure and its immutable combined phase inputs.
@@ -466,17 +470,25 @@ per-invocation overrides into settings.
 or `grant:<LocalName>` selections. A child route may instead be
 `{ target, attachments }`, where `target` is the same exact selector and
 `attachments` is the complete reviewed authority map described below. Omission
-normalizes the declaration to `{}` before project defaults are resolved. A
-Flow selector must identify a direct Flow target, using empty settings and its
+normalizes the declaration to `{}` before project defaults are resolved.
+
+A Flow selector must identify a direct Flow target, using empty settings and its
 own resolved routes. A Binding selector uses that Binding's own validated settings.
 Either may have further routes, within the fixed aggregate resource budget. Grant slots
 do not count as child routes. Either target may use the exact
 ordinary [Agent Run](agent-run.md) invocation, and a configured
 Binding may also use [Project Command](project-command.md) or
-[HTTP Request](http-request.md) or [Finite ACP](finite-acp.md). Slots cannot select the parent's own package, directly
-or through a Binding; unknown targets, cycles, paths exceeding the root resource budget,
-unqualified execution profiles, and attachment-bearing children without complete
-explicit mappings reject the candidate. Plain package paths are not slot selectors. Linking captures each
+[HTTP Request](http-request.md) or [Finite ACP](finite-acp.md).
+
+Slots cannot select the parent's own package, directly or through a Binding.
+The following reject the candidate:
+
+- Unknown targets or cycles.
+- Paths exceeding the root resource budget.
+- Unqualified execution profiles.
+- Attachment-bearing children without complete explicit mappings.
+
+Plain package paths are not slot selectors. Linking captures each
 target identity, and apply admits the complete relation and target
 configuration in the same immutable generation.
 In the example, `binding:critic` is a separate declaration selecting a
@@ -614,7 +626,7 @@ introduce nested Flow routes or additional execution capacity.
 A mapped slot declares every child attachment exactly once:
 
 - `{ from: "source" }` supplies the immediate caller's complete immutable read
-  view to a child `read` port. The caller must declare that read port; the
+  view to a child `read` port. The caller must declare that read port. The
   call cannot also supply or override this mapping.
 - `{ supplied: "read" }` permits a child `read` port to receive a held artifact
   through the call's `attachments: { source: { read: artifact } }`. The
@@ -624,8 +636,8 @@ A mapped slot declares every child attachment exactly once:
   `attachments: { files: { create: true } }`. No writable caller port or
   caller-selected destination path is required.
 
-Fixed reads and operation-supplied mappings may coexist on different ports;
-they never override one another. Maps are complete, direction checked and
+Fixed reads and operation-supplied mappings may coexist on different ports.
+They never override one another. Maps are complete, direction checked and
 included in the admitted relation. Unmapped attachment-bearing children and
 independent retained resources on a mapped child Binding are invalid. Repeated
 invocations of the same slot use distinct operation-owned destinations, not
@@ -634,11 +646,12 @@ shared folders in the caller's output.
 Every invocation keeps its own writable backing and limits. Only after result
 validation, writer and descendant fencing, and confirmed native cleanup may
 Jig seal a successful child's output as an immutable artifact. The caller
-receives its artifact through `CallResult.artifacts`; artifact references are
+receives its artifact through `CallResult.artifacts`. Artifact references are
 separate from the domain `outcome` and `output` schemas. A held artifact can
 be supplied readonly to another explicitly authorized slot without copying it
-into a mutable caller output tree. Initial readonly attachments carry
-participant-scoped artifact references; writable attachments carry none.
+into a mutable caller output tree.
+
+Initial readonly attachments carry participant-scoped artifact references. Writable attachments carry none.
 Rights do not widen through delegation, and releasing a reference prevents
 later use of that participant's reference.
 
@@ -647,8 +660,10 @@ These are allowed forwarded result names, not required outputs. Names are
 unique LocalNames, at most 256, and cannot collide with declared writable
 attachment names. A handler may select any subset, including empty, through
 its terminal `artifactResults` map. Jig retains this declaration in exact
-activation metadata. Final forwarded names alias held immutable bytes rather
-than copying them; the host output envelope keeps `artifacts` separate from
+activation metadata.
+
+Final forwarded names alias held immutable bytes rather
+than copying them. The host output envelope keeps `artifacts` separate from
 ordinary domain results.
 
 One root lifetime permits at most 256 artifact references, 16 distinct live
@@ -656,9 +671,13 @@ snapshots and 256 MiB of aggregate retained and materialized live artifact bytes
 Aliases alone do not create new snapshots or duplicate byte charges.
 Existing per-invocation input/output and aggregate
 execution limits still apply. Failed collection, cleanup or reference
-validation cannot manufacture a usable artifact. Cancellation and uncertainty
+validation cannot manufacture a usable artifact.
+
+Cancellation and uncertainty
 retain their ordinary fencing and no-replay rules. Recovery fences interrupted
-work; it does not resume the caller's program. Final root file delivery remains
+work. It does not resume the caller's program.
+
+Final root file delivery remains
 separate from child sealing and reference transfer.
 
 This live budget is separate from durable attempt retention. An
@@ -1093,32 +1112,41 @@ host-only code. Neither the refusal nor subsequent review replays the failed Run
 
 The installed command accepts `--input JSON|@FILE`, repeated `--attach NAME=DIR`
 and `--select NAME=FILE`, and optional `--out DIR`.
-Parsing performs no file reads; acquisition happens once, preserving
+Parsing performs no file reads. Acquisition happens once, preserving
 caller-relative paths through reexecution. An explicit `--out` replaces an
 entrypoint output default and keeps its exact destination.
+
 When the effective invocation has no `--out`, a retained approved target with
-a read-write attachment or a nonempty declared `artifactResults` list receives
-one fresh absolute packet destination beneath
-the canonical operating-system temporary directory. Result-only targets keep
-stdout-only output; unknown targets and unreviewed projects receive no fabricated
-file requirements. The selection uses the same retained admission as submission,
-including unavailable packet-eligible targets, without evaluating visible source or
-probing Agent readiness. Output and no-output decisions are made before file
+a read-write attachment or nonempty declared `artifactResults` list receives a fresh absolute packet destination.
+That destination is beneath the canonical operating-system temporary directory.
+Result-only targets keep
+stdout-only output. Unknown targets and unreviewed projects receive no fabricated
+file requirements.
+
+The selection uses the same retained admission as submission, including unavailable packet-eligible targets.
+Selection neither evaluates visible source nor probes Agent readiness.
+Output and no-output decisions are made before file
 ownership or host-delegation reexecution and remain unchanged through all owners.
+
 Selection neither reserves a directory nor grants filesystem authority.
 An invalid temporary parent refuses before dispatch with guidance to choose
-`--out`; no alternative path or target is selected automatically.
+`--out`. No alternative path or target is selected automatically.
 An ordinary quoted JSON string beginning with `@` is still an inline value.
 
 Every declared read attachment not supplied by the selected Binding requires
 exactly one mapping. Selectors name
-exact regular files relative to that root; without selectors Jig enumerates
+exact regular files relative to that root. Without selectors Jig enumerates
 its bounded tree. Unknown or duplicate mappings/selectors fail before dispatch.
+
 Review requires no invocation paths. Packet-eligible targets receive a
 destination implicitly when `--out` is omitted. A target with neither writable
 attachments nor declared artifact results remains stdout-only unless explicit
-`--out` selects a host-record packet. The authoritative
-admitted-interface check precedes root Run allocation. A closed bounded failure
+`--out` selects a host-record packet.
+
+The authoritative
+admitted-interface check precedes root Run allocation.
+
+A closed bounded failure
 identifies missing unbound reads, names
 that cannot map an unbound read, attempted bound overrides, and writable names
 missing a destination. Combined retained and per-run file limits remain
@@ -1174,23 +1202,31 @@ an existing anchored parent, outside every per-run selected input root and prote
 state. A separate command owner owns destination staging before allocation,
 survives coordinator failure, and removes unpublished staging without another
 invocation. Output storage, its bounded read buffer, and destination copies
-remain bounded after the Run execution owner is removed; see the security ceilings.
+remain bounded after the Run execution owner is removed. See the security ceilings.
+
 The same checks apply to an implicit temporary destination, including for an
 unavailable packet-eligible target before its retained refusal. A collision or invalid parent,
 protected path or input-root overlap refuses before dispatch. There is no
-automatic name retry after work starts. Stderr reports the selected destination,
-including in machine-output mode; JSON/NDJSON framing and the existing
+automatic name retry after work starts.
+
+Stderr reports the selected destination,
+including in machine-output mode. JSON/NDJSON framing and the existing
 `delivery.destination` field are preserved. Written packets remain after command
-or inspection exit. Operating-system cleanup may remove temporary packets;
+or inspection exit.
+
+Operating-system cleanup may remove temporary packets.
 `--out` selects a chosen retained location without overwrite behavior.
 
 Publication uses one no-replace atomic directory rename. Directories have mode
-`0700`, files `0600`; empty directories and source permissions are not preserved.
+`0700`, files `0600`. Empty directories and source permissions are not preserved.
 `files/` contains Flow deliverables: native root writable output remains flat,
 while each forwarded result is prefixed by its declared result name. Empty
-forwarded selections are valid. Path collisions fail rather than overwrite.
+forwarded selections are valid.
+
+Path collisions fail rather than overwrite.
 Checkpoint associations use `artifacts/<association-name>/` beneath `files/`,
 alongside explicit checkpoint text files.
+
 `result.json` contains the accepted execution
 record, Run identity, admitted Package/0 and configuration identity when resolved,
 canonical JSON input digest, captured manifest, and delivery manifest. The

@@ -53,8 +53,8 @@ while application checks and operator authority control file effects.
 - `bindings/organise.ts` lends `source` to each file Flow and authorizes fresh
   operation-owned `files` outputs. The coordinator checks complete results and
   forwards their sealed artifacts as `copies` and `overview`, without a writable
-  organiser attachment or copy/broker slot. Final names supply packet prefixes;
-  leaf paths and manifest rows stay relative to the leaf output. Independent
+  organiser attachment or copy/broker slot. Final names supply packet prefixes.
+  Leaf paths and manifest rows stay relative to the leaf output. Independent
   file methods keep the same contracts when called as standalone root Flows.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary
   packet. Retained `--out` paths must be new.

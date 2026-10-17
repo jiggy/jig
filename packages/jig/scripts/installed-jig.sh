@@ -40,6 +40,8 @@ if [ -x /usr/bin/uname ]; then
   uname_command=/usr/bin/uname
 elif [ -x /bin/uname ]; then
   uname_command=/bin/uname
+elif [ -x /run/current-system/sw/bin/uname ]; then
+  uname_command=/run/current-system/sw/bin/uname
 else
   fail
 fi

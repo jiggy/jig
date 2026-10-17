@@ -19,21 +19,13 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../../src/administration/root.js'
-import { main } from '../../src/cli.js'
 import type { PrivateExecutionOutput } from '../../src/internal/execution-output.js'
-import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
-import { withPrivateInstallationVerification } from '../../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import type { PrivateInstalledBunLocation } from '../../src/internal/installed-bun-support.js'
-import {
-  type RunCheckpointIdentity,
-  type RunCheckpointInput,
-} from '../../src/internal/private-run-checkpoint.js'
 import {
   closedTestErrorCauses,
   openPrivateProjectSession,
 } from '../../src/internal/project-session-controller.js'
-import { PrivateRunCheckpoints } from '../checkpoint.fixture.js'
 import { fixtureHost, MACOS_FIXTURE_SETTLEMENT_MS } from './agent-fixture-host.js'
 import {
   openDeterministicFiniteAcpHost,
@@ -1071,8 +1063,6 @@ export async function qualifyRepairScenario(
       ),
     )
   })
-  const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
-  let checkpoints: PrivateRunCheckpoints | undefined
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -1089,79 +1079,31 @@ export async function qualifyRepairScenario(
     )
     let stdout = '',
       stderr = ''
-    const options = {
-      currentDirectory: project,
-      interactive: false,
-      writeOutput: (text: string) => {
-        stdout += text
-      },
-      writeError: (text: string) => {
-        stderr += text
-      },
-      host: {
-        acquire: async (
-          directory: string,
-          options?: {
-            runTimeoutMs?: number
-            files?: import('../../src/internal/root-run-files.js').PrivateRootRunFiles
-          },
-        ) =>
-          openPrivateProjectSession({
-            directory,
-            host: {
-              ...(await openPrivateInstalledBunHost(
-                location,
-                {
-                  METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
-                },
-                directory,
-              )),
-              ...options,
-            },
-            onOperationFailure: (evidence) =>
-              console.error('repair-operation-failure', JSON.stringify(evidence)),
-            onRootExecutionFailure: (evidence) =>
-              console.error('repair-root-execution-failure', JSON.stringify(evidence)),
-          }),
-        delivery: {
-          get checkpoint() {
-            return checkpoints?.latest ?? null
-          },
-          bindCheckpoint: async (identity: RunCheckpointIdentity) => {
-            checkpoints = new PrivateRunCheckpoints(identity)
-          },
-          saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
-          retire: async () => {
-            checkpoints?.close()
-            await owner.close()
-          },
-          prepare: (directory: string, roots: readonly number[]) => owner.prepare(directory, roots),
-          publish: async (
-            record: import('../../src/json.js').JsonValue,
-            output: PrivateExecutionOutput | undefined,
-          ) =>
-            owner.publish(
-              { ...(record as any), checkpoint: checkpoints?.latest ?? null },
-              output === undefined
-                ? undefined
-                : output.kind === 'linux-directory'
-                  ? { kind: 'linux-directory', fd: output.directory.fd }
-                  : { kind: 'snapshot', capture: await repairOutputCapture(output.ready) },
-              checkpoints?.latest ?? undefined,
-              true,
-            ),
-        },
-      },
-    }
-    // Match the installed entrypoint: one verification scope per command,
-    // with its cache outside the actual consumer project.
+    // Use the installed entrypoint's independent file-command owner, protected
+    // checkpoint reads, copy custody and retirement. No local delivery override.
     const runCommand = (args: readonly string[]) =>
-      timeFixturePhase(`repair-${scenario}`, args[0] === 'review' ? 'review' : 'run', () =>
-        withPrivateInstallationVerification(
-          { XDG_CACHE_HOME: join(root, 'verification-cache') },
-          () => main(args, options),
-        ),
-      )
+      timeFixturePhase(`repair-${scenario}`, args[0] === 'review' ? 'review' : 'run', async () => {
+        const result = await runInstalledJigCommand(
+          location.executablePath,
+          [
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            location.installedCliPath,
+            ...args,
+          ],
+          project,
+          {
+            ...process.env,
+            METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
+            XDG_CACHE_HOME: join(root, 'verification-cache'),
+          },
+          process.platform === 'darwin' ? 360_000 : 180_000,
+        )
+        stdout += result.stdout
+        stderr += result.stderr
+        return result.exitCode
+      })
     expect(await runCommand(['review', '--yes', '--allow-authority-changes']), stderr).toBe(0)
     stdout = ''
     stderr = ''
@@ -1313,15 +1255,9 @@ export async function qualifyRepairScenario(
     }
     verified = true
   } finally {
-    let cleaned = false
-    try {
-      await timeFixturePhase(`repair-${scenario}`, 'delivery-close', () => owner.close())
-      cleaned = true
-    } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-      if (verified && cleaned) await rm(root, { recursive: true, force: true })
-      else console.error(`Repair proof retained at ${root}`)
-    }
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    if (verified) await rm(root, { recursive: true, force: true })
+    else console.error(`Repair proof retained at ${root}`)
   }
   // Each case owns one bounded Run. Leave setup/cleanup time outside its
   // execution budget. Mac uses the documented five-minute repair invocation.

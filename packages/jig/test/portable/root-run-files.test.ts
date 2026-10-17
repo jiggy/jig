@@ -13,6 +13,7 @@ import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifact,
   releasePrivateFlowArtifact,
+  selectedPrivateFlowArtifacts,
 } from '../../src/internal/flow-file-context.js'
 import {
   normalizePrivateRunFileIdentity,
@@ -26,7 +27,7 @@ import type { PrivateActivationRequest } from '../../src/project/package-resolut
 const digest = `sha256:${'0'.repeat(64)}`
 const file = (path: string, bytes = 0) => ({ path, bytes, digest })
 
-test('checkpoint retention needs no writable attachment and resolves only current root rights', async () => {
+test('checkpoint association selection needs no writable attachment and resolves only current root rights', async () => {
   const files = new PrivateRootRunFiles([], false)
   const request = {
     attachments: {},
@@ -45,59 +46,17 @@ test('checkpoint retention needs no writable attachment and resolves only curren
     privateSnapshotExecutionOutput(Promise.resolve(snapshot)),
   )
   const reference = commitPrivateFlowArtifact(context, held)
-  let commits = 0
   try {
-    await files.bindCheckpoint(
-      `sha256:${'a'.repeat(64)}`,
-      request,
-      null,
-      '/unused',
-      1,
-      async ({ value, artifacts }) => {
-        commits++
-        if (value.artifacts)
-          expect(readPrivateCapturedOutput(artifacts.candidate!)[0]!.contents).toEqual(bytes)
-        return { sequence: value.sequence, digest }
-      },
-    )
-    expect(await files.saveCheckpoint({ sequence: 1, evidence: null, files: {} }, context)).toEqual(
-      { sequence: 1, digest },
-    )
-    expect(
-      await files.saveCheckpoint(
-        {
-          sequence: 2,
-          evidence: null,
-          files: {},
-          artifacts: { candidate: reference },
-        },
-        context,
-      ),
-    ).toEqual({ sequence: 2, digest })
-    await expect(
-      files.saveCheckpoint(
-        {
-          sequence: 3,
-          evidence: null,
-          files: {},
-          artifacts: { candidate: 'guessed' },
-        },
-        context,
-      ),
-    ).rejects.toThrow()
+    expect(selectedPrivateFlowArtifacts(context, [], {})).toEqual({})
+    const selected = selectedPrivateFlowArtifacts(context, ['candidate'], { candidate: reference })
+    expect(readPrivateCapturedOutput(selected.candidate!)[0]!.contents).toEqual(bytes)
+    expect(() =>
+      selectedPrivateFlowArtifacts(context, ['candidate'], { candidate: 'guessed' }),
+    ).toThrow()
     releasePrivateFlowArtifact(context, reference)
-    await expect(
-      files.saveCheckpoint(
-        {
-          sequence: 3,
-          evidence: null,
-          files: {},
-          artifacts: { candidate: reference },
-        },
-        context,
-      ),
-    ).rejects.toThrow()
-    expect(commits).toBe(2)
+    expect(() =>
+      selectedPrivateFlowArtifacts(context, ['candidate'], { candidate: reference }),
+    ).toThrow()
   } finally {
     context.close()
     await files.close()

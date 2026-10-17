@@ -8,13 +8,6 @@ import {
   RUN_CHECKPOINT_CONTRACT_DIGEST,
 } from '../../src/internal/private-run-checkpoint.js'
 import { parseInvocationContract } from '../../src/invocation-contract.js'
-import { PrivateRunCheckpoints } from '../checkpoint.fixture.js'
-
-const identity = {
-  runId: `sha256:${'a'.repeat(64)}`,
-  method: { package: 'one-exact-method' },
-  input: { digest: `sha256:${'b'.repeat(64)}` },
-}
 
 test('checkpoint descriptor and private contract have one exact identity', async () => {
   const contract = parseInvocationContract(
@@ -25,33 +18,22 @@ test('checkpoint descriptor and private contract have one exact identity', async
   expect(contract.digest).toBe(RUN_CHECKPOINT_CONTRACT_DIGEST)
   assertRunCheckpointContract(contract)
 })
-test('checkpoint accepts copied exact bytes and preserves previous progress after rejected replacement', () => {
-  const owner = new PrivateRunCheckpoints(identity)
+test('checkpoint input parsing copies caller data without granting acceptance', () => {
   const first = {
     sequence: 1,
     evidence: { candidate: 'original', passed: false },
     files: { 'job/proposal.patch': 'first' },
   }
-  const receipt = owner.accept(first)
+  const parsed = parseRunCheckpointInput(first)
   first.files['job/proposal.patch'] = 'mutated caller'
-  expect(owner.latest).toMatchObject({
-    ...receipt,
+  first.evidence.candidate = 'mutated caller'
+  expect(parsed).toEqual({
+    sequence: 1,
     files: { 'job/proposal.patch': 'first' },
-    evidence: { passed: false },
+    evidence: { candidate: 'original', passed: false },
   })
-  expect(() => owner.accept({ ...first, sequence: 3 })).toThrow('advance by one')
-  expect(() => owner.accept({ ...first, sequence: 2, files: { '../escape': 'bad' } })).toThrow()
-  expect(owner.latest?.digest).toBe(receipt.digest)
-  const next = owner.accept({
-    sequence: 2,
-    evidence: { candidate: 'second', passed: true },
-    files: { 'job/review.patch': 'second' },
-  })
-  expect(next.digest).not.toBe(receipt.digest)
-  expect(owner.latest?.files).toEqual({ 'job/review.patch': 'second' })
-  owner.close()
-  expect(owner.latest).toBeUndefined()
-  expect(() => owner.accept(first)).toThrow('closed')
+  // Parsing has no owner or sequence history. Native lifecycle tests prove saves.
+  expect(parseRunCheckpointInput({ ...first, sequence: 3 }).sequence).toBe(3)
 })
 test('checkpoint rejects hidden authority, oversized data, invalid Unicode, and ambiguous paths', () => {
   for (const value of [

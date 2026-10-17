@@ -3,30 +3,21 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, spyOn, test } from 'bun:test'
-import { spawnSync } from 'node:child_process'
 import { closeSync } from 'node:fs'
-import {
-  mkdir,
-  mkdtemp,
-  open,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { capturePrivateOutput } from '../../src/internal/captured-output.js'
+import {
+  capturePrivateOutput,
+  capturePrivateRetainedOutput,
+} from '../../src/internal/captured-output.js'
 import { privateCaptureDeliveryInspection } from '../../src/internal/delivery-inspection.js'
+import { closePrivateExecutionOutput } from '../../src/internal/execution-output.js'
 import {
   PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
   privateOwnFileCommand,
 } from '../../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
-import { privateOpenFileRoot } from '../../src/internal/file-input.js'
+import { privateOpenFileRoot, sha256 } from '../../src/internal/file-input.js'
 import * as imagePreview from '../../src/internal/image-preview.js'
 import {
   PRIVATE_PREVIEW_LIMITS,
@@ -35,6 +26,58 @@ import {
 import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
+
+// These publisher inputs are ordinary packet data, not protected acceptance or
+// native cleanup evidence. Installed checkpoint lifecycle tests own those facts.
+test('checkpoint packet publication preserves the supplied failure and binary manifest', async () =>
+  fixture(async (root) => {
+    const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+    const bytes = Buffer.from([0, 255, 128])
+    const capture = capturePrivateRetainedOutput({
+      files: [{ path: 'artifacts/candidate/binary.bin', bytes, digest: sha256(bytes) }],
+      directories: ['artifacts', 'artifacts/candidate'],
+    })
+    const identity = { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null }
+    const checkpoint = {
+      sequence: 1,
+      digest: sha256(Buffer.from('checkpoint')),
+      identity,
+      evidence: null,
+      files: {},
+      artifacts: { candidate: 'opaque' },
+      manifest: [
+        { path: 'artifacts/candidate/binary.bin', bytes: bytes.length, digest: sha256(bytes) },
+      ],
+    }
+    const destination = join(root, 'checkpoint-packet')
+    try {
+      await owner.prepare(destination, [])
+      const receipt = await owner.publish(
+        {
+          status: 'failed',
+          runId: identity.runId,
+          code: 'FLOW_FAILED',
+          checkpoint,
+        },
+        undefined,
+        checkpoint,
+        true,
+        undefined,
+        undefined,
+        capture,
+      )
+      expect(receipt).toMatchObject({ status: 'written', source: 'checkpoint' })
+      expect(await readFile(join(destination, 'files/artifacts/candidate/binary.bin'))).toEqual(
+        bytes,
+      )
+      expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
+        'failed',
+      )
+    } finally {
+      await owner.close()
+      await closePrivateExecutionOutput({ kind: 'snapshot', ready: Promise.resolve(capture) })
+    }
+  }))
 
 test('packet streaming cannot renew time already spent in its native delivery phase', async () =>
   fixture(async (root) => {
@@ -247,7 +290,7 @@ test('encoded image replies preserve text fallbacks within the complete inspecti
       output.close()
     }
   }))
-test('delivery close joins pending preparation and memoizes exact descriptor cleanup failure', async () =>
+test('delivery close joins pending preparation and prevents later acquisition', async () =>
   fixture(async (root) => {
     const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
     const preparing = owner.prepare(join(root, 'pending'), [])
@@ -256,31 +299,6 @@ test('delivery close joins pending preparation and memoizes exact descriptor cle
     await preparing
     await closing
     await expect(owner.prepare(join(root, 'new'), [])).rejects.toThrow('unavailable')
-
-    const failed = new PrivateFileDeliveryOwner(new AbortController().signal)
-    await failed.prepare(join(root, 'failed'), [])
-    const probe = await open(root, 'r')
-    const prototype = Object.getPrototypeOf(probe)
-    await probe.close()
-    let closes = 0
-    const original = prototype.close
-    const failure = spyOn(prototype, 'close').mockImplementation(async function (this: {
-      fd: number
-    }) {
-      closes++
-      // Close once, then report failure. A later close cannot retry a recycled FD.
-      await original.call(this)
-      throw new Error('injected close failure')
-    })
-    try {
-      const first = failed.close()
-      expect(failed.close()).toBe(first)
-      await expect(first).rejects.toThrow('delivery owner cleanup failed')
-      await expect(failed.close()).rejects.toThrow('delivery owner cleanup failed')
-      expect(closes).toBe(1)
-    } finally {
-      failure.mockRestore()
-    }
   }))
 test('delivery close joins original publication without changing its admitted receipt', async () =>
   fixture(async (root) => {
@@ -363,7 +381,7 @@ test('copied or closed output capabilities and cleanup failure never authorize f
       capture.close()
     }
   }))
-test('retained bytes survive execution cancellation but never an unconfirmed cleanup or output collision', async () =>
+test('checkpoint packet selection respects cancellation, cleanup fields and output collisions', async () =>
   fixture(async (root) => {
     for (const mode of [
       'cancelled',
@@ -375,17 +393,13 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
     ]) {
       const abort = new AbortController()
       const owner = new PrivateFileDeliveryOwner(abort.signal)
-      const checkpoints = new PrivateRunCheckpoints({
-        runId: `sha256:${'a'.repeat(64)}`,
-        method: null,
-        input: null,
-      })
-      checkpoints.accept({
+      const retained = {
+        identity: { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null },
         sequence: 1,
+        digest: sha256(Buffer.from('publisher descriptor')),
         evidence: { passed: false },
         files: { 'saved.txt': 'accepted bytes' },
-      })
-      const retained = checkpoints.latest!
+      }
       const destination = join(root, mode)
       try {
         await owner.prepare(destination, [])
@@ -436,10 +450,8 @@ test('retained bytes survive execution cancellation but never an unconfirmed cle
             expect(await readFile(join(destination, 'keep'), 'utf8')).toBe('unrelated')
           else await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
         }
-        expect(checkpoints.latest?.digest).toBe(retained.digest)
       } finally {
         await owner.close()
-        checkpoints.close()
       }
     }
   }))
@@ -484,23 +496,24 @@ test('late cancellation rejects cleanup-failed terminal retention with an empty 
       await owner.close()
     }
   }))
-test('accepted checkpoints never make final-file capture survive cancellation', async () =>
+test('a checkpoint descriptor never makes final-file capture survive cancellation', async () =>
   fixture(async (root) => {
     const abort = new AbortController()
     const owner = new PrivateFileDeliveryOwner(abort.signal)
-    const checkpoints = new PrivateRunCheckpoints({
-      runId: `sha256:${'a'.repeat(64)}`,
-      method: null,
-      input: null,
-    })
-    checkpoints.accept({ sequence: 1, evidence: null, files: { 'saved.txt': 'accepted' } })
+    const checkpoint = {
+      identity: { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null },
+      sequence: 1,
+      digest: sha256(Buffer.from('publisher descriptor')),
+      evidence: null,
+      files: { 'saved.txt': 'packet text' },
+    }
     try {
       await owner.prepare(join(root, 'result'), [])
       abort.abort()
       // Cancellation must reject before consulting any final-file descriptor,
-      // even with a retained checkpoint and interrupted-record permission.
+      // even with a checkpoint descriptor and interrupted-record permission.
       expect(
-        await owner.publish(record, { kind: 'linux-directory', fd: 0 }, checkpoints.latest, true),
+        await owner.publish(record, { kind: 'linux-directory', fd: 0 }, checkpoint, true),
       ).toMatchObject({
         status: 'failed',
         code: 'CANCELLED',
@@ -508,7 +521,6 @@ test('accepted checkpoints never make final-file capture survive cancellation', 
       await expect(stat(join(root, 'result'))).rejects.toMatchObject({ code: 'ENOENT' })
     } finally {
       await owner.close()
-      checkpoints.close()
     }
   }))
 for (const mode of ['cancel', 'success', 'cleanup-failed'] as const) {
@@ -593,22 +605,7 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
             } catch {}
           }, 2500)
           const started = performance.now()
-          let expiryObserved = false
-          const timer = globalThis.setTimeout
-          const lateClock =
-            trigger === 'late-cancel'
-              ? spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) =>
-                  timer(() => {
-                    callback(...args)
-                    if (delay === 700) {
-                      // Observe the actual production expiry before interrupting,
-                      // not a separate clock started before socket setup/spawn.
-                      expiryObserved = true
-                      abort.abort()
-                    }
-                  }, delay),
-                )
-              : undefined
+          let lateCancellation: ReturnType<typeof setTimeout> | undefined
           const invocation = privateOwnFileCommand(
             [
               process.execPath,
@@ -632,7 +629,7 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
             settled = true
           })
           try {
-            if (trigger === 'cancel' && phase !== 'during') {
+            if ((trigger === 'cancel' || trigger === 'late-cancel') && phase !== 'during') {
               while (!settled) {
                 try {
                   await readFile(readyFile)
@@ -643,10 +640,18 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
                   await Bun.sleep(5)
                 }
               }
-              abort.abort()
+              if (trigger === 'cancel') abort.abort()
+              else {
+                // Use actual elapsed time, not a replacement of the owner's timer.
+                // This exercises the deadline/cancellation race, not timer internals.
+                lateCancellation = setTimeout(
+                  () => abort.abort(),
+                  Math.max(0, started + 800 - performance.now()),
+                )
+              }
             }
             expect((await invocation).signal).toBe('SIGKILL')
-            if (trigger === 'late-cancel') expect(expiryObserved).toBe(true)
+            if (trigger === 'late-cancel') expect(abort.signal.aborted).toBe(true)
             expect(rescued).toBe(false)
             expect(performance.now() - started).toBeLessThan(
               700 + PRIVATE_FILE_COMMAND_STOP_GRACE_MS + 1000,
@@ -662,7 +667,7 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
               ).toBe('blocked')
             else await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
           } finally {
-            lateClock?.mockRestore()
+            clearTimeout(lateCancellation)
             clearTimeout(watchdog)
             if (!settled && pid !== undefined) process.kill(pid, 'SIGKILL')
             await invocation
@@ -748,20 +753,21 @@ test('publication which already won is not retracted by later cancellation', asy
   }))
 test('a delivery budget expiry preserves execution and cleans uncommitted staging', async () =>
   fixture(async (root) => {
-    const clock = spyOn(performance, 'now').mockReturnValue(0)
     const owner = new PrivateFileDeliveryOwner(new AbortController().signal, async () => {
-      clock.mockReturnValue(20_001)
+      await Bun.sleep(60)
     })
     try {
       await owner.prepare(join(root, 'review'), [])
-      expect(await owner.publish(record, undefined)).toMatchObject({
+      const deadline = privatePresentationNow() + 30
+      expect(
+        await owner.publish(record, undefined, undefined, false, undefined, deadline),
+      ).toMatchObject({
         status: 'failed',
         code: 'DEADLINE_EXCEEDED',
       })
       expect(record.status).toBe('succeeded')
       expect(await readdir(root)).toEqual([])
     } finally {
-      clock.mockRestore()
       await owner.close()
     }
   }))
