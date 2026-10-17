@@ -491,6 +491,8 @@ test('native completion and guardian loss publish output only after confirmed cl
     let owner: Awaited<ReturnType<typeof preparePrivateMacosGuardian>> | undefined
     let outputOwner: ReturnType<typeof retainPrivateMacosGuardianOutput> | undefined
     let removed = false
+    let phase = 'prepare'
+    const started = performance.now()
     try {
       owner = await withPrivateMacosGuardianDiagnostics(
         (event) => events.push(event),
@@ -552,10 +554,16 @@ test('native completion and guardian loss publish output only after confirmed cl
       if (collect) outputOwner = retainPrivateMacosGuardianOutput(owner)
       const outputRefusal =
         outputOwner && loseGuardian
-          ? expect(outputOwner.output.ready).rejects.toBeInstanceOf(Error)
+          ? outputOwner.output.ready.then(
+              () => undefined,
+              (error: unknown) => error,
+            )
           : undefined
+      phase = 'admit'
       await owner.admit()
+      phase = 'continue'
       owner.continue()
+      phase = loseGuardian ? 'guardian-loss' : 'payload-exit'
       if (loseGuardian) {
         // The payload is held on stdin. Kill only the authenticated guardian,
         // leaving the ordinary recovery path responsible for the whole owner.
@@ -579,7 +587,7 @@ test('native completion and guardian loss publish output only after confirmed cl
           recovered: true,
           fenced: true,
         })
-        await outputRefusal
+        if (outputRefusal !== undefined) expect(await outputRefusal).toBeInstanceOf(Error)
         expect(events).toHaveLength(1)
         expect(events[0]).toMatchObject({ phase: 'running', step: 'receive' })
         expect(['CONTROL_EOF', 'CONTROL_SOCKET']).toContain(events[0]!.cause)
@@ -609,6 +617,24 @@ test('native completion and guardian loss publish output only after confirmed cl
         }
         expect(events).toEqual([])
       }
+    } catch (error) {
+      // Only closed fixture labels and the production observer's closed
+      // recovery facts enter CI output. Preserve the original exception.
+      try {
+        console.error(
+          'guardian terminal fixture failure',
+          JSON.stringify({
+            collect,
+            loseGuardian,
+            phase,
+            elapsedMs: Math.round(performance.now() - started),
+            recovery: events,
+          }),
+        )
+      } catch {
+        // Observation must not replace the failure or interfere with cleanup.
+      }
+      throw error
     } finally {
       await closePrivateExecutionOutput(outputOwner?.output)
       if (!removed) {

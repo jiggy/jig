@@ -19,21 +19,18 @@ async function fixture(run: (root: string, command: Command) => Promise<void>) {
   let passed = false
   let sequence = 0
   const command: Command = async (args) => {
-    const child = Bun.spawn(
-      [installedBunLocation.executablePath, installedBunLocation.installedCliPath, ...args],
-      {
-        cwd: root,
-        env: {
-          ...foundationEnvironment(),
-          PI_PATH: join(root, 'absent-pi'),
-          CODEX_PATH: join(root, 'absent-codex'),
-          CLAUDE_PATH: join(root, 'absent-claude'),
-        },
-        stdin: 'ignore',
-        stdout: 'pipe',
-        stderr: 'pipe',
+    const child = Bun.spawn([join(installedBunLocation.releaseRoot, 'bin/jig'), ...args], {
+      cwd: root,
+      env: {
+        ...foundationEnvironment(),
+        PI_PATH: join(root, 'absent-pi'),
+        CODEX_PATH: join(root, 'absent-codex'),
+        CLAUDE_PATH: join(root, 'absent-claude'),
       },
-    )
+      stdin: 'ignore',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
     return settleTestCommand(child, {
       evidence: join(root, `command-${++sequence}`),
       timeoutMs: 120_000,

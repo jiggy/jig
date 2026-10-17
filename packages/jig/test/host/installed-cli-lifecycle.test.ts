@@ -48,7 +48,9 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
     await writeFile(
       join(project, 'package.json'),
       JSON.stringify({
-        ...JSON.parse(await readFile(join(project, 'package.json'), 'utf8')),
+        name: 'installed-cli-greeting',
+        private: true,
+        type: 'module',
         workspaces: ['flows/*', 'libs/*'],
       }),
     )

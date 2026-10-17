@@ -1,6 +1,7 @@
 import { resolve } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { ProjectSession } from './administration/project.js'
+import { RootAdministrationError } from './administration/root.js'
 import type {
   AttemptErrorCode,
   AttemptFrame,
@@ -43,6 +44,10 @@ export async function preparePrivateCliRun(input: {
   if (inspected === null || typeof inspected !== 'object' || Array.isArray(inspected))
     throw new PrivateAttemptError('APPROVAL_CHANGED', 'The target has no current approval.')
   const facts = inspected as JsonObject
+  if (facts.state === 'unreviewed' && input.expectedApproval === undefined)
+    throw new RootAdministrationError('UNAVAILABLE', 'No activation generation is active.', {
+      code: 'ADMISSION_MISSING',
+    })
   const approval = input.expectedApproval ?? facts.approval
   if (typeof approval !== 'string')
     throw new PrivateAttemptError('APPROVAL_CHANGED', 'The target has no current approval.')

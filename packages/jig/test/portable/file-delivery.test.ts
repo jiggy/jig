@@ -90,9 +90,13 @@ test('checkpoint packet publication preserves the supplied failure and binary ma
   fixture(async (root) => {
     const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
     const bytes = Buffer.from([0, 255, 128])
+    const empty = Buffer.alloc(0)
     const capture = capturePrivateRetainedOutput({
-      files: [{ path: 'artifacts/candidate/binary.bin', bytes, digest: sha256(bytes) }],
-      directories: ['artifacts', 'artifacts/candidate'],
+      files: [
+        { path: 'artifacts/candidate/binary.bin', bytes, digest: sha256(bytes) },
+        { path: 'artifacts/candidate/empty.bin', bytes: empty, digest: sha256(empty) },
+      ],
+      directories: ['artifacts', 'artifacts/candidate', 'artifacts/candidate/empty'],
     })
     const identity = { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null }
     const checkpoint = {
@@ -104,6 +108,7 @@ test('checkpoint packet publication preserves the supplied failure and binary ma
       artifacts: { candidate: 'opaque' },
       manifest: [
         { path: 'artifacts/candidate/binary.bin', bytes: bytes.length, digest: sha256(bytes) },
+        { path: 'artifacts/candidate/empty.bin', bytes: 0, digest: sha256(empty) },
       ],
     }
     const destination = join(root, 'checkpoint-packet')
@@ -127,6 +132,13 @@ test('checkpoint packet publication preserves the supplied failure and binary ma
       expect(await readFile(join(destination, 'files/artifacts/candidate/binary.bin'))).toEqual(
         bytes,
       )
+      expect(await readFile(join(destination, 'files/artifacts/candidate/empty.bin'))).toEqual(
+        empty,
+      )
+      expect((await readdir(join(destination, 'files/artifacts/candidate'))).sort()).toEqual([
+        'binary.bin',
+        'empty.bin',
+      ])
       expect(JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')).status).toBe(
         'failed',
       )

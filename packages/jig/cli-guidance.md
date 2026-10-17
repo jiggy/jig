@@ -50,6 +50,10 @@ All selected domain requirements still apply.
   stdout is readable on terminals. Redirection or `--json` selects exact
   JSON/NDJSON. Elapsed status uses terminal stderr only.
 
+  An unreviewed ordinary Run reports `ADMISSION_MISSING`, not a changed approval.
+  A supplied approval pin keeps its separate stale-selection checks.
+  Never imply earlier consent when no revision was approved.
+
   Cancellation requested and cleanup confirmed are separate facts. Acquisition
   reports Jig runtime verification, operator resource configuration, and
   project-state recovery separately. Capturing configuration does not verify a
