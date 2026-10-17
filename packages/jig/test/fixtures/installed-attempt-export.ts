@@ -208,12 +208,19 @@ for(const mode of ['complete','fail','cancel']){
     assert.equal(receipt.source,source);
     stage='verify-export';
     const packet=JSON.parse(await readFile(destination+'/result.json','utf8'));
+    stage='verify-export-status';
     assert.equal(packet.status,observation.terminal.status);
+    stage='verify-export-run';
     assert.equal(packet.runId,owner.receipt.runId);
     const artifactPrefix=source==='checkpoint'?'artifacts/report':'report';
+    stage='verify-export-binary';
     assert.deepEqual(await readFile(destination+'/files/'+artifactPrefix+'/binary.bin'),Buffer.from([0,255,128]));
+    stage='verify-export-empty-file';
     assert.equal((await readFile(destination+'/files/'+artifactPrefix+'/empty.bin')).length,0);
-    assert.deepEqual(await readdir(destination+'/files/'+artifactPrefix+'/empty'),[]);
+    stage='verify-export-inventory';
+    // Packets preserve files, not empty directories (public file delivery contract).
+    assert.deepEqual((await readdir(destination+'/files/'+artifactPrefix)).sort(),['binary.bin','empty.bin']);
+    stage='verify-export-checkpoint-text';
     if(source==='checkpoint')
       assert.equal(await readFile(destination+'/files/progress.txt','utf8'),'accepted checkpoint');
     // Prove reconciliation consumes protected evidence, not the now absent packet.

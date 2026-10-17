@@ -122,6 +122,10 @@ Selected suites must execute positively with zero skipped or filtered cases.
 Missing native flags, exact host prerequisites or live inputs fail the selected
 suite. Parameterized cases have explicit unique registration names.
 
+Attach rejection handlers with `Promise.then` before the action that settles them.
+Bun's asynchronous expectation matchers can wait synchronously.
+Run those matchers only after admission or the required process signal.
+
 Do not add name-pattern partitions or frozen line/name skip exceptions.
 
 Each independent native backend fixture Run plan receives a fresh absolute
