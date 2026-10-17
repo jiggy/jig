@@ -1,13 +1,9 @@
 import { expect, test } from 'bun:test'
-import { createPrivateFileImportTarget } from '../../src/internal/execution-file-import.js'
 import {
-  bindPrivateFlowFileImportTarget,
   createPrivateChildFlowFileContext,
   createPrivateRootFlowFileContext,
   planPrivateChildFlowFiles,
   privateFlowFileExecutionProjection,
-  privateFlowFileImportTarget,
-  requirePrivateChildFlowFilePlanWrite,
 } from '../../src/internal/flow-file-context.js'
 import { capturePrivateInput, readPrivateCapturedInput } from '../../src/internal/input-capture.js'
 
@@ -163,47 +159,37 @@ test('data-only children require no native output or invented file ports', () =>
     root.close()
   }
 })
-test('the output owner getter requires the exact live plan and immediate caller before effects', () => {
+test('operation plans are authentic, single-use and revoked with their caller', () => {
   const root = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
   const other = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
   try {
     const plan = planPrivateChildFlowFiles({ caller: root, declarations: {}, mapping: null })
-    expect(requirePrivateChildFlowFilePlanWrite(plan, root)).toBeNull()
-    expect(() => requirePrivateChildFlowFilePlanWrite({ ...plan }, root)).toThrow('does not belong')
-    expect(() => requirePrivateChildFlowFilePlanWrite(plan, other)).toThrow('does not belong')
+    expect(() => createPrivateChildFlowFileContext({ ...plan })).toThrow('unavailable')
     root.close()
-    expect(() => requirePrivateChildFlowFilePlanWrite(plan, root)).toThrow('unavailable')
+    expect(() => createPrivateChildFlowFileContext(plan)).toThrow('unavailable')
   } finally {
     root.close()
     other.close()
   }
 })
-test('a caller binds only its original authenticated native target and revokes descendant views', () => {
+test('closing an authenticated caller revokes descendant writable views', () => {
   const caller = createPrivateRootFlowFileContext({
     declarations: { files: 'read-write' },
     captured: [],
   })
-  const native = createPrivateFileImportTarget({
-    async stage() {
-      throw new Error('this context test performs no native effects')
-    },
-    async close() {},
-  })
   try {
-    expect(() => bindPrivateFlowFileImportTarget(caller, { ...native })).toThrow('original native')
-    bindPrivateFlowFileImportTarget(caller, native)
-    expect(privateFlowFileImportTarget(caller)).toBe(native)
-    expect(() => privateFlowFileImportTarget({ ...caller })).toThrow('unavailable')
+    expect(() => privateFlowFileExecutionProjection({ ...caller })).toThrow('unavailable')
     const child = createPrivateChildFlowFileContext(
       planPrivateChildFlowFiles({
         caller,
         declarations: { output: 'read-write' },
-        mapping: { output: { into: 'files', directory: 'child' } },
+        mapping: { output: { create: true } },
+        attachments: { output: { create: true } },
       }),
     )
     caller.close()
     expect(() => privateFlowFileExecutionProjection(child)).toThrow('unavailable')
-    expect(() => privateFlowFileImportTarget(caller)).toThrow('unavailable')
+    expect(() => privateFlowFileExecutionProjection(caller)).toThrow('unavailable')
     child.close()
   } finally {
     caller.close()

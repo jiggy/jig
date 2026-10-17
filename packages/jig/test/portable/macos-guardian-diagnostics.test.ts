@@ -8,6 +8,14 @@ import {
 } from '../../src/internal/macos-guardian-diagnostics.js'
 
 test('guardian failure transport keeps only closed steps and causes', () => {
+  const clock = privateMacosGuardianFailure(
+    'scope-preparation',
+    new Error('macOS guardian native clock unavailable'),
+  )
+  expect(normalizePrivateMacosGuardianFailure(JSON.parse(JSON.stringify(clock)))).toEqual({
+    step: 'scope-preparation',
+    cause: 'NATIVE_CLOCK',
+  })
   const privateError = Object.assign(new Error('private-token /private/owner/path'), {
     code: 'PRIVATE_TOKEN',
     cause: new Error('credential'),

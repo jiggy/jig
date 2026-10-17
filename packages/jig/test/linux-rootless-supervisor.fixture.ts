@@ -7,6 +7,11 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { privateHasCoreDumpingProcess } from '../src/internal/linux-rootless-supervisor.js'
+import {
+  type PrivateBootDeadline,
+  privateBootDeadlineFromUnix,
+} from '../src/internal/native-clock.js'
+
 const POLICY = ['--no-env-file', '--no-install', '--config=/dev/null'] as const
 const SUPERVISOR = fileURLToPath(
   new URL('../src/internal/linux-rootless-supervisor.ts', import.meta.url),
@@ -30,6 +35,7 @@ interface Configuration {
     readonly cpuQuotaMicros: number
     readonly cpuPeriodMicros: number
     readonly deadlineUnixMs: number
+    readonly bootDeadline: PrivateBootDeadline
     readonly cancellationGraceMs: number
     readonly cleanupTimeoutMs: number
   }
@@ -37,8 +43,10 @@ interface Configuration {
   readonly capturedInputs: readonly []
   readonly inputDirectories: readonly []
   readonly inputAliases: readonly []
+  readonly inputEmptyDirectories: readonly []
+  readonly evaluationWorkspace: null
+  readonly evaluationEntries: readonly []
   readonly output: false
-  readonly outputImports: false
   readonly command: readonly [string, ...string[]]
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated'
@@ -83,6 +91,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
       cpuQuotaMicros: 10_000,
       cpuPeriodMicros: 100_000,
       deadlineUnixMs: Date.now() + 2_000,
+      bootDeadline: privateBootDeadlineFromUnix(Date.now() + 2_000),
       cancellationGraceMs: 100,
       cleanupTimeoutMs: 100,
     },
@@ -90,8 +99,10 @@ async function fixtureFor(runId: string): Promise<Fixture> {
     capturedInputs: [],
     inputDirectories: [],
     inputAliases: [],
+    inputEmptyDirectories: [],
+    evaluationWorkspace: null,
+    evaluationEntries: [],
     output: false,
-    outputImports: false,
     command: [bunPath, ...POLICY, '-e', `await Bun.write(${JSON.stringify(marker)}, "ran")`],
     environment: {},
     network: 'isolated',
@@ -236,22 +247,23 @@ function closeServer(server: Server): Promise<void> {
     server.close((error) => (error === undefined ? resolve() : reject(error)))
   })
 }
+
+export type { Configuration, Fixture }
 export {
-  POLICY,
-  SUPERVISOR,
+  acceptOne,
+  childClose,
+  closeServer,
+  collect,
   DIGEST_A,
   DIGEST_B,
   DIGEST_C,
-  OWNER_TOKEN,
-  fixtureFor,
-  writeOwner,
-  invokeSupervisor,
   expectMissing,
+  fixtureFor,
+  invokeSupervisor,
   listen,
-  acceptOne,
-  childClose,
+  OWNER_TOKEN,
+  POLICY,
+  SUPERVISOR,
   withTimeout,
-  collect,
-  closeServer,
+  writeOwner,
 }
-export type { Configuration, Fixture }

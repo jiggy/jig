@@ -9,6 +9,7 @@ All selected domain requirements still apply.
 
 | Work | Required details |
 | --- | --- |
+| Application client or machine request framing | [Installed-host client](#installed-host-client) |
 | Discovery, completion, or caller creation | [CLI discovery](#src-cli-discovery) |
 | Grammar, acquisition, or review readiness | [Command grammar and review](#command-grammar-and-review) |
 | Inspect approved targets | [Approved target inspection](#approved-target-inspection) |
@@ -17,6 +18,16 @@ All selected domain requirements still apply.
 | Verify observable output | [Verification](#verification), [acceptance checks](#acceptance-checks) |
 
 ## Local Contracts
+
+### Installed-host client
+
+- `src/client.ts` and pure `src/attempt-contract.ts` own the separate
+  installed-host application client. Importing it starts no process and grants no authority.
+  It uses the installed machine boundary, never embedded native internals or private-state reads.
+
+  `src/cli-attempt-io.ts` bounds machine requests without consuming the owning submit connection.
+  Request completion differs from client closure. Duplicate observers never inherit cancellation ownership.
+  Keep execution, retained-byte availability, export and retirement facts distinct in machine and human output.
 
 ### src cli-discovery
 
@@ -332,8 +343,10 @@ belong to their package suites. See their owning `AGENTS.md` files. Jig's
 `test/portable/cli-web*.test.ts` and installed tests retain host admission,
 attribution, receipt, transport, lifetime, terminal restoration, JSON and
 immutable-capture proof. Frozen standalone package consumers and frozen
-installed Jig runs are distinct gates. Source mocks and design approval qualify
-neither installed behavior nor newcomer usability.
+installed Jig runs are distinct gates.
+
+Never use source mocks or private replacement evidence.
+Design approval qualifies neither installed behavior nor newcomer usability.
 `test/portable/cli-review-agent-setup.test.ts` and
 `test/portable/project-resource-qualification.test.ts` check bounded read-only
 setup facts, shared recipients, preserved policy, honest captured locations and

@@ -210,6 +210,9 @@
             "policy": {
               "$ref": "#/$defs/grantPolicy"
             },
+            "evaluation": {
+              "$ref": "#/$defs/retainedEvaluation"
+            },
             "name": {
               "type": "string",
               "minLength": 1,
@@ -223,6 +226,131 @@
           "$ref": "#/$defs/mappedAttachmentRoute"
         }
       ]
+    },
+    "retainedPackage": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "flow-package/0" },
+        "digest": { "type": "string", "minLength": 71, "maxLength": 71 }
+      },
+      "required": ["kind", "digest"],
+      "additionalProperties": false
+    },
+    "retainedEvaluation": {
+      "description": "Exact reviewed recipe and development-inclusive dependency bytes, effective policy, and private alias layout. References alone grant no authority.",
+      "type": "object",
+      "properties": {
+        "recipe": { "$ref": "#/$defs/retainedPackage" },
+        "dependencies": { "$ref": "#/$defs/retainedPackage" },
+        "recipeDigest": { "type": "string", "minLength": 71, "maxLength": 71 },
+        "dependencyDigest": { "type": "string", "minLength": 71, "maxLength": 71 },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "flowRoot": { "type": "string" },
+            "members": { "type": "array", "maxItems": 256, "items": { "type": "string" } },
+            "aliases": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "object",
+                "properties": { "path": { "type": "string" }, "target": { "type": "string" } },
+                "required": ["path", "target"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["flowRoot", "members", "aliases"],
+          "additionalProperties": false
+        },
+        "configuration": {
+          "type": "object",
+          "properties": {
+            "recipe": {
+              "type": "object",
+              "properties": {
+                "family": { "const": "bun-typescript" },
+                "generate": { "type": "string" },
+                "test": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "items": { "type": "string" }
+                },
+                "collect": {
+                  "type": "array",
+                  "maxItems": 3,
+                  "items": { "enum": ["generated", "dist", "reports"] }
+                }
+              },
+              "required": ["family", "test", "collect"],
+              "additionalProperties": false
+            },
+            "compiler": {
+              "type": "object",
+              "properties": {
+                "compilerOptions": {
+                  "type": "object",
+                  "properties": {
+                    "target": { "enum": ["ES2022", "ESNext"] },
+                    "module": { "const": "ESNext" },
+                    "moduleResolution": { "const": "Bundler" },
+                    "strict": { "type": "boolean" },
+                    "noUncheckedIndexedAccess": { "type": "boolean" },
+                    "exactOptionalPropertyTypes": { "type": "boolean" },
+                    "skipLibCheck": { "type": "boolean" },
+                    "declaration": { "type": "boolean" },
+                    "sourceMap": { "type": "boolean" },
+                    "lib": { "type": "array", "items": { "enum": ["ES2022", "ESNext", "DOM"] } },
+                    "types": { "type": "array", "items": { "type": "string" } },
+                    "rootDir": { "const": "." },
+                    "outDir": { "const": "dist" },
+                    "noEmitOnError": { "const": true },
+                    "incremental": { "const": false }
+                  },
+                  "required": [
+                    "target",
+                    "module",
+                    "moduleResolution",
+                    "rootDir",
+                    "outDir",
+                    "noEmitOnError",
+                    "incremental"
+                  ],
+                  "additionalProperties": false
+                },
+                "include": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "enum": ["src/**/*.ts", "tools/**/*.ts", "test/**/*.ts", "generated/**/*.ts"]
+                  }
+                },
+                "exclude": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": { "enum": ["node_modules", "scratch", "dist"] }
+                }
+              },
+              "required": ["compilerOptions", "include", "exclude"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["recipe", "compiler"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "recipe",
+        "dependencies",
+        "recipeDigest",
+        "dependencyDigest",
+        "layout",
+        "configuration"
+      ],
+      "additionalProperties": false
     },
     "invocationRequirement": {
       "oneOf": [
@@ -263,6 +391,24 @@
     },
     "grantPolicy": {
       "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "evaluation" },
+            "recipe": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "attachments": {
+              "type": "object",
+              "properties": {
+                "candidate": { "const": "supplied-read" },
+                "deliverables": { "const": "operation-create" }
+              },
+              "required": ["candidate", "deliverables"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "recipe", "attachments"],
+          "additionalProperties": false
+        },
         {
           "type": "object",
           "properties": {
@@ -394,18 +540,17 @@
         {
           "type": "object",
           "properties": {
-            "into": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 64
-            },
-            "directory": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 64
-            }
+            "create": { "const": true }
           },
-          "required": ["into", "directory"],
+          "required": ["create"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "supplied": { "const": "read" }
+          },
+          "required": ["supplied"],
           "additionalProperties": false
         }
       ]

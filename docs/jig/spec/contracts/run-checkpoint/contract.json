@@ -35,6 +35,15 @@
             "maxLength": 1048576
           },
           "maxProperties": 64
+        },
+        "artifacts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024
+          },
+          "maxProperties": 8
         }
       },
       "required": ["sequence", "evidence", "files"],

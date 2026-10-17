@@ -4,10 +4,6 @@ import { lstat, mkdir, mkdtemp, rmdir, writeFile } from 'node:fs/promises'
 import { createServer, type Server, type Socket } from 'node:net'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import {
-  type PrivateFileImportTarget,
-  PrivateFileImportUnconfirmedError,
-} from './execution-file-import.js'
 import { PrivateExecutionPreparationDeadlineError } from './execution-process.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 import { privateMacosBefore, privateMacosControlChannel } from './macos-control-channel.js'
@@ -16,11 +12,6 @@ import {
   type PrivateMacosReceivedDescriptors,
   sendPrivateMacosDescriptors,
 } from './macos-descriptor-handoff.js'
-import {
-  createPrivateMacosFileImportTarget,
-  type PrivateMacosImportMessage,
-  type PrivateMacosImportReply,
-} from './macos-file-import.js'
 import {
   normalizePrivateMacosGuardianFailure,
   type PrivateMacosGuardianPhase,
@@ -57,7 +48,9 @@ import { privateMacosSandboxProfile } from './macos-sandbox-profile.js'
 import {
   normalizePrivateMacosScopeResult,
   type PrivateMacosScopeResult,
+  requirePrivateMacosScopeLimits,
 } from './macos-scope-execution.js'
+import { privateBootDeadlineFromUnix } from './native-clock.js'
 
 const xml = (text: string) =>
   text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -219,6 +212,7 @@ async function recoverStorageWithGuardian(
       targetDirectory,
       targetToken,
       deadlineUnixMs: Date.now() + 30_000,
+      bootDeadline: privateBootDeadlineFromUnix(Date.now() + 30_000),
     },
   })
   recovery.stdout.resume()
@@ -242,7 +236,6 @@ export interface PrivateMacosGuardian {
   readonly stdout: Socket
   readonly stderr: Socket
   readonly completion: Promise<PrivateMacosGuardianResult>
-  readonly outputImport?: PrivateFileImportTarget | undefined
   /** Fencing precedes collection; completion also proves storage cleanup. */
   readonly fenced: Promise<PrivateMacosGuardianResult & { readonly outputFd?: number }>
   /** Close the borrowed collector after reading and before awaiting completion. */
@@ -274,6 +267,8 @@ async function prepareGuardian(input: {
 }): Promise<PrivateMacosGuardian> {
   const coordinator = privateMacosCurrentProcessIdentity()
   const configuration = structuredClone(input.configuration)
+  if (configuration.type === 'start')
+    Object.assign(configuration, { limits: requirePrivateMacosScopeLimits(configuration.limits) })
   const captures = (input.capturedInputs ?? []).map((file) =>
     Object.freeze({ path: file.path, input: file.input }),
   )
@@ -323,21 +318,6 @@ async function prepareGuardian(input: {
     | Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>>
     | undefined
   let received: PrivateMacosReceivedDescriptors | undefined
-  let importReceiver: Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>> | undefined
-  let importBundle: PrivateMacosReceivedDescriptors | undefined
-  let outputImport: PrivateFileImportTarget | undefined
-  const importRequests = new Map<
-    string,
-    {
-      resolve(reply: PrivateMacosImportReply): void
-      reject(error: unknown): void
-    }
-  >()
-  const rejectImports = (error: unknown) => {
-    for (const request of importRequests.values())
-      request.reject(new PrivateFileImportUnconfirmedError(error))
-    importRequests.clear()
-  }
   let collectionTimer: ReturnType<typeof setTimeout> | undefined
   let collectionLost = false
   let storageAllocated = false
@@ -391,9 +371,6 @@ async function prepareGuardian(input: {
     }
     for (const server of servers) server.close()
     await descriptorReceiver?.close()
-    await importReceiver?.close()
-    await outputImport?.close()
-    if (outputImport === undefined) importBundle?.close()
     if (socketsRecorded)
       removePrivateMacosSockets(configuration.ownerDirectory, configuration.ownerToken)
     else await rmdir(directory)
@@ -405,10 +382,6 @@ async function prepareGuardian(input: {
     received?.close()
     received = undefined
     await descriptorReceiver?.close()
-    await importReceiver?.close()
-    const importClose = outputImport?.close()
-    void importClose?.catch(() => undefined)
-    if (outputImport === undefined) importBundle?.close()
     control?.destroy()
     for (const socket of sockets) socket.destroy()
     for (const server of servers) server.close()
@@ -418,7 +391,6 @@ async function prepareGuardian(input: {
       cleanupTimeoutMs,
       input,
     )
-    await importClose
     finished = true
     return Object.freeze({ result: null, outputLost: true, recovered: true, fenced: true })
   }
@@ -430,7 +402,6 @@ async function prepareGuardian(input: {
           ...configuration.files.protectedRoots,
           configuration.ownerDirectory,
           directory,
-          ...(storage?.imports === true ? [join(storage.mountPath, 'imports')] : []),
         ],
       })
     if (configuration.type === 'start' && storage !== undefined) {
@@ -446,8 +417,6 @@ async function prepareGuardian(input: {
     socketsRecorded = true
     if (storage?.collect !== undefined && storage.collect !== null)
       descriptorReceiver = await createPrivateMacosDescriptorReceiver(directory, 'output')
-    if (storage?.imports === true)
-      importReceiver = await createPrivateMacosDescriptorReceiver(directory, 'roots')
     const controlEndpoint = await endpoint('')
     const stdinEndpoint = await endpoint('.in')
     const stdoutEndpoint = await endpoint('.out')
@@ -476,33 +445,6 @@ async function prepareGuardian(input: {
     if (started.status !== 0) throw new Error('macOS guardian bootstrap failed')
     control = await privateMacosBefore(controlEndpoint.accepted, 12_000)
     const channel = privateMacosControlChannel(control)
-    const importRequest = async (
-      message: PrivateMacosImportMessage,
-    ): Promise<PrivateMacosImportReply['state']> => {
-      if (!['running', 'collecting'].includes(currentPhase()))
-        throw new PrivateFileImportUnconfirmedError(
-          new Error('macOS import control is unavailable'),
-        )
-      const key = `${message.id}:${message.type}`
-      if (importRequests.has(key)) throw new Error('duplicate macOS native import control request')
-      const reply = new Promise<PrivateMacosImportReply>((resolve, reject) => {
-        importRequests.set(key, { resolve, reject })
-      })
-      void reply.catch(() => undefined)
-      let result: PrivateMacosImportReply
-      try {
-        channel.send(message)
-        result = await privateMacosBefore(reply, 5000)
-      } catch (error) {
-        control?.destroy()
-        throw new PrivateFileImportUnconfirmedError(error)
-      } finally {
-        importRequests.delete(key)
-      }
-      if (message.type === 'import-begin' && result.state === 'absent')
-        throw new Error(`macOS import refused: ${result.refusal ?? 'unavailable'}`)
-      return result.state
-    }
     channel.send(configuration)
     const [stdin, stdout, stderr] = await privateMacosBefore(
       Promise.all([stdinEndpoint.accepted, stdoutEndpoint.accepted, stderrEndpoint.accepted]),
@@ -559,53 +501,6 @@ async function prepareGuardian(input: {
           const message = (await channel.receive()) as Record<string, unknown>
           step = 'validate'
           if (
-            message?.type === 'import-roots' &&
-            currentPhase() === 'admitted' &&
-            storage?.imports === true &&
-            importReceiver !== undefined &&
-            outputImport === undefined &&
-            Object.keys(message).join() === 'type'
-          ) {
-            importBundle = await importReceiver.receive(
-              guardian!,
-              5000,
-              transferCancellation.signal,
-            )
-            await importReceiver.close()
-            outputImport = await createPrivateMacosFileImportTarget({
-              bundle: importBundle,
-              deadlineUnixMs:
-                configuration.type === 'start' ? configuration.limits.deadlineUnixMs : 0,
-              request: importRequest,
-              checkLive() {
-                if (currentPhase() !== 'running')
-                  throw new Error('macOS caller is no longer running')
-              },
-            })
-          } else if (
-            message?.type === 'import-result' &&
-            Object.keys(message).sort().join() === 'action,id,refusal,state,type' &&
-            typeof message.action === 'string' &&
-            Number.isSafeInteger(message.id) &&
-            ['ready', 'committed', 'absent'].includes(message.state as string) &&
-            (message.refusal === null ||
-              [
-                'not-admitted',
-                'scope-stopped',
-                'root-exited',
-                'deadline',
-                'root-identity',
-                'stopped',
-                'not-running',
-                'destination',
-              ].includes(message.refusal as string))
-          ) {
-            const key = `${message.id}:${message.action}`
-            const request = importRequests.get(key)
-            if (request === undefined) throw new Error('unexpected macOS import acknowledgement')
-            importRequests.delete(key)
-            request.resolve(message as unknown as PrivateMacosImportReply)
-          } else if (
             message?.type === 'ready' &&
             currentPhase() === 'admitted' &&
             Object.keys(message).sort().join() === 'pid,type,version' &&
@@ -626,22 +521,21 @@ async function prepareGuardian(input: {
           ) {
             const result = normalizePrivateMacosScopeResult(message.result)
             phase = 'collecting'
-            const importsClosed = outputImport?.close() ?? Promise.resolve()
-            void importsClosed.catch(() => {
-              try {
-                channel.send({ type: 'cancel' })
-              } catch {
-                control?.destroy()
-              }
-            })
             if (message.collect) {
               if (
                 descriptorReceiver === undefined ||
-                result.exitCode !== 0 ||
+                (result.exitCode !== 0 &&
+                  !(
+                    configuration.type === 'start' &&
+                    storage?.collect === 'evaluation' &&
+                    configuration.evaluationWorkspace !== undefined &&
+                    result.exitCode !== null
+                  )) ||
+                result.signal !== null ||
                 result.reason !== 'payload_exit' ||
                 message.outputLost
               )
-                throw new Error('macOS collector has no successful fenced owner')
+                throw new Error('macOS collector has no eligible fenced owner')
               step = 'output-transfer'
               received = await descriptorReceiver.receive(
                 guardian!,
@@ -670,13 +564,7 @@ async function prepareGuardian(input: {
               fenced: true,
               ...(received === undefined ? {} : { outputFd: received.descriptors[0]! }),
             })
-            // Keep dispatching import ACKs while loans close, then allow snapshot capture.
-            void importsClosed
-              .then(() => {
-                if (outputImport !== undefined) channel.send({ type: 'imports-closed' })
-                resolveFenced(observed)
-              })
-              .catch(rejectFenced)
+            resolveFenced(observed)
           } else if (
             message?.type === 'terminal' &&
             Object.keys(message).sort().join() === 'failure,outputLost,result,type' &&
@@ -689,7 +577,6 @@ async function prepareGuardian(input: {
             if (failure !== null && !message.outputLost)
               throw new Error('invalid macOS guardian response')
             phase = 'terminal'
-            rejectImports(new Error('macOS guardian ended during import'))
             const normalizedResult =
               message.result === null ? null : normalizePrivateMacosScopeResult(message.result)
             terminalResult = normalizedResult ?? undefined
@@ -723,7 +610,6 @@ async function prepareGuardian(input: {
       } catch (error) {
         reportPrivateMacosGuardianRecovery(phase, step, error)
         phase = 'terminal'
-        rejectImports(error)
         rejectReady(new Error('macOS guardian connection lost'))
         try {
           const recovered = await recover()
@@ -748,9 +634,6 @@ async function prepareGuardian(input: {
       stdout,
       stderr,
       completion,
-      get outputImport() {
-        return outputImport
-      },
       fenced,
       release,
       async admit() {

@@ -28,7 +28,13 @@ export function admitPrivatePackageResult(
   }
 
   try {
-    inspected.schemas.result?.validate(terminal.result, 'INVALID_RESULT')
+    inspected.schemas.result?.validate(
+      {
+        outcome: terminal.result.outcome,
+        output: terminal.result.output,
+      },
+      'INVALID_RESULT',
+    )
   } catch (error) {
     if (!(error instanceof SchemaDiagnostic)) throw error
     return invalidResult(

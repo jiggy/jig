@@ -184,43 +184,67 @@ slots: {
     target: 'flow:flows/copy',
     attachments: {
       source: { from: 'source' },
-      deliverables: { into: 'deliverables', directory: 'copies' },
+      deliverables: { create: true },
     },
   },
 },
 ```
 
-Caller and child declare `source: "read"` and `deliverables: "read-write"`. The
-child receives the caller's captured source and an empty output. Call it with
-`await run.call({ operationId: 'copy-1', slot: 'copy', input })`. After
-successful completion and cleanup, its complete files appear in the caller's
-`deliverables/copies` folder.
+The caller declares `source: "read"`. The child declares `source: "read"` and
+`deliverables: "read-write"`. The child receives the caller's immutable source
+view and one fresh empty output owned by the call:
 
-Every child attachment needs a mapping. Call input cannot choose paths or
-settings.
+```ts
+const copied = await run.call({
+  operationId: 'copy-1',
+  slot: 'copy',
+  input,
+  attachments: { deliverables: { create: true } },
+})
+```
 
-Use distinct child destinations. Existing or previously committed folders cannot
-be reused. Failed or cancelled work publishes no partial folder. Cancellation
-racing a completed commit may leave the complete folder with a cancelled or
-uncertain response.
+After successful child completion and cleanup, `copied.artifacts.deliverables`
+holds its immutable output. Another slot with `source: { supplied: 'read' }`
+can receive it through `attachments: { source: { read: artifact } }`. The
+fixed `from` mapping is not repeated in call attachments and cannot be overridden.
+Every child attachment needs a reviewed mapping. Calls never choose writable
+host paths.
 
-Inspect evidence before further work. Jig does not retry automatically.
-[Child file policy](../spec/project-policy.md#child-file-runs) owns mapping,
-shared limits, commit, and cleanup requirements.
+The same slot can run repeatedly or alongside a sibling, with a fresh destination
+for each operation. A caller does not need writable output merely to coordinate
+file work. To forward a held artifact, declare `artifactResults: ["final"]` in
+its `FLOW.contract.json` and return `artifactResults: { final: artifact }`
+alongside the handler's ordinary outcome and output. Result artifact names
+are separate from domain result schemas.
+
+Forwarding retains the same immutable
+bytes rather than merging files into the caller's writable tree. Failed or
+uncertain work does not become a successful artifact. Jig does not retry it
+automatically.
+
+[Child file policy](../spec/project-policy.md#child-file-runs) owns exact
+mapping, artifact limits, lifecycle, and cleanup requirements.
 
 ## Receive one packet
 
-A writable root attachment starts empty and is limited to 16 MiB, enforced while
-the Flow writes. Jig collects output after execution is fenced and its result
-accepted. The original input directory stays outside write access. These limits
-are current Jig policy for small file jobs, not FLOW requirements or proved
-optimums.
+Omit `--out` when a reviewed root target declares writable deliverables or
+forwarded `artifactResults`. Jig chooses a fresh packet directory in
+operating-system temporary storage for each invocation. It reports the exact
+destination on stderr, including with `--json`.
 
-| Choice | Result |
-| --- | --- |
-| Writable target without `--out` | A fresh temporary packet. Jig reports its path on stderr, including with `--json`. The operating system may clear it. |
-| Result-only target without `--out` | The result on stdout, without a packet. |
-| Either target with `--out DIR` | A new packet at the chosen destination, replacing any entrypoint output default. |
+Earlier packets remain intact, but the operating system may clear temporary
+storage. Use `--out ./review` to choose a retained location. It replaces any
+entrypoint output default and never overwrites an existing destination. The
+chosen destination stays identical through command reexecution. A refusal does
+not automatically retry work or choose another path.
+
+A root Flow may declare one writable attachment. It begins empty and is
+limited to 16 MiB. Jig supplies its contained path and collects files only
+after execution is fenced and the result accepted. A Flow with neither a
+writable attachment nor declared artifact results returns its result on stdout
+without creating a packet by default. It can still use `--out` to save its
+execution record. Declared artifact results permit forwarding but do not
+require it: the handler may return an empty selection.
 
 The destination must be absent, have an existing supported parent, and lie
 outside every per-run input root. For `--attach source=.`, choose a sibling
@@ -230,10 +254,27 @@ stays fixed through command reexecution.
 Refusal does not automatically retry work or choose another path. Binding source
 directories are not reopened during execution.
 
-`result.json` contains the host's execution record and captured/exported file
-manifests and digests. A Flow's own `files/result.json` is a deliverable, not
-host status. Use [recorded result inspection](results.md#reopen-a-saved-result)
-to read a saved packet without starting work.
+```text
+review/
+  result.json       Jig's execution record and file manifest
+  files/            The Flow's deliverables
+```
+
+Ordinary packets keep the root's native writable files directly under `files/`.
+Forwarded results instead occupy `files/<result-name>/`. For example,
+`artifactResults: { final: artifact }` places that snapshot's `patch.diff` at
+`files/final/patch.diff`. Forwarding does not merge snapshots into the mutable
+root output. Conflicting composed paths fail rather than overwrite files.
+Checkpoint-associated snapshots use `files/artifacts/<association-name>/`,
+alongside the checkpoint's explicit text files.
+
+The host record identifies the Run, admitted method/configuration, canonical
+JSON input, captured files, and exported file sizes and SHA-256 digests.
+It does not expose private host identities or include a digest of itself.
+Exported directories are private (`0700`) and files are owner-readable/writable
+(`0600`). A Flow's own `files/result.json` is just a deliverable, not host status.
+Use [recorded result inspection](results.md#reopen-a-saved-result) to read a
+saved packet without starting work.
 
 ## Understand failures
 
@@ -248,6 +289,32 @@ progress. After cleanup, Jig delivers its latest accepted checkpoint with the
 failed or lost execution status intact. The record identifies that checkpoint or
 keeps `checkpoint: null` when none was accepted. Without confirmed cleanup,
 delivery fails.
+
+Checkpoint support does not require a writable root attachment or `--out`.
+The original protected attempt retains the latest accepted aggregate, including
+optional currently held artifact associations. A coordinator can therefore save
+progress without owning a writable output tree. Releasing a live reference
+prevents using that reference for a new selection. It does not erase an already
+accepted checkpoint or forbid an exact duplicate of its accepted save.
+
+Applications can use the [execution client](../spec/execution-client.md) to
+persist preparation before submission, read retained results and export later
+without rerunning the method. `source: 'final'` selects final retained bytes.
+`source: 'checkpoint'` selects the latest accepted aggregate after confirmed
+cleanup and preserves the original failed/lost status. An optional
+`artifactResult` selects one final snapshot, published without its result-name
+prefix, and is not valid with checkpoint selection. Publication still requires
+an absent destination and does not confer independent authenticated provenance.
+
+The live artifact budget is 256 references, 16 snapshots, and 256 MiB including
+materialized bytes. It is not the durable retention allowance.
+
+Prepared requests
+choose a retained artifact allowance up to 256 MiB. Final and latest checkpoint
+bytes share it. Attempt inputs, retained bytes and reservations share a 4 GiB
+store, separate from review's 1 GiB Package/0 archive. These are logical capacity
+limits, not a physical filesystem space or `ENOSPC` guarantee. See the
+[exact capacity rules](../spec/execution-client.md#capacity-and-time-limits).
 
 Other lost Runs may have no terminal record.
 

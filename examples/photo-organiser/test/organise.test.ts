@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assertResponseSchema, prepareAgent } from '@jigging/agent-method'
-import type { Attachment, JsonValue, RunContext } from '@jigging/flow'
+import type { Artifact, Attachment, JsonValue, RunContext, RunResult } from '@jigging/flow'
 import { REPORTING_CONTRACT, validateReportingMessage } from '@jigging/reporting'
 import { createPhotoContactSheet } from '../flows/contact-sheet/method.ts'
 import { copyPhotos } from '../flows/copy-photos/method.ts'
@@ -51,16 +51,22 @@ function fixtureEvent(caption: string): string {
 const proposal = {
   assignments: catalogue.map((photo) => ({ id: photo.id, event: fixtureEvent(photo.caption) })),
 }
-async function withRun(assertion: (run: TestOrganiserRun, outputFolder: string) => Promise<void>) {
+async function withRun(
+  assertion: (
+    run: TestOrganiserRun,
+    outputFolder: string,
+    exportFinal: (result: RunResult) => Promise<void>,
+  ) => Promise<void>,
+) {
   const root = await mkdtemp(join(tmpdir(), 'photo-organiser-'))
   const outputFolder = join(root, 'output')
   await mkdir(outputFolder)
+  const snapshots = new Map<Artifact, string>()
   const run: TestOrganiserRun = {
     input: {},
     signal: new AbortController().signal,
     attachments: {
       source: { path: join(import.meta.dir, '../fixtures/photos'), access: 'read' },
-      photos: { path: outputFolder, access: 'read-write' },
     },
     call: async (request) => {
       if (request.slot === 'group') {
@@ -74,9 +80,12 @@ async function withRun(assertion: (run: TestOrganiserRun, outputFolder: string) 
         })
       }
 
-      // Application composition only: run the real leaf methods in separate
-      // temporary folders, then model the reviewed folder visibility after await.
-      // Native isolation, import and cleanup require an admitted Jig Run.
+      // Application composition only: real leaf code writes separate temporary
+      // outputs. Synthetic references model final selection, not native rights.
+      // Sealing, isolation and export require a separately admitted host Run.
+      if (request.slot !== 'copy-photos' && request.slot !== 'contact-sheet') {
+        throw new Error('The fixture received an unknown file-method slot.')
+      }
       const childFolder = join(root, request.slot)
       await mkdir(childFolder)
       const source = run.attachments.source
@@ -91,27 +100,37 @@ async function withRun(assertion: (run: TestOrganiserRun, outputFolder: string) 
           files: { path: childFolder, access: 'read-write' as const },
         },
       }
-      if (request.slot === 'copy-photos') {
-        const result = await copyPhotos(childRun)
-        await rename(childFolder, join(outputFolder, 'copies'))
-        return result
-      }
-      expect(request.slot).toBe('contact-sheet')
-      const result = await createPhotoContactSheet(childRun)
-      await rename(childFolder, join(outputFolder, 'overview'))
-      return result
+      expect(request.attachments).toEqual({ files: { create: true } })
+      const result =
+        request.slot === 'copy-photos'
+          ? await copyPhotos(childRun)
+          : await createPhotoContactSheet(childRun)
+      const artifact = Object.freeze({ reference: `synthetic:${request.operationId}` }) as Artifact
+      snapshots.set(artifact, childFolder)
+      return { ...result, artifacts: { files: artifact } }
     },
   }
   try {
-    await assertion(run, outputFolder)
+    await assertion(run, outputFolder, async (result) => {
+      for (const [name, artifact] of Object.entries(result.artifactResults ?? {})) {
+        const folder = snapshots.get(artifact)
+        if (folder === undefined || (name !== 'copies' && name !== 'overview')) {
+          throw new Error('The application selected an unknown final artifact.')
+        }
+        await rename(folder, join(outputFolder, name))
+      }
+    })
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 }
 test('checked copies preserve original bytes, group files and deliver a visible before/after sheet', async () =>
-  withRun(async (run, outputFolder) => {
+  withRun(async (run, outputFolder, exportFinal) => {
     const result = await organisePhotos(run)
     expect(result.outcome).toBe('done')
+    expect(Object.keys(result.artifactResults ?? {}).sort()).toEqual(['copies', 'overview'])
+    expect(await readdir(outputFolder)).toEqual([])
+    await exportFinal(result)
     const rows = (result.output as { photos: RenamedPhoto[] }).photos
     expect(rows).toHaveLength(12)
     for (const photo of rows) {
@@ -127,8 +146,8 @@ test('checked copies preserve original bytes, group files and deliver a visible 
       photoBoxView({ phase: 'ready', photos: catalogue, plan: rows }).sections[0]?.blocks[0],
     ).toMatchObject({
       references: [
-        { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
-        { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
+        { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+        { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
       ],
     })
     expect(await readFile(join(outputFolder, 'copies/manifest.csv'), 'utf8')).toContain(
@@ -179,7 +198,14 @@ test('copy metadata can be reordered without changing the accepted collection', 
   }))
 
 for (const slot of ['copy-photos', 'contact-sheet']) {
-  for (const failure of ['throw', 'cancel', 'incomplete', 'unexpected-outcome', 'changed-path']) {
+  for (const failure of [
+    'throw',
+    'cancel',
+    'incomplete',
+    'unexpected-outcome',
+    'changed-path',
+    'missing-artifact',
+  ]) {
     test(`${slot} ${failure} prevents a completed collection without replay`, async () =>
       withRun(async (run) => {
         const originalCall = run.call
@@ -200,6 +226,10 @@ for (const slot of ['copy-photos', 'contact-sheet']) {
           }
           if (failure === 'unexpected-outcome') {
             return { outcome: 'blocked', output: { reason: 'cannot proceed' } }
+          }
+          if (failure === 'missing-artifact') {
+            const result = await originalCall(request)
+            return { outcome: result.outcome, output: result.output }
           }
           const count = failure === 'incomplete' ? 11 : 12
           if (slot === 'copy-photos') {

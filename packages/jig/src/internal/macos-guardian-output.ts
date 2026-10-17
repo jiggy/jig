@@ -3,7 +3,10 @@ import { privateSnapshotExecutionOutput } from './execution-output.js'
 import type { PrivateMacosGuardian } from './macos-guardian-client.js'
 
 /** Bind an output snapshot to both writer fencing and complete native cleanup. */
-export function retainPrivateMacosGuardianOutput(guardian: PrivateMacosGuardian) {
+export function retainPrivateMacosGuardianOutput(
+  guardian: PrivateMacosGuardian,
+  collection: 'output' | 'evaluation' = 'output',
+) {
   let captured: PrivateCapturedOutput | undefined
   let captureError: unknown
   const collected = guardian.fenced.then(
@@ -38,7 +41,8 @@ export function retainPrivateMacosGuardianOutput(guardian: PrivateMacosGuardian)
         captured !== undefined &&
         result.recovered &&
         result.result?.reason === 'payload_exit' &&
-        result.result.exitCode === 0 &&
+        (result.result.exitCode === 0 ||
+          (collection === 'evaluation' && result.result.exitCode !== null)) &&
         result.result.signal === null
       if ((result.outputLost || result.recovered) && !retainedAfterRecovery) {
         captured?.close()

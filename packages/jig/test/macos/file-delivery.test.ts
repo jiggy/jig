@@ -1,5 +1,7 @@
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { expect, spyOn, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { closeSync } from 'node:fs'
@@ -24,9 +26,9 @@ import {
 } from '../../src/internal/file-command.js'
 import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
 import { privateOpenFileRoot } from '../../src/internal/file-input.js'
-import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
-import { fixture, record, fixturePid, waitUntilStopped } from '.././file-delivery.fixture.js'
+import { PrivateRunCheckpoints } from '../checkpoint.fixture.js'
+import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
 
 test(
   'native inspection retains immutable preview within the unchanged command lifetime',

@@ -11,6 +11,20 @@ export const PRIVATE_BUN_PREPARATION_LIMITS = Object.freeze({
   preparedBytes: 32 * MIB,
 })
 
+/** Review-only developer closure; never changes FLOW production selection. */
+export const PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS = Object.freeze({
+  sourceFiles: 32,
+  sourceBytes: 4 * MIB,
+  preparedFiles: 8192,
+  preparedBytes: 128 * MIB,
+})
+export type PrivateBunPreparationMode = 'production' | 'evaluation'
+export function privateBunPreparationLimits(mode: PrivateBunPreparationMode) {
+  return mode === 'evaluation'
+    ? PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS
+    : PRIVATE_BUN_PREPARATION_LIMITS
+}
+
 /**
  * A conservative bound for one JSON line containing canonical file records.
  *
@@ -49,6 +63,15 @@ export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES =
     'prepared',
     PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
     PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
+  ) +
+  PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
+  Buffer.byteLength(',"layout":')
+
+export const PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES =
+  maximumPrivateBunFileMessageBytes(
+    'prepared',
+    PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS.preparedFiles,
+    PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS.preparedBytes,
   ) +
   PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
   Buffer.byteLength(',"layout":')

@@ -3,8 +3,17 @@ import { PRIVATE_ACTIVATION_TARGET_LIMIT } from '../internal/activation-planning
 import { type BoundAttachments, captureBoundAttachments } from '../internal/bound-attachments.js'
 import type { PrivateFileLocation } from '../internal/descriptor-files.js'
 import { privateDomainDigest } from '../internal/identity.js'
+import {
+  captureStoredPackage,
+  normalizePackageArtifactRef,
+} from '../internal/package-artifact-store.js'
 import { privateProfileSpan } from '../internal/private-profile.js'
+import {
+  normalizePrivateRetainedProjectEvaluation,
+  type PrivateRetainedProjectEvaluation,
+} from '../internal/project-evaluation-retention.js'
 import type { JsonValue } from '../json.js'
+import type { CapturedPackage } from '../package/capture.js'
 import {
   type PrivateAgentSourceLocation,
   privateAgentSourceLocations,
@@ -22,6 +31,7 @@ import {
   type DeclarationSourceObservation,
 } from './declaration-source.js'
 import { entrypointWords, parseProjectEntrypoint } from './entrypoint.js'
+import type { ProjectEvaluation } from './evaluation.js'
 import {
   type CapturedFlowSource,
   captureOpenedFlowSource,
@@ -56,6 +66,10 @@ export interface PrivateRetainedOpenedProjectOptions {
   readonly evaluator: PrivateAuthorEvaluatorOptions
   readonly agentOverride?: AcpGrant['client']
   readonly prepareFlow?: PrepareCapturedFlow
+  readonly reviewEvaluation?: (
+    grant: ProjectEvaluation,
+    captured: CapturedPackage,
+  ) => Promise<PrivateRetainedProjectEvaluation>
   readonly dependencyFlows?: (selectors: readonly string[]) => Promise<CapturedFlowSource>
 }
 
@@ -64,6 +78,7 @@ export interface RetainedBindingDeclaration {
   readonly sourcePath: string
   readonly evaluation: EvaluatedAuthorDeclaration<BindingDefinition>
   readonly attachments?: BoundAttachments
+  readonly retainedEvaluations?: Readonly<Record<string, PrivateRetainedProjectEvaluation>>
 }
 
 export interface PrivateRetainedPackageProject {
@@ -169,10 +184,64 @@ export async function retainOpenedPackageProject(
     }
 
     const grantSource = await captureGrantSource(root, project.value.grants)
+    const reviewedEvaluations = new Map<string, PrivateRetainedProjectEvaluation>()
+    const reviewEvaluation = async (
+      policy: GrantPolicy,
+    ): Promise<PrivateRetainedProjectEvaluation | undefined> => {
+      if (policy.kind !== 'evaluation') return
+      const { kind: _, ...grant } = policy
+      const key = JSON.stringify(grant)
+      const existing = reviewedEvaluations.get(key)
+      if (existing !== undefined) return existing
+      if (options.reviewEvaluation === undefined)
+        invalid(
+          'PROJECT_EVALUATION_UNAVAILABLE',
+          'evaluation review requires locked dependency preparation',
+        )
+      const retained = await captureBoundAttachments(
+        root,
+        { recipe: grant.recipe },
+        options.storeRoot,
+      )
+      const captured = await captureStoredPackage(
+        options.storeRoot,
+        normalizePackageArtifactRef({
+          kind: 'flow-package/0',
+          digest: retained.recipe!.digest,
+        }),
+      )
+      try {
+        const reviewed = normalizePrivateRetainedProjectEvaluation(
+          await options.reviewEvaluation(grant, captured),
+        )
+        if (reviewed.recipe.digest !== captured.digest)
+          throw new TypeError('evaluation review did not retain its captured recipe')
+        reviewedEvaluations.set(key, reviewed)
+        return reviewed
+      } finally {
+        await captured.dispose()
+      }
+    }
     const bindings: RetainedBindingDeclaration[] = []
     for (const [index, member] of bindingSource.members.entries()) {
       const evaluation = evaluations[index + 1] as EvaluatedAuthorDeclaration<BindingDefinition>
       let attachments: BoundAttachments | undefined
+      const retainedEvaluations: Record<string, PrivateRetainedProjectEvaluation> =
+        Object.create(null)
+      for (const [slot, selection] of Object.entries(evaluation.value.slots)) {
+        const policy =
+          typeof selection === 'string'
+            ? selection.startsWith('grant:')
+              ? grantSource.grants[selection.slice(6)]
+              : undefined
+            : 'kind' in selection
+              ? selection
+              : undefined
+        if (policy !== undefined) {
+          const reviewed = await reviewEvaluation(policy)
+          if (reviewed !== undefined) retainedEvaluations[slot] = reviewed
+        }
+      }
       try {
         if (evaluation.value.attachments !== undefined)
           attachments = await captureBoundAttachments(
@@ -197,6 +266,11 @@ export async function retainOpenedPackageProject(
           sourcePath: member.projectPath,
           evaluation,
           ...(attachments === undefined ? {} : { attachments }),
+          ...(Object.keys(retainedEvaluations).length === 0
+            ? {}
+            : {
+                retainedEvaluations: Object.freeze(retainedEvaluations),
+              }),
         }),
       )
     }
@@ -228,7 +302,7 @@ export async function retainOpenedPackageProject(
       select(binding.evaluation.value.package)
       for (const value of Object.values(binding.evaluation.value.slots))
         if (typeof value === 'string') select(value)
-        else if ('attachments' in value) select(value.target)
+        else if ('target' in value) select(value.target)
     }
     const configured = project.value.flows
     if (configured?.kind === 'members') for (const path of configured.paths) select(path)
@@ -263,10 +337,13 @@ export async function retainOpenedPackageProject(
         ...(project.value.defaultProviders === undefined
           ? {}
           : { defaultProviders: project.value.defaultProviders }),
-        bindings: bindings.map(({ sourcePath, evaluation, attachments }) => ({
+        bindings: bindings.map(({ sourcePath, evaluation, attachments, retainedEvaluations }) => ({
           sourcePath,
           definition: evaluation.value,
           ...(attachments === undefined ? {} : { capturedAttachments: attachments }),
+          ...(retainedEvaluations === undefined
+            ? {}
+            : { capturedEvaluations: retainedEvaluations }),
         })),
       },
       PRIVATE_ACTIVATION_TARGET_LIMIT,
@@ -424,6 +501,9 @@ function digestCapture(input: {
       sourcePath: binding.sourcePath,
       evaluation: evaluationIdentity(binding.evaluation),
       ...(binding.attachments === undefined ? {} : { attachments: binding.attachments }),
+      ...(binding.retainedEvaluations === undefined
+        ? {}
+        : { evaluations: binding.retainedEvaluations }),
     })),
   }
   return privateDomainDigest('JIG-Package-Project-Capture/3', value as unknown as JsonValue)

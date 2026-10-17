@@ -1,9 +1,22 @@
-import type { ChannelPair, ChannelSender, JsonValue, RunContext, RunResult } from '@jigging/flow'
+import type { CallResult, ChannelPair, ChannelSender, JsonValue, RunContext } from '@jigging/flow'
 import type { AgentCallInput, AgentInput } from './index.js'
-import { exactKeys, ordinaryRecord, validSessionReceipt } from './values.js'
+import { exactKeys, ordinaryRecord, snapshot, validSessionReceipt } from './values.js'
+
+/** Agent domain evidence, separate from the host's artifact-bearing call envelope. */
+export type AgentDomainResult = { readonly outcome: string; readonly output: JsonValue }
+
+function domainResult(value: unknown): AgentDomainResult {
+  const result = ordinaryRecord(value)
+  if (!result || typeof result.outcome !== 'string' || !Object.hasOwn(result, 'output'))
+    throw invalid('Agent omitted its complete turn result')
+  return {
+    outcome: result.outcome,
+    output: snapshot(result.output, 'INVALID_RESULT'),
+  }
+}
 
 export type AgentTurn =
-  | { readonly type: 'result'; readonly turn: number; readonly result: RunResult }
+  | { readonly type: 'result'; readonly turn: number; readonly result: AgentDomainResult }
   | { readonly type: 'cancelled'; readonly turn: number }
   | {
       readonly type: 'error'
@@ -53,7 +66,7 @@ export type AgentObservation =
 export interface ConversationResult<T> {
   readonly value: T
   readonly turns: readonly AgentTurn[]
-  readonly settlement: RunResult
+  readonly settlement: AgentDomainResult
   /** Present only with onEvent. Observation never stands in for execution settlement. */
   readonly observation?: AgentObservation
 }
@@ -63,7 +76,7 @@ export class AgentConversationError extends AggregateError {
   constructor(
     errors: readonly unknown[],
     readonly turns: readonly AgentTurn[],
-    readonly settlement?: RunResult,
+    readonly settlement?: AgentDomainResult,
   ) {
     super(errors, conversationFailureMessage(errors[0]), { cause: errors[0] })
     this.name = 'AgentConversationError'
@@ -143,9 +156,9 @@ export async function withAgentConversation<T>(
   const observerStop = new AbortController()
   const observationErrors: unknown[] = []
   let offered = false
-  let work: Promise<{ result: RunResult } | { error: unknown }> | undefined
+  let work: Promise<{ result: CallResult } | { error: unknown }> | undefined
   let pump: Promise<void> | undefined
-  let settlement: RunResult | undefined
+  let settlement: AgentDomainResult | undefined
   let writerClosed = false
   let value!: T
   let active = true
@@ -262,10 +275,9 @@ export async function withAgentConversation<T>(
             } else throw invalid('Agent sent an unexpected control reply')
           } else {
             if (!active || promptControl) throw invalid('Agent sent an out-of-order turn result')
+            let turn: AgentTurn
             if (message.type === 'result') {
-              const result = message.result as unknown as RunResult
-              if (!result || typeof result.outcome !== 'string' || !Object.hasOwn(result, 'output'))
-                throw invalid('Agent omitted its complete turn result')
+              turn = { type: 'result', turn: current.turn, result: domainResult(message.result) }
             } else if (
               message.type !== 'cancelled' &&
               !(
@@ -275,7 +287,14 @@ export async function withAgentConversation<T>(
               )
             )
               throw invalid('Agent sent an invalid turn terminal')
-            const turn = item.value as unknown as AgentTurn
+            else if (message.type === 'cancelled') turn = { type: 'cancelled', turn: current.turn }
+            else
+              turn = {
+                type: 'error',
+                turn: current.turn,
+                code: 'INVALID_RESULT',
+                message: String(message.message),
+              }
             if (turns.length >= 8) throw invalid('Agent exceeded the eight-turn conversation limit')
             turns.push(turn)
             active = false
@@ -348,7 +367,13 @@ export async function withAgentConversation<T>(
     if (work) {
       const terminal = await work
       if ('error' in terminal) record(terminal.error)
-      else settlement = terminal.result
+      else {
+        try {
+          settlement = domainResult(terminal.result)
+        } catch (error) {
+          record(error)
+        }
+      }
     }
     await observer
     if (events && !offered) {

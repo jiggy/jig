@@ -25,10 +25,50 @@
   cleanup. The private `fixtures/incident-brief/test/` application owns
   separately registered deterministic method cases in the applications profile.
 
-Static child-attachment maps and file-import lifetimes retain portable, Linux
-and native Mac whole suites under these owners. Mac file-import and input-alias
+Reviewed child-attachment authority maps and artifact lifetimes retain portable, Linux
+and native Mac whole suites under these owners. Mac native input-alias
 cases require the native opt-in. The ordinary installed mapped-files consumer
 remains a package-smoke obligation using frozen Jig and FLOW SDK archives.
+Its ordinary producer/reader project checks distinct operation outputs, duplicate
+reference identity, immutable explicit delegation and nested final forwarding.
+`portable/child-artifacts.test.ts` owns immutable operation-result authority,
+explicit delegation and final forwarding. Output-retirement and delivery suites
+own sticky close uncertainty and retained original handles; no child folder-copy
+or native stage-control compatibility path remains.
+
+`portable/project-evaluation-execution.test.ts` checks pure invocation,
+descriptor, identity, output and workspace rules. Phase advancement requires
+actual installed evaluator execution in the host suites.
+`portable/attempt-clock.test.ts` checks cross-process native clock coordinates
+and actual elapsed timers. Reboot, suspend and clock anomalies require separate
+native evidence. Never replace the production reader.
+`portable/project-evaluation-input.test.ts` checks authentic candidate authority,
+review drift, inert candidate configuration and immutable merged phase inputs.
+These deterministic checks and `captured-output.test.ts`'s manifest/selection
+cases do not qualify native enforcement, durable controller recovery or installed
+consumer behavior.
+
+`portable/run-checkpoint.test.ts`, `portable/prepared-attempt-store.test.ts`,
+`portable/root-run-files.test.ts` and `portable/file-delivery.test.ts` cover
+checkpoint shape, original SQLite reservation/replacement/reopen, current held
+rights without writable ports, and failed-terminal publication of immutable
+associated bytes. Native command loss,
+independent fencing and installed ticket recovery remain separate host gates.
+`portable/attempt-export.test.ts` checks protected delivery intent/outcome,
+read-only observation, real immutable publication and owned Bun copier-death
+reconciliation. Acquisition and pin retirement must use the real protected store.
+`linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
+evaluator copier's regular-file restrictions and authenticated empty-directory
+restoration without changing retained source. The opted-in whole
+`linux-host/linux-rootless-run.test.ts` owns actual three-phase readonly work
+and output-aggregate containment, selected writable overlays, procfs cwd denial
+and original-collector capture after fencing; missing qualification prerequisites
+must fail, never skip or substitute source evidence.
+
+`portable/project-evaluation-retention.test.ts` verifies descriptor-confined
+recipe capture, inert attachment authority, exact retained R/D reacquisition,
+corruption refusal, strict effective compiler/layout decoding and changed
+lock/request identities. It does not qualify native preparation or execution.
 
 ## FLOW dependencies
 
@@ -39,6 +79,12 @@ Installed artifact tests use frozen supplied archives or the installed public pa
 FLOW owns their canonical meaning. Coordinate snapshot changes with the adopted FLOW candidate.
 
 ## Execution contracts
+
+Follow the maintainer guide's
+[no-mocks rule](../../../.agents/maintainer-guide.md#test-real-boundaries-never-mocks).
+Use actual stores, processes and qualified native owners for lifecycle evidence.
+Keep any remaining migration gaps in `.tmp/`; never treat replacement behavior
+as passing product evidence.
 
 `scripts/ci/test-suites.json` owns whole-file applicability. The shared suite
 inventory refuses unknown or ambiguous files. Select suites before execution.
@@ -60,12 +106,6 @@ each fault. Admission and materialization remain inside the existing command and
 case budgets. They do not consume the separate twenty-second crash-settlement
 limit. Keep terminal failure, absence of cancellation/deadline expiry and
 residue checks.
-
-The portable pending-status controller case advances only its observed monotonic
-clock after two mocked reacquisitions, crossing the unchanged 30-second cutoff.
-It verifies the original clock function is restored before durable-state checks
-and cleanup. The executor remains mocked. Native timers and ownership receive no
-clock substitution.
 
 `just jig::test` selects the ordinary source profile. `just jig::check` and root
 `just preflight` add the qualified Mac regression pass. Complete hosted
@@ -192,9 +232,11 @@ weights only place work. They cannot change inventory or evidence.
 
 ## Child DOX Index
 
+- [fixtures/host-foundation/AGENTS.md](fixtures/host-foundation/AGENTS.md) —
+  Real installed adaptive and noncoding consumers. Native execution and
+  unfamiliar-consumer evidence remain separate from source construction.
 - [fixtures/channel-conversation/AGENTS.md](fixtures/channel-conversation/AGENTS.md)
   — Installed synthetic request/reply and cancellation peers.
 - [fixtures/repair-batch/AGENTS.md](fixtures/repair-batch/AGENTS.md) —
   Batch/checkpoint repair proof additions.
-- [fixtures/incident-brief/AGENTS.md](fixtures/incident-brief/AGENTS.md) —
-  Private conversation handoff and sibling settlement evidence.
+- [fixtures/incident-brief/AGENTS.md](fixtures/incident-brief/AGENTS.md) — Private conversation handoff and sibling settlement evidence.

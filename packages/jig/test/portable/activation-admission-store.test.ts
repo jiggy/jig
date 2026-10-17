@@ -31,12 +31,14 @@ import {
 import {
   allocatePrivateRootChildOwner,
   applyPrivateActivationReviewPlan,
+  cancelPrivateAttempt,
   capturePrivateActivationPlanningBase,
   claimPrivateNativeSession,
   closePrivateRootChildOwner,
   closePrivateRootExecution,
   initializePrivateActivationState,
   inspectPrivateApprovedProject,
+  inspectPrivateAttempt,
   listPrivateRootChildOwners,
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
@@ -44,15 +46,19 @@ import {
   type PrivateProjectCoordinator,
   type PrivateRootChildOwnerLifecycle,
   type PrivateRootRunTerminal,
+  preparePrivateAttempt,
   reacquirePrivateRootExecutionWork,
   readPrivateAdmittedExecutionReuse,
   readPrivateBunPreparationOwner,
+  readPrivateRootRun,
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
+  recordPrivateRootChildPhase,
   recordPrivateRootChildSandbox,
   recordPrivateRootExecutionCheckpoint,
   replacePrivateBunPreparationOwner,
   savePrivateNativeSession,
+  submitPrivateAttempt,
   submitPrivateRootRun,
 } from '../../src/internal/activation-admission-store.js'
 import { privateDomainDigest } from '../../src/internal/identity.js'
@@ -71,13 +77,21 @@ import { canonicalJson, type JsonValue } from '../../src/json.js'
 import { capturePackageDirectory } from '../../src/package/capture.js'
 import { restorePrivateActivationRequest } from '../../src/project/package-resolution.js'
 import { parseRun } from '../../src/run-arguments.js'
+
 const TABLES = [
   'admission_head',
   'admissions',
+  'attempt_blobs',
+  'attempt_domain',
+  'attempt_export_deliveries',
+  'attempt_export_owners',
+  'attempt_export_pins',
+  'attempt_reservations',
   'candidate_head',
   'candidates',
   'coordinator_head',
   'native_sessions',
+  'prepared_attempts',
   'review_plans',
   'root_child_owners',
   'root_execution_lifecycles',
@@ -85,6 +99,417 @@ const TABLES = [
   'root_spawn_intents',
   'root_terminals',
 ] as const
+
+test('phase custody is append-only, sequential, conflict-safe and durable across reopen', async () => {
+  const fixture = await createFixture('ready')
+  let coordinator: PrivateProjectCoordinator | undefined
+  try {
+    await admit(fixture)
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    const submitted = await submitReadyRun(fixture, coordinator, 'phase-custody')
+    const identity = {
+      projectRoot: fixture.root,
+      parentRunId: submitted.run.runId,
+      operationId: 'evaluation:one',
+    }
+    const allocation = await allocatePrivateRootChildOwner({
+      ...identity,
+      coordinator,
+      allocation: {
+        kind: 'private-contained-effect-owner/1',
+        effect: 'project-evaluation',
+        effectMemoryBytes: 512 * 1024 * 1024,
+        intent: 'original',
+      },
+    })
+    const base = { ...identity, coordinator, allocationDigest: allocation.allocation.digest }
+    const record = (
+      phase: 'generate' | 'compile' | 'test',
+      checkpoint: 'plan' | 'sandbox' | 'fence' | 'cleanup',
+      value: JsonValue = {},
+    ) => recordPrivateRootChildPhase({ ...base, phase, checkpoint, value })
+    await expect(record('test', 'plan')).rejects.toMatchObject({ code: 'RUN_CHILD_OWNER_CONFLICT' })
+    await expect(record('generate', 'sandbox')).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    const plans = await Promise.all([
+      record('generate', 'plan', { native: 'allocation', intent: 1 }),
+      record('generate', 'plan', { native: 'allocation', intent: 1 }),
+    ])
+    expect(plans[0]).toEqual(plans[1])
+    expect(plans[0]!.phaseHistory).toHaveLength(1)
+    await expect(record('generate', 'plan', { intent: 2 })).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    await expect(record('compile', 'plan')).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    await expect(
+      closePrivateRootChildOwner({
+        ...base,
+        sandboxDigest: null,
+        fenceDigest: null,
+        cleanupDigest: null,
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_EXECUTION_INCOMPLETE' })
+    await expect(record('generate', 'cleanup')).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    // A cancelled native plan still needs fence and cleanup, even without sealing.
+    await record('generate', 'fence')
+    await record('generate', 'cleanup')
+    await expect(record('generate', 'sandbox')).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    for (const phase of ['compile', 'test'] as const) {
+      await record(phase, 'plan', { native: phase })
+      await record(phase, 'sandbox')
+      const sandbox = await recordPrivateRootChildSandbox({ ...base, sandbox: { aggregate: true } })
+      await expect(
+        recordPrivateRootChildFence({
+          ...base,
+          sandboxDigest: sandbox.sandbox!.digest,
+          fence: {},
+        }),
+      ).rejects.toMatchObject({ code: 'RUN_EXECUTION_INCOMPLETE' })
+      await record(phase, 'fence')
+      await record(phase, 'cleanup')
+    }
+    const history = (await listPrivateRootChildOwners(base))[0]!
+    expect(history.phaseHistory).toHaveLength(11)
+    expect(history.allocation).toEqual(allocation.allocation)
+    expect(history.phaseHistoryDigest).toBe(history.phaseHistory.at(-1)!.digest)
+    await expect(record('generate', 'sandbox')).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    await expect(
+      recordPrivateRootChildPhase({
+        ...base,
+        allocationDigest: digest('wrong-allocation'),
+        phase: 'test',
+        checkpoint: 'plan',
+        value: { native: 'test' },
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_CHILD_OWNER_CONFLICT' })
+    await coordinator.dispose()
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    expect(await listPrivateRootChildOwners({ ...identity, coordinator })).toEqual([history])
+    expect(
+      await recordPrivateRootChildPhase({
+        ...base,
+        coordinator,
+        phase: 'test',
+        checkpoint: 'plan',
+        value: { native: 'test' },
+      }),
+    ).toEqual(history)
+    await expect(
+      recordPrivateRootChildPhase({
+        ...base,
+        coordinator,
+        phase: 'test',
+        checkpoint: 'cleanup',
+        value: { changed: true },
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_CHILD_OWNER_CONFLICT' })
+  } finally {
+    await coordinator?.dispose()
+    await fixture.dispose()
+  }
+}, 60_000)
+
+test('phase-only recovery settles old native plans but cannot start work and closes only exact history', async () => {
+  const fixture = await createFixture('ready')
+  let coordinator: PrivateProjectCoordinator | undefined
+  try {
+    await admit(fixture)
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    const submitted = await submitReadyRun(fixture, coordinator, 'phase-recovery')
+    const identity = {
+      projectRoot: fixture.root,
+      parentRunId: submitted.run.runId,
+      operationId: 'evaluation:recovery',
+    }
+    const allocation = await allocatePrivateRootChildOwner({
+      ...identity,
+      coordinator,
+      allocation: {
+        kind: 'private-contained-effect-owner/1',
+        effect: 'project-evaluation',
+        effectMemoryBytes: 512 * 1024 * 1024,
+        intent: 'native-plan',
+      },
+    })
+    const base = { ...identity, allocationDigest: allocation.allocation.digest }
+    const planned = await recordPrivateRootChildPhase({
+      ...base,
+      coordinator,
+      phase: 'compile',
+      checkpoint: 'plan',
+      value: { native: 'retained' },
+    })
+    await coordinator.dispose()
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    await expect(
+      recordPrivateRootChildPhase({
+        ...base,
+        coordinator,
+        phase: 'compile',
+        checkpoint: 'sandbox',
+        value: {},
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_OWNER_CHANGED' })
+    expect(
+      await recordPrivateRootChildPhase({
+        ...base,
+        coordinator,
+        phase: 'compile',
+        checkpoint: 'plan',
+        value: { native: 'retained' },
+      }),
+    ).toEqual(planned)
+    const close = {
+      ...base,
+      coordinator,
+      sandboxDigest: null,
+      fenceDigest: null,
+      cleanupDigest: null,
+    }
+    await expect(
+      closePrivateRootChildOwner({
+        ...close,
+        phaseHistoryDigest: planned.phaseHistoryDigest,
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_EXECUTION_INCOMPLETE' })
+    await recordPrivateRootChildPhase({
+      ...base,
+      coordinator,
+      phase: 'compile',
+      checkpoint: 'fence',
+      value: { stopped: true },
+    })
+    const settled = await recordPrivateRootChildPhase({
+      ...base,
+      coordinator,
+      phase: 'compile',
+      checkpoint: 'cleanup',
+      value: { absent: true },
+    })
+    await expect(
+      recordPrivateRootChildPhase({
+        ...base,
+        coordinator,
+        phase: 'test',
+        checkpoint: 'plan',
+        value: {},
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_OWNER_CHANGED' })
+    await expect(closePrivateRootChildOwner(close)).rejects.toMatchObject({
+      code: 'RUN_CHILD_OWNER_CONFLICT',
+    })
+    await expect(
+      closePrivateRootChildOwner({
+        ...close,
+        phaseHistoryDigest: planned.phaseHistoryDigest,
+      }),
+    ).rejects.toMatchObject({ code: 'RUN_CHILD_OWNER_CONFLICT' })
+    expect(settled.sandbox).toBeUndefined()
+    expect(settled.fence).toBeUndefined()
+    expect(settled.cleanup).toBeUndefined()
+    await closePrivateRootChildOwner({ ...close, phaseHistoryDigest: settled.phaseHistoryDigest })
+    expect(await listPrivateRootChildOwners({ ...identity, coordinator })).toEqual([])
+  } finally {
+    await coordinator?.dispose()
+    await fixture.dispose()
+  }
+}, 60_000)
+
+test('phase history decoding refuses malformed pairs, bytes, bounds, chain and order', async () => {
+  const fixture = await createFixture('ready')
+  let coordinator: PrivateProjectCoordinator | undefined
+  try {
+    await admit(fixture)
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    const submitted = await submitReadyRun(fixture, coordinator, 'phase-corruption')
+    const identity = {
+      projectRoot: fixture.root,
+      parentRunId: submitted.run.runId,
+      operationId: 'evaluation:corruption',
+    }
+    const allocation = await allocatePrivateRootChildOwner({
+      ...identity,
+      coordinator,
+      allocation: {
+        kind: 'private-contained-effect-owner/1',
+        effect: 'project-evaluation',
+        effectMemoryBytes: 512 * 1024 * 1024,
+      },
+    })
+    const planned = await recordPrivateRootChildPhase({
+      ...identity,
+      coordinator,
+      allocationDigest: allocation.allocation.digest,
+      phase: 'compile',
+      checkpoint: 'plan',
+      value: { intent: 'exact' },
+    })
+    const entry = { ...planned.phaseHistory[0]! }
+    const invalidOrder = { ...entry, checkpoint: 'cleanup' as const }
+    invalidOrder.digest = privateDomainDigest('JIG-Private-Root-Child-Phase/1', {
+      parentRunId: identity.parentRunId,
+      parentOperationId: '',
+      operationId: identity.operationId,
+      allocationDigest: allocation.allocation.digest,
+      previous: null,
+      phase: invalidOrder.phase,
+      checkpoint: invalidOrder.checkpoint,
+      value: invalidOrder.value,
+    })
+    const cases = [
+      { bytes: null, digest: entry.digest },
+      { bytes: new TextEncoder().encode('['), digest: entry.digest },
+      { bytes: new TextEncoder().encode(JSON.stringify([entry], null, 2)), digest: entry.digest },
+      { bytes: canonicalJson([]), digest: entry.digest },
+      { bytes: canonicalJson(Array.from({ length: 13 }, () => entry)), digest: entry.digest },
+      { bytes: canonicalJson([{ ...entry, extra: true }]), digest: entry.digest },
+      { bytes: canonicalJson([{ ...entry, value: { changed: true } }]), digest: entry.digest },
+      { bytes: canonicalJson([{ ...entry, digest: digest('forged') }]), digest: entry.digest },
+      { bytes: canonicalJson([entry]), digest: digest('wrong-tail') },
+      { bytes: canonicalJson([invalidOrder]), digest: invalidOrder.digest },
+    ]
+    for (const corruptValue of cases) {
+      const database = openSqlite(fixture.database, 'readwrite')
+      database.exec('PRAGMA ignore_check_constraints=ON')
+      database
+        .query('UPDATE root_child_owners SET phase_history_bytes = ?1, phase_history_digest = ?2')
+        .run(corruptValue.bytes, corruptValue.digest)
+      database.close(true)
+      await expect(listPrivateRootChildOwners({ ...identity, coordinator })).rejects.toMatchObject({
+        code: 'ADMISSION_STATE_CORRUPT',
+      })
+    }
+  } finally {
+    await coordinator?.dispose()
+    await fixture.dispose()
+  }
+}, 60_000)
+
+test('prepared ticket acceptance is atomic with one original root and binds requested duration', async () => {
+  const fixture = await createFixture()
+  let coordinator: PrivateProjectCoordinator | undefined
+  try {
+    const approval = await admit(fixture)
+    const request = {
+      expectedApproval: approval,
+      target: 'flow:flows/run',
+      input: { value: 'frozen' },
+      files: [],
+      constraints: { durationMs: 30_000, resultBytes: 1024, artifactBytes: 0 },
+      outputIntent: { packet: false, receive: [] },
+    }
+    const prepared = await preparePrivateAttempt({
+      projectRoot: fixture.root,
+      request,
+      captured: [],
+    })
+    expect(
+      (await inspectPrivateAttempt({ projectRoot: fixture.root, ticket: prepared.ticket }))
+        .observation.identity,
+    ).toBe('prepared')
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    const submission = {
+      projectRoot: fixture.root,
+      ticket: prepared.ticket,
+      request,
+      coordinator,
+      packageStoreRoot: fixture.store,
+      target: { kind: 'flow' as const, path: 'flows/run' },
+    }
+    const first = await submitPrivateAttempt(submission)
+    expect(first.role).toBe('owner')
+    const duplicate = await submitPrivateAttempt(submission)
+    expect(duplicate.role).toBe('observer')
+    expect(duplicate.receipt.runId).toBe(first.receipt.runId)
+    expect(duplicate.run.deadlineUnixMs).toBe(first.run.deadlineUnixMs)
+    await expect(
+      submitPrivateAttempt({
+        ...submission,
+        request: {
+          ...request,
+          constraints: { ...request.constraints, durationMs: 30_001 },
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'REQUEST_CONFLICT' })
+    const reader = openSqlite(fixture.database, 'readonly')
+    try {
+      expect(reader.query('SELECT count(*) AS count FROM root_runs').get().count).toBe(1)
+      expect(
+        reader
+          .query('SELECT count(*) AS count FROM prepared_attempts WHERE run_id IS NOT NULL')
+          .get().count,
+      ).toBe(1)
+    } finally {
+      reader.close(true)
+    }
+  } finally {
+    await coordinator?.dispose()
+    await fixture.dispose()
+  }
+})
+
+test('cancelled prepared ticket and missing prepared record never allocate a root', async () => {
+  const fixture = await createFixture()
+  let coordinator: PrivateProjectCoordinator | undefined
+  try {
+    const approval = await admit(fixture)
+    const request = {
+      expectedApproval: approval,
+      target: 'flow:flows/run',
+      input: { value: 'frozen' },
+      files: [],
+      constraints: { durationMs: 30_000, resultBytes: 1024, artifactBytes: 0 },
+      outputIntent: { packet: false, receive: [] },
+    }
+    const prepared = await preparePrivateAttempt({
+      projectRoot: fixture.root,
+      request,
+      captured: [],
+    })
+    expect(
+      (await cancelPrivateAttempt({ projectRoot: fixture.root, ticket: prepared.ticket }))
+        .acknowledged,
+    ).toBeTrue()
+    coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+    const submission = {
+      projectRoot: fixture.root,
+      ticket: prepared.ticket,
+      request,
+      coordinator,
+      packageStoreRoot: fixture.store,
+      target: { kind: 'flow' as const, path: 'flows/run' },
+    }
+    await expect(submitPrivateAttempt(submission)).rejects.toMatchObject({ code: 'TICKET_EXPIRED' })
+    const writer = openSqlite(fixture.database, 'readwrite')
+    try {
+      writer.query('DELETE FROM prepared_attempts').run()
+    } finally {
+      writer.close(true)
+    }
+    await expect(submitPrivateAttempt(submission)).rejects.toMatchObject({
+      code: 'IDENTITY_UNAVAILABLE',
+    })
+    const reader = openSqlite(fixture.database, 'readonly')
+    try {
+      expect(reader.query('SELECT count(*) AS count FROM root_runs').get().count).toBe(0)
+    } finally {
+      reader.close(true)
+    }
+  } finally {
+    await coordinator?.dispose()
+    await fixture.dispose()
+  }
+})
+
 interface EmptyFixture {
   readonly base: string
   readonly root: string
@@ -2062,7 +2487,7 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
-  test('creates only the current twelve-table schema', async () => {
+  test('creates only the current exact protected schema', async () => {
     const fixture = await createEmptyFixture()
     try {
       const database = openSqlite(fixture.database, 'readonly')
@@ -3377,6 +3802,96 @@ describe.serial('direct alpha activation store', () => {
       await fixture.dispose()
     }
   })
+  test('root observation reads pending facts without acquiring a coordinator or changing state', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const { run } = await submitReadyRun(fixture, coordinator, 'root-observation')
+      await writeFile(join(fixture.root, 'jig.ts'), 'throw new Error("must not evaluate")')
+      const before = await readFile(fixture.database)
+      const information = await stat(fixture.database)
+      const coordinatorDatabase = join(fixture.root, '.jig/coordinator.sqlite3')
+      const coordinatorBytes = await readFile(coordinatorDatabase)
+      const entries = (await readdir(join(fixture.root, '.jig'))).sort()
+
+      expect(await readPrivateRootRun({ projectRoot: fixture.root, runId: run.runId })).toEqual(run)
+      await expect(
+        readPrivateRootRun({ projectRoot: fixture.root, runId: digest('absent-root') }),
+      ).rejects.toMatchObject({ code: 'RUN_MISSING' })
+      await expect(
+        readPrivateRootRun({ projectRoot: fixture.root, runId: 'invalid' }),
+      ).rejects.toThrow()
+
+      expect(await readFile(fixture.database)).toEqual(before)
+      expect((await stat(fixture.database)).mtimeMs).toBe(information.mtimeMs)
+      expect(await readFile(coordinatorDatabase)).toEqual(coordinatorBytes)
+      expect((await readdir(join(fixture.root, '.jig'))).sort()).toEqual(entries)
+      await coordinator.verify()
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+  test('root observation preserves terminal facts after coordinator closure without recovery', async () => {
+    const fixture = await createFixture('ready')
+    let coordinator: PrivateProjectCoordinator | undefined
+    try {
+      await admit(fixture)
+      coordinator = await openPrivateProjectCoordinator({ projectRoot: fixture.root })
+      const { run } = await submitReadyRun(fixture, coordinator, 'terminal-observation')
+      const terminal = successTerminal({ checked: true })
+      await settleExecution(fixture, coordinator, run.runId, terminal)
+      await closePrivateRootExecution({
+        coordinator,
+        projectRoot: fixture.root,
+        runId: run.runId,
+        terminal,
+      })
+      await coordinator.dispose()
+      coordinator = undefined
+      const before = await readFile(fixture.database)
+      const information = await stat(fixture.database)
+      const entries = (await readdir(join(fixture.root, '.jig'))).sort()
+
+      expect(await readPrivateRootRun({ projectRoot: fixture.root, runId: run.runId })).toEqual({
+        ...run,
+        state: 'terminal',
+        terminal,
+      })
+      expect(await readFile(fixture.database)).toEqual(before)
+      expect((await stat(fixture.database)).mtimeMs).toBe(information.mtimeMs)
+      expect((await readdir(join(fixture.root, '.jig'))).sort()).toEqual(entries)
+    } finally {
+      await coordinator?.dispose()
+      await fixture.dispose()
+    }
+  })
+  test('root observation never creates missing state or repairs an empty database', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-root-observation-empty-'))
+    const runId = digest('unknown-root')
+    try {
+      await expect(readPrivateRootRun({ projectRoot: root, runId })).rejects.toMatchObject({
+        code: 'ADMISSION_STATE_MISSING',
+      })
+      expect(await readdir(root)).toEqual([])
+      await mkdir(join(root, '.jig'), { mode: 0o700 })
+      await expect(readPrivateRootRun({ projectRoot: root, runId })).rejects.toMatchObject({
+        code: 'ADMISSION_STATE_MISSING',
+      })
+      expect(await readdir(join(root, '.jig'))).toEqual([])
+      const database = join(root, '.jig/jig.sqlite3')
+      await writeFile(database, '', { mode: 0o600 })
+      await expect(readPrivateRootRun({ projectRoot: root, runId })).rejects.toMatchObject({
+        code: 'ADMISSION_SCHEMA_VERSION',
+      })
+      expect((await readFile(database)).length).toBe(0)
+      expect(await readdir(join(root, '.jig'))).toEqual(['jig.sqlite3'])
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
   test('allocates an idempotent root submission and rejects changed reuse', async () => {
     const fixture = await createFixture('ready')
     let coordinator: PrivateProjectCoordinator | undefined
@@ -3911,6 +4426,11 @@ describe.serial('direct alpha activation store', () => {
           runId: submitted.run.runId,
         }),
       ).rejects.toMatchObject({ code: 'ADMISSION_STATE_CORRUPT' })
+      const corruptBytes = await readFile(terminal.database)
+      await expect(
+        readPrivateRootRun({ projectRoot: terminal.root, runId: submitted.run.runId }),
+      ).rejects.toMatchObject({ code: 'ADMISSION_STATE_CORRUPT' })
+      expect(await readFile(terminal.database)).toEqual(corruptBytes)
     } finally {
       await coordinator?.dispose()
       await terminal.dispose()

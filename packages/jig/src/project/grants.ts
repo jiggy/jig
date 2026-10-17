@@ -2,10 +2,12 @@ import {
   isPrivateNativeTurnAllowance,
   PRIVATE_NATIVE_TURN_POLICY,
 } from '../internal/native-agent-turn-policy.js'
+import type { PrivateRetainedProjectEvaluation } from '../internal/project-evaluation-retention.js'
 import { canonicalJson, type JsonObject } from '../json.js'
 import type { SchemaValue } from '../schema/types.js'
 import { snapshotJsonObject } from './author-value.js'
 import { normalizeProjectCommand, type ProjectCommand } from './commands.js'
+import { normalizeProjectEvaluation, type ProjectEvaluation } from './evaluation.js'
 
 export const HTTP_LIMITS = Object.freeze({
   requestBytes: 262144,
@@ -97,10 +99,12 @@ export type HttpGrantInput = Omit<HttpGrant, 'requestBytes' | 'responseBytes' | 
 export type GrantInput =
   | ({ readonly kind: 'http' } & HttpGrantInput)
   | ({ readonly kind: 'command' } & ProjectCommand)
+  | ({ readonly kind: 'evaluation' } & ProjectEvaluation)
   | AcpGrant
 export type GrantPolicy =
   | ({ readonly kind: 'http' } & HttpGrant)
   | ({ readonly kind: 'command' } & ProjectCommand)
+  | ({ readonly kind: 'evaluation' } & ProjectEvaluation)
   | AcpGrant
 export interface AcpGrant {
   readonly kind: 'acp'
@@ -113,6 +117,7 @@ export interface GrantedSlot {
   readonly kind: 'grant'
   readonly policy: GrantPolicy
   readonly name?: string
+  readonly evaluation?: PrivateRetainedProjectEvaluation
 }
 
 /** A declaration is policy data, never an active handle or permission by itself. */
@@ -123,6 +128,7 @@ export function normalizeGrant(value: unknown): GrantPolicy {
   const { kind, ...policy } = item as JsonObject
   if (kind === 'http') return Object.freeze({ kind, ...normalizeHttpGrant(policy) })
   if (kind === 'command') return Object.freeze({ kind, ...normalizeProjectCommand(policy) })
+  if (kind === 'evaluation') return Object.freeze({ kind, ...normalizeProjectEvaluation(policy) })
   if (kind === 'acp') {
     if (
       Object.keys(policy).some(
@@ -147,7 +153,7 @@ export function normalizeGrant(value: unknown): GrantPolicy {
       ...('retainSessions' in policy ? { retainSessions: true as const } : {}),
     })
   }
-  throw new TypeError('grant kind must be http, command, or acp')
+  throw new TypeError('grant kind must be http, command, evaluation, or acp')
 }
 
 export function grantName(value: unknown): string {

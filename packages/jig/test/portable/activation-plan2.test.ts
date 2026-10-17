@@ -7,6 +7,7 @@ import {
   encodePrivateActivationCandidateV5,
   encodePrivateActivationPlanV2,
   privateActivationCandidateDigestV5,
+  privateActivationCandidateEffectMemoryBytes,
   privateActivationCandidateFlowDepth,
   privateActivationPlanDigestV2,
 } from '../../src/internal/activation-admission.js'
@@ -17,10 +18,18 @@ import {
 } from '../../src/internal/bun-execution-layout.js'
 import { privateDomainDigest } from '../../src/internal/identity.js'
 import {
+  PROJECT_EVALUATION_CONTRACT_DIGEST,
+  PROJECT_EVALUATION_CONTRACT_ID,
+  PROJECT_EVALUATION_CONTRACT_VERSION,
+} from '../../src/internal/private-project-evaluation.js'
+import {
   decodePrivateProjectLocalLock,
   privateProjectLocalLockDigest,
 } from '../../src/internal/project-local-lock.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
+import type { ProjectSlotTarget } from '../../src/project/attachment-routes.js'
+import { resolveInvocationSlots } from '../../src/project/invocation-slots.js'
+
 const encoder = new TextEncoder()
 function candidateFixture(paths: readonly string[] = ['flows/run'], extraInertPackages = 0) {
   const orderedPaths = [...paths].sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
@@ -131,7 +140,8 @@ function readyCandidateFixture(
   })
 }
 function slottedCandidateFixture(
-  slots: Readonly<Record<string, { readonly kind: 'flow'; readonly path: string }>>,
+  slots: Readonly<Record<string, ProjectSlotTarget>>,
+  outer = false,
 ) {
   const packages = {
     'flows/bug': {
@@ -146,7 +156,20 @@ function slottedCandidateFixture(
     },
     'flows/router': {
       digest: digest('package:flows/router'),
-      directRun: true,
+      directRun: !outer,
+      uses: outer
+        ? {
+            evaluate: {
+              id: PROJECT_EVALUATION_CONTRACT_ID,
+              version: PROJECT_EVALUATION_CONTRACT_VERSION,
+              digest: PROJECT_EVALUATION_CONTRACT_DIGEST,
+            },
+          }
+        : {},
+    },
+    'flows/wrapper': {
+      digest: digest('package:flows/wrapper'),
+      directRun: outer,
       uses: {},
     },
   }
@@ -159,6 +182,15 @@ function slottedCandidateFixture(
           settings: { style: 'brief' },
           slots,
         },
+        ...(outer
+          ? {
+              wrapper: {
+                packagePath: 'flows/wrapper',
+                settings: {},
+                slots: { router: { kind: 'binding', id: 'router' } },
+              },
+            }
+          : {}),
       },
     }),
   )
@@ -188,9 +220,7 @@ function slottedCandidateFixture(
         package: { kind: 'flow-package/0', digest: packages['flows/router'].digest },
         entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
         settings: { style: 'brief' },
-        slots: Object.fromEntries(
-          Object.entries(slots).map(([name, target]) => [name, { kind: 'flow', target }]),
-        ),
+        slots: resolveInvocationSlots(packages['flows/router'].uses, slots),
         attachments: {},
       }),
       disposition: {
@@ -199,9 +229,32 @@ function slottedCandidateFixture(
         evidenceDigests: [digest('runtime-evidence:binding:router')],
       },
     },
+    ...(outer
+      ? [
+          {
+            request: activationRequest({
+              target: { kind: 'binding', id: 'wrapper' },
+              mode: 'run',
+              packagePath: 'flows/wrapper',
+              package: { kind: 'flow-package/0', digest: packages['flows/wrapper'].digest },
+              entrypoint: { path: 'FLOW.ts', suffix: 'ts' },
+              settings: {},
+              slots: {
+                router: { kind: 'flow', target: { kind: 'binding', id: 'router' } },
+              },
+              attachments: {},
+            }),
+            disposition: {
+              state: 'unavailable',
+              code: 'RUNTIME_UNAVAILABLE',
+              evidenceDigests: [digest('runtime-evidence:binding:wrapper')],
+            },
+          },
+        ]
+      : []),
     target('flows/bug'),
     target('flows/question'),
-    target('flows/router'),
+    ...(outer ? [target('flows/wrapper')] : [target('flows/router')]),
   ]
   const captureDigest = digest('slotted-capture')
   const planningObservationDigest = digest('slotted-planning')
@@ -306,6 +359,42 @@ describe('private Candidate/5', () => {
     ).toThrow('strictly decoded')
     expect(() =>
       privateActivationCandidateFlowDepth(artifact, { kind: 'binding', id: 'absent' }),
+    ).toThrow('missing admitted')
+  })
+  test('branch effect memory includes every reachable reviewed alternative without widening unrelated targets', () => {
+    const artifact = slottedCandidateFixture(
+      {
+        work: { kind: 'flow', path: 'flows/bug' },
+        evaluate: {
+          kind: 'grant',
+          policy: {
+            kind: 'evaluation',
+            recipe: 'evaluation/parser',
+            attachments: { candidate: 'supplied-read', deliverables: 'operation-create' },
+          },
+        },
+      },
+      true,
+    )
+    for (const id of ['router', 'wrapper']) {
+      expect(privateActivationCandidateEffectMemoryBytes(artifact, { kind: 'binding', id })).toBe(
+        512 * 1024 * 1024,
+      )
+      expect(privateActivationCandidateEffectMemoryBytes(artifact, { kind: 'binding', id })).toBe(
+        512 * 1024 * 1024,
+      )
+    }
+    expect(
+      privateActivationCandidateEffectMemoryBytes(artifact, { kind: 'flow', path: 'flows/bug' }),
+    ).toBe(256 * 1024 * 1024)
+    expect(() =>
+      privateActivationCandidateEffectMemoryBytes(
+        { ...artifact },
+        { kind: 'binding', id: 'router' },
+      ),
+    ).toThrow('strictly decoded')
+    expect(() =>
+      privateActivationCandidateEffectMemoryBytes(artifact, { kind: 'binding', id: 'absent' }),
     ).toThrow('missing admitted')
   })
   test('separates observed semantics from canonical final activation meaning', () => {
@@ -485,7 +574,7 @@ describe('private Candidate/5', () => {
     child.attachments = { source: 'read', deliverables: 'read-write' }
     const mapping = {
       source: { from: 'source' },
-      deliverables: { into: 'deliverables', directory: 'copies' },
+      deliverables: { create: true },
     }
     caller.slots.work.attachments = mapping
     lock.bindings.router.slots.work = {
@@ -522,9 +611,9 @@ describe('private Candidate/5', () => {
         },
       ],
       [
-        'write attachment route',
+        'supplied attachment route',
         (_caller, _child, map) => {
-          map.deliverables.into = 'missing'
+          map.deliverables = { supplied: 'read' }
         },
       ],
       [
@@ -534,20 +623,20 @@ describe('private Candidate/5', () => {
         },
       ],
       [
-        'write attachment route',
+        'created attachment route',
         (_caller, _child, map) => {
-          map.deliverables.into = 'source'
+          map.source = { create: true }
         },
       ],
       [
-        'attachment route requires declared',
+        'created attachment route requires a declared',
         (_caller, selected) => {
           selected.attachments.source = 'read-write'
           selected.attachments.deliverables = 'read'
         },
       ],
       [
-        'write attachment route',
+        'created attachment route',
         (_caller, selected) => {
           selected.attachments.deliverables = 'read'
         },

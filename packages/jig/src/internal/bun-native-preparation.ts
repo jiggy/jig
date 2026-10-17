@@ -25,10 +25,13 @@ import {
 import { requirePrivateBunPatches } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
+  PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  type PrivateBunPreparationMode,
   privateBunMessageFits,
+  privateBunPreparationLimits,
 } from './bun-native-preparation-protocol.js'
 import {
   inspectPrivateBunPackageInput,
@@ -63,6 +66,7 @@ import {
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
+import { requirePrivateProjectEvaluationManifest } from './project-evaluation-manifest.js'
 
 const PREPARATION_WALL_MS = 60_000
 const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
@@ -95,6 +99,7 @@ export interface PrivatePreparedBunPackage {
  */
 export async function preparePrivateBunPackage(input: {
   readonly captured: CapturedPackage
+  readonly mode?: PrivateBunPreparationMode
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateExecutionBackend
   readonly projectRoot: string
@@ -108,6 +113,20 @@ export async function preparePrivateBunPackage(input: {
     readonly selected: readonly string[]
   }
 }): Promise<PrivatePreparedBunPackage> {
+  if (input.mode === 'evaluation') {
+    if (
+      input.workspace !== undefined ||
+      !input.captured.files.some(({ path }) => path === 'bun.lock')
+    )
+      throw new TypeError('evaluation preparation requires one authored locked package')
+    requirePrivateProjectEvaluationManifest(
+      JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(
+          await input.captured.read('package.json', 1024 * 1024),
+        ),
+      ),
+    )
+  }
   const classification =
     input.workspace === undefined
       ? await inspectPrivateBunPackageInput(input.captured)
@@ -127,7 +146,8 @@ export async function preparePrivateBunPackage(input: {
   await revalidatePrivateInstalledBunSupport(installedSupport)
   const backend = requirePrivateExecutionBackend(input.backend)
   const source = {
-    ...(await sourceMessage(input.captured)),
+    ...(await sourceMessage(input.captured, input.mode)),
+    ...(input.mode === 'evaluation' ? { mode: 'evaluation' } : {}),
     ...(input.workspace === undefined
       ? {}
       : {
@@ -158,6 +178,7 @@ export async function preparePrivateBunPackage(input: {
     classification.state === 'unlocked',
     now,
     input.deadlineUnixMs,
+    input.mode,
   )
   let fact = await replacePrivateBunPreparationOwner({
     projectRoot: input.projectRoot,
@@ -223,6 +244,7 @@ async function interact(
   sourceBytes: Uint8Array,
   input: {
     readonly captured: CapturedPackage
+    readonly mode?: PrivateBunPreparationMode
     readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
   },
 ): Promise<{
@@ -234,7 +256,12 @@ async function interact(
   try {
     await component.write(sourceBytes)
     await component.closeInput()
-    for await (const value of jsonLines(component.stdout, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
+    for await (const value of jsonLines(
+      component.stdout,
+      input.mode === 'evaluation'
+        ? PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES
+        : PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+    )) {
       const message = ordinaryRecord(value, 'preparation message')
       if (message.type === 'prepared') {
         if (
@@ -367,9 +394,10 @@ function preparationPlan(
   allowResolutionNetwork: boolean,
   now: number,
   requestedDeadlineUnixMs: number | undefined,
+  mode: PrivateBunPreparationMode = 'production',
 ): PrivateExecutionIntent {
   const deadlineUnixMs = Math.min(
-    now + PREPARATION_WALL_MS,
+    now + (mode === 'evaluation' ? 120_000 : PREPARATION_WALL_MS),
     requestedDeadlineUnixMs ?? Number.MAX_SAFE_INTEGER,
   )
   return {
@@ -377,7 +405,7 @@ function preparationPlan(
     limits: {
       memoryBytes: 512 * 1024 * 1024,
       pids: 64,
-      cpuQuotaMicros: 100_000,
+      cpuQuotaMicros: mode === 'evaluation' ? 50_000 : 100_000,
       cpuPeriodMicros: 100_000,
       deadlineUnixMs,
       cancellationGraceMs: 1000,
@@ -394,7 +422,10 @@ function preparationPlan(
       ...(allowResolutionNetwork ? ['--allow-resolution-network'] : []),
     ],
     network: 'inherited',
-    maxOutputBytes: PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+    maxOutputBytes:
+      mode === 'evaluation'
+        ? PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES
+        : PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
     storageBytes: 512 * 1024 * 1024,
   }
 }
@@ -480,8 +511,10 @@ function hasCode(error: unknown, code: string): boolean {
 
 async function sourceMessage(
   captured: CapturedPackage,
+  mode: PrivateBunPreparationMode = 'production',
 ): Promise<Readonly<Record<string, unknown>>> {
-  if (captured.files.length > PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles) {
+  const limits = privateBunPreparationLimits(mode)
+  if (captured.files.length > limits.sourceFiles) {
     throw new CheckError(
       'invalid',
       'PACKAGE_BUN_INPUT_LIMIT',
@@ -492,7 +525,7 @@ async function sourceMessage(
   let total = 0
   for (const file of captured.files) {
     total += file.size
-    if (total > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes) {
+    if (total > limits.sourceBytes) {
       throw new CheckError(
         'invalid',
         'PACKAGE_BUN_INPUT_LIMIT',
@@ -502,9 +535,7 @@ async function sourceMessage(
     files.push(
       Object.freeze({
         path: file.path,
-        content: Buffer.from(
-          await captured.read(file.path, PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes),
-        ).toString('base64'),
+        content: Buffer.from(await captured.read(file.path, limits.sourceBytes)).toString('base64'),
       }),
     )
   }
@@ -516,9 +547,11 @@ export async function decodePrivateBunPreparedResult(
   rawLayout: unknown,
   input: {
     readonly captured: CapturedPackage
+    readonly mode?: PrivateBunPreparationMode
     readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
   },
 ): Promise<PrivatePreparedBunPackage> {
+  const limits = privateBunPreparationLimits(input.mode ?? 'production')
   let layout: PrivateBunExecutionLayout
   try {
     layout = normalizePrivateBunExecutionLayout(rawLayout)
@@ -531,8 +564,7 @@ export async function decodePrivateBunPreparedResult(
     JSON.stringify(layout.members) !== JSON.stringify(selected)
   )
     throw protocolFailure()
-  if (value.length + layout.aliases.length > PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles)
-    throw protocolFailure()
+  if (value.length + layout.aliases.length > limits.preparedFiles) throw protocolFailure()
   const contents = new Map<string, Uint8Array>()
   const files: CapturedFile[] = []
   let total = Buffer.byteLength(JSON.stringify(layout))
@@ -550,9 +582,9 @@ export async function decodePrivateBunPreparedResult(
       throw protocolFailure()
     }
     prior = record.path
-    const bytes = decodeBase64(record.content, record.path)
+    const bytes = decodeBase64(record.content, record.path, limits.preparedBytes)
     total += bytes.byteLength
-    if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes) throw protocolFailure()
+    if (total > limits.preparedBytes) throw protocolFailure()
     contents.set(record.path, bytes)
     files.push(Object.freeze({ path: record.path, size: bytes.byteLength }))
   }
@@ -679,8 +711,12 @@ function ordinaryRecord(value: unknown, label: string): Record<string, unknown> 
   return value as Record<string, unknown>
 }
 
-function decodeBase64(value: string, label: string): Uint8Array {
-  const maximum = 4 * Math.ceil(PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes / 3)
+function decodeBase64(
+  value: string,
+  label: string,
+  maximumBytes: number = PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
+): Uint8Array {
+  const maximum = 4 * Math.ceil(maximumBytes / 3)
   if (value.length > maximum) {
     throw new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', `${label} bytes are invalid`)
   }

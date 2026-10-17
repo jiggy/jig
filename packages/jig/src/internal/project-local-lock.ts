@@ -8,7 +8,6 @@ import {
 import {
   normalizeBindingAttachmentMap,
   type ProjectSlotTarget,
-  validateDistinctBindingAttachmentDirectories,
 } from '../project/attachment-routes.js'
 import { parseProjectEntrypoint } from '../project/entrypoint.js'
 import { type AcpGrant, grantName, normalizeGrant } from '../project/grants.js'
@@ -31,6 +30,8 @@ import { validateChildGraph } from '../project/slot-graph.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
 import { type BoundAttachments, normalizeBoundAttachments } from './bound-attachments.js'
 import { privateDomainDigest } from './identity.js'
+import { isRunCheckpointContract } from './private-run-checkpoint.js'
+import { normalizePrivateRetainedProjectEvaluation } from './project-evaluation-retention.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -299,7 +300,14 @@ function validateReferences(
   const directFlows = new Map(
     Object.entries(packages)
       .filter(([, flow]) => flow.directRun)
-      .map(([path, flow]) => [path, { packagePath: path, slots: flow.slots ?? {} }]),
+      .map(([path, flow]) => [
+        path,
+        {
+          packagePath: path,
+          slots: flow.slots ?? {},
+          rootOnly: Object.values(flow.uses).some(isRunCheckpointContract),
+        },
+      ]),
   )
   for (const [id, binding] of [
     ...Object.entries(bindings),
@@ -332,7 +340,20 @@ function validateReferences(
       }
     }
   }
-  validateChildGraph(new Map(Object.entries(bindings)), directFlows)
+  validateChildGraph(
+    new Map(
+      Object.entries(bindings).map(([id, binding]) => [
+        id,
+        {
+          ...binding,
+          rootOnly: Object.values(packages[binding.packagePath]!.uses).some(
+            isRunCheckpointContract,
+          ),
+        },
+      ]),
+    ),
+    directFlows,
+  )
 }
 
 function normalizeSlots(
@@ -362,13 +383,26 @@ function normalizeSlots(
     } else if (target.kind === 'grant') {
       exactObject(
         target,
-        ['kind', 'policy', ...(Object.hasOwn(target, 'name') ? ['name'] : [])],
+        [
+          'kind',
+          'policy',
+          ...(Object.hasOwn(target, 'name') ? ['name'] : []),
+          ...(Object.hasOwn(target, 'evaluation') ? ['evaluation'] : []),
+        ],
         label,
       )
+      const policy = normalizeGrant(target.policy)
+      if (target.evaluation !== undefined && policy.kind !== 'evaluation')
+        throw new TypeError('only evaluation grants retain evaluation operands')
       output[name] = Object.freeze({
         kind: 'grant',
-        policy: normalizeGrant(target.policy),
+        policy,
         ...(target.name === undefined ? {} : { name: grantName(target.name) }),
+        ...(target.evaluation === undefined
+          ? {}
+          : {
+              evaluation: normalizePrivateRetainedProjectEvaluation(target.evaluation),
+            }),
       })
     } else if (target.kind === 'flow') {
       output[name] = Object.freeze({
@@ -390,13 +424,6 @@ function normalizeSlots(
       throw new TypeError(`${label} slot ${name} must select a Flow or Binding target`)
     }
   }
-  validateDistinctBindingAttachmentDirectories(
-    Object.fromEntries(
-      Object.entries(output).flatMap(([name, slot]) =>
-        slot.kind === 'route' ? [[name, slot.attachments]] : [],
-      ),
-    ),
-  )
   return Object.freeze(output)
 }
 

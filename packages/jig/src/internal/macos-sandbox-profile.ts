@@ -1,4 +1,8 @@
 import { posix } from 'node:path'
+import {
+  type PrivateMacosEvaluationGrant,
+  privateMacosEvaluationWritableRoots,
+} from './macos-evaluation-workspace.js'
 
 export interface PrivateMacosSandboxFiles {
   readonly readOnlyFiles: readonly string[]
@@ -8,6 +12,7 @@ export interface PrivateMacosSandboxFiles {
   readonly protectedRoots: readonly string[]
   readonly network: 'isolated' | 'inherited'
   readonly codexPreferenceNotifications?: true
+  readonly evaluationWorkspace?: PrivateMacosEvaluationGrant
 }
 
 // JavaScriptCore loads its system Unicode tables lazily for Intl operations.
@@ -59,6 +64,26 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
   const readOnlyTrees = paths(input.readOnlyTrees)
   const writableTrees = paths(input.writableTrees)
   const protectedRoots = paths(input.protectedRoots)
+  const evaluation = input.evaluationWorkspace
+  const evaluationWrites =
+    evaluation === undefined ? [] : privateMacosEvaluationWritableRoots(evaluation.phase)
+  if (
+    evaluation !== undefined &&
+    (Object.keys(evaluation).sort().join() !== 'phase,root' ||
+      !path(evaluation.root).endsWith('/data/evaluation') ||
+      !readOnlyTrees.includes(evaluation.root) ||
+      input.network !== 'isolated' ||
+      input.codexPreferenceNotifications !== undefined ||
+      ![...evaluationWrites, 'scratch'].every((name) =>
+        writableTrees.includes(`${evaluation.root}/${name}`),
+      ) ||
+      writableTrees.some(
+        (write) =>
+          inside(write, evaluation.root) &&
+          ![...evaluationWrites, 'scratch'].some((name) => write === `${evaluation.root}/${name}`),
+      ))
+  )
+    throw new TypeError('invalid macOS evaluation grants')
   if (protectedRoots.length === 0 || !['isolated', 'inherited'].includes(input.network))
     throw new TypeError('macOS sandbox requires explicit control roots and network policy')
   if (
@@ -72,7 +97,15 @@ export function privateMacosSandboxProfile(input: PrivateMacosSandboxFiles): Rea
     throw new TypeError('macOS payload grant overlaps host control')
   if (
     writableTrees.some((write) =>
-      [...SYSTEM_TREES, ...readOnlyFiles, ...readOnlyTrees].some((read) => intersects(write, read)),
+      [...SYSTEM_TREES, ...readOnlyFiles, ...readOnlyTrees].some(
+        (read) =>
+          intersects(write, read) &&
+          !(
+            evaluation !== undefined &&
+            read === evaluation.root &&
+            [...evaluationWrites, 'scratch'].some((name) => write === `${evaluation.root}/${name}`)
+          ),
+      ),
     )
   )
     throw new TypeError('macOS writable grant overlaps immutable data')

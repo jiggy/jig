@@ -22,6 +22,7 @@ import {
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
+import { isRunCheckpointContract } from './private-run-checkpoint.js'
 import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import {
   createPrivateProjectLocalLock,
@@ -35,6 +36,7 @@ import {
   normalizePrivateRuntimeReadinessCause,
   type PrivateRuntimeReadinessCause,
 } from './resource-qualification-evidence.js'
+import { PRIVATE_FLOW_RESOURCE_CEILINGS } from './root-operation-limits.js'
 
 const KIND_V5 = 'private-activation-candidate/5'
 const PLAN_V2_KIND = 'private-activation-plan/2'
@@ -48,6 +50,7 @@ const createdCandidatesV5 = new WeakSet<object>()
 const inertCandidatesV5 = new WeakSet<object>()
 const inertPlansV2 = new WeakSet<object>()
 const candidateDepths = new WeakMap<object, ReadonlyMap<string, number>>()
+const candidateEffectMemory = new WeakMap<object, ReadonlyMap<string, number>>()
 
 type PrivateActivationRecipe = PrivateDirectRunRecipe
 
@@ -345,12 +348,22 @@ export function privateActivationCandidateFlowDepth(
   const artifact = requirePrivateInertActivationCandidateV5(value)
   let depths = candidateDepths.get(artifact)
   if (depths === undefined) {
-    type Node = { packagePath: string; slots: Readonly<Record<string, RunTargetIdentity>> }
+    type Node = {
+      packagePath: string
+      slots: Readonly<Record<string, RunTargetIdentity>>
+      rootOnly: boolean
+    }
     const bindings = new Map<string, Node>()
     const flows = new Map<string, Node>()
     for (const { request } of artifact.candidate.targets) {
       const target = request.target
-      const node = { packagePath: request.packagePath, slots: flowSlotTargets(request.slots) }
+      const node = {
+        packagePath: request.packagePath,
+        slots: flowSlotTargets(request.slots),
+        rootOnly: Object.values(request.slots).some(
+          (slot) => slot.kind === 'native' && isRunCheckpointContract(slot.contract),
+        ),
+      }
       if (target.kind === 'binding') bindings.set(target.id, node)
       else flows.set(target.path, node)
     }
@@ -362,6 +375,47 @@ export function privateActivationCandidateFlowDepth(
   const depth = depths.get(key)
   if (depth === undefined) throw new TypeError('missing admitted Flow target')
   return depth + 1
+}
+
+/** Reserve the largest reviewed effect reachable through an exact admitted branch. */
+export function privateActivationCandidateEffectMemoryBytes(
+  value: PrivateActivationCandidateArtifactV5,
+  identity: RunTargetIdentity,
+): number {
+  const artifact = requirePrivateInertActivationCandidateV5(value)
+  // Reuse the bounded, acyclic graph validation rather than traverse unchecked routes.
+  privateActivationCandidateFlowDepth(artifact, identity)
+  let allowances = candidateEffectMemory.get(artifact)
+  if (allowances === undefined) {
+    const targets = new Map(
+      artifact.candidate.targets.map(({ request }) => [
+        privateActivationTargetKey(request.target),
+        request,
+      ]),
+    )
+    const calculated = new Map<string, number>()
+    const calculate = (key: string): number => {
+      const known = calculated.get(key)
+      if (known !== undefined) return known
+      const request = targets.get(key)
+      if (request === undefined) throw new TypeError('missing admitted Flow target')
+      let memory = PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes
+      for (const route of Object.values(request.slots)) {
+        if (route.kind === 'flow')
+          memory = Math.max(memory, calculate(privateActivationTargetKey(route.target)))
+        else if (route.native === 'project-evaluation')
+          memory = Math.max(memory, 2 * PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes)
+      }
+      calculated.set(key, memory)
+      return memory
+    }
+    for (const key of targets.keys()) calculate(key)
+    allowances = calculated
+    candidateEffectMemory.set(artifact, allowances)
+  }
+  const memory = allowances.get(privateActivationTargetKey(normalizeIdentity(identity)))
+  if (memory === undefined) throw new TypeError('missing admitted Flow target')
+  return memory
 }
 
 /**
@@ -609,12 +663,17 @@ function normalizeCandidateTargets(
     targets.map(({ request }) => [privateActivationTargetKey(request.target), request]),
   )
   const attachmentsByPackage = new Map<string, PrivateActivationRequest['attachments']>()
+  const artifactResultsByPackage = new Map<string, readonly string[]>()
   for (const { request } of targets) {
     requireRequestLockProjection(request, lock)
     const attachments = attachmentsByPackage.get(request.package.digest)
     if (attachments !== undefined && !sameJson(attachments, request.attachments))
       throw new TypeError('activation targets disagree on their package attachment interface')
     attachmentsByPackage.set(request.package.digest, request.attachments)
+    const artifactResults = artifactResultsByPackage.get(request.package.digest)
+    if (artifactResults !== undefined && !sameJson(artifactResults, request.artifactResults ?? []))
+      throw new TypeError('activation targets disagree on their package artifact result interface')
+    artifactResultsByPackage.set(request.package.digest, request.artifactResults ?? [])
     for (const route of Object.values(request.slots)) {
       if (route.kind !== 'flow') continue
       const child = byTarget.get(privateActivationTargetKey(route.target))

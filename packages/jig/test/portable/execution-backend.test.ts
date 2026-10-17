@@ -9,13 +9,53 @@ import {
   sealPrivateExecutionOwner,
 } from '../../src/internal/execution-backend.js'
 import {
+  normalizePrivateLinuxConfirmedEnforcementReceipt,
   PrivateLinuxCgroupBackend,
   PrivateLinuxFenceUnconfirmedError,
 } from '../../src/internal/linux-rootless-backend.js'
 import {
+  normalizePrivateMacosConfirmedEnforcementReceipt,
   PrivateMacosBackend,
   PrivateMacosFenceUnconfirmedError,
 } from '../../src/internal/macos-native-backend.js'
+
+test('native receipt decoders retain clock loss distinctly from elapsed expiry', () => {
+  const common = {
+    ownerDigest: `sha256:${'1'.repeat(64)}`,
+    stopReason: 'clock',
+    exitCode: null,
+    signal: null,
+    fenced: true,
+  }
+  const linux = {
+    ...common,
+    kind: 'private-linux-confirmed-enforcement/1',
+    evidence: { cpuStat: {}, memoryEvents: {}, pidsEvents: {} },
+  }
+  const mac = {
+    ...common,
+    kind: 'private-macos-confirmed-enforcement/1',
+    outputLost: true,
+    recovered: false,
+    evidence: {
+      cpuNanoseconds: '0',
+      peakFootprintBytes: '0',
+      peakTasks: 0,
+      samples: 0,
+      pauses: 0,
+      incompleteSamples: 0,
+      maxSampleMilliseconds: 0,
+    },
+  }
+  expect(normalizePrivateLinuxConfirmedEnforcementReceipt(linux).stopReason).toBe('clock')
+  expect(normalizePrivateMacosConfirmedEnforcementReceipt(mac).stopReason).toBe('clock')
+  expect(() =>
+    normalizePrivateLinuxConfirmedEnforcementReceipt({ ...linux, stopReason: 'clock-loss' }),
+  ).toThrow()
+  expect(() =>
+    normalizePrivateMacosConfirmedEnforcementReceipt({ ...mac, stopReason: 'clock-loss' }),
+  ).toThrow()
+})
 
 test('execution backend boundary accepts only the two private implementations', () => {
   const linux = new PrivateLinuxCgroupBackend({

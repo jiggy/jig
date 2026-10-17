@@ -1,9 +1,6 @@
 import type { JsonObject } from '../json.js'
 import { JSON_1_LIMITS, validateJson1 } from '../json.js'
-import {
-  normalizeBindingAttachmentMap,
-  validateDistinctBindingAttachmentDirectories,
-} from './attachment-routes.js'
+import { normalizeBindingAttachmentMap } from './attachment-routes.js'
 import { expectJsonObject, snapshotJson, snapshotJsonObject } from './author-value.js'
 import { type GrantInput, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
 import { flowSelector, normalizeFlowPackage, npmPackageName } from './package-selector.js'
@@ -60,7 +57,8 @@ export type RunTargetRef = FlowRef | BindingRef
 /** Static reviewed names only. These values never authorize filesystem access. */
 export type BindingAttachmentMapping =
   | { readonly from: string }
-  | { readonly into: string; readonly directory: string }
+  | { readonly supplied: 'read' }
+  | { readonly create: true }
 export type BindingAttachmentMap = Readonly<Record<string, BindingAttachmentMapping>>
 export interface BindingAttachmentRoute {
   readonly target: string
@@ -254,7 +252,10 @@ function normalizeFlowSlots(
     const value = input[name]
     if (typeof value !== 'string') {
       const record = expectJsonObject(value, `slot ${name}`)
-      if (Object.hasOwn(record, 'target') || Object.hasOwn(record, 'attachments')) {
+      if (
+        Object.hasOwn(record, 'target') ||
+        (!Object.hasOwn(record, 'kind') && Object.hasOwn(record, 'attachments'))
+      ) {
         assertClosedObject(record, ['target', 'attachments'], `slot ${name} attachment route`)
         const target = parseRunTargetSelector(record.target, `slot ${name} attachment route target`)
         output[name] = Object.freeze({
@@ -273,13 +274,6 @@ function normalizeFlowSlots(
     const target = parseRunTargetSelector(value, `slot ${name}`)
     output[name] = target.kind === 'flow' ? flowSelector(target.path) : `binding:${target.id}`
   }
-  validateDistinctBindingAttachmentDirectories(
-    Object.fromEntries(
-      Object.entries(output).flatMap(([name, value]) =>
-        typeof value === 'object' && 'attachments' in value ? [[name, value.attachments]] : [],
-      ),
-    ),
-  )
   return Object.freeze(output)
 }
 

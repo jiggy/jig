@@ -9,6 +9,7 @@ import * as store from '../src/internal/activation-admission-store.js'
 import * as direct from '../src/internal/direct-run.js'
 import * as execution from '../src/internal/execution-backend.js'
 import * as context from '../src/internal/invocation-context.js'
+import { privateBootDeadlineFromUnix } from '../src/internal/native-clock.js'
 import * as artifacts from '../src/internal/package-artifact-store.js'
 import * as materialization from '../src/internal/package-materialization.js'
 import * as channels from '../src/internal/run-channels.js'
@@ -42,6 +43,8 @@ mock.module('../src/internal/run-channels.js', () => ({
 }))
 mock.module('../src/internal/invocation-context.js', () => ({
   ...context,
+  privateInvocationBootDeadline: async (input: any) =>
+    privateBootDeadlineFromUnix(input.parent.intent.deadlineUnixMs),
   requireParentTarget: () => ({ request: { slots: { child: { kind: 'flow', target } } } }),
   requireParentFlowOwner: async () => undefined,
 }))
@@ -49,6 +52,7 @@ mock.module('../src/internal/activation-admission.js', () => ({
   ...admission,
   findPrivateActivationCandidateTargetV5: () => selected,
   privateActivationCandidateFlowDepth: () => 1,
+  privateActivationCandidateEffectMemoryBytes: () => 256 * 1024 * 1024,
 }))
 mock.module('../src/internal/package-artifact-store.js', () => ({
   ...artifacts,
@@ -84,6 +88,7 @@ mock.module('../src/internal/execution-backend.js', () => ({
 }))
 mock.module('../src/internal/activation-admission-store.js', () => ({
   ...store,
+  privateAttemptRunDeadline: async () => undefined,
   listPrivateRootChildOwners: async () => [],
   allocatePrivateRootChildOwner: async (input: { operationId: string }) => {
     durableOperationId = input.operationId

@@ -1,12 +1,13 @@
 import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
-import { privateFilePath, sha256 } from './file-input.js'
+import { bindingAttachmentLocalName } from '../project/attachment-routes.js'
+import { privateFilePath } from './file-input.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const RUN_CHECKPOINT_CONTRACT_ID = 'https://jig.md/contracts/run-checkpoint'
 export const RUN_CHECKPOINT_CONTRACT_VERSION = '0.1.0'
 export const RUN_CHECKPOINT_CONTRACT_DIGEST =
-  'sha256:42b07d88fbb5cf8af33d8422230e8db4ffdf579e32ec899b1700997c78855f6f'
+  'sha256:5e9304b91930242a6c09d3ea96376dfa64950abb39a083ec26eb39cff799b0b2'
 export const RUN_CHECKPOINT_LIMITS = Object.freeze({
   bytes: 2 * 1024 * 1024,
   fileBytes: 1024 * 1024,
@@ -15,9 +16,9 @@ export const RUN_CHECKPOINT_LIMITS = Object.freeze({
 })
 
 export function isRunCheckpointContract(value: {
-  readonly id: unknown
-  readonly version: unknown
-  readonly digest: unknown
+  readonly id?: unknown
+  readonly version?: unknown
+  readonly digest?: unknown
 }): boolean {
   return (
     value.id === RUN_CHECKPOINT_CONTRACT_ID &&
@@ -42,6 +43,8 @@ export interface RunCheckpointInput {
   readonly sequence: number
   readonly evidence: JsonValue
   readonly files: Readonly<Record<string, string>>
+  /** Explicit Jig host-control identity data, never portable file authority. */
+  readonly artifacts?: Readonly<Record<string, string>>
 }
 export interface RunCheckpointIdentity {
   readonly runId: string
@@ -56,6 +59,12 @@ export interface RunCheckpointReceipt {
 export class PrivateCheckpointRejected extends Error {}
 export interface RetainedRunCheckpoint extends RunCheckpointInput, RunCheckpointReceipt {
   readonly identity: RunCheckpointIdentity
+  readonly associations?: Readonly<Record<string, JsonValue>>
+  readonly manifest?: readonly {
+    readonly path: string
+    readonly bytes: number
+    readonly digest: string
+  }[]
 }
 
 export function parseRunCheckpointInput(value: unknown): RunCheckpointInput {
@@ -68,7 +77,9 @@ export function parseRunCheckpointInput(value: unknown): RunCheckpointInput {
     !input ||
     typeof input !== 'object' ||
     Array.isArray(input) ||
-    Object.keys(input).sort().join(',') !== 'evidence,files,sequence' ||
+    !['evidence,files,sequence', 'artifacts,evidence,files,sequence'].includes(
+      Object.keys(input).sort().join(','),
+    ) ||
     !Number.isSafeInteger(input.sequence) ||
     input.sequence < 1 ||
     input.sequence > RUN_CHECKPOINT_LIMITS.saves
@@ -76,11 +87,29 @@ export function parseRunCheckpointInput(value: unknown): RunCheckpointInput {
     throw new TypeError('checkpoint requires sequence 1–16, evidence, and files')
   if (!input.files || typeof input.files !== 'object' || Array.isArray(input.files))
     throw new TypeError('checkpoint files must be text values')
+  if (input.artifacts !== undefined) {
+    if (!input.artifacts || typeof input.artifacts !== 'object' || Array.isArray(input.artifacts))
+      throw new TypeError('checkpoint artifacts must be held references')
+    const names = Object.keys(input.artifacts)
+    if (names.length > 8) throw new TypeError('checkpoint exceeds eight artifact associations')
+    for (const name of names) {
+      bindingAttachmentLocalName(name)
+      const reference = input.artifacts[name]
+      if (typeof reference !== 'string' || reference.length === 0 || reference.length > 1024)
+        throw new TypeError('checkpoint artifacts must be held references')
+    }
+  }
   const paths = Object.keys(input.files)
   if (paths.length > RUN_CHECKPOINT_LIMITS.files) throw new TypeError('checkpoint exceeds 64 files')
   let bytes = 0
   for (const path of paths) {
     privateFilePath(path)
+    if (
+      input.artifacts !== undefined &&
+      Object.keys(input.artifacts).length !== 0 &&
+      (path === 'artifacts' || path.startsWith('artifacts/'))
+    )
+      throw new TypeError('checkpoint text collides with associated artifact namespace')
     if (paths.some((other) => other !== path && path.startsWith(`${other}/`)))
       throw new TypeError('checkpoint has a file/directory collision')
     const content = input.files[path]
@@ -95,40 +124,19 @@ export function parseRunCheckpointInput(value: unknown): RunCheckpointInput {
   return input
 }
 
-/** Lives only in the independent command owner; no file descriptor or scratch capture. */
-export class PrivateRunCheckpoints {
-  readonly #identity: RunCheckpointIdentity
-  #latest: RetainedRunCheckpoint | undefined
-  #closed = false
-  constructor(identity: RunCheckpointIdentity) {
-    this.#identity = snapshotPrivateOrdinaryJson(
-      identity,
-      'checkpoint identity',
-      (m) => new TypeError(m),
-    ) as unknown as RunCheckpointIdentity
-    if (!/^sha256:[a-f0-9]{64}$/.test(this.#identity.runId))
-      throw new TypeError('invalid checkpoint Run identity')
-  }
-  accept(value: unknown): RunCheckpointReceipt {
-    if (this.#closed) throw new TypeError('checkpoint owner closed')
-    const input = parseRunCheckpointInput(value)
-    if (input.sequence !== (this.#latest?.sequence ?? 0) + 1)
-      throw new TypeError('checkpoint sequence must advance by one')
-    const record = { identity: this.#identity, ...input }
-    const digest = sha256(canonicalJson(record as unknown as JsonValue))
-    // Validation and bounded copying finish before replacement. No asynchronous
-    // gap can publish a partial aggregate or destroy the previous accepted one.
-    this.#latest = Object.freeze({ ...record, digest })
-    return Object.freeze({ sequence: input.sequence, digest })
-  }
-  get latest(): RetainedRunCheckpoint | undefined {
-    return this.#latest
-  }
-  get identity(): RunCheckpointIdentity {
-    return this.#identity
-  }
-  close(): void {
-    this.#closed = true
-    this.#latest = undefined
-  }
+export function parseRunCheckpointIdentity(value: unknown): RunCheckpointIdentity {
+  const identity = snapshotPrivateOrdinaryJson(
+    value,
+    'checkpoint identity',
+    (m) => new TypeError(m),
+  ) as unknown as RunCheckpointIdentity
+  if (
+    !identity ||
+    typeof identity !== 'object' ||
+    Array.isArray(identity) ||
+    Object.keys(identity).sort().join(',') !== 'input,method,runId' ||
+    !/^sha256:[a-f0-9]{64}$/.test(identity.runId)
+  )
+    throw new TypeError('invalid checkpoint Run identity')
+  return identity
 }

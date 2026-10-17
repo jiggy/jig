@@ -347,10 +347,6 @@ describe('private package-project portable lock projection', () => {
           },
         },
         async (flows) => {
-          if (!Object.hasOwn(attachments, 'out')) {
-            expect(() => linkPackageProject({ flows, bindings: [] })).toThrow('writable attachment')
-            return
-          }
           const project = linkPackageProject({ flows, bindings: [] })
           const lock = createPrivateProjectLocalLock(project)
           expect(lock.packages['flows/checkpoint']!.directRun).toBe(true)
@@ -358,17 +354,33 @@ describe('private package-project portable lock projection', () => {
             'https://jig.md/contracts/run-checkpoint',
           )
           expect(decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(lock))).toEqual(lock)
+          const child = Object.hasOwn(attachments, 'out')
+            ? { target: 'flow:flows/checkpoint', attachments: { out: { create: true } } }
+            : 'flow:flows/checkpoint'
           expect(() =>
             linkPackageProject({
               flows,
               bindings: [
                 binding('bindings/parent.ts', {
                   package: 'flows/parent',
-                  slots: { child: 'flow:flows/checkpoint' },
+                  slots: { child },
                 }),
               ],
             }),
-          ).toThrow()
+          ).toThrow('root invocation')
+          const forged = {
+            ...lock,
+            bindings: {
+              parent: {
+                packagePath: 'flows/parent',
+                settings: {},
+                slots: { child: { kind: 'flow', path: 'flows/checkpoint' } },
+              },
+            },
+          }
+          expect(() => decodePrivateProjectLocalLock(canonicalJson(forged as JsonValue))).toThrow(
+            'root invocation',
+          )
         },
       )
     }

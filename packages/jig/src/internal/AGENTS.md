@@ -15,16 +15,18 @@ read the execution guide before selecting a narrower scope.
 
 | Files or responsibility | Required guide |
 | --- | --- |
-| `activation-*`, `project-*`, `package-*`, `dependency-*`, Bun preparation, contract import/generation, installation verification | [Capture, review and admission](admission-guidance.md) |
-| `root-*`, `execution-*`, `invocation-*`, evaluator, Linux launch/delegation, effects, deadlines, dispatch or recovery | [Execution ownership](execution-guidance.md) |
-| File/descriptor capture, attachments, input/output projection, child imports, checkpoints, delivery, saved inspection or preview retirement | [File authority and delivery](files-guidance.md) |
+| `activation-*`, `project-*`, `package-*`, `dependency-*`, prepared attempts, tickets, retirement, reservations, Bun preparation, contract import/generation, installation verification | [Capture, review and admission](admission-guidance.md) |
+| `root-*`, `execution-*`, `invocation-*`, evaluator, native clocks/deadlines, Linux launch/delegation, effects, dispatch or recovery | [Execution ownership](execution-guidance.md) |
+| File/descriptor capture, attachments, immutable artifact rights, checkpoints, retained export, delivery, saved inspection or preview retirement | [File authority and delivery](files-guidance.md) |
 | ACP, native clients, Agent installation/authentication, session retention/restoration or client diagnostics | [Native Agent resources](agents-guidance.md) |
 | `macos-*`, Darwin ABI, guardian, native storage, native support assets or Mac enforcement/recovery | [Native Mac enforcement](native-guidance.md) |
 | Channel rights, transfer, broker integration, reporting provenance or optional updates | [Channel integration](channels-guidance.md) |
 
 File names do not limit these responsibilities. For example, native file work
 requires both the file and native guides. Agent retention also requires
-admission and execution rules.
+admission and execution rules. Ticket checkpoints and export require admission
+and file rules. Controlled evaluation requires execution, admission and file rules,
+plus native rules on Mac.
 
 ## Local Contracts
 
@@ -39,8 +41,8 @@ admission and execution rules.
 
 - Preserve the sequence observe, identify, plan, seal, admit, revalidate,
   execute. Never execute mutable project source. Installed-support evidence
-  follows the operator's verification policy below. Execution authority and
-  lifecycle observations remain fresh.
+  follows the operator's verification policy in the admission guide. Execution
+  authority and lifecycle observations remain fresh.
 
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
@@ -70,8 +72,10 @@ admission and execution rules.
 - Add negative, hostile, race, restart, and cleanup evidence for trust-boundary
   changes.
 
-- Do not weaken production checks for an unprovisioned unit test. Use private
-  injection seams for units and the proof host for kernel behavior.
+- Never use mocks or private replacement evidence. Exercise real protected stores,
+  real subprocesses, installed public boundaries and qualified native enforcement.
+  Do not weaken production checks for an unprovisioned test.
+  Report missing prerequisites and existing replacement-based test debt explicitly.
 
 ## Verification
 
@@ -90,14 +94,14 @@ membership. Configuration alone does not prove execution.
 ## Child DOX Index
 
 - [admission-guidance.md](admission-guidance.md) — Capture, preparation, review,
-  retained authority and installation verification.
+  retained authority, tickets, quotas, retirement and installation verification.
 - [execution-guidance.md](execution-guidance.md) — Dispatch, finite effects,
-  reservations, settlement and recovery.
-- [files-guidance.md](files-guidance.md) — Descriptor authority, immutable
-  bytes, imports, publication and inspection.
+  controlled evaluation, boot deadlines, reservations, settlement and recovery.
+- [files-guidance.md](files-guidance.md) — Descriptor authority, immutable artifact
+  rights, checkpoints, retained export, publication and inspection.
 - [agents-guidance.md](agents-guidance.md) — Native clients, credentials, ACP
   policy and retained sessions.
 - [native-guidance.md](native-guidance.md) — Qualified Darwin enforcement, ABI,
-  native storage and recovery.
+  native storage, evaluation projection and recovery.
 - [channels-guidance.md](channels-guidance.md) — Endpoint integration, bounded
   observation and publisher attribution.

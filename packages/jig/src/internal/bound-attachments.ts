@@ -57,13 +57,13 @@ export function normalizeBoundAttachments(value: unknown): BoundAttachments {
     const { digest } = normalizePackageArtifactRef({ kind: 'flow-package/0', digest: item.digest })
     const identity = normalizePrivateRunFileIdentity({
       attachments: [{ name, files: item.files }],
-      output: null,
+      output: false,
     })
     output[name] = Object.freeze({ source, digest, files: identity.attachments[0]!.files })
   }
   normalizePrivateRunFileIdentity({
     attachments: Object.entries(output).map(([name, item]) => ({ name, files: item.files })),
-    output: null,
+    output: false,
   })
   return Object.freeze(output)
 }

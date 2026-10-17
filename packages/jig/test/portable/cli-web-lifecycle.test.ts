@@ -8,6 +8,8 @@ import { main, privateCliCommandLifetimeMs } from '../../src/cli.js'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateWebDisplay } from '../../src/cli-web.js'
 import { PrivateWebInput } from '../../src/cli-web-input.js'
+import { cliFixtureAcceptance, prepareCliFixtureRun } from '../cli-prepared.fixture.js'
+
 const assets: WebAssets = {
   '/': { body: '<!doctype html><title>Test inspector</title>', contentType: 'text/html' },
   '/assets/app.js': { body: '/* inert test shell */', contentType: 'text/javascript' },
@@ -200,6 +202,7 @@ test('initial refusal and machine modes advertise no browser or input ownership'
       dashboardInputStream: input as any,
       webAssets: assets,
       host: {
+        prepareRun: prepareCliFixtureRun,
         async acquire() {
           started = true
           throw new Error('Initial prerequisite refused')
@@ -238,6 +241,7 @@ test('short host-only Run retires files before indefinite inspection and exact J
       webAssets: assets,
       expectedAdmissionDigest: `sha256:${'b'.repeat(64)}`,
       host: {
+        prepareRun: prepareCliFixtureRun,
         delivery: {
           async retire() {
             timeline.push('retired')
@@ -248,10 +252,10 @@ test('short host-only Run retires files before indefinite inspection and exact J
           expect(options?.channelOutput?.updates).toBeUndefined()
           return {
             rootAdministration: {
-              async startRun() {
+              async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                 timeline.push('dispatch')
                 options?.channelOutput?.dispatched?.()
-                return { runId: 'sha256:' + 'a'.repeat(64) }
+                return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
               },
               async runStatus() {
                 return {
@@ -356,6 +360,7 @@ test('live close preserves work; retirement and presentation failures preserve k
       dashboardInputStream: { isTTY: false } as any,
       webAssets: assets,
       host: {
+        prepareRun: prepareCliFixtureRun,
         delivery: {
           async retire() {
             retires++
@@ -365,9 +370,9 @@ test('live close preserves work; retirement and presentation failures preserve k
         async acquire(_path, options) {
           return {
             rootAdministration: {
-              async startRun() {
+              async startPreparedRun(request: Parameters<typeof cliFixtureAcceptance>[0]) {
                 options?.channelOutput?.dispatched?.()
-                return { runId: 'sha256:' + 'a'.repeat(64) }
+                return cliFixtureAcceptance(request, 'sha256:' + 'a'.repeat(64))
               },
               async runStatus() {
                 await work

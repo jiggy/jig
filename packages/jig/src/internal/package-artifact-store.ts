@@ -39,7 +39,7 @@ const MIB = 1024 * 1024
 const O_TMPFILE = 0o20000000 | constants.O_DIRECTORY
 
 export const PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS = Object.freeze({
-  artifactBytes: 64 * MIB,
+  artifactBytes: 192 * MIB,
   storeBytes: 1024 * MIB,
 })
 

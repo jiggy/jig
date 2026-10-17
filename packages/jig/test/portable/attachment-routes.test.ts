@@ -2,17 +2,18 @@ import { expect, test } from 'bun:test'
 import {
   normalizeBindingAttachmentMap,
   validateBindingAttachmentMapForInterfaces,
-  validateDistinctBindingAttachmentDirectories,
 } from '../../src/project/attachment-routes.js'
 
 test('attachment maps normalize complete closed read and write mappings canonically', () => {
   const map = normalizeBindingAttachmentMap({
     source: { from: 'source' },
-    files: { directory: 'copies', into: 'photos' },
+    files: { create: true },
+    previous: { supplied: 'read' },
   })
-  expect(Object.keys(map)).toEqual(['files', 'source'])
+  expect(Object.keys(map)).toEqual(['files', 'previous', 'source'])
   expect(map).toEqual({
-    files: { into: 'photos', directory: 'copies' },
+    files: { create: true },
+    previous: { supplied: 'read' },
     source: { from: 'source' },
   })
   expect(Object.isFrozen(map)).toBe(true)
@@ -20,10 +21,13 @@ test('attachment maps normalize complete closed read and write mappings canonica
   for (const malformed of [
     {},
     { source: {} },
-    { source: { from: 'source', into: 'photos' } },
-    { files: { into: 'photos' } },
+    { files: { unknown: true } },
+    { files: { create: false } },
+    { files: { create: true, from: 'source' } },
+    { files: { create: true, extra: 1 } },
+    { source: { supplied: 'read-write' } },
+    { source: { supplied: 'read', from: 'source' } },
     { source: { from: 'source', extra: true } },
-    { files: { into: 'photos', directory: '../copies' } },
     { source: { from: 'Source' } },
     { 'source\n': { from: 'source' } },
     { source: { from: 'a'.repeat(65) } },
@@ -78,12 +82,13 @@ test('nested attachment maps reject accessors, hidden fields and proxy reflectio
 test('interface admission requires every child port and immediate-caller modes without escalation', () => {
   const attachments = {
     source: { from: 'originals' },
-    files: { into: 'photos', directory: 'copies' },
+    files: { create: true },
+    previous: { supplied: 'read' },
   }
   const valid = {
     attachments,
-    caller: { originals: 'read', photos: 'read-write' },
-    child: { source: 'read', files: 'read-write' },
+    caller: { originals: 'read' },
+    child: { source: 'read', previous: 'read', files: 'read-write' },
   } as const
   expect(validateBindingAttachmentMapForInterfaces(valid)).toEqual(
     normalizeBindingAttachmentMap(attachments),
@@ -104,9 +109,9 @@ test('interface admission requires every child port and immediate-caller modes w
   for (const change of [
     { attachments: { source: attachments.source } },
     { child: { source: 'read' } },
-    { caller: { originals: 'read-write', photos: 'read-write' } },
-    { caller: { originals: 'read', photos: 'read' } },
-    { caller: { photos: 'read-write' } },
+    { caller: { originals: 'read-write' } },
+    { caller: {} },
+    { child: { source: 'read', previous: 'read-write', files: 'read' } },
     { child: { source: 'read-write', files: 'read-write' } },
     { child: {} },
     { attachments: { ...attachments, other: { from: 'originals' } } },
@@ -115,18 +120,12 @@ test('interface admission requires every child port and immediate-caller modes w
       validateBindingAttachmentMapForInterfaces({ ...valid, ...change } as typeof valid),
     ).toThrow()
 })
-test('folder names are unique across selected slots even when caller ports differ', () => {
-  const copy = normalizeBindingAttachmentMap({ files: { into: 'photos', directory: 'copies' } })
-  const overview = normalizeBindingAttachmentMap({
-    files: { into: 'photos', directory: 'overview' },
-  })
-  expect(() => validateDistinctBindingAttachmentDirectories({ copy, overview })).not.toThrow()
-  expect(() =>
-    validateDistinctBindingAttachmentDirectories({
-      copy,
-      duplicate: normalizeBindingAttachmentMap({
-        files: { into: 'other', directory: 'copies' },
-      }),
+test('operation-created writable mappings need no writable caller authority', () => {
+  expect(
+    validateBindingAttachmentMapForInterfaces({
+      attachments: { files: { create: true } },
+      caller: {},
+      child: { files: 'read-write' },
     }),
-  ).toThrow('duplicate')
+  ).toEqual({ files: { create: true } })
 })

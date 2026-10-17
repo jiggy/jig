@@ -1,5 +1,11 @@
 import { expect, test } from 'bun:test'
 import {
+  normalizePrivateMacosEvaluationWorkspace,
+  PRIVATE_MACOS_EVALUATION_WORKSPACE_LIMITS,
+  requirePrivateMacosEvaluationEnvironment,
+} from '../../src/internal/macos-evaluation-workspace.js'
+import { requirePrivateMacosGuardianStorage } from '../../src/internal/macos-guardian-storage.js'
+import {
   type PrivateMacosSandboxFiles,
   privateMacosSandboxProfile,
 } from '../../src/internal/macos-sandbox-profile.js'
@@ -11,6 +17,129 @@ const files: PrivateMacosSandboxFiles = {
   protectedRoots: ['/private/tmp/control'],
   network: 'isolated',
 }
+
+test('evaluation overlap is closed to fixed phase outputs and bounded owner storage', () => {
+  const root = '/private/tmp/owner/data/evaluation'
+  for (const phase of ['generate', 'compile', 'test'] as const) {
+    const outputs =
+      phase === 'generate' ? ['generated', 'reports'] : phase === 'compile' ? ['dist'] : ['reports']
+    const evaluation: PrivateMacosSandboxFiles = {
+      ...files,
+      readOnlyTrees: [root],
+      writableTrees: [
+        ...outputs.map((name) => `${root}/${name}`),
+        `${root}/scratch`,
+        '/private/tmp/owner/data/tmp',
+      ],
+      evaluationWorkspace: { phase, root },
+    }
+    expect(privateMacosSandboxProfile(evaluation).bootstrap).toBe('closed')
+    const storage = {
+      mountPath: '/private/tmp/owner/data',
+      bytes: 512 * 1024 * 1024,
+      collect: 'evaluation' as const,
+    }
+    expect(() => requirePrivateMacosGuardianStorage(storage, evaluation, root)).not.toThrow()
+    for (const write of [root, `${root}/src`, `${root}/reports/nested`, `${root}/node_modules`])
+      expect(() =>
+        privateMacosSandboxProfile({
+          ...evaluation,
+          writableTrees: [...evaluation.writableTrees, write],
+        }),
+      ).toThrow()
+    expect(() => privateMacosSandboxProfile({ ...evaluation, network: 'inherited' })).toThrow()
+    expect(() =>
+      privateMacosSandboxProfile({ ...evaluation, evaluationWorkspace: undefined }),
+    ).toThrow('immutable')
+    expect(() =>
+      requirePrivateMacosGuardianStorage({ ...storage, bytes: 64 * 1024 * 1024 }, evaluation, root),
+    ).toThrow()
+    expect(() => requirePrivateMacosGuardianStorage(storage, evaluation, `${root}/src`)).toThrow()
+    expect(() =>
+      requirePrivateMacosGuardianStorage(
+        storage,
+        {
+          ...evaluation,
+          writableTrees: [...evaluation.writableTrees, '/private/tmp/owner/data/work'],
+        },
+        root,
+      ),
+    ).toThrow()
+  }
+})
+
+test('evaluation source descriptor is a closed inert phase and canonical source only', () => {
+  expect(PRIVATE_MACOS_EVALUATION_WORKSPACE_LIMITS).toEqual({
+    files: 8448,
+    bytes: 192 * 1024 * 1024,
+  })
+  expect(Object.isFrozen(PRIVATE_MACOS_EVALUATION_WORKSPACE_LIMITS)).toBe(true)
+  expect(
+    normalizePrivateMacosEvaluationWorkspace({
+      phase: 'test',
+      source: '/retained/package',
+      emptyDirectories: ['assets/empty', 'generated/prior-empty'],
+    }),
+  ).toEqual({
+    phase: 'test',
+    source: '/retained/package',
+    emptyDirectories: ['assets/empty', 'generated/prior-empty'],
+  })
+  for (const value of [
+    null,
+    { phase: 'other', source: '/retained/package', emptyDirectories: [] },
+    { phase: 'test', source: '../package', emptyDirectories: [] },
+    { phase: 'test', source: '/retained/../package', emptyDirectories: [] },
+    { phase: 'test', source: '/retained/package', emptyDirectories: [], writableRoots: ['src'] },
+  ])
+    expect(() => normalizePrivateMacosEvaluationWorkspace(value)).toThrow()
+  for (const emptyDirectories of [
+    ['../escape'],
+    ['/absolute'],
+    ['a//b'],
+    ['reports'],
+    ['reports/empty'],
+    ['scratch/empty'],
+    ['duplicate', 'duplicate'],
+    ['a/'.repeat(17) + 'deep'],
+    Array.from({ length: 257 }, (_, index) => `empty-${index}`),
+  ])
+    expect(() =>
+      normalizePrivateMacosEvaluationWorkspace({
+        phase: 'test',
+        source: '/retained/package',
+        emptyDirectories,
+      }),
+    ).toThrow()
+  for (const phase of ['generate', 'compile', 'test'] as const)
+    for (const name of phase === 'generate'
+      ? ['generated', 'reports', 'dist']
+      : phase === 'compile'
+        ? ['dist']
+        : ['reports'])
+      expect(() =>
+        normalizePrivateMacosEvaluationWorkspace({
+          phase,
+          source: '/retained/package',
+          emptyDirectories: [`${name}/empty`],
+        }),
+      ).toThrow()
+  const environment = {
+    TMPDIR: '/owner/data/tmp',
+    BUN_RUNTIME_TRANSPILER_CACHE_PATH: '0',
+    BUN_CONFIG_NO_CLEAR_TERMINAL: '1',
+  }
+  expect(() => requirePrivateMacosEvaluationEnvironment(environment, '/owner/data')).not.toThrow()
+  for (const extra of [
+    { API_KEY: 'synthetic' },
+    { PATH: '/ambient/bin' },
+    { TMPDIR: '/tmp' },
+    { BUN_RUNTIME_TRANSPILER_CACHE_PATH: '/ambient/cache' },
+  ])
+    expect(() =>
+      requirePrivateMacosEvaluationEnvironment({ ...environment, ...extra }, '/owner/data'),
+    ).toThrow()
+})
 
 test('control data cannot be exposed through either an ancestor or a descendant grant', () => {
   for (const key of ['readOnlyFiles', 'readOnlyTrees', 'writableTrees'] as const)

@@ -11,7 +11,7 @@ import {
   PrivateDeliveryInspectionError,
   privateCaptureDeliveryInspection,
 } from '../../src/internal/delivery-inspection.js'
-import { PrivateFileImportUnconfirmedError } from '../../src/internal/execution-file-import.js'
+import { PrivateOutputRetirementUnconfirmedError } from '../../src/internal/execution-output.js'
 import {
   privateFileCompletionAllowance,
   privateFileCompletionBudget,
@@ -29,6 +29,7 @@ import {
   privatePresentationNow,
 } from '../../src/internal/root-run-timeout-policy.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
+
 const bound = (ms = 1000) => ({ deadline: privatePresentationNow() + ms })
 const receipt = (files: readonly { path: string; bytes: number }[]): PrivateDeliveryReceipt => ({
   status: 'written',
@@ -533,7 +534,7 @@ test('command completion reuses timely task success after indefinite inspection'
 test('RootRunFiles concurrent and repeated closes consume one descriptor and preserve failure', async () => {
   const result = deferred<void>()
   let closes = 0
-  const files = new PrivateRootRunFiles([], null)
+  const files = new PrivateRootRunFiles([], false)
   files.retainOutput({
     kind: 'linux-directory',
     directory: {
@@ -551,8 +552,11 @@ test('RootRunFiles concurrent and repeated closes consume one descriptor and pre
   const failure = new Error('descriptor close failed')
   result.reject(failure)
   const uncertain = await rejection
-  expect(uncertain).toBeInstanceOf(PrivateFileImportUnconfirmedError)
-  expect((uncertain as PrivateFileImportUnconfirmedError).cause).toBe(failure)
+  expect(uncertain).toBeInstanceOf(AggregateError)
+  expect((uncertain as AggregateError).errors).toHaveLength(1)
+  const retirement = (uncertain as AggregateError).errors[0]
+  expect(retirement).toBeInstanceOf(PrivateOutputRetirementUnconfirmedError)
+  expect(retirement.cause).toBe(failure)
   expect(await files.close().catch((error) => error)).toBe(uncertain)
   expect(closes).toBe(1)
 })

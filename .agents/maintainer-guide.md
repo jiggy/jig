@@ -479,6 +479,27 @@ cleanup invariant. It is not justified by hypothetical reuse. Delete machinery
 coupled only to a removed feature, but do not trade away a proved invariant to
 reduce line or table count.
 
+### Test real boundaries, never mocks
+
+Do not use mocks, stubs, spies, monkey-patched production functions, substitute
+stores or native owners, or fabricated execution, fencing and cleanup receipts.
+They can keep passing while the real integration is broken and become forgotten
+parallel implementations.
+
+Exercise the production boundary being claimed: real temporary storage, actual
+subprocesses, installed artifacts and the qualified native host where required.
+Pure-function tests may supply ordinary data. Executable application methods
+and controlled protocol servers must perform their real task; they must not
+stand in for Jig's admission, storage, execution or cleanup machinery.
+Test failures through real invalid inputs, resource pressure, process loss and
+observable publication races rather than replacing the implementation.
+
+Missing infrastructure is a visible unmet prerequisite, not permission to
+substitute a mock or skip a selected test. Replace existing test doubles with
+real-boundary coverage of their invariants; do not merely rename them or delete
+their assertions to obtain a green gate. Keep the migration inventory and
+unproved cases in `.tmp/`, not a permanent mock mode or exemption list.
+
 ### Independent probes
 
 Building an interface while consuming it can hide the missing pieces an

@@ -132,9 +132,10 @@ These links locate module rules. All selected domain requirements still apply.
   adapter. Its app-server login uses `chatgptAuthTokens` and ephemeral
   credential storage. Never write `auth.json` inside the execution volume.
 
-  Qualify this unstable native operation against the selected client. Offline
-  synthetic tokens prove the login handshake only. They do not qualify online
-  subscription routing or model execution. Its constrained profile disables Code
+  Qualify this unstable native operation against the genuine selected client.
+  Never substitute fabricated authentication or protocol success for native evidence.
+  Startup evidence does not qualify online subscription routing or model execution.
+  Its constrained profile disables Code
   Mode and its helper host. Unsupported optional tool startup must not inject
   private-path warnings into Agent answers.
 
@@ -199,7 +200,10 @@ These links locate module rules. All selected domain requirements still apply.
   `JIG_NATIVE_AGENT_STARTUP=1` with absolute `JIG_CODEX_STARTUP_PATH`,
   `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH` enables
   `test/native-agent-startup.test.ts` after building. It tests genuine native
-  ACP startup and API sessions with networking disabled and dummy credentials.
+  ACP startup on the real selected clients. Authentication and subscription evidence
+  require actual operator-provided credentials through the ordinary private configuration.
+  Never record those credentials or substitute dummy login success.
+
   Codex subscription startup separately checks the in-memory login handshake.
   missing selections fail instead of silently skipping. This is startup
   evidence, separate from live model calls and the hostile-host gate.
@@ -223,7 +227,7 @@ These links locate module rules. All selected domain requirements still apply.
   class/code projection.
 
   Contained repair host tests observe guardian recovery per invocation. They
-  wrap only the existing snapshot-ready await with a fixed `output-capture`
-  failure phase. They then rethrow the same error even if observation fails.
+  retain a fixed `output-capture` failure phase for actual snapshot failures.
+  Preserve the same error even if observation fails.
   Capture, delivery and cleanup limits and outcomes stay unchanged. Successful
   diagnostic reruns do not explain an earlier failure.

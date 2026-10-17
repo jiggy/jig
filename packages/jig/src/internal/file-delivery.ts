@@ -60,6 +60,10 @@ export interface PrivateDeliveryReceipt {
     | 'DEADLINE_EXCEEDED'
 }
 export interface PrivateDeliveryConnection {
+  exportAttempt?(
+    request: import('./attempt-export-copier.js').PrivateAttemptExportRequest,
+    signal?: AbortSignal,
+  ): Promise<import('../attempt-contract.js').AttemptResults['export']>
   enableInspection?(): void
   preview?(path: string): Promise<{ text: string; bytes: number; clipped: boolean } | undefined>
   inspectionPreview?(
@@ -249,6 +253,7 @@ export class PrivateFileDeliveryOwner {
     retainAfterCancellation = false,
     coordinatorLost?: AbortSignal,
     phaseDeadline?: number,
+    checkpointCapture?: PrivateCapturedOutput,
   ): Promise<PrivateDeliveryReceipt> {
     if (this.#close || this.#publishing)
       return Promise.reject(new Error('delivery owner unavailable'))
@@ -259,6 +264,7 @@ export class PrivateFileDeliveryOwner {
       retainAfterCancellation,
       coordinatorLost,
       phaseDeadline,
+      checkpointCapture,
     )
     return this.#publication
   }
@@ -269,6 +275,7 @@ export class PrivateFileDeliveryOwner {
     retainAfterCancellation = false,
     coordinatorLost?: AbortSignal,
     phaseDeadline?: number,
+    checkpointCapture?: PrivateCapturedOutput,
   ): Promise<PrivateDeliveryReceipt> {
     if (
       this.#close ||
@@ -356,14 +363,35 @@ export class PrivateFileDeliveryOwner {
       if (checkpoint !== undefined && output === undefined) {
         if (rootRecord.runId !== checkpoint.identity.runId || Object.hasOwn(rootRecord, 'cleanup'))
           throw new TypeError('checkpoint publication requires its settled Run')
-        for (const [path, text] of Object.entries(checkpoint.files)) {
-          files.push({
-            path,
-            bytes: Buffer.byteLength(text),
-            digest: `sha256:${createHash('sha256').update(text).digest('hex')}`,
-            chunks: () => privateUtf8StringChunks(text),
-          })
-        }
+        if (checkpointCapture !== undefined) {
+          const capture = requirePrivateCapturedOutput(checkpointCapture)
+          if (
+            checkpoint.manifest === undefined ||
+            JSON.stringify(
+              capture.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+            ) !== JSON.stringify(checkpoint.manifest)
+          )
+            throw new TypeError('checkpoint snapshot differs from retained manifest')
+          files.push(
+            ...capture.files.map((file) => ({
+              ...file,
+              chunks: () => privateDescriptorByteChunks(capture.fd, file.bytes, file.offset),
+            })),
+          )
+        } else if (
+          checkpoint.artifacts !== undefined &&
+          Object.keys(checkpoint.artifacts).length !== 0
+        ) {
+          throw new TypeError('associated checkpoint bytes unavailable')
+        } else
+          for (const [path, text] of Object.entries(checkpoint.files)) {
+            files.push({
+              path,
+              bytes: Buffer.byteLength(text),
+              digest: `sha256:${createHash('sha256').update(text).digest('hex')}`,
+              chunks: () => privateUtf8StringChunks(text),
+            })
+          }
       }
       checkTime()
       failure = 'DESTINATION_CHANGED'

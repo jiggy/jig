@@ -1,5 +1,11 @@
 import { type AgentResult, checkAgentResult } from '@jigging/agent-method'
+import type { AgentDomainResult, AgentTurn } from '@jigging/agent-method/conversation'
 import type { JsonValue, RunHandler } from '@jigging/flow'
+
+declare const settlement: AgentDomainResult
+declare const turn: AgentTurn
+const conversationOutput: JsonValue = { settlement, turn }
+void conversationOutput
 
 const result: AgentResult = checkAgentResult({ outcome: 'done', output: { text: 'answer' } })
 const direct: JsonValue = result

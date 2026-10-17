@@ -124,7 +124,7 @@ test('completion scripts contain only static shell code and read-only target loo
     const script = completionScript(shell)!
     expect(script).toContain('jig completion targets')
     expect(script).not.toContain('jig review')
-    expect(script).not.toContain('eval')
+    expect(script).not.toMatch(/\beval\b/)
     expect(script).toContain(shell === 'fish' ? '-l verification' : '--verification')
   }
   expect(completionScript('sh')).toBeUndefined()

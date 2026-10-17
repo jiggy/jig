@@ -114,6 +114,21 @@ describe('private Package/0 result admission', () => {
       async (inspected) => {
         const accepted = succeeded('waiting', null)
         expect(admitPrivatePackageResult(inspected, accepted)).toBe(accepted)
+        for (const extra of [
+          { artifactResults: { final: 'held-1' } },
+          { artifacts: { final: 'held-1' } },
+        ]) {
+          const terminal = {
+            status: 'succeeded' as const,
+            result: {
+              outcome: 'waiting',
+              output: null,
+              ...extra,
+            },
+            diagnostics,
+          }
+          expect(admitPrivatePackageResult(inspected, terminal)).toBe(terminal)
+        }
 
         const rejected = admitPrivatePackageResult(inspected, succeeded('waiting', 'not-null'))
         expect(rejected).toMatchObject({

@@ -4,6 +4,7 @@ import { lstat, realpath } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, dirname, resolve } from 'node:path'
 import { createInterface } from 'node:readline'
+import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { WebAssets } from '@jigging/display-model'
 import type { Reference } from '@jigging/reporting'
@@ -15,6 +16,15 @@ import {
   type RootRunStatus,
   type RootRunTerminal,
 } from './administration/root.js'
+import {
+  ATTEMPT_REQUEST_BYTES,
+  type AttemptRequests,
+  type AttemptVerb,
+  parseAttemptEnvelope,
+  parseAttemptFrame,
+} from './attempt-contract.js'
+import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
+import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
 import {
   privateCliHumanText,
@@ -48,6 +58,7 @@ import {
   sha256,
 } from './internal/file-input.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
+import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
 import { privateProfileSpan } from './internal/private-profile.js'
 import type { PrivateAgentReadinessReport } from './internal/review-agent-setup.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
@@ -92,6 +103,7 @@ Usage:
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
+  jig attempt <operation>    Use the installed application execution boundary
   jig completion <shell>     Print shell completion for bash, zsh, or fish
   jig import-contract <jig:name|file|npm:package> <directory>  Copy an offline contract bundle
   jig --version             Print the installed version
@@ -109,6 +121,26 @@ Command options and examples:
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
+  attempt: `Usage: jig attempt <inspect|prepare|submit|lookup|cancel|result|export> --json
+
+Read one bounded JSON request envelope from stdin and write machine records to
+stdout. The application client uses this same installed boundary.
+Requests contain protocolVersion: 1, operation, and request. Tickets and input
+belong in stdin, never command arguments. This command does not approve source.
+
+prepare captures the complete approved request without starting work. Durable
+applications must save the returned ticket before submit. submit owns its finite
+foreground connection; keep stdin open until its terminal record. Closing the
+owning connection requests cancellation, not detached execution. A duplicate
+observer cannot cancel the original owner merely by disconnecting.
+
+lookup and result only read retained facts. cancel requests settlement; it does
+not undo remote effects or acknowledge cleanup. export publishes retained bytes
+without executing the Flow. Expired or unavailable history is not permission
+to retry. Use @jigging/jig/client for typed application integration.
+
+Example:
+  jig attempt lookup --json < lookup-request.json`,
   new: `Usage: jig new <name> [--use <slot=jig:name|slot=descriptor.json|slot=npm:package>]...
 
 Create flows/<name> in the current Jig project. Names use lowercase letters,
@@ -283,6 +315,7 @@ const textDecoder = new TextDecoder()
 
 /** Private injection seam until the installed host owns project acquisition. */
 export interface PrivateCliCommandHost {
+  readonly prepareRun?: typeof preparePrivateCliRun
   acquire(
     project: string,
     options?: {
@@ -325,7 +358,17 @@ export interface PrivateCliOptions {
   readonly writeOutput?: (text: string) => void
   readonly writeRecord?: (text: string) => Promise<void>
   readonly writeError?: (text: string) => void
-  readonly createSubmissionId?: () => string
+  readonly attemptInputStream?: Readable
+  /** Installed composition seam; the application client never receives this host. */
+  readonly executeAttempt?: <V extends AttemptVerb>(input: {
+    readonly operation: V
+    readonly request: AttemptRequests[V]
+    readonly host: PrivateCliCommandHost
+    readonly currentDirectory: string
+    readonly clientClosed: AbortSignal
+    readonly signal?: AbortSignal
+    readonly writeRecord: (record: JsonValue) => Promise<void>
+  }) => Promise<number>
 }
 
 interface CliRuntime {
@@ -350,7 +393,6 @@ interface CliRuntime {
   readonly writeError: (text: string) => void
   readonly writeDiagnostic: (text: string) => void
   readonly writeNotice: (text: string) => void
-  readonly createSubmissionId: () => string
 }
 
 export async function main(
@@ -409,6 +451,7 @@ async function executeCommand(
     if (arguments_[0] === 'init') return await executeInit(arguments_, runtime)
     if (arguments_[0] === 'new') return await executeNew(arguments_, runtime)
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
+    if (arguments_[0] === 'attempt') return await executeAttempt(arguments_, options, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
     if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
@@ -645,6 +688,7 @@ async function executeNew(arguments_: readonly string[], runtime: CliRuntime): P
 /** Whether the installed command needs to acquire the private execution host. */
 export function privateCliRequiresHost(arguments_: readonly string[]): boolean {
   if (isHelpRequest(arguments_)) return false
+  if (arguments_[0] === 'attempt') return privateCliAttemptOperation(arguments_) === 'submit'
   try {
     if (arguments_[0] === 'review') {
       parseReview(arguments_, '.')
@@ -674,8 +718,93 @@ function isHelpRequest(arguments_: readonly string[]): boolean {
   return (
     help &&
     (arguments_.length === 1 ||
-      (arguments_.length === 2 && Object.hasOwn(COMMAND_HELP, arguments_[0]!)))
+      (arguments_.length === 2 && Object.hasOwn(COMMAND_HELP, arguments_[0]!)) ||
+      (arguments_.length === 3 &&
+        arguments_[0] === 'attempt' &&
+        ATTEMPT_OPERATIONS.includes(arguments_[1] as AttemptVerb)))
   )
+}
+
+const ATTEMPT_OPERATIONS: readonly AttemptVerb[] = [
+  'inspect',
+  'prepare',
+  'submit',
+  'lookup',
+  'cancel',
+  'result',
+  'export',
+]
+
+/** Validate the whole grammar before installed host acquisition or stdin reads. */
+export function privateCliAttemptOperation(arguments_: readonly string[]): AttemptVerb | undefined {
+  if (
+    arguments_.length !== 3 ||
+    arguments_[0] !== 'attempt' ||
+    arguments_[2] !== '--json' ||
+    !ATTEMPT_OPERATIONS.includes(arguments_[1] as AttemptVerb)
+  )
+    return undefined
+  return arguments_[1] as AttemptVerb
+}
+
+async function executeAttempt(
+  arguments_: readonly string[],
+  options: PrivateCliOptions,
+  runtime: CliRuntime,
+): Promise<number> {
+  const operation = privateCliAttemptOperation(arguments_)
+  if (operation === undefined)
+    usage('attempt', 'Specify one operation and --json; supply its request envelope on stdin.')
+  const input = new PrivateAttemptInput(options.attemptInputStream ?? process.stdin, {
+    maxBytes: ATTEMPT_REQUEST_BYTES,
+    ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
+  })
+  const writeRecord = async (record: JsonValue) => {
+    parseAttemptFrame(operation, record)
+    await runtime.writeRecord(`${Buffer.from(canonicalJson(record)).toString()}\n`)
+  }
+  let validated = false
+  try {
+    const envelope = parseAttemptEnvelope(operation, await input.request)
+    validated = true
+    if (options.executeAttempt === undefined) {
+      await writeRecord({
+        protocolVersion: 1,
+        operation,
+        event: 'error',
+        code: 'UNAVAILABLE',
+        message:
+          'The installed execution boundary is unavailable. Restore the complete installation.',
+      })
+      return 2
+    }
+    return await options.executeAttempt({
+      operation,
+      request: envelope.request,
+      host: runtime.host,
+      currentDirectory: runtime.currentDirectory,
+      clientClosed: input.closed,
+      ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
+      writeRecord,
+    })
+  } catch {
+    await writeRecord({
+      protocolVersion: 1,
+      operation,
+      event: 'error',
+      code: !validated
+        ? 'INVALID_REQUEST'
+        : operation === 'submit'
+          ? 'EXECUTION_UNCERTAIN'
+          : 'INTERNAL',
+      message: !validated
+        ? 'The machine request is invalid or incomplete. Supply one bounded request envelope on stdin.'
+        : 'The request could not be completed. Reconcile the original ticket; do not replay uncertain work.',
+    })
+    return runtime.signal?.aborted ? 2 : 1
+  } finally {
+    input.dispose()
+  }
 }
 
 async function executeImportContract(
@@ -1236,7 +1365,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           runtime.outputColumns,
         )
       : undefined
-  const submissionId = runtime.createSubmissionId()
+  let selectedRunId: string | undefined
+  const earlyTerminals = new Map<string, Extract<RootRunStatus, { state: 'terminal' }>>()
   let settledRoot: Extract<RootRunStatus, { state: 'terminal' }> | undefined
   const diagnostics = new PrivateRunDiagnostics()
   let rootDispatched = false
@@ -1284,10 +1414,11 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         }
       : {}),
     terminal(status) {
-      if (status.submissionId === submissionId) {
+      if (status.runId === selectedRunId) {
         settledRoot = status
         runtime.progress.stopUpdates()
-      }
+      } else if (selectedRunId === undefined && earlyTerminals.size < 8)
+        earlyTerminals.set(status.runId, status)
     },
     async record(value) {
       try {
@@ -1386,7 +1517,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   }
   const files = new PrivateRootRunFiles(
     capture.attachments,
-    parsed.output === undefined ? null : resolve(runtime.currentDirectory, parsed.output),
+    parsed.output !== undefined,
     runtime.host.delivery,
   )
   let inspectionCapture: PrivateDeliveryInspectionCapture | undefined
@@ -1499,7 +1630,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     if (parsed.output !== undefined) {
       // An explanatory check only: the delivery owner still revalidates and
       // publishes without replacement. This grants no filesystem authority.
-      const occupied = await lstat(files.identity.output!).then(
+      const outputDestination = resolve(runtime.currentDirectory, parsed.output)
+      const occupied = await lstat(outputDestination).then(
         () => true,
         (error) => {
           if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
@@ -1524,7 +1656,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         )
       try {
         await runtime.host.delivery.prepare(
-          files.identity.output!,
+          outputDestination,
           capture.attachments.map((item) => item.rootFd),
         )
       } catch {
@@ -1536,6 +1668,20 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       }
     }
     runtime.progress.complete()
+    const preparedAttempt = await (runtime.host.prepareRun ?? preparePrivateCliRun)({
+      projectRoot: runtime.currentDirectory,
+      ...(runtime.expectedAdmissionDigest === undefined
+        ? {}
+        : { expectedApproval: runtime.expectedAdmissionDigest }),
+      target:
+        parsed.target.kind === 'flow'
+          ? flowSelector(parsed.target.path)
+          : `binding:${parsed.target.id}`,
+      input,
+      captured: capture.attachments,
+      output: files.identity.output,
+      durationMs: parsed.timeoutMs,
+    })
     let status: Extract<RootRunStatus, { state: 'terminal' }>
     try {
       status = await withProjectSession(
@@ -1543,11 +1689,14 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
         runtime,
         async (session) => {
           runtime.progress.stage('Checking invocation inputs and admitting the reviewed target')
-          const receipt = await session.rootAdministration.startRun({
-            submissionId,
-            target: parsed.target,
-            input,
+          const accepted = await session.rootAdministration.startPreparedRun({
+            ticket: preparedAttempt.ticket,
+            request: preparedAttempt.canonicalRequest,
           })
+          const receipt = accepted.receipt
+          selectedRunId = receipt.runId
+          settledRoot = earlyTerminals.get(receipt.runId)
+          earlyTerminals.clear()
           runtime.progress.complete()
           runtime.progress.stage('Waiting for the result (Ctrl-C to cancel)')
           try {
@@ -1567,7 +1716,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
             : { expectedAdmissionDigest: runtime.expectedAdmissionDigest }),
           runTimeoutMs: parsed.timeoutMs,
           channelOutput,
-          ...(parsed.attachments.length === 0 && parsed.output === undefined ? {} : { files }),
+          files,
         },
         () => {
           cleanupFailed = true
@@ -1609,11 +1758,15 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           !cleanupFailed && !runtime.signal?.aborted && status.terminal.status === 'succeeded'
         delivery = await runtime.host.delivery!.publish(
           record,
-          includeFiles ? files.output : undefined,
+          includeFiles ? files.deliveryOutput(runtime.signal) : undefined,
           runtime.signal,
         )
       } catch {
-        delivery = { status: 'unknown', destination: files.identity.output!, code: 'CHANNEL_LOST' }
+        delivery = {
+          status: 'unknown',
+          destination: resolve(runtime.currentDirectory, parsed.output),
+          code: 'CHANNEL_LOST',
+        }
       }
       knownDelivery = delivery
       if (delivery.status === 'written') runtime.progress.complete(true)
@@ -1661,12 +1814,18 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     }
     const artifact = inspectionCapture
       ? {
-          resolve: (publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) =>
-            publisher === 'root' &&
-            files.outputAttachments.includes(ref.attachment) &&
-            inspectionCapture!.files.some((f) => f.path === ref.path && f.state !== 'unavailable')
+          resolve: (publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) => {
+            if (publisher !== 'root') return undefined
+            const path = files.outputAttachments.includes(ref.attachment)
               ? ref.path
-              : undefined,
+              : files.artifactResultNames.includes(ref.attachment)
+                ? `${ref.attachment}/${ref.path}`
+                : undefined
+            return path !== undefined &&
+              inspectionCapture!.files.some((f) => f.path === path && f.state !== 'unavailable')
+              ? path
+              : undefined
+          },
           preview: async (path: string) => {
             const preview = inspectionCapture!.preview(path)
             return !preview || (preview.text === undefined && !preview.image)
@@ -1881,6 +2040,8 @@ export function privateCliCommandLifetimeMs(
   terminalStderr = false,
   terminalStdout = false,
 ): number | null {
+  if (privateCliAttemptOperation(arguments_) === 'submit')
+    return privateRootlessCommandLifetime(24 * 60 * 60 * 1000)
   if (arguments_[0] !== 'run') return PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
   try {
     const parsed = parseRun(arguments_)
@@ -2099,8 +2260,6 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     writeDiagnostic: (text) => {
       progress.diagnostic(text)
     },
-    createSubmissionId:
-      options.createSubmissionId ?? (() => `jig-cli-${randomBytes(16).toString('hex')}`),
   }
 }
 
@@ -2145,6 +2304,15 @@ async function defaultPause(milliseconds: number): Promise<void> {
 }
 
 function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
+  if (error instanceof PrivateAttemptError) {
+    runtime.writeError(
+      renderDiagnostic(
+        `JIG_ATTEMPT_${error.code}`,
+        `${privateAttemptFailureMessage(error.code)}\nNext step: https://jig.md/guide/results`,
+      ),
+    )
+    return error.code === 'CLEANUP_UNRESOLVED' || error.code === 'EXECUTION_UNCERTAIN' ? 2 : 1
+  }
   if (
     error instanceof AggregateError &&
     error.message === 'project command and close both failed'
@@ -2242,8 +2410,6 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'select only attachment names declared read-only in the Flow contract',
       PROJECT_BINDING_ATTACHMENTS_NOT_CAPTURED:
         'the selected Binding files could not be retained consistently; review stable source directories again',
-      PROJECT_CHECKPOINT_ATTACHMENT:
-        'declare a read-write attachment in FLOW.contract.json for the root Flow that uses Run Checkpoint',
       PROJECT_BINDING_PACKAGE_MISSING:
         'the Binding references a Flow not selected by jig.ts; correct the path or project membership',
       PROJECT_ENTRYPOINT_INVALID:
