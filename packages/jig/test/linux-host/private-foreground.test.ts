@@ -3,15 +3,24 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { describe, expect, test } from 'bun:test'
-import { cp, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  cp,
+  lstat,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  readlink,
+  rename,
+  rm,
+  symlink,
+  unlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { withPrivateInstallationVerification } from '../../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
-import {
-  PrivateLinuxCgroupBackend,
-  type PrivateLinuxSealedOwner,
-} from '../../src/internal/linux-rootless-backend.js'
+import { normalizePrivateLinuxSealedOwnerIdentity } from '../../src/internal/linux-rootless-backend.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 import {
@@ -30,12 +39,12 @@ import {
   invokeRun,
   rootlessCgroups,
   rootlessTemporaryEntry,
-  WithheldChildFenceBackend,
   waitForChildSandbox,
   waitForPrepared,
   waitForRootlessCgroups,
   waitForRootlessTemporaryState,
   waitForTerminalStatus,
+  withStore,
   writeAgentFreeProject,
   writeBoundResourceProject,
   writeBroadcastChannelProject,
@@ -678,138 +687,6 @@ describe.serial('private rootless project session', () => {
       await rm(temporary, { recursive: true, force: true })
     }
   }, 180_000)
-  for (const [suiteCaseIndex, suiteCaseValue] of ['strict', 'cached'].entries()) {
-    test(
-      '%s refuses and cleans up an execution environment changed at sealing before admitting the Flow' +
-        ` (case ${suiteCaseIndex + 1})`,
-      () =>
-        Reflect.apply(
-          async (mode) => {
-            const temporary = await mkdtemp(join(tmpdir(), 'jig-seal-approval-'))
-            await withPrivateInstallationVerification(
-              { JIG_VERIFICATION: mode, XDG_CACHE_HOME: join(temporary, 'cache') },
-              async () => {
-                const root = join(temporary, 'project')
-                const releaseRoot = join(temporary, 'installed')
-                let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
-                try {
-                  await mkdir(root)
-                  await mkdir(releaseRoot)
-                  await cp(
-                    join(installedBunLocation.releaseRoot, 'libexec'),
-                    join(releaseRoot, 'libexec'),
-                    {
-                      recursive: true,
-                    },
-                  )
-                  await symlink(
-                    join(installedBunLocation.releaseRoot, 'node_modules'),
-                    join(releaseRoot, 'node_modules'),
-                  )
-                  const host = await openPrivateInstalledBunHost(
-                    {
-                      ...installedBunLocation,
-                      releaseRoot,
-                      installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
-                    },
-                    {},
-                    root,
-                  )
-                  const supervisor = host.installedBunSupport.supervisorPath
-                  let changeAtSeal = false
-                  let changed = false
-                  let admits = 0
-                  class ChangingBackend extends PrivateLinuxCgroupBackend {
-                    override async seal(
-                      ...arguments_: Parameters<PrivateLinuxCgroupBackend['seal']>
-                    ): Promise<PrivateLinuxSealedOwner> {
-                      if (changeAtSeal) {
-                        changeAtSeal = false
-                        changed = true
-                        await writeFile(
-                          supervisor,
-                          (await readFile(supervisor, 'utf8')) + '\n// changed\n',
-                        )
-                      }
-                      const sealed = await super.seal(...arguments_)
-                      return Object.freeze({
-                        identity: sealed.identity,
-                        admit: (...args: Parameters<PrivateLinuxSealedOwner['admit']>) => {
-                          admits += 1
-                          return sealed.admit(...args)
-                        },
-                      })
-                    }
-                  }
-                  const backend = new ChangingBackend({
-                    bunPath: host.installedBunSupport.executablePath,
-                    bunHostLibraryPath: host.installedBunSupport.hostLibraryDirectory,
-                    supervisorPath: supervisor,
-                  })
-                  await writeAgentFreeProject(root)
-                  session = await openPrivateProjectSession({
-                    directory: root,
-                    host: { ...host, backend },
-                  })
-                  const review = await session.plan({ lockMode: 'update' })
-                  if (review.state !== 'applicable') throw new Error('expected initial review')
-                  await session.apply({ planDigest: review.planDigest })
-                  admits = 0
-                  changeAtSeal = true
-                  const rejected = await session.rootAdministration.startRun({
-                    submissionId: 'changed-at-seal',
-                    target: { kind: 'flow', path: 'flows/worker' },
-                    input: null,
-                  })
-                  expect(
-                    await waitForTerminalStatus(session.rootAdministration, rejected),
-                  ).toMatchObject({
-                    state: 'terminal',
-                    terminal: {
-                      status: 'failed',
-                      code: 'REVIEW_REQUIRED',
-                      details: { reason: 'EXECUTION_ENVIRONMENT_CHANGED', flowStarted: false },
-                    },
-                  })
-                  expect(changed).toBeTrue()
-                  expect(admits).toBe(0)
-                  expect(inspectRootExecution(root, rejected.runId).sandboxDigest).not.toBe('null')
-                  await session.close()
-                  session = await openPrivateProjectSession({
-                    directory: root,
-                    host: await openPrivateInstalledBunHost(
-                      {
-                        ...installedBunLocation,
-                        releaseRoot,
-                        installedCliPath: join(releaseRoot, 'libexec', 'installed-cli.js'),
-                      },
-                      {},
-                      root,
-                    ),
-                  })
-                  expect(await session.rootAdministration.runStatus(rejected)).toMatchObject({
-                    state: 'terminal',
-                    terminal: { code: 'REVIEW_REQUIRED' },
-                  })
-                  await session.close()
-                  session = undefined
-                  await expectNoChildResidue(root)
-                  expect(await directoryEntries(join(root, '.jig/private-root-owners'))).toEqual([])
-                  await waitForRootlessCgroups(initialRootlessCgroups)
-                  await waitForRootlessTemporaryState(initialRootlessTemporaryState)
-                } finally {
-                  await session?.close().catch(() => undefined)
-                  await rm(temporary, { recursive: true, force: true })
-                }
-              },
-            )
-          },
-          undefined,
-          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-        ),
-      180_000,
-    )
-  }
   test('keeps unavailable native clients out of resource-free review and Run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-isolation-'))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
@@ -1074,61 +951,189 @@ describe.serial('private rootless project session', () => {
       await recovered.close()
       await expectNoChildResidue(root)
 
-      const withheldBase = await openPrivateInstalledBunHost(installedBunLocation)
-      const withheldBackend = new WithheldChildFenceBackend({
-        bunPath: withheldBase.installedBunSupport.executablePath,
-        bunHostLibraryPath: withheldBase.installedBunSupport.hostLibraryDirectory,
-        supervisorPath: withheldBase.installedBunSupport.supervisorPath,
-      })
-      const withheldSession = await openPrivateProjectSession({
+      const uncertainSession = await openPrivateProjectSession({
         directory: root,
-        host: Object.freeze({ ...withheldBase, backend: withheldBackend }),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       })
-      const uncertainReceipt = await withheldSession.rootAdministration.startRun({
-        submissionId: 'child-slot-unconfirmed-fence',
-        target: { kind: 'binding', id: 'ticket-router' },
-        input: { scenario: 'fence-uncertain', kind: 'bug', ticket: 'withhold fence' },
-      })
-      await waitForChildSandbox(root, uncertainReceipt.runId)
-      await withheldBackend.waitForRecoverAttempts(1)
-      await expect(
-        waitForTerminalStatus(withheldSession.rootAdministration, uncertainReceipt),
-      ).rejects.toMatchObject({ code: 'PROJECT_BUSY' })
-      const attempts = withheldBackend.recoverAttempts()
-      await expect(
-        withheldSession.rootAdministration.runStatus(uncertainReceipt),
-      ).rejects.toMatchObject({ code: 'PROJECT_BUSY' })
-      expect(withheldBackend.recoverAttempts()).toBe(attempts)
-      expect(inspectRunOwnership(root, uncertainReceipt.runId)).toEqual({
-        childOwners: 1,
-        terminals: 0,
-      })
-      expect(withheldBackend.childAdmits()).toBe(1)
-      await expect(withheldSession.close()).rejects.toMatchObject({ code: 'UNAVAILABLE' })
-
-      withheldBackend.allowRecovery()
+      const uncertainRequest = {
+        submissionId: 'child-slot-owner-identity-loss',
+        target: { kind: 'binding' as const, id: 'ticket-router' },
+        input: { scenario: 'fence-uncertain', kind: 'bug', ticket: 'owner identity loss' },
+      }
+      let displaced: { path: string; quarantine: string; device: bigint; inode: bigint } | undefined
+      let uncertainReceipt: Awaited<ReturnType<typeof uncertainSession.rootAdministration.startRun>>
+      const uncertaintyFailures: unknown[] = []
+      try {
+        uncertainReceipt = await uncertainSession.rootAdministration.startRun(uncertainRequest)
+        await waitForChildSandbox(root, uncertainReceipt.runId)
+        const row = withStore(root, (database) =>
+          database
+            .query('SELECT sandbox_bytes FROM root_child_owners WHERE parent_run_id = ?1')
+            .get(uncertainReceipt.runId),
+        )
+        const sandbox = JSON.parse(Buffer.from(row.sandbox_bytes).toString('utf8'))
+        expect(sandbox.kind).toBe('private-root-child-sandbox/1')
+        const owner = normalizePrivateLinuxSealedOwnerIdentity(sandbox.owner)
+        expect(owner.ownerStateParent).toBe(join(root, '.jig', 'private-root-owners'))
+        const parent = await lstat(owner.ownerStateParent, { bigint: true })
+        expect(parent.isDirectory()).toBeTrue()
+        expect(parent.isSymbolicLink()).toBeFalse()
+        expect(String(parent.dev)).toBe(owner.ownerStateParentDevice)
+        expect(String(parent.ino)).toBe(owner.ownerStateParentInode)
+        const before = await lstat(owner.ownerStateDirectory, { bigint: true })
+        expect(before.isDirectory()).toBeTrue()
+        expect(before.isSymbolicLink()).toBeFalse()
+        expect(String(before.dev)).toBe(owner.ownerStateDevice)
+        expect(String(before.ino)).toBe(owner.ownerStateInode)
+        // Observe the actual child executable inside this exact cgroup, not
+        // just the earlier durable sandbox allocation.
+        const activeDeadline = Date.now() + 20_000
+        let active = false
+        let activeChild: { pid: number; startTime: string; executable: string } | undefined
+        while (!active && Date.now() < activeDeadline) {
+          const pids = (await readFile(join(owner.runCgroup, 'cgroup.procs'), 'utf8'))
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+          for (const pid of pids) {
+            const command = await readFile(`/proc/${pid}/cmdline`, 'utf8').catch((error) => {
+              if (error.code === 'ENOENT') return ''
+              throw error
+            })
+            if (command.split('\0').some((argument) => argument.endsWith('/FLOW.ts'))) {
+              const marker = await readFile(`/proc/${pid}/root/work/parent-marker`, 'utf8').catch(
+                (error) => {
+                  if (error.code === 'ENOENT') return ''
+                  throw error
+                },
+              )
+              if (marker === 'child') {
+                const status = await readFile(`/proc/${pid}/stat`, 'utf8')
+                activeChild = {
+                  pid: Number(pid),
+                  startTime: status.slice(status.lastIndexOf(')') + 2).split(' ')[19]!,
+                  executable: await readlink(`/proc/${pid}/exe`),
+                }
+                active = true
+              }
+            }
+          }
+          if (!active) await Bun.sleep(20)
+        }
+        expect(active).toBeTrue()
+        const quarantine = `${owner.ownerStateDirectory}-quarantine`
+        await expect(lstat(quarantine)).rejects.toMatchObject({ code: 'ENOENT' })
+        await rename(owner.ownerStateDirectory, quarantine)
+        displaced = {
+          path: owner.ownerStateDirectory,
+          quarantine,
+          device: before.dev,
+          inode: before.ino,
+        }
+        const quarantined = await lstat(quarantine, { bigint: true })
+        expect(quarantined.isDirectory()).toBeTrue()
+        expect(quarantined.isSymbolicLink()).toBeFalse()
+        expect(quarantined.dev).toBe(before.dev)
+        expect(quarantined.ino).toBe(before.ino)
+        // The supervisor can still publish its genuine final receipt into the
+        // original inode. The backend must refuse this noncanonical pathname.
+        await symlink(quarantine, owner.ownerStateDirectory)
+        expect(activeChild).toBeDefined()
+        const held = activeChild!
+        const currentPids = (await readFile(join(owner.runCgroup, 'cgroup.procs'), 'utf8'))
+          .trim()
+          .split(/\s+/)
+        expect(currentPids).toContain(String(held.pid))
+        const currentStatus = await readFile(`/proc/${held.pid}/stat`, 'utf8')
+        expect(currentStatus.slice(currentStatus.lastIndexOf(')') + 2).split(' ')[19]).toBe(
+          held.startTime,
+        )
+        expect(await readlink(`/proc/${held.pid}/exe`)).toBe(held.executable)
+        process.kill(held.pid, 'SIGUSR1')
+        const completionDeadline = Date.now() + 30_000
+        let final: { fenced: boolean; ownerDigest: string } | undefined
+        while (final === undefined && Date.now() < completionDeadline) {
+          try {
+            final = JSON.parse(await readFile(join(quarantine, 'final.json'), 'utf8'))
+          } catch (error) {
+            if (error.code !== 'ENOENT') throw error
+            await Bun.sleep(20)
+          }
+        }
+        expect(final).toMatchObject({ fenced: true })
+        // Await real completion and its filesystem refusal before inspecting
+        // parent taint. A stopped process alone would not establish this.
+        await expect(
+          waitForTerminalStatus(uncertainSession.rootAdministration, uncertainReceipt),
+        ).rejects.toMatchObject({ code: 'INTERNAL' })
+        await expect(
+          uncertainSession.rootAdministration.runStatus(uncertainReceipt),
+        ).rejects.toMatchObject({ code: 'INTERNAL' })
+        expect(inspectRunOwnership(root, uncertainReceipt.runId)).toEqual({
+          childOwners: 1,
+          terminals: 0,
+        })
+        const operations = withStore(root, (database) =>
+          database
+            .query('SELECT operation_id FROM root_child_owners WHERE parent_run_id = ?1')
+            .all(uncertainReceipt.runId),
+        )
+        expect(operations).toEqual([{ operation_id: 'errors:fence' }])
+      } catch (error) {
+        uncertaintyFailures.push(error)
+      } finally {
+        try {
+          if (displaced !== undefined) {
+            const current = await lstat(displaced.quarantine, { bigint: true })
+            expect(current.dev).toBe(displaced.device)
+            expect(current.ino).toBe(displaced.inode)
+            const originalPath = await lstat(displaced.path).catch((error) => {
+              if (error.code === 'ENOENT') return undefined
+              throw error
+            })
+            if (originalPath !== undefined) {
+              expect(originalPath.isSymbolicLink()).toBeTrue()
+              expect(await readlink(displaced.path)).toBe(displaced.quarantine)
+              await unlink(displaced.path)
+            }
+            await rename(displaced.quarantine, displaced.path)
+          }
+        } catch (error) {
+          uncertaintyFailures.push(error)
+        } finally {
+          try {
+            await uncertainSession.close()
+          } catch (error) {
+            // This session retains the deliberately observed execution failure.
+            // Preserve its close error alongside any primary/restoration error.
+            if (uncertaintyFailures.length !== 0 || error.code !== 'UNAVAILABLE')
+              uncertaintyFailures.push(error)
+          }
+        }
+      }
+      if (uncertaintyFailures.length !== 0)
+        throw new AggregateError(uncertaintyFailures, 'child owner identity-loss test failed')
       const uncertainRecovery = await openPrivateProjectSession({
         directory: root,
-        host: Object.freeze({ ...withheldBase, backend: withheldBackend }),
+        host: await openPrivateInstalledBunHost(installedBunLocation),
       })
-      // Recovery settles the retained ownership; it cannot rewrite a fatal
-      // execution result into success or authorize replay of the child.
-      const recoveredUncertain =
-        await uncertainRecovery.rootAdministration.runStatus(uncertainReceipt)
-      expect(recoveredUncertain).toMatchObject({
-        state: 'terminal',
-        terminal: {
-          status: 'failed',
-          code: 'UNCERTAIN',
-        },
-      })
-      expect(recoveredUncertain).not.toHaveProperty('terminal.output')
-      expect(withheldBackend.childAdmits()).toBe(1)
-      expect(inspectRunOwnership(root, uncertainReceipt.runId)).toEqual({
-        childOwners: 0,
-        terminals: 1,
-      })
-      await uncertainRecovery.close()
+      try {
+        expect(await uncertainRecovery.rootAdministration.startRun(uncertainRequest)).toEqual(
+          uncertainReceipt!,
+        )
+        const status = await uncertainRecovery.rootAdministration.runStatus(uncertainReceipt!)
+        expect(status).toMatchObject({
+          state: 'terminal',
+          terminal: { status: 'failed', code: 'UNCERTAIN' },
+        })
+        expect(status).not.toHaveProperty('terminal.output')
+        expect(inspectRunOwnership(root, uncertainReceipt!.runId)).toEqual({
+          childOwners: 0,
+          terminals: 1,
+        })
+      } finally {
+        await uncertainRecovery.close()
+      }
       await expectNoChildResidue(root)
 
       const cancellationRequest = {

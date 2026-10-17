@@ -5,14 +5,6 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../src/administration/root.js'
-import {
-  PrivateLinuxCgroupBackend,
-  type PrivateLinuxCgroupBackendOptions,
-  type PrivateLinuxConfirmedEnforcementReceipt,
-  PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxSealedOwner,
-  type PrivateLinuxSealedOwnerIdentity,
-} from '../src/internal/linux-rootless-backend.js'
 
 const HOSTILE = process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1'
 interface ApplicablePlan {
@@ -364,6 +356,7 @@ function ticketSchema(kind?: 'bug' | 'question'): string {
         kind: kind === undefined ? { enum: ['bug', 'question'] } : { const: kind },
         ticket: { type: 'string' },
         delayMs: { type: 'number', minimum: 0, maximum: 25_000 },
+        holdUntilSignal: { type: 'boolean' },
       },
       required: kind === undefined ? ['scenario', 'kind', 'ticket'] : ['kind', 'ticket'],
       additionalProperties: false,
@@ -428,8 +421,9 @@ function routerProgram(): string {
     '    return { outcome: "done", output: { scenario: input.scenario, observed } };',
     '  }',
     '  if (input.scenario === "fence-uncertain") {',
-    '    const observed = await call("errors:fence", "bug", { kind: "bug", ticket: input.ticket });',
-    '    return { outcome: "done", output: { scenario: input.scenario, observed } };',
+    '    const observed = await call("errors:fence", "bug", { kind: "bug", ticket: input.ticket, holdUntilSignal: true });',
+    '    const later = await call("errors:later", "question", { kind: "question", ticket: input.ticket });',
+    '    return { outcome: "done", output: { scenario: input.scenario, observed, later } };',
     '  }',
     '  if (input.scenario === "recursive") {',
     '    const observed = await call("errors:recursive", "recursive", {});',
@@ -458,10 +452,13 @@ function childProgram(kind: 'bug' | 'question'): string {
     'import { handle } from "./flow-sdk/index.js";',
     'await handle(async (context) => {',
     '  const started = Date.now();',
-    '  const input = context.input as { kind: string; ticket: string; delayMs?: number };',
+    '  const input = context.input as { kind: string; ticket: string; delayMs?: number; holdUntilSignal?: boolean };',
+    '  const release = input.holdUntilSignal ? new Promise<void>(resolve => process.once("SIGUSR1", resolve)) : undefined;',
+    '  const keepAlive = release === undefined ? undefined : setInterval(() => {}, 1000);',
     '  const marker = `${context.scratch}/parent-marker`;',
     '  const parentMarkerVisible = await Bun.file(marker).exists();',
     '  await Bun.write(marker, "child");',
+    '  if (release !== undefined) { try { await release; } finally { clearInterval(keepAlive); } }',
     '  if (input.delayMs !== undefined) await Bun.sleep(input.delayMs);',
     `  return { outcome: "done", output: {`,
     `    handled: "${kind}", ticket: input.ticket,`,
@@ -1330,105 +1327,11 @@ async function firstLine(stream: ReadableStream<Uint8Array>): Promise<string> {
     reader.releaseLock()
   }
 }
-interface WithheldChildFenceState {
-  allowRecovery: boolean
-  childAdmits: number
-  recoverAttempts: number
-}
-const withheldChildFenceStates = new WeakMap<WithheldChildFenceBackend, WithheldChildFenceState>()
-class WithheldChildFenceBackend extends PrivateLinuxCgroupBackend {
-  constructor(options: PrivateLinuxCgroupBackendOptions) {
-    super(options)
-    withheldChildFenceStates.set(this, {
-      allowRecovery: false,
-      childAdmits: 0,
-      recoverAttempts: 0,
-    })
-  }
 
-  override async seal(
-    ...arguments_: Parameters<PrivateLinuxCgroupBackend['seal']>
-  ): Promise<PrivateLinuxSealedOwner> {
-    const sealed = await super.seal(...arguments_)
-    if (!sealed.identity.runId.startsWith('child-')) return sealed
-    return Object.freeze({
-      identity: sealed.identity,
-      admit: async (...admitArguments: Parameters<PrivateLinuxSealedOwner['admit']>) => {
-        const state = withheldState(this)
-        state.childAdmits += 1
-        const component = await sealed.admit(...admitArguments)
-        return Object.freeze({
-          ...component,
-          enforcement: component.enforcement.then(() => {
-            throw new PrivateLinuxFenceUnconfirmedError(
-              new Error('test withheld the confirmed child fence'),
-            )
-          }),
-        })
-      },
-    })
-  }
-
-  override async recoverFence(owner: unknown): Promise<PrivateLinuxConfirmedEnforcementReceipt> {
-    if (childOwner(owner)) {
-      const state = withheldState(this)
-      state.recoverAttempts += 1
-      if (!state.allowRecovery) {
-        throw new PrivateLinuxFenceUnconfirmedError(
-          new Error('test withheld the durable child fence'),
-        )
-      }
-    }
-    return await super.recoverFence(owner)
-  }
-
-  allowRecovery(): void {
-    withheldState(this).allowRecovery = true
-  }
-
-  childAdmits(): number {
-    return withheldState(this).childAdmits
-  }
-
-  recoverAttempts(): number {
-    return withheldState(this).recoverAttempts
-  }
-
-  async waitForRecoverAttempts(count: number): Promise<void> {
-    const deadline = Date.now() + 20_000
-    while (Date.now() < deadline) {
-      if (withheldState(this).recoverAttempts >= count) return
-      await Bun.sleep(20)
-    }
-    throw new Error('child fence recovery was not attempted')
-  }
-}
-function withheldState(backend: WithheldChildFenceBackend): WithheldChildFenceState {
-  const state = withheldChildFenceStates.get(backend)
-  if (state === undefined) throw new Error('withheld child fence Backend state is absent')
-  return state
-}
-function childOwner(value: unknown): value is PrivateLinuxSealedOwnerIdentity {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'runId' in value &&
-    typeof value.runId === 'string' &&
-    value.runId.startsWith('child-')
-  )
-}
-
-export type {
-  ApplicablePlan,
-  DatasetPeer,
-  ForegroundRunEntry,
-  ForegroundRunResult,
-  WithheldChildFenceState,
-}
+export type { ApplicablePlan, DatasetPeer, ForegroundRunEntry, ForegroundRunResult }
 export {
   agentRouterProgram,
   bunWorkerProgram,
-  childOwner,
   childProgram,
   copyFlowSdk,
   directoryEntries,
@@ -1454,14 +1357,11 @@ export {
   throwingChildProgram,
   ticketSchema,
   treeContains,
-  WithheldChildFenceBackend,
   waitForChildSandbox,
   waitForPrepared,
   waitForRootlessCgroups,
   waitForRootlessTemporaryState,
   waitForTerminalStatus,
-  withheldChildFenceStates,
-  withheldState,
   withStore,
   writeAgentFreeProject,
   writeAgentRouterProject,

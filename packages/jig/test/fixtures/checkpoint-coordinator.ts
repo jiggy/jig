@@ -22,7 +22,7 @@ await withPrivateInstallationVerification({}, async () => {
     )
   } else {
     const delivery = (await privateConnectFileOwner())!
-    // The parent's real HTTP/protected-store barriers can stop us only after
+    // The parent's real channel/protected-store barriers can stop us only after
     // this identity marker exists. Preserve forced cancellation escalation on
     // Darwin, whose default SIGTERM action also terminates stopped processes.
     process.on('SIGTERM', () => {})

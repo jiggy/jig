@@ -79,7 +79,7 @@ if(run.params.input.phase==='replacement') {
 await new Promise(()=>{});
 `
 
-async function fixture(validation = false, barrierUrl?: string, unacknowledged = false) {
+async function fixture(validation = false, barrierChannel = false, unacknowledged = false) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-checkpoint-proof-')))
   for (const name of ['root', 'worker']) {
     const path = join(root, 'flows', name)
@@ -94,7 +94,6 @@ async function fixture(validation = false, barrierUrl?: string, unacknowledged =
           ? {
               uses: {
                 progress: { contract: './contracts/run-checkpoint/contract.json' },
-                ...(barrierUrl ? { barrier: { contract: './http.json' } } : {}),
               },
             }
           : {}),
@@ -132,7 +131,12 @@ async function fixture(validation = false, barrierUrl?: string, unacknowledged =
             : `import {handle} from './sdk/index.js'; import {writeFile} from 'node:fs/promises'; await handle(async run=>{
         const workers=[1,2].map(i=>run.call({operationId:'worker:'+i,slot:'worker',input:{ms:i===1?300:run.input.mode==='complete'?500:60000}}));
         const save=(sequence,text)=>run.call({operationId:'save:'+sequence,slot:'progress',input:{sequence,evidence:{text},files:{'progress.txt':text}}});
-        const barrier=()=>run.call({operationId:'barrier',slot:'barrier',input:{}});
+        const barrier=async()=>{
+          const sender=run.channels.barrier;
+          if(!sender||sender.direction!=='send') throw new Error('checkpoint observer is missing');
+          await sender.send({phase:run.input.phase});
+          await new Promise(()=>{});
+        };
         if(run.input.phase==='before') await barrier();
         await save(1,'initial');
         if(run.input.phase==='acknowledged'||run.input.phase==='cancel') await barrier();
@@ -142,16 +146,35 @@ async function fixture(validation = false, barrierUrl?: string, unacknowledged =
       });`,
     )
     if (name === 'root') {
-      if (barrierUrl)
-        await cp(
-          join(suiteTestRoot, '../../../docs/jig/spec/contracts/http-request/contract.json'),
-          join(path, 'http.json'),
+      if (barrierChannel)
+        await writeFile(
+          join(path, 'barrier.json'),
+          JSON.stringify({
+            $schema: 'https://flow.jig.md/schemas/channel-contract-0.schema.json',
+            id: 'https://example.org/checkpoint/barrier',
+            version: '0.1.0',
+            semantics:
+              'The sender has reached the named checkpoint boundary and will not save again.',
+            item: {
+              type: 'object',
+              properties: { phase: { enum: ['before', 'acknowledged', 'cancel'] } },
+              required: ['phase'],
+              additionalProperties: false,
+            },
+          }),
         )
       await writeFile(
         join(path, 'FLOW.contract.json'),
         JSON.stringify({
           $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
           ...(validation ? {} : { attachments: { deliverables: 'read-write' } }),
+          ...(barrierChannel
+            ? {
+                channels: {
+                  barrier: { direction: 'send', delivery: 'direct', contract: './barrier.json' },
+                },
+              }
+            : {}),
         }),
       )
       await cp(
@@ -162,36 +185,31 @@ async function fixture(validation = false, barrierUrl?: string, unacknowledged =
     }
   }
   await mkdir(join(root, 'bindings'))
-  if (barrierUrl) {
-    await mkdir(join(root, 'grants'))
-    await writeFile(
-      join(root, 'grants/barrier.json'),
-      JSON.stringify({
-        kind: 'http',
-        url: barrierUrl,
-        method: 'POST',
-        timeoutMs: 30000,
-      }),
-    )
-  }
   await writeFile(
     join(root, 'jig.ts'),
-    `import {defineJig,discover} from '@jigging/jig'; export default defineJig({flows:discover('flows'),bindings:discover('bindings')${barrierUrl ? ",grants:discover('grants')" : ''}});`,
+    `import {defineJig,discover} from '@jigging/jig'; export default defineJig({flows:discover('flows'),bindings:discover('bindings')});`,
   )
   await writeFile(
     join(root, 'bindings/root.ts'),
-    `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/root',slots:{worker:'flow:flows/worker'${barrierUrl ? ",barrier:'grant:barrier'" : ''}}});`,
+    `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/root',slots:{worker:'flow:flows/worker'}});`,
   )
-  const review = await cli(root, [
-    'review',
-    '--yes',
-    ...(barrierUrl === undefined ? [] : ['--allow-authority-changes']),
-  ])
+  const review = await cli(root, ['review', '--yes'])
   if (review.code !== 0)
     throw new Error(`fixture review failed: ${review.stderr}\n${review.stdout}`)
   return root
 }
 async function checkpointAccepted(root: string, sequence: number) {
+  try {
+    return await readAcceptedCheckpoint(root, sequence)
+  } catch (error) {
+    // Concurrent native acceptance can hold SQLite's write lock. Only a genuine
+    // BUSY refusal is retried by the existing outer observation loop/deadline.
+    // A busy read is never evidence that the selected save was accepted.
+    if (error instanceof Error && 'code' in error && error.code === 'SQLITE_BUSY') return false
+    throw error
+  }
+}
+async function readAcceptedCheckpoint(root: string, sequence: number) {
   const database = Database.open(
     join(root, '.jig/jig.sqlite3'),
     constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
@@ -207,6 +225,27 @@ async function checkpointAccepted(root: string, sequence: number) {
     (await readPrivateAttemptRunCheckpoint({ projectRoot: root, runId: run.run_id }))?.sequence ===
     sequence
   )
+}
+async function readBarrierRecords(path: string, phase: string) {
+  let text: string
+  try {
+    text = await readFile(path, 'utf8')
+  } catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return []
+    throw error
+  }
+  // Ignore only the incomplete trailing frame while the real CLI is writing.
+  const records = text
+    .slice(0, text.lastIndexOf('\n') + 1)
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+  const data = records.filter((record) => record.type === 'data' && record.channel === 'barrier')
+  if (data.length > 0) {
+    expect(records[0]).toEqual({ type: 'begin', channel: 'barrier', startSequence: 1 })
+    expect(data).toEqual([{ type: 'data', channel: 'barrier', sequence: 1, value: { phase } }])
+  }
+  return data
 }
 async function noOwners(root: string, starts = 1) {
   const db = Database.open(
@@ -323,38 +362,13 @@ describe.serial('root retained progress', () => {
     test(
       `independent owner recovers coordinator loss ${phase} acknowledgement without replay`,
       async () => {
-        // A held real HTTP operation is a Flow-side barrier: it cannot dispatch
-        // the next save until the operation resolves. Publication callbacks are
-        // too late: protected checkpoint acceptance precedes publication.
-        let coordinatorStarted = ''
-        let ready = ''
-        let barrierRequests = 0
-        const server = Bun.serve({
-          hostname: '127.0.0.1',
-          port: 0,
-          async fetch(request) {
-            if (request.method !== 'POST' || new URL(request.url).pathname !== '/barrier')
-              return new Response(null, { status: 404 })
-            const coordinator = Number(await readFile(coordinatorStarted, 'utf8'))
-            if (!Number.isSafeInteger(coordinator) || coordinator < 2)
-              throw new Error('invalid checkpoint coordinator PID')
-            barrierRequests++
-            process.kill(coordinator, 'SIGSTOP')
-            await writeFile(ready, String(coordinator))
-            return await new Promise<Response>(() => {})
-          },
-        })
+        // The real root channel has separate transport capacity and does not
+        // consume an exclusive effect while both original workers are live.
+        // After sending the boundary the Flow holds before its next save.
         const unacknowledged = phase === 'accepted' || phase === 'replacement'
-        const root = await fixture(
-          false,
-          `http://127.0.0.1:${server.port}/barrier`,
-          unacknowledged,
-        ).catch((error) => {
-          server.stop(true)
-          throw error
-        })
-        ready = join(root, 'coordinator.pid')
-        coordinatorStarted = join(root, 'coordinator.started')
+        const root = await fixture(false, true, unacknowledged)
+        const coordinatorStarted = join(root, 'coordinator.started')
+        const transcript = join(root, 'channels.ndjson')
         const destination = join(root, 'result')
         let pid: number | undefined
         let stopped = false
@@ -362,6 +376,13 @@ describe.serial('root retained progress', () => {
         const cancellation = new AbortController()
         const execution = privateOwnFileCommand(
           [
+            '/bin/sh',
+            '-c',
+            // Exec preserves the coordinator PID. Only its initial ordinary
+            // --receive stdout is redirected; production recovery must retain
+            // its original JSON pipe. Never manufacture the recovery marker.
+            'umask 077; set -C; if [ -n "$JIG_PRIVATE_FILE_RECOVERY" ]; then exec "$@"; else exec "$@" > "$0"; fi',
+            transcript,
             installedBunLocation.executablePath,
             '--no-env-file',
             '--no-install',
@@ -374,6 +395,9 @@ describe.serial('root retained progress', () => {
             'binding:root',
             '--input',
             JSON.stringify({ mode: 'deadline', phase }),
+            '--receive',
+            'barrier',
+            '--json',
             '--out',
             destination,
             '--timeout',
@@ -388,24 +412,23 @@ describe.serial('root retained progress', () => {
           const until = Date.now() + (process.platform === 'darwin' ? 45_000 : 20_000)
           while (!finished && Date.now() < until) {
             if (
-              unacknowledged &&
               pid === undefined &&
-              (await checkpointAccepted(root, phase === 'replacement' ? 2 : 1))
+              (unacknowledged
+                ? await checkpointAccepted(root, phase === 'replacement' ? 2 : 1)
+                : (await readBarrierRecords(transcript, phase)).length > 0)
             ) {
-              // Acceptance is real protected-store evidence; non-observation
-              // follows from the peer never reading the selected response.
-              // This does not assert that ACK bytes were never sent/buffered.
+              // Raw-peer acceptance comes from the protected store; its unread
+              // result may already be buffered. Other phases come from actual
+              // public channel NDJSON, after which the Flow cannot save again.
               pid = Number(await readFile(coordinatorStarted, 'utf8'))
               if (!Number.isSafeInteger(pid) || pid < 2)
                 throw new Error('invalid checkpoint coordinator PID')
               process.kill(pid, 'SIGSTOP')
-              await writeFile(ready, String(pid))
             }
             try {
-              pid = Number(await readFile(ready, 'utf8'))
               // A sent SIGSTOP is not a stopped-state observation. Observe the
               // pause before cancellation so SIGTERM cannot race that signal.
-              if (Number.isSafeInteger(pid) && pid >= 2) {
+              if (pid !== undefined && Number.isSafeInteger(pid) && pid >= 2) {
                 stopped =
                   process.platform === 'darwin'
                     ? /^T/.test(
@@ -424,8 +447,10 @@ describe.serial('root retained progress', () => {
           }
           if (!stopped || !Number.isSafeInteger(pid) || pid! < 2)
             throw new Error('fixture did not reach selected save boundary')
-          expect(barrierRequests).toBe(
-            phase === 'before' || phase === 'acknowledged' || phase === 'cancel' ? 1 : 0,
+          expect(await readBarrierRecords(transcript, phase)).toEqual(
+            unacknowledged
+              ? []
+              : [{ type: 'data', channel: 'barrier', sequence: 1, value: { phase } }],
           )
           if (phase === 'cancel') cancellation.abort()
           else process.kill(pid!, 'SIGKILL')
@@ -448,7 +473,6 @@ describe.serial('root retained progress', () => {
             if (!finished && pid !== undefined) process.kill(pid, 'SIGKILL')
             await execution
           } finally {
-            server.stop(true)
             await rm(root, { recursive: true, force: true })
           }
         }

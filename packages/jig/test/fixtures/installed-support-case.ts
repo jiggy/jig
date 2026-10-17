@@ -32,15 +32,17 @@ export async function runInstalledSupportProject(options: {
   const { directory, archives, reporting, qualification } = options
   const command = foundationCommands(join(directory, 'commands'))
   const frozen = await Promise.all([archives.jig, archives.flow, reporting].map(hash))
+  const candidates = {
+    '@jigging/jig': `file:${archives.jig}`,
+    '@jigging/flow': `file:${archives.flow}`,
+    '@jigging/reporting': `file:${reporting}`,
+  }
   await put(directory, 'package.json', {
     name: 'installed-support-tooling',
     private: true,
     type: 'module',
-    dependencies: {
-      '@jigging/jig': `file:${archives.jig}`,
-      '@jigging/flow': `file:${archives.flow}`,
-      '@jigging/reporting': `file:${reporting}`,
-    },
+    dependencies: candidates,
+    overrides: candidates,
   })
   await command(['git', 'init', '--quiet'], directory)
   await command(

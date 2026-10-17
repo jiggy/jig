@@ -44,15 +44,17 @@ export async function materializePhotoProject(
   reporting: string,
 ) {
   const command = foundationCommands(join(directory, 'commands'))
+  const candidates = {
+    '@jigging/jig': `file:${archives.jig}`,
+    '@jigging/flow': `file:${archives.flow}`,
+    '@jigging/reporting': `file:${reporting}`,
+  }
   await put(directory, 'package.json', {
     name: 'installed-photo-tooling',
     private: true,
     type: 'module',
-    dependencies: {
-      '@jigging/jig': `file:${archives.jig}`,
-      '@jigging/flow': `file:${archives.flow}`,
-      '@jigging/reporting': `file:${reporting}`,
-    },
+    dependencies: candidates,
+    overrides: candidates,
   })
   await command(['git', 'init', '--quiet'], directory)
   await command(

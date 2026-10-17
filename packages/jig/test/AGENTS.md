@@ -61,12 +61,14 @@ Native command loss, independent fencing and installed recovery remain host gate
 
 Checkpoint loss barriers must match the authoritative commit boundary.
 Delivery callbacks run after the protected save commits.
-Use a held real HTTP operation before the next save to test preacceptance loss.
+Use a real selected-channel send followed by a hold before the next save.
 An awaited save result establishes the acknowledged boundary.
 
 Accepted-but-unobserved cases use a real Run/0 peer that never consumes the
 selected response. Readonly storage proves the accepted sequence before actual
 coordinator loss. Buffered response bytes do not establish application observation.
+Retry only genuine SQLite busy reads within the original observation deadline.
+Busy or incomplete channel frames never establish acceptance.
 
 `portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
 Its ordinary process adapter reports no native fencing.
@@ -106,6 +108,10 @@ dispatch races, native session restoration or cleanup.
 with an ordinary deterministic assessment task. Pure support tests own policy
 and views, not dispatch or native cleanup.
 
+Frozen Bun consumers bind the complete candidate closure through root
+`dependencies` and matching `overrides`. Peer edges must use those same archives.
+Do not reset caches or extend installation budgets to hide incomplete binding.
+
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
 restoration without changing retained source. The opted-in whole
@@ -119,6 +125,14 @@ Exact delayed-readiness, held-gate and injected setup-failure windows require
 genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
 `portable/bun-resolution-worker.test.ts` checks ordinary acquisition refusals
 through the unmodified worker, not a replacement registry argument.
+
+`portable/private-acp-resources.test.ts` checks closed policy inputs and actual
+missing-client discovery. Never replace the native client opener or mechanism.
+Existing provider identity tests retain actual-file revalidation evidence.
+
+Native foreground identity-loss cases authenticate the exact fixture-owned
+directory before displacement. Restore that same inode before ordinary recovery.
+This does not prove every unconfirmed-fence or retry-memoization window.
 
 `portable/project-evaluation-retention.test.ts` verifies descriptor-confined
 recipe capture, inert attachment authority, exact retained R/D reacquisition,
