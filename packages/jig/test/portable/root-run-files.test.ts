@@ -2,6 +2,8 @@ import { expect, test } from 'bun:test'
 import { closeSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { RootAdministrationError } from '../../src/administration/root.js'
+import { CheckError } from '../../src/diagnostics.js'
 import {
   capturePrivateOutput,
   capturePrivateRetainedOutput,
@@ -20,6 +22,7 @@ import {
   releasePrivateFlowArtifact,
   selectedPrivateFlowArtifacts,
 } from '../../src/internal/flow-file-context.js'
+import { administrationError } from '../../src/internal/root-administration-controller.js'
 import {
   normalizePrivateRunFileIdentity,
   PrivateRootFileInputLimitError,
@@ -277,6 +280,15 @@ test('mapping refusal lists all missing reads, invalid names, bound overrides an
     boundOverrides: ['retained'],
     missingWritableDestination: ['evidence'],
   })
+  for (const operation of ['start root Run', 'start prepared root Run']) {
+    const normalized = administrationError(caught, operation)
+    expect(normalized).toBeInstanceOf(RootAdministrationError)
+    expect(normalized.code).toBe('INVALID_REQUEST')
+    expect(normalized.details).toEqual({
+      code: 'RUN_ATTACHMENTS_INVALID',
+      fileMapping: (caught as PrivateRootFileMappingError).fileMapping,
+    })
+  }
   expect(JSON.stringify((caught as PrivateRootFileMappingError).fileMapping)).not.toContain('/')
   expect(() =>
     requirePrivateRootFileMapping(
@@ -344,4 +356,20 @@ test('only bounded attachment names can enter the closed diagnostic', () => {
         missingWritableDestination: [],
       }),
   ).toThrow()
+})
+
+test('prepared acceptance normalization never labels integrity or cleanup failures as file input', () => {
+  for (const error of [
+    new TypeError('/private/input integrity failure'),
+    new CheckError('invalid', 'ADMISSION_STATE_INVALID', '/private/store integrity failure'),
+    new AggregateError([new PrivateRootFileInputLimitError()], '/private/cleanup failure'),
+  ]) {
+    const normalized = administrationError(error, 'start prepared root Run')
+    expect(normalized.code).toBe('INTERNAL')
+    expect(normalized.details).toBeUndefined()
+    expect(normalized.message).not.toContain('/private')
+  }
+  expect(
+    administrationError(new PrivateRootFileInputLimitError(), 'start prepared root Run').details,
+  ).toEqual({ code: 'RUN_ATTACHMENTS_INVALID', fileLimitExceeded: true })
 })

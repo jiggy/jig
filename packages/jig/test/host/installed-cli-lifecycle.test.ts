@@ -54,6 +54,15 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
         workspaces: ['flows/*', 'libs/*'],
       }),
     )
+    // Bun requires a name when a standalone package becomes a workspace member.
+    const greetingManifest = join(project, 'flows/hello/package.json')
+    await writeFile(
+      greetingManifest,
+      JSON.stringify({
+        ...JSON.parse(await readFile(greetingManifest, 'utf8')),
+        name: 'installed-cli-greeting-hello',
+      }),
+    )
     await command(['git', 'init', '--quiet'], project)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')

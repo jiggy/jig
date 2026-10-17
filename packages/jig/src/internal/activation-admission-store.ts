@@ -142,12 +142,7 @@ import {
   isPrivateBranchDepth,
   isPrivateChildFlowAllocation,
 } from './root-operation-limits.js'
-import {
-  PrivateRootFileInputLimitError,
-  PrivateRootFileMappingError,
-  type PrivateRunFileIdentity,
-  requirePrivateRootFileMapping,
-} from './root-run-files.js'
+import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
   createPrivateRootRunRequest,
@@ -1059,17 +1054,8 @@ export async function submitPrivateRootRun(input: {
 
     const fileTarget = findPrivateActivationCandidateTargetV5(candidate, request.target)
     if (fileTarget !== undefined) {
-      try {
-        requirePrivateRootFileMapping(fileTarget.request, request.files)
-        input.identifyFiles?.(fileTarget.request)
-      } catch (error) {
-        if (
-          error instanceof PrivateRootFileMappingError ||
-          error instanceof PrivateRootFileInputLimitError
-        )
-          throw error
-        invalid('RUN_ATTACHMENTS_INVALID', 'root file mappings are invalid')
-      }
+      requirePrivateRootFileMapping(fileTarget.request, request.files)
+      input.identifyFiles?.(fileTarget.request)
     }
     const terminal = rootPreflightTerminal(candidate, request, artifacts)
     const originBytes = encodePrivateRootRunOrigin(origin)

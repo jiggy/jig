@@ -31,6 +31,10 @@ import {
   releasePrivateMacosGuardian,
 } from '../../src/internal/macos-guardian-client.js'
 import {
+  type PrivateMacosGuardianRecoveryDiagnostic,
+  withPrivateMacosGuardianDiagnostics,
+} from '../../src/internal/macos-guardian-diagnostics.js'
+import {
   allocatePrivateMacosGuardianStorage,
   removeEmptyPrivateMacosUnstartedStorage,
 } from '../../src/internal/macos-guardian-storage.js'
@@ -443,7 +447,7 @@ test('actual missing launcher retains a closed preparation cause after fenced st
     const supervisor = fileURLToPath(
       new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
     )
-    const guardian = await preparePrivateMacosGuardian({
+    const input: Parameters<typeof preparePrivateMacosGuardian>[0] = {
       bun: process.execPath,
       supervisor,
       configuration: {
@@ -472,22 +476,53 @@ test('actual missing launcher retains a closed preparation cause after fenced st
         maxOutputBytes: 4096,
         storage: { mountPath, bytes: 16 * 1024 * 1024, collect: null },
       },
-    })
+    }
+    const recoveryEvents: PrivateMacosGuardianRecoveryDiagnostic[] = []
+    const guardian = await withPrivateMacosGuardianDiagnostics(
+      (event) => {
+        if (recoveryEvents.length < 16) recoveryEvents.push(event)
+      },
+      () => preparePrivateMacosGuardian(input),
+    )
     guardian.stdout.resume()
     guardian.stderr.resume()
+    let completionDiagnostic: object = { state: 'pending' }
     try {
       const failure = await guardian.admit().catch((error) => error)
+      // Observe real settlement before an assertion can hide its cleanup outcome.
+      const completion = await guardian.completion.then(
+        (result) => {
+          completionDiagnostic = {
+            state: 'fulfilled',
+            fenced: result.fenced,
+            recovered: result.recovered,
+            outputLost: result.outputLost,
+            result: result.result === null ? 'absent' : 'present',
+          }
+          return result
+        },
+        (error: unknown) => {
+          completionDiagnostic = { state: 'rejected' }
+          throw error
+        },
+      )
       expect(failure).toMatchObject({
         code: 'MACOS_GUARDIAN_SCOPE_PREPARATION_FILESYSTEM_MISSING',
       })
       expect(failure.message).not.toContain('private-canary')
-      expect(await guardian.completion).toMatchObject({
+      expect(completion).toMatchObject({
         fenced: true,
         result: null,
         recovered: false,
       })
       expect(await exists(mountPath)).toBe(false)
       expect(await exists(join(ownerDirectory, 'storage/volume.dmg'))).toBe(false)
+    } catch (error) {
+      console.error('Missing launcher guardian evidence', {
+        recoveryEvents,
+        completion: completionDiagnostic,
+      })
+      throw error
     } finally {
       await recoverPrivateMacosGuardian(ownerDirectory, token, 5000)
       await releasePrivateMacosGuardian(ownerDirectory, token)

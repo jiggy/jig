@@ -23,6 +23,7 @@ import {
   submitPrivateRootRun,
 } from './activation-admission-store.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
+import { PrivateAttemptError } from './prepared-attempt-store.js'
 import { privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
 import {
@@ -201,7 +202,8 @@ function createController(input: {
         return { role: submitted.role, receipt: submitted.receipt }
       } catch (error) {
         observeFailure(error)
-        throw error
+        if (error instanceof PrivateAttemptError) throw error
+        throw administrationError(error, 'start prepared root Run')
       } finally {
         operations.delete(unsettled)
         markSettled()
@@ -542,7 +544,7 @@ async function retryPrivateBusy<T>(action: () => Promise<T>): Promise<T> {
   throw new Error('unreachable root administration retry state')
 }
 
-function administrationError(error: unknown, operation: string): RootAdministrationError {
+export function administrationError(error: unknown, operation: string): RootAdministrationError {
   if (error instanceof RootAdministrationError) return error
   if (error instanceof CheckError) {
     switch (error.code) {
