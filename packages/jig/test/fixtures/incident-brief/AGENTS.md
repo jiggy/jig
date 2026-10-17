@@ -2,16 +2,16 @@
 
 ## Purpose
 
-Private synthetic evidence for bounded conversation handoff and sibling
-settlement. This is host-test infrastructure, not a public example or a
-model-quality claim.
+Private application for bounded conversation handoff and sibling settlement.
+This is host-test infrastructure, not a public example or a model-quality claim.
 
 ## Ownership
 
 - `flows/`, `bindings/`, `grants/`, and `input.json` retain the ordinary
-  public-interface application exercised by `../incident-brief-consumer.ts`.
-- `test/` owns deterministic method checks for turn budgets, revision races,
-  context preservation, and failure isolation.
+  public-interface application exercised by `../../host/installed-incident-brief.test.ts`.
+- `test/` owns pure context and offline contract checks.
+- `test/agent-task.ts.txt` supplies an ordinary bounded conversation task for the
+  installed consumer. It does not replace a native adapter or mint session receipts.
 
 ## Local Contracts
 
@@ -29,10 +29,11 @@ model-quality claim.
 ## Verification
 
 - `bun test packages/jig/test/fixtures/incident-brief/test`
-- Dashboard checks compare both offline reporting descriptor/license copies with
-  the installed public package in addition to validating bounded views.
-- Installed lifecycle evidence belongs to `finite-acp-lifecycle.test.ts` and
-  requires its qualified host prerequisites.
+- Offline checks compare both reporting descriptor/license copies with the public
+  package and validate bounded views.
+- `bun test packages/jig/test/host/installed-incident-brief.test.ts` requires the
+  qualified host prerequisites. Pure cases do not prove dispatch races, native
+  session restoration or cleanup.
 
 ## Child DOX Index
 
