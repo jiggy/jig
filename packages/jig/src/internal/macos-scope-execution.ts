@@ -235,7 +235,15 @@ export async function preparePrivateMacosScope(input: {
     ['--launch', String(Buffer.byteLength(profile.text)), input.cwd, profile.bootstrap, ...command],
     { cwd: '/', env: environment, stdio: ['pipe', 'pipe', 'pipe', 'pipe', 'pipe', 'pipe'] },
   )
-  child.on('error', () => stop('setup_failed'))
+  let launchError: Error | undefined
+  const launched = new Promise<void>((resolve) => {
+    child.once('spawn', () => resolve())
+    child.on('error', (error) => {
+      launchError ??= error
+      stop('setup_failed')
+      resolve()
+    })
+  })
   const stdin = child.stdin,
     stdout = child.stdout,
     stderr = child.stderr
@@ -249,6 +257,9 @@ export async function preparePrivateMacosScope(input: {
       if (performance.now() >= cleanupBy) throw new Error('macOS descendant fencing is unconfirmed')
       await new Promise((resolve) => setTimeout(resolve, 20))
     }
+    // A failed spawn can omit handoff pipes before its error event arrives.
+    await bounded(launched, Math.max(1, cleanupBy - performance.now()))
+    if (launchError !== undefined) throw launchError
     throw new Error('macOS launch handoffs are unavailable')
   }
   let resolveReady: (value: { pid: number; version: number }) => void = () => {}
@@ -412,6 +423,9 @@ export async function preparePrivateMacosScope(input: {
     const identity = await Promise.race([
       ready,
       completion.then((result) => {
+        // Preserve the native launch cause only after full settlement, without
+        // replacing an earlier deadline, cancellation or accounting failure.
+        if (result.reason === 'setup_failed' && launchError !== undefined) throw launchError
         throw new Error(`macOS scope ended before readiness (${result.reason})`, {
           cause: new Error(`exit ${result.exitCode ?? 'null'}, signal ${result.signal ?? 'null'}`),
         })

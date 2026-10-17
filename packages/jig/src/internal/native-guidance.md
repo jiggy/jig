@@ -169,6 +169,12 @@ These links locate module rules. All selected domain requirements still apply.
   invalidating its native exit evidence. Other stream errors still fail closed.
   Neither EPIPE nor pipe closure substitutes for the status frame or fencing.
 
+  Retain the original launcher spawn error when setup fails before readiness.
+  Expose it to the guardian only after complete fencing and existing settlement checks.
+  Missing handoffs await the actual spawn outcome within the existing cleanup budget.
+  Earlier stop causes and unconfirmed settlement retain precedence.
+  The guardian transports only its closed cause after storage cleanup.
+
 #### macos-native-supervisor
 
 - `macos-native-supervisor.ts` and `macos-guardian-client.ts` own finite,

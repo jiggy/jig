@@ -1,4 +1,8 @@
 import { expect, test } from 'bun:test'
+import { spawn } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   normalizePrivateMacosGuardianFailure,
   type PrivateMacosGuardianRecoveryDiagnostic,
@@ -6,6 +10,28 @@ import {
   reportPrivateMacosGuardianRecovery,
   withPrivateMacosGuardianDiagnostics,
 } from '../../src/internal/macos-guardian-diagnostics.js'
+
+test('actual missing launcher errors retain a closed filesystem cause without private paths', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-launch-error-'))
+  try {
+    const launcher = join(root, 'missing-private-canary-launcher')
+    const error = await new Promise<NodeJS.ErrnoException>((resolve) => {
+      spawn(launcher, [], { stdio: 'ignore' }).once('error', resolve)
+    })
+    expect(error.code).toBe('ENOENT')
+    expect(error.message).toContain('private-canary')
+    const failure = privateMacosGuardianFailure('scope-preparation', error)
+    expect(normalizePrivateMacosGuardianFailure(JSON.parse(JSON.stringify(failure)))).toEqual({
+      step: 'scope-preparation',
+      cause: 'FILESYSTEM_MISSING',
+    })
+    expect(JSON.stringify(failure)).not.toContain(root)
+    expect(JSON.stringify(failure)).not.toContain('private-canary')
+    expect(error.code).toBe('ENOENT')
+  } finally {
+    await rm(root, { recursive: true })
+  }
+})
 
 test('guardian failure transport keeps only closed steps and causes', () => {
   const clock = privateMacosGuardianFailure(

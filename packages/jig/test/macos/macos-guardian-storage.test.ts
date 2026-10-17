@@ -506,9 +506,8 @@ test('actual missing launcher retains a closed preparation cause after fenced st
           throw error
         },
       )
-      expect(failure).toMatchObject({
-        code: 'MACOS_GUARDIAN_SCOPE_PREPARATION_FILESYSTEM_MISSING',
-      })
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure.code).toBe('MACOS_GUARDIAN_SCOPE_PREPARATION_FILESYSTEM_MISSING')
       expect(failure.message).not.toContain('private-canary')
       expect(completion).toMatchObject({
         fenced: true,
