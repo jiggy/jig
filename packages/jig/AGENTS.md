@@ -20,8 +20,7 @@ owns the public authoring API and installed Linux and qualified Mac hosts.
   `src/internal/execution-intent.ts` and `execution-process.ts`. Jig controllers
   retain policy and durable lifecycle. Host translation owns physical launch
   layout. `src/run/session.ts` consumes process evidence without owning backend
-  types. No package export, FLOW wire contract or host plugin interface is
-  added.
+  types. These private contracts add no package export, FLOW wire contract or host plugin interface.
 
 - Root licensing and pricing are canonical. The build copies their retained
   texts. Source delivery belongs to the matching GitHub release and its tagged
@@ -38,7 +37,7 @@ Read every guide that matches the affected files or responsibilities:
 | Work | Required guide |
 | --- | --- |
 | `src/project/`, `src/package/`, initialization, declarations, slots, grants, contracts or source capture | [Authoring and project interfaces](authoring-guidance.md) |
-| `src/cli*`, command grammar, completion, progress, inspection, terminal output or display integration | [Command presentation](cli-guidance.md) |
+| `src/client.ts`, attempt contracts, `src/cli*`, machine requests, command grammar, completion, progress, inspection, terminal output or display integration | [Command presentation and application client](cli-guidance.md) |
 | Builds, packing, patches, installed artifacts, platform promotion, native or release qualification | [Assembly and qualification](qualification-guidance.md) |
 | `src/internal/`, containment, durable authority, execution or native resources | [Private host](src/internal/AGENTS.md) and its required domain guides |
 | Markdown parsing or interpretation | [Markdown runtime](src/markdown/AGENTS.md) |
@@ -49,11 +48,10 @@ qualify an installed artifact or a different platform.
 
 ## Local Contracts
 
-- `src/index.ts` is the only JavaScript package export. Other exported symbols
-  are private composition or test seams.
-
-- Expose only the documented CLI and authoring surface. Private host machinery
-  is not a provider, runtime, or containment SPI.
+- The root JavaScript export is inert authoring. `./client` is the separate
+  installed-host execution client. Other exported symbols remain private composition
+  or test seams. Expose only documented public surfaces.
+  Private host machinery is not a provider, runtime, or containment SPI.
 
 - FLOW and Jig specifications and machine schemas are authoritative. Accept only
   bounded, canonical current formats.
@@ -79,7 +77,10 @@ qualify an installed artifact or a different platform.
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
 
-- Keep fault-injection seams private.
+- Follow the maintainer guide's
+  [no-mocks rule](../../.agents/maintainer-guide.md#test-real-boundaries-never-mocks).
+  Use real stores and subprocesses. Installed and native claims require their
+  ordinary public and qualified native paths. Never rewrite workers or simulate owners.
 
 - Attach expected rejection handlers before cancellation or asynchronous
   teardown can settle pending test operations. Still await both rejection and
@@ -88,9 +89,7 @@ qualify an installed artifact or a different platform.
 - Test fixtures use canonical dependency paths, including through Bun workspace
   symlinks. Source-tree proof commands reuse
   `test/fixtures/installed-bun-location.ts` rather than defining their own
-  runtime locations. Source-rewriting hostile fixtures must also construct
-  successfully in ordinary tests, so source formatting cannot silently break the
-  host gate.
+  runtime locations. Do not rewrite source to manufacture host evidence.
 
 - Consult `src/internal/AGENTS.md` for containment, durability, or Agent host
   work.
@@ -98,11 +97,8 @@ qualify an installed artifact or a different platform.
 ## Verification
 
 - `just jig::test`
-
 - `just jig::check`
-
 - Use `scripts/test-release.sh` for packed or cross-protocol changes.
-
 - Trust-boundary changes require the provisioned host-conformance workflow.
 
 Use the selected domain's checks and the current whole-file inventory in
@@ -113,13 +109,12 @@ tests, installed consumers and native qualification distinct.
 
 - [authoring-guidance.md](authoring-guidance.md) — Authored values, captured
   packages, contracts, routes and resource selection.
-- [cli-guidance.md](cli-guidance.md) — Shared presentation, command semantics,
-  inspection and renderer integration.
+- [cli-guidance.md](cli-guidance.md) — Shared presentation, application client,
+  command semantics, inspection and renderer integration.
 - [qualification-guidance.md](qualification-guidance.md) — Artifact assembly,
   native evidence and installed consumers.
 - [test/AGENTS.md](test/AGENTS.md) — Whole-file suite applicability, installed
   consumers, live prerequisites and evidence.
-
 - [support/AGENTS.md](support/AGENTS.md) — Native policy assets and the private
   Mac pre-exec boundary. Installed-platform promotion remains package-owned.
 - [src/internal/AGENTS.md](src/internal/AGENTS.md) — Private admission,

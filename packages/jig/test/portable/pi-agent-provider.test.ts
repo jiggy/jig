@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { prepareAgent } from '@jigging/agent-method'
 import {
   type PrivateAcpReadOnlyMount,
@@ -360,7 +361,7 @@ describe('private native Pi Agent provider', () => {
   })
   test('rechecks subscription expiry before exposing startup input', async () => {
     const support = await files()
-    const now = Date.now()
+    const usableUntil = Date.now() + 2_000
     const provider = await createPrivatePiSubscriptionAgentProvider({
       ...support,
       provider: 'openai-codex',
@@ -371,19 +372,15 @@ describe('private native Pi Agent provider', () => {
             type: 'oauth',
             access: 'test-secret',
             refresh: '',
-            expires: now + 6 * 60_000,
+            expires: usableUntil + 5 * 60_000,
           },
         }),
       ),
     })
     const runtime = privateAcpAgentRuntime(provider)
-    const originalNow = Date.now
-    try {
-      Date.now = () => now + 2 * 60_000
-      expect(() => runtime.startupInput!()).toThrow('subscription credential is invalid')
-    } finally {
-      Date.now = originalNow
-    }
+    expect(runtime.startupInput!().byteLength).toBeGreaterThan(0)
+    await delay(Math.max(0, usableUntil - Date.now() + 20))
+    expect(() => runtime.startupInput!()).toThrow('subscription credential is invalid')
   })
   test('forces a tool-free, resource-free, ephemeral native Pi RPC process', () => {
     expect(PRIVATE_PI_NATIVE_ARGUMENTS).toEqual([

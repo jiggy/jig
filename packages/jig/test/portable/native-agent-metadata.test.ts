@@ -47,7 +47,7 @@ for (const [suiteCaseIndex, suiteCaseValue] of metadataReaders.entries()) {
           let output: readonly Promise<string>[] = []
           try {
             const executable = join(root, 'client')
-            const fifo = Bun.spawnSync(['/usr/bin/mkfifo', '-m', '600', executable])
+            const fifo = Bun.spawnSync(['mkfifo', '-m', '600', executable])
             expect(fifo.exitCode).toBe(0)
             const module = new URL(`../src/internal/${filename}`, suiteTestUrl).href
             const owned = Bun.spawn(

@@ -1,0 +1,24 @@
+import { handle } from '@jigging/flow'
+import { readFile, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+await handle(async run => {
+  const task = run.input as { operand: number; multiplier: number }
+  const candidate = run.attachments.candidate!.path
+  const generated = run.attachments.generated!.path
+  // Inspect inert bytes. Never import or execute the candidate in this checker.
+  const source = await readFile(join(candidate, 'src/answer.ts'), 'utf8')
+  const data = JSON.parse(await readFile(join(generated, 'generated/answer.json'), 'utf8'))
+  const binary = await readFile(join(generated, 'generated/marker.bin'))
+  const empty = await readFile(join(generated, 'generated/empty.bin'))
+  if (!source.includes("from 'zod'") || data.answer !== task.operand * task.multiplier ||
+      binary.toString('hex') !== '0080ff' || empty.length !== 0)
+    throw Error('Independent acceptance rejected inert candidate evidence')
+  for (const root of [candidate, generated]) {
+    let denied = false
+    try { await writeFile(join(root, 'forbidden-write'), 'x', { flag: 'wx' }) }
+    catch { denied = true }
+    if (!denied) throw Error('Delegated artifact was writable')
+  }
+  return { outcome: 'done', output: { accepted: true, answer: data.answer, readonly: true } }
+})

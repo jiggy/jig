@@ -4,6 +4,14 @@ import { type FileHandle, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { ProjectAdministrationError } from '../administration/project.js'
+import type {
+  AttemptConstraints,
+  AttemptObservation,
+  AttemptReceipt,
+  CanonicalRequest,
+  Prepared,
+} from '../attempt-contract.js'
+import { parseAttemptFrame } from '../attempt-contract.js'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -44,8 +52,16 @@ import {
   requirePrivateCreatedActivationCandidateV5,
 } from './activation-admission.js'
 import { privateActivationTargetKey } from './activation-planning.js'
+import {
+  readPrivateAttemptCheckpoint,
+  readPrivateAttemptCheckpointFiles,
+  retainPrivateAttemptCheckpoint,
+} from './attempt-checkpoint-store.js'
+import { type PrivateAttemptClock, readPrivateAttemptClock } from './attempt-clock.js'
+import { privateAttemptExportOwner } from './attempt-export-owner.js'
 import { verifyBoundAttachment } from './bound-attachments.js'
 import type { PrivateBunExecutionArtifact } from './bun-execution-layout.js'
+import type { PrivateCapturedOutput } from './captured-output.js'
 import {
   privateChildLocation as descriptorChild,
   statPrivateFile as lstat,
@@ -55,6 +71,7 @@ import {
   renamePrivateFile as rename,
   unlinkPrivateFile as unlink,
 } from './descriptor-files.js'
+import type { PrivateCapturedAttachment } from './file-input.js'
 import { requiresAuthorityApproval } from './grant-review.js'
 import { privateDomainDigest } from './identity.js'
 import {
@@ -71,6 +88,7 @@ import {
   type PrivateLinuxPreparedOwnerIdentity,
   type PrivateLinuxSealedOwnerIdentity,
 } from './linux-rootless-backend.js'
+import { normalizePrivateBootDeadline } from './native-clock.js'
 import {
   captureStoredPackage,
   normalizePackageArtifactRef,
@@ -83,6 +101,36 @@ import {
   type PrivatePackageMaterializationLeaseIdentity,
 } from './package-materialization.js'
 import {
+  acceptPrivatePreparedAttempt,
+  attemptQuery,
+  attemptRefuse,
+  attemptWrite,
+  authenticatePrivateAttempt,
+  consumePrivateAttemptControlReservation,
+  consumePrivateAttemptReservation,
+  deletePrivateRetiredAttempts,
+  PRIVATE_ATTEMPT_SCHEMA,
+  PrivateAttemptError,
+  type PrivateAuthenticatedAttempt,
+  persistPrivatePreparedAttempt,
+  privateAttemptBaseObservation,
+  privateAttemptManifestDigest,
+  privateAttemptReceipt,
+  privateAttemptRequest,
+  privateAttemptResultDigest,
+  privateAttemptRetentionState,
+  readPrivateAttemptInputs,
+  reconcilePrivateAttemptExportOwners,
+  requirePrivateAttemptAcceptable,
+  requirePrivateAttemptMeaning,
+  reservePrivateAttemptExportMetadata,
+  retainedPrivateAttemptArtifacts,
+  retainPrivateAttemptArtifacts,
+  retirePrivateAttempts,
+} from './prepared-attempt-store.js'
+import { PrivateCheckpointRejected, type RunCheckpointIdentity } from './private-run-checkpoint.js'
+import { verifyPrivateRetainedProjectEvaluation } from './project-evaluation-retention.js'
+import {
   decodePrivateProjectLocalLock,
   encodePrivateProjectLocalLock,
   type PrivateLockPackage,
@@ -94,12 +142,7 @@ import {
   isPrivateBranchDepth,
   isPrivateChildFlowAllocation,
 } from './root-operation-limits.js'
-import {
-  PrivateRootFileInputLimitError,
-  PrivateRootFileMappingError,
-  type PrivateRunFileIdentity,
-  requirePrivateRootFileMapping,
-} from './root-run-files.js'
+import { type PrivateRunFileIdentity, requirePrivateRootFileMapping } from './root-run-files.js'
 import {
   createPrivateExternalSubmissionOrigin,
   createPrivateRootRunRequest,
@@ -168,72 +211,100 @@ const CREATE_ROOT_SPAWN_INTENTS =
 const CREATE_ROOT_EXECUTION_LIFECYCLES =
   'CREATE TABLE root_execution_lifecycles (run_id TEXT PRIMARY KEY REFERENCES root_spawn_intents(run_id), allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), plan_digest TEXT UNIQUE, plan_bytes BLOB, backing_digest TEXT UNIQUE, backing_bytes BLOB, sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, prepared_digest TEXT UNIQUE, prepared_bytes BLOB, provisional_digest TEXT UNIQUE, provisional_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, release_digest TEXT UNIQUE, release_bytes BLOB, admitted_digest TEXT UNIQUE, admitted_bytes BLOB, CHECK ((plan_digest IS NULL) = (plan_bytes IS NULL)), CHECK ((backing_digest IS NULL) = (backing_bytes IS NULL)), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((prepared_digest IS NULL) = (prepared_bytes IS NULL)), CHECK ((provisional_digest IS NULL) = (provisional_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((release_digest IS NULL) = (release_bytes IS NULL)), CHECK ((admitted_digest IS NULL) = (admitted_bytes IS NULL)), CHECK (backing_digest IS NULL OR plan_digest IS NOT NULL), CHECK (sandbox_digest IS NULL OR backing_digest IS NOT NULL), CHECK (prepared_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (admitted_digest IS NULL OR (provisional_digest IS NOT NULL AND release_digest IS NOT NULL))) STRICT'
 const CREATE_ROOT_CHILD_OWNERS =
-  'CREATE TABLE root_child_owners (parent_run_id TEXT NOT NULL REFERENCES root_execution_lifecycles(run_id), scope_operation_id TEXT NOT NULL, operation_id TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, cleanup_digest TEXT UNIQUE, cleanup_bytes BLOB, CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((cleanup_digest IS NULL) = (cleanup_bytes IS NULL)), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (cleanup_digest IS NULL OR fence_digest IS NOT NULL), PRIMARY KEY (parent_run_id, scope_operation_id, operation_id)) STRICT'
+  'CREATE TABLE root_child_owners (parent_run_id TEXT NOT NULL REFERENCES root_execution_lifecycles(run_id), scope_operation_id TEXT NOT NULL, operation_id TEXT NOT NULL, allocation_digest TEXT NOT NULL UNIQUE, allocation_bytes BLOB NOT NULL CHECK (length(allocation_bytes) BETWEEN 1 AND 16777216), sandbox_digest TEXT UNIQUE, sandbox_bytes BLOB, fence_digest TEXT UNIQUE, fence_bytes BLOB, cleanup_digest TEXT UNIQUE, cleanup_bytes BLOB, phase_history_digest TEXT, phase_history_bytes BLOB, CHECK ((phase_history_digest IS NULL) = (phase_history_bytes IS NULL)), CHECK (phase_history_bytes IS NULL OR length(phase_history_bytes) BETWEEN 1 AND 16777216), CHECK ((sandbox_digest IS NULL) = (sandbox_bytes IS NULL)), CHECK ((fence_digest IS NULL) = (fence_bytes IS NULL)), CHECK ((cleanup_digest IS NULL) = (cleanup_bytes IS NULL)), CHECK (fence_digest IS NULL OR sandbox_digest IS NOT NULL), CHECK (cleanup_digest IS NULL OR fence_digest IS NOT NULL), PRIMARY KEY (parent_run_id, scope_operation_id, operation_id)) STRICT'
 const CREATE_ROOT_TERMINALS =
   'CREATE TABLE root_terminals (run_id TEXT PRIMARY KEY REFERENCES root_runs(run_id), terminal_digest TEXT NOT NULL, terminal_bytes BLOB NOT NULL CHECK (length(terminal_bytes) BETWEEN 1 AND 16777216)) STRICT'
 const CREATE_COORDINATOR_LOCK =
   'CREATE TABLE coordinator_lock (singleton INTEGER PRIMARY KEY CHECK (singleton = 1)) STRICT'
 const CREATE_NATIVE_SESSIONS =
   'CREATE TABLE native_sessions (reference TEXT PRIMARY KEY, scope_digest TEXT NOT NULL, root_run_id TEXT REFERENCES root_runs(run_id), native_id TEXT NOT NULL, rollout_path TEXT NOT NULL, content_digest TEXT NOT NULL, content_bytes BLOB NOT NULL CHECK (length(content_bytes) BETWEEN 1 AND 8388608), created_at INTEGER NOT NULL CHECK (created_at BETWEEN 0 AND 9007199168340991), expires_at INTEGER NOT NULL CHECK (expires_at = created_at + 86400000)) STRICT'
-const EXPECTED_SCHEMA = Object.freeze([
-  Object.freeze({
-    type: 'table',
-    name: 'admission_head',
-    table: 'admission_head',
-    sql: CREATE_ADMISSION_HEAD,
-  }),
-  Object.freeze({ type: 'table', name: 'admissions', table: 'admissions', sql: CREATE_ADMISSIONS }),
-  Object.freeze({
-    type: 'table',
-    name: 'candidate_head',
-    table: 'candidate_head',
-    sql: CREATE_CANDIDATE_HEAD,
-  }),
-  Object.freeze({ type: 'table', name: 'candidates', table: 'candidates', sql: CREATE_CANDIDATES }),
-  Object.freeze({
-    type: 'table',
-    name: 'coordinator_head',
-    table: 'coordinator_head',
-    sql: CREATE_COORDINATOR_HEAD,
-  }),
-  Object.freeze({
-    type: 'table',
-    name: 'native_sessions',
-    table: 'native_sessions',
-    sql: CREATE_NATIVE_SESSIONS,
-  }),
-  Object.freeze({
-    type: 'table',
-    name: 'review_plans',
-    table: 'review_plans',
-    sql: CREATE_REVIEW_PLANS,
-  }),
-  Object.freeze({
-    type: 'table',
-    name: 'root_child_owners',
-    table: 'root_child_owners',
-    sql: CREATE_ROOT_CHILD_OWNERS,
-  }),
-  Object.freeze({
-    type: 'table',
-    name: 'root_execution_lifecycles',
-    table: 'root_execution_lifecycles',
-    sql: CREATE_ROOT_EXECUTION_LIFECYCLES,
-  }),
-  Object.freeze({ type: 'table', name: 'root_runs', table: 'root_runs', sql: CREATE_ROOT_RUNS }),
-  Object.freeze({
-    type: 'table',
-    name: 'root_spawn_intents',
-    table: 'root_spawn_intents',
-    sql: CREATE_ROOT_SPAWN_INTENTS,
-  }),
-  Object.freeze({
-    type: 'table',
-    name: 'root_terminals',
-    table: 'root_terminals',
-    sql: CREATE_ROOT_TERMINALS,
-  }),
-])
+const EXPECTED_SCHEMA = Object.freeze(
+  [
+    ...PRIVATE_ATTEMPT_SCHEMA.slice(0, 3).map(([name, sql]) =>
+      Object.freeze({
+        type: 'table',
+        name,
+        table: name,
+        sql,
+      }),
+    ),
+    Object.freeze({
+      type: 'table',
+      name: 'admission_head',
+      table: 'admission_head',
+      sql: CREATE_ADMISSION_HEAD,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'admissions',
+      table: 'admissions',
+      sql: CREATE_ADMISSIONS,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'candidate_head',
+      table: 'candidate_head',
+      sql: CREATE_CANDIDATE_HEAD,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'candidates',
+      table: 'candidates',
+      sql: CREATE_CANDIDATES,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'coordinator_head',
+      table: 'coordinator_head',
+      sql: CREATE_COORDINATOR_HEAD,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'native_sessions',
+      table: 'native_sessions',
+      sql: CREATE_NATIVE_SESSIONS,
+    }),
+    ...PRIVATE_ATTEMPT_SCHEMA.slice(3).map(([name, sql]) =>
+      Object.freeze({
+        type: 'table',
+        name,
+        table: name,
+        sql,
+      }),
+    ),
+    Object.freeze({
+      type: 'table',
+      name: 'review_plans',
+      table: 'review_plans',
+      sql: CREATE_REVIEW_PLANS,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'root_child_owners',
+      table: 'root_child_owners',
+      sql: CREATE_ROOT_CHILD_OWNERS,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'root_execution_lifecycles',
+      table: 'root_execution_lifecycles',
+      sql: CREATE_ROOT_EXECUTION_LIFECYCLES,
+    }),
+    Object.freeze({ type: 'table', name: 'root_runs', table: 'root_runs', sql: CREATE_ROOT_RUNS }),
+    Object.freeze({
+      type: 'table',
+      name: 'root_spawn_intents',
+      table: 'root_spawn_intents',
+      sql: CREATE_ROOT_SPAWN_INTENTS,
+    }),
+    Object.freeze({
+      type: 'table',
+      name: 'root_terminals',
+      table: 'root_terminals',
+      sql: CREATE_ROOT_TERMINALS,
+    }),
+  ].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+)
 
 const authenticPlanningBases = new WeakMap<object, PrivateActivationPlanningSnapshot>()
 const authenticCoordinators = new WeakMap<
@@ -397,6 +468,8 @@ interface RootChildOwnerRow {
   readonly fence_bytes: Uint8Array | null
   readonly cleanup_digest: string | null
   readonly cleanup_bytes: Uint8Array | null
+  readonly phase_history_digest: string | null
+  readonly phase_history_bytes: Uint8Array | null
 }
 
 /**
@@ -468,6 +541,7 @@ export interface PrivateBunPreparationOwnerFact {
 
 export interface PrivateRootRunSubmission {
   readonly run: PrivateRootRunSnapshot
+  readonly accepted?: boolean
 }
 
 export type PrivateRootExecutionCheckpointName =
@@ -503,6 +577,11 @@ export interface PrivateRootChildOwnerFact {
   readonly value: JsonValue
 }
 
+export interface PrivateRootChildPhaseCheckpoint extends PrivateRootChildOwnerFact {
+  readonly phase: 'generate' | 'compile' | 'test'
+  readonly checkpoint: 'plan' | 'sandbox' | 'fence' | 'cleanup'
+}
+
 export interface PrivateRootChildOwnerLifecycle {
   readonly parentRunId: string
   /** Present for the one Agent or project command owned by a direct child Flow. */
@@ -512,6 +591,8 @@ export interface PrivateRootChildOwnerLifecycle {
   readonly sandbox?: PrivateRootChildOwnerFact
   readonly fence?: PrivateRootChildOwnerFact
   readonly cleanup?: PrivateRootChildOwnerFact
+  readonly phaseHistory: readonly PrivateRootChildPhaseCheckpoint[]
+  readonly phaseHistoryDigest: string | null
 }
 
 export interface PrivateNativeSessionReceipt {
@@ -912,24 +993,41 @@ export async function submitPrivateRootRun(input: {
   readonly files?: PrivateRunFileIdentity
   readonly identifyFiles?: (request: PrivateActivationRequest) => void
   readonly deadlineUnixMs: number
+  readonly preparedAttempt?: { readonly ticket: string; readonly request: CanonicalRequest }
 }): Promise<PrivateRootRunSubmission> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator)
   await coordinator.verify()
-  const origin = createPrivateExternalSubmissionOrigin(input.submissionId)
-  const request = createPrivateRootRunRequest(input)
-  const originDigest = privateRootRunOriginDigest(origin)
-  const submissionDigest = privateRootSubmissionDigest(request)
   const owner = await openStateOwner(input.projectRoot, false)
   let artifacts: ReacquiredArtifacts | undefined
   let failure: unknown
   try {
     requireCoordinatorRoot(coordinator, owner.root)
+    const attempt =
+      input.preparedAttempt === undefined
+        ? undefined
+        : authenticatePrivateAttempt(
+            owner.database,
+            attemptProjectDigest(owner.root),
+            input.preparedAttempt.ticket,
+          )
+    if (attempt) requirePrivateAttemptMeaning(attempt, input.preparedAttempt!.request)
+    const origin = createPrivateExternalSubmissionOrigin(
+      attempt?.claims.ticketNonce ?? input.submissionId,
+    )
+    const request = createPrivateRootRunRequest(input)
+    const originDigest = privateRootRunOriginDigest(origin)
+    const submissionDigest = privateRootSubmissionDigest(request)
     const replay = findRootRunByOrigin(owner.database, originDigest)
     if (replay !== null) {
       const run = loadRootRunSnapshot(owner.database, replay, owner.root)
       requireSameExternalSubmission(run, submissionDigest)
       await owner.finish()
-      return Object.freeze({ run })
+      return Object.freeze({ run, accepted: false })
+    }
+    if (attempt) {
+      requirePrivateAttemptAcceptable(attempt, await readPrivateAttemptClock())
+      if (input.expectedAdmissionDigest !== attempt.request!.expectedApproval)
+        attemptRefuse('REQUEST_CONFLICT', 'Approval differs from the frozen request.')
     }
 
     const head = readAdmissionHead(owner.database, owner.root)
@@ -956,32 +1054,12 @@ export async function submitPrivateRootRun(input: {
 
     const fileTarget = findPrivateActivationCandidateTargetV5(candidate, request.target)
     if (fileTarget !== undefined) {
-      try {
-        requirePrivateRootFileMapping(fileTarget.request, request.files)
-        input.identifyFiles?.(fileTarget.request)
-      } catch (error) {
-        if (
-          error instanceof PrivateRootFileMappingError ||
-          error instanceof PrivateRootFileInputLimitError
-        )
-          throw error
-        invalid('RUN_ATTACHMENTS_INVALID', 'root file mappings are invalid')
-      }
+      requirePrivateRootFileMapping(fileTarget.request, request.files)
+      input.identifyFiles?.(fileTarget.request)
     }
     const terminal = rootPreflightTerminal(candidate, request, artifacts)
-    const runId = privateRootRunIdentityDigest({
-      project: {
-        device: owner.root.information.dev.toString(),
-        inode: owner.root.information.ino.toString(),
-      },
-      origin,
-      requestDigest: privateRootRequestDigest(request),
-      coordinatorEpoch: coordinator.epoch,
-    })
     const originBytes = encodePrivateRootRunOrigin(origin)
-    const requestBytes = canonicalJson(request as unknown as JsonValue)
     requireStoredSize(originBytes, 'root Run origin')
-    requireStoredSize(requestBytes, 'root Run request')
 
     const created = await immediate(owner, async () => {
       await coordinator.verify()
@@ -989,7 +1067,19 @@ export async function submitPrivateRootRun(input: {
       if (raced !== null) {
         const run = loadRootRunSnapshot(owner.database, raced, owner.root)
         requireSameExternalSubmission(run, submissionDigest)
-        return Object.freeze({ run })
+        return Object.freeze({ run, accepted: false })
+      }
+      const acceptanceClock = attempt ? await readPrivateAttemptClock() : undefined
+      const currentAttempt = attempt
+        ? authenticatePrivateAttempt(
+            owner.database,
+            attemptProjectDigest(owner.root),
+            input.preparedAttempt!.ticket,
+          )
+        : undefined
+      if (currentAttempt) {
+        requirePrivateAttemptMeaning(currentAttempt, input.preparedAttempt!.request)
+        requirePrivateAttemptAcceptable(currentAttempt, acceptanceClock!)
       }
       const currentHead = readAdmissionHead(owner.database, owner.root)
       if (currentHead.revision !== head.revision)
@@ -999,6 +1089,24 @@ export async function submitPrivateRootRun(input: {
       requireSameAdmissionRow(admissionRow, currentAdmission)
       requireSameCandidateRow(candidateRow, currentCandidate)
       loadAndCrossCheckAdmission(owner.database, currentAdmission, owner.root)
+      const acceptedRequest = currentAttempt
+        ? createPrivateRootRunRequest({
+            ...input,
+            deadlineUnixMs:
+              acceptanceClock!.unixMs + currentAttempt.request!.constraints.durationMs,
+          })
+        : request
+      const requestBytes = canonicalJson(acceptedRequest as unknown as JsonValue)
+      requireStoredSize(requestBytes, 'root Run request')
+      const runId = privateRootRunIdentityDigest({
+        project: {
+          device: owner.root.information.dev.toString(),
+          inode: owner.root.information.ino.toString(),
+        },
+        origin,
+        requestDigest: privateRootRequestDigest(acceptedRequest),
+        coordinatorEpoch: coordinator.epoch,
+      })
 
       runFinalized(
         owner.database,
@@ -1013,11 +1121,22 @@ export async function submitPrivateRootRun(input: {
           requestBytes,
         ],
       )
+      if (currentAttempt) {
+        acceptPrivatePreparedAttempt(owner.database, currentAttempt, runId, acceptanceClock!)
+        consumePrivateAttemptControlReservation(
+          owner.database,
+          runId,
+          requestBytes.length + originBytes.length + 8192,
+        )
+      }
 
       if (terminal !== undefined) {
         persistRootTerminal(owner.database, runId, terminal)
         const row = requireRootRunRow(owner.database, runId)
-        return Object.freeze({ run: loadRootRunSnapshot(owner.database, row, owner.root) })
+        return Object.freeze({
+          run: loadRootRunSnapshot(owner.database, row, owner.root),
+          accepted: true,
+        })
       }
 
       const selectedTarget = findPrivateActivationCandidateTargetV5(candidate, request.target)
@@ -1033,11 +1152,12 @@ export async function submitPrivateRootRun(input: {
         requestDigest: selectedTarget.request.digest,
         recipeDigest: selectedTarget.disposition.recipeDigest,
         observationDigest: selectedTarget.disposition.observationDigest,
-        deadlineUnixMs: request.deadlineUnixMs,
+        deadlineUnixMs: acceptedRequest.deadlineUnixMs,
       })
       const intentBytes = canonicalJson(intent as unknown as JsonValue)
       requireStoredSize(intentBytes, 'root Run spawn intent')
       const intentDigest = privateRootSpawnIntentDigest(intent)
+      consumePrivateAttemptControlReservation(owner.database, runId, intentBytes.length + 4096)
       runFinalized(
         owner.database,
         'INSERT INTO root_spawn_intents(run_id, intent_digest, intent_bytes) VALUES (?1, ?2, ?3)',
@@ -1052,6 +1172,7 @@ export async function submitPrivateRootRun(input: {
       })
       const allocationBytes = canonicalJson(allocation)
       requireStoredSize(allocationBytes, 'root execution allocation')
+      consumePrivateAttemptControlReservation(owner.database, runId, allocationBytes.length + 4096)
       runFinalized(
         owner.database,
         'INSERT INTO root_execution_lifecycles(run_id, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3)',
@@ -1062,7 +1183,7 @@ export async function submitPrivateRootRun(input: {
         requireRootRunRow(owner.database, runId),
         owner.root,
       )
-      return Object.freeze({ run })
+      return Object.freeze({ run, accepted: true })
     })
     await owner.finish()
     return created
@@ -1126,6 +1247,15 @@ export async function recordPrivateRootExecutionCheckpoint(input: {
       }
       requireCheckpointAuthority(run, coordinator, checkpoint, envelope.value)
       requireCheckpointOrder(before, checkpoint, envelope.value)
+      consumePrivateAttemptControlReservation(
+        owner.database,
+        input.runId,
+        bytes.length + 4096,
+        checkpoint === 'provisional' ||
+          checkpoint === 'fence' ||
+          checkpoint === 'release' ||
+          checkpoint === 'admitted',
+      )
       const columns = checkpointColumns(checkpoint)
       const changed = runFinalized(
         owner.database,
@@ -1250,6 +1380,11 @@ export async function allocatePrivateRootChildOwner(input: {
       ) {
         invalid('RUN_CHILD_CAPACITY', 'the child Flow already has an active operation')
       }
+      consumePrivateAttemptControlReservation(
+        owner.database,
+        input.parentRunId,
+        bytes.length + 4096,
+      )
       runFinalized(
         owner.database,
         'INSERT INTO root_child_owners(parent_run_id, scope_operation_id, operation_id, allocation_digest, allocation_bytes) VALUES (?1, ?2, ?3, ?4, ?5)',
@@ -1323,6 +1458,11 @@ export async function recordPrivateRootChildSandbox(input: {
         invalid('RUN_OWNER_CHANGED', 'only the active parent coordinator may seal child work')
       }
       requireActiveChildScope(owner.database, input.parentRunId, input.parentOperationId)
+      consumePrivateAttemptControlReservation(
+        owner.database,
+        input.parentRunId,
+        bytes.length + 4096,
+      )
       const changed = runFinalized(
         owner.database,
         'UPDATE root_child_owners SET sandbox_digest = ?1, sandbox_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND sandbox_digest IS NULL',
@@ -1394,6 +1534,13 @@ export async function recordPrivateRootChildFence(input: {
         }
         return loadRootChildOwner(row)
       }
+      requireSettledRootChildPhases(row)
+      consumePrivateAttemptControlReservation(
+        owner.database,
+        input.parentRunId,
+        bytes.length + 4096,
+        true,
+      )
       const changed = runFinalized(
         owner.database,
         'UPDATE root_child_owners SET fence_digest = ?1, fence_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND fence_digest IS NULL',
@@ -1468,6 +1615,13 @@ export async function recordPrivateRootChildCleanup(input: {
         }
         return loadRootChildOwner(row)
       }
+      requireSettledRootChildPhases(row)
+      consumePrivateAttemptControlReservation(
+        owner.database,
+        input.parentRunId,
+        bytes.length + 4096,
+        true,
+      )
       const changed = runFinalized(
         owner.database,
         'UPDATE root_child_owners SET cleanup_digest = ?1, cleanup_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND cleanup_digest IS NULL',
@@ -1509,7 +1663,7 @@ export async function listPrivateRootChildOwners(input: {
     const query = statement<RootChildOwnerRow>(
       owner.database,
       [
-        'SELECT parent_run_id, scope_operation_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes',
+        'SELECT *',
         'FROM root_child_owners WHERE parent_run_id = ?1 ORDER BY scope_operation_id DESC, operation_id',
       ].join(' '),
     )
@@ -1541,6 +1695,7 @@ export async function closePrivateRootChildOwner(input: {
   readonly sandboxDigest: string | null
   readonly fenceDigest: string | null
   readonly cleanupDigest: string | null
+  readonly phaseHistoryDigest?: string | null
 }): Promise<void> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator)
   await coordinator.verify()
@@ -1572,7 +1727,12 @@ export async function closePrivateRootChildOwner(input: {
         invalid('RUN_EXECUTION_INCOMPLETE', 'child Flow still has an active operation owner')
       }
       if (row === null) return
+      requireSettledRootChildPhases(row)
       if (
+        (row.phase_history_digest !== null &&
+          input.phaseHistoryDigest !== row.phase_history_digest) ||
+        (input.phaseHistoryDigest !== undefined &&
+          input.phaseHistoryDigest !== row.phase_history_digest) ||
         row.allocation_digest !== input.allocationDigest ||
         row.sandbox_digest !== input.sandboxDigest ||
         row.fence_digest !== input.fenceDigest ||
@@ -1583,12 +1743,13 @@ export async function closePrivateRootChildOwner(input: {
       }
       const changed = runFinalized(
         owner.database,
-        'DELETE FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND allocation_digest = ?3 AND scope_operation_id = ?4',
+        'DELETE FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND allocation_digest = ?3 AND scope_operation_id = ?4 AND phase_history_digest IS ?5',
         [
           input.parentRunId,
           input.operationId,
           input.allocationDigest,
           input.parentOperationId ?? '',
+          row.phase_history_digest,
         ],
       ).changes
       if (changed !== 1) corrupt('child owner close compare-and-delete failed')
@@ -1736,6 +1897,7 @@ export async function closePrivateRootExecution(input: {
   readonly projectRoot: string
   readonly runId: string
   readonly terminal: PrivateRootRunTerminal
+  readonly artifacts?: Readonly<Record<string, PrivateCapturedOutput>>
 }): Promise<PrivateRootRunSnapshot> {
   const coordinator = requirePrivateProjectCoordinator(input.coordinator)
   await coordinator.verify()
@@ -1774,6 +1936,8 @@ export async function closePrivateRootExecution(input: {
         )
       }
       persistRootTerminal(owner.database, input.runId, terminal)
+      if (terminal.status === 'succeeded' && input.artifacts !== undefined)
+        retainPrivateAttemptArtifacts(owner.database, input.runId, input.artifacts)
       return loadRootRunSnapshot(owner.database, runRow, owner.root)
     })
     await owner.finish()
@@ -2071,6 +2235,938 @@ function copyNativeSessionBytes(value: unknown): Uint8Array {
 
 function nativeSessionContentDigest(bytes: Uint8Array): string {
   return `sha256:${createHash('sha256').update(bytes).digest('hex')}`
+}
+
+function attemptProjectDigest(root: PrivateProjectRoot): string {
+  return privateDomainDigest('JIG-Prepared-Attempt-Project/1', {
+    device: root.information.dev.toString(),
+    inode: root.information.ino.toString(),
+  })
+}
+
+export async function preparePrivateAttempt(input: {
+  readonly projectRoot: string
+  readonly request: CanonicalRequest
+  readonly captured: readonly PrivateCapturedAttachment[]
+}): Promise<Prepared> {
+  const request = privateAttemptRequest(input.request)
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    await immediate(owner, async () =>
+      retirePrivateAttempts(owner.database, await readPrivateAttemptClock()),
+    )
+    await immediate(owner, () => deletePrivateRetiredAttempts(owner.database))
+    const prepared = await immediate(owner, async () => {
+      const head = readAdmissionHead(owner.database, owner.root)
+      if (head.revision === null) attemptRefuse('APPROVAL_CHANGED', 'No active approval.')
+      const admission = loadAndCrossCheckAdmission(
+        owner.database,
+        requireAdmissionRow(owner.database, head.revision!),
+        owner.root,
+      )
+      if (admission.admissionDigest !== request.expectedApproval)
+        attemptRefuse('APPROVAL_CHANGED', 'Project approval differs from the requested approval.')
+      return persistPrivatePreparedAttempt(
+        owner.database,
+        attemptProjectDigest(owner.root),
+        await readPrivateAttemptClock(),
+        request,
+        input.captured,
+      )
+    })
+    await owner.finish()
+    return prepared
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+function observePrivateAttempt(
+  owner: StateOwner,
+  attempt: PrivateAuthenticatedAttempt,
+  retention?: 'available' | 'expired' | 'unavailable',
+): {
+  observation: AttemptObservation
+  run?: PrivateRootRunSnapshot
+} {
+  const observation = privateAttemptBaseObservation(attempt)
+  if (!attempt.row?.run_id) return { observation }
+  const run = loadRootRunSnapshot(
+    owner.database,
+    requireRootRunRow(owner.database, attempt.row.run_id),
+    owner.root,
+  )
+  if (run.terminal !== undefined) {
+    const terminal = run.terminal
+    observation.dispatch =
+      terminal.status === 'succeeded'
+        ? 'confirmed'
+        : findRootExecutionLifecycle(owner.database, run.runId) === null
+          ? 'not-dispatched'
+          : 'possible'
+    if (
+      terminal.status === 'succeeded' &&
+      (!attempt.row.result_bytes ||
+        attempt.row.result_digest !== privateAttemptResultDigest(attempt.row.result_bytes) ||
+        !Buffer.from(attempt.row.result_bytes).equals(canonicalJson(terminal.result.output)))
+    )
+      observation.retained = 'unavailable'
+    observation.execution = 'terminal'
+    // Root terminals commit only after exact owner release, or empty preflight.
+    // Lost execution evidence does not erase separately confirmed cleanup.
+    observation.cleanup = 'confirmed'
+    observation.terminal =
+      terminal.status === 'succeeded'
+        ? {
+            status: 'succeeded',
+            outcome: terminal.result.outcome,
+            resultDigest: privateAttemptResultDigest(canonicalJson(terminal.result.output)),
+            diagnostics: terminal.diagnostics,
+          }
+        : terminal
+    if (observation.receipt)
+      observation.receipt.artifactResults = retainedPrivateAttemptArtifacts(owner.database, attempt)
+  }
+  if (retention !== undefined && retention !== 'available') {
+    observation.retained = retention
+    if (observation.receipt)
+      observation.receipt.artifactResults = observation.receipt.artifactResults.map((artifact) => ({
+        ...artifact,
+        availability: retention,
+      }))
+  }
+  return { observation, run }
+}
+
+async function observePrivateAttemptRetention(
+  owner: StateOwner,
+  attempt: PrivateAuthenticatedAttempt,
+): Promise<'available' | 'expired' | 'unavailable'> {
+  let clock: PrivateAttemptClock | undefined
+  try {
+    clock = await readPrivateAttemptClock()
+  } catch {
+    // A clock fault cannot erase authenticated acceptance, terminal or cleanup.
+  }
+  return privateAttemptRetentionState(owner.database, attempt, clock)
+}
+
+/** Authenticated, read-only observation: no coordinator, recovery, GC or execution. */
+export async function inspectPrivateAttempt(input: {
+  readonly projectRoot: string
+  readonly ticket: string
+  readonly includeInputs?: boolean
+}) {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const attempt = authenticatePrivateAttempt(
+      owner.database,
+      attemptProjectDigest(owner.root),
+      input.ticket,
+    )
+    const result = {
+      ...observePrivateAttempt(
+        owner,
+        attempt,
+        await observePrivateAttemptRetention(owner, attempt),
+      ),
+      ...(attempt.request === undefined ? {} : { canonicalRequest: attempt.request }),
+      captured: input.includeInputs ? readPrivateAttemptInputs(owner.database, attempt) : [],
+    }
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+export async function submitPrivateAttempt(input: {
+  readonly projectRoot: string
+  readonly ticket: string
+  readonly request: CanonicalRequest
+  readonly coordinator: PrivateProjectCoordinator
+  readonly packageStoreRoot: PrivateFileLocation
+  readonly target: RunTargetIdentity
+  readonly files?: PrivateRunFileIdentity
+  readonly identifyFiles?: (request: PrivateActivationRequest) => void
+}): Promise<{ role: 'owner' | 'observer'; run: PrivateRootRunSnapshot; receipt: AttemptReceipt }> {
+  const request = privateAttemptRequest(input.request)
+  const expectedTarget =
+    input.target.kind === 'binding' ? `binding:${input.target.id}` : flowSelector(input.target.path)
+  if (request.target !== expectedTarget)
+    attemptRefuse('REQUEST_CONFLICT', 'Target differs from the frozen request.')
+  const actualAttachments = input.files?.attachments ?? []
+  if (
+    actualAttachments.length !== request.files.length ||
+    actualAttachments.some((attachment) => {
+      const expected = request.files.find((file) => file.port === attachment.name)
+      return (
+        !expected ||
+        expected.bytes !== attachment.files.reduce((sum, file) => sum + file.bytes, 0) ||
+        expected.manifestDigest !== privateAttemptManifestDigest(attachment.files)
+      )
+    })
+  )
+    attemptRefuse('REQUEST_CONFLICT', 'Execution input manifests differ from the frozen request.')
+  if ((input.files?.output ?? false) !== request.outputIntent.packet)
+    attemptRefuse('REQUEST_CONFLICT', 'Execution output intent differs from the frozen request.')
+  const submitted = await submitPrivateRootRun({
+    ...input,
+    submissionId: 'host-prepared-attempt',
+    expectedAdmissionDigest: request.expectedApproval,
+    input: request.input,
+    deadlineUnixMs: Date.now() + request.constraints.durationMs,
+    preparedAttempt: { ticket: input.ticket, request },
+  })
+  const retained = await inspectPrivateAttempt(input)
+  if (!retained.observation.receipt)
+    attemptRefuse('IDENTITY_UNAVAILABLE', 'Accepted receipt is unavailable.')
+  return {
+    role: submitted.accepted ? 'owner' : 'observer',
+    run: submitted.run,
+    receipt: retained.observation.receipt,
+  }
+}
+
+/** Revocation is durable and scoped to the original Run, not the observer process. */
+export async function cancelPrivateAttempt(input: {
+  readonly projectRoot: string
+  readonly ticket: string
+}) {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    const result = await immediate(owner, () => {
+      const attempt = authenticatePrivateAttempt(
+        owner.database,
+        attemptProjectDigest(owner.root),
+        input.ticket,
+      )
+      if (!attempt.row) return { acknowledged: false, ...observePrivateAttempt(owner, attempt) }
+      attemptWrite(
+        owner.database,
+        'UPDATE prepared_attempts SET revoked = 1, retired = CASE WHEN run_id IS NULL THEN 1 ELSE retired END WHERE nonce = ?1',
+        [attempt.row.nonce],
+      )
+      return {
+        acknowledged: true,
+        ...observePrivateAttempt(
+          owner,
+          authenticatePrivateAttempt(
+            owner.database,
+            attemptProjectDigest(owner.root),
+            input.ticket,
+          ),
+        ),
+      }
+    })
+    await owner.finish()
+    return { acknowledged: result.acknowledged, observation: result.observation }
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Explicit revocation only; boot-deadline owners classify elapsed or uncertain time. */
+export async function isPrivateAttemptRunRevoked(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}): Promise<boolean> {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const row = attemptQuery<{ revoked: bigint }>(
+      owner.database,
+      'SELECT revoked FROM prepared_attempts WHERE run_id = ?1',
+      [input.runId],
+    )[0]
+    await owner.finish()
+    return row?.revoked === 1n
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Original acceptance budget for trusted native owners; observation never renews it. */
+export async function privateAttemptRunDeadline(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}): Promise<import('./native-clock.js').PrivateBootDeadline | undefined> {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const row = attemptQuery<{ accepted_boot: string; deadline_monotonic_ms: bigint }>(
+      owner.database,
+      'SELECT accepted_boot, deadline_monotonic_ms FROM prepared_attempts WHERE run_id = ?1',
+      [input.runId],
+    )[0]
+    const deadline = row
+      ? normalizePrivateBootDeadline({
+          bootId: row.accepted_boot,
+          monotonicMs: Number(row.deadline_monotonic_ms),
+        })
+      : undefined
+    await owner.finish()
+    return deadline
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+export async function savePrivateAttemptRunCheckpoint(input: {
+  readonly projectRoot: string
+  readonly runId: string
+  readonly epoch: number
+  readonly identity: RunCheckpointIdentity
+  readonly value: unknown
+  readonly artifacts: Readonly<Record<string, PrivateCapturedOutput>>
+}) {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    const result = await immediate(owner, () => {
+      const run = loadRootRunSnapshot(
+        owner.database,
+        requireRootRunRow(owner.database, input.runId),
+        owner.root,
+      )
+      if (run.state === 'terminal' || run.coordinatorEpoch !== input.epoch)
+        attemptRefuse('UNAVAILABLE', 'Checkpoint Run owner is unavailable.')
+      return retainPrivateAttemptCheckpoint(
+        owner.database,
+        input.runId,
+        input.identity,
+        input.value,
+        input.artifacts,
+      )
+    })
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    if (error instanceof PrivateAttemptError && error.code !== 'UNAVAILABLE')
+      throw new PrivateCheckpointRejected('checkpoint replacement was rejected')
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+export async function readPrivateAttemptRunCheckpoint(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}) {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const checkpoint = readPrivateAttemptCheckpoint(owner.database, input.runId)
+    await owner.finish()
+    return checkpoint
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Public projection excludes private Run identity, opaque references and byte capabilities. */
+function privateAttemptCheckpointSummary(
+  owner: StateOwner,
+  attempt: PrivateAuthenticatedAttempt,
+  retention: 'available' | 'expired' | 'unavailable',
+) {
+  const runId = attempt.row?.run_id
+  const expired = retention === 'expired'
+  let summary: {
+    sequence?: number
+    digest?: string
+    evidence?: JsonValue
+    files?: Readonly<Record<string, string>>
+    artifactResults: {
+      name: string
+      manifestDigest?: string
+      availability: 'available' | 'unavailable' | 'expired'
+    }[]
+    availability: 'available' | 'unavailable' | 'expired'
+  } = { availability: expired ? 'expired' : 'unavailable', artifactResults: [] }
+  if (runId && !expired) {
+    try {
+      const record = readPrivateAttemptCheckpoint(owner.database, runId)
+      if (record) {
+        let availability: 'available' | 'unavailable' = 'unavailable'
+        if (retention === 'available') {
+          try {
+            const captured = readPrivateAttemptCheckpointFiles(owner.database, runId)
+            if (captured) {
+              availability = 'available'
+              for (const file of captured.files) file.bytes.fill(0)
+            }
+          } catch {}
+        }
+        summary = {
+          sequence: record.sequence,
+          digest: record.digest,
+          evidence: record.evidence,
+          files: record.files,
+          availability,
+          artifactResults: Object.entries(record.associations ?? {}).map(([name, value]) => {
+            const association = value as { files: JsonValue; directories: JsonValue }
+            return {
+              name,
+              availability,
+              manifestDigest: privateAttemptResultDigest(
+                canonicalJson({
+                  files: association.files,
+                  directories: association.directories,
+                }),
+              ),
+            }
+          }),
+        }
+      }
+    } catch {
+      // Availability never revises the separately authenticated execution terminal.
+    }
+  }
+  return summary
+}
+
+export async function privateAttemptRunRetainedArtifactBytes(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}): Promise<number> {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const bytes = Number(
+      attemptQuery<{ bytes: bigint }>(
+        owner.database,
+        `SELECT coalesce(sum(length(b.content)), 0) AS bytes FROM attempt_blobs b
+       JOIN prepared_attempts p ON p.nonce = b.nonce
+       WHERE p.run_id = ?1 AND b.purpose IN ('artifact', 'checkpoint')`,
+        [input.runId],
+      )[0]!.bytes,
+    )
+    await owner.finish()
+    return bytes
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Original command publication owner; native fencing is still independently required. */
+export async function acquirePrivateAttemptRunCheckpointExport(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}) {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    const checkpoint = await immediate(owner, async () => {
+      reconcilePrivateAttemptExportOwners(owner.database)
+      const run = loadRootRunSnapshot(
+        owner.database,
+        requireRootRunRow(owner.database, input.runId),
+        owner.root,
+      )
+      if (run.state !== 'terminal') attemptRefuse('UNAVAILABLE', 'Checkpoint Run is not settled.')
+      const row = attemptQuery<{ nonce: string }>(
+        owner.database,
+        'SELECT nonce FROM prepared_attempts WHERE run_id = ?1 AND retired = 0',
+        [input.runId],
+      )[0]
+      if (!row) return undefined
+      const retained = readPrivateAttemptCheckpointFiles(owner.database, input.runId)
+      if (!retained) return undefined
+      const pins = attemptQuery<{ count: bigint }>(
+        owner.database,
+        'SELECT count(*) AS count FROM attempt_export_pins WHERE released = 0',
+      )[0]!.count
+      const runPins = attemptQuery<{ count: bigint }>(
+        owner.database,
+        'SELECT count(*) AS count FROM attempt_export_pins WHERE nonce = ?1 AND released = 0',
+        [row.nonce],
+      )[0]!.count
+      if (pins >= 8n || runPins >= 2n)
+        attemptRefuse('RESOURCE_EXHAUSTED', 'Checkpoint export capacity is exhausted.')
+      const clock = await readPrivateAttemptClock()
+      const pinId = randomUUID()
+      reservePrivateAttemptExportMetadata(owner.database)
+      attemptWrite(owner.database, 'INSERT INTO attempt_export_pins VALUES (?1, ?2, ?3, ?4, 0)', [
+        pinId,
+        row.nonce,
+        clock.bootId,
+        clock.monotonicMs + 300_000,
+      ])
+      attemptWrite(owner.database, 'INSERT INTO attempt_export_owners VALUES (?1, ?2)', [
+        pinId,
+        canonicalJson(privateAttemptExportOwner() as unknown as JsonValue),
+      ])
+      return { ...retained, pinId }
+    })
+    await owner.finish()
+    return checkpoint
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+export async function privateAttemptRunConstraints(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}): Promise<AttemptConstraints | undefined> {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const row = attemptQuery<{ request_bytes: Uint8Array }>(
+      owner.database,
+      'SELECT request_bytes FROM prepared_attempts WHERE run_id = ?1',
+      [input.runId],
+    )[0]
+    const constraints = row
+      ? privateAttemptRequest(decodeJson1(row.request_bytes) as unknown as CanonicalRequest)
+          .constraints
+      : undefined
+    await owner.finish()
+    return constraints
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+export async function readPrivateAttemptResult(input: {
+  readonly projectRoot: string
+  readonly ticket: string
+}) {
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const attempt = authenticatePrivateAttempt(
+      owner.database,
+      attemptProjectDigest(owner.root),
+      input.ticket,
+    )
+    const retention = await observePrivateAttemptRetention(owner, attempt)
+    const retained = observePrivateAttempt(owner, attempt, retention)
+    const checkpoint = privateAttemptCheckpointSummary(owner, attempt, retention)
+    const output =
+      retained.run?.terminal?.status === 'succeeded' &&
+      retained.observation.retained === 'available'
+        ? retained.run.terminal.result.output
+        : undefined
+    const result = {
+      observation: retained.observation,
+      ...(output === undefined ? {} : { output }),
+      artifactResults: retained.observation.receipt?.artifactResults ?? [],
+      checkpoint,
+    }
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Administrative bounded maintenance; never called by observational lookup. */
+export async function collectPrivateRetiredAttempts(input: {
+  readonly projectRoot: string
+}): Promise<void> {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    await immediate(owner, async () =>
+      retirePrivateAttempts(owner.database, await readPrivateAttemptClock()),
+    )
+    // The durable watermark must precede deletion, even across an ordinary process crash.
+    await immediate(owner, () => deletePrivateRetiredAttempts(owner.database))
+    await owner.finish()
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+export interface PrivateAttemptExportArtifact {
+  readonly manifestDigest: string
+  readonly files: readonly {
+    readonly path: string
+    readonly bytes: Buffer
+    readonly digest: string
+  }[]
+  readonly directories: readonly string[]
+}
+
+/** One finite copier receives owned bytes; expiry does not silently release its pin. */
+export async function acquirePrivateAttemptExport(input: {
+  readonly projectRoot: string
+  readonly ticket: string
+  readonly artifactResult?: string
+  readonly source?: 'final' | 'checkpoint'
+  readonly destination?: string
+}) {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    const result = await immediate(owner, async () => {
+      const attempt = authenticatePrivateAttempt(
+        owner.database,
+        attemptProjectDigest(owner.root),
+        input.ticket,
+      )
+      reconcilePrivateAttemptExportOwners(owner.database)
+      const retained = observePrivateAttempt(owner, attempt)
+      const checkpointSource = input.source === 'checkpoint'
+      if (
+        !attempt.row ||
+        attempt.retired ||
+        !retained.run?.terminal ||
+        (!checkpointSource &&
+          (retained.run.terminal.status !== 'succeeded' ||
+            retained.observation.retained !== 'available'))
+      )
+        attemptRefuse('UNAVAILABLE', 'Attempt has no retained successful result.')
+      const clock = await readPrivateAttemptClock()
+      if (privateAttemptRetentionState(owner.database, attempt, clock) !== 'available')
+        attemptRefuse('UNAVAILABLE', 'Attempt result retention is unavailable.')
+      if (
+        input.artifactResult !== undefined &&
+        !attempt.request!.outputIntent.receive.includes(input.artifactResult)
+      )
+        attemptRefuse('INVALID_REQUEST', 'Artifact result is not declared by this attempt.')
+      if (checkpointSource && input.artifactResult !== undefined)
+        attemptRefuse('INVALID_REQUEST', 'Checkpoint export selects the complete aggregate.')
+      const globalPins = attemptQuery<{ count: bigint }>(
+        owner.database,
+        'SELECT count(*) AS count FROM attempt_export_pins WHERE released = 0',
+      )[0]!.count
+      const runPins = attemptQuery<{ count: bigint }>(
+        owner.database,
+        'SELECT count(*) AS count FROM attempt_export_pins WHERE nonce = ?1 AND released = 0',
+        [attempt.row.nonce],
+      )[0]!.count
+      if (globalPins >= 8n || runPins >= 2n)
+        attemptRefuse('RESOURCE_EXHAUSTED', 'Export pin capacity is exhausted.')
+      const artifacts: Record<string, PrivateAttemptExportArtifact> = Object.create(null)
+      const checkpoint = checkpointSource
+        ? readPrivateAttemptCheckpointFiles(owner.database, attempt.row.run_id!)
+        : undefined
+      if (checkpointSource && !checkpoint)
+        attemptRefuse('UNAVAILABLE', 'Checkpoint bytes are unavailable.')
+      const names = checkpointSource
+        ? []
+        : input.artifactResult === undefined
+          ? attempt.request!.outputIntent.receive
+          : [input.artifactResult]
+      for (const name of names) {
+        const manifestRow = attemptQuery<{ digest: string; content: Uint8Array }>(
+          owner.database,
+          'SELECT digest, content FROM attempt_blobs WHERE nonce = ?1 AND purpose = ?2 AND name = ?3 AND path = ?4',
+          [attempt.row.nonce, 'manifest', name, ''],
+        )[0]
+        if (!manifestRow) {
+          if (input.artifactResult !== undefined)
+            attemptRefuse('UNAVAILABLE', 'Artifact bytes are unavailable.')
+          continue
+        }
+        if (privateAttemptResultDigest(manifestRow.content) !== manifestRow.digest)
+          attemptRefuse('IDENTITY_UNAVAILABLE', 'Retained artifact manifest is inconsistent.')
+        const manifest = decodeJson1(manifestRow.content) as unknown as {
+          files: { path: string; bytes: number; digest: string }[]
+          directories: string[]
+        }
+        const files = manifest.files.map((file) => {
+          const blob = attemptQuery<{ digest: string; content: Uint8Array }>(
+            owner.database,
+            'SELECT digest, content FROM attempt_blobs WHERE nonce = ?1 AND purpose = ?2 AND name = ?3 AND path = ?4',
+            [attempt.row!.nonce, 'artifact', name, file.path],
+          )[0]
+          if (
+            !blob ||
+            file.digest !== blob.digest ||
+            file.bytes !== blob.content.length ||
+            privateAttemptResultDigest(blob.content) !== file.digest
+          )
+            attemptRefuse('IDENTITY_UNAVAILABLE', 'Retained artifact bytes are inconsistent.')
+          return { path: file.path, bytes: Buffer.from(blob.content), digest: file.digest }
+        })
+        artifacts[name] = {
+          manifestDigest: manifestRow.digest,
+          files,
+          directories: manifest.directories,
+        }
+      }
+      const pinId = randomUUID()
+      const deadlineMonotonicMs = clock.monotonicMs + 300_000
+      if (input.destination !== undefined) {
+        if (
+          attemptQuery(
+            owner.database,
+            'SELECT delivery_id FROM attempt_export_deliveries WHERE nonce = ?1 AND destination = ?2 AND source = ?3 AND selection = ?4',
+            [
+              attempt.row.nonce,
+              input.destination,
+              input.source ?? 'final',
+              input.artifactResult ?? '',
+            ],
+          ).length
+        )
+          attemptRefuse('UNAVAILABLE', 'The original export delivery must be reconciled.')
+      }
+      reservePrivateAttemptExportMetadata(
+        owner.database,
+        input.destination === undefined
+          ? undefined
+          : {
+              nonce: attempt.row.nonce,
+              destination: input.destination,
+              selection: input.artifactResult ?? '',
+            },
+      )
+      attemptWrite(owner.database, 'INSERT INTO attempt_export_pins VALUES (?1, ?2, ?3, ?4, 0)', [
+        pinId,
+        attempt.row.nonce,
+        clock.bootId,
+        deadlineMonotonicMs,
+      ])
+      attemptWrite(owner.database, 'INSERT INTO attempt_export_owners VALUES (?1, ?2)', [
+        pinId,
+        canonicalJson(privateAttemptExportOwner() as unknown as JsonValue),
+      ])
+      if (input.destination !== undefined)
+        attemptWrite(
+          owner.database,
+          "INSERT INTO attempt_export_deliveries VALUES (?1, ?2, ?3, ?4, ?5, ?1, 'active', NULL)",
+          [
+            pinId,
+            attempt.row.nonce,
+            input.destination,
+            input.source ?? 'final',
+            input.artifactResult ?? '',
+          ],
+        )
+      return {
+        pinId,
+        bootId: clock.bootId,
+        deadlineMonotonicMs,
+        artifacts,
+        ...(checkpoint === undefined ? {} : { checkpoint }),
+        observation: retained.observation,
+        output:
+          retained.run!.terminal!.status === 'succeeded'
+            ? retained.run!.terminal!.result.output
+            : undefined,
+      }
+    })
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Authorizes every reconciliation from protected ticket state, never packet bytes. */
+export async function reconcilePrivateAttemptExportDelivery(input: {
+  readonly projectRoot: string
+  readonly ticket: string
+  readonly destination: string
+  readonly source?: 'final' | 'checkpoint'
+  readonly artifactResult?: string
+}): Promise<import('../attempt-contract.js').AttemptResults['export'] | undefined> {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    const result = await immediate(owner, () => {
+      const attempt = authenticatePrivateAttempt(
+        owner.database,
+        attemptProjectDigest(owner.root),
+        input.ticket,
+      )
+      reconcilePrivateAttemptExportOwners(owner.database)
+      const row = attemptQuery<{ status: string; result_bytes: Uint8Array | null }>(
+        owner.database,
+        'SELECT status, result_bytes FROM attempt_export_deliveries WHERE nonce = ?1 AND destination = ?2 AND source = ?3 AND selection = ?4',
+        [
+          attempt.claims.ticketNonce,
+          input.destination,
+          input.source ?? 'final',
+          input.artifactResult ?? '',
+        ],
+      )[0]
+      if (!row) return undefined
+      if (row.status !== 'written' || row.result_bytes === null)
+        attemptRefuse(
+          'UNAVAILABLE',
+          row.status === 'unknown'
+            ? 'Original export publication is unknown. Select a new destination for a new delivery.'
+            : row.status === 'active'
+              ? 'Original export delivery is still owned.'
+              : 'Original export delivery failed. Select a new destination for a new delivery.',
+        )
+      const result = decodeJson1(row.result_bytes)
+      parseAttemptFrame('export', {
+        protocolVersion: 1,
+        operation: 'export',
+        event: 'result',
+        value: result,
+      })
+      return result as unknown as import('../attempt-contract.js').AttemptResults['export']
+    })
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Protected publication evidence commits before the independent command sends its ACK. */
+export async function completePrivateAttemptExportDelivery(input: {
+  readonly projectRoot: string
+  readonly pinId: string
+  readonly status: 'written' | 'failed' | 'unknown'
+  readonly result?: import('../attempt-contract.js').AttemptResults['export']
+}): Promise<void> {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    await immediate(owner, () => {
+      const pin = attemptQuery<{ owner_bytes: Uint8Array }>(
+        owner.database,
+        'SELECT owner_bytes FROM attempt_export_owners WHERE pin_id = ?1',
+        [input.pinId],
+      )[0]
+      if (
+        !pin ||
+        Buffer.compare(
+          Buffer.from(pin.owner_bytes),
+          Buffer.from(canonicalJson(privateAttemptExportOwner() as unknown as JsonValue)),
+        ) !== 0
+      )
+        attemptRefuse('IDENTITY_UNAVAILABLE', 'Export copier identity is unavailable.')
+      const delivery = attemptQuery<{ destination: string; source: string }>(
+        owner.database,
+        'SELECT destination, source FROM attempt_export_deliveries WHERE pin_id = ?1',
+        [input.pinId],
+      )[0]
+      if (!delivery) attemptRefuse('IDENTITY_UNAVAILABLE', 'Export delivery intent is unavailable.')
+      if (input.result !== undefined) {
+        parseAttemptFrame('export', {
+          protocolVersion: 1,
+          operation: 'export',
+          event: 'result',
+          value: input.result,
+        })
+        if (
+          input.result.destination !== delivery.destination ||
+          input.result.source !== delivery.source
+        )
+          attemptRefuse('INVALID_REQUEST', 'Export delivery evidence differs from its intent.')
+      }
+      const bytes =
+        input.result === undefined ? null : canonicalJson(input.result as unknown as JsonValue)
+      if ((input.status === 'written') !== (bytes !== null) || (bytes?.length ?? 0) > 1024 ** 2)
+        attemptRefuse('INVALID_REQUEST', 'Export delivery evidence is invalid.')
+      attemptWrite(
+        owner.database,
+        "UPDATE attempt_export_deliveries SET status = ?1, result_bytes = ?2 WHERE pin_id = ?3 AND status = 'active'",
+        [input.status, bytes, input.pinId],
+      )
+    })
+    await owner.finish()
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/** Caller must cancel/join its original copier and retire destination authority first. */
+export async function releasePrivateAttemptExport(input: {
+  readonly projectRoot: string
+  readonly pinId: string
+}): Promise<void> {
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    await immediate(owner, () =>
+      attemptWrite(
+        owner.database,
+        'UPDATE attempt_export_pins SET released = 1 WHERE pin_id = ?1',
+        [input.pinId],
+      ),
+    )
+    await owner.finish()
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+/**
+ * Observe retained root facts without acquiring coordinator or execution authority.
+ * The private snapshot is not a public response or evidence of current ownership.
+ */
+export async function readPrivateRootRun(input: {
+  readonly projectRoot: string
+  readonly runId: string
+}): Promise<PrivateRootRunSnapshot> {
+  requireDigest(input.runId, 'root Run')
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  try {
+    const run = loadRootRunSnapshot(
+      owner.database,
+      requireRootRunRow(owner.database, input.runId),
+      owner.root,
+    )
+    await owner.finish()
+    return run
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
 }
 
 /** Reopen one durable root Run while proving affinity to a live coordinator. */
@@ -2441,6 +3537,222 @@ function requireRootExecutionLifecycle(
   return row
 }
 
+function phaseCheckpointDigest(
+  row: RootChildOwnerRow,
+  previous: string | null,
+  entry: Omit<PrivateRootChildPhaseCheckpoint, 'digest'>,
+): string {
+  return privateDomainDigest('JIG-Private-Root-Child-Phase/1', {
+    parentRunId: row.parent_run_id,
+    parentOperationId: row.scope_operation_id,
+    operationId: row.operation_id,
+    allocationDigest: row.allocation_digest,
+    previous,
+    phase: entry.phase,
+    checkpoint: entry.checkpoint,
+    value: entry.value,
+  })
+}
+
+function requireNextPhaseCheckpoint(
+  history: readonly PrivateRootChildPhaseCheckpoint[],
+  entry: Omit<PrivateRootChildPhaseCheckpoint, 'digest'>,
+): void {
+  const previous = history.at(-1)
+  const phases = ['generate', 'compile', 'test']
+  if (
+    !phases.includes(entry.phase) ||
+    !['plan', 'sandbox', 'fence', 'cleanup'].includes(entry.checkpoint) ||
+    history.length >= 12
+  ) {
+    invalid('RUN_CHILD_OWNER_CONFLICT', 'invalid phase checkpoint')
+  }
+  if (previous === undefined || previous.phase !== entry.phase) {
+    if (
+      entry.checkpoint !== 'plan' ||
+      (previous === undefined
+        ? entry.phase === 'test'
+        : previous.checkpoint !== 'cleanup' ||
+          phases.indexOf(entry.phase) !== phases.indexOf(previous.phase) + 1)
+    ) {
+      invalid('RUN_CHILD_OWNER_CONFLICT', 'phase must follow complete predecessor cleanup')
+    }
+  } else if (
+    !(
+      (previous.checkpoint === 'plan' && ['sandbox', 'fence'].includes(entry.checkpoint)) ||
+      (previous.checkpoint === 'sandbox' && entry.checkpoint === 'fence') ||
+      (previous.checkpoint === 'fence' && entry.checkpoint === 'cleanup')
+    )
+  ) {
+    invalid('RUN_CHILD_OWNER_CONFLICT', 'phase checkpoint is out of order')
+  }
+}
+
+function loadRootChildPhases(row: RootChildOwnerRow): readonly PrivateRootChildPhaseCheckpoint[] {
+  if (row.phase_history_digest === null && row.phase_history_bytes === null)
+    return Object.freeze([])
+  if (row.phase_history_digest === null || row.phase_history_bytes === null)
+    corrupt('stored child phase pair is incomplete')
+  let decoded: JsonValue
+  try {
+    decoded = decodeJson1(row.phase_history_bytes)
+  } catch {
+    corrupt('stored child phase history is invalid JSON')
+  }
+  if (
+    !Array.isArray(decoded) ||
+    decoded.length === 0 ||
+    decoded.length > 12 ||
+    !sameBytes(canonicalJson(decoded), row.phase_history_bytes)
+  )
+    corrupt('stored child phase history is invalid')
+  const history: PrivateRootChildPhaseCheckpoint[] = []
+  for (const value of decoded) {
+    if (
+      value === null ||
+      typeof value !== 'object' ||
+      Array.isArray(value) ||
+      Object.keys(value).sort().join(',') !== 'checkpoint,digest,phase,value'
+    )
+      corrupt('stored child phase checkpoint is invalid')
+    const entry = value as unknown as PrivateRootChildPhaseCheckpoint
+    try {
+      requireNextPhaseCheckpoint(history, entry)
+    } catch {
+      corrupt('stored child phase history order is invalid')
+    }
+    const digest = phaseCheckpointDigest(row, history.at(-1)?.digest ?? null, entry)
+    if (entry.digest !== digest) corrupt('stored child phase digest differs')
+    history.push(Object.freeze({ ...entry }))
+  }
+  if (history.at(-1)!.digest !== row.phase_history_digest)
+    corrupt('stored child phase history digest differs')
+  if (row.fence_digest !== null && history.at(-1)!.checkpoint !== 'cleanup')
+    corrupt('stored aggregate fence precedes child phase cleanup')
+  return Object.freeze(history)
+}
+
+/** Inert custody evidence only; native owners authenticate their own receipts. */
+export async function recordPrivateRootChildPhase(input: {
+  readonly coordinator: PrivateProjectCoordinator
+  readonly projectRoot: string
+  readonly parentRunId: string
+  readonly parentOperationId?: string
+  readonly operationId: string
+  readonly allocationDigest: string
+  readonly phase: PrivateRootChildPhaseCheckpoint['phase']
+  readonly checkpoint: PrivateRootChildPhaseCheckpoint['checkpoint']
+  readonly value: JsonValue
+}): Promise<PrivateRootChildOwnerLifecycle> {
+  const coordinator = requirePrivateProjectCoordinator(input.coordinator)
+  await coordinator.verify()
+  requireDigest(input.parentRunId, 'parent root Run')
+  requireWireId(input.operationId, 'child operation')
+  if (input.parentOperationId !== undefined)
+    requireWireId(input.parentOperationId, 'parent child operation')
+  requireDigest(input.allocationDigest, 'child allocation')
+  // Snapshot before awaiting storage; caller mutation cannot alter the commit.
+  const valueBytes = canonicalJson(input.value)
+  requireStoredSize(valueBytes, 'child phase checkpoint')
+  const entry = { phase: input.phase, checkpoint: input.checkpoint, value: decodeJson1(valueBytes) }
+  const owner = await openStateOwner(input.projectRoot, false)
+  let failure: unknown
+  try {
+    requireCoordinatorRoot(coordinator, owner.root)
+    const result = await immediate(owner, async () => {
+      await coordinator.verify()
+      const row = requireRootChildOwner(
+        owner.database,
+        input.parentRunId,
+        input.operationId,
+        input.parentOperationId,
+      )
+      if (row.allocation_digest !== input.allocationDigest)
+        invalid('RUN_CHILD_OWNER_CONFLICT', 'phase names different allocation')
+      const snapshot = loadRootChildOwner(row)
+      const allocation = snapshot.allocation.value
+      if (
+        allocation === null ||
+        typeof allocation !== 'object' ||
+        Array.isArray(allocation) ||
+        (allocation as Record<string, JsonValue>).kind !== 'private-contained-effect-owner/1' ||
+        (allocation as Record<string, JsonValue>).effect !== 'project-evaluation'
+      ) {
+        invalid('RUN_CHILD_OWNER_CONFLICT', 'phase custody requires an evaluation owner')
+      }
+      const existing = snapshot.phaseHistory.find(
+        (item) => item.phase === entry.phase && item.checkpoint === entry.checkpoint,
+      )
+      if (existing !== undefined) {
+        if (!sameBytes(canonicalJson(existing.value), valueBytes))
+          invalid('RUN_CHILD_OWNER_CONFLICT', 'phase checkpoint differs')
+        return snapshot
+      }
+      if (row.fence_digest !== null || row.cleanup_digest !== null)
+        invalid('RUN_CHILD_OWNER_CONFLICT', 'child owner is already fenced')
+      const run = loadRootRunSnapshot(
+        owner.database,
+        requireRootRunRow(owner.database, input.parentRunId),
+        owner.root,
+      )
+      if (run.state === 'terminal')
+        invalid('RUN_ALREADY_TERMINAL', 'parent root Run is already terminal')
+      if (entry.checkpoint === 'plan' || entry.checkpoint === 'sandbox') {
+        if (run.coordinatorEpoch !== coordinator.epoch)
+          invalid('RUN_OWNER_CHANGED', 'phase requires active parent coordinator')
+        requireActiveChildScope(owner.database, input.parentRunId, input.parentOperationId)
+      }
+      requireNextPhaseCheckpoint(snapshot.phaseHistory, entry)
+      const digest = phaseCheckpointDigest(row, row.phase_history_digest, entry)
+      const bytes = canonicalJson([
+        ...snapshot.phaseHistory.map((item) => ({ ...item })),
+        { ...entry, digest },
+      ])
+      requireStoredSize(bytes, 'child phase history')
+      consumePrivateAttemptControlReservation(
+        owner.database,
+        input.parentRunId,
+        Math.max(0, bytes.byteLength - (row.phase_history_bytes?.byteLength ?? 0)) + 512,
+        entry.checkpoint === 'fence' || entry.checkpoint === 'cleanup',
+      )
+      const changed = runFinalized(
+        owner.database,
+        'UPDATE root_child_owners SET phase_history_digest = ?1, phase_history_bytes = ?2 WHERE parent_run_id = ?3 AND operation_id = ?4 AND scope_operation_id = ?5 AND phase_history_digest IS ?6',
+        [
+          digest,
+          bytes,
+          input.parentRunId,
+          input.operationId,
+          input.parentOperationId ?? '',
+          row.phase_history_digest,
+        ],
+      ).changes
+      if (changed !== 1) corrupt('child phase compare-and-set failed')
+      return loadRootChildOwner(
+        requireRootChildOwner(
+          owner.database,
+          input.parentRunId,
+          input.operationId,
+          input.parentOperationId,
+        ),
+      )
+    })
+    await owner.finish()
+    return result
+  } catch (error) {
+    failure = error
+    throw error
+  } finally {
+    await disposeOperation(owner, undefined, failure)
+  }
+}
+
+function requireSettledRootChildPhases(row: RootChildOwnerRow): void {
+  const history = loadRootChildPhases(row)
+  if (history.length !== 0 && history.at(-1)!.checkpoint !== 'cleanup')
+    invalid('RUN_EXECUTION_INCOMPLETE', 'child phase cleanup is incomplete')
+}
+
 function findRootChildOwner(
   database: SqliteDatabase,
   parentRunId: string,
@@ -2450,7 +3762,7 @@ function findRootChildOwner(
   const query = statement<RootChildOwnerRow>(
     database,
     [
-      'SELECT parent_run_id, scope_operation_id, operation_id, allocation_digest, allocation_bytes, sandbox_digest, sandbox_bytes, fence_digest, fence_bytes, cleanup_digest, cleanup_bytes',
+      'SELECT *',
       'FROM root_child_owners WHERE parent_run_id = ?1 AND operation_id = ?2 AND scope_operation_id = ?3',
     ].join(' '),
   )
@@ -2487,6 +3799,8 @@ function copiedRootChildOwnerRow(row: RootChildOwnerRow): RootChildOwnerRow {
     fence_bytes: copiedOptionalBlob(row.fence_bytes, 'stored child fence'),
     cleanup_digest: row.cleanup_digest,
     cleanup_bytes: copiedOptionalBlob(row.cleanup_bytes, 'stored child cleanup'),
+    phase_history_digest: row.phase_history_digest,
+    phase_history_bytes: copiedOptionalBlob(row.phase_history_bytes, 'stored child phases'),
   })
 }
 
@@ -2561,6 +3875,8 @@ function loadRootChildOwner(row: RootChildOwnerRow): PrivateRootChildOwnerLifecy
     ...(row.scope_operation_id === '' ? {} : { parentOperationId: row.scope_operation_id }),
     operationId: row.operation_id,
     allocation: Object.freeze({ digest: row.allocation_digest, value: allocation }),
+    phaseHistory: loadRootChildPhases(row),
+    phaseHistoryDigest: row.phase_history_digest,
     ...(sandbox === undefined ? {} : { sandbox }),
     ...(fence === undefined ? {} : { fence }),
     ...(cleanup === undefined ? {} : { cleanup }),
@@ -2902,11 +4218,28 @@ function persistRootTerminal(
   terminalValue: PrivateRootRunTerminal,
 ): void {
   const terminal = normalizePrivateRootTerminal(terminalValue)
+  const bytes = privateRootTerminalBytes(terminal)
+  requireStoredSize(bytes, 'root Run terminal')
+  consumePrivateAttemptControlReservation(database, runId, bytes.length + 8192, true)
+  consumePrivateAttemptReservation(database, runId)
+  const attempt = attemptQuery<{ result_limit: bigint }>(
+    database,
+    'SELECT result_limit FROM prepared_attempts WHERE run_id = ?1',
+    [runId],
+  )[0]
+  if (attempt && terminal.status === 'succeeded') {
+    const result = canonicalJson(terminal.result.output)
+    if (result.length > Number(attempt.result_limit))
+      attemptRefuse('RESOURCE_EXHAUSTED', 'Result exceeds its reserved quota.')
+    attemptWrite(
+      database,
+      'UPDATE prepared_attempts SET result_bytes = ?1, result_digest = ?2 WHERE run_id = ?3',
+      [result, privateAttemptResultDigest(result), runId],
+    )
+  }
   // This shares the terminal transaction: failed state cleanup cannot publish completion.
   // Recovery takes the same path after fencing, including cancelled and lost roots.
   runFinalized(database, 'DELETE FROM native_sessions WHERE root_run_id = ?1', [runId])
-  const bytes = privateRootTerminalBytes(terminal)
-  requireStoredSize(bytes, 'root Run terminal')
   const digest = privateDomainDigest(
     'JIG-Private-Root-Terminal/1',
     terminal as unknown as JsonValue,
@@ -3560,7 +4893,7 @@ export async function inspectPrivateApprovedProject(
         targets.flatMap((target, index) =>
           Object.values(candidate.candidate.targets[index]!.request.attachments).includes(
             'read-write',
-          )
+          ) || (candidate.candidate.targets[index]!.request.artifactResults?.length ?? 0) > 0
             ? [target.target]
             : [],
         ),
@@ -3575,6 +4908,7 @@ export async function inspectPrivateApprovedProject(
     let result: JsonValue = {
       state,
       revision: candidate.candidate.lockDigest,
+      approval: receipt.admissionDigest,
       ...entrypoint,
       ...agentOrigin,
       targets: listed,
@@ -3596,6 +4930,7 @@ export async function inspectPrivateApprovedProject(
         result = {
           state,
           revision: candidate.candidate.lockDigest,
+          approval: receipt.admissionDigest,
           ...entrypoint,
           ...agentOrigin,
           target: selector,
@@ -3615,6 +4950,7 @@ export async function inspectPrivateApprovedProject(
           settings: request.settings,
           slots: request.slots as unknown as JsonValue,
           attachments: request.attachments,
+          artifactResults: request.artifactResults ?? [],
           boundReadAttachments: Object.keys(request.boundAttachments ?? {}).sort(),
         }
       } finally {
@@ -4016,6 +5352,7 @@ function initializeOrVerifySchema(database: SqliteDatabase, root: PrivateProject
       database.exec(CREATE_ROOT_CHILD_OWNERS)
       database.exec(CREATE_ROOT_TERMINALS)
       database.exec(CREATE_NATIVE_SESSIONS)
+      for (const [, sql] of PRIVATE_ATTEMPT_SCHEMA) database.exec(sql)
       database.exec('INSERT INTO candidate_head(singleton, revision) VALUES (1, NULL)')
       database.exec('INSERT INTO admission_head(singleton, revision) VALUES (1, NULL)')
       database.exec('INSERT INTO coordinator_head(singleton, epoch) VALUES (1, 0)')
@@ -5102,6 +6439,15 @@ async function reacquireCandidateArtifacts(
             ]
           : [],
       ),
+      ...candidate.candidate.targets.flatMap(({ request }) =>
+        Object.values(request.slots).flatMap((route) =>
+          route.kind === 'native' &&
+          route.native === 'project-evaluation' &&
+          route.evaluation !== undefined
+            ? [route.evaluation.recipe.digest, route.evaluation.dependencies.digest]
+            : [],
+        ),
+      ),
     ])
     for (const digest of [...digests].sort()) {
       const reference = normalizePackageArtifactRef({ kind: 'flow-package/0', digest })
@@ -5117,18 +6463,52 @@ async function reacquireCandidateArtifacts(
       }
       requirePackageProjection(path, expected, inspected)
     }
-    for (const { request } of candidate.candidate.targets) {
+    const verifiedEvaluations = new Set<string>()
+    for (const { request, disposition } of candidate.candidate.targets) {
       const inspected = inspections.get(request.package.digest)!
       if (
         !sameBytes(
           canonicalJson(request.attachments),
           canonicalJson(inspected.invocation?.attachments ?? {}),
+        ) ||
+        !sameBytes(
+          canonicalJson(request.artifactResults ?? []),
+          canonicalJson(inspected.invocation?.artifactResults ?? []),
         )
       )
         invalid(
           'ADMISSION_ARTIFACT_MISMATCH',
-          `stored Package/0 ${request.packagePath} no longer matches its candidate attachment interface`,
+          `stored Package/0 ${request.packagePath} no longer matches its candidate file interface`,
         )
+      for (const route of Object.values(request.slots)) {
+        if (route.kind !== 'native' || route.native !== 'project-evaluation') continue
+        if (route.evaluation === undefined) {
+          if (disposition.state === 'ready')
+            invalid(
+              'ADMISSION_ARTIFACT_MISMATCH',
+              'ready evaluation authority lacks its reviewed environment',
+            )
+          continue
+        }
+        if (route.grant?.kind !== 'evaluation')
+          invalid('ADMISSION_ARTIFACT_MISMATCH', 'reviewed evaluation authority is missing')
+        const key = privateDomainDigest('JIG-Retained-Evaluation-Verification/1', {
+          evaluation: route.evaluation,
+          grant: route.grant,
+        } as unknown as JsonValue)
+        if (verifiedEvaluations.has(key)) continue
+        const recipe = captures.get(route.evaluation.recipe.digest)
+        const dependencies = captures.get(route.evaluation.dependencies.digest)
+        if (recipe === undefined || dependencies === undefined)
+          corrupt('reviewed evaluation operands were not reacquired')
+        await verifyPrivateRetainedProjectEvaluation(
+          route.evaluation,
+          route.grant,
+          recipe,
+          dependencies,
+        )
+        verifiedEvaluations.add(key)
+      }
     }
     for (const binding of Object.values(candidate.lock.bindings)) {
       for (const expected of Object.values(binding.attachments ?? {}))

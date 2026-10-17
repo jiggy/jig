@@ -13,6 +13,11 @@ import {
 } from '../../src/internal/private-finite-acp-contract.js'
 import { HTTP_REQUEST_CONTRACT_DIGEST } from '../../src/internal/private-http-request.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from '../../src/internal/private-project-command.js'
+import {
+  PROJECT_EVALUATION_CONTRACT_DIGEST,
+  PROJECT_EVALUATION_CONTRACT_ID,
+  PROJECT_EVALUATION_CONTRACT_VERSION,
+} from '../../src/internal/private-project-evaluation.js'
 import { captureGrantSource } from '../../src/project/grant-source.js'
 import { normalizeGrant } from '../../src/project/grants.js'
 import { resolveInvocationSlots } from '../../src/project/invocation-slots.js'
@@ -36,6 +41,40 @@ const finiteAcp = {
   version: FINITE_ACP_CONTRACT_VERSION,
   digest: FINITE_ACP_CONTRACT_DIGEST,
 }
+
+test('evaluation authority is a reviewed recipe and exact generic attachment permissions', () => {
+  const value = {
+    kind: 'evaluation',
+    recipe: 'evaluation/parser',
+    attachments: { candidate: 'supplied-read', deliverables: 'operation-create' },
+  }
+  expect(normalizeGrant(value)).toEqual(value)
+  expect(normalizeGrant({ ...value, recipe: './evaluation/parser' })).toEqual(value)
+  const contract = {
+    id: PROJECT_EVALUATION_CONTRACT_ID,
+    version: PROJECT_EVALUATION_CONTRACT_VERSION,
+    digest: PROJECT_EVALUATION_CONTRACT_DIGEST,
+  }
+  expect(
+    resolveInvocationSlots(
+      { evaluate: contract },
+      {
+        evaluate: { kind: 'grant', policy: normalizeGrant(value) },
+      },
+    ).evaluate,
+  ).toMatchObject({ kind: 'native', native: 'project-evaluation', contract })
+  expect(() => resolveInvocationSlots({ evaluate: contract }, {})).toThrow()
+  for (const extra of [
+    { command: 'echo yes' },
+    { env: {} },
+    { network: true },
+    { input: {} },
+    { recipe: '../escape' },
+    { attachments: { candidate: 'read', deliverables: 'operation-create' } },
+    { attachments: { candidate: 'supplied-read', deliverables: 'supplied-write' } },
+  ])
+    expect(() => normalizeGrant({ ...value, ...extra })).toThrow()
+})
 
 test('session retention is separately reviewed and restricted to qualified Codex', () => {
   expect(normalizeGrant({ kind: 'acp', client: 'codex', retainSessions: true })).toEqual({

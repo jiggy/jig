@@ -9,7 +9,7 @@ These links locate module rules. All selected domain requirements still apply.
 
 - [descriptor-files](#descriptor-files)
 - [flow-file-context](#flow-file-context)
-- [execution-file-import](#execution-file-import)
+- [attempt checkpoint and export](#attempt-checkpoint-and-export)
 - [read-input-projection](#read-input-projection)
 - [file-input](#file-input)
 - [captured-bytes](#captured-bytes)
@@ -44,39 +44,57 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### flow-file-context
 
-- `flow-file-context.ts` retains immediate-caller immutable read views and binds
-  only authentic admitted native import targets. Contexts own neither captured
-  bytes nor native storage. Closing an ancestor revokes descendants.
-  `child-file-import.ts` retains caller-lifetime busy/consumed/unavailable
-  folder state independently of child-row and visible-directory deletion.
-  Existing RunHost operation identity owns duplicates. Recovery fences the
-  caller and never resumes its program, so no durable destination history is
-  added.
+- `flow-file-context.ts` owns participant-scoped immutable artifact rights and root-scoped snapshot retirement.
+  Reference spelling, paths and digests never establish authority.
+  Static reads borrow the immediate caller's whole original immutable view.
+  Supplied reads require explicit held references at reviewed ports.
+  Each accepted create operation gets its own native output.
+  RunHost joins duplicates and retains their original result/reference.
 
-  Child controllers admit the complete result and fence descendants before
-  copying. Source readers and existing child package/native/row cleanup settle
-  before native no-replace commit. Remaining importer closes precede a normal
-  reply. Unknown setup, commit or close ends the caller without rollback/replay.
-  Admitted roots retain the original importer across protocol/checkpoint faults.
-  After confirmed parent fencing, attempt child settlement and join importer
-  loans.
+- Child controllers validate domain results, fence descendants and capture output.
+  Confirm native/package/row cleanup before issuing caller rights.
+  Failed or uncertain cleanup grants nothing and never authorizes replay.
+  Initial reads permit onward delegation.
+  Release revokes future borrowing, not accepted readers. Ancestor closure revokes descendants.
 
-  Unresolved child or importer retirement keeps the root pending without
-  release.
+- Per root, retain at most 256 live participant references and sixteen sealed snapshots.
+  Snapshots plus read materializations share 256 MiB. Original operator inputs keep their separate bound.
+  Final result selection forwards an existing snapshot without resealing.
+  `root-run-files.ts` transfers selected snapshot retirement to command/ticket ownership before live rights close.
+  Output identity is boolean native-output intent, never an export path.
 
-### execution-file-import
+  Delivery remains separately owned. Do not restore staged child imports or destination-folder mutation controls.
+  Root packet selection includes native output only for declared writable ports.
+  Without final output, accepted checkpoint bytes remain eligible for packet delivery.
+  The root file owner still retires every retained native output handle.
 
-- `execution-file-import.ts` joins native stage preparation, one bounded copy
-  and retirement without owning dispatch or durable Run state. Native issuers
-  own source/destination authority and cancellation-versus-rename arbitration.
-  Target closure preserves unknown setup cleanup, aborts/joins copies before raw
-  stage closure, and still attempts native target cleanup after failures. Keep
-  copied-file and directory FileHandles strongly retained until each actual
-  close fulfills. Unknown closes never become a successful retirement. Retain
-  the original target and its active leases strongly until complete target
-  retirement is confirmed.
+### Attempt checkpoint and export
 
-  A fatal caller does not release unknown native handles to garbage collection.
+- `attempt-checkpoint-store.ts` owns the original attempt's sole latest checkpoint in admission SQLite.
+  Commit authenticated held-artifact snapshot bytes before acknowledgement.
+  Replacement is transactional and retains no history.
+  Metadata consumes the existing control reservation.
+  Bytes exchange existing result chunks and share final-artifact capacity, retirement and export pins.
+  Both final-result admission and terminal commit count checkpoint payloads within the accepted artifact allowance.
+
+- Root checkpoint associations are explicit native identity data resolved against current participant rights.
+  They are neither optional FLOW ports nor new filesystem authority.
+  The command owner reads accepted records for publication and independently fences recovery before fallback.
+
+- `attempt-export-copier.ts` and `attempt-export-owner.ts` use the independent file-command owner.
+  They own retained acquisition, immutable capture, no-replace publication, outcome commit and pin retirement.
+  Persist canonical destination/source/selection intent before copying and outcome before acknowledgement.
+  Matching written intent returns its original receipt.
+  At most 64 delivery records per attempt share the protected 4 GiB budget.
+  Count outcome reservations, intent/index overhead and pin metadata.
+
+- Bind copy ownership to boot/PID generation.
+  Mutating maintenance may retire proved-dead copy owners, never merely expired or uncertain owners.
+  Lookup never repairs state. Settled checkpoint export never reacquires the original Run execution owner.
+  Immutable file capabilities retain copied bytes until their own retirement, independently of store read pins.
+
+  Join the original copier and retire destination authority before releasing its fixed, nonrenewable pin.
+  Deadline expiry never proves copier retirement.
 
 ### read-input-projection
 
@@ -89,33 +107,10 @@ These links locate module rules. All selected domain requirements still apply.
   identity and seals, and hands off an independent file position above stdio
   destination slots. Parent and sibling copies never seek the original reader.
 
-- Writable child maps opt into the existing per-invocation output owner. Linux
-  captures original backing/public descriptors before projecting the public
-  subtree. Trusted setup uses fixed environment, drops all capabilities and
-  reexecs before final continuation and package execution. Mac's existing
-  guardian keeps denied import/public siblings on its ordinary volume. It loans
-  original roots through authenticated transfer. It handles bounded tagged
-  begin/commit/cancel/end messages on its existing control.
-
-  At most two stages belong to one caller. Native membership, original deadlines
-  and accepted cancellation arbitrate commit. A coordinator check is not the
-  commit owner. Payload fencing joins outer copy leases and original root loans
-  before Mac snapshot/storage retirement. Retain real FileHandles on uncertain
-  close, never retry an ambiguous close or reconstruct authority from path
-  metadata. Linux keeps at most two live and six total live/abandoned import
-  reply IDs.
-
-  One well-formed late ACK drains only its known failed request. Unknown or
-  duplicate IDs fail closed and never revive a failed result. Exhaustion retires
-  import control and cancels the native owner. Only its original confirmed fence
-  can retire remaining native loans. Attempt every stage close, then backing
-  close only after all actual readers have closed, preserving every uncertainty.
-
-- Attachment coexistence derives from the existing root reservation: at most six
-  Flow envelopes and five child stages, no new pool or independent volume. Linux
-  stages share each 16 MiB output tmpfs. Trusted import writes may charge
-  coordinator memory. Mac stages share each existing 512 MiB Flow image.
-  Collection retains <=16 MiB snapshots per Flow and streams <=64 KiB chunks.
+- Attachment execution derives from the existing root reservation: at most six
+  Flow envelopes, no independent execution pool or volume.
+  Each operation uses its ordinary 16 MiB Linux output tmpfs or bounded Mac Flow image.
+  Collection retains <=16 MiB /64-file snapshots and streams <=64 KiB chunks.
   Final publication and accepted checkpoint bytes keep their separate limits.
 
   Keep the full derived accounting in SECURITY.md synchronized with host policy.
@@ -154,6 +149,14 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### captured-output
 
+- `captured-output.ts` supplies common authenticated manifest identity, bounded complete-root selection and collision-rejecting prefixed composition.
+  Stream original authenticated slices into new immutable backing.
+  Backing offsets alone never identify artifacts.
+  Evaluation artifact inputs stream original held snapshot members into immutable native captures.
+  Operator inputs retain 8 MiB. Artifact inputs permit 16 MiB.
+
+  Empty descendant directories join physical-view identity and native read-only projection under the same finite entry limit.
+
 - `captured-output.ts` snapshots an already-fenced output directory into one
   anonymous immutable backing under the 16 MiB aggregate output bound. Preserve
   directory evidence, including empty directories, for native-session
@@ -162,7 +165,17 @@ These links locate module rules. All selected domain requirements still apply.
   and bytes remain command-owned and cannot be recreated from serialized
   metadata.
 
+- `capturePrivateRetainedOutput` is reserved for trusted ticket export after store verification under an accepted export pin.
+  Recheck all hashes, tree paths and unchanged 16 MiB /64-file bounds while resealing.
+  This creates no participant right or authority from a public packet.
+
 ### execution-output
+
+- `execution-output.ts` owns original directory and snapshot retirement.
+  Close each actual handle once and memoize its result.
+  Retain the original strongly until close fulfills.
+  `PrivateOutputRetirementUnconfirmedError` preserves the cause and makes failed retirement sticky.
+  Controllers retain uncertainty even when subsequent native fencing succeeds.
 
 - `execution-output.ts` owns the closed Linux directory/native snapshot lifetime
   used by Run files and native-session collection. `macos-guardian-output.ts`
@@ -190,6 +203,19 @@ These links locate module rules. All selected domain requirements still apply.
   exclusive publication. A moved parent cannot redirect writes or cleanup.
   Invalid final files retain the known execution terminal and never authorize
   replay.
+
+  Checkpoint snapshot validation compares each ordered path, byte count and digest.
+  Decoded JSON object key order never changes manifest identity.
+
+  Linux snapshot transfer uses the existing token-authenticated command control.
+  Import the held descriptor through the trusted coordinator's `/proc` reader.
+  Require an anonymous regular file and all immutable memfd seals.
+
+  Both platforms verify exact bounded manifest paths, byte counts and hashes
+  before creating a new immutable snapshot.
+  Keep original and imported handles alive through publication acknowledgement.
+  Decoded metadata alone grants no output authority.
+  Mac acquisition still requires its authenticated received-descriptor bundle.
 
   Its memoized close joins original prepare/publication, consumes held
   references before cleanup and closes the destination parent even if staging
@@ -224,7 +250,7 @@ These links locate module rules. All selected domain requirements still apply.
 
   Authenticated `file-command.ts` retirement irreversibly fences every authority
   verb and checkpoint recovery/fallback, including no-publication. Join original
-  operations, then close checkpoint, project read descriptor, delivery owner and
+  operations, then discard the checkpoint mirror and close project read descriptor, delivery owner and
   native endpoints through one failure-preserving close. Begin listener shutdown
   without awaiting the ACK socket's own close cycle. ACK follows authoritative
   release only. The client disarms disconnect cancellation only on that timely
@@ -310,6 +336,11 @@ These links locate module rules. All selected domain requirements still apply.
   retained/per-run file-limit evidence remains separately typed. Never infer
   paths, source freshness or no-dispatch evidence from arbitrary errors.
 
+  Prepared-ticket acceptance uses the same root-administration error projection
+  as ordinary root submission. Preserve attempt-specific errors separately.
+  Only typed mapping and input-limit failures establish file-input refusal.
+  Identification, integrity and cleanup failures must not acquire that label.
+
 - Reviewed Binding read selections reuse the bounded file capture controls and
   retained artifact store. Bind source, manifest and tree identity to the exact
   configuration. Revalidate at admission and project retained bytes at
@@ -357,8 +388,8 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### workspace-progress tests
 
-- `workspace-progress.test.ts` uses injected streams and clocks. It covers
-  operator-controlled inspection, private deadline minima, trusted dispatch
+- Verify workspace progress through real subprocess streams and actual deadline constraints.
+  Cover operator-controlled inspection, private deadline minima, trusted dispatch
   versus initial refusal, effective machine modes, and queued screen
   entry/restoration. It also covers phase-aware interruption, escaped cause
   batching and full final diagnostics. These portable cases include one owned

@@ -29,6 +29,7 @@ import {
   AGENT_RUN_CONTRACT_VERSION,
   agentChannelFiles,
 } from '.././fixtures/agent-contract.js'
+
 const schemaUri = 'https://flow.jig.md/schemas/schema-0.json'
 const agentRunContract = await readFile(
   new URL('../../../../docs/jig/spec/contracts/agent-run/contract.json', import.meta.url),
@@ -377,7 +378,7 @@ describe('private package-project linker', () => {
           ...run('parent'),
           'FLOW.meta.json': metadata({ name: 'parent', uses: { copy: {} } }),
           'FLOW.contract.json': invocation({
-            attachments: { originals: 'read', photos: 'read-write' },
+            attachments: { originals: 'read' },
           }),
         },
         'flows/child': {
@@ -390,7 +391,7 @@ describe('private package-project linker', () => {
       (flows) => {
         const validMap = {
           source: { from: 'originals' },
-          files: { into: 'photos', directory: 'copies' },
+          files: { create: true },
         }
         const project = (attachments: unknown, target = 'flow:flows/child', bound = false) =>
           linkPackageProject({
@@ -434,14 +435,14 @@ describe('private package-project linker', () => {
             attachments: validMap,
           })
           const changed = buildPrivateActivationRequests(
-            project({ ...validMap, files: { into: 'photos', directory: 'other-copies' } }, target),
+            project({ ...validMap, source: { supplied: 'read' } }, target),
           ).find((value) => value.target.kind === 'binding' && value.target.id === 'parent')!
           expect(changed.digest).not.toBe(request.digest)
         }
         for (const attachments of [
           { source: validMap.source },
           { ...validMap, source: { from: 'photos' } },
-          { ...validMap, files: { into: 'originals', directory: 'copies' } },
+          { ...validMap, files: { from: 'originals' } },
           { ...validMap, extra: { from: 'originals' } },
         ])
           expectCode(
@@ -773,6 +774,31 @@ describe('private package-project linker', () => {
       await source.dispose()
       await rm(root, { recursive: true, force: true })
     }
+  })
+  test('checkpoint-only direct targets qualify without a writable root attachment', async () => {
+    const checkpoint = await readFile(
+      new URL('../../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),
+      'utf8',
+    )
+    await withFlows(
+      {
+        'flows/progress': {
+          ...run('progress'),
+          'FLOW.meta.json': metadata({
+            name: 'progress',
+            uses: { progress: { contract: './contracts/checkpoint.json' } },
+          }),
+          'contracts/checkpoint.json': checkpoint,
+        },
+      },
+      (flows) => {
+        const linked = linkPackageProject({ flows, bindings: [] })
+        expect(linked.flows[0]!.directRun).toBeTrue()
+        expect(buildPrivateActivationRequests(linked)[0]!.slots).toMatchObject({
+          progress: { kind: 'native', native: 'run-checkpoint' },
+        })
+      },
+    )
   })
   test('links and canonically orders minimal direct Run packages', async () => {
     await withFlows(

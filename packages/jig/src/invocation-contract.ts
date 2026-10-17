@@ -32,13 +32,21 @@ export const INVOCATION_CONTRACT_LIMITS = Object.freeze({
   features: 256,
   outcomes: 256,
   attachments: 256,
+  artifactResults: 256,
   definitions: 1_024,
 })
 
 const DOMAIN = Buffer.from('FLOW-Invocation-Contract/0\0', 'ascii')
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/
 const RESERVED_OUTCOMES = new Set(['done', 'failed', 'cancelled', 'error'])
-const OPERATION_FIELDS = ['input', 'result', 'outcomes', 'channels', 'attachments'] as const
+const OPERATION_FIELDS = [
+  'input',
+  'result',
+  'outcomes',
+  'channels',
+  'attachments',
+  'artifactResults',
+] as const
 const SHARED_FIELDS = ['$schema', 'id', 'version', '$defs']
 
 export interface InvocationOperationDescriptor {
@@ -47,6 +55,7 @@ export interface InvocationOperationDescriptor {
   readonly outcomes?: Readonly<Record<string, string>>
   readonly channels?: Readonly<Record<string, ChannelDeclaration>>
   readonly attachments?: Readonly<Record<string, 'read' | 'read-write'>>
+  readonly artifactResults?: readonly string[]
 }
 
 export interface InvocationContractDescriptor extends InvocationOperationDescriptor {
@@ -291,6 +300,24 @@ function parseOperation(
       if (access !== 'read' && access !== 'read-write') {
         invalid('CONTRACT_ATTACHMENT', 'attachment access must be read or read-write', path)
       }
+    }
+  }
+  if (operation.artifactResults !== undefined) {
+    const results = operation.artifactResults
+    if (!Array.isArray(results)) invalid('CONTRACT_FIELD', 'artifactResults must be an array', path)
+    if (results.length > INVOCATION_CONTRACT_LIMITS.artifactResults)
+      invalid('CONTRACT_LIMIT', 'operation exceeds 256 artifact results', path)
+    const names = new Set<string>()
+    const attachments = operation.attachments as JsonObject | undefined
+    for (const name of results) {
+      if (typeof name !== 'string')
+        invalid('CONTRACT_LOCAL_NAME', 'artifact result must be a LocalName', path)
+      localName(name, 'artifact result', path)
+      if (names.has(name))
+        invalid('CONTRACT_FIELD', 'artifactResults must contain unique names', path)
+      if (attachments?.[name] === 'read-write')
+        invalid('CONTRACT_ATTACHMENT', 'artifact result collides with a writable attachment', path)
+      names.add(name)
     }
   }
   if (operation.channels !== undefined) {

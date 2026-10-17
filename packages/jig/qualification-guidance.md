@@ -14,13 +14,15 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Ownership
 
-- `test/` owns unit, integration, fault-injection, packed-package, and
+- `test/` owns pure-function, integration, process-loss, packed-package, and
   proof-host evidence. `test/fixtures/agent-fixture-host.ts` keeps explicit
   native composition budgets shared with independent coordinator fixtures and
   the installed-package Agent composition smoke. The smoke passes the public
   `--timeout` option and leaves production defaults unchanged.
-  `test/fixtures/channel-conversation/` owns the synthetic named-channel peers
+  `test/fixtures/channel-conversation/` owns real executable named-channel methods
   used by installed foreground tests, independently of public example selection.
+  Controlled methods and protocol servers must perform their real task.
+  They must never replace Jig admission, stores, native clients, execution or cleanup.
 
 - Project Command lifecycle proofs reuse the explicit native composition budget
   for success, cancellation and coordinator loss. Their deadline case uses its
@@ -119,7 +121,7 @@ These links locate module rules. All selected domain requirements still apply.
   `test/macos/macos-guardian*.test.ts` group with `JIG_MACOS_PROCESS_TEST=1` on
   a qualified Mac. Ordinary source execution selects portable suites. Native
   suites fail missing prerequisites. `jig::check` adds the native regression
-  pass. Run existing consumers alongside new injected cases. Verify typed
+  pass. Run existing consumers alongside real failure cases. Verify typed
   preparation causes together with fenced completion and cleanup.
 
   Guardian storage modes register distinct sequential tests with fresh compiled
@@ -161,10 +163,12 @@ These links locate module rules. All selected domain requirements still apply.
 - Mac Codex preference qualification uses
   `test/macos-23E224/macos-preferences-observer.test.ts` and
   `test/macos/macos-preferences-boundary.test.ts` with
-  `JIG_MACOS_PROCESS_TEST=1`. The actual-observer positive and injected-policy
-  cases require native Intel 23E224 without configured Codex MDM. They prove
+  `JIG_MACOS_PROCESS_TEST=1`. Actual-observer positive cases require native
+  Intel 23E224 without configured Codex MDM. They prove
   closed decisions, inherited sandbox refusal and parent-loss expiry, not
-  installed MDM consumption. The raw boundary test checks populated synthetic
+  installed MDM consumption. Policy refusal requires actual native policy, never an injected observer result.
+
+  The raw boundary test checks populated test
   preferences, read-only counters, inherited rights and cleanup. Genuine startup
   is qualified separately by `test/startup/native-agent-startup.test.ts`. Other
   Mac profiles must explicitly refuse Codex selection while retaining their
@@ -258,7 +262,7 @@ These links locate module rules. All selected domain requirements still apply.
   and FLOW SDK archives on the selected native test host. Its ordinary project
   invokes a file Flow directly, then maps concurrent siblings and a nested child
   through the public CLI and SDK. Check binary and empty-file delivery,
-  immutable source preservation, and live complete imports before each call
+  immutable source preservation, and immutable artifact handoff before each call
   returns. Final packet rules remain independent.
 
 - The same installed smoke runs `test/installed-conversation-adoption.ts` in a
@@ -289,16 +293,17 @@ These links locate module rules. All selected domain requirements still apply.
 
   Published conversation dependencies remain separately identified. This is
   installed candidate evidence, not a registry publication proof.
-  `finite-acp-lifecycle.test.ts` also runs the private incident-brief fixture
-  with packed dependencies and a deterministic native peer. It checks two
-  branches, predecessor settlement, one successor and residue, not model
-  quality. Failed handoff fixtures retain bounded phase/dispatch timing with
+  Native lifecycle qualification must use genuine selected clients with packed dependencies.
+  Check two branches, predecessor settlement, one successor and residue independently of model quality.
+  Existing replacement-peer lifecycle cases do not qualify native behavior and require real-boundary replacement.
+
+  Failed handoff fixtures retain bounded phase/dispatch timing with
   their results. Timing is diagnostic evidence, not permission to extend
   execution deadlines.
 
 ### linux-rootless-run tests
 
-- `linux-rootless-run.test.ts` isolates real finite ACP exit, automatic crash
-  fencing and shutdown-grace fencing with a synthetic authenticated peer. Its
+- `linux-rootless-run.test.ts` must verify real finite ACP exit, automatic crash
+  fencing and shutdown-grace fencing through genuine native subprocesses. Its
   deliberate payload/launcher SIGSEGV probes retain bounded process-state and
   fencing evidence, not native-client qualification or crash-origin proof.

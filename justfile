@@ -81,7 +81,7 @@ build: jig::build
 # Run quick development, host-coverage, and release-automation checks
 @test-tooling:
     node --test scripts/ci/*.test.mjs
-    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/preflight.test.ts scripts/example-dependency-versions.test.ts scripts/agent-candidate.test.ts scripts/npm-publish.test.ts scripts/operational-baseline-checks.test.ts
+    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/preflight.test.ts scripts/example-dependency-versions.test.ts scripts/agent-candidate.test.ts scripts/npm-publish.test.ts scripts/operational-baseline-checks.test.ts scripts/test-release-applications.test.ts
 
 # Build and check locally, including native regression tests on supported Macs
 @preflight:

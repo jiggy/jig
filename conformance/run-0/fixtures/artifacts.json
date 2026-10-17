@@ -1,0 +1,68 @@
+[
+  {
+    "definition": "callAttachments",
+    "valid": true,
+    "value": { "source": { "read": "artifact:1" }, "files": { "create": true } }
+  },
+  { "definition": "callAttachments", "valid": true, "value": {} },
+  {
+    "definition": "callAttachments",
+    "valid": false,
+    "value": { "source": { "read": "artifact:1", "create": true } }
+  },
+  { "definition": "callAttachments", "valid": false, "value": { "files": { "create": false } } },
+  { "definition": "callAttachments", "valid": false, "value": { "files": { "create": 1 } } },
+  {
+    "definition": "callAttachments",
+    "valid": false,
+    "value": { "files": { "path": "/host/output" } }
+  },
+  {
+    "definition": "callAttachments",
+    "valid": false,
+    "value": { "source": { "read": { "reference": "artifact:1" } } }
+  },
+  {
+    "definition": "callAttachments",
+    "valid": false,
+    "value": { "source": { "read": "artifact:1\n" } }
+  },
+  { "definition": "callAttachments", "valid": false, "value": { "Bad": { "create": true } } },
+  {
+    "definition": "artifactReferences",
+    "valid": true,
+    "value": { "files": "artifact:1", "same": "artifact:1" }
+  },
+  { "definition": "artifactReferences", "valid": false, "value": { "files": "" } },
+  { "definition": "artifactReferences", "valid": false, "value": [] },
+  {
+    "definition": "callResult",
+    "valid": true,
+    "value": { "outcome": "blocked", "output": null, "artifacts": { "files": "artifact:1" } }
+  },
+  {
+    "definition": "callResult",
+    "valid": false,
+    "value": { "outcome": "done", "output": null, "artifactResults": { "final": "artifact:1" } }
+  },
+  {
+    "definition": "runResult",
+    "valid": true,
+    "value": { "outcome": "done", "output": {}, "artifactResults": { "final": "artifact:1" } }
+  },
+  {
+    "definition": "runResult",
+    "valid": false,
+    "value": { "outcome": "done", "output": null, "artifacts": { "files": "artifact:1" } }
+  },
+  {
+    "definition": "domainResult",
+    "valid": false,
+    "value": { "outcome": "done", "output": null, "artifactResults": {} }
+  },
+  {
+    "definition": "domainResult",
+    "valid": true,
+    "value": { "outcome": "done", "output": { "domain": "data" } }
+  }
+]

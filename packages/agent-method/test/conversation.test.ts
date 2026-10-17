@@ -27,11 +27,14 @@ test('conversation failure summary preserves a bounded already-exposed cause wit
 
 /** Synthetic Agent host, real public SDK subprocess. No native-client qualification. */
 async function exercise(mode: string) {
-  const process = Bun.spawn([globalThis.process.execPath, `${import.meta.dir}/conversation-fixture.ts`], {
-    stdin: 'pipe',
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const process = Bun.spawn(
+    [globalThis.process.execPath, `${import.meta.dir}/conversation-fixture.ts`],
+    {
+      stdin: 'pipe',
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
   const errors = new Response(process.stderr).text()
   const timer = setTimeout(() => process.kill(), 5_000)
   const send = (frame: unknown) => {
@@ -196,6 +199,9 @@ async function exercise(mode: string) {
             else
               ok(call, {
                 outcome: 'done',
+                ...(mode === 'artifacts' || mode === 'disposal-error'
+                  ? { artifacts: { report: 'artifact:report' } }
+                  : {}),
                 output: {
                   turns: mode === 'callback-error' ? 1 : 2,
                   ...(['retained', 'invalid-session', 'unsolicited-session'].includes(mode)
@@ -268,7 +274,7 @@ async function exercise(mode: string) {
   }
 }
 
-for (const mode of ['normal', 'interrupt', 'completion-race', 'not-running-race']) {
+for (const mode of ['normal', 'artifacts', 'interrupt', 'completion-race', 'not-running-race']) {
   test(`public conversation helper: ${mode}`, async () => {
     const { output, operations } = await exercise(mode)
     expect(output.turns).toHaveLength(2)
@@ -339,6 +345,8 @@ for (const mode of [
     )
     if (mode === 'callback-error')
       expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 1 } })
+    if (mode === 'disposal-error')
+      expect(output.settlement).toEqual({ outcome: 'done', output: { turns: 2 } })
   })
 }
 

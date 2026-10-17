@@ -18,12 +18,13 @@
     cp ../reporting/LICENSE libexec/contracts/reporting/LICENSE
     cp ../../docs/jig/spec/contracts/acp-public-updates.json libexec/contracts/acp-public-updates/acp-public-updates.json
     cp ../../LICENSE.md libexec/contracts/acp-public-updates/LICENSE
-    for name in agent-run project-command http-request run-checkpoint finite-acp; do cp -R ../../docs/jig/spec/contracts/$name libexec/contracts/$name; cp ../../LICENSE.md libexec/contracts/$name/LICENSE; done
+    for name in agent-run project-command project-evaluation http-request run-checkpoint finite-acp; do cp -R ../../docs/jig/spec/contracts/$name libexec/contracts/$name; cp ../../LICENSE.md libexec/contracts/$name/LICENSE; done
     cp scripts/installed-jig.sh bin/jig
     chmod 755 bin/jig
     bun node_modules/typescript/bin/tsc -p tsconfig.json
     cp dist/internal/contract-authoring-worker.js libexec/authoring/contract-authoring-worker.js
     bun build src/index.ts --target=bun --format=esm --outfile=dist/index.js
+    bun build src/client.ts --target=node --format=esm --outfile=dist/client.js
     bun scripts/build-cli.ts
     bun build src/internal/linux-rootless-supervisor.ts --target=bun --format=esm --outfile=libexec/linux-rootless-supervisor.js
     bun build src/internal/macos-native-supervisor.ts --target=bun --format=esm --outfile=libexec/macos-native-supervisor.js

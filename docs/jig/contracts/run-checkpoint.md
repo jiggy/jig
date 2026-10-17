@@ -20,5 +20,7 @@ chooses the output destination.
 - [Contract and limits](../spec/run-checkpoint.md)
 - [Exact JSON descriptor](https://jig.md/contracts/run-checkpoint/contract.json)
 
-Retention lasts while the independent command owner lives. It is not
-machine-crash recovery or automatic resumption.
+The latest accepted checkpoint shares the original protected attempt's bounded
+48-hour retention. Ticket retrieval and explicit checkpoint export do not
+restart execution. This is not automatic resumption or a guarantee against
+hardware failure; native fencing and cleanup still gate publication.

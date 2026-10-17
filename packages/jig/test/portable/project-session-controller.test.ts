@@ -8,22 +8,17 @@ import { ProjectAdministrationError } from '../../src/administration/project.js'
 import { RootAdministrationError } from '../../src/administration/root.js'
 import { CheckError } from '../../src/diagnostics.js'
 import { PrivateBunManifestError } from '../../src/internal/bun-native-lock-policy.js'
+import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import {
   closedTestErrorCauses,
   openPrivateProjectSession,
-  type PrivateProjectSessionHost,
   projectError,
   scopePrivatePackagePlanningError,
 } from '../../src/internal/project-session-controller.js'
+import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
 const missingPlan = `sha256:${'0'.repeat(64)}`
-function inertHost(): PrivateProjectSessionHost {
-  return Object.freeze({
-    backend: Object.freeze({}) as never,
-    installedBunSupport: Object.freeze({}) as never,
-    runTimeoutMs: 1_000,
-  })
-}
+const installedHost = await openPrivateInstalledBunHost(installedBunLocation, {})
 setDefaultTimeout(30_000)
 describe('private finite project session', () => {
   test('retains a closed cleanup cause behind an unconfirmed native fence', () => {
@@ -107,23 +102,6 @@ describe('private finite project session', () => {
       'Error:MACOS_GUARDIAN_JOB_PRESENT',
       'Error:EPERM',
     ])
-  })
-  test('checkpoint attachment mistakes remain actionable candidate failures', () => {
-    const failure = projectError(
-      new CheckError(
-        'invalid',
-        'PROJECT_CHECKPOINT_ATTACHMENT',
-        'private checkpoint detail',
-        'flows/diagnostic',
-      ),
-      'plan',
-    )
-    expect(failure.code).toBe('INVALID_CANDIDATE')
-    expect(failure.diagnostic).toEqual({
-      code: 'PROJECT_CHECKPOINT_ATTACHMENT',
-      path: 'flows/diagnostic',
-    })
-    expect(JSON.stringify(failure)).not.toContain('private checkpoint detail')
   })
   test('manifest diagnostics distinguish already-scoped workspace paths from standalone packages', () => {
     const standalone = new PrivateBunManifestError('SOURCE', '/dependencies/x')
@@ -215,7 +193,7 @@ describe('private finite project session', () => {
   test('revokes every escaped authority and releases the owner exactly once', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-session-'))
     try {
-      const session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+      const session = await openPrivateProjectSession({ directory: root, host: installedHost })
       const administration = session.rootAdministration
       const closing = session.close()
       expect(session.close()).toBe(closing)
@@ -241,7 +219,7 @@ describe('private finite project session', () => {
       const descriptors = process.platform === 'darwin' ? '/dev/fd' : '/proc/self/fd'
       const before = (await readdir(descriptors)).length
       for (let attempt = 0; attempt < 3; attempt++) {
-        const reopened = await openPrivateProjectSession({ directory: root, host: inertHost() })
+        const reopened = await openPrivateProjectSession({ directory: root, host: installedHost })
         await reopened.close()
       }
       expect((await readdir(descriptors)).length).toBe(before)
@@ -255,7 +233,7 @@ describe('private finite project session', () => {
     try {
       const session = await openPrivateProjectSession({
         directory: root,
-        host: inertHost(),
+        host: installedHost,
         onOperationFailure(value) {
           evidence.push(value)
           throw new Error('private diagnostic detail')
@@ -282,7 +260,7 @@ describe('private finite project session', () => {
       const moved = `${root}-moved`
       let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
       try {
-        session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+        session = await openPrivateProjectSession({ directory: root, host: installedHost })
         const administration = session.rootAdministration
         await rename(root, moved)
         await mkdir(root)
@@ -315,7 +293,7 @@ describe('private finite project session', () => {
     const evidence: unknown[] = []
     const failure = await openPrivateProjectSession({
       directory: root,
-      host: inertHost(),
+      host: installedHost,
       onAcquisitionFailure(value) {
         evidence.push(value)
         throw new Error('diagnostic observer failed')
@@ -344,7 +322,7 @@ describe('private finite project session', () => {
   test('unreadable retained candidates fail distinctly without resetting state', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-project-state-'))
     try {
-      const session = await openPrivateProjectSession({ directory: root, host: inertHost() })
+      const session = await openPrivateProjectSession({ directory: root, host: installedHost })
       await session.close()
       const path = join(root, '.jig', 'jig.sqlite3')
       const database = new Database(path)
@@ -360,7 +338,7 @@ describe('private finite project session', () => {
       }
       const retained = await readFile(path)
       await expect(
-        openPrivateProjectSession({ directory: root, host: inertHost() }),
+        openPrivateProjectSession({ directory: root, host: installedHost }),
       ).rejects.toMatchObject({
         code: 'PROJECT_STATE_INVALID',
         message: 'retained project state is incompatible with this Jig build or damaged',

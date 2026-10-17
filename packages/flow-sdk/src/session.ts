@@ -1,3 +1,4 @@
+import { Artifacts, parseCallResult } from './artifacts.js'
 import { type ChannelMethod, Channels, type RequestHooks, type Settlement } from './channels.js'
 import { decodeJson, encodeJson, JsonViolation } from './json.js'
 import {
@@ -8,15 +9,19 @@ import {
   parseEnvelope,
   parseOperationError,
   parseRunParams,
-  parseRunResult,
   type RunParams,
   requestMessage,
-  resultMessage,
+  requireExactKeys,
+  requireObject,
+  requireWireId,
+  snapshotDataObject,
   validateFlowCall,
 } from './protocol.js'
 import { FramingViolation, readFrames, type Transport } from './transport.js'
 import {
+  type Artifact,
   type CallOptions,
+  type CallResult,
   type FlowCall,
   type JsonObject,
   type JsonValue,
@@ -49,7 +54,7 @@ interface Deferred<T> {
 }
 
 interface Outbound {
-  readonly method: 'flow/call' | ChannelMethod
+  readonly method: 'flow/call' | 'flow/artifact/release' | ChannelMethod
   readonly params: JsonObject
   readonly kind: 'flow' | 'channel'
   readonly hooks: RequestHooks
@@ -77,6 +82,7 @@ export class RunSession {
   private readonly pendingById = new Map<string, Outbound>()
   private readonly outbound = new Set<Outbound>()
   private readonly queue: Outbound[] = []
+  private readonly artifacts = new Artifacts()
   private root: Root | undefined
   private nextId = 1
   private sentCount = 0
@@ -240,9 +246,17 @@ export class RunSession {
     }
     try {
       if (pending.kind === 'flow') {
-        const parsed = parseRunResult(result)
-        this.settleOutbound(pending, { result: parsed })
+        const parsed = parseCallResult(result)
+        // The wire is JSON; the participant-facing value replaces only host
+        // reference strings with opaque held objects after strict validation.
+        this.settleOutbound(pending, {
+          result: this.artifacts.result(parsed) as unknown as JsonValue,
+        })
       } else {
+        if (pending.method === 'flow/artifact/release') {
+          requireExactKeys(requireObject(result, 'artifact release result'), [])
+          this.artifacts.retire(pending.params.artifact as string)
+        }
         this.settleOutbound(pending, { result })
       }
     } catch (error) {
@@ -264,6 +278,12 @@ export class RunSession {
       return
     }
     try {
+      if (pending.method === 'flow/artifact/release' && error.code === -32601) {
+        this.settleOutbound(pending, {
+          error: new OperationError('UNAVAILABLE', 'artifact early release is not supported'),
+        })
+        return
+      }
       const operation = parseOperationError(error)
       if (operation === null) {
         throw new PeerProtocolViolation(
@@ -317,10 +337,12 @@ export class RunSession {
     // source seal can make an unsuccessful handler appear clean.
     if (failure === undefined) {
       try {
-        result = parseRunResult(result as unknown as JsonValue)
+        const terminal = this.artifacts.terminal(result!)
         // Validate the actual reply, including its envelope overhead, and
         // retain a passive snapshot while owned work and cleanup settle.
-        success = decodeJson(encodeJson(resultMessage(root.id, result))) as JsonObject
+        success = decodeJson(
+          encodeJson({ jsonrpc: '2.0', id: root.id, result: terminal }),
+        ) as JsonObject
       } catch (error) {
         failure = 'INVALID_RESULT'
         this.diagnose(error)
@@ -384,7 +406,7 @@ export class RunSession {
     return Object.freeze({
       input: root.params.input,
       settings: root.params.settings,
-      attachments: root.params.attachments,
+      attachments: session.artifacts.incoming(root.params.attachments),
       channels: session.channels.incoming(root.params.channels),
       scratch: root.params.scratch,
       deadlineUnixMs: root.params.deadlineUnixMs,
@@ -392,24 +414,47 @@ export class RunSession {
       call(call: FlowCall, options?: CallOptions) {
         let params: JsonObject
         try {
-          const { channels: suppliedChannels, ...parameters } = validateFlowCall(call)
+          const {
+            channels: suppliedChannels,
+            attachments: suppliedAttachments,
+            ...parameters
+          } = validateFlowCall(call)
           params = decodeJson(encodeJson(parameters)) as JsonObject
           const channels = session.channels.mappings(suppliedChannels)
           if (channels !== undefined) params = { ...params, channels }
+          const attachments = session.artifacts.mappings(suppliedAttachments)
+          if (attachments !== undefined) params = { ...params, attachments }
         } catch (error) {
           return Promise.reject(new TypeError(errorMessageText(error)))
         }
-        // Successful call replies have already passed parseRunResult in
-        // receiveSuccess. Keep the same promise so detached cancellation does
-        // not create an extra unhandled rejection during owned settlement.
-        return session.call('flow/call', 'flow', params, options) as Promise<RunResult>
+        // Keep the owned waiter itself: cancellation and terminal quiescence
+        // must not acquire an extra asynchronous projection lifetime.
+        return session.call('flow/call', 'flow', params, options) as unknown as Promise<CallResult>
+      },
+      release(
+        request: { readonly operationId: string; readonly artifact: Artifact },
+        options?: CallOptions,
+      ): Promise<void> {
+        try {
+          const raw = snapshotDataObject(request, 'artifact release', 2)
+          requireExactKeys(raw, ['operationId', 'artifact'])
+          const operationId = requireWireId(raw.operationId as JsonValue)
+          const artifact = session.artifacts.reference(raw.artifact as Artifact, true)
+          const result = session
+            .call('flow/artifact/release', 'channel', { operationId, artifact }, options)
+            .then(() => undefined)
+          void result.catch(() => undefined)
+          return result
+        } catch (error) {
+          return Promise.reject(error)
+        }
       },
       channel: session.channels.create.bind(session.channels),
     })
   }
 
   private call(
-    method: 'flow/call' | ChannelMethod,
+    method: 'flow/call' | 'flow/artifact/release' | ChannelMethod,
     kind: 'flow' | 'channel',
     params: JsonObject,
     options?: CallOptions,

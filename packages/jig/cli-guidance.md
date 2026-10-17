@@ -9,6 +9,7 @@ All selected domain requirements still apply.
 
 | Work | Required details |
 | --- | --- |
+| Application client or machine request framing | [Installed-host client](#installed-host-client) |
 | Discovery, completion, or caller creation | [CLI discovery](#src-cli-discovery) |
 | Grammar, acquisition, or review readiness | [Command grammar and review](#command-grammar-and-review) |
 | Inspect approved targets | [Approved target inspection](#approved-target-inspection) |
@@ -17,6 +18,16 @@ All selected domain requirements still apply.
 | Verify observable output | [Verification](#verification), [acceptance checks](#acceptance-checks) |
 
 ## Local Contracts
+
+### Installed-host client
+
+- `src/client.ts` and pure `src/attempt-contract.ts` own the separate
+  installed-host application client. Importing it starts no process and grants no authority.
+  It uses the installed machine boundary, never embedded native internals or private-state reads.
+
+  `src/cli-attempt-io.ts` bounds machine requests without consuming the owning submit connection.
+  Request completion differs from client closure. Duplicate observers never inherit cancellation ownership.
+  Keep execution, retained-byte availability, export and retirement facts distinct in machine and human output.
 
 ### src cli-discovery
 
@@ -38,6 +49,10 @@ All selected domain requirements still apply.
   leads with complete changed policy. `--details` includes unchanged policy. Run
   stdout is readable on terminals. Redirection or `--json` selects exact
   JSON/NDJSON. Elapsed status uses terminal stderr only.
+
+  An unreviewed ordinary Run reports `ADMISSION_MISSING`, not a changed approval.
+  A supplied approval pin keeps its separate stale-selection checks.
+  Never imply earlier consent when no revision was approved.
 
   Cancellation requested and cleanup confirmed are separate facts. Acquisition
   reports Jig runtime verification, operator resource configuration, and
@@ -252,9 +267,9 @@ Unknown execution or failed project closure retains original source-exit
 recovery. Local closure uses only the existing presentation end.
 
 Preserve the first finalization promise, its deadline and failure, known
-execution/delivery and the primary error. `cli-delivery-retirement.test.ts`
-checks these choices with controlled host and transport faults. It does not
-qualify native retirement. Initiate forced native connection cancellation before
+execution/delivery and the primary error. Installed lifecycle suites must exercise
+actual delivery and interruption. Pure policy checks do not qualify authenticated
+retirement or native cleanup. Initiate forced native connection cancellation before
 discarding response queues and join it after disposing subscriptions and
 buffers. Blocked-stream expiry retains admission until abort/cancel
 acknowledgement. Closing inspection releases preview waiters.
@@ -313,8 +328,10 @@ belong to their package suites. See their owning `AGENTS.md` files. Jig's
 `test/portable/cli-web*.test.ts` and installed tests retain host admission,
 attribution, receipt, transport, lifetime, terminal restoration, JSON and
 immutable-capture proof. Frozen standalone package consumers and frozen
-installed Jig runs are distinct gates. Source mocks and design approval qualify
-neither installed behavior nor newcomer usability.
+installed Jig runs are distinct gates.
+
+Never use source mocks or private replacement evidence.
+Design approval qualifies neither installed behavior nor newcomer usability.
 `test/portable/cli-review-agent-setup.test.ts` and
 `test/portable/project-resource-qualification.test.ts` check bounded read-only
 setup facts, shared recipients, preserved policy, honest captured locations and
@@ -330,6 +347,9 @@ all evidence recorded, never reconstruct live views or authority, and preserve
 exact decoded JSON. Qualify partial file capture, framing/byte/path limits, link
 refusal, interruption, buffer release and output failure independently of
 recorded execution status.
+
+Both source and installed record writers await bounded output completion.
+An unwritable output descriptor cannot produce a successful inspection exit.
 
 ### Acceptance checks
 

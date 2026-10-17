@@ -36,11 +36,10 @@ function guardianLifecycleTest(name: string, run: () => Promise<void>, timeoutMs
 }
 
 const nested = false
-const acp = false
 describe.serial('private contained Agent Run lifecycle', () => {
   guardianLifecycleTest(
-    `fences ${nested ? 'specialist' : 'root'} Agent ${acp ? 'ACP' : 'Run'} success, invalid output, cancellation, deadline, and loss`,
-    () => qualifyAgentFence(nested, acp, temporaryRoot, initialCgroups, initialTemporaryState),
+    `fences ${nested ? 'specialist' : 'root'} Agent Run success, invalid output, cancellation, deadline, and loss`,
+    () => qualifyAgentFence(nested, temporaryRoot, initialCgroups, initialTemporaryState),
     process.platform === 'darwin' ? 900_000 : nested ? 240_000 : 180_000,
   )
 })

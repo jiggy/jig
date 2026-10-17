@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { requirePrivateBunResolutionManifest } from '../../src/internal/bun-native-lock-policy.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
-import { deterministicAcpProgram } from '../fixtures/deterministic-acp-agent.js'
 import {
   writeConversationHelperCaller,
   writeOrdinaryAcpAgent,
@@ -59,11 +58,6 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
-
-test('constructs a deterministic ACP peer without importing a private API worker', () => {
-  const transpiler = new Bun.Transpiler({ loader: 'js', target: 'bun' })
-  expect(() => transpiler.transformSync(deterministicAcpProgram())).not.toThrow()
 })
 
 test('constructs the packed ACP Agent with an exact native grant and ordinary default', async () => {

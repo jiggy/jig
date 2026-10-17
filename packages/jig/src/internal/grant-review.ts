@@ -19,6 +19,7 @@ export function grantChanges(
                     packagePath: value.packagePath,
                     contract: lock!.packages[value.packagePath]!.uses[slot]!,
                     policy: route.policy,
+                    ...(route.evaluation === undefined ? {} : { evaluation: route.evaluation }),
                   },
                 ],
               ],

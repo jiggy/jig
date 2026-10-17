@@ -3,7 +3,6 @@ import { createHash, randomBytes } from 'node:crypto'
 import {
   closeSync,
   fstatSync,
-  lstatSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -26,6 +25,23 @@ import { createRequire } from 'node:module'
 import { connect, type Socket } from 'node:net'
 import { posix } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
+import {
+  privateCopyLinuxEvaluationWorkspace,
+  privateLinuxEvaluationWorkspaceArguments,
+} from './linux-evaluation-workspace.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootRemaining,
+  watchPrivateBootDeadline,
+} from './native-clock.js'
+import {
+  normalizePrivateProjectEvaluationWorkspace,
+  PRIVATE_EVALUATION_WORKSPACE_PATH,
+  type PrivateProjectEvaluationWorkspace,
+  privateEvaluationWritableRoots,
+} from './project-evaluation-workspace.js'
+import { normalizePrivateInputEmptyDirectories } from './read-input-projection.js'
 
 const POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
 const SANDBOX_BUN = '/jig-runtime/bun'
@@ -46,6 +62,7 @@ interface Limits {
   readonly cpuQuotaMicros: number
   readonly cpuPeriodMicros: number
   readonly deadlineUnixMs: number
+  readonly bootDeadline: PrivateBootDeadline
   readonly cancellationGraceMs: number
   readonly cleanupTimeoutMs: number
 }
@@ -71,7 +88,6 @@ interface Configuration {
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
-  readonly outputImports: boolean
   readonly capturedInputs: readonly {
     readonly fd: number
     readonly destination: string
@@ -79,7 +95,13 @@ interface Configuration {
     readonly digest: string
   }[]
   readonly inputDirectories: readonly string[]
+  readonly inputEmptyDirectories: readonly string[]
   readonly inputAliases: readonly { readonly name: string; readonly target: string }[]
+  readonly evaluationWorkspace: {
+    readonly phase: 'generate' | 'compile' | 'test'
+    readonly emptyDirectories: readonly string[]
+  } | null
+  readonly evaluationEntries: readonly string[]
   readonly bunPath: string
   readonly bunHostLibraryPath: string
   readonly bubblewrapPath: string
@@ -98,6 +120,7 @@ type StopReason =
   | 'cancelled'
   | 'coordinator_lost'
   | 'deadline'
+  | 'clock'
   | 'payload_exit'
   | 'core_dump'
   | 'setup_failed'
@@ -160,7 +183,6 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   if (first.done) return
   const configuration = requireStart(first.value)
   const { limits, runCgroup } = configuration
-  const importRootEnd = performance.now() + Math.max(0, limits.deadlineUnixMs - Date.now())
   const claim = await claimActive(configuration)
   if (claim === 'cancelled') return
 
@@ -173,173 +195,6 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   let readyToContinue = false
   let outputDirectory: FileHandle | undefined
   let outputBacking: FileHandle | undefined
-  const importStages = new Map<
-    string,
-    {
-      readonly fd: number
-      readonly directory: string
-      readonly monotonicEnd: number
-      readonly device: bigint
-      readonly inode: bigint
-      cancelled: boolean
-      attempted: boolean
-      committed: boolean
-    }
-  >()
-  const importControl = (value: unknown): void => {
-    if (value === null || typeof value !== 'object' || Array.isArray(value))
-      throw new Error('invalid import control')
-    const request = value as Record<string, unknown>
-    const { type, id, name } = request
-    if (
-      typeof name !== 'string' ||
-      !/^import-[0-9a-f]{24}$/.test(name) ||
-      (type !== 'import-cancel' && (typeof id !== 'string' || !/^[0-9a-f]{24}$/.test(id)))
-    )
-      throw new Error('invalid import control identity')
-    const reply = (outcome: string, error?: unknown) =>
-      safeSend(control, {
-        type: 'import-reply',
-        id,
-        outcome,
-        ...(error === undefined ? {} : { error: errorText(error) }),
-      })
-    if (type === 'import-cancel') {
-      const stage = importStages.get(name)
-      if (stage !== undefined) stage.cancelled = true
-      return
-    }
-    try {
-      if (type === 'import-begin') {
-        if (
-          !configuration.outputImports ||
-          !continued ||
-          outputBacking === undefined ||
-          outputDirectory === undefined ||
-          stopReason !== undefined ||
-          performance.now() >= importRootEnd
-        ) {
-          reply('absent')
-          return
-        }
-        if (importStages.size >= 2 || importStages.has(name))
-          throw new Error('native import capacity is occupied')
-        if (
-          typeof request.directory !== 'string' ||
-          !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(request.directory) ||
-          request.directory.length > 64 ||
-          typeof request.operationId !== 'string' ||
-          request.operationId.length === 0 ||
-          request.operationId.length > 256 ||
-          !Number.isSafeInteger(request.deadlineUnixMs) ||
-          (request.deadlineUnixMs as number) < 0 ||
-          typeof request.device !== 'string' ||
-          !/^[0-9]+$/.test(request.device) ||
-          typeof request.inode !== 'string' ||
-          !/^[0-9]+$/.test(request.inode)
-        )
-          throw new Error('invalid native import recipe')
-        if (Date.now() >= (request.deadlineUnixMs as number)) {
-          reply('absent')
-          return
-        }
-        try {
-          lstatSync(`/proc/self/fd/${outputDirectory.fd}/${request.directory}`)
-          reply('absent')
-          return
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        }
-        const fd = openSync(`/proc/self/fd/${outputBacking.fd}/${name}`, 0x10000 | 0x20000)
-        let retained = false
-        try {
-          const identity = fstatSync(fd, { bigint: true })
-          const mount = (descriptor: number) =>
-            /^mnt_id:\s+(\d+)$/m.exec(readFileSync(`/proc/self/fdinfo/${descriptor}`, 'utf8'))?.[1]
-          const originalMount = mount(outputBacking.fd)
-          if (
-            !identity.isDirectory() ||
-            identity.dev !== BigInt(request.device) ||
-            identity.ino !== BigInt(request.inode) ||
-            originalMount === undefined ||
-            mount(fd) !== originalMount ||
-            mount(outputDirectory.fd) !== originalMount
-          )
-            throw new Error('native import stage does not match its original backing')
-          importStages.set(name, {
-            fd,
-            directory: request.directory,
-            monotonicEnd: Math.min(
-              importRootEnd,
-              performance.now() + Math.max(0, (request.deadlineUnixMs as number) - Date.now()),
-            ),
-            device: identity.dev,
-            inode: identity.ino,
-            cancelled: false,
-            attempted: false,
-            committed: false,
-          })
-          retained = true
-          reply('staged')
-        } finally {
-          if (!retained) closeSync(fd)
-        }
-      } else if (type === 'import-commit') {
-        const stage = importStages.get(name)
-        if (stage === undefined && stopReason !== undefined) {
-          reply('absent')
-          return
-        }
-        if (stage === undefined || stage.attempted)
-          throw new Error('native import stage is unavailable')
-        stage.attempted = true
-        // The independent Run owner accepts stop and commit in this one loop.
-        // Original deadlines are checked here, before the synchronous syscall;
-        // cancellation grace never extends publication authority.
-        if (
-          stage.cancelled ||
-          stopReason !== undefined ||
-          !continued ||
-          performance.now() >= stage.monotonicEnd ||
-          child?.exitCode !== null ||
-          child?.signalCode !== null ||
-          !/^populated 1$/m.test(readFileSync(`${runCgroup}/cgroup.events`, 'utf8'))
-        ) {
-          reply('absent')
-          return
-        }
-        if (outputBacking === undefined || outputDirectory === undefined)
-          throw new Error('native original output directories are unavailable')
-        const identity = fstatSync(stage.fd, { bigint: true })
-        const named = lstatSync(`/proc/self/fd/${outputBacking.fd}/${name}`, { bigint: true })
-        if (
-          identity.dev !== stage.device ||
-          identity.ino !== stage.inode ||
-          named.dev !== stage.device ||
-          named.ino !== stage.inode ||
-          !named.isDirectory()
-        )
-          throw new Error('native import stage identity changed')
-        stage.committed = publishImportDirectory(
-          configuration.bunHostLibraryPath,
-          outputBacking.fd,
-          name,
-          outputDirectory.fd,
-          stage.directory,
-        )
-        reply(stage.committed ? 'committed' : 'absent')
-      } else if (type === 'import-end') {
-        const stage = importStages.get(name)
-        if (stage !== undefined) {
-          closeSync(stage.fd)
-          importStages.delete(name)
-        }
-        reply('closed')
-      } else throw new Error('unknown native import control')
-    } catch (error) {
-      reply('error', error)
-    }
-  }
   let resolveAdmission!: () => void
   let rejectAdmission!: (error: Error) => void
   const admission = new Promise<void>((resolve, reject) => {
@@ -375,8 +230,6 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
         const gate = child?.stdio[4] as Writable | undefined
         if (gate === undefined) return stop('setup_failed')
         gate.end(Buffer.from([1]))
-      } else if (type?.startsWith('import-')) {
-        importControl(next.value)
       } else if (type === 'cancel') {
         stop('cancelled')
       } else {
@@ -385,8 +238,11 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     }
   })()
   void controlTask.catch(() => stop('coordinator_lost'))
-  const hardDeadlineUnixMs = limits.deadlineUnixMs + limits.cancellationGraceMs
-  const deadline = setTimeout(() => stop('deadline'), Math.max(0, hardDeadlineUnixMs - Date.now()))
+  const clearDeadline = watchPrivateBootDeadline(
+    limits.bootDeadline,
+    (reason) => stop(reason),
+    limits.cancellationGraceMs,
+  )
 
   let exitCode: number | null = null
   let exitSignal: string | null = null
@@ -474,7 +330,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
       await outputReady(launched)
       // The trusted inner launcher blocks before package code can run.
       // This FD pins the mount, not a replaceable payload pathname.
-      if (configuration.outputImports) {
+      if (configuration.evaluationWorkspace !== null) {
         outputBacking = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
         outputDirectory = await open(`/proc/self/fd/${outputBacking.fd}/public`, 0x10000)
         const projectedReady = outputReady(launched)
@@ -507,16 +363,8 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   } finally {
     monitoringClosed = true
     clearInterval(coreDumpTimer)
-    clearTimeout(deadline)
+    clearDeadline()
     const closeErrors: unknown[] = []
-    for (const stage of importStages.values()) {
-      try {
-        closeSync(stage.fd)
-      } catch (error) {
-        closeErrors.push(error)
-      }
-    }
-    importStages.clear()
     for (const directory of [outputDirectory, outputBacking]) {
       try {
         await directory?.close()
@@ -576,65 +424,12 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   }
 }
 
-let importNative:
-  | {
-      readonly ptr: (bytes: Uint8Array) => number
-      readonly errno: () => number
-      readonly rename: (
-        source: number,
-        name: number,
-        destination: number,
-        directory: number,
-        flags: number,
-      ) => number
-    }
-  | undefined
-function publishImportDirectory(
-  library: string,
-  source: number,
-  name: string,
-  destination: number,
-  directory: string,
-): boolean {
-  if (importNative === undefined) {
-    const ffi = createRequire(import.meta.url)('bun:ffi') as {
-      ptr(bytes: Uint8Array): number
-      read: { i32(pointer: number): number }
-      dlopen(
-        path: string,
-        symbols: Record<string, { args: string[]; returns: string }>,
-      ): {
-        symbols: Record<string, (...args: number[]) => number>
-      }
-    }
-    const { symbols } = ffi.dlopen(posix.join(library, 'libc.so.6'), {
-      renameat2: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
-      __errno_location: { args: [], returns: 'ptr' },
-    })
-    importNative = {
-      ptr: ffi.ptr,
-      errno: () => ffi.read.i32(symbols.__errno_location!()),
-      rename: symbols.renameat2!,
-    }
-  }
-  const from = Buffer.from(`${name}\0`),
-    to = Buffer.from(`${directory}\0`)
-  if (
-    importNative.rename(source, importNative.ptr(from), destination, importNative.ptr(to), 1) === 0
-  )
-    return true
-  const errno = importNative.errno()
-  if (errno === 17) return false // RENAME_NOREPLACE collision is a proved noncommit.
-  throw new Error(`native import rename failed (${errno})`)
-}
-
-/** Package-private kernel observation seam; never reads candidate-authored files. */
+/** Observe owned kernel state, never candidate-authored files. */
 export async function privateHasCoreDumpingProcess(
   runCgroup: string,
   maxProcesses: number,
-  readText: (path: string) => Promise<string> = (path) => readFile(path, 'utf8'),
 ): Promise<boolean> {
-  const processes = (await readText(`${runCgroup}/cgroup.procs`)).trim()
+  const processes = (await readFile(`${runCgroup}/cgroup.procs`, 'utf8')).trim()
   const pids = processes === '' ? [] : processes.split('\n')
   if (
     !positiveInteger(maxProcesses) ||
@@ -645,7 +440,7 @@ export async function privateHasCoreDumpingProcess(
   const membership = `0::${runCgroup.slice('/sys/fs/cgroup'.length)}`
   for (const pid of pids) {
     try {
-      const status = await readText(`/proc/${pid}/status`)
+      const status = await readFile(`/proc/${pid}/status`, 'utf8')
       if (status.length > MAX_CONTROL_BYTES) throw new Error('oversized owned process status')
       // Zombies have no mm and Linux omits CoreDumping from their status.
       // They are reaped through childClose, not treated as inspection failures.
@@ -655,7 +450,8 @@ export async function privateHasCoreDumpingProcess(
       if (dumping[1] !== '1') continue
       // PIDs can disappear or be reused during a scan. A stale foreign PID
       // cannot establish a crash in this owner, and is never signalled directly.
-      if ((await readText(`/proc/${pid}/cgroup`)).split('\n').includes(membership)) return true
+      if ((await readFile(`/proc/${pid}/cgroup`, 'utf8')).split('\n').includes(membership))
+        return true
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code !== 'ENOENT' && code !== 'ESRCH') throw error
@@ -745,6 +541,7 @@ async function innerMain(
   projectOutput = false,
   projectedOutput = false,
   payloadEnvironment?: Readonly<Record<string, string>>,
+  evaluationWorkspace?: PrivateProjectEvaluationWorkspace,
 ): Promise<void> {
   if (command.length === 0 || !absolute(command[0]!))
     throw new Error('invalid rootless inner command')
@@ -768,11 +565,21 @@ async function innerMain(
   }
   if (projectOutput) {
     mkdirSync('/jig-output/public', { mode: 0o700 })
+    if (evaluationWorkspace !== undefined) {
+      privateCopyLinuxEvaluationWorkspace(evaluationWorkspace)
+      for (const root of privateEvaluationWritableRoots(evaluationWorkspace))
+        mkdirSync(`/jig-output/public/${root}`, { mode: 0o700 })
+    }
     writeSync(4, Buffer.from([1]))
     const custody = Buffer.alloc(1)
     if (readSync(4, custody, 0, 1, null) !== 1 || custody[0] !== 2)
       throw new Error('original output custody was not acquired')
-    projectPrivateOutputAndExec(command, capturedInputs, payloadEnvironment ?? {})
+    projectPrivateOutputAndExec(
+      command,
+      capturedInputs,
+      payloadEnvironment ?? {},
+      evaluationWorkspace,
+    )
   }
   if (projectedOutput) {
     const posture = readFileSync('/proc/self/status', 'utf8')
@@ -813,6 +620,7 @@ function projectPrivateOutputAndExec(
     readonly digest: string
   }[],
   payloadEnvironment: Readonly<Record<string, string>>,
+  evaluationWorkspace?: PrivateProjectEvaluationWorkspace,
 ): never {
   const ffi = createRequire(import.meta.url)('bun:ffi') as {
     ptr(bytes: Uint8Array): number
@@ -842,12 +650,44 @@ function projectPrivateOutputAndExec(
     )
   const publicDirectory = openSync('/jig-output/public', 0x10000 | 0x20000)
   try {
+    const mount = (source: string | null, destination: string, flags: bigint) => {
+      const from = source === null ? null : Buffer.from(`${source}\0`)
+      const to = Buffer.from(`${destination}\0`)
+      if (
+        native.symbols.mount!(
+          from === null ? null : ffi.ptr(from),
+          ffi.ptr(to),
+          null,
+          flags,
+          null,
+        ) !== 0
+      )
+        throw new Error('closed evaluation mount projection is unavailable')
+    }
+    if (evaluationWorkspace !== undefined) {
+      // Freeze the whole work tree before adding ONLY selected writable roots.
+      mount('/work', '/work', 4096n)
+      mount(null, '/work', 4096n | 32n | 1n | 2n | 4n)
+      for (const root of privateEvaluationWritableRoots(evaluationWorkspace))
+        mount(`/proc/self/fd/${publicDirectory}/${root}`, `/work/${root}`, 4096n)
+      mount('/tmp', '/work/scratch', 4096n)
+    }
     const source = Buffer.from(`/proc/self/fd/${publicDirectory}\0`)
     const destination = Buffer.from('/jig-output\0')
     if (native.symbols.mount!(ffi.ptr(source), ffi.ptr(destination), null, 4096n, null) !== 0)
       throw new Error(
         `private output subtree projection is unavailable (${ffi.read.i32(native.symbols.__errno_location!())})`,
       )
+    if (evaluationWorkspace !== undefined) {
+      // The collector retains the original unmounted directory, preserving
+      // no-XDEV checks. The payload sees a readonly aggregate with root overlays.
+      mount(null, '/jig-output', 4096n | 32n | 1n | 2n | 4n)
+      for (const root of privateEvaluationWritableRoots(evaluationWorkspace))
+        mount(`/work/${root}`, `/jig-output/${root}`, 4096n)
+      // Sever the covered writable work mount from the trusted parent's cwd.
+      // Otherwise a payload could reach it through that parent's procfs cwd.
+      process.chdir('/work')
+    }
   } finally {
     closeSync(publicDirectory)
   }
@@ -858,6 +698,7 @@ function projectPrivateOutputAndExec(
     '--inner-output-projected',
     JSON.stringify(capturedInputs),
     JSON.stringify(payloadEnvironment),
+    JSON.stringify(evaluationWorkspace ?? null),
     '--',
     ...command,
   ]
@@ -969,10 +810,11 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   for (const mount of configuration.readOnlyMounts)
     result.push('--ro-bind', mount.source, mount.destination)
   if (configuration.inputDirectories.length > 0)
-    result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-input')
+    result.push('--size', String(32 * 1024 * 1024), '--tmpfs', '/jig-input')
   const aliasNames = new Set(configuration.inputAliases.map((alias) => `/jig-input/${alias.name}`))
   for (const path of configuration.inputDirectories)
     if (!aliasNames.has(path)) result.push('--dir', path)
+  for (const path of configuration.inputEmptyDirectories) result.push('--dir', path)
   // Copy sealed bytes into named inodes, then freeze the whole private tree.
   // Unlinked bind-data inodes break Bun's module realpath resolution.
   for (const file of configuration.capturedInputs)
@@ -984,9 +826,21 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-output')
     result.push('--sync-fd', '4', '--json-status-fd', '5')
   }
+  if (configuration.evaluationWorkspace !== null) {
+    const source = configuration.readOnlyMounts.find(
+      (mount) => mount.destination === PRIVATE_EVALUATION_WORKSPACE_PATH,
+    )!.source
+    result.push(
+      ...privateLinuxEvaluationWorkspaceArguments({
+        workspace: configuration.evaluationWorkspace,
+        source,
+        entries: configuration.evaluationEntries,
+      }),
+    )
+  }
   result.push('--ro-bind', configuration.supervisorPath, MODULE_DESTINATION)
   for (const [name, value] of Object.entries(
-    configuration.outputImports ? {} : configuration.environment,
+    configuration.evaluationWorkspace !== null ? {} : configuration.environment,
   ).sort(([a], [b]) => a.localeCompare(b))) {
     result.push('--setenv', name, value)
   }
@@ -1000,14 +854,14 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     String(configuration.payloadGid),
     '--cap-drop',
     'ALL',
-    ...(configuration.outputImports
+    ...(configuration.evaluationWorkspace !== null
       ? ['--cap-add', 'CAP_SYS_ADMIN', '--cap-add', 'CAP_SETPCAP']
       : []),
     '--',
     SANDBOX_BUN,
     ...POLICY,
     MODULE_DESTINATION,
-    configuration.outputImports
+    configuration.evaluationWorkspace !== null
       ? '--inner-output-project'
       : configuration.output
         ? '--inner-output'
@@ -1019,7 +873,12 @@ function bubblewrapArguments(configuration: Configuration): string[] {
         digest,
       })),
     ),
-    ...(configuration.outputImports ? [JSON.stringify(configuration.environment)] : []),
+    ...(configuration.evaluationWorkspace !== null
+      ? [
+          JSON.stringify(configuration.environment),
+          JSON.stringify(configuration.evaluationWorkspace),
+        ]
+      : []),
     '--',
     ...configuration.command,
   )
@@ -1146,14 +1005,16 @@ function requireStart(value: unknown): Configuration {
     'capturedInputs',
     'delegatedCgroup',
     'environment',
+    'evaluationWorkspace',
+    'evaluationEntries',
     'limits',
     'inputDirectories',
+    'inputEmptyDirectories',
     'inputAliases',
     'mechanismDigest',
     'nestedUserNamespaces',
     'network',
     'output',
-    'outputImports',
     'ownerDigest',
     'ownerStateAllocationDigest',
     'ownerStateDirectory',
@@ -1165,6 +1026,32 @@ function requireStart(value: unknown): Configuration {
     'sealedPlanDigest',
     'supervisorPath',
   ]
+  const evaluationWorkspace = normalizePrivateProjectEvaluationWorkspace(
+    configuration.evaluationWorkspace,
+  )
+  if (
+    !Array.isArray(configuration.evaluationEntries) ||
+    (evaluationWorkspace === undefined && configuration.evaluationEntries.length !== 0) ||
+    (evaluationWorkspace !== undefined &&
+      (!configuration.output ||
+        configuration.limits.memoryBytes > 512 * 1024 * 1024 ||
+        configuration.network !== 'isolated' ||
+        configuration.nestedUserNamespaces ||
+        configuration.capturedInputs.length !== 0 ||
+        configuration.inputDirectories.length !== 0 ||
+        !configuration.readOnlyMounts.some(
+          (mount) => mount.destination === PRIVATE_EVALUATION_WORKSPACE_PATH,
+        )))
+  )
+    throw new Error('invalid closed evaluation workspace configuration')
+  if (evaluationWorkspace !== undefined)
+    privateLinuxEvaluationWorkspaceArguments({
+      workspace: evaluationWorkspace,
+      source: configuration.readOnlyMounts.find(
+        (mount) => mount.destination === PRIVATE_EVALUATION_WORKSPACE_PATH,
+      )!.source,
+      entries: configuration.evaluationEntries,
+    })
   if (
     configuration === null ||
     typeof configuration !== 'object' ||
@@ -1195,9 +1082,6 @@ function requireStart(value: unknown): Configuration {
     (configuration.network !== 'isolated' && configuration.network !== 'inherited') ||
     typeof configuration.nestedUserNamespaces !== 'boolean' ||
     typeof configuration.output !== 'boolean' ||
-    typeof configuration.outputImports !== 'boolean' ||
-    (configuration.outputImports &&
-      (!configuration.output || configuration.nestedUserNamespaces)) ||
     !Array.isArray(configuration.capturedInputs) ||
     configuration.capturedInputs.length > 64 ||
     !Array.isArray(configuration.inputDirectories) ||
@@ -1234,6 +1118,14 @@ function requireStart(value: unknown): Configuration {
   ) {
     throw new Error('invalid rootless supervisor configuration')
   }
+  normalizePrivateInputEmptyDirectories(
+    configuration.inputEmptyDirectories.map((path) => {
+      if (!path.startsWith('/jig-input/')) throw new Error('invalid input directory')
+      return path.slice('/jig-input/'.length)
+    }),
+    configuration.inputDirectories.map((path) => path.slice('/jig-input/'.length)),
+    configuration.capturedInputs.map((file) => file.destination.slice('/jig-input/'.length)),
+  )
   {
     const aliases = configuration.inputAliases
     const names = new Set(aliases.map((alias) => alias?.name))
@@ -1271,6 +1163,7 @@ function validLimits(value: unknown): value is Limits {
   if (value === null || typeof value !== 'object' || Array.isArray(value)) return false
   const limits = value as Record<string, unknown>
   const keys = [
+    'bootDeadline',
     'cancellationGraceMs',
     'cleanupTimeoutMs',
     'cpuPeriodMicros',
@@ -1289,8 +1182,17 @@ function validLimits(value: unknown): value is Limits {
     positiveInteger(limits.cancellationGraceMs) &&
     positiveInteger(limits.cleanupTimeoutMs) &&
     Number(limits.deadlineUnixMs) + Number(limits.cancellationGraceMs) <= Number.MAX_SAFE_INTEGER &&
-    Number(limits.deadlineUnixMs) + Number(limits.cancellationGraceMs) - Date.now() <= 2_147_483_647
+    validBootDeadline(limits.bootDeadline)
   )
+}
+
+function validBootDeadline(value: unknown): boolean {
+  try {
+    normalizePrivateBootDeadline(value)
+    return true
+  } catch {
+    return false
+  }
 }
 
 function validMounts(value: unknown): value is readonly Mount[] {
@@ -1597,7 +1499,7 @@ async function main(): Promise<void> {
   ) {
     const privateProjection =
       mode === '--inner-output-project' || mode === '--inner-output-projected'
-    const separator = privateProjection ? 2 : 1
+    const separator = privateProjection ? 3 : 1
     if (arguments_[separator] !== '--') throw new Error('invalid rootless inner separator')
     let payloadEnvironment: Readonly<Record<string, string>> | undefined
     if (privateProjection) {
@@ -1644,6 +1546,9 @@ async function main(): Promise<void> {
       mode === '--inner-output-project',
       mode === '--inner-output-projected',
       payloadEnvironment,
+      privateProjection
+        ? normalizePrivateProjectEvaluationWorkspace(JSON.parse(arguments_[2]!))
+        : undefined,
     )
   }
   throw new Error('invalid rootless supervisor mode')

@@ -20,8 +20,10 @@ sections.
 | `agent-run.md` | Explicit Agent values, package claims, feature contracts, channels, conversations, and session receipts |
 | `finite-acp.md` | Native grants, credential separation, client selection, bounded lifecycle, retention, and restoration |
 | `http-request.md` | Endpoint grants, requests, response decoding, private bearer delivery, and contained-worker settlement |
+| `execution-client.md` | Non-dispatching preparation and lookup, exact ticket acceptance, owner/observer roles, scoped cancellation, bounded retention, forgetting, and export without re-execution |
 | `project-command.md` | Bounded candidate execution and trusted command evidence collection |
-| `run-checkpoint.md` | Root-owned bounded evidence retention |
+| `project-evaluation.md` | Reviewed Bun/TypeScript evaluation, exact descriptor, closed recipes, and candidate evidence distinct from application acceptance |
+| `run-checkpoint.md` | Root-owned latest aggregate retention, held artifact associations, and publication independent of writable root attachments |
 | `contract-authoring.md` | Explicit generation, freshness, compiler limits, generated ownership, and publication recovery |
 | `grants.md` | Resource policy, capture, recipient identity, reuse, and explicit authority approval |
 | `channels.md` | Direct and broadcast support, local limits, and installed NDJSON output |
@@ -46,6 +48,13 @@ execution evidence.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.
+- Execution client examples preserve selected receipt approval, exact tickets,
+  conservative dispatch evidence, and original final/checkpoint status.
+  Retained allowances, shared attempt quota, live artifact limits, and review
+  archives remain distinct. Logical reservations do not promise physical space.
+- Child file routes distinguish fixed reads, supplied held artifacts, and fresh
+  operation-created outputs. Forwarded artifact results are separate from domain
+  results. The original protected attempt owns the latest accepted checkpoint.
 - `project-policy.md` owns installation verification modes and their integrity
   limits. `--verification` overrides `JIG_VERIFICATION`. Cached is the installed
   default. Fast may miss changed tool bytes. Agent and CLI contracts reference

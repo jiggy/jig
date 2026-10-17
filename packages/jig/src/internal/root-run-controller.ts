@@ -1,7 +1,8 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
+import type { AttemptConstraints } from '../attempt-contract.js'
 import { CheckError } from '../diagnostics.js'
-import type { JsonValue } from '../json.js'
+import { canonicalJson, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { ChannelOperationError } from '../run/channels.js'
 import {
@@ -13,14 +14,19 @@ import {
 import { findPrivateActivationCandidateTargetV5 } from './activation-admission.js'
 import {
   closePrivateRootExecution,
+  isPrivateAttemptRunRevoked,
   type PrivateProjectCoordinator,
   type PrivateReacquiredRootExecutionWork,
   type PrivateRootExecutionCheckpointName,
   type PrivateRootExecutionLifecycle,
   type PrivateRootRunSnapshot,
   type PrivateRootRunTerminal,
+  privateAttemptRunConstraints,
+  privateAttemptRunDeadline,
+  privateAttemptRunRetainedArtifactBytes,
   reacquirePrivateRootExecutionWork,
   recordPrivateRootExecutionCheckpoint,
+  savePrivateAttemptRunCheckpoint,
 } from './activation-admission-store.js'
 import { openBoundAttachments } from './bound-attachments.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
@@ -50,15 +56,23 @@ import {
   releasePrivateExecutionOwnerState,
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
-import type { PrivateFileImportTarget } from './execution-file-import.js'
 import { PRIVATE_OUTPUT_BYTES } from './execution-intent.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
 import {
-  bindPrivateFlowFileImportTarget,
   type PrivateFlowFileContext,
+  releasePrivateFlowArtifact,
+  selectedPrivateFlowArtifacts,
 } from './flow-file-context.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootDeadlineFromUnix,
+  privateBootRemaining,
+  readPrivateNativeClock,
+  watchPrivateBootDeadline,
+} from './native-clock.js'
 import { captureStoredPackage } from './package-artifact-store.js'
 import {
   allocatePrivatePackageMaterialization,
@@ -142,6 +156,8 @@ interface PrivateDirectRootPlanRecord {
   readonly observationDigest: string
   readonly activationStartedUnixMs: number
   readonly effectiveDeadlineUnixMs: number
+  readonly activationStartedBoot: PrivateBootDeadline
+  readonly effectiveBootDeadline: PrivateBootDeadline
   readonly cancellationGraceMs: number
   readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity
   readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
@@ -205,6 +221,13 @@ export async function executePrivateRootRunLaunch(input: {
       work.run.input,
       input.projectRoot,
       work.run.coordinatorEpoch,
+      async (checkpoint) =>
+        savePrivateAttemptRunCheckpoint({
+          projectRoot: input.projectRoot,
+          runId: input.runId,
+          epoch: work.run.coordinatorEpoch,
+          ...checkpoint,
+        }),
     )
   return await startOrResumeCurrentExecution(input, work)
 }
@@ -213,16 +236,35 @@ async function startOrResumeCurrentExecution(
   input: RootExecutionInput,
   initial: PrivateReacquiredRootExecutionWork,
 ): Promise<PrivateRootExecutionDisposition> {
-  const stop = new FirstStop(input.signal, initial.intent.deadlineUnixMs)
+  const acceptedDeadline = await privateAttemptRunDeadline({
+    projectRoot: input.projectRoot,
+    runId: input.runId,
+  })
+  const originalBootDeadline =
+    initial.lifecycle.plan === undefined
+      ? (acceptedDeadline ?? privateBootDeadlineFromUnix(initial.intent.deadlineUnixMs))
+      : parsePlan(initial.lifecycle.plan.value).effectiveBootDeadline
+  const stop = new FirstStop(input.signal, originalBootDeadline)
+  const requireLaunchPermission = async () => {
+    if (
+      await isPrivateAttemptRunRevoked({
+        projectRoot: input.projectRoot,
+        runId: input.runId,
+      })
+    )
+      throw new ChannelOperationError('CANCELLED', 'root Run cancellation was requested')
+    input.signal?.throwIfAborted()
+  }
   let work = initial
   let observedTerminal: RunHostTerminal | undefined
+  let finalArtifactSelection: Readonly<Record<string, string>> | undefined
+  let attemptConstraints: AttemptConstraints | undefined
   let channels: PrivateRunChannels | undefined
   let channelPackage: Awaited<ReturnType<typeof captureStoredPackage>> | undefined
   let stopChannels: (() => void) | undefined
   let channelDeadline: ReturnType<typeof setTimeout> | undefined
   let boundFiles: Awaited<ReturnType<typeof openBoundAttachments>> | undefined
   let fileContext: PrivateFlowFileContext | undefined
-  let outputImport: PrivateFileImportTarget | undefined
   let failurePhase: PrivateRootExecutionFailurePhase = 'planning'
   let reportedError: unknown
   let hasReportedError = false
@@ -236,17 +278,10 @@ async function startOrResumeCurrentExecution(
       // Optional closed test evidence cannot replace the Run outcome.
     }
   }
-  const retireFencedImporter = async (original?: unknown, settleChildren = true): Promise<void> => {
+  const settleFencedOperations = async (original?: unknown): Promise<void> => {
     const failures: unknown[] = []
-    if (settleChildren) {
-      try {
-        await recoverPrivateRootOperationOwners(input, work)
-      } catch (error) {
-        failures.push(error)
-      }
-    }
     try {
-      await outputImport?.close()
+      await recoverPrivateRootOperationOwners(input, work)
     } catch (error) {
       failures.push(error)
     }
@@ -254,11 +289,15 @@ async function startOrResumeCurrentExecution(
       throw new PrivateExecutionFenceUnconfirmedError(
         new AggregateError(
           original === undefined ? failures : [original, ...failures],
-          'root operation and file importer retirement could not be confirmed',
+          'root operation retirement could not be confirmed',
         ),
       )
   }
   try {
+    attemptConstraints = await privateAttemptRunConstraints({
+      projectRoot: input.projectRoot,
+      runId: input.runId,
+    })
     let recipe: PrivateDirectRunRecipe
     let plan: PrivateDirectRootPlanRecord
     if (work.lifecycle.plan === undefined) {
@@ -266,10 +305,18 @@ async function startOrResumeCurrentExecution(
         return terminal(await settleWithoutPlan(input, work, stop.terminal))
       }
       const activationStartedUnixMs = Date.now()
+      const activationStartedBoot = readPrivateNativeClock()
       recipe = await reproduceRecipe(input, work)
-      stop.narrow(
-        Math.min(work.intent.deadlineUnixMs, activationStartedUnixMs + recipe.wallClockCeilingMs),
-      )
+      stop.narrow({
+        bootId: originalBootDeadline.bootId,
+        monotonicMs:
+          activationStartedBoot.bootId === originalBootDeadline.bootId
+            ? Math.min(
+                originalBootDeadline.monotonicMs,
+                activationStartedBoot.monotonicMs + recipe.wallClockCeilingMs,
+              )
+            : 0,
+      })
       if (stop.terminal !== undefined) {
         return terminal(await settleWithoutPlan(input, work, stop.terminal))
       }
@@ -293,7 +340,12 @@ async function startOrResumeCurrentExecution(
         recipeDigest: recipe.digest,
         observationDigest: recipe.observation.digest,
         activationStartedUnixMs,
-        effectiveDeadlineUnixMs: stop.deadlineUnixMs,
+        activationStartedBoot,
+        effectiveBootDeadline: stop.bootDeadline,
+        effectiveDeadlineUnixMs: Math.min(
+          work.intent.deadlineUnixMs,
+          activationStartedUnixMs + recipe.wallClockCeilingMs,
+        ),
         cancellationGraceMs: CANCELLATION_GRACE_MS,
         packageAllocation,
         ownerAllocation,
@@ -302,7 +354,7 @@ async function startOrResumeCurrentExecution(
     } else {
       plan = parsePlan(work.lifecycle.plan.value)
       recipe = await reproduceRecipe(input, work)
-      stop.narrow(plan.effectiveDeadlineUnixMs)
+      stop.narrow(plan.effectiveBootDeadline)
       await requirePlanMatches(input.projectRoot, plan, work, recipe)
     }
 
@@ -343,7 +395,7 @@ async function startOrResumeCurrentExecution(
     }
     failurePhase = 'projection'
     boundFiles = await openBoundAttachments(input.packageStoreRoot, recipe.request.boundAttachments)
-    const fileProjection = (input.files ?? new PrivateRootRunFiles([], null)).projection(
+    const fileProjection = (input.files ?? new PrivateRootRunFiles([], false)).projection(
       work.run.runId,
       recipe.request,
       work.run.files,
@@ -352,7 +404,7 @@ async function startOrResumeCurrentExecution(
     fileContext = fileProjection.context
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
-    const launch = privateFlowExecutionIntent(
+    const flowLaunch = privateFlowExecutionIntent(
       recipe,
       lease.root,
       backendRunLabel(work.run.runId),
@@ -361,6 +413,10 @@ async function startOrResumeCurrentExecution(
       PRIVATE_OUTPUT_BYTES,
       fileProjection.plan,
     )
+    const launch = {
+      ...flowLaunch,
+      limits: { ...flowLaunch.limits, bootDeadline: plan.effectiveBootDeadline },
+    }
     failurePhase = 'sealing'
     const sealed = await sealPrivateExecutionOwner(input.backend, launch, plan.ownerAllocation)
     work = await advanceCheckpoint(input, work, 'sandbox', {
@@ -396,12 +452,13 @@ async function startOrResumeCurrentExecution(
     if (input.signal?.aborted) stopChannels()
     channelDeadline = setTimeout(
       () => openedChannels.broker.abort('DEADLINE_EXCEEDED'),
-      Math.max(0, plan.effectiveDeadlineUnixMs - Date.now()),
+      privateBootRemaining(plan.effectiveBootDeadline),
     )
     let provisional: RunHostTerminal
     let fence: PrivateExecutionConfirmedEnforcementReceipt
     try {
       failurePhase = 'admission'
+      await requireLaunchPermission()
       const component = await privateProfileSpan('rootless-containment-startup', () =>
         admitPrivateExecutionOwner(sealed, stop.enforcementSignal, async (prepared) => {
           work = await advanceCheckpoint(input, work, 'prepared', {
@@ -410,7 +467,6 @@ async function startOrResumeCurrentExecution(
           } as unknown as JsonValue)
         }),
       )
-      outputImport = component.outputImport
       // The signal passed to Backend admission is startup-only. Once the
       // component is ready, RunHost owns cooperative cancellation/deadline
       // delivery and the helper's absolute timer owns the hard fence after
@@ -421,8 +477,6 @@ async function startOrResumeCurrentExecution(
       } catch {
         // Optional command presentation cannot alter admitted execution.
       }
-      if (component.outputImport !== undefined)
-        bindPrivateFlowFileImportTarget(fileContext, component.outputImport)
       input.files?.retainOutput(component.output)
       const parent = work
       const dispatcher = operationDispatcher(
@@ -433,6 +487,7 @@ async function startOrResumeCurrentExecution(
         channelInspected,
         recipe,
         fileContext,
+        attemptConstraints,
       )
       failurePhase = 'protocol'
       provisional = await privateProfileSpan('flow-execution', () =>
@@ -460,15 +515,38 @@ async function startOrResumeCurrentExecution(
           },
           { cancellationGraceMs: plan.cancellationGraceMs },
           dispatcher,
+          { remainingTimeMs: () => privateBootRemaining(plan.effectiveBootDeadline) },
         ).run(),
       )
+      if (
+        provisional.status === 'failed' &&
+        provisional.details !== undefined &&
+        attemptConstraints !== undefined &&
+        canonicalJson(provisional.details).byteLength > attemptConstraints.resultBytes
+      )
+        provisional = {
+          status: 'failed',
+          code: 'RESOURCE_EXHAUSTED',
+          message: 'reported failure details exceed the accepted result allowance',
+          diagnostics: provisional.diagnostics,
+        }
+      if (provisional.status === 'succeeded') {
+        finalArtifactSelection = provisional.result.artifactResults
+        provisional = {
+          ...provisional,
+          result: {
+            outcome: provisional.result.outcome,
+            output: provisional.result.output,
+            ...(finalArtifactSelection === undefined ? {} : { artifacts: finalArtifactSelection }),
+          },
+        }
+      }
       observedTerminal = provisional
       try {
         failurePhase = 'child-settlement'
         await privateProfileSpan('operation-owner-settlement', () =>
           recoverPrivateRootOperationOwners(input, parent),
         )
-        await component.outputImport?.close()
       } catch (error) {
         if (!isPrivateExecutionFenceUnconfirmed(error)) throw error
         // The root result is known, but it cannot become terminal while a
@@ -497,9 +575,7 @@ async function startOrResumeCurrentExecution(
           kind: FENCE_KIND,
           receipt: fence,
         } as unknown as JsonValue)
-        // The child join stays pending; the fenced caller's private copy loans
-        // can retire independently without releasing any child ownership.
-        await retireFencedImporter(error, false)
+        // The child join stays pending; its ownership cannot be released.
         return Object.freeze({ state: 'pending', reason: 'fence-unconfirmed' })
       }
       work = await advanceCheckpoint(
@@ -548,7 +624,7 @@ async function startOrResumeCurrentExecution(
         throw fenceError
       }
       failurePhase = 'child-settlement'
-      await retireFencedImporter(error)
+      await settleFencedOperations(error)
       if (retryableBusy !== undefined) {
         // A sealed owner has existed, so publish its confirmed fence before
         // asking the durable controller to repeat this complete operation.
@@ -577,6 +653,20 @@ async function startOrResumeCurrentExecution(
 
     failurePhase = 'settlement'
     return await privateProfileSpan('root-settlement', async () => {
+      if (provisional.status === 'succeeded')
+        await input.files?.retainNativeArtifacts(fileContext!, input.signal)
+      if (provisional.status === 'succeeded' && finalArtifactSelection !== undefined) {
+        if (input.files === undefined)
+          throw new ChannelOperationError(
+            'INVALID_RESULT',
+            'root artifact retention is unavailable',
+          )
+        input.files.retainArtifacts(
+          fileContext!,
+          channelInspected.invocation?.artifactResults ?? [],
+          finalArtifactSelection,
+        )
+      }
       work = await advanceCheckpoint(input, work, 'fence', {
         kind: FENCE_KIND,
         receipt: fence,
@@ -596,7 +686,7 @@ async function startOrResumeCurrentExecution(
         work,
         observedTerminal ?? stop.terminal,
         error,
-        outputImport === undefined ? undefined : () => retireFencedImporter(error),
+        () => settleFencedOperations(error),
       )
     }
     if (work.lifecycle.plan !== undefined) {
@@ -661,7 +751,7 @@ async function recoverCurrentExecution(
   initial: PrivateReacquiredRootExecutionWork,
   knownTerminal?: PrivateRootRunTerminal,
   fallbackError?: unknown,
-  retireImporter?: () => Promise<void>,
+  settleOperations?: () => Promise<void>,
 ): Promise<PrivateRootExecutionDisposition> {
   let work = initial
   let confirmedFence =
@@ -699,10 +789,10 @@ async function recoverCurrentExecution(
     } catch (error) {
       checkpointFailure = { error }
     }
-    // A failed terminal checkpoint cannot skip fencing an admitted local
-    // importer. Recovery never reattempts an already unconfirmed fence here.
+    // A failed terminal checkpoint cannot skip fencing local execution before
+    // descendant settlement. Never retry an already unconfirmed fence here.
     if (
-      retireImporter !== undefined &&
+      settleOperations !== undefined &&
       confirmedFence === undefined &&
       !fenceAttempted &&
       work.lifecycle.sandbox !== undefined
@@ -721,17 +811,17 @@ async function recoverCurrentExecution(
         )
       }
     }
-    // The actual receipt permits retirement even if persisting that receipt
-    // or the known terminal failed. It never permits releasing child rows.
+    // A confirmed root fence permits descendant settlement even if persisting
+    // that receipt or the known terminal failed.
     if (confirmedFence !== undefined) {
       try {
-        await retireImporter?.()
+        await settleOperations?.()
       } catch (error) {
         if (checkpointFailure !== undefined)
           throw new PrivateExecutionFenceUnconfirmedError(
             new AggregateError(
               [checkpointFailure.error, error],
-              'root recovery and importer retirement could not be confirmed',
+              'root recovery and operation retirement could not be confirmed',
             ),
           )
         throw error
@@ -896,6 +986,33 @@ async function admitProtectedResult(
   const target = findPrivateActivationCandidateTargetV5(work.candidate, work.run.target)
   if (target === undefined) throw new Error('durable root Run target is absent from its candidate')
   const request = target.request
+  const constraints = await privateAttemptRunConstraints({
+    projectRoot: input.projectRoot,
+    runId: input.runId,
+  })
+  const retainedArtifactBytes =
+    constraints === undefined
+      ? 0
+      : await privateAttemptRunRetainedArtifactBytes({
+          projectRoot: input.projectRoot,
+          runId: input.runId,
+        })
+  if (
+    constraints !== undefined &&
+    (canonicalJson(provisional.result.output).byteLength > constraints.resultBytes ||
+      retainedArtifactBytes +
+        Object.values(input.files?.artifacts ?? {}).reduce(
+          (bytes, snapshot) => bytes + snapshot.bytes,
+          0,
+        ) >
+        constraints.artifactBytes)
+  )
+    return {
+      status: 'failed',
+      code: 'RESOURCE_EXHAUSTED',
+      message: 'root result exceeds its accepted output or artifact allowance',
+      diagnostics: provisional.diagnostics,
+    }
   const captured = await captureStoredPackage(input.packageStoreRoot, request.package)
   try {
     return admitPrivatePackageResult(await inspectCapturedPackage(captured), provisional)
@@ -960,6 +1077,7 @@ async function closeFromAdmitted(
         projectRoot: input.projectRoot,
         runId: work.run.runId,
         terminal: admitted,
+        ...(input.files === undefined ? {} : { artifacts: input.files.artifacts }),
       })
     } catch (error) {
       first ??= error
@@ -1049,8 +1167,10 @@ function parsePlan(value: JsonValue): PrivateDirectRootPlanRecord {
     value,
     [
       'activationStartedUnixMs',
+      'activationStartedBoot',
       'cancellationGraceMs',
       'effectiveDeadlineUnixMs',
+      'effectiveBootDeadline',
       'kind',
       'observationDigest',
       'ownerAllocation',
@@ -1074,6 +1194,8 @@ function parsePlan(value: JsonValue): PrivateDirectRootPlanRecord {
     recipeDigest: digest(record.recipeDigest, 'direct root recipe'),
     observationDigest: digest(record.observationDigest, 'direct root observation'),
     activationStartedUnixMs: record.activationStartedUnixMs as number,
+    activationStartedBoot: normalizePrivateBootDeadline(record.activationStartedBoot),
+    effectiveBootDeadline: normalizePrivateBootDeadline(record.effectiveBootDeadline),
     effectiveDeadlineUnixMs: record.effectiveDeadlineUnixMs as number,
     cancellationGraceMs: record.cancellationGraceMs as number,
     packageAllocation:
@@ -1117,7 +1239,18 @@ async function requirePlanMatches(
 ): Promise<void> {
   const roots = await protectedWorkRoots(projectRoot)
   const hexadecimal = runHex(work.run.runId)
+  const acceptedDeadline = await privateAttemptRunDeadline({ projectRoot, runId: work.run.runId })
   if (
+    plan.activationStartedBoot.bootId !== plan.effectiveBootDeadline.bootId ||
+    plan.effectiveBootDeadline.monotonicMs >
+      plan.activationStartedBoot.monotonicMs + recipe.wallClockCeilingMs ||
+    (acceptedDeadline !== undefined &&
+      (acceptedDeadline.bootId !== plan.effectiveBootDeadline.bootId ||
+        plan.effectiveBootDeadline.monotonicMs !==
+          Math.min(
+            acceptedDeadline.monotonicMs,
+            plan.activationStartedBoot.monotonicMs + recipe.wallClockCeilingMs,
+          ))) ||
     plan.requestDigest !== work.intent.requestDigest ||
     plan.recipeDigest !== recipe.digest ||
     plan.recipeDigest !== work.intent.recipeDigest ||
@@ -1165,10 +1298,10 @@ function digest(value: unknown, label: string): string {
 
 class FirstStop {
   terminal?: RunHostTerminal
-  deadlineUnixMs: number
+  bootDeadline: PrivateBootDeadline
   private readonly enforcement = new AbortController()
   private startupEnforcement = true
-  private timer?: ReturnType<typeof setTimeout>
+  private clearDeadline?: () => void
   private readonly abort = (): void => {
     this.terminal ??= failedPrivateRootTerminal(
       'CANCELLED',
@@ -1181,9 +1314,9 @@ class FirstStop {
 
   constructor(
     private readonly signal: AbortSignal | undefined,
-    deadlineUnixMs: number,
+    bootDeadline: PrivateBootDeadline,
   ) {
-    this.deadlineUnixMs = deadlineUnixMs
+    this.bootDeadline = normalizePrivateBootDeadline(bootDeadline)
     signal?.addEventListener('abort', this.abort, { once: true })
     if (signal?.aborted) this.abort()
     this.arm()
@@ -1197,45 +1330,35 @@ class FirstStop {
     this.startupEnforcement = false
   }
 
-  narrow(deadlineUnixMs: number): void {
+  narrow(bootDeadline: PrivateBootDeadline): void {
     if (
-      !Number.isSafeInteger(deadlineUnixMs) ||
-      deadlineUnixMs < 0 ||
-      deadlineUnixMs > this.deadlineUnixMs
+      bootDeadline.bootId !== this.bootDeadline.bootId ||
+      bootDeadline.monotonicMs > this.bootDeadline.monotonicMs
     ) {
       throw new TypeError('effective root Run deadline is invalid')
     }
-    this.deadlineUnixMs = deadlineUnixMs
+    this.bootDeadline = normalizePrivateBootDeadline(bootDeadline)
     this.arm()
   }
 
   dispose(): void {
-    if (this.timer !== undefined) clearTimeout(this.timer)
+    this.clearDeadline?.()
     this.signal?.removeEventListener('abort', this.abort)
   }
 
   private arm(): void {
-    if (this.timer !== undefined) clearTimeout(this.timer)
-    const remaining = this.deadlineUnixMs - Date.now()
-    if (remaining <= 0) {
+    this.clearDeadline?.()
+    this.clearDeadline = watchPrivateBootDeadline(this.bootDeadline, (reason) => {
       this.terminal ??= failedPrivateRootTerminal(
-        'DEADLINE_EXCEEDED',
-        'root Run deadline elapsed before dispatch',
+        reason === 'deadline' ? 'DEADLINE_EXCEEDED' : 'UNAVAILABLE',
+        reason === 'deadline'
+          ? 'root Run deadline elapsed before dispatch'
+          : 'root Run native clock is unavailable',
       )
       if (this.startupEnforcement && !this.enforcement.signal.aborted) {
         this.enforcement.abort(this.terminal)
       }
-      return
-    }
-    this.timer = setTimeout(() => {
-      this.terminal ??= failedPrivateRootTerminal(
-        'DEADLINE_EXCEEDED',
-        'root Run deadline elapsed before dispatch',
-      )
-      if (this.startupEnforcement && !this.enforcement.signal.aborted) {
-        this.enforcement.abort(this.terminal)
-      }
-    }, remaining)
+    })
   }
 }
 
@@ -1272,6 +1395,7 @@ function operationDispatcher(
   inspected: InspectedPackage,
   recipe: PrivateDirectRunRecipe,
   files: PrivateFlowFileContext,
+  constraints?: AttemptConstraints,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
   if (target === undefined) return undefined
@@ -1312,7 +1436,23 @@ function operationDispatcher(
         ...(cause === undefined ? {} : { cause }),
       }),
     onCancellation: (code) => channels.broker.abort(code),
+    releaseArtifact: (reference) => releasePrivateFlowArtifact(files, reference),
     validateResult: (result) => {
+      const selected = selectedPrivateFlowArtifacts(
+        files,
+        inspected.invocation?.artifactResults ?? [],
+        result.artifactResults ?? {},
+      )
+      if (
+        constraints !== undefined &&
+        (canonicalJson(result.output).byteLength > constraints.resultBytes ||
+          Object.values(selected).reduce((bytes, snapshot) => bytes + snapshot.bytes, 0) >
+            constraints.artifactBytes)
+      )
+        throw new ChannelOperationError(
+          'RESOURCE_EXHAUSTED',
+          'root result exceeds its accepted output or artifact allowance',
+        )
       const admitted = admitPrivatePackageResult(inspected, {
         status: 'succeeded',
         result,
@@ -1393,7 +1533,7 @@ function operationDispatcher(
         activeCheckpoint = true
         try {
           if (input.files === undefined) throw new Error('checkpoint owner unavailable')
-          const receipt = await input.files.saveCheckpoint(checkpoint)
+          const receipt = await input.files.saveCheckpoint(checkpoint, files)
           return {
             status: 'succeeded',
             result: { outcome: 'done', output: receipt as unknown as JsonValue },
@@ -1411,12 +1551,17 @@ function operationDispatcher(
           activeCheckpoint = false
         }
       }
-      if (route.native === 'project-command' || route.native === 'http-request')
+      if (
+        route.native === 'project-command' ||
+        route.native === 'http-request' ||
+        route.native === 'project-evaluation'
+      )
         return enter(
           'effect',
           () =>
             executePrivateContainedEffect({
               ...operationInput(input, parent),
+              files,
               onFailure: (phase, error) => input.onFailure?.(`contained-effect-${phase}`, error),
               call,
               parentDeadlineUnixMs,

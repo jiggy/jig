@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { closeSync, constants, fstatSync } from 'node:fs'
+import { canonicalJson } from '../json.js'
 import {
   capturePrivateOutputByteStream,
   type PrivateCapturedBytes,
@@ -10,6 +11,7 @@ import {
   privateDescriptorByteChunks,
   privateDescriptorByteDigest,
 } from './descriptor-byte-stream.js'
+import type { PrivateCapturedFile } from './file-input.js'
 import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
   PRIVATE_FILE_LIMITS,
@@ -20,6 +22,8 @@ import {
   sha256,
 } from './file-input.js'
 import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
+import { readPrivateCapturedInput } from './input-capture.js'
+import { privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
   type PrivateMacosReceivedDescriptors,
   requirePrivateMacosReceivedDescriptors,
@@ -178,6 +182,194 @@ export function capturePrivateOutput(
   return mint(backing, manifest.files, manifest.directories)
 }
 
+/** Seal an already immutable whole input view for explicit result forwarding. */
+export function capturePrivateInputViewOutput(
+  files: readonly PrivateCapturedFile[],
+): PrivateCapturedOutput {
+  files = [...files].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  let offset = 0
+  const manifest = files.map(({ path, input }) => {
+    const file = Object.freeze({ path, offset, bytes: input.bytes, digest: input.digest })
+    offset += input.bytes
+    return file
+  })
+  const directories = new Set<string>()
+  for (const file of files) {
+    const parts = file.path.split('/')
+    for (let i = 1; i < parts.length; i++) directories.add(parts.slice(0, i).join('/'))
+  }
+  function* chunks() {
+    for (const file of files) {
+      const bytes = readPrivateCapturedInput(file.input)
+      try {
+        yield bytes
+      } finally {
+        bytes.fill(0)
+      }
+    }
+  }
+  return mint(
+    capturePrivateOutputByteStream(chunks()),
+    Object.freeze(manifest),
+    Object.freeze([...directories].sort()),
+  )
+}
+
+/** Select complete roots from authentic immutable snapshots, in phase order.
+ * A later root replaces the complete earlier root, including when it is empty.
+ * This copies bytes, not authority; callers still own fencing and result grants. */
+export function capturePrivateOutputSelection(
+  snapshots: readonly PrivateCapturedOutput[],
+  roots: readonly string[],
+  signal?: AbortSignal,
+): PrivateCapturedOutput {
+  if (
+    snapshots.length > 3 ||
+    roots.length > 3 ||
+    new Set(roots).size !== roots.length ||
+    roots.some((root) => privateFilePath(root).includes('/'))
+  )
+    throw new TypeError('invalid bounded output selection')
+  const selected = new Map<
+    string,
+    { readonly snapshot: PrivateCapturedOutput; readonly file: PrivateOutputFile }
+  >()
+  const directories = new Set<string>()
+  for (const snapshot of snapshots) {
+    const held = requirePrivateCapturedOutput(snapshot)
+    for (const root of roots) {
+      if (
+        !held.directories.includes(root) &&
+        !held.files.some((file) => file.path.startsWith(`${root}/`))
+      )
+        continue
+      for (const path of selected.keys()) if (path.startsWith(`${root}/`)) selected.delete(path)
+      for (const path of directories)
+        if (path === root || path.startsWith(`${root}/`)) directories.delete(path)
+      for (const path of held.directories)
+        if (path === root || path.startsWith(`${root}/`)) directories.add(path)
+      for (const file of held.files)
+        if (file.path.startsWith(`${root}/`)) selected.set(file.path, { snapshot, file })
+    }
+  }
+  if (
+    selected.size > PRIVATE_FILE_LIMITS.files ||
+    selected.size + directories.size > PRIVATE_FILE_LIMITS.entries
+  )
+    throw new PrivateOutputProfileError()
+  const entries = [...selected.values()].sort((a, b) =>
+    Buffer.compare(Buffer.from(a.file.path), Buffer.from(b.file.path)),
+  )
+  let offset = 0
+  const files = entries.map(({ file }) => {
+    const entry = Object.freeze({ ...file, offset })
+    offset += file.bytes
+    return entry
+  })
+  function* contents() {
+    for (const { snapshot, file } of entries) {
+      signal?.throwIfAborted()
+      const held = requirePrivateCapturedOutput(snapshot)
+      yield* privateDescriptorByteChunks(held.fd, file.bytes, file.offset)
+    }
+  }
+  return mint(
+    capturePrivateOutputByteStream(contents()),
+    Object.freeze(files),
+    Object.freeze([...directories].sort()),
+  )
+}
+
+/** Compose authenticated immutable artifacts without reopening source paths.
+ * Prefixes and root selection are content layout only, never read authority. */
+export function capturePrivateOutputComposition(
+  sources: readonly {
+    readonly snapshot: PrivateCapturedOutput
+    readonly prefix?: string
+    readonly roots?: readonly string[]
+  }[],
+  signal?: AbortSignal,
+): PrivateCapturedOutput {
+  if (sources.length > 16) throw new PrivateOutputProfileError()
+  const selected: {
+    readonly snapshot: PrivateCapturedOutput
+    readonly file: PrivateOutputFile
+    readonly path: string
+  }[] = []
+  const directories = new Map<string, number>()
+  const paths = new Set<string>()
+  let bytes = 0
+  const addDirectory = (path: string, source: number) => {
+    privateFilePath(path)
+    const prior = directories.get(path)
+    if (paths.has(path) || (prior !== undefined && prior !== source))
+      throw new TypeError('artifact composition paths collide')
+    directories.set(path, source)
+  }
+  for (const [index, source] of sources.entries()) {
+    signal?.throwIfAborted()
+    const held = requirePrivateCapturedOutput(source.snapshot)
+    const prefix = source.prefix === undefined ? '' : privateFilePath(source.prefix)
+    if (
+      source.roots !== undefined &&
+      (source.roots.length > PRIVATE_FILE_LIMITS.entries ||
+        new Set(source.roots).size !== source.roots.length ||
+        source.roots.some((root) => privateFilePath(root).includes('/')))
+    )
+      throw new TypeError('invalid artifact composition roots')
+    const included = (path: string) =>
+      source.roots === undefined || source.roots.includes(path.split('/')[0]!)
+    const destination = (path: string) =>
+      privateFilePath(prefix === '' ? path : `${prefix}/${path}`)
+    if (prefix !== '') {
+      const parts = prefix.split('/')
+      for (let count = 1; count <= parts.length; count++)
+        addDirectory(parts.slice(0, count).join('/'), index)
+    }
+    for (const directory of held.directories)
+      if (included(directory)) addDirectory(destination(directory), index)
+    for (const file of held.files) {
+      if (!included(file.path)) continue
+      const path = destination(file.path)
+      if (paths.has(path) || directories.has(path))
+        throw new TypeError('artifact composition paths collide')
+      const parts = path.split('/')
+      for (let count = 1; count < parts.length; count++)
+        addDirectory(parts.slice(0, count).join('/'), index)
+      paths.add(path)
+      selected.push({ snapshot: source.snapshot, file, path })
+      bytes += file.bytes
+    }
+  }
+  if (
+    paths.size > PRIVATE_FILE_LIMITS.files ||
+    paths.size + directories.size > PRIVATE_FILE_LIMITS.entries ||
+    bytes > PRIVATE_CAPTURE_LIMITS.output
+  )
+    throw new PrivateOutputProfileError()
+  selected.sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)))
+  let offset = 0
+  const files = selected.map(({ path, file }) => {
+    const entry = Object.freeze({ path, offset, bytes: file.bytes, digest: file.digest })
+    offset += file.bytes
+    return entry
+  })
+  function* contents() {
+    for (const { snapshot, file } of selected) {
+      signal?.throwIfAborted()
+      const held = requirePrivateCapturedOutput(snapshot)
+      yield* privateDescriptorByteChunks(held.fd, file.bytes, file.offset)
+    }
+  }
+  return mint(
+    capturePrivateOutputByteStream(contents()),
+    Object.freeze(files),
+    Object.freeze(
+      [...directories.keys()].sort((a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))),
+    ),
+  )
+}
+
 /** A second pass rechecks every byte while a caller writes to its private stage.
  * The caller keeps the original backing fenced and owns failure cleanup. */
 export function* privateOutputFileChunks(
@@ -228,6 +420,79 @@ function mint(
   return output
 }
 
+/** Trusted ticket/export owner only: reseal bytes read under its accepted export pin.
+ * This is not a packet decoder or a source of participant artifact rights. */
+export function capturePrivateRetainedOutput(input: {
+  readonly files: readonly {
+    readonly path: string
+    readonly bytes: Uint8Array
+    readonly digest: string
+  }[]
+  readonly directories: readonly string[]
+}): PrivateCapturedOutput {
+  if (
+    !Array.isArray(input.files) ||
+    !Array.isArray(input.directories) ||
+    input.files.length > PRIVATE_FILE_LIMITS.files ||
+    input.files.length + input.directories.length > PRIVATE_FILE_LIMITS.entries
+  )
+    throw new PrivateOutputProfileError()
+  let offset = 0
+  const files = input.files
+    .map((file) => {
+      const path = privateFilePath(file.path)
+      if (!(file.bytes instanceof Uint8Array) || sha256(file.bytes) !== file.digest)
+        throw new TypeError('retained output bytes do not match their identity')
+      const item = {
+        path,
+        offset: 0,
+        bytes: file.bytes.length,
+        digest: file.digest,
+        contents: file.bytes,
+      }
+      offset += item.bytes
+      if (offset > PRIVATE_CAPTURE_LIMITS.output) throw new PrivateOutputProfileError()
+      return item
+    })
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+  const directories = input.directories.map(privateFilePath).sort()
+  const paths = new Set<string>()
+  const directorySet = new Set(directories)
+  if (directorySet.size !== directories.length)
+    throw new TypeError('duplicate retained output directory')
+  offset = 0
+  for (const file of files) {
+    if (paths.has(file.path) || directorySet.has(file.path))
+      throw new TypeError('retained output paths conflict')
+    paths.add(file.path)
+    file.offset = offset
+    offset += file.bytes
+  }
+  for (const path of [...directories, ...paths]) {
+    const parts = path.split('/')
+    for (let count = 1; count < parts.length; count++)
+      if (!directorySet.has(parts.slice(0, count).join('/')))
+        throw new TypeError('retained output parent directory is absent')
+  }
+  function* chunks() {
+    for (const file of files) {
+      const hash = createHash('sha256')
+      for (let offset = 0; offset < file.bytes; offset += 64 * 1024) {
+        const chunk = file.contents.subarray(offset, Math.min(file.bytes, offset + 64 * 1024))
+        hash.update(chunk)
+        yield chunk
+      }
+      if (`sha256:${hash.digest('hex')}` !== file.digest)
+        throw new TypeError('retained output bytes changed while sealing')
+    }
+  }
+  return mint(
+    capturePrivateOutputByteStream(chunks()),
+    Object.freeze(files.map(({ contents: _contents, ...file }) => Object.freeze(file))),
+    Object.freeze(directories),
+  )
+}
+
 /** Recreate private immutable bytes only from a live authenticated native transfer.
  * The trusted command protocol separately owns terminal and cleanup admission. */
 export function capturePrivateTransferredOutput(
@@ -235,9 +500,27 @@ export function capturePrivateTransferredOutput(
   value: unknown,
 ): PrivateCapturedOutput {
   const descriptors = requirePrivateMacosReceivedDescriptors(bundle)
+  if (descriptors.length !== 1) throw new TypeError('invalid transferred output descriptors')
+  return captureTransferredDescriptor(descriptors[0]!, value)
+}
+
+/** The authenticated Linux command owner imports this held reader from its peer.
+ * Kernel seals, not the serialized manifest, establish immutable byte authority. */
+export function capturePrivateLinuxTransferredOutput(
+  fd: number,
+  value: unknown,
+): PrivateCapturedOutput {
+  if (process.platform !== 'linux') throw new Error('Linux output transfer unavailable')
+  return captureTransferredDescriptor(fd, value, true)
+}
+
+function captureTransferredDescriptor(
+  fd: number,
+  value: unknown,
+  linux = false,
+): PrivateCapturedOutput {
   const identity = value as PrivateCapturedOutput
   if (
-    descriptors.length !== 1 ||
     identity === null ||
     typeof identity !== 'object' ||
     Object.keys(identity).sort().join() !== 'bytes,digest,directories,files' ||
@@ -288,10 +571,11 @@ export function capturePrivateTransferredOutput(
       if (!directorySet.has(parts.slice(0, count).join('/')))
         throw new TypeError('transferred output parent is absent')
   }
-  const fd = descriptors[0]!
   const before = fstatSync(fd, { bigint: true })
   if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(identity.bytes))
     throw new Error('transferred output is not the declared anonymous file')
+  if (linux)
+    privateVerifyLinuxSealedFile(fd, identity.bytes, identity.digest, PRIVATE_CAPTURE_LIMITS.output)
   if (
     privateDescriptorByteDigest(fd, identity.bytes) !== identity.digest ||
     files.some((file) => privateDescriptorByteDigest(fd, file.bytes, file.offset) !== file.digest)
@@ -327,6 +611,20 @@ function backing(value: PrivateCapturedOutput): PrivateCapturedBytes<'output'> {
 export function requirePrivateCapturedOutput(value: PrivateCapturedOutput) {
   const bytes = requirePrivateCapturedBytes(backing(value), 'output')
   return Object.freeze({ ...bytes, files: value.files, directories: value.directories })
+}
+
+/** Common sealed artifact identity: logical paths, byte hashes and empty directories.
+ * Backing offsets and storage allocation are deliberately not portable identity. */
+export function privateCapturedOutputManifestDigest(value: PrivateCapturedOutput): string {
+  const held = requirePrivateCapturedOutput(value)
+  return `sha256:${createHash('sha256')
+    .update(
+      canonicalJson({
+        files: held.files.map(({ path, bytes, digest }) => ({ path, bytes, digest })),
+        directories: held.directories,
+      }),
+    )
+    .digest('hex')}`
 }
 
 /** Fresh owned bytes for one bounded collection; mutations cannot alter the snapshot. */

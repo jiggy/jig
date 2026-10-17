@@ -3,7 +3,7 @@ import asyncio
 from typing import assert_type
 from jiggy.flow import (
     Attachment, ChannelBroadcast, ChannelPair, ChannelReceiver, ChannelSender, JsonValue, OperationError,
-    RunContext, RunHandler, RunResult, handle,
+    Artifact, CallResult, RunContext, RunHandler, RunResult, handle,
 )
 
 async def work(context: RunContext) -> RunResult:
@@ -26,13 +26,20 @@ async def work(context: RunContext) -> RunResult:
     await source.send.close(error="LAGGED")
     try:
         child = await context.call(operation_id="child-1", slot="child", input=context.input)
-        assert_type(child, RunResult)
+        assert_type(child, CallResult)
         result = await context.call(operation_id="call-1", slot="service", input=None,
                                     intent="Read the selected record.", channels={})
-        assert_type(result, RunResult)
+        assert_type(result, CallResult)
+        made = await context.call(operation_id="p1", slot="producer", input=None,
+                                  attachments={"files": {"create": True}})
+        artifact = made["artifacts"]["files"]
+        assert_type(artifact, Artifact)
+        await context.call(operation_id="e1", slot="reader", input=None,
+                           attachments={"source": {"read": artifact}})
+        await context.release(operation_id="r1", artifact=artifact)
         if result["outcome"] == "not-found":
             return {"outcome": "done", "output": None}
-        return result
+        return {"outcome": result["outcome"], "output": result["output"]}
     except OperationError as error:
         return {"outcome": "blocked", "output": error.code}
     except asyncio.CancelledError:

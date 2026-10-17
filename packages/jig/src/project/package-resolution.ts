@@ -48,6 +48,7 @@ export interface PrivateActivationRequest {
   readonly settings: JsonObject
   readonly slots: InvocationSlots
   readonly attachments: Readonly<Record<string, 'read' | 'read-write'>>
+  readonly artifactResults?: readonly string[]
   readonly boundAttachments?: BoundAttachments
 }
 
@@ -108,6 +109,9 @@ export function buildPrivateActivationRequests(
         settings: emptyRecord(),
         slots: resolveInvocationSlots(flow.uses, flow.slots ?? {}),
         attachments: normalizeRequestAttachments(flow.invocation.attachments ?? {}),
+        ...(flow.invocation.artifactResults === undefined
+          ? {}
+          : { artifactResults: flow.invocation.artifactResults }),
       }),
     )
   }
@@ -130,6 +134,9 @@ export function buildPrivateActivationRequests(
           ? {}
           : { boundAttachments: binding.boundAttachments }),
         attachments: normalizeRequestAttachments(flow.invocation.attachments ?? {}),
+        ...(flow.invocation.artifactResults === undefined
+          ? {}
+          : { artifactResults: flow.invocation.artifactResults }),
       }),
     )
   }
@@ -169,6 +176,9 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
       'settings',
       'slots',
       'attachments',
+      ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'artifactResults')
+        ? ['artifactResults']
+        : []),
       ...(value !== null && typeof value === 'object' && Object.hasOwn(value, 'boundAttachments')
         ? ['boundAttachments']
         : []),
@@ -238,6 +248,9 @@ export function restorePrivateActivationRequest(value: unknown): PrivateActivati
     settings: snapshotJsonObject(root.settings, 'activation settings'),
     slots: normalizeInvocationSlots(snapshotJsonObject(root.slots, 'activation slots')),
     attachments: normalizeRequestAttachments(root.attachments),
+    ...(Object.hasOwn(root, 'artifactResults')
+      ? { artifactResults: normalizeRequestArtifactResults(root.artifactResults) }
+      : {}),
     ...(root.boundAttachments === undefined
       ? {}
       : { boundAttachments: normalizeBoundAttachments(root.boundAttachments) }),
@@ -354,6 +367,14 @@ function createRequest(
     settings: input.settings,
     slots: input.slots,
     attachments: input.attachments,
+    ...(input.artifactResults === undefined
+      ? {}
+      : {
+          artifactResults: normalizeRequestArtifactResults(
+            input.artifactResults,
+            input.attachments,
+          ),
+        }),
     ...(input.boundAttachments === undefined ? {} : { boundAttachments: input.boundAttachments }),
   })
   const request = Object.freeze({
@@ -484,7 +505,11 @@ function exactObject(
 }
 
 function requireLocalName(value: unknown, label: string): string {
-  if (typeof value !== 'string' || value.length > 64 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value)) {
+  if (
+    typeof value !== 'string' ||
+    value.length > 64 ||
+    !/^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/.test(value)
+  ) {
     throw new TypeError(`${label} must be a LocalName`)
   }
   return value
@@ -506,6 +531,21 @@ function normalizeRequestAttachments(value: unknown): PrivateActivationRequest['
     output[name] = access
   }
   return Object.freeze(output)
+}
+
+function normalizeRequestArtifactResults(
+  value: unknown,
+  attachments: PrivateActivationRequest['attachments'] = {},
+): readonly string[] {
+  const snapshot = captureJsonValue(value, 'activation artifact results', new WeakSet<object>())
+  if (!Array.isArray(snapshot) || snapshot.length > 256)
+    throw new TypeError('activation artifact results must be an array of at most 256 names')
+  const names = snapshot.map((name) => requireLocalName(name, 'artifact result name'))
+  if (new Set(names).size !== names.length)
+    throw new TypeError('activation artifact results must contain unique names')
+  if (names.some((name) => attachments[name] === 'read-write'))
+    throw new TypeError('artifact result collides with a writable attachment')
+  return Object.freeze(names)
 }
 
 function snapshotJsonObject(value: unknown, label: string): JsonObject {

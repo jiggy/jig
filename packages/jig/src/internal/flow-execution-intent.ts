@@ -4,6 +4,7 @@ import {
   privateExecutionFileProjections,
   privateExecutionPath,
 } from './execution-intent.js'
+import type { PrivateBootDeadline } from './native-clock.js'
 
 export function privateFlowExecutionIntent(
   recipe: PrivateDirectRunRecipe,
@@ -13,10 +14,16 @@ export function privateFlowExecutionIntent(
   cancellationGraceMs: number,
   maxOutputBytes: number,
   files?: Pick<PrivateExecutionIntent, 'capturedInputs' | 'inputDirectories' | 'output'>,
+  bootDeadline?: PrivateBootDeadline,
 ): PrivateExecutionIntent {
   return {
     runId,
-    limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs },
+    limits: {
+      ...recipe.resourceCeilings,
+      deadlineUnixMs,
+      cancellationGraceMs,
+      ...(bootDeadline === undefined ? {} : { bootDeadline }),
+    },
     command: [
       privateExecutionPath(recipe.command[0]),
       ...recipe.command
@@ -45,14 +52,6 @@ export function privateFlowExecutionIntent(
       { source: packageRoot, destination: recipe.packageDestination, kind: 'tree' },
     ],
     ...files,
-    ...(Object.values(recipe.request.slots).some(
-      (route) =>
-        route.kind === 'flow' &&
-        route.attachments !== undefined &&
-        Object.values(route.attachments).some((mapping) => 'into' in mapping),
-    )
-      ? { outputImports: true as const }
-      : {}),
     storageBytes: 512 * 1024 * 1024,
     maxOutputBytes,
   }

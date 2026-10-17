@@ -8,14 +8,14 @@ export default defineBinding({
       target: 'flow:flows/copy-photos',
       attachments: {
         source: { from: 'source' },
-        files: { into: 'photos', directory: 'copies' },
+        files: { create: true },
       },
     },
     'contact-sheet': {
       target: 'flow:flows/contact-sheet',
       attachments: {
         source: { from: 'source' },
-        files: { into: 'photos', directory: 'overview' },
+        files: { create: true },
       },
     },
   },

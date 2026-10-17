@@ -64,6 +64,56 @@ test('one intent lowers to distinct host mechanisms without relocating literal a
   expect(mac.storage?.collect).toBeNull()
   expect(intent.command[0]).toEqual({ path: '/runtime/bun' })
 })
+test('both native plans preserve a frozen boot cutoff instead of deriving authority from Unix', () => {
+  const bootDeadline = { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: 1234 }
+  const supplied = { ...intent, limits: { ...intent.limits, bootDeadline } }
+  expect(privateLinuxExecutionPlan(supplied).limits.bootDeadline).toEqual(bootDeadline)
+  expect(privateMacosExecutionPlan(supplied, allocation).limits.bootDeadline).toEqual(bootDeadline)
+})
+test('evaluation lowering projects one closed phase with no writable candidate or dependency source', () => {
+  const evaluation: PrivateExecutionIntent = {
+    ...intent,
+    command: [
+      privateExecutionPath('/runtime/bun'),
+      privateExecutionPath('/work/node_modules/typescript/lib/tsc.js'),
+      '--project',
+      privateExecutionPath('/work/.jig-evaluation.json'),
+    ],
+    projections: [
+      intent.projections[0]!,
+      { source: '/private/immutable-workspace', destination: '/jig-evaluation', kind: 'tree' },
+    ],
+    evaluationWorkspace: { phase: 'compile', emptyDirectories: [] },
+    network: 'isolated',
+    output: true,
+    environment: { TMPDIR: '/tmp' },
+    relocatedEnvironment: { TMPDIR: '/tmp' },
+  }
+  const linux = privateLinuxExecutionPlan(evaluation)
+  expect(linux.evaluationWorkspace).toEqual({ phase: 'compile', emptyDirectories: [] })
+  const mac = privateMacosExecutionPlan(evaluation, allocation)
+  expect(mac.command).toEqual([
+    '/installed/bun',
+    '/owner/data/evaluation/node_modules/typescript/lib/tsc.js',
+    '--project',
+    '/owner/data/evaluation/.jig-evaluation.json',
+  ])
+  expect(mac.cwd).toBe('/owner/data/evaluation')
+  expect(mac.files.readOnlyTrees).toEqual(['/owner/data/evaluation'])
+  expect(mac.files.writableTrees).toEqual([
+    '/owner/data/evaluation/dist',
+    '/owner/data/evaluation/scratch',
+    '/owner/data/tmp',
+  ])
+  expect(mac.files.readOnlyTrees).not.toContain('/private/immutable-workspace')
+  expect(mac.environment?.TMPDIR).toBe('/owner/data/tmp')
+  expect(mac.storage?.collect).toBe('evaluation')
+  expect(mac.evaluationWorkspace).toEqual({
+    phase: 'compile',
+    emptyDirectories: [],
+    source: '/private/immutable-workspace',
+  })
+})
 test('empty input roots remain read-only and invocation locations match the lowered plan', () => {
   const mac = privateMacosExecutionPlan(
     { ...intent, inputDirectories: ['/jig-input/empty'], output: true },

@@ -18,6 +18,11 @@ companions.
   claims and dependency requirements use that closed catalog. Exact matching
   proves declared compatibility, never authority, behavioral honesty or runtime
   success.
+- Run/0 owns finite attachment handoff and participant-scoped immutable artifact
+  references. It also owns initial read delegation, duplicate-preserving call envelopes,
+  explicit handler result selection and optional early release. Invocation
+  descriptors own `artifactResults` declarations. Domain schemas remain
+  `{outcome, output}`. SDK provenance never manufactures host rights.
 - `package-format.md` owns one `FLOW.<ext>` implementation and its sole metadata
   owner. `markdown-runtime.md` owns the bounded sequential Markdown profile.
   `schema-files.md` owns the common dialect, with implementation settings kept

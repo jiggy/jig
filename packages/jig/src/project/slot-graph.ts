@@ -8,6 +8,8 @@ interface Node {
   readonly packagePath: string
   readonly declarationPath?: string
   readonly slots: Readonly<Record<string, ProjectSlotTarget>>
+  /** Derived from the exact selected interface, never persisted as authority. */
+  readonly rootOnly?: boolean
 }
 
 /** Validate once per target and return longest descendant paths (edge counts). */
@@ -28,6 +30,13 @@ export function validateChildGraph(
     const binding = nodes.get(id)
     if (binding === undefined)
       invalid('PROJECT_BINDING_SLOT_MISSING', 'Flow graph selects an unknown target')
+    if (path.length !== 0 && binding.rootOnly)
+      invalid(
+        'PROJECT_CHILD_ROOT_ONLY',
+        'Run Checkpoint requires a root invocation; keep checkpoint ownership in the caller or invoke this target as a root',
+        binding.declarationPath ?? binding.packagePath,
+        '/slots',
+      )
     if (path.includes(id))
       invalid(
         'PROJECT_BINDING_SLOT_RECURSIVE',

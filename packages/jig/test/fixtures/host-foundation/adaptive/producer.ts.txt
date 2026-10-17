@@ -1,0 +1,32 @@
+import { handle } from '@jigging/flow'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+await handle(async run => {
+  const input = run.input as { cycle: number; previous?: unknown }
+  if (input.cycle !== 1 && input.cycle !== 2) throw Error('Only two candidate cycles are allowed')
+  if (input.cycle === 2 && !input.previous) throw Error('The second candidate requires prior evidence')
+  const root = run.attachments.candidate!.path
+  for (const name of ['src', 'tools', 'test']) await mkdir(join(root, name))
+  // The same reviewed producer changes only candidate bytes, never its source,
+  // recipe, dependencies, slot, approval, or host policy.
+  await writeFile(join(root, 'src/answer.ts'), `
+import { z } from 'zod'
+const operand = z.number().int().parse(21)
+export const answer: number = ${input.cycle === 1 ? "'not a number'" : 'operand * 2'}
+`)
+  await writeFile(join(root, 'tools/generate.js'), `
+import { answer } from '../src/answer.ts'
+await Bun.write('generated/answer.json', JSON.stringify({answer}))
+await Bun.write('generated/marker.bin', new Uint8Array([0,128,255]))
+await Bun.write('generated/empty.bin', new Uint8Array())
+`)
+  // Deliberately weak candidate-owned test: passing it is not acceptance.
+  await writeFile(join(root, 'test/answer.test.js'), `
+import { test, expect } from 'bun:test'
+test('candidate module exports something', async () => {
+  expect((await import('../src/answer.ts')).answer).toBeDefined()
+})
+`)
+  return { outcome: 'done', output: { cycle: input.cycle } }
+})

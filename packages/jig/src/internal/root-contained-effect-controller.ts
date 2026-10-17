@@ -13,6 +13,7 @@ import {
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
+import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
   type PrivateDirectRunRecipe,
@@ -43,6 +44,7 @@ import {
   privateExecutionFileProjections,
   privateExecutionPath,
 } from './execution-intent.js'
+import type { PrivateFlowFileContext } from './flow-file-context.js'
 import { httpCredential, type PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { capturePrivateInput, type PrivateCapturedInput } from './input-capture.js'
@@ -73,6 +75,10 @@ import {
   type ProjectCommandResult,
   parseProjectCommandInput,
 } from './private-project-command.js'
+import {
+  executePrivateProjectEvaluation,
+  recoverPrivateProjectEvaluationOwners,
+} from './project-evaluation-controller.js'
 
 const KIND = 'private-contained-effect-owner/1'
 const ROOT = '/jig-input/project'
@@ -88,10 +94,20 @@ interface Context extends PrivateInvocationContext {
   readonly backend: PrivateExecutionBackend
   readonly httpGrants?: PrivateHttpGrants | undefined
   readonly acpResources?: PrivateAcpResources | undefined
+  readonly packageStoreRoot?: PrivateFileLocation
+  readonly files?: PrivateFlowFileContext
   readonly onFailure?:
     | ((phase: PrivateContainedEffectFailurePhase, error: unknown) => void)
     | undefined
 }
+
+import { privateInvocationBootDeadline } from './invocation-context.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootRemaining,
+} from './native-clock.js'
+
 interface Allocation {
   readonly kind: typeof KIND
   readonly effect: 'project-command' | 'http-request'
@@ -102,6 +118,7 @@ interface Allocation {
   readonly parentFlow: NonNullable<Context['parentFlow']> | null
   readonly requestDigest: string
   readonly deadlineUnixMs: number
+  readonly effectiveBootDeadline: PrivateBootDeadline
   readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
 
@@ -115,6 +132,8 @@ export async function executePrivateContainedEffect(
 ): Promise<RunHostOperationTerminal> {
   const target = requireParentTarget(input)
   const route = target.request.slots[input.call.slot]
+  if (route?.kind === 'native' && route.native === 'project-evaluation')
+    return executePrivateProjectEvaluation(input)
   if (
     route?.kind !== 'native' ||
     route.grant === undefined ||
@@ -178,6 +197,10 @@ export async function executePrivateContainedEffect(
     prepared.kind === 'http' ? prepared.value.grant.timeoutMs : PROJECT_COMMAND_LIMITS.timeoutMs
   const setupAllowanceMs = privateExecutionSetupAllowance(input.backend)
   const ownDeadlineUnixMs = Date.now() + operationTimeoutMs + setupAllowanceMs
+  const effectiveBootDeadline = await privateInvocationBootDeadline(
+    input,
+    operationTimeoutMs + setupAllowanceMs,
+  )
   const deadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
@@ -202,7 +225,7 @@ export async function executePrivateContainedEffect(
   }
   // A repeated operation ID may already own a dispatched effect. Resolve and
   // fence that owner before claiming that this invocation was never dispatched.
-  if (deadlineUnixMs <= Date.now())
+  if (privateBootRemaining(effectiveBootDeadline) <= 0)
     return failed(
       'DEADLINE_EXCEEDED',
       privateContainedDeadlineBeforeDispatchMessage(prepared.kind, deadlineLimit),
@@ -229,6 +252,7 @@ export async function executePrivateContainedEffect(
     parentRequestDigest: target.request.digest,
     parentFlow: input.parentFlow ?? null,
     deadlineUnixMs,
+    effectiveBootDeadline,
     ownerAllocation,
     requestDigest: privateDomainDigest(
       'JIG-Contained-Effect-Request/1',
@@ -279,8 +303,15 @@ export async function executePrivateContainedEffect(
       sealPrivateExecutionOwner(
         input.backend,
         prepared.kind === 'command'
-          ? commandPlan(recipe, prepared.value, files, identity, deadlineUnixMs)
-          : httpPlan(recipe, identity, deadlineUnixMs),
+          ? commandPlan(
+              recipe,
+              prepared.value,
+              files,
+              identity,
+              deadlineUnixMs,
+              effectiveBootDeadline,
+            )
+          : httpPlan(recipe, identity, deadlineUnixMs, effectiveBootDeadline),
         ownerAllocation,
       ),
     )
@@ -436,7 +467,7 @@ export async function executePrivateContainedEffect(
       )
     }
     if (input.signal.aborted) return failed('CANCELLED', 'the contained operation was cancelled')
-    if (Date.now() >= deadlineUnixMs)
+    if (privateBootRemaining(effectiveBootDeadline) <= 0)
       return failed(
         'DEADLINE_EXCEEDED',
         privateContainedDeadlineMessage(prepared.kind, deadlineLimit, phase),
@@ -501,10 +532,11 @@ function httpPlan(
   recipe: PrivateDirectRunRecipe,
   identity: string,
   deadlineUnixMs: number,
+  bootDeadline: PrivateBootDeadline,
 ): PrivateExecutionIntent {
   return {
     runId: `effect-${identity.slice(0, 40)}`,
-    limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
+    limits: { ...recipe.resourceCeilings, deadlineUnixMs, bootDeadline, cancellationGraceMs: 1000 },
     projections: privateExecutionFileProjections([
       ...recipe.installedSupport.runtimeMounts,
       {
@@ -530,6 +562,7 @@ function commandPlan(
   files: readonly { readonly input: PrivateCapturedInput; readonly destination: string }[],
   identity: string,
   deadlineUnixMs: number,
+  bootDeadline: PrivateBootDeadline,
 ): PrivateExecutionIntent {
   const policy = prepared.policy
   const args =
@@ -550,7 +583,7 @@ function commandPlan(
         ]
   return {
     runId: `effect-${identity.slice(0, 40)}`,
-    limits: { ...recipe.resourceCeilings, deadlineUnixMs, cancellationGraceMs: 1000 },
+    limits: { ...recipe.resourceCeilings, deadlineUnixMs, bootDeadline, cancellationGraceMs: 1000 },
     projections: privateExecutionFileProjections(recipe.installedSupport.runtimeMounts),
     capturedInputs: files,
     inputDirectories: [ROOT],
@@ -616,6 +649,7 @@ async function collectEffect(
 }
 
 export async function recoverPrivateContainedEffectOwners(input: Context): Promise<void> {
+  await recoverPrivateProjectEvaluationOwners(input)
   for (const owner of await owners(input)) {
     if (
       isEffectOwner(owner) &&
@@ -631,7 +665,8 @@ function isEffectOwner(row: PrivateRootChildOwnerLifecycle): boolean {
     value !== null &&
     typeof value === 'object' &&
     !Array.isArray(value) &&
-    (value as JsonObject).kind === KIND
+    (value as JsonObject).kind === KIND &&
+    (value as JsonObject).effect !== 'project-evaluation'
   )
 }
 
@@ -739,6 +774,7 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
     'parentFlow',
     'requestDigest',
     'deadlineUnixMs',
+    'effectiveBootDeadline',
     'ownerAllocation',
   ]
   if (
@@ -765,6 +801,7 @@ function parseAllocation(row: PrivateRootChildOwnerLifecycle): Allocation {
     throw new TypeError('invalid operation owner allocation')
   return {
     ...value,
+    effectiveBootDeadline: normalizePrivateBootDeadline(value.effectiveBootDeadline),
     parentFlow: normalizeParentFlow(value.parentFlow, row.parentOperationId),
     ownerAllocation: normalizePrivateExecutionOwnerStateAllocationIdentity(value.ownerAllocation),
   } as unknown as Allocation

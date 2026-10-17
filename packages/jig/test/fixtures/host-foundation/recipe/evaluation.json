@@ -1,0 +1,6 @@
+{
+  "family": "bun-typescript",
+  "generate": "tools/generate.js",
+  "test": ["test/answer.test.js"],
+  "collect": ["generated", "dist", "reports"]
+}

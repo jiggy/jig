@@ -1,5 +1,10 @@
 from ._runtime import handle
 from ._types import (
+    Artifact,
+    CallResult,
+    CallAttachments,
+    ReadAttachment,
+    CreateAttachment,
     Attachment,
     AttachmentAccess,
     ChannelBroadcast,
@@ -20,6 +25,11 @@ from ._types import (
 )
 
 __all__ = [
+    "Artifact",
+    "CallResult",
+    "CallAttachments",
+    "ReadAttachment",
+    "CreateAttachment",
     "Attachment",
     "AttachmentAccess",
     "ChannelBroadcast",

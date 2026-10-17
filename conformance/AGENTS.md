@@ -34,6 +34,14 @@ candidates.
   replies between opposite-language SDK processes. The finite adaptive-search
   witness owns its two named fixture descriptors, domain checks, close ordering
   and cancellation traces. Scripted admission is not production host proof.
+- `run-0/fixtures/artifacts.json` supplies shared artifact wire shapes and
+  bounds for schema validation and the independent Python peer.
+  `python-peer/test_artifacts.py` owns a stdlib-only deterministic non-Jig host
+  launching actual Python and, when Bun is available, TypeScript SDK
+  producer/evaluator processes. It checks produced bytes, selected reads,
+  initial delegation, exact replay, conflicts, final forwarding and automatic
+  rights cleanup. This is limited portable-boundary evidence, not native
+  execution, containment qualification or independent consumer proof.
 
 ## Local Contracts
 

@@ -807,6 +807,33 @@ hierarchy even when the application cannot start. Review policy is generated
 from the same captured records that are approved, and human Run summaries
 come from the same terminal observations as machine results.
 
+### Installed application execution
+
+`jig attempt <prepare|submit|lookup|cancel|result|export> --json` is the
+machine-only application boundary specified by
+[the execution client contract](execution-client.md). Its help remains ordinary
+human output and acquires no execution host or stdin lifetime.
+
+Machine requests contain `protocolVersion: 1`, the selected `operation`, and
+`request` in one bounded JSON line on stdin. Tickets, captured input and
+application data must not be placed in command arguments or diagnostic text.
+Validate the complete command grammar before acquiring execution support, and
+validate the request before invoking the operation. Invalid requests emit one
+closed typed error record, without rejected data or a fabricated execution
+terminal. Machine stdout contains only the operation's versioned records.
+
+Completing the request line is not closing the submit connection. The original
+submit owner retains its finite foreground connection through settlement.
+Disconnecting it requests cancellation of that Run, not detached execution.
+Duplicate observers receive the original acceptance without acquiring ownership,
+and observer disconnection cannot cancel the original Run or another root.
+
+Preparation and lookup never dispatch. Cancellation acknowledgement is not
+cleanup confirmation. Result availability and export delivery are separate
+from the immutable execution terminal. Failure advice must direct callers to
+reconcile the original ticket, never mint replacement work automatically after
+uncertainty, expiry, lost acknowledgement, or missing retained evidence.
+
 Changes to public output must update this contract when its guarantees change,
 its owning implementation, and focused acceptance tests together. Adding an
 ad hoc raw diagnostic or weakening an assertion to accommodate unreadable

@@ -1,5 +1,4 @@
 import type {
-  Attachment,
   ChannelContractIdentity,
   FlowCall,
   JsonObject,
@@ -18,10 +17,16 @@ export interface RunParams {
   readonly protocol: 'run/0'
   readonly input: JsonValue
   readonly settings: JsonObject
-  readonly attachments: Readonly<Record<string, Attachment>>
+  readonly attachments: Readonly<Record<string, AttachmentGrant>>
   readonly scratch: string
   readonly deadlineUnixMs: number
   readonly channels: Readonly<Record<string, ChannelGrant>>
+}
+
+export interface AttachmentGrant {
+  readonly path: string
+  readonly access: 'read' | 'read-write'
+  readonly artifact?: string
 }
 
 export interface ChannelGrant {
@@ -233,18 +238,30 @@ export function parseRunParams(value: JsonValue): RunParams {
   const settings = requireObject(object.settings as JsonValue, 'settings')
   const attachmentsObject = requireObject(object.attachments as JsonValue, 'attachments')
   if (Object.keys(attachmentsObject).length > 256) throw new Error('too many attachments')
-  const attachments: Record<string, Attachment> = Object.create(null) as Record<string, Attachment>
+  const attachments: Record<string, AttachmentGrant> = Object.create(null)
   for (const [name, raw] of Object.entries(attachmentsObject)) {
     requireLocalName(name)
     const attachment = requireObject(raw, 'attachment')
-    requireExactKeys(attachment, ['path', 'access'])
+    requireExactKeys(attachment, [
+      'path',
+      'access',
+      ...(Object.hasOwn(attachment, 'artifact') ? ['artifact'] : []),
+    ])
     if (typeof attachment.path !== 'string' || attachment.path.length === 0) {
       throw new Error('attachment path must be nonempty')
     }
     if (attachment.access !== 'read' && attachment.access !== 'read-write') {
       throw new Error('invalid attachment access')
     }
-    attachments[name] = { path: attachment.path, access: attachment.access }
+    if (Object.hasOwn(attachment, 'artifact') && attachment.access !== 'read')
+      throw new Error('writable attachment cannot grant an artifact')
+    attachments[name] = {
+      path: attachment.path,
+      access: attachment.access,
+      ...(Object.hasOwn(attachment, 'artifact')
+        ? { artifact: requireWireId(attachment.artifact!) }
+        : {}),
+    }
   }
   if (typeof object.scratch !== 'string' || object.scratch.length === 0) {
     throw new Error('scratch must be nonempty')
@@ -268,7 +285,7 @@ export function parseRunParams(value: JsonValue): RunParams {
 }
 
 export function validateFlowCall(call: FlowCall): FlowCall {
-  const object = snapshotDataObject(call, 'Flow call', 5)
+  const object = snapshotDataObject(call, 'Flow call', 6)
   const hasIntent = Object.hasOwn(object, 'intent')
   requireExactKeys(object, [
     'operationId',
@@ -276,11 +293,15 @@ export function validateFlowCall(call: FlowCall): FlowCall {
     'input',
     ...(hasIntent ? ['intent'] : []),
     ...(Object.hasOwn(object, 'channels') ? ['channels'] : []),
+    ...(Object.hasOwn(object, 'attachments') ? ['attachments'] : []),
   ])
   const operationId = requireWireId(object.operationId as JsonValue)
   const slot = requireLocalName(object.slot as JsonValue)
   if (Object.hasOwn(object, 'channels')) {
     requireObject(object.channels as JsonValue, 'call channels')
+  }
+  if (Object.hasOwn(object, 'attachments')) {
+    requireObject(object.attachments as JsonValue, 'call attachments')
   }
   const intent = hasIntent ? object.intent : undefined
   if (hasIntent) {
@@ -299,6 +320,9 @@ export function validateFlowCall(call: FlowCall): FlowCall {
     input: object.input as JsonValue,
     ...(Object.hasOwn(object, 'channels')
       ? { channels: object.channels as NonNullable<FlowCall['channels']> }
+      : {}),
+    ...(Object.hasOwn(object, 'attachments')
+      ? { attachments: object.attachments as NonNullable<FlowCall['attachments']> }
       : {}),
   }
 }
@@ -360,7 +384,10 @@ export function cancelMessage(id: string): JsonObject {
   return { jsonrpc: '2.0', method: 'request/cancel', params: { requestId: id } }
 }
 
-export function resultMessage(id: string, result: RunResult): JsonObject {
+export function resultMessage(
+  id: string,
+  result: { readonly outcome: string; readonly output: JsonValue },
+): JsonObject {
   return { jsonrpc: '2.0', id, result }
 }
 

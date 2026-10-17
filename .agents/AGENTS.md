@@ -19,10 +19,9 @@ and project-maintained skills for external libraries.
   public editorial judgment, drawing on the audience and doctrine.
 - `brand.md` owns the selected Jig and FLOW names, emblems, wordmarks, colors,
   proportions, and implementation asset map.
-- `maintainer-guide.md` introduces the engineering model, its governing
-  principles, operational invariants, focused modular Flow creation, simple
-  implementations and public interfaces, holistic product/UX review, and working
-  method. Detailed product mechanics stay in their linked specifications.
+- `maintainer-guide.md` owns repository-wide engineering workflow and invariants.
+  It covers modular methods, usable interfaces, real-boundary verification and host qualification.
+  Detailed product mechanics stay in their linked specifications.
 - `coordination/` owns project coordination records. Its `ROADMAP.md` gives a
   compact, high-level view of outcome order and the next steps. Its `inbox/`
   holds postponed tasks that await triage.

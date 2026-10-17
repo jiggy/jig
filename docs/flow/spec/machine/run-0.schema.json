@@ -10,6 +10,9 @@
       "$ref": "#/$defs/flowCallRequest"
     },
     {
+      "$ref": "#/$defs/artifactReleaseRequest"
+    },
+    {
       "$ref": "#/$defs/requestCancelNotification"
     },
     {
@@ -63,10 +66,15 @@
         },
         "access": {
           "enum": ["read", "read-write"]
+        },
+        "artifact": {
+          "$ref": "#/$defs/wireId"
         }
       },
       "required": ["path", "access"],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": { "type": "object", "properties": { "artifact": true }, "required": ["artifact"] },
+      "then": { "type": "object", "properties": { "access": { "const": "read" } } }
     },
     "attachments": {
       "type": "object",
@@ -84,9 +92,75 @@
         "outcome": {
           "$ref": "#/$defs/localName"
         },
+        "output": true,
+        "artifactResults": { "$ref": "#/$defs/artifactReferences" }
+      },
+      "required": ["outcome", "output"],
+      "additionalProperties": false
+    },
+    "callResult": {
+      "type": "object",
+      "properties": {
+        "outcome": { "$ref": "#/$defs/localName" },
+        "output": true,
+        "artifacts": { "$ref": "#/$defs/artifactReferences" }
+      },
+      "required": ["outcome", "output"],
+      "additionalProperties": false
+    },
+    "domainResult": {
+      "type": "object",
+      "properties": {
+        "outcome": { "$ref": "#/$defs/localName" },
         "output": true
       },
       "required": ["outcome", "output"],
+      "additionalProperties": false
+    },
+    "artifactReferences": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/localName" },
+      "additionalProperties": { "$ref": "#/$defs/wireId" },
+      "maxProperties": 256
+    },
+    "callAttachments": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/localName" },
+      "maxProperties": 256,
+      "additionalProperties": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": { "read": { "$ref": "#/$defs/wireId" } },
+            "required": ["read"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": { "create": { "const": true } },
+            "required": ["create"],
+            "additionalProperties": false
+          }
+        ]
+      }
+    },
+    "artifactReleaseRequest": {
+      "type": "object",
+      "properties": {
+        "jsonrpc": { "const": "2.0" },
+        "id": { "$ref": "#/$defs/wireId" },
+        "method": { "const": "flow/artifact/release" },
+        "params": {
+          "type": "object",
+          "properties": {
+            "operationId": { "$ref": "#/$defs/wireId" },
+            "artifact": { "$ref": "#/$defs/wireId" }
+          },
+          "required": ["operationId", "artifact"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["jsonrpc", "id", "method", "params"],
       "additionalProperties": false
     },
     "flowErrorCode": {
@@ -201,7 +275,7 @@
           "$ref": "#/$defs/wireId"
         },
         "result": {
-          "$ref": "#/$defs/runResult"
+          "anyOf": [{ "$ref": "#/$defs/runResult" }, { "$ref": "#/$defs/callResult" }]
         }
       },
       "required": ["jsonrpc", "id", "result"],
@@ -782,6 +856,10 @@
         "result": {
           "oneOf": [
             {
+              "type": "object",
+              "maxProperties": 0
+            },
+            {
               "type": "null"
             },
             {
@@ -884,6 +962,9 @@
         "input": true,
         "channels": {
           "$ref": "#/$defs/channelReferences"
+        },
+        "attachments": {
+          "$ref": "#/$defs/callAttachments"
         }
       },
       "required": ["operationId", "slot", "input"],

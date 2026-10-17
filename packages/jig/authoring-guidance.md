@@ -23,8 +23,9 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### src project author
 
-- `src/project/author.ts` also owns shipped static attachment-route data types.
-  `attachment-routes.ts` validates their closed maps and distinct output folders
+- `src/project/author.ts` also owns shipped attachment-route data types:
+  fixed `{from}`, call-supplied `{supplied:"read"}` and operation-owned
+  `{create:true}` mappings. `attachment-routes.ts` validates their closed maps
   during authoring and inert lock decoding, and exact caller/child ports during
   linking and Candidate/5 or Plan/2 decoding. Admission rechecks each target's
   declared interface against its verified retained package bytes. The portable
@@ -71,6 +72,15 @@ These links locate module rules. All selected domain requirements still apply.
   caches longest paths per immutable candidate. Repeated routes must not expand
   into repeated dependency-tree traversal.
 
+- Exact native checkpoint requirements make a target root-only.
+  Derive this fact from selected interfaces during linking, lock decoding and admitted graph analysis.
+  Cached root analysis cannot authorize a child route or create a persisted caller-controlled authority flag.
+
+- `src/invocation-contract.ts` validates optional `artifactResults`: at most
+  256 unique LocalNames without writable-port collisions.
+  Project resolution binds the declaration into immutable, digest-bound activation requests, including protected snapshot restoration.
+  Domain result schemas do not validate the host's separate artifact envelope.
+
 - Package inspection validates `supports` and `uses.requires` against exact
   named single-form catalogs. Selected-graph qualification pins requirements in
   the lock and refuses incompatible targets before execution preparation,
@@ -110,13 +120,12 @@ These links locate module rules. All selected domain requirements still apply.
   most two subscription model calls with synthetic input.
   `JIG_NATIVE_AGENT_RESTORE=1`, `JIG_RESTORE_ARCHIVES`, `JIG_CODEX_STARTUP_PATH`
   and `JIG_RESTORE_MODEL` select that explicit test. It is separate from the
-  deterministic protocol and protected-store tests. Its bounded command helper
+  real protocol and protected-store tests. Its bounded command helper
   records output incrementally in exclusive evidence files, escalates ignored
   interruption and waits for process exit.
 
-  Retained bytes are not proof of cleanup. Controller fault tests isolate module
-  mocks in a subprocess. They prove ordering and scope construction, not kernel
-  containment.
+  Retained bytes are not proof of cleanup.
+  Verify controller ordering and scope with real stores and subprocesses, then qualify native containment independently.
 
 ## Local Contracts
 
@@ -186,6 +195,9 @@ These links locate module rules. All selected domain requirements still apply.
   participate in review, lock and exact configuration identity. Per-run mappings
   cannot override them. Keep this root-only profile and its bounds synchronized
   with `docs/jig/spec/project-policy.md`.
+
+- Public grant declarations contain authored policy, not retained host metadata.
+  Private linked grants retain evaluation operands through `PrivateRetainedGrantedSlot`.
 
 - Binding slots select inline HTTP, command or finite ACP grants, or optional
   named JSON policies for meaningful reuse or independent management.

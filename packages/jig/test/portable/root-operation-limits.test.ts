@@ -11,6 +11,21 @@ const flow = { kind: 'private-root-child-owner-allocation/1', flowDepth: 1 }
 const agent = { kind: 'private-root-agent-owner-allocation/1' }
 const command = { kind: 'private-contained-effect-owner/1' }
 
+test('reviewed largest evaluator effects reserve weighted memory without enlarging the root', () => {
+  const memory = 512 * 1024 * 1024
+  const evaluation = { ...flow, effectMemoryBytes: memory }
+  expect(privateRootBranchReservation([1, 1], [memory, memory]).memoryBytes).toBe(
+    PRIVATE_ROOT_RESOURCE_POLICY.memoryBytes,
+  )
+  expect(canReservePrivateRootOperation([evaluation], evaluation)).toBe(true)
+  expect(canReservePrivateRootOperation([evaluation], { ...evaluation, flowDepth: 2 })).toBe(false)
+  expect(canReservePrivateRootOperation([], { ...evaluation, flowDepth: 4 })).toBe(true)
+  expect(canReservePrivateRootOperation([], { ...evaluation, flowDepth: 5 })).toBe(false)
+  for (const effectMemoryBytes of [0, memory + 1, null, '512', -1])
+    expect(canReservePrivateRootOperation([], { ...flow, effectMemoryBytes })).toBe(false)
+  expect(() => privateRootBranchReservation([1], [])).toThrow()
+})
+
 test('two two-level branches exactly fit the fixed root budget, including both effects', () => {
   expect(PRIVATE_ROOT_RESOURCE_POLICY).toEqual({
     siblingFlows: 2,

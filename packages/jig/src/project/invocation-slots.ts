@@ -15,16 +15,21 @@ import {
   PROJECT_COMMAND_CONTRACT_VERSION,
 } from '../internal/private-project-command.js'
 import {
+  PROJECT_EVALUATION_CONTRACT_DIGEST,
+  PROJECT_EVALUATION_CONTRACT_ID,
+  PROJECT_EVALUATION_CONTRACT_VERSION,
+} from '../internal/private-project-evaluation.js'
+import {
   RUN_CHECKPOINT_CONTRACT_DIGEST,
   RUN_CHECKPOINT_CONTRACT_ID,
   RUN_CHECKPOINT_CONTRACT_VERSION,
 } from '../internal/private-run-checkpoint.js'
-import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import {
-  normalizeBindingAttachmentMap,
-  type ProjectSlotTarget,
-  validateDistinctBindingAttachmentDirectories,
-} from './attachment-routes.js'
+  normalizePrivateRetainedProjectEvaluation,
+  type PrivateRetainedProjectEvaluation,
+} from '../internal/project-evaluation-retention.js'
+import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
+import { normalizeBindingAttachmentMap, type ProjectSlotTarget } from './attachment-routes.js'
 import type { BindingAttachmentMap } from './author.js'
 import { validateGrantPolicy } from './grant-validation.js'
 import { type GrantPolicy, normalizeGrant } from './grants.js'
@@ -40,7 +45,12 @@ export interface InvocationIdentity {
 export type InvocationRequirement =
   | (InvocationIdentity & { readonly requires?: readonly string[] })
   | Readonly<Record<string, never>>
-export type NativeInvocation = 'http-request' | 'project-command' | 'run-checkpoint' | 'finite-acp'
+export type NativeInvocation =
+  | 'http-request'
+  | 'project-command'
+  | 'project-evaluation'
+  | 'run-checkpoint'
+  | 'finite-acp'
 export type InvocationSlot =
   | {
       readonly kind: 'flow'
@@ -53,10 +63,16 @@ export type InvocationSlot =
       readonly native: NativeInvocation
       readonly grant?: GrantPolicy
       readonly contract: InvocationIdentity
+      readonly evaluation?: PrivateRetainedProjectEvaluation
     }
 export type InvocationSlots = Readonly<Record<string, InvocationSlot>>
 
 const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.freeze({
+  'project-evaluation': Object.freeze({
+    id: PROJECT_EVALUATION_CONTRACT_ID,
+    version: PROJECT_EVALUATION_CONTRACT_VERSION,
+    digest: PROJECT_EVALUATION_CONTRACT_DIGEST,
+  }),
   'finite-acp': Object.freeze({
     id: FINITE_ACP_CONTRACT_ID,
     version: FINITE_ACP_CONTRACT_VERSION,
@@ -85,13 +101,20 @@ function grantInvocationKind(policy: GrantPolicy): NativeInvocation {
       return 'http-request'
     case 'command':
       return 'project-command'
+    case 'evaluation':
+      return 'project-evaluation'
     case 'acp':
       return 'finite-acp'
   }
 }
 
 function isGrantedInvocation(native: NativeInvocation): boolean {
-  return native === 'http-request' || native === 'project-command' || native === 'finite-acp'
+  return (
+    native === 'http-request' ||
+    native === 'project-command' ||
+    native === 'project-evaluation' ||
+    native === 'finite-acp'
+  )
 }
 
 export function nativeInvocationKind(
@@ -135,6 +158,8 @@ export function resolveInvocationSlots(
     const requirement = uses[name]
     if (target.kind === 'grant') {
       const native = grantInvocationKind(target.policy)
+      if (target.evaluation !== undefined && native !== 'project-evaluation')
+        throw new TypeError('only evaluation grants retain evaluation operands')
       if (requirement === undefined || !sameInvocationIdentity(requirement, NATIVE[native]))
         throw new TypeError('slot ' + name + ' requires the exact contract for its grant kind')
       slots[name] = Object.freeze({
@@ -142,6 +167,11 @@ export function resolveInvocationSlots(
         native,
         contract: NATIVE[native],
         grant: target.policy,
+        ...(target.evaluation === undefined
+          ? {}
+          : {
+              evaluation: normalizePrivateRetainedProjectEvaluation(target.evaluation),
+            }),
       })
       continue
     }
@@ -240,6 +270,7 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
         'native',
         'contract',
         ...(Object.hasOwn(slot, 'grant') ? ['grant'] : []),
+        ...(Object.hasOwn(slot, 'evaluation') ? ['evaluation'] : []),
       ])
       const contract = normalizeInvocationIdentity(slot.contract)
       const native = nativeInvocationKind(contract)
@@ -260,11 +291,18 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       )
         throw new TypeError('slot ' + name + ' requires its matching resource grant')
       if (grant !== undefined) validateGrantPolicy(grant)
+      if (slot.evaluation !== undefined && native !== 'project-evaluation')
+        throw new TypeError('only evaluation routes retain evaluation operands')
       output[name] = Object.freeze({
         kind: 'native',
         native,
         contract,
         ...(grant === undefined ? {} : { grant }),
+        ...(slot.evaluation === undefined
+          ? {}
+          : {
+              evaluation: normalizePrivateRetainedProjectEvaluation(slot.evaluation),
+            }),
       })
     } else if (slot.kind === 'flow') {
       exact(slot, [
@@ -299,14 +337,7 @@ export function normalizeInvocationSlots(value: unknown): InvocationSlots {
       })
     } else throw new TypeError(`slot ${name} has an unknown implementation kind`)
   }
-  validateDistinctBindingAttachmentDirectories(
-    Object.fromEntries(
-      Object.entries(output).flatMap(([name, slot]) =>
-        slot.kind === 'flow' && slot.attachments !== undefined ? [[name, slot.attachments]] : [],
-      ),
-    ),
-  )
-  for (const native of ['http-request', 'project-command', 'finite-acp']) {
+  for (const native of ['http-request', 'project-command', 'project-evaluation', 'finite-acp']) {
     if (
       Object.values(output).filter((slot) => slot.kind === 'native' && slot.native === native)
         .length > 8

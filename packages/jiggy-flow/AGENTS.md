@@ -27,11 +27,19 @@ independently packaged for PyPI prereleases. Jig hosting is outside its scope.
 - Python names may be idiomatic, but wire keys, JSON/0 limits, errors,
   cancellation, and terminal behavior remain Run/0-exact.
 - `call()` emits `flow/call` with operation identity, slot and input, plus
-  optional advisory intent and channel mappings. It returns the complete
-  `RunResult`. Declared domain outcomes remain normal data and `OperationError`
+  optional advisory intent, channel and attachment mappings. It returns
+  `CallResult`. Declared domain outcomes remain normal data and `OperationError`
   represents operational failures. The initial single-operation profile has no
   selector. Preserve optional-key presence and ordinary task cancellation
   semantics.
+- `_artifacts.py` projects genuine per-Run opaque immutable `Artifact` objects.
+  Initial read grants can be delegated. Calls serialize held reads or
+  `create:True`. Handler `artifactResults` forwards selected held trees.
+
+  Domain validation remains `{outcome, output}`, separate from host `artifacts`.
+  The host checks rights and replay. SDK provenance grants no authority.
+  Early release retains cancelled settlement and never resurrects rights.
+  Automatic host root cleanup remains responsible for ordinary retirement.
 - Direct and broadcast channels exchange JSON/0 values through `run.channel()`,
   declared `run.channels`, and ordinary call `channels=` maps. `_channels.py`
   owns typed endpoint behavior. `_runtime.py` owns correlated wire requests and

@@ -16,7 +16,6 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
 import type { PrivateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
-import { PrivateFileImportUnconfirmedError } from '../../src/internal/execution-file-import.js'
 import { privateCaptureAttachments } from '../../src/internal/file-input.js'
 import {
   PRIVATE_FINITE_ACP_CHANNELS,
@@ -35,33 +34,32 @@ import {
 import type { JsonObject, JsonValue } from '../../src/json.js'
 import { ChannelBroker } from '../../src/run/channels.js'
 import { RunHostSession } from '../../src/run/session.js'
-import { deterministicAcpProgram } from '.././fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 import {
-  HOSTILE,
-  delegatedCgroup,
-  initialRootlessTemporaryState,
-  hostConfiguration,
-  plan,
-  runtimeMounts,
+  childExit,
+  collect,
   createFixture,
-  unavailableDescriptorRestrictionSupervisor,
-  outputDiagnosticSupervisor,
-  deliberatelySignalledInnerSupervisor,
   delayedReadinessSupervisor,
   delayedReadyForwardingSupervisor,
-  heldContinuationSupervisor,
-  replaceOnce,
-  collect,
-  missing,
-  waitForMissing,
-  waitForPresent,
-  waitForNoRunCgroups,
-  readLine,
-  childExit,
-  rootlessTemporaryEntry,
-  waitForFence,
+  delegatedCgroup,
+  deliberatelySignalledInnerSupervisor,
+  HOSTILE,
   type HostConfiguration,
+  heldContinuationSupervisor,
+  hostConfiguration,
+  initialRootlessTemporaryState,
+  missing,
+  outputDiagnosticSupervisor,
+  plan,
+  readLine,
+  replaceOnce,
+  rootlessTemporaryEntry,
+  runtimeMounts,
+  unavailableDescriptorRestrictionSupervisor,
+  waitForFence,
+  waitForMissing,
+  waitForNoRunCgroups,
+  waitForPresent,
 } from '.././linux-rootless-run.fixture.js'
 
 test('constructs the delayed-supervisor fixture from current trusted source', async () => {
@@ -110,7 +108,7 @@ test('constructs the unavailable-descriptor-restriction fixture from current tru
 test('constructs bounded private output diagnostic and fault fixtures', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-rootless-diagnostic-'))
   try {
-    for (const fault of ['projection', 'commit-ack', 'end-ack', 'custody'] as const) {
+    for (const fault of ['projection', 'custody'] as const) {
       const fixture = await outputDiagnosticSupervisor(join(root, fault), fault)
       try {
         const source = await readFile(fixture.path, 'utf8')

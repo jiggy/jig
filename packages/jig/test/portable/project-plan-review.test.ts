@@ -7,6 +7,7 @@ import {
   AGENT_RUN_CONTRACT_ID,
   AGENT_RUN_CONTRACT_VERSION,
 } from '.././fixtures/agent-contract.js'
+
 function reviewPlan(
   operation: 'admission' | 'lock-repair',
   baseGeneration: string,
@@ -493,9 +494,9 @@ describe('private project Plan review', () => {
     const parentDigest = `sha256:${'a'.repeat(64)}`
     const oldChildDigest = `sha256:${'b'.repeat(64)}`
     const newChildDigest = `sha256:${'c'.repeat(64)}`
-    const candidate = (directory: string, childDigest = oldChildDigest) => {
+    const candidate = (source: string, childDigest = oldChildDigest) => {
       const target = { kind: 'flow' as const, path: 'flows/copy' }
-      const attachments = { source: { from: 'source' }, files: { into: 'files', directory } }
+      const attachments = { source: { from: source }, files: { create: true } }
       const filePorts = { source: 'read', files: 'read-write' }
       const lock = {
         packages: {
@@ -550,19 +551,19 @@ describe('private project Plan review', () => {
           proposed: { ...base.proposed, lock: proposed.lock, targets: proposed.candidate.targets },
         },
       } as unknown as PrivateActivationReviewPlan)
-    const current = candidate('copies')
+    const current = candidate('source')
     const initial = render(null, current)
-    for (const field of ['"from": "source"', '"into": "files"', '"directory": "copies"']) {
+    for (const field of ['"from": "source"', '"create": true']) {
       expect(initial.text).toContain(field)
       expect(initial.details).toContain(field)
     }
     expect(initial.text).toContain('Child file access requires reviewed attachment maps')
-    const moved = render(current, candidate('new-copies'))
+    const moved = render(current, candidate('reference'))
     expect(moved.text).toContain('Changed: "root"')
     expect(moved.text).toContain('Changed: "binding:root"')
-    expect(moved.details).toMatch(/^- +"directory": "copies"$/m)
-    expect(moved.details).toMatch(/^\+ +"directory": "new-copies"$/m)
-    const childChanged = render(current, candidate('copies', newChildDigest))
+    expect(moved.details).toMatch(/^- +"from": "source"$/m)
+    expect(moved.details).toMatch(/^\+ +"from": "reference"$/m)
+    const childChanged = render(current, candidate('source', newChildDigest))
     expect(childChanged.details).toContain('Changed: "flow:flows/copy"')
     expect(childChanged.details).toContain('Changed: "binding:root"')
     expect(childChanged.details).not.toContain('Changed: "root"')

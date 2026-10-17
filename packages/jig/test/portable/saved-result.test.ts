@@ -1,12 +1,11 @@
 import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
-import { expect, spyOn, test } from 'bun:test'
-import * as fs from 'node:fs'
+import { expect, test } from 'bun:test'
 import { link, mkdir, mkdtemp, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
-import { main, privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
+import { privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
   privateSavedResultPlain,
@@ -64,7 +63,18 @@ function diagnosticViewText(capture: Awaited<ReturnType<typeof privateCaptureSav
     .join('\n')
 }
 
-test('rejected allocations and collective close failures dispose bytes without losing primary interruption', async () =>
+async function inspect(root: string, args: string[] = []) {
+  const child = Bun.spawn(
+    [process.execPath, join(suiteTestRoot, '../src/cli.ts'), 'inspect', '--result', root, ...args],
+    { cwd: root, stdout: 'pipe', stderr: 'pipe' },
+  )
+  return settleTestCommand(child, {
+    evidence: join(await mkdtemp(join(root, 'cli-evidence-')), 'command'),
+    timeoutMs: 15_000,
+  })
+}
+
+test('actual descriptors refuse missing and oversized files and preserve preexisting interruption', async () =>
   fixture(async (root) => {
     const child = Bun.spawn(
       [process.execPath, join(suiteTestRoot, 'saved-result-faults.ts'), root],
@@ -78,7 +88,7 @@ test('rejected allocations and collective close failures dispose bytes without l
       timeoutMs: 15_000,
     })
     expect(result.code, result.stderr).toBe(0)
-    expect(result.stdout).toContain('saved capture buffer ownership and collective cleanup passed')
+    expect(result.stdout).toContain('saved capture real descriptor refusal and closure passed')
   }))
 test('saved previews remain immutable after packet replacement and release on close', async () =>
   fixture(async (root) => {
@@ -126,33 +136,18 @@ test('partial file verification preserves the exact valid report and prior verif
       capture.close()
     }
   }))
-test('a write racing an opened file capture refuses that file and preserves the report', async () =>
+test('a changed artifact refuses capture and preserves the report', async () =>
   fixture(async (root) => {
     await packet(root, { patch: Buffer.from('initial patch') })
     const path = join(root, 'files', 'patch')
-    const inode = fs.statSync(path, { bigint: true }).ino
-    const original = fs.readSync
-    let changed = false
-    const intercepted = spyOn(fs, 'readSync').mockImplementation(((...args: any[]) => {
-      const count = (original as any)(...args)
-      if (!changed && fs.fstatSync(args[0], { bigint: true }).ino === inode) {
-        changed = true
-        fs.writeFileSync(path, 'a changed file with a different size')
-      }
-      return count
-    }) as any)
+    await writeFile(path, 'a changed file with a different size')
+    const capture = await privateCaptureSavedResult(root)
     try {
-      const capture = await privateCaptureSavedResult(root)
-      try {
-        expect(changed).toBeTrue()
-        expect(capture.complete).toBeFalse()
-        expect(capture.record.status).toBe('succeeded')
-        expect(capture.preview('patch')).toBeUndefined()
-      } finally {
-        capture.close()
-      }
+      expect(capture.complete).toBeFalse()
+      expect(capture.record.status).toBe('succeeded')
+      expect(capture.preview('patch')).toBeUndefined()
     } finally {
-      intercepted.mockRestore()
+      capture.close()
     }
   }))
 test('unread named pipes and symlinked artifacts cannot stall or escape capture', async () =>
@@ -168,7 +163,7 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
       capture.close()
     }
     await rm(join(root, 'files', 'patch'))
-    expect(Bun.spawnSync(['/usr/bin/mkfifo', join(root, 'files', 'patch')]).exitCode).toBe(0)
+    expect(Bun.spawnSync(['mkfifo', join(root, 'files', 'patch')]).exitCode).toBe(0)
     const before = performance.now()
     capture = await privateCaptureSavedResult(root)
     try {
@@ -178,7 +173,7 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
       capture.close()
     }
     await rm(join(root, 'result.json'))
-    expect(Bun.spawnSync(['/usr/bin/mkfifo', join(root, 'result.json')]).exitCode).toBe(0)
+    expect(Bun.spawnSync(['mkfifo', join(root, 'result.json')]).exitCode).toBe(0)
     await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
   }))
 test('whole manifest refusal precedes reads and preserves only the valid report', async () =>
@@ -307,81 +302,59 @@ test('report document boundary admits one publisher LF without relaxing JSON lim
     await writeFile(join(root, 'result.json'), document + '\n\n')
     await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
   }))
-test('saved CLI does not acquire a project or inspect the environment, even for recorded failures', async () =>
+test('saved CLI works outside a project even for recorded failures', async () =>
   fixture(async (root) => {
     const value = await packet(
       root,
       {},
       { status: 'failed', code: 'RECORDED_FAILURE', message: 'original failure' },
     )
-    let calls = 0,
-      output = '',
-      errors = ''
-    const code = await main(['inspect', '--result', root, '--json'], {
-      currentDirectory: '/',
-      terminalOutput: true,
-      terminalError: false,
-      host: {
-        acquire: async () => {
-          calls++
-          throw new Error('must not acquire')
-        },
-      },
-      inspectEnvironment: async () => {
-        calls++
-        throw new Error('must not inspect')
-      },
-      writeRecord: async (text) => {
-        output += text
-      },
-      writeError: (text) => {
-        errors += text
-      },
-    })
-    expect(code).toBe(0)
-    expect(calls).toBe(0)
-    expect(errors).toBe('')
-    expect(JSON.parse(output)).toEqual(value)
+    const result = await inspect(root, ['--json'])
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(JSON.parse(result.stdout)).toEqual(value)
     expect(privateCliRequiresHost(['inspect', '--result', root])).toBeFalse()
     expect(privateCliSavedResultInspection(['inspect', '--result', root])).toBeTrue()
   }))
-test('partial JSON is unchanged, unavailable reports emit no invented value, and output failure is exit one', async () =>
+test('partial JSON is unchanged and unavailable reports emit no invented value', async () =>
   fixture(async (root) => {
     const value = await packet(root, { patch: Buffer.from('expected') })
     await rm(join(root, 'files', 'patch'))
-    let output = '',
-      errors = ''
-    const options = {
-      terminalOutput: false,
-      terminalError: false,
-      writeRecord: async (text: string) => {
-        output += text
-      },
-      writeError: (text: string) => {
-        errors += text
-      },
-    }
-    expect(await main(['inspect', '--result', root], options)).toBe(1)
-    expect(JSON.parse(output)).toEqual(value)
-    expect(errors).toContain('JIG_RESULT_FILES_INCOMPLETE')
-    output = ''
-    errors = ''
+    let result = await inspect(root)
+    expect(result.code).toBe(1)
+    expect(JSON.parse(result.stdout)).toEqual(value)
+    expect(result.stderr).toContain('JIG_RESULT_FILES_INCOMPLETE')
     await writeFile(
       join(root, 'result.json'),
       '{"status":"succeeded","status":"evil rejected value"}',
     )
-    expect(await main(['inspect', '--result', root, '--json'], options)).toBe(1)
-    expect(output).toBe('')
-    expect(errors).not.toContain('evil rejected value')
-    await packet(root)
-    expect(
-      await main(['inspect', '--result', root, '--json'], {
-        ...options,
-        writeRecord: async () => {
-          throw new Error('broken output')
-        },
-      }),
-    ).toBe(1)
+    result = await inspect(root, ['--json'])
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).not.toContain('evil rejected value')
+  }))
+test('saved CLI refuses an actual read-only output descriptor', async () =>
+  fixture(async (root) => {
+    const child = Bun.spawn(
+      [
+        '/bin/sh',
+        '-c',
+        'exec "$@" 1</dev/null',
+        'saved-result-output',
+        process.execPath,
+        join(suiteTestRoot, 'saved-result-faults.ts'),
+        root,
+        'closed-output',
+      ],
+      { stdout: 'pipe', stderr: 'pipe' },
+    )
+    const result = await settleTestCommand(child, {
+      evidence: join(root, 'closed-output'),
+      timeoutMs: 15_000,
+    })
+    expect(result.code, result.stderr).toBe(0)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('saved CLI refused read-only output')
   }))
 test('literal saved presentation escapes command-like data and pointers use selected evidence', async () =>
   fixture(async (root) => {

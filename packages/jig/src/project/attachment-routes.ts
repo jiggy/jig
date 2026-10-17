@@ -1,16 +1,16 @@
+import type { PrivateRetainedGrantedSlot } from '../internal/project-evaluation-retention.js'
 import type {
   BindingAttachmentInterface,
   BindingAttachmentMap,
   BindingAttachmentMapping,
 } from './author.js'
-import type { GrantedSlot } from './grants.js'
 import type { RunTargetIdentity } from './package-project.js'
 export interface MappedFlowRoute {
   readonly kind: 'route'
   readonly target: RunTargetIdentity
   readonly attachments: BindingAttachmentMap
 }
-export type ProjectSlotTarget = RunTargetIdentity | GrantedSlot | MappedFlowRoute
+export type ProjectSlotTarget = RunTargetIdentity | PrivateRetainedGrantedSlot | MappedFlowRoute
 
 // Negative end lookahead excludes a final newline accepted by JavaScript `$`.
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*(?![\s\S])/
@@ -33,12 +33,16 @@ export function normalizeBindingAttachmentMap(value: unknown): BindingAttachment
     if (Object.hasOwn(mapping, 'from')) {
       exact(mapping, ['from'])
       result[name] = Object.freeze({ from: bindingAttachmentLocalName(mapping.from) })
+    } else if (Object.hasOwn(mapping, 'supplied')) {
+      exact(mapping, ['supplied'])
+      if (mapping.supplied !== 'read')
+        throw new TypeError('supplied attachment route must require read access')
+      result[name] = Object.freeze({ supplied: 'read' })
     } else {
-      exact(mapping, ['into', 'directory'])
-      result[name] = Object.freeze({
-        into: bindingAttachmentLocalName(mapping.into),
-        directory: bindingAttachmentLocalName(mapping.directory),
-      })
+      exact(mapping, ['create'])
+      if (mapping.create !== true)
+        throw new TypeError('created attachment route must select create: true')
+      result[name] = Object.freeze({ create: true })
     }
   }
   return Object.freeze(result)
@@ -61,28 +65,13 @@ export function validateBindingAttachmentMapForInterfaces(input: {
         throw new TypeError(
           'read attachment route requires declared read ports on caller and child',
         )
-    } else if (child[name] !== 'read-write' || caller[mapping.into] !== 'read-write')
-      throw new TypeError(
-        'write attachment route requires declared read-write ports on caller and child',
-      )
+    } else if ('supplied' in mapping) {
+      if (child[name] !== 'read')
+        throw new TypeError('supplied attachment route requires a declared child read port')
+    } else if (child[name] !== 'read-write')
+      throw new TypeError('created attachment route requires a declared child read-write port')
   }
   return attachments
-}
-
-/** Folder ownership is unique across all selected slots of this caller.
- * Different writable-port spelling cannot bypass the one destination rule. */
-export function validateDistinctBindingAttachmentDirectories(
-  slots: Readonly<Record<string, BindingAttachmentMap>>,
-): void {
-  const destinations = new Set<string>()
-  for (const attachments of Object.values(slots)) {
-    for (const mapping of Object.values(normalizeBindingAttachmentMap(attachments))) {
-      if ('from' in mapping) continue
-      if (destinations.has(mapping.directory))
-        throw new TypeError('attachment routes select a duplicate caller output folder')
-      destinations.add(mapping.directory)
-    }
-  }
 }
 
 function attachmentInterface(value: unknown, child: boolean): BindingAttachmentInterface {

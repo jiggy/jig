@@ -9,8 +9,8 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 
 - The files here overlay the public tested-patch application in disposable
   host-test projects. They own only batch orchestration and timesheet inputs.
-- `../../root-agent-run-lifecycle.test.ts` owns assembly, synthetic Agent
-  responses, command execution, result assertions, and cleanup.
+- `../../host/root-agent-repair-batch.test.ts` owns installed assembly,
+  ordinary deterministic task peers, execution, result assertions and cleanup.
 - Source capture, patch acceptance, and the repair leaf come from the current
   public example. Do not maintain private copies of those implementations.
 
@@ -19,9 +19,9 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 - `batch.ts` imports the public evidence/check helpers for source-level units.
   Assembly rewrites only that fixture import prefix to package-local paths. Host
   execution uses the unchanged public helpers, never a private duplicate.
-- The retained monitor and wiring have deterministic channel lifecycle tests in
-  `test/repair-monitoring.test.ts`. Batch cases live in
-  `test/repair-batch.test.ts`. These are not live Agent evidence.
+- `../../portable/repair-monitoring.test.ts` checks the actual progress formatter.
+  It does not replace child dispatch or channel lifecycle.
+  Batch execution requires the installed native suite.
 - Keep this fixture private to tests. It is not a recommended example or a
   second application distribution.
 - Preserve separate worker identities, fixed acceptance cases, and checkpoints.
@@ -35,7 +35,7 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 
 ## Verification
 
-- `bun test packages/jig/test/root-agent-run-lifecycle.test.ts` checks assembly.
+- `bun test packages/jig/test/host/root-agent-repair-batch.test.ts` checks the installed lifecycle.
 - Real execution requires the provisioned Linux host-conformance workflow.
 
 ## Child DOX Index

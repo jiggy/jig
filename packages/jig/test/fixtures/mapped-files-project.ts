@@ -18,9 +18,9 @@ export async function writeMappedFilesProject(input: {
         : `${JSON.stringify(value, null, 2)}\n`,
     )
   }
-  const route = (target: string, directory: string) => ({
+  const route = (target: string) => ({
     target,
-    attachments: { source: { from: 'source' }, files: { into: 'files', directory } },
+    attachments: { source: { from: 'source' }, files: { create: true } },
   })
   await put('package.json', {
     name: 'ordinary-mapped-files-consumer',
@@ -41,9 +41,9 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
 export default defineBinding(${JSON.stringify({
       package: 'flows/root',
       slots: {
-        first: route('flow:flows/copy', 'first'),
-        second: route('flow:flows/copy', 'second'),
-        nested: route('binding:nested', 'nested'),
+        first: route('flow:flows/copy'),
+        nested: { target: 'binding:nested', attachments: { source: { from: 'source' } } },
+        verify: { target: 'flow:flows/verify', attachments: { candidate: { supplied: 'read' } } },
       },
     })})
 `,
@@ -51,7 +51,7 @@ export default defineBinding(${JSON.stringify({
   await put(
     'bindings/nested.ts',
     `import {defineBinding} from '@jigging/jig'
-export default defineBinding(${JSON.stringify({ package: 'flows/nested', slots: { inner: route('flow:flows/copy', 'inner') } })})
+export default defineBinding(${JSON.stringify({ package: 'flows/nested', slots: { inner: route('flow:flows/copy') } })})
 `,
   )
   const output = {
@@ -71,7 +71,8 @@ export default defineBinding(${JSON.stringify({ package: 'flows/nested', slots: 
   for (const [name, slots] of [
     ['copy', []],
     ['nested', ['inner']],
-    ['root', ['first', 'second', 'nested']],
+    ['root', ['first', 'nested', 'verify']],
+    ['verify', []],
   ] as const) {
     await put(`flows/${name}/package.json`, {
       name: `mapped-files-${name}`,
@@ -87,7 +88,17 @@ export default defineBinding(${JSON.stringify({ package: 'flows/nested', slots: 
     })
     await put(`flows/${name}/FLOW.contract.json`, {
       $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
-      attachments: { source: 'read', files: 'read-write' },
+      attachments:
+        name === 'copy'
+          ? { source: 'read', files: 'read-write' }
+          : name === 'verify'
+            ? { candidate: 'read' }
+            : { source: 'read' },
+      ...(name === 'root'
+        ? { artifactResults: ['first', 'second', 'nested'] }
+        : name === 'nested'
+          ? { artifactResults: ['inner'] }
+          : {}),
       input: { type: 'null' },
       result: output,
     })
@@ -113,41 +124,54 @@ await handle(async run=>{
 `,
   )
   await put(
+    'flows/verify/FLOW.ts',
+    `import {handle} from '@jigging/flow'
+import {readFile,writeFile} from 'node:fs/promises'
+await handle(async run=>{
+  const root=run.attachments.candidate.path
+  const bytes=await readFile(root+'/data.bin'),empty=await readFile(root+'/empty.bin')
+  if(bytes.length!==3||bytes[0]!==0||bytes[1]!==128||bytes[2]!==255||empty.length!==0)
+    throw new Error('Selected immutable child bytes are incorrect.')
+  let denied=false
+  try{await writeFile(root+'/must-not-write','forbidden',{flag:'wx'})}catch{denied=true}
+  if(!denied)throw new Error('Delegated artifact was writable.')
+  return {outcome:'done',output:{count:2}}
+})
+`,
+  )
+  await put(
     'flows/nested/FLOW.ts',
     `import {handle} from '@jigging/flow'
-import {readFile,stat} from 'node:fs/promises'
 await handle(async run=>{
-  const result=await run.call({operationId:'inner-copy',slot:'inner',input:null})
+  const result=await run.call({operationId:'inner-copy',slot:'inner',input:null,attachments:{files:{create:true}}})
   if(result.outcome!=='done'||result.output?.count!==2) throw new Error('Invalid complete child result.')
-  const bytes=await readFile(run.attachments.files.path+'/inner/data.bin')
-  if(bytes.length!==3||bytes[2]!==255) throw new Error('Nested import was not visible after await.')
-  if(!(await stat(run.attachments.files.path+'/inner/empty-directory')).isDirectory())
-    throw new Error('Empty child directory was lost during import.')
-  return {outcome:'done',output:{count:2}}
+  return {outcome:'done',output:{count:2},artifactResults:{inner:result.artifacts.files}}
 })
 `,
   )
   await put(
     'flows/root/FLOW.ts',
     `import {handle} from '@jigging/flow'
-import {readFile,stat} from 'node:fs/promises'
 await handle(async run=>{
+  const firstRequest={operationId:'first-copy',slot:'first',input:null,attachments:{files:{create:true}}}
   const results=await Promise.all([
-    run.call({operationId:'first-copy',slot:'first',input:null}),
-    run.call({operationId:'second-copy',slot:'second',input:null}),
+    run.call(firstRequest),
+    run.call({operationId:'second-copy',slot:'first',input:null,attachments:{files:{create:true}}}),
   ])
   for(const result of results)
     if(result.outcome!=='done'||result.output?.count!==2) throw new Error('Invalid complete sibling result.')
   const nested=await run.call({operationId:'nested-copy',slot:'nested',input:null})
   if(nested.outcome!=='done'||nested.output?.count!==2) throw new Error('Invalid nested result.')
-  for(const directory of ['first','second','nested/inner']){
-    const bytes=await readFile(run.attachments.files.path+'/'+directory+'/data.bin')
-    if(bytes.length!==3||bytes[0]!==0||bytes[1]!==128||bytes[2]!==255)
-      throw new Error('Committed child bytes unavailable to the live caller.')
-    if(!(await stat(run.attachments.files.path+'/'+directory+'/empty-directory')).isDirectory())
-      throw new Error('Empty child directory unavailable to the live caller.')
+  const duplicate=await run.call(firstRequest)
+  if(duplicate.artifacts.files.reference!==results[0].artifacts.files.reference)
+    throw new Error('Duplicate operation did not retain its original artifact.')
+  if(results[0].artifacts.files.reference===results[1].artifacts.files.reference)
+    throw new Error('Distinct operations shared writable output.')
+  for(const [index,artifact] of [results[0].artifacts.files,results[1].artifacts.files,nested.artifacts.inner].entries()){
+    const checked=await run.call({operationId:'verify-'+index,slot:'verify',input:null,attachments:{candidate:{read:artifact}}})
+    if(checked.outcome!=='done')throw new Error('Delegated artifact failed verification.')
   }
-  return {outcome:'done',output:{count:2}}
+  return {outcome:'done',output:{count:2},artifactResults:{first:results[0].artifacts.files,second:results[1].artifacts.files,nested:nested.artifacts.inner}}
 })
 `,
   )
@@ -161,7 +185,7 @@ export async function assertMappedFilesPacket(
   source: string,
   composed = true,
 ): Promise<void> {
-  for (const directory of composed ? ['first', 'second', 'nested/inner'] : ['']) {
+  for (const directory of composed ? ['first', 'second', 'nested'] : ['']) {
     assert.deepEqual(
       await readFile(join(packet, 'files', directory, 'data.bin')),
       Buffer.from([0, 128, 255]),

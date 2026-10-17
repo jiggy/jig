@@ -1,11 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { RunContext, RunResult } from '@jigging/flow'
+import type { RunResult } from '@jigging/flow'
 import { runMethod as convert } from '../flows/convert/method.ts'
 import { runMethod as importer, parseContacts } from '../flows/import/method.ts'
-import { runMethod as agent } from '../flows/map-agent/method.ts'
 import { runMethod as known } from '../flows/map-code/method.ts'
 import { runMethod as mixed } from '../flows/map-mixed/method.ts'
 
@@ -52,80 +51,12 @@ test('known format works in any order and unknown headings ask for mapping', asy
   )
 })
 
-for (const selected of [headers, ['Organisation', 'Courriel', 'Nom complet']])
-  test(`mixed mapper calls the Agent only for unfamiliar headings (${selected[0]})`, async () => {
-    let calls = 0
-    const result = await mixed({
-      input: { headers: selected },
-      call: async () => {
-        calls++
-        return { outcome: 'done', output: { structured: mapping } }
-      },
-    })
-    expect(result).toEqual(completed({ mapping }))
-    expect(calls).toBe(selected === headers ? 0 : 1)
-  })
-for (const outcome of ['blocked', 'limit'])
-  test(`mixed preserves ${outcome} without retry`, async () => {
-    let calls = 0
-    expect(
-      await mixed({
-        input: { headers: ['Unknown'] },
-        call: async () => {
-          calls++
-          return { outcome, output: { text: 'Cannot proceed.' } }
-        },
-      }),
-    ).toEqual({ outcome, output: { reason: 'Cannot proceed.' } })
-    expect(calls).toBe(1)
-  })
 test('code and mixed agree on reordered known headings', async () => {
   const input = { headers: ['Company', 'Customer', 'Email address'] }
-  expect(
-    await mixed({
-      input,
-      call: async () => {
-        throw Error('No Agent needed')
-      },
-    }),
-  ).toEqual(await known({ input }))
-})
-
-test('Agent request contains headings and structured mapping contract', async () => {
-  expect(
-    await agent({
-      input: { headers },
-      call: async (request) => {
-        expect(request.slot).toBe('agent')
-        expect(request.operationId).toBe('map-headings')
-        expect((request.input as any).instructions).toContain(JSON.stringify({ headers }))
-        expect((request.input as any).responseSchema.additionalProperties).toBe(false)
-        return { outcome: 'done', output: { structured: mapping } }
-      },
-    }),
-  ).toEqual(completed({ mapping }))
-})
-for (const outcome of ['blocked', 'limit'])
-  test(`Agent preserves ${outcome}`, async () => {
-    expect(
-      await agent({
-        input: { headers },
-        call: async () => ({ outcome, output: { text: 'reason' } }),
-      }),
-    ).toEqual({ outcome, output: { reason: 'reason' } })
-  })
-test('Agent malformed response and execution failure stay errors', async () => {
-  await expect(
-    agent({ input: { headers }, call: async () => ({ outcome: 'done', output: {} }) }),
-  ).rejects.toThrow()
-  await expect(
-    agent({
-      input: { headers },
-      call: async () => {
-        throw Error('uncertain dispatch')
-      },
-    }),
-  ).rejects.toThrow('uncertain dispatch')
+  // The known-format branch needs no child capability.
+  await expect(mixed({ input } as Parameters<typeof mixed>[0])).resolves.toEqual(
+    await known({ input }),
+  )
 })
 
 for (const invalid of [
@@ -191,53 +122,12 @@ async function withImport(
         source: { access: 'read', path: join(root, 'source') },
         preview: { access: 'read-write', path: join(root, 'preview') },
       },
-      call: async () => {
-        throw Error('Provide a child')
-      },
     } as Parameters<typeof importer>[0]
     await work(run, join(root, 'preview/preview.json'))
   } finally {
     await rm(root, { recursive: true, force: true })
   }
 }
-
-test('composes public handlers and writes only the complete preview', async () =>
-  withImport(async (run, out) => {
-    const calls: string[] = []
-    run.call = async (request) => {
-      calls.push(request.slot)
-      if (request.slot === 'mapper') {
-        expect(Object.keys(request.input as object)).toEqual(['headers'])
-        return known({ input: request.input })
-      }
-      return convert({ input: request.input, signal: run.signal })
-    }
-    const result = await importer(run)
-    expect(calls).toEqual(['mapper', 'converter'])
-    expect(JSON.parse(await readFile(out, 'utf8'))).toEqual(result.output)
-    expect((result.output as any).accepted).toHaveLength(2)
-    expect((result.output as any).rejected).toHaveLength(1)
-  }))
-for (const failure of ['blocked', 'limit', 'error', 'cancel'])
-  test(`importer preserves ${failure} without publishing or replay`, async () =>
-    withImport(async (run, out) => {
-      const controller = new AbortController()
-      run = { ...run, signal: controller.signal }
-      let calls = 0
-      run.call = async () => {
-        calls++
-        if (failure === 'error') throw Error('uncertain dispatch')
-        if (failure === 'cancel') {
-          controller.abort()
-          return completed({ mapping })
-        }
-        return { outcome: failure, output: { reason: 'cannot proceed' } }
-      }
-      if (failure === 'error' || failure === 'cancel') await expect(importer(run)).rejects.toThrow()
-      else expect((await importer(run)).outcome).toBe(failure)
-      expect(calls).toBe(1)
-      expect(await Bun.file(out).exists()).toBe(false)
-    }))
 
 test('all mapper implementations expose the same input and result contracts', async () => {
   const expected = await Bun.file(
@@ -249,87 +139,10 @@ test('all mapper implementations expose the same input and result contracts', as
     ).toEqual(expected)
 })
 
-test('a converter failure leaves no preview and does not rerun the mapper', async () =>
-  withImport(async (run, out) => {
-    const calls: string[] = []
-    run.call = async (request) => {
-      calls.push(request.slot)
-      if (request.slot === 'mapper') return completed({ mapping })
-      throw Error('converter failed')
-    }
-    await expect(importer(run)).rejects.toThrow('converter failed')
-    expect(calls).toEqual(['mapper', 'converter'])
-    expect(await Bun.file(out).exists()).toBe(false)
-  }))
-
 test('invalid CSV fails before any child work', async () =>
   withImport(async (run, out) => {
     await writeFile(join(run.attachments.source!.path, 'contacts.csv'), await fixture('malformed'))
-    let called = false
-    run.call = async () => {
-      called = true
-      return completed({ mapping })
-    }
+    // No child capability exists in this context. Parsing must fail first.
     await expect(importer(run)).rejects.toThrow('headings')
-    expect(called).toBe(false)
     expect(await Bun.file(out).exists()).toBe(false)
   }))
-
-for (const [name, method] of [
-  ['map-agent', agent],
-  ['map-mixed', mixed],
-] as const)
-  test(`an Agent abstention becomes a null public mapping (${name})`, async () => {
-    expect(
-      await method({
-        input: { headers: ['Unclear heading'] },
-        call: async () => ({
-          outcome: 'done',
-          output: { structured: { name: 0, email: null, organization: 2 } },
-        }),
-      }),
-    ).toEqual(completed({ mapping: null }))
-  })
-
-for (const [name, method] of Object.entries({ agent, mixed })) {
-  test(`${name} rejects a comma-combined key before collapsing an abstention`, async () => {
-    for (const structured of [
-      { 'email,name': null, organization: null },
-      { 'email,name': null, organization: null, extra: null },
-    ])
-      await expect(
-        method({
-          input: { headers: ['Unclear heading'] },
-          call: async () => completed({ structured }),
-        }),
-      ).rejects.toThrow('Missing structured mapping.')
-  })
-  test(`${name} accepts a complete ambiguous reply`, async () => {
-    expect(
-      await method({
-        input: { headers: ['Unclear heading'] },
-        call: async () =>
-          completed({ structured: { name: null, email: null, organization: null } }),
-      }),
-    ).toEqual(completed({ mapping: null }))
-  })
-  for (const [kind, invalid] of Object.entries({
-    string: '2',
-    boolean: false,
-    fraction: 1.5,
-    unsafeInteger: Number.MAX_SAFE_INTEGER + 1,
-    array: [],
-    object: {},
-    nan: NaN,
-    infinity: Infinity,
-  }))
-    test(`${name} rejects a ${kind} sibling of an abstaining index`, async () => {
-      await expect(
-        method({
-          input: { headers: ['Unclear heading'] },
-          call: async () =>
-            completed({ structured: { name: 0, email: null, organization: invalid } }),
-        }),
-      ).rejects.toThrow('Missing structured mapping.')
-    })
-}

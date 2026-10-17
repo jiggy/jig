@@ -26,7 +26,12 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - `./conversation` composes the public Agent Run contract through ordinary calls
   and channels. It owns correlation, local endpoint disposal and an uncancelled
   invocation waiter. It imports no native or private host code. Received turn
-  outcomes and final invocation settlement remain distinct. Final receipt
+  outcomes and final invocation settlement remain distinct.
+
+  Public turn results and settlement contain only JSON `{ outcome, output }`.
+  Validate and snapshot domain output. Exclude host artifact envelopes.
+
+  Final receipt
   presence must match the initial session request. Malformed or unsolicited
   receipts fail without discarding settled turn evidence.
 

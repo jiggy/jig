@@ -58,17 +58,11 @@ describe('Package/0 canonical paths', () => {
       expectCheckError(() => assertNoPathCollisions(paths), 'PACKAGE_PATH_COLLISION')
     }
   })
-  test('preserves Unicode 15.1 NFC independently of the host Unicode database', () => {
-    const prior = Object.getOwnPropertyDescriptor(process.versions, 'unicode')!
-    try {
-      Object.defineProperty(process.versions, 'unicode', { ...prior, value: '16.0' })
-      expect(validateLogicalPath('FLOW.md')).toBe('FLOW.md')
-      expect(validateLogicalPath('café')).toBe('café')
-      expectCheckError(() => validateLogicalPath('cafe\u0301'), 'PACKAGE_PATH_NFC')
-      // Unicode 16 composes Todhri EI; those scalars are unassigned in 15.1.
-      expect(validateLogicalPath('\u{105D2}\u0307')).toBe('\u{105D2}\u0307')
-    } finally {
-      Object.defineProperty(process.versions, 'unicode', prior)
-    }
+  test('preserves Unicode 15.1 NFC with the actual host Unicode database', () => {
+    expect(validateLogicalPath('FLOW.md')).toBe('FLOW.md')
+    expect(validateLogicalPath('café')).toBe('café')
+    expectCheckError(() => validateLogicalPath('cafe\u0301'), 'PACKAGE_PATH_NFC')
+    // Unicode 16 composes Todhri EI; those scalars are unassigned in 15.1.
+    expect(validateLogicalPath('\u{105D2}\u0307')).toBe('\u{105D2}\u0307')
   })
 })

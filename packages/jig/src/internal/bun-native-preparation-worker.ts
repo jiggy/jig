@@ -9,10 +9,13 @@ import {
 } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
+  PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
+  type PrivateBunPreparationMode,
   privateBunMessageFits,
+  privateBunPreparationLimits,
 } from './bun-native-preparation-protocol.js'
 import {
   capturePrivateBunPreparedTree,
@@ -21,6 +24,10 @@ import {
   WorkerFailure,
   type Workspace,
 } from './bun-prepared-capture.js'
+import {
+  requirePrivateProjectEvaluationLock,
+  requirePrivateProjectEvaluationManifest,
+} from './project-evaluation-manifest.js'
 
 // The trusted launcher selects a bounded writable working directory on each host.
 const WORK_ROOT = process.cwd()
@@ -31,6 +38,7 @@ const CHILD_ENVIRONMENT: Readonly<Record<string, string>> = Object.freeze(
 )
 
 let workspace: Workspace | undefined
+let mode: PrivateBunPreparationMode = 'production'
 
 let outputQueue = Promise.resolve()
 const allowResolutionNetwork =
@@ -44,6 +52,22 @@ try {
   if (first.done) throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source is missing')
   const source = requireSource(first.value)
   workspace = source.workspace
+  mode = source.mode
+  if (mode === 'evaluation') {
+    if (workspace !== undefined || allowResolutionNetwork)
+      throw new WorkerFailure(
+        'PACKAGE_BUN_PROTOCOL',
+        'evaluation preparation requires a single locked package',
+      )
+    const manifest = source.files.find(({ path }) => path === 'package.json')!
+    requirePrivateProjectEvaluationManifest(
+      JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(
+          decodeBase64(manifest.content, manifest.path),
+        ),
+      ),
+    )
+  }
   if (!(await iterator.next()).done) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source has trailing data')
   }
@@ -81,6 +105,7 @@ try {
     PACKAGE_ROOT,
     workspace,
     Object.values(patches),
+    mode,
   )
   await sendPrepared(prepared)
   await outputQueue
@@ -163,6 +188,12 @@ async function requireSupportedLock(
       workspace === undefined ? undefined : new Set(workspace.members),
       process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
     )
+    if (mode === 'evaluation')
+      requirePrivateProjectEvaluationLock(
+        value,
+        JSON.parse(await readFile(join(PACKAGE_ROOT, 'package.json'), 'utf8')),
+        process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
+      )
   } catch (error) {
     if (resolved) {
       throw new WorkerFailure(
@@ -317,7 +348,7 @@ async function install(): Promise<void> {
       '--config=/dev/null',
       'install',
       '--frozen-lockfile',
-      '--production',
+      ...(mode === 'production' ? ['--production'] : []),
       '--ignore-scripts',
       '--backend=copyfile',
       '--linker=hoisted',
@@ -353,12 +384,17 @@ async function install(): Promise<void> {
 function requireSource(value: unknown): {
   readonly files: readonly SourceFile[]
   readonly workspace?: Workspace
+  readonly mode: PrivateBunPreparationMode
 } {
   const root = ordinaryRecord(value)
+  if (root?.mode !== undefined && root.mode !== 'evaluation')
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'unsupported preparation mode')
+  const selectedMode = root?.mode === 'evaluation' ? 'evaluation' : 'production'
+  const limits = privateBunPreparationLimits(selectedMode)
   if (
     root?.type !== 'source' ||
     !Array.isArray(root.files) ||
-    root.files.length > PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles
+    root.files.length > limits.sourceFiles
   ) {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'preparation source is invalid')
   }
@@ -377,7 +413,7 @@ function requireSource(value: unknown): {
     prior = file.path
     const bytes = decodeBase64(file.content, file.path)
     total += bytes.byteLength
-    if (total > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes) {
+    if (total > limits.sourceBytes) {
       throw new WorkerFailure(
         'PACKAGE_BUN_INPUT_LIMIT',
         'locked Bun package is too large to prepare',
@@ -430,6 +466,7 @@ function requireSource(value: unknown): {
   }
   return Object.freeze({
     files: Object.freeze(files),
+    mode: selectedMode,
     ...(selectedWorkspace === undefined ? {} : { workspace: selectedWorkspace }),
   })
 }
@@ -475,7 +512,14 @@ function sendPrepared(
   prepared: Awaited<ReturnType<typeof capturePrivateBunPreparedTree>>,
 ): Promise<void> {
   const bytes = encodePrivateBunMessage({ type: 'prepared', ...prepared })
-  if (!privateBunMessageFits(bytes.byteLength - 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
+  if (
+    !privateBunMessageFits(
+      bytes.byteLength - 1,
+      mode === 'evaluation'
+        ? PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES
+        : PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
+    )
+  ) {
     throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
   }
   return enqueue(bytes)

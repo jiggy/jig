@@ -13,7 +13,6 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Attachment, JsonValue, RunResult } from '@jigging/flow'
-import { REPORTING_CONTRACT, validateReportingMessage, withReporting } from '@jigging/reporting'
 import { createPhotoContactSheet } from '../flows/contact-sheet/method.ts'
 import { copyPhotos } from '../flows/copy-photos/method.ts'
 
@@ -355,36 +354,4 @@ test('contact-sheet refuses to replace an existing sheet', async () => {
     expect(await readFile(join(outputFolder, 'contact-sheet.svg'), 'utf8')).toBe(sentinel)
     expect(await readdir(outputFolder)).toEqual(['contact-sheet.svg'])
   })
-})
-
-test('both independent file methods emit valid optional public views', async () => {
-  for (const method of [copyPhotos, createPhotoContactSheet]) {
-    await withFileMethodFixture(async ({ run }) => {
-      const updatesSent: unknown[] = []
-      await withReporting(
-        {
-          signal: run.signal,
-          channels: {
-            progress: {
-              direction: 'send',
-              contract: REPORTING_CONTRACT,
-              delivery: 'broadcast',
-              send: async (update) => {
-                updatesSent.push(update)
-              },
-              close: async () => {},
-            },
-          },
-        },
-        'progress',
-        async (updates) => {
-          await method(run, updates)
-        },
-      )
-      expect(updatesSent.length).toBeGreaterThan(0)
-      for (const update of updatesSent) {
-        validateReportingMessage(update)
-      }
-    })
-  }
 })

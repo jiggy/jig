@@ -207,7 +207,7 @@ Only these optional exact root owners establish validation:
 
 | File | Meaning |
 | --- | --- |
-| `FLOW.contract.json` | [Invocation Contract/0](invocation-contracts.md): input, complete result, explicit outcomes, channels and caller attachments. |
+| `FLOW.contract.json` | [Invocation Contract/0](invocation-contracts.md): input, domain result, explicit outcomes, channels, caller attachments and forwarded artifact result names. |
 | `settings.schema.json` | [Schema/0](schema-files.md): the complete immutable implementation settings object. |
 
 Compile present declarations during inert inspection, before code or instructions

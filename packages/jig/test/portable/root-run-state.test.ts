@@ -7,6 +7,7 @@ import {
   encodePrivateRootRunOrigin,
   normalizePrivateRootRunIdentityInput,
   normalizePrivateRootRunOrigin,
+  normalizePrivateRootTerminal,
   privateRootRunIdentityDigest,
   privateRootRunOriginDigest,
   privateRootSubmissionDigest,
@@ -18,6 +19,28 @@ function digest(label: string): string {
 }
 
 describe('private root Run origin state', () => {
+  test('durable terminals preserve host artifact references but reject handler-only selections', () => {
+    const value = {
+      status: 'succeeded',
+      result: { outcome: 'done', output: { accepted: true }, artifacts: { final: 'artifact-1' } },
+      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
+    }
+    const terminal = normalizePrivateRootTerminal(value)
+    expect(terminal).toEqual(value)
+    expect(Object.isFrozen(terminal)).toBe(true)
+    if (terminal.status !== 'succeeded') throw new Error('expected successful terminal')
+    expect(Object.isFrozen(terminal.result.artifacts)).toBe(true)
+    value.result.artifacts.final = 'artifact-2'
+    expect(terminal.result.artifacts?.final).toBe('artifact-1')
+    for (const result of [
+      { outcome: 'done', output: {}, artifactResults: { final: 'artifact-1' } },
+      { outcome: 'done', output: {}, artifacts: { 'host/path': 'artifact-1' } },
+      { outcome: 'done', output: {}, artifacts: { final: 'x'.repeat(129) } },
+      { outcome: 'done', output: {}, artifacts: { final: { path: '/host/path' } } },
+    ])
+      expect(() => normalizePrivateRootTerminal({ ...value, result })).toThrow()
+  })
+
   test('normalizes and canonically encodes one external submission origin', () => {
     const origin = createPrivateExternalSubmissionOrigin('ticket\0attempt\n🚀')
     expect(origin).toEqual({
@@ -76,7 +99,7 @@ describe('private root Run origin state', () => {
     })
     expect(request).toEqual({
       kind: 'private-root-run-request/1',
-      files: { attachments: [], output: null },
+      files: { attachments: [], output: false },
       target: { kind: 'binding', id: 'review' },
       input: { ticket: 1 },
       deadlineUnixMs: 12_345,
@@ -118,7 +141,7 @@ describe('private root Run origin state', () => {
       ],
     }
     const other = { name: 'other', files: [] }
-    const make = (attachments: (typeof source)[], output = '/review') =>
+    const make = (attachments: (typeof source)[], output = true) =>
       createPrivateRootRunRequest({
         target: { kind: 'flow', path: 'flows/files' },
         input: {},
@@ -132,7 +155,7 @@ describe('private root Run origin state', () => {
       privateRootSubmissionDigest(make([{ ...source, files: [...source.files].reverse() }, other])),
     )
     expect(privateRootSubmissionDigest(first)).not.toBe(
-      privateRootSubmissionDigest(make([other, source], '/different')),
+      privateRootSubmissionDigest(make([other, source], false)),
     )
     expect(privateRootSubmissionDigest(first)).not.toBe(
       privateRootSubmissionDigest(
@@ -140,7 +163,7 @@ describe('private root Run origin state', () => {
       ),
     )
     expect(() => make([source, source])).toThrow()
-    expect(() => make([source], '/not/../canonical')).toThrow()
+    expect(() => make([source], '/not/../canonical' as never)).toThrow()
   })
   test('rejects malformed Run identity inputs before hashing', () => {
     const valid = {

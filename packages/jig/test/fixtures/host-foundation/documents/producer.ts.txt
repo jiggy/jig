@@ -1,0 +1,12 @@
+import { handle } from '@jigging/flow'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+await handle(async run => {
+  const input = run.input as { title: string; lines: string[] }
+  if (typeof input.title !== 'string' || !Array.isArray(input.lines)) throw Error('Invalid document')
+  await writeFile(join(run.attachments.document!.path, 'brief.txt'),
+    `${input.title}\n${input.lines.join('\n')}\n`, { flag: 'wx' })
+  await writeFile(join(run.attachments.document!.path, 'empty.bin'), new Uint8Array())
+  return { outcome: 'done', output: { lines: input.lines.length } }
+})

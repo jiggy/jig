@@ -1,6 +1,12 @@
 import type { FileHandle } from 'node:fs/promises'
 import type { PrivateCapturedOutput } from './captured-output.js'
-import { PrivateFileImportUnconfirmedError } from './execution-file-import.js'
+
+/** Original output custody could not be retired; callers must preserve uncertainty. */
+export class PrivateOutputRetirementUnconfirmedError extends Error {
+  constructor(cause: unknown) {
+    super('native output retirement could not be confirmed', { cause })
+  }
+}
 
 const closingDirectories = new WeakMap<FileHandle, Promise<void>>()
 const retainedDirectories = new Set<FileHandle>()
@@ -15,7 +21,7 @@ function closeDirectory(directory: FileHandle): Promise<void> {
     try {
       await directory.close()
     } catch (cause) {
-      throw new PrivateFileImportUnconfirmedError(cause)
+      throw new PrivateOutputRetirementUnconfirmedError(cause)
     }
     retainedDirectories.delete(directory)
   })()
@@ -31,7 +37,7 @@ function closeCapture(capture: PrivateCapturedOutput): Promise<void> {
     try {
       capture.close()
     } catch (cause) {
-      throw new PrivateFileImportUnconfirmedError(cause)
+      throw new PrivateOutputRetirementUnconfirmedError(cause)
     }
     retainedCaptures.delete(capture)
   })()

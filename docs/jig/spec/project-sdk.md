@@ -291,19 +291,30 @@ slots: {
     target: "flow:flows/copy",
     attachments: {
       source: { from: "source" },
-      deliverables: { into: "deliverables", directory: "copies" },
+      deliverables: { create: true },
     },
   },
 }
 ```
 
 Each child attachment must be mapped exactly once. `from` selects a complete
-immutable read view from the immediate caller; `into` selects its writable
-attachment and one new LocalName folder. Directions must match. A mapped
-Binding child cannot also select its own retained attachment resources.
-Writable sibling folders must differ. Read aliases share the original capture
-without widening the 64-file/8-MiB physical input budget. The mapping is part
-of review and admission; ordinary `run.call()` still supplies only JSON input.
+immutable read view from the immediate caller. `create: true` permits a fresh
+writable artifact owned by each operation, without requiring a writable caller
+port. The call supplies `attachments: { deliverables: { create: true } }` and
+receives the sealed output through `result.artifacts.deliverables`.
+`{ supplied: "read" }` instead permits a held artifact as an explicit readonly
+call attachment: `attachments: { source: { read: artifact } }`.
+Fixed `from` ports cannot be overridden or repeated in call attachments.
+
+Directions must match. A mapped Binding child cannot also select its own
+retained attachment resources. Read aliases share the original capture without
+widening the physical input budget. The mapping is part of review and admission.
+The domain input remains ordinary JSON and artifacts are separate result metadata.
+
+Declare allowed forwarded result names with `artifactResults: ["final"]` in
+`FLOW.contract.json`, then return a selected held artifact through the handler's
+terminal `artifactResults: { final: artifact }`. Forwarding aliases immutable
+bytes. It does not merge child trees into the root writable attachment.
 See [child files](project-policy.md#child-file-runs) for completion and failure semantics.
 
 Binding identity is the declaration filename's LocalName basename. For

@@ -137,11 +137,6 @@ async function describePrivateBunDirectRun(
     }
   }
   const nativeRoutes = nativeSlotRoutes(request.slots)
-  if (
-    nativeRoutes.some(({ native }) => native === 'run-checkpoint') &&
-    !Object.values(request.attachments).includes('read-write')
-  )
-    throw new TypeError('Run Checkpoint requires a root writable attachment')
   let acp: Readonly<Record<string, PrivateAcpAgentProvider>>
   try {
     acp = await selectPrivateAcpResources(input.acpResources, request.slots, installedSupport)

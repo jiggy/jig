@@ -14,8 +14,8 @@ export function photosView(photos: RenamedPhoto[] = [], accepted = false): ViewS
       kind: 'report',
       text: 'Open overview/contact-sheet.svg from the result packet to see before and after. The Agent groups captions without interpreting pixels.',
       references: [
-        { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
-        { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
+        { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+        { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
       ],
     }
   }
@@ -45,7 +45,13 @@ export function photosView(photos: RenamedPhoto[] = [], accepted = false): ViewS
                 {
                   kind: 'report',
                   text: 'The source stays unchanged.',
-                  references: [{ kind: 'artifact', attachment: 'photos', path: photo.destination }],
+                  references: [
+                    {
+                      kind: 'artifact',
+                      attachment: 'copies',
+                      path: photo.destination.slice('copies/'.length),
+                    },
+                  ],
                 },
               ],
             })),

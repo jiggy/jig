@@ -25,15 +25,23 @@ SDK/1 and Run/0.
   snapshot the complete root result envelope before cleanup. Envelope overhead
   counts toward JSON/0 bounds and overflow is `INVALID_RESULT`.
 - `run.call()` sends one exact `FlowCall` through `flow/call`, requiring
-  `operationId`, `slot`, and `input`, with only optional `intent` and
-  `channels`. It returns the complete `RunResult`. Domain outcomes remain
+  `operationId`, `slot`, and `input`, with optional `intent`, `channels` and
+  `attachments`. It returns `CallResult`. Domain outcomes remain
   ordinary data. Snapshot own enumerable data fields before validation and wire
   emission. Accessors, hidden fields, and symbols are not request or channel-map
   data. Inherited fields do not become supplied values or endpoint authority.
-  `OperationError`
 
-  represents operational failure. The host-supplied `flow/run` entrypoint and
+  `OperationError` represents operational failure. The host-supplied `flow/run` entrypoint and
   authority ownership are unchanged.
+- Finite artifact refs project to genuine per-Run opaque `Artifact` objects.
+  Call attachments serialize held reads or `create:true`. Terminal
+  `artifactResults` explicitly selects held immutable trees. Domain schemas
+  remain `{outcome, output}` and host `artifacts` are a separate envelope.
+  The host validates rights and exact duplicate replay before new-read rights.
+  Serialization never manufactures grants or resurrects released refs.
+
+  Optional early release retains cancellation settlement. Ordinary root cleanup
+  is host-owned and automatic, including late cancelled call replies.
 - Direct and broadcast channel endpoints carry only host-granted information
   rights. Channel creation accepts a package-local agreement path or a closed
   `{slot, channel}` reference to the caller's declared dependency contract.

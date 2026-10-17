@@ -9,9 +9,8 @@ export async function organisePhotos(
   updates?: Reporter,
 ): Promise<RunResult> {
   const sourceAttachment = run.attachments.source
-  const outputAttachment = run.attachments.photos
-  if (sourceAttachment?.access !== 'read' || outputAttachment?.access !== 'read-write') {
-    throw new TypeError('Supply read-only source and writable photos attachments.')
+  if (sourceAttachment?.access !== 'read') {
+    throw new TypeError('Supply the read-only source attachment.')
   }
 
   const view = updates?.view('photos', { title: 'Photo box', landing: true })
@@ -59,19 +58,24 @@ export async function organisePhotos(
   const assignments = renamedPhotos.map((photo) => ({ id: photo.id, event: photo.event }))
 
   // 4. Each file Flow rechecks the originals and assignments at its own boundary.
-  // The Binding supplies the immutable source and imports each completed folder.
+  // The Binding supplies the immutable source and permits fresh operation outputs.
   updates?.activity('organise', 'Preparing checked photo copies and the manifest')
   const copyResponse = await run.call({
     operationId: 'copy-photos',
     slot: 'copy-photos',
     intent: 'Copy the originals into checked event folders without changing their bytes',
     input: { assignments },
+    attachments: { files: { create: true } },
   })
   run.signal.throwIfAborted()
   if (copyResponse.outcome !== 'done') {
     throw new TypeError('The copy Flow did not complete the checked collection.')
   }
   checkCopiedPhotos(renamedPhotos, copyResponse.output)
+  const copies = copyResponse.artifacts?.files
+  if (copies === undefined) {
+    throw new TypeError('The copy Flow omitted its sealed file artifact.')
+  }
 
   updates?.activity('organise', 'Creating the before-and-after contact sheet')
   const sheetResponse = await run.call({
@@ -79,15 +83,20 @@ export async function organisePhotos(
     slot: 'contact-sheet',
     intent: 'Show the original collection beside its checked grouping',
     input: { assignments },
+    attachments: { files: { create: true } },
   })
   run.signal.throwIfAborted()
   if (sheetResponse.outcome !== 'done') {
     throw new TypeError('The contact-sheet Flow did not complete the overview.')
   }
   checkContactSheetOutput(renamedPhotos.length, sheetResponse.output)
+  const overview = sheetResponse.artifacts?.files
+  if (overview === undefined) {
+    throw new TypeError('The contact-sheet Flow omitted its sealed file artifact.')
+  }
 
-  // Child results use their own output-relative paths. The application adds the
-  // fixed import prefixes declared in bindings/organise.ts for its final result.
+  // Final result names supply packet prefixes without copying or mutating either
+  // sealed child tree. Leaf paths remain relative to their own output attachment.
   const deliveredPhotos = renamedPhotos.map((photo) => ({
     ...photo,
     destination: `copies/${photo.destination}`,
@@ -105,5 +114,6 @@ export async function organisePhotos(
       manifest: 'copies/manifest.csv',
       contactSheet: 'overview/contact-sheet.svg',
     },
+    artifactResults: { copies, overview },
   }
 }
