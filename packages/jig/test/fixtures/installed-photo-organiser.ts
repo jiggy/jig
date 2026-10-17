@@ -164,6 +164,27 @@ export async function runInstalledPhotoProject(options: {
   assert.equal(result.output.count, 12)
   assert.equal(result.output.manifest, 'copies/manifest.csv')
   assert.equal(result.output.contactSheet, 'overview/contact-sheet.svg')
+  assert.equal(result.delivery.status, 'written')
+  assert.equal(result.delivery.source, 'final')
+  // All deliverables live beneath files/. Forwarded results add their result names.
+  const files = join(packet, 'files')
+  assert.deepEqual(
+    result.delivery.files.map((file: { path: string }) => file.path).sort(),
+    [
+      ...result.output.photos.map((photo: { destination: string }) => photo.destination),
+      'copies/manifest.csv',
+      'overview/contact-sheet.svg',
+    ].sort(),
+  )
+  const delivered = await tree(files)
+  assert.deepEqual(
+    Object.keys(delivered).sort(),
+    result.delivery.files.map((file: { path: string }) => file.path).sort(),
+  )
+  for (const file of result.delivery.files) {
+    assert.equal(`sha256:${delivered[file.path]}`, file.digest)
+    assert.equal((await readFile(join(files, file.path))).length, file.bytes)
+  }
   assert.deepEqual([...result.output.groups].sort(), [
     'Birthday party',
     'Lake picnic',
@@ -183,7 +204,7 @@ export async function runInstalledPhotoProject(options: {
     }
     assert.ok(photo.destination.startsWith('copies/'))
     assert.deepEqual(
-      await readFile(join(packet, photo.destination)),
+      await readFile(join(files, photo.destination)),
       await readFile(join(example, 'fixtures/photos', photo.file)),
     )
     assert.deepEqual(
@@ -191,13 +212,13 @@ export async function runInstalledPhotoProject(options: {
       await readFile(join(example, 'fixtures/photos', photo.file)),
     )
   }
-  const manifest = await readFile(join(packet, 'copies/manifest.csv'), 'utf8')
+  const manifest = await readFile(join(files, 'copies/manifest.csv'), 'utf8')
   assert.equal(manifest.trimEnd().split('\n').length, 13)
   assert.ok(manifest.startsWith('id,original,event,date,copy\n'))
   for (const photo of result.output.photos) {
     assert.ok(manifest.includes(`"${photo.destination.slice('copies/'.length)}"`))
   }
-  const sheet = await readFile(join(packet, 'overview/contact-sheet.svg'), 'utf8')
+  const sheet = await readFile(join(files, 'overview/contact-sheet.svg'), 'utf8')
   assert.equal(sheet.match(/<image /g)?.length, 24)
   assert.ok(sheet.includes('Original order and names'))
   assert.ok(sheet.includes('Grouped copies'))

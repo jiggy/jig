@@ -14,7 +14,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { FiniteAcpFrames, fragmentFiniteAcpFrame } from '@jigging/agent-acp/transport'
 import type { PrivateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
@@ -24,46 +24,29 @@ import {
   PRIVATE_FINITE_ACP_CHANNELS,
   runPrivateFiniteAcpResource,
 } from '../../src/internal/finite-acp-resource.js'
-import { resolvePrivateLinuxHostLoader } from '../../src/internal/linux-host-paths.js'
 import {
   PrivateLinuxCgroupBackend,
-  PrivateLinuxFenceUnconfirmedError,
-  type PrivateLinuxLaunchPlan,
-  type PrivateLinuxReadOnlyMount,
-  type PrivateLinuxSealedOwnerIdentity,
   releasePrivateLinuxOwnerState,
   requirePrivateLinuxMechanismUnchanged,
 } from '../../src/internal/linux-rootless-backend.js'
 import type { JsonObject, JsonValue } from '../../src/json.js'
 import { ChannelBroker } from '../../src/run/channels.js'
 import { RunHostSession } from '../../src/run/session.js'
-import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 import { rawFiniteAcpPeerProgram } from '../fixtures/raw-finite-acp-peer.js'
 import {
   childExit,
   collect,
   createFixture,
-  delayedReadinessSupervisor,
-  delayedReadyForwardingSupervisor,
   delegatedCgroup,
-  deliberatelySignalledInnerSupervisor,
-  HOSTILE,
-  type HostConfiguration,
-  heldContinuationSupervisor,
   hostConfiguration,
   initialRootlessTemporaryState,
   missing,
-  outputDiagnosticSupervisor,
   plan,
   readLine,
-  replaceOnce,
   rootlessTemporaryEntry,
-  runtimeMounts,
-  unavailableDescriptorRestrictionSupervisor,
   waitForFence,
   waitForMissing,
   waitForNoRunCgroups,
-  waitForPresent,
 } from '.././linux-rootless-run.fixture.js'
 
 describe('private rootless Linux Run', () => {
@@ -401,31 +384,18 @@ describe('private rootless Linux Run', () => {
       45_000,
     )
   }
-  for (const [suiteCaseIndex, suiteCaseValue] of (['payload', 'inner'] as const).entries()) {
+  for (const [suiteCaseIndex, suiteCaseValue] of (['payload'] as const).entries()) {
     test(
       'records and fences deliberate SIGSEGV in %s' + ` (case ${suiteCaseIndex + 1})`,
       () =>
         Reflect.apply(
           async (origin) => {
             const host = await hostConfiguration()
-            const fixture = await createFixture(
-              origin === 'inner'
-                ? "throw new Error('payload must not start');"
-                : `
+            const fixture = await createFixture(`
       console.error('fixture: payload deliberately raising SIGSEGV');
       process.kill(process.pid, 'SIGSEGV');
-    `,
-            )
-            const supervisor =
-              origin === 'inner' ? await deliberatelySignalledInnerSupervisor() : undefined
-            const backend =
-              supervisor === undefined
-                ? host.backend
-                : new PrivateLinuxCgroupBackend({
-                    bunPath: host.bun,
-                    bunHostLibraryPath: host.bunHostLibraryPath,
-                    supervisorPath: supervisor.path,
-                  })
+    `)
+            const backend = host.backend
             let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
             let settled = false
             const evidence = await mkdtemp(join(tmpdir(), 'jig-signal-evidence-'))
@@ -504,11 +474,6 @@ describe('private rootless Linux Run', () => {
               )
               expect(stdout).toBe('')
               expect(stderr).toContain(`fixture: ${origin} deliberately raising SIGSEGV`)
-              if (origin === 'inner') {
-                expect(stderr).toContain('/jig/linux-rootless-supervisor.ts')
-                expect(stderr).toContain('--inner')
-                expect(stderr).not.toContain('payload must not start')
-              }
               // A Bun handler may report the payload, or forwarding may report the
               // trampoline. Preserve the actual text; neither names the cause alone.
               expect(stderr).toContain('Segmentation fault')
@@ -530,7 +495,6 @@ describe('private rootless Linux Run', () => {
               await component?.terminate()
               if (settled) {
                 await rm(fixture, { recursive: true, force: true })
-                if (supervisor) await rm(supervisor.root, { recursive: true, force: true })
               } else console.error(`Signal provenance proof failed; retained ${fixture}`)
               console.error(`Signal provenance evidence retained ${evidence}`)
               await waitForNoRunCgroups()
@@ -542,44 +506,6 @@ describe('private rootless Linux Run', () => {
       45_000,
     )
   }
-  test('refuses execution and fences when inherited descriptor restriction is unavailable', async () => {
-    const host = await hostConfiguration()
-    const fixture = await createFixture("throw new Error('package must not execute');")
-    const supervisor = await unavailableDescriptorRestrictionSupervisor()
-    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-descriptor-owner-'))
-    const backend = new PrivateLinuxCgroupBackend({
-      bunPath: host.bun,
-      bunHostLibraryPath: host.bunHostLibraryPath,
-      supervisorPath: supervisor.path,
-    })
-    // This checks the descriptor refusal, not a five-second startup deadline.
-    // Give retained-state I/O time to complete on the provisioned proof host.
-    const owner = await backend.seal(
-      plan(host, fixture, 'descriptor-unavailable', { deadlineMs: 30_000 }),
-      {
-        parent: ownerStateParent,
-        name: 'owner',
-      },
-    )
-    let released = false
-    try {
-      await expect(owner.admit()).rejects.toThrow()
-      const receipt = await waitForFence(backend, owner.identity, 10_000)
-      expect(receipt).toMatchObject({ fenced: true, stopReason: 'setup_failed', exitCode: null })
-      expect(await missing(owner.identity.runCgroup)).toBe(true)
-      await releasePrivateLinuxOwnerState(owner.identity, receipt)
-      released = true
-      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true)
-      await waitForNoRunCgroups()
-    } finally {
-      // Retain recovery evidence if fencing could not be confirmed.
-      if (released) {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(supervisor.root, { recursive: true, force: true })
-        await rm(ownerStateParent, { recursive: true, force: true })
-      }
-    }
-  }, 45_000)
   test('excludes unselected file and directory descriptors from the payload and visible parents', async () => {
     const host = await hostConfiguration()
     const secretRoot = await mkdtemp(join(tmpdir(), 'jig-rootless-descriptor-'))
@@ -672,18 +598,13 @@ describe('private rootless Linux Run', () => {
       }
     }
   }, 15_000)
-  test('preserves real fast-command evidence when coordinator readiness is delayed', async () => {
+  test('preserves real fast-command evidence through ordinary admission', async () => {
     const host = await hostConfiguration()
-    const supervisor = await delayedReadyForwardingSupervisor()
     const fixture = await createFixture("console.log('fast-command'); process.exitCode = 17;")
-    const backend = new PrivateLinuxCgroupBackend({
-      bunPath: host.bun,
-      bunHostLibraryPath: host.bunHostLibraryPath,
-      supervisorPath: supervisor.path,
-    })
+    const backend = host.backend
     let component: Awaited<ReturnType<PrivateLinuxCgroupBackend['launch']>> | undefined
     try {
-      component = await backend.launch(plan(host, fixture, 'delayed-ready-fast-command'))
+      component = await backend.launch(plan(host, fixture, 'fast-command'))
       await component.closeInput()
       const [stdout, stderr, receipt] = await Promise.all([
         collect(component.stdout),
@@ -702,7 +623,6 @@ describe('private rootless Linux Run', () => {
     } finally {
       await component?.terminate().catch(() => undefined)
       await rm(fixture, { recursive: true, force: true })
-      await rm(supervisor.root, { recursive: true, force: true })
       await waitForNoRunCgroups()
     }
   }, 15_000)
@@ -874,51 +794,6 @@ describe('private rootless Linux Run', () => {
     } finally {
       await component?.output?.directory.close()
       await rm(fixture, { recursive: true, force: true })
-    }
-  })
-  test('fences unavailable private output projection before candidate execution', async () => {
-    const host = await hostConfiguration()
-    const fixture = await createFixture("console.error('fixture: package must not execute');")
-    const evaluationSource = join(fixture, 'evaluation')
-    await mkdir(evaluationSource, { mode: 0o555 })
-    const diagnostic = await outputDiagnosticSupervisor(
-      join(fixture, 'supervisor-diagnostic.txt'),
-      'projection',
-    )
-    const ownerParent = await mkdtemp(join(tmpdir(), 'jig-rootless-projection-owner-'))
-    const backend = new PrivateLinuxCgroupBackend({
-      bunPath: host.bun,
-      bunHostLibraryPath: host.bunHostLibraryPath,
-      supervisorPath: diagnostic.path,
-    })
-    const base = plan(host, fixture, 'evaluation-projection-failure', { deadlineMs: 30_000 })
-    const launch = {
-      ...base,
-      readOnlyMounts: [
-        ...base.readOnlyMounts,
-        { source: evaluationSource, destination: '/jig-evaluation' },
-      ],
-      output: true,
-      evaluationWorkspace: { phase: 'generate' as const, emptyDirectories: [] },
-    }
-    const owner = await backend.seal(launch, { parent: ownerParent, name: 'projection-failure' })
-    let clean = false
-    try {
-      await expect(owner.admit()).rejects.toThrow()
-      const receipt = await backend.recoverFence(owner.identity)
-      expect(receipt).toMatchObject({ fenced: true, stopReason: 'setup_failed' })
-      expect(await missing(owner.identity.runCgroup)).toBe(true)
-      const trace = await readFile(join(fixture, 'supervisor-diagnostic.txt'), 'utf8')
-      expect(trace).toContain('fixture: projection unavailable')
-      expect(trace).not.toContain('package must not execute')
-      await releasePrivateLinuxOwnerState(owner.identity, receipt)
-      clean = true
-    } finally {
-      if (clean) {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(diagnostic.root, { recursive: true, force: true })
-        await rm(ownerParent, { recursive: true, force: true })
-      } else console.error(`native projection failure evidence retained at ${fixture}`)
     }
   })
   test('preflights and executes one isolated payload', async () => {
@@ -1129,114 +1004,6 @@ describe.serial('private rootless Linux hostile envelope', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   })
-  test('cancels a no-output entry awaiting continuation without launching candidate code', async () => {
-    const host = await hostConfiguration()
-    const fixture = await createFixture("throw new Error('candidate must not launch');")
-    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
-    const waitingMarker = join(ownerStateParent, 'gate-waiting')
-    const launchMarker = join(ownerStateParent, 'payload-launch')
-    const supervisor = await heldContinuationSupervisor(waitingMarker, launchMarker)
-    const backend = new PrivateLinuxCgroupBackend({
-      bunPath: host.bun,
-      bunHostLibraryPath: host.bunHostLibraryPath,
-      supervisorPath: supervisor.path,
-    })
-    const owner = await backend.seal(
-      plan(host, fixture, 'continuation-cancel', { deadlineMs: 8_000 }),
-      { parent: ownerStateParent, name: 'owner' },
-    )
-    const controller = new AbortController()
-    const admission = owner.admit(controller.signal)
-    void admission.catch(() => undefined)
-    let released = false
-    try {
-      await waitForPresent(waitingMarker, 5_000)
-      expect(await readFile(waitingMarker, 'utf8')).toBe('waiting\n')
-      expect(await missing(launchMarker)).toBe(true)
-      controller.abort()
-      await expect(admission).rejects.toThrow()
-      const receipt = await waitForFence(backend, owner.identity, 5_000)
-      expect(receipt).toMatchObject({ fenced: true, stopReason: 'cancelled' })
-      expect(await missing(launchMarker)).toBe(true)
-      expect(await missing(owner.identity.runCgroup)).toBe(true)
-      await releasePrivateLinuxOwnerState(owner.identity, receipt)
-      released = true
-      expect(await missing(owner.identity.ownerStateDirectory)).toBe(true)
-    } finally {
-      controller.abort()
-      await admission.catch(() => undefined)
-      if (released) {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(supervisor.root, { recursive: true, force: true })
-        await rm(ownerStateParent, { recursive: true, force: true })
-      }
-      await waitForNoRunCgroups()
-    }
-  }, 20_000)
-  test('coordinator loss fences a no-output entry awaiting continuation without launching candidate code', async () => {
-    const host = await hostConfiguration()
-    const fixture = await createFixture("throw new Error('candidate must not launch');")
-    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
-    const waitingMarker = join(ownerStateParent, 'gate-waiting')
-    const launchMarker = join(ownerStateParent, 'payload-launch')
-    const ownerRecord = join(ownerStateParent, 'sealed-owner.json')
-    const supervisor = await heldContinuationSupervisor(waitingMarker, launchMarker)
-    const backend = new PrivateLinuxCgroupBackend({
-      bunPath: host.bun,
-      bunHostLibraryPath: host.bunHostLibraryPath,
-      supervisorPath: supervisor.path,
-    })
-    const coordinator = spawn(
-      host.bun,
-      [
-        '--no-env-file',
-        '--no-install',
-        '--config=/dev/null',
-        '--eval',
-        `
-          import { writeFile } from 'node:fs/promises';
-          import { PrivateLinuxCgroupBackend } from ${JSON.stringify(fileURLToPath(new URL('../../src/internal/linux-rootless-backend.ts', import.meta.url)))};
-          const backend = new PrivateLinuxCgroupBackend(${JSON.stringify({ bunPath: host.bun, bunHostLibraryPath: host.bunHostLibraryPath, supervisorPath: supervisor.path })});
-          const owner = await backend.seal(${JSON.stringify(plan(host, fixture, 'continuation-loss', { deadlineMs: 8_000 }))},
-            ${JSON.stringify({ parent: ownerStateParent, name: 'owner' })});
-          await writeFile(${JSON.stringify(ownerRecord)}, JSON.stringify(owner.identity));
-          await owner.admit();
-          throw new Error('continuation unexpectedly succeeded');
-        `,
-      ],
-      { stdio: ['ignore', 'ignore', 'pipe'] },
-    )
-    const diagnostics = collect(coordinator.stderr!)
-    let released = false
-    try {
-      await waitForPresent(waitingMarker, 5_000)
-      const owner = JSON.parse(
-        await readFile(ownerRecord, 'utf8'),
-      ) as PrivateLinuxSealedOwnerIdentity
-      expect(await readFile(waitingMarker, 'utf8')).toBe('waiting\n')
-      expect(await missing(launchMarker)).toBe(true)
-      coordinator.kill('SIGKILL')
-      await childExit(coordinator)
-      const receipt = await waitForFence(backend, owner, 5_000)
-      expect(receipt).toMatchObject({ fenced: true, stopReason: 'coordinator_lost' })
-      expect(await missing(launchMarker)).toBe(true)
-      expect(await missing(owner.runCgroup)).toBe(true)
-      await releasePrivateLinuxOwnerState(owner, receipt)
-      released = true
-      expect(await missing(owner.ownerStateDirectory)).toBe(true)
-      expect(await diagnostics).toBe('')
-    } finally {
-      coordinator.kill('SIGKILL')
-      await childExit(coordinator)
-      await diagnostics
-      if (released) {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(supervisor.root, { recursive: true, force: true })
-        await rm(ownerStateParent, { recursive: true, force: true })
-      }
-      await waitForNoRunCgroups()
-    }
-  }, 20_000)
   test('enforces aggregate PID limits', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture(`
@@ -1316,94 +1083,6 @@ describe.serial('private rootless Linux hostile envelope', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   })
-  test('settles the entry child before publishing a pre-readiness deadline fence', async () => {
-    const host = await hostConfiguration()
-    const fixture = await createFixture("console.log('unreachable');")
-    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
-    const enteredMarker = join(ownerStateParent, 'entry-entered')
-    const settledMarker = join(ownerStateParent, 'entry-settled')
-    const delayedSupervisor = await delayedReadinessSupervisor(enteredMarker, settledMarker).catch(
-      async (error) => {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(ownerStateParent, { recursive: true, force: true })
-        throw error
-      },
-    )
-    const backend = new PrivateLinuxCgroupBackend({
-      bunPath: host.bun,
-      bunHostLibraryPath: host.bunHostLibraryPath,
-      supervisorPath: delayedSupervisor.path,
-    })
-    const launchPlan = plan(host, fixture, 'readiness-deadline', { deadlineMs: 8_000 })
-    const owner = await backend.seal(launchPlan, {
-      parent: ownerStateParent,
-      name: 'deadline-owner',
-    })
-    let released = false
-    try {
-      await expect(owner.admit()).rejects.toThrow()
-      expect(await readFile(enteredMarker, 'utf8')).toBe('entered\n')
-      expect(await readFile(settledMarker, 'utf8')).toBe('settled\n')
-
-      const receipt = await waitForFence(backend, owner.identity, 5_000)
-      expect(receipt).toMatchObject({ fenced: true, stopReason: 'deadline' })
-      expect(await missing(owner.identity.runCgroup)).toBe(true)
-      await releasePrivateLinuxOwnerState(owner.identity, receipt)
-      released = true
-      await waitForNoRunCgroups()
-    } finally {
-      if (released) {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(delayedSupervisor.root, { recursive: true, force: true })
-        await rm(ownerStateParent, { recursive: true, force: true })
-      }
-    }
-  })
-  for (const reason of ['deadline', 'cancelled'] as const) {
-    test(`fences ${reason} during cgroup setup before awaiting admission`, async () => {
-      const host = await hostConfiguration()
-      const fixture = await createFixture("throw new Error('package must not execute');")
-      const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-deadline-owner-'))
-      const sourcePath = fileURLToPath(
-        new URL('../../src/internal/linux-rootless-supervisor.ts', import.meta.url),
-      )
-      const supervisorPath = join(ownerStateParent, 'supervisor.ts')
-      // Interrupt at the first asynchronous setup boundary. The real owner must
-      // still remove its cgroup and persist a fence; no package is admitted.
-      await writeFile(
-        supervisorPath,
-        replaceOnce(
-          await readFile(sourcePath, 'utf8'),
-          '    cgroupCreated = true\n',
-          `    cgroupCreated = true\n    stop(${JSON.stringify(reason)});\n    await Bun.sleep(25);\n`,
-        ),
-      )
-      const backend = new PrivateLinuxCgroupBackend({
-        bunPath: host.bun,
-        bunHostLibraryPath: host.bunHostLibraryPath,
-        supervisorPath,
-      })
-      const owner = await backend.seal(plan(host, fixture, `setup-${reason}`), {
-        parent: ownerStateParent,
-        name: 'setup-owner',
-      })
-      let released = false
-      try {
-        await expect(owner.admit()).rejects.toThrow()
-        const receipt = await waitForFence(backend, owner.identity, 5_000)
-        expect(receipt).toMatchObject({ fenced: true, stopReason: reason, exitCode: null })
-        expect(await missing(owner.identity.runCgroup)).toBe(true)
-        await releasePrivateLinuxOwnerState(owner.identity, receipt)
-        released = true
-        await waitForNoRunCgroups()
-      } finally {
-        if (released) {
-          await rm(fixture, { recursive: true, force: true })
-          await rm(ownerStateParent, { recursive: true, force: true })
-        }
-      }
-    })
-  }
   test('cancels during prepared admission without starting package code', async () => {
     const host = await hostConfiguration()
     const marker = join(await mkdtemp(join(tmpdir(), 'jig-rootless-marker-')), 'ran')
@@ -1454,82 +1133,6 @@ describe.serial('private rootless Linux hostile envelope', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   })
-  test('fences coordinator death while original private output custody is held', async () => {
-    const host = await hostConfiguration()
-    const fixture = await createFixture("console.error('fixture: package must not execute');")
-    await mkdir(join(fixture, 'evaluation'), { mode: 0o555 })
-    const tracePath = join(fixture, 'supervisor-diagnostic.txt')
-    const diagnostic = await outputDiagnosticSupervisor(tracePath, 'custody')
-    const configurationDirectory = await mkdtemp(join(tmpdir(), 'jig-rootless-coordinator-'))
-    const ownerStateParent = await mkdtemp(join(tmpdir(), 'jig-rootless-coordinator-owner-'))
-    const configuration = join(configurationDirectory, 'configuration.json')
-    await writeFile(
-      configuration,
-      JSON.stringify({
-        delegatedCgroup,
-        bunPath: host.bun,
-        bunHostLibraryPath: host.bunHostLibraryPath,
-        bubblewrapPath: await realpath('/usr/bin/bwrap'),
-        mounts: host.mounts,
-        fixture,
-        ownerStateParent,
-        evaluationWorkspace: true,
-        supervisorPath: diagnostic.path,
-        reportSealed: true,
-        uid: process.getuid?.() ?? 1000,
-        gid: process.getgid?.() ?? 100,
-      }),
-    )
-    const coordinator = spawn(
-      host.bun,
-      [
-        '--no-env-file',
-        '--no-install',
-        '--config=/dev/null',
-        fileURLToPath(new URL('.././fixtures/linux-rootless-coordinator.ts', import.meta.url)),
-        configuration,
-      ],
-      { stdio: ['ignore', 'pipe', 'pipe'] },
-    )
-    let clean = false
-    try {
-      const started = JSON.parse(await readLine(coordinator.stdout!)) as {
-        cgroup: string
-        owner: unknown
-      }
-      const until = Date.now() + 5000
-      let trace = ''
-      while (Date.now() <= until && !trace.includes('"custody":true')) {
-        trace = await readFile(tracePath, 'utf8')
-        if (!trace.includes('"custody":true')) await Bun.sleep(10)
-      }
-      const pinned = JSON.parse(trace.split('\n')[0]!) as {
-        custody: boolean
-        cgroup: string
-        entryPid: number
-      }
-      expect(pinned).toMatchObject({ custody: true, cgroup: started.cgroup })
-      expect(await missing(`/proc/${pinned.entryPid}`)).toBe(false)
-      coordinator.kill('SIGKILL')
-      await childExit(coordinator)
-      await waitForMissing(started.cgroup, 5000)
-      const receipt = await waitForFence(host.backend, started.owner, 5000)
-      expect(receipt).toMatchObject({ fenced: true, stopReason: 'coordinator_lost' })
-      expect(await missing(`/proc/${pinned.entryPid}`)).toBe(true)
-      expect(await readFile(tracePath, 'utf8')).not.toContain('package must not execute')
-      await releasePrivateLinuxOwnerState(started.owner, receipt)
-      clean = true
-    } finally {
-      coordinator.kill('SIGKILL')
-      await childExit(coordinator)
-      if (clean) {
-        await rm(fixture, { recursive: true, force: true })
-        await rm(diagnostic.root, { recursive: true, force: true })
-        await rm(configurationDirectory, { recursive: true, force: true })
-        await rm(ownerStateParent, { recursive: true, force: true })
-      } else console.error(`native private custody loss evidence retained at ${fixture}`)
-    }
-  }, 60_000)
   test('survives coordinator death and fences its Run', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture('await new Promise(() => {});')

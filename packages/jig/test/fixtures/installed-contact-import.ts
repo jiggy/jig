@@ -177,9 +177,20 @@ await handle(async run => {
   ])
   assert.equal(result.output.rejected.length, 1)
   assert.equal(result.output.rejected[0].record, 3)
-  const preview = join(packet, 'files/preview/preview.json')
-  assert.deepEqual(JSON.parse(await readFile(preview, 'utf8')), result.output)
-  assert.deepEqual(await readdir(join(packet, 'files/preview')), ['preview.json'])
+  assert.equal(result.delivery.status, 'written')
+  assert.equal(result.delivery.source, 'final')
+  // Native root output is flat beneath files/, not prefixed by its port name.
+  const preview = join(packet, 'files/preview.json')
+  const previewBytes = await readFile(preview)
+  assert.deepEqual(result.delivery.files, [
+    {
+      path: 'preview.json',
+      bytes: previewBytes.length,
+      digest: `sha256:${createHash('sha256').update(previewBytes).digest('hex')}`,
+    },
+  ])
+  assert.deepEqual(JSON.parse(previewBytes.toString('utf8')), result.output)
+  assert.deepEqual(await readdir(join(packet, 'files')), ['preview.json'])
   for (const method of ['map-agent', 'map-mixed'])
     for (const [headers, mapping] of [
       [['Organisation', 'Courriel', 'Nom complet'], { name: 2, email: 1, organization: 0 }],

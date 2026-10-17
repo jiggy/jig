@@ -606,19 +606,17 @@ These links locate module rules. All selected domain requirements still apply.
 
   Use exact owned fixture PIDs only. `macos-owner-lock.test.ts` checks
   independent-process exclusion, release on coordinator death and lock
-  replacement. `macos-backend-state.test.ts` checks fresh-process recovery of
-  committed state, cancelled admission, exact final receipt retention,
-  interrupted writes, atomic release recovery and authentication failures. These
-  checks include coordinator death during release-marker publication and unsafe
-  or proofless release staging. Independent subprocesses verify prompt refusal
-  of unread named pipes in final/pending state and release records, guardian
-  owner journals and authenticated socket journals. Both subprocess fixtures
-  compile in ordinary tests.
+  replacement. `macos-backend-state.test.ts` checks real allocation, cancelled
+  admission, authenticated records, and release refusal/repair.
+  Exact release-marker interruption and active/finished recovery require genuine
+  native lifecycle evidence, not rewritten code or invented final receipts.
+  Independent subprocesses verify prompt refusal of unread named pipes in
+  final/pending state and release records. They also check guardian owner
+  journals and authenticated socket journals.
 
-  Synthetic ledger receipts do not qualify backend cleanup or installed
-  execution. `macos-native-backend.test.ts` qualifies sealing, immutable-path
+  `macos-native-backend.test.ts` qualifies sealing, immutable-path
   binding, prepared and active admission, bounded output after storage removal,
-  durable final receipts, unused-owner recovery, prepared/active
+  and durable final receipts. It also checks unused-owner recovery, prepared/active
   coordinator-loss recovery and exact owner release. It is backend integration
   evidence, not installed-host conformance. The recovery fixture checks
   authenticated boot separation and keeps coalition fencing restricted to the

@@ -107,8 +107,11 @@ operational baselines, and public-site assembly.
   binds exactly one fresh memory Run to its canonical durable checkpoints,
   immutable admission and candidate generation, and exact ready target. Root
   invocation identity and admitted activation-request identity retain their
-  distinct protocol domains. Intent and plan bind that target's meaning. The
-  same proof requires a prepared Linux owner, positive `memory.events`
+  distinct protocol domains. Intent and plan bind that target's meaning.
+
+  The plan retains both closed native boot coordinates and the sealed owner's
+  matching boot identity. It never derives native coordinates from wall time.
+  The same proof requires a prepared Linux owner, positive `memory.events`
   max/oom/oom_kill counters, confirmed fence, complete release and admitted CLI
   terminal.
 
@@ -121,7 +124,10 @@ operational baselines, and public-site assembly.
   `installed-memory-proof.ts`
 
   owns pure integrity and outcome checks exercised by the quick
-  operational-baseline checks. Logged evidence contains only Run and receipt
+  operational-baseline checks. Their inert record inputs establish no native
+  execution or enforcement evidence.
+
+  Logged evidence contains only Run and receipt
   digests, counters and settlement facts, never owner tokens. Proof rejections
   name only a closed validation stage and never render private values or causes.
   Like the operational baseline, it always checks live residue.

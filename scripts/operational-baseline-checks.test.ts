@@ -93,7 +93,8 @@ test('fixture removal failure is reported, never converted into success', async 
 
 type MemoryRecord = Record<string, unknown>
 
-// Inert integrity-validator inputs, never native ownership or execution evidence.
+// Inert validator inputs only. These bytes establish no native owner, OOM, fence
+// or release evidence and are never installed in a database or passed to a host.
 function memoryProofFixture(victim: 'descendant' | 'root') {
   const project = { path: '/fixture/project', device: '42', inode: '99' }
   const row: MemoryRecord = {
@@ -282,6 +283,8 @@ function memoryProofFixture(victim: 'descendant' | 'root') {
     observationDigest: intent.observationDigest,
     activationStartedUnixMs: 10_000,
     effectiveDeadlineUnixMs: 15_000,
+    activationStartedBoot: { bootId: owner.bootId, monotonicMs: 2_000 },
+    effectiveBootDeadline: { bootId: owner.bootId, monotonicMs: 7_000 },
     cancellationGraceMs: 1_000,
     packageAllocation,
     ownerAllocation,
@@ -449,6 +452,77 @@ test('memory proof requires the current no-output request identity', () => {
     )
   }
 })
+
+for (const field of ['activationStartedBoot', 'effectiveBootDeadline']) {
+  for (const value of [
+    undefined,
+    null,
+    {},
+    { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: -1 },
+    { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: 0.5 },
+    { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: '7000' },
+    { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: Number.MAX_SAFE_INTEGER + 1 },
+    { bootId: '11111111-1111-1111-1111-111111111111\n', monotonicMs: 7_000 },
+    { bootId: 'AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA', monotonicMs: 7_000 },
+    { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: 7_000, extra: true },
+    { bootId: '22222222-2222-2222-2222-222222222222', monotonicMs: 7_000 },
+  ]) {
+    test(`memory validator rejects malformed or foreign ${field}: ${JSON.stringify(value)}`, () => {
+      const fixture = memoryProofFixture('root')
+      mutateMemoryCheckpoint(fixture, 'plan', (plan) => {
+        if (value === undefined) delete plan[field]
+        else plan[field] = value
+      })
+      // Unsafe JSON integers fail canonical envelope decoding before plan parsing.
+      const stage =
+        value != null && 'monotonicMs' in value && value.monotonicMs === Number.MAX_SAFE_INTEGER + 1
+          ? 'allocation'
+          : 'plan-backing'
+      expect(() => checkInstalledMemoryProof(fixture)).toThrow(`rejected at ${stage}`)
+    })
+  }
+}
+
+test('memory validator binds both native boot coordinates to the sealed owner boot', () => {
+  const fixture = memoryProofFixture('root')
+  mutateMemoryCheckpoint(fixture, 'plan', (plan) => {
+    for (const field of ['activationStartedBoot', 'effectiveBootDeadline'])
+      memoryRecord(plan[field]).bootId = '22222222-2222-2222-2222-222222222222'
+  })
+  expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at prepared-owner')
+})
+
+test('memory validator permits zero native coordinates without deriving them from wall time', () => {
+  const fixture = memoryProofFixture('root')
+  mutateMemoryCheckpoint(fixture, 'plan', (plan) => {
+    for (const field of ['activationStartedBoot', 'effectiveBootDeadline'])
+      memoryRecord(plan[field]).monotonicMs = 0
+  })
+  mutateMemoryCheckpoint(fixture, 'release', (release) => {
+    release.planDigest = fixture.row.plan_digest
+  })
+  expect(() => checkInstalledMemoryProof(fixture)).not.toThrow()
+})
+
+test('memory validator rejects the invocation digest in the activation intent domain', () => {
+  const fixture = memoryProofFixture('root')
+  const request = JSON.parse(Buffer.from(fixture.row.request_bytes as Uint8Array).toString())
+  const intent = JSON.parse(Buffer.from(fixture.row.intent_bytes as Uint8Array).toString())
+  intent.requestDigest = memoryDigest('JIG-Private-Root-Request/1', request)
+  fixture.row.intent_bytes = Buffer.from(memoryCanonical(intent))
+  fixture.row.intent_digest = memoryDigest('JIG-Private-Root-Spawn-Intent/1', intent)
+  expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at origin-intent')
+})
+
+for (const field of ['transaction', 'package']) {
+  test(`memory validator rejects a foreign backing ${field} path`, () => {
+    const fixture = memoryProofFixture('root')
+    mutateMemoryCheckpoint(fixture, 'backing', (backing) => {
+      memoryRecord(memoryRecord(backing.lease)[field]).path = '/foreign/package'
+    })
+    expect(() => checkInstalledMemoryProof(fixture)).toThrow('rejected at plan-backing')
+  })
+}
 
 for (const key of ['max', 'oom', 'oom_kill']) {
   for (const value of [undefined, 0, -1, 0.5, '1', Number.MAX_SAFE_INTEGER + 1]) {

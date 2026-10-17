@@ -1,5 +1,4 @@
-import { expect } from 'bun:test'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -10,34 +9,6 @@ async function fixture(work: (root: string) => Promise<void>) {
   } finally {
     await rm(root, { recursive: true })
   }
-}
-async function interruptedReleaseFixture(root: string): Promise<string> {
-  const sourceUrl = new URL('../src/internal/macos-backend-state.ts', import.meta.url)
-  const directory = fileURLToPath(new URL('.', sourceUrl))
-  const source = await readFile(sourceUrl, 'utf8')
-  const write = '          await file.writeFile(marker)'
-  expect(source.split(write)).toHaveLength(2)
-  const module = join(root, 'interrupted-release.ts')
-  await writeFile(
-    module,
-    source
-      .replace(
-        write,
-        `          process.stdout.write('release-write\\n')\n          await new Promise<void>(() => {})\n${write}`,
-      )
-      .replaceAll("from './", `from '${directory}`)
-      .replaceAll("from '../", `from '${fileURLToPath(new URL('..', sourceUrl))}`),
-  )
-  const runner = join(root, 'release-runner.ts')
-  await writeFile(
-    runner,
-    `import { readFile } from 'node:fs/promises'
-import { releasePrivateMacosOwnerState } from ${JSON.stringify(module)}
-const { allocation, proof } = JSON.parse(await readFile(process.argv[2], 'utf8'))
-await releasePrivateMacosOwnerState(allocation, proof)
-`,
-  )
-  return runner
 }
 async function unsafeRecordFixture(root: string): Promise<string> {
   const module = fileURLToPath(new URL('../src/internal/macos-backend-state.ts', import.meta.url))
@@ -72,4 +43,4 @@ try {
   return runner
 }
 
-export { fixture, interruptedReleaseFixture, unsafeRecordFixture }
+export { fixture, unsafeRecordFixture }

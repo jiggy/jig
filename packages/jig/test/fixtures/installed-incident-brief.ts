@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { copyFile, cp, lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  cp,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import {
   type FoundationArchives,
@@ -74,14 +84,18 @@ export async function runInstalledIncident(options: {
   const command = foundationCommands(join(directory, 'commands'))
   const packages = { jig: archives.jig, flow: archives.flow, ...libraries }
   const hashes = await Promise.all(Object.values(packages).map(hash))
+  const candidates = Object.fromEntries(
+    Object.entries(packages).map(([name, path]) => [`@jigging/${name}`, `file:${path}`]),
+  )
   await writeFile(
     join(directory, 'package.json'),
     JSON.stringify({
       private: true,
       type: 'module',
-      dependencies: Object.fromEntries(
-        Object.entries(packages).map(([name, path]) => [`@jigging/${name}`, `file:${path}`]),
-      ),
+      dependencies: candidates,
+      // Bind peer edges as well as direct dependencies to these frozen candidates.
+      // Direct file declarations alone do not bind Bun's complete peer graph.
+      overrides: candidates,
     }),
   )
   await command(['git', 'init', '--quiet'], directory)
@@ -89,6 +103,12 @@ export async function runInstalledIncident(options: {
     [process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
     directory,
     120_000,
+  )
+  const reporting = await realpath(join(directory, 'node_modules/@jigging/reporting'))
+  assert.equal(
+    await realpath(Bun.resolveSync('@jigging/flow', reporting)),
+    await realpath(Bun.resolveSync('@jigging/flow', directory)),
+    'Reporting must use the same frozen SDK as the ordinary consumer',
   )
   const project = join(directory, 'project')
   await cp(application, project, {

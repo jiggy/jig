@@ -182,7 +182,11 @@ async function fixture(validation = false, barrierUrl?: string, unacknowledged =
     join(root, 'bindings/root.ts'),
     `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/root',slots:{worker:'flow:flows/worker'${barrierUrl ? ",barrier:'grant:barrier'" : ''}}});`,
   )
-  const review = await cli(root, ['review', '--yes'])
+  const review = await cli(root, [
+    'review',
+    '--yes',
+    ...(barrierUrl === undefined ? [] : ['--allow-authority-changes']),
+  ])
   if (review.code !== 0)
     throw new Error(`fixture review failed: ${review.stderr}\n${review.stdout}`)
   return root

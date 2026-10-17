@@ -114,6 +114,12 @@ and output-aggregate containment, selected writable overlays, procfs cwd denial
 and original-collector capture after fencing. Missing qualification prerequisites
 must fail, never skip or substitute source evidence.
 
+Linux supervisor tests execute unchanged production code.
+Exact delayed-readiness, held-gate and injected setup-failure windows require
+genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
+`portable/bun-resolution-worker.test.ts` checks ordinary acquisition refusals
+through the unmodified worker, not a replacement registry argument.
+
 `portable/project-evaluation-retention.test.ts` verifies descriptor-confined
 recipe capture, inert attachment authority, exact retained R/D reacquisition,
 corruption refusal, strict effective compiler/layout decoding and changed

@@ -307,5 +307,5 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `linux-rootless-run.test.ts` must verify real finite ACP exit, automatic crash
   fencing and shutdown-grace fencing through genuine native subprocesses. Its
-  deliberate payload/launcher SIGSEGV probes retain bounded process-state and
-  fencing evidence, not native-client qualification or crash-origin proof.
+  deliberate payload SIGSEGV probe retains bounded process-state and fencing
+  evidence, not native-client qualification or trusted-launcher crash-origin proof.
