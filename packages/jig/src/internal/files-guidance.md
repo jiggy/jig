@@ -336,6 +336,11 @@ These links locate module rules. All selected domain requirements still apply.
   retained/per-run file-limit evidence remains separately typed. Never infer
   paths, source freshness or no-dispatch evidence from arbitrary errors.
 
+  Prepared-ticket acceptance uses the same root-administration error projection
+  as ordinary root submission. Preserve attempt-specific errors separately.
+  Only typed mapping and input-limit failures establish file-input refusal.
+  Identification, integrity and cleanup failures must not acquire that label.
+
 - Reviewed Binding read selections reuse the bounded file capture controls and
   retained artifact store. Bind source, manifest and tree identity to the exact
   configuration. Revalidate at admission and project retained bytes at
