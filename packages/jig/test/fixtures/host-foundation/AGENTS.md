@@ -42,8 +42,11 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   Request counts, protected owner rows and native residue provide independent
   observations. Prior completed results remain immutable.
 - Before/after native residue compares this sequential profile's delegated
-  `jig-run-` cgroups or `org.jig.native.` launchd jobs. Run no concurrent native
-  owners in that same qualification namespace while measuring this inventory.
+  `jig-run-` cgroups or acquired Linux user scopes, including their cgroups.
+  Mac observation compares `org.jig.native.` launchd jobs.
+  Installed Linux consumers without inherited delegation observe support first.
+  Their public CLI must acquire the actual execution scope.
+  Run no concurrent native owners in that qualification namespace during observation.
 
 ## Work Guidance
 
