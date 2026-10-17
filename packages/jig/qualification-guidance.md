@@ -177,7 +177,10 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `test/host/markdown-worker.test.ts` checks installed Markdown's
   Agent-admission requirement and Agent-free code execution with the complete
-  packed FLOW SDK in an ordinary declared workspace. It honors
+  packed FLOW SDK in an ordinary declared workspace. A separate fresh consumer
+  checks a real decision task, code child and SDK channel composition.
+  Neither case substitutes a Run context or native provider.
+  It honors
   `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`. Otherwise pack built
   candidates. Failed public commands retain their consumer and diagnostics under
   the selected temporary root for investigation.

@@ -93,6 +93,7 @@ test('fixture removal failure is reported, never converted into success', async 
 
 type MemoryRecord = Record<string, unknown>
 
+// Inert integrity-validator inputs, never native ownership or execution evidence.
 function memoryProofFixture(victim: 'descendant' | 'root') {
   const project = { path: '/fixture/project', device: '42', inode: '99' }
   const row: MemoryRecord = {
@@ -116,7 +117,7 @@ function memoryProofFixture(victim: 'descendant' | 'root') {
     kind: 'private-root-run-request/1',
     target: { kind: 'flow', path: 'flows/memory-pressure' },
     input: {},
-    files: { attachments: [], output: null },
+    files: { attachments: [], output: false },
     deadlineUnixMs: 20_000,
   }
   store('request', request)
@@ -435,6 +436,19 @@ for (const victim of ['descendant', 'root'] as const) {
     ).toThrow()
   })
 }
+
+test('memory proof requires the current no-output request identity', () => {
+  for (const output of [null, true, 'false']) {
+    const fixture = memoryProofFixture('root')
+    const request = JSON.parse(Buffer.from(fixture.row.request_bytes as Uint8Array).toString())
+    expect(request.files).toEqual({ attachments: [], output: false })
+    request.files.output = output
+    fixture.row.request_bytes = Buffer.from(memoryCanonical(request))
+    expect(() => checkInstalledMemoryProof(fixture)).toThrow(
+      'Installed memory enforcement proof rejected at run-request',
+    )
+  }
+})
 
 for (const key of ['max', 'oom', 'oom_kill']) {
   for (const value of [undefined, 0, -1, 0.5, '1', Number.MAX_SAFE_INTEGER + 1]) {

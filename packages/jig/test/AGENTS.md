@@ -59,6 +59,15 @@ Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
 Protected acceptance, replacement and save limits require actual SQLite ownership.
 Native command loss, independent fencing and installed recovery remain host gates.
 
+Checkpoint loss barriers must match the authoritative commit boundary.
+Delivery callbacks run after the protected save commits.
+Use a held real HTTP operation before the next save to test preacceptance loss.
+An awaited save result establishes the acknowledged boundary.
+
+Accepted-but-unobserved cases use a real Run/0 peer that never consumes the
+selected response. Readonly storage proves the accepted sequence before actual
+coordinator loss. Buffered response bytes do not establish application observation.
+
 `portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
 Its ordinary process adapter reports no native fencing.
 Valid protocol exchanges must still refuse execution success without qualified fencing.
@@ -93,6 +102,9 @@ the declared mapping work without claiming model quality.
 `host/installed-incident-brief.test.ts` checks the private handoff application
 with an ordinary bounded conversation task. Pure application cases do not prove
 dispatch races, native session restoration or cleanup.
+`host/installed-support-case.test.ts` checks unchanged application composition
+with an ordinary deterministic assessment task. Pure support tests own policy
+and views, not dispatch or native cleanup.
 
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
@@ -167,6 +179,9 @@ experiments do not control production process decoding.
 worker. Its fresh temporary root owns consumers and failure evidence. It does
 not build a second source worker. Source-worker compilation and direct protocol
 exchanges belong to `portable/markdown-worker.test.ts`.
+The installed composition case uses a real Agent-contract decision task, code
+child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
+and template inputs without substituting a Run context.
 
 Repair leaf proofs use separate successful and unsuccessful whole files. Each
 retains its original guardian observer, scenario body, fresh consumer and

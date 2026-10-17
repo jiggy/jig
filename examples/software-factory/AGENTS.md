@@ -48,7 +48,8 @@ stays with a person.
   `p1` and `p2` map to `single-pass` and `checked-correction` for selection.
   Omitting `method` requests semantic selection. Verify shipped data against the
   user-input validator.
-- `test/` owns deterministic batch, failure-isolation, and recovery checks.
+- `test/` owns pure batch/routing validation, presentation and actual file capture.
+  Installed suites own execution, checkpoint and recovery evidence.
 
 - `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
   `jig.ts` supplies that ordinary Agent to the router and repair specialist
@@ -155,28 +156,19 @@ optional observation delivery.
 
 ## Verification
 
-- `bun test examples/software-factory/test`
-- Jig's `package-provider-host.test.ts` also runs this application through the
-  installed CLI with a deterministic Flow Agent peer. After removing the
-  editable repair source, it verifies reviewed repair-dependency imports, live
-  worker reports and checkpoint delivery. It verifies complete results and
-  delivered files for blocked and independently checked repairs. Explicit
-  reception checks exact contiguous NDJSON and every observed payload. Clean
-  reception requires all three final views and checked patch references, while
-  failed/LAGGED retains only its actual prefix. Automatic plain display requires
-  either all three completed summaries or precisely marked incomplete LAGGED
-  observation, and independently verifies its own result and files.
-
-  A separate small installed consumer requires three clean-ended views through
-  both automatic and explicit reception, plus truthful producer-loss handling.
-  Deterministic batch tests require the actual factory publisher's final Jobs,
-  Checks and Patches offers. Portable observer tests cover receiver loss and
-  retained-model settlement. These checks make no live Agent claim or
-  optional-delivery guarantee.
-- The release gate repeats deterministic application tests against packed SDK
-  candidates. Jig's private repair-batch host fixture exercises the same
-  contained command and checkpoint boundaries, but does not qualify this
-  application's `binding:factory` or a live Agent.
+- `bun test examples/software-factory/test` checks pure validation, projections
+  and actual file capture. Recorded command inputs are not execution evidence.
+- Jig's `host/installed-software-factory-blocked.test.ts` and
+  `host/installed-software-factory.test.ts` exercise the application through the
+  installed CLI with ordinary deterministic proposal tasks.
+  They verify admitted repair imports, real commands, checkpoints and delivered files.
+  Explicit reception checks NDJSON and complete views. Automatic display remains
+  separate from semantic method selection.
+- `host/package-provider-observation.test.ts` owns installed observation behavior.
+  Successful observations do not guarantee optional delivery or live Agent quality.
+- The release gate repeats application tests against packed SDK candidates.
+  The private repair-batch host fixture exercises its own command/checkpoint boundary.
+  Unexercised routing, cancellation and recovery windows remain qualification gaps.
 
 ## Child DOX Index
 

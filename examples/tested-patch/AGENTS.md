@@ -18,8 +18,8 @@ after executed checks and independent acceptance.
   command execution, and independent checks of collected output.
 - `bindings/` selects the repair leaf and fixed Bun test/CLI commands.
 - `fixtures/log-report/` contains an intentionally defective CLI and its tests.
-- `test/` owns deterministic application checks. The public guide owns the
-  walkthrough.
+- `test/` owns pure proposal/evidence validation and actual file checks.
+  The public guide owns the walkthrough.
 
 - `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
   `jig.ts` supplies that ordinary Agent through the contract-keyed default.
@@ -98,11 +98,13 @@ after executed checks and independent acceptance.
 
 ## Verification
 
-- `bun test examples/tested-patch/test` checks bounded proposals, independent
-  evidence, file capture, final publication, and failure propagation.
+- `bun test examples/tested-patch/test` checks bounded proposal/evidence inputs,
+  actual file capture and packet publication. Recorded command data does not
+  establish executed checks or native cleanup.
 - The release gate repeats application tests against the freshly packed SDK.
-- Installed host tests exercise real contained commands with synthetic Agent
-  responses. They do not establish live model quality.
+- Jig's installed repair suites exercise real contained commands and ordinary
+  deterministic proposal tasks. Native session restoration and untested fault
+  windows require separate evidence. These suites do not establish model quality.
 
 ## Child DOX Index
 

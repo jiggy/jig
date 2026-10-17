@@ -1,10 +1,9 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { ChannelEndpoint, OperationError } from '@jigging/flow'
 import cases from '../flows/factory/logs-cases.json'
-import { digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
-import { repair } from '../flows/repair/repair.ts'
+import type { RepairInput } from '../flows/repair/policy.ts'
 
+// Ordinary projection input, never an execution or cleanup receipt.
 export const input: RepairInput = {
   issue: 'Reject fractional and out-of-range HTTP status codes. Count 4xx separately from 5xx.',
   editPaths: ['src/parse.ts', 'src/report.ts'],
@@ -24,97 +23,4 @@ export const input: RepairInput = {
       ]),
     ),
   ),
-}
-
-const proposal = {
-  summary: 'Validate HTTP status codes and separate server errors.',
-  replacements: [
-    {
-      path: 'src/parse.ts',
-      content: input.files['src/parse.ts']!.replace(
-        "typeof value.status !== 'number'",
-        '!Number.isInteger(value.status) || value.status < 100 || value.status > 599',
-      ),
-    },
-    {
-      path: 'src/report.ts',
-      content: input.files['src/report.ts']!.replace(
-        'r.status >= 400).length',
-        'r.status >= 500).length',
-      ),
-    },
-  ],
-}
-
-export function recorded(
-  command: string,
-  files: Record<string, string>,
-  args: string[],
-  stdin: string,
-  passes: boolean,
-) {
-  const selected = cases.find(
-    (candidate) =>
-      candidate.stdin === stdin && JSON.stringify(candidate.args) === JSON.stringify(args),
-  )
-  return {
-    candidateDigest: digest(files),
-    invocation:
-      command === 'tests'
-        ? ['bun', 'test', 'test/project.test.ts']
-        : ['bun', 'src/cli.ts', ...args],
-    stdinDigest: sha256(stdin),
-    stdout: {
-      text: command === 'tests' ? '' : passes ? selected!.stdout : 'wrong\n',
-      truncated: false,
-    },
-    stderr: {
-      text: command === 'tests' ? 'synthetic repository output\n' : passes ? selected!.stderr : '',
-      truncated: false,
-    },
-    exitCode: command === 'tests' ? (passes ? 0 : 1) : passes ? selected!.exitCode : 0,
-    signal: null,
-    stopReason: 'exited',
-    cleanup: 'complete',
-  }
-}
-
-export async function syntheticRepair(
-  maxProposals: 1 | 2 = 2,
-  failFirstProposal = false,
-  channels: Readonly<Record<string, ChannelEndpoint>> = {},
-  commandFailure?: OperationError,
-) {
-  let agents = 0
-  const calls: { operationId: string; slot: string; intent?: string }[] = []
-  const result = await repair({
-    input,
-    settings: { maxProposals },
-    signal: new AbortController().signal,
-    channels,
-    call: async (call) => {
-      calls.push({ operationId: call.operationId, slot: call.slot, intent: call.intent })
-      if (call.slot === 'agent') {
-        agents++
-        return { outcome: 'done', output: { text: 'Synthetic proposal.', structured: proposal } }
-      }
-      if (agents > 0 && commandFailure) throw commandFailure
-      const value = call.input as {
-        files: Record<string, string>
-        args: string[]
-        stdin: string
-      }
-      return {
-        outcome: 'done',
-        output: recorded(
-          call.slot,
-          value.files,
-          value.args,
-          value.stdin,
-          agents > 0 && (!failFirstProposal || agents > 1),
-        ),
-      }
-    },
-  })
-  return { result, agents, calls }
 }

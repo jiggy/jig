@@ -75,7 +75,7 @@ function validateMemoryProof(
   assert.equal(request.kind, 'private-root-run-request/1')
   assert.deepEqual(request.target, { kind: 'flow', path: 'flows/memory-pressure' })
   assert.deepEqual(request.input, {})
-  assert.deepEqual(request.files, { attachments: [], output: null })
+  assert.deepEqual(request.files, { attachments: [], output: false })
   positive(request.deadlineUnixMs)
   setStage('origin-intent')
   const origin = fact(

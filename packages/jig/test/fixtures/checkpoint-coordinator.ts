@@ -10,7 +10,7 @@ import {
 import { canonicalJson } from '../../src/json.js'
 import { installedBunLocation } from './installed-bun-location.js'
 
-const [root, ready, phase, ...args] = process.argv.slice(2)
+const [root, ...args] = process.argv.slice(2)
 await withPrivateInstallationVerification({}, async () => {
   const host = await openPrivateInstalledBunHost(installedBunLocation, {}, root)
   const recovery = privateFileRecovery()
@@ -22,29 +22,16 @@ await withPrivateInstallationVerification({}, async () => {
     )
   } else {
     const delivery = (await privateConnectFileOwner())!
-    const stop = async () => {
-      // Exercise forced escalation on Darwin too: its default SIGTERM action
-      // terminates even a stopped process without waiting for SIGCONT.
-      process.on('SIGTERM', () => {})
-      await writeFile(ready!, String(process.pid))
-      process.kill(process.pid, 'SIGSTOP')
-      await new Promise(() => {})
-    }
-    const selected = {
-      ...delivery,
-      async saveCheckpoint(input: Parameters<NonNullable<typeof delivery.saveCheckpoint>>[0]) {
-        if (phase === 'before') await stop()
-        if ((phase === 'acknowledged' || phase === 'cancel') && input.sequence === 2) await stop()
-        const receipt = await delivery.saveCheckpoint!(input)
-        if (phase === 'accepted' || (phase === 'replacement' && input.sequence === 2)) await stop()
-        return receipt
-      },
-    }
+    // The parent's real HTTP/protected-store barriers can stop us only after
+    // this identity marker exists. Preserve forced cancellation escalation on
+    // Darwin, whose default SIGTERM action also terminates stopped processes.
+    process.on('SIGTERM', () => {})
+    await writeFile(`${root}/coordinator.started`, String(process.pid))
     try {
       process.exitCode = await main(args, {
         currentDirectory: root,
         host: {
-          delivery: selected,
+          delivery,
           acquire: (directory, options) =>
             openPrivateProjectSession({
               directory,

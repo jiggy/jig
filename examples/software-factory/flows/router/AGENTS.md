@@ -12,7 +12,7 @@ abstain, without acquiring authority to execute the candidate.
 - `decision.ts` exports the caller boundary check. `route.ts` invokes one
   ordinary Agent. Factory candidate meaning and slot wiring stay outside this
   package.
-- `../../test/router.test.ts` owns controlled-Agent boundary checks.
+- `../../test/router.test.ts` owns pure caller-boundary validation.
 
 ## Local Contracts
 

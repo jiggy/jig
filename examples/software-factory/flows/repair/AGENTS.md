@@ -51,8 +51,10 @@ operator's fixed commands and application-owned acceptance cases.
 
 ## Verification
 
-- `bun test examples/software-factory/test` covers both configurations,
-  rejection paths, routing integration, and application evidence checks.
+- `bun test examples/software-factory/test` checks pure input/evidence validation,
+  presentation and actual file capture.
+- Jig's installed factory suites exercise real command composition.
+  Pure records do not establish cleanup or native session restoration.
 
 ## Child DOX Index
 
