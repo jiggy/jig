@@ -132,13 +132,11 @@ deadline for its existing duration when constructed. A plan spread from a
 completed Run must not carry that spent deadline into another fresh owner. Never
 reset a sealed or active Run deadline.
 
-The finite ACP lifecycle crash bound starts at the authenticated peer dispatch,
-immediately before its deliberate signal or exit, and ends when the CLI settles.
-Use the observer's monotonic clock and require an actual, unique dispatch for
-each fault. Admission and materialization remain inside the existing command and
-case budgets. They do not consume the separate twenty-second crash-settlement
-limit. Keep terminal failure, absence of cancellation/deadline expiry and
-residue checks.
+`linux-host/linux-rootless-run.test.ts` retains raw finite-resource transport
+cases through the actual backend, peer processes and enforcement receipts.
+These cases do not qualify supported native client selection or authentication.
+Native client behavior requires ordinary selected clients in the startup and live suites.
+Do not substitute the installed host's ACP resource opener.
 
 `just jig::test` selects the ordinary source profile. `just jig::check` and root
 `just preflight` add the qualified Mac regression pass. Complete hosted
