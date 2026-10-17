@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { closeSync, fstatSync } from 'node:fs'
+import { closeSync, constants, fstatSync } from 'node:fs'
 import { type FileHandle, open } from 'node:fs/promises'
 import { connect, createServer, type Socket } from 'node:net'
 import { dirname, join } from 'node:path'
@@ -13,7 +13,11 @@ import {
   releasePrivateAttemptExport,
 } from './activation-admission-store.js'
 import { copyPrivateAttemptExport } from './attempt-export-copier.js'
-import { capturePrivateRetainedOutput, requirePrivateCapturedOutput } from './captured-output.js'
+import {
+  capturePrivateLinuxTransferredOutput,
+  capturePrivateRetainedOutput,
+  requirePrivateCapturedOutput,
+} from './captured-output.js'
 import {
   PRIVATE_INSPECTION_COMPLETION_MS,
   PrivateDeliveryAuthorityRetirement,
@@ -456,6 +460,16 @@ export async function privateOwnFileCommand(
                   : native.output(peer!, request.output, cancellation.signal, (capture) =>
                       publish({ kind: 'snapshot', capture }),
                     )
+            } else if (
+              request.output !== null &&
+              typeof request.output === 'object' &&
+              !Array.isArray(request.output)
+            ) {
+              delivered = withLinuxSnapshot(
+                request.pid,
+                request.output as Record<string, JsonValue>,
+                (capture) => publish({ kind: 'snapshot', capture }),
+              )
             } else {
               delivered = withLinuxDirectories(
                 request.pid,
@@ -960,10 +974,9 @@ export function privateFileDeliveryConnection(
     async publish(record, output, signal) {
       let transferred: ReturnType<typeof requirePrivateCapturedOutput> | undefined
       if (output !== undefined) {
-        if (selected.platform === 'linux' && output.kind !== 'linux-directory')
-          throw new Error('invalid Linux output lifetime')
-        if (selected.platform === 'darwin') {
-          if (output.kind !== 'snapshot') throw new Error('invalid native output lifetime')
+        if (selected.platform === 'darwin' && output.kind !== 'snapshot')
+          throw new Error('invalid native output lifetime')
+        if (output.kind === 'snapshot') {
           try {
             transferred = requirePrivateCapturedOutput(await output.ready)
           } catch {
@@ -974,6 +987,15 @@ export function privateFileDeliveryConnection(
       const cancel = () => send(socket, { type: 'cancel', token: selected.token })
       signal?.addEventListener('abort', cancel, { once: true })
       try {
+        const manifest =
+          transferred === undefined
+            ? undefined
+            : ({
+                bytes: transferred.bytes,
+                digest: transferred.digest,
+                files: transferred.files,
+                directories: transferred.directories,
+              } as unknown as JsonValue)
         const pending = request({
           type: 'publish',
           record,
@@ -981,13 +1003,10 @@ export function privateFileDeliveryConnection(
             output === undefined
               ? null
               : selected.platform === 'linux'
-                ? (output as Extract<typeof output, { kind: 'linux-directory' }>).directory.fd
-                : ({
-                    bytes: transferred!.bytes,
-                    digest: transferred!.digest,
-                    files: transferred!.files,
-                    directories: transferred!.directories,
-                  } as unknown as JsonValue),
+                ? output.kind === 'linux-directory'
+                  ? output.directory.fd
+                  : { fd: transferred!.fd, manifest: manifest! }
+                : manifest!,
           cancelled: signal?.aborted ?? false,
           inspection,
         })
@@ -1178,5 +1197,50 @@ async function withLinuxDirectories<T>(
   }
   if (errors.length === 1) throw errors[0]
   if (errors.length) throw new AggregateError(errors, 'file transfer failed')
+  return result as T
+}
+
+/** Only the token-authenticated command protocol supplies this live PID/FD pair.
+ * Import read-only and retain both holders until publication settles. */
+async function withLinuxSnapshot<T>(
+  pid: unknown,
+  value: Record<string, JsonValue>,
+  work: (capture: import('./captured-output.js').PrivateCapturedOutput) => Promise<T>,
+): Promise<T> {
+  if (
+    process.platform !== 'linux' ||
+    !Number.isSafeInteger(pid) ||
+    Number(pid) < 1 ||
+    Object.keys(value).sort().join() !== 'fd,manifest' ||
+    !Number.isSafeInteger(value.fd) ||
+    Number(value.fd) < 0
+  )
+    throw new TypeError('invalid Linux snapshot transfer')
+  const source = await open(
+    `/proc/${pid}/fd/${value.fd}`,
+    constants.O_RDONLY | constants.O_NONBLOCK,
+  )
+  let capture: ReturnType<typeof capturePrivateLinuxTransferredOutput> | undefined
+  let result: T | undefined
+  const errors: unknown[] = []
+  try {
+    capture = capturePrivateLinuxTransferredOutput(source.fd, value.manifest)
+    result = await work(capture)
+  } catch (error) {
+    errors.push(error)
+  } finally {
+    try {
+      capture?.close()
+    } catch (error) {
+      errors.push(error)
+    }
+    try {
+      await source.close()
+    } catch (error) {
+      errors.push(error)
+    }
+  }
+  if (errors.length === 1) throw errors[0]
+  if (errors.length) throw new AggregateError(errors, 'snapshot transfer failed')
   return result as T
 }

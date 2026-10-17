@@ -424,13 +424,12 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
   }
 }
 
-/** Package-private kernel observation seam; never reads candidate-authored files. */
+/** Observe owned kernel state, never candidate-authored files. */
 export async function privateHasCoreDumpingProcess(
   runCgroup: string,
   maxProcesses: number,
-  readText: (path: string) => Promise<string> = (path) => readFile(path, 'utf8'),
 ): Promise<boolean> {
-  const processes = (await readText(`${runCgroup}/cgroup.procs`)).trim()
+  const processes = (await readFile(`${runCgroup}/cgroup.procs`, 'utf8')).trim()
   const pids = processes === '' ? [] : processes.split('\n')
   if (
     !positiveInteger(maxProcesses) ||
@@ -441,7 +440,7 @@ export async function privateHasCoreDumpingProcess(
   const membership = `0::${runCgroup.slice('/sys/fs/cgroup'.length)}`
   for (const pid of pids) {
     try {
-      const status = await readText(`/proc/${pid}/status`)
+      const status = await readFile(`/proc/${pid}/status`, 'utf8')
       if (status.length > MAX_CONTROL_BYTES) throw new Error('oversized owned process status')
       // Zombies have no mm and Linux omits CoreDumping from their status.
       // They are reaped through childClose, not treated as inspection failures.
@@ -451,7 +450,8 @@ export async function privateHasCoreDumpingProcess(
       if (dumping[1] !== '1') continue
       // PIDs can disappear or be reused during a scan. A stale foreign PID
       // cannot establish a crash in this owner, and is never signalled directly.
-      if ((await readText(`/proc/${pid}/cgroup`)).split('\n').includes(membership)) return true
+      if ((await readFile(`/proc/${pid}/cgroup`, 'utf8')).split('\n').includes(membership))
+        return true
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
       if (code !== 'ENOENT' && code !== 'ESRCH') throw error

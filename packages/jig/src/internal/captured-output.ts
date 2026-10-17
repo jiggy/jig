@@ -23,6 +23,7 @@ import {
 } from './file-input.js'
 import { PRIVATE_CAPTURE_LIMITS } from './file-input-policy.js'
 import { readPrivateCapturedInput } from './input-capture.js'
+import { privateVerifyLinuxSealedFile } from './linux-file-input.js'
 import {
   type PrivateMacosReceivedDescriptors,
   requirePrivateMacosReceivedDescriptors,
@@ -499,9 +500,27 @@ export function capturePrivateTransferredOutput(
   value: unknown,
 ): PrivateCapturedOutput {
   const descriptors = requirePrivateMacosReceivedDescriptors(bundle)
+  if (descriptors.length !== 1) throw new TypeError('invalid transferred output descriptors')
+  return captureTransferredDescriptor(descriptors[0]!, value)
+}
+
+/** The authenticated Linux command owner imports this held reader from its peer.
+ * Kernel seals, not the serialized manifest, establish immutable byte authority. */
+export function capturePrivateLinuxTransferredOutput(
+  fd: number,
+  value: unknown,
+): PrivateCapturedOutput {
+  if (process.platform !== 'linux') throw new Error('Linux output transfer unavailable')
+  return captureTransferredDescriptor(fd, value, true)
+}
+
+function captureTransferredDescriptor(
+  fd: number,
+  value: unknown,
+  linux = false,
+): PrivateCapturedOutput {
   const identity = value as PrivateCapturedOutput
   if (
-    descriptors.length !== 1 ||
     identity === null ||
     typeof identity !== 'object' ||
     Object.keys(identity).sort().join() !== 'bytes,digest,directories,files' ||
@@ -552,10 +571,11 @@ export function capturePrivateTransferredOutput(
       if (!directorySet.has(parts.slice(0, count).join('/')))
         throw new TypeError('transferred output parent is absent')
   }
-  const fd = descriptors[0]!
   const before = fstatSync(fd, { bigint: true })
   if (!before.isFile() || before.nlink !== 0n || before.size !== BigInt(identity.bytes))
     throw new Error('transferred output is not the declared anonymous file')
+  if (linux)
+    privateVerifyLinuxSealedFile(fd, identity.bytes, identity.digest, PRIVATE_CAPTURE_LIMITS.output)
   if (
     privateDescriptorByteDigest(fd, identity.bytes) !== identity.digest ||
     files.some((file) => privateDescriptorByteDigest(fd, file.bytes, file.offset) !== file.digest)

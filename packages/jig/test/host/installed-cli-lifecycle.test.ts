@@ -21,14 +21,21 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
   try {
     const command = foundationCommands(join(root, 'commands'))
     const archives = await freezeFoundationArchives(root, command)
-    await writeFile(join(root, 'package.json'), JSON.stringify({
-      private: true,
-      dependencies: {
-        '@jigging/jig': `file:${archives.jig}`,
-        '@jigging/flow': `file:${archives.flow}`,
-      },
-    }))
-    await command([process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'], root, 120_000)
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({
+        private: true,
+        dependencies: {
+          '@jigging/jig': `file:${archives.jig}`,
+          '@jigging/flow': `file:${archives.flow}`,
+        },
+      }),
+    )
+    await command(
+      [process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
+      root,
+      120_000,
+    )
     const cli = join(root, 'node_modules/.bin/jig')
     const project = join(root, 'greeting')
     const before = await foundationResidue(qualification, command, root)
@@ -38,17 +45,21 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
     const library = join(project, 'libs/flow')
     await mkdir(library, { recursive: true })
     await command(['tar', '-xzf', archives.flow, '--strip-components=1', '-C', library], root)
-    await writeFile(join(project, 'package.json'), JSON.stringify({
-      private: true,
-      workspaces: ['flows/*', 'libs/*'],
-    }))
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({
+        ...JSON.parse(await readFile(join(project, 'package.json'), 'utf8')),
+        workspaces: ['flows/*', 'libs/*'],
+      }),
+    )
     await command(['git', 'init', '--quiet'], project)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
-      const result = await command([
-        cli, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada'), ...display,
-      ], project)
+      const result = await command(
+        [cli, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada'), ...display],
+        project,
+      )
       expect(JSON.parse(result.stdout)).toEqual({
         diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
         outcome: 'done',
@@ -56,12 +67,16 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
         status: 'succeeded',
       })
       expect(result.stdout.trim().split('\n')).toHaveLength(1)
-      expect(result.stdout + result.stderr).not.toMatch(/private-root-owners|private-host-ticket|#cap=/)
+      expect(result.stdout + result.stderr).not.toMatch(
+        /private-root-owners|private-host-ticket|#cap=/,
+      )
       expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
       expect(await foundationResidue(qualification, command, root)).toEqual(before)
     }
     const installed = realpathSync(join(root, 'node_modules/@jigging/jig'))
-    const runtime = realpathSync(join(installed, 'node_modules/@oven', installedRuntime.package, 'bin/bun'))
+    const runtime = realpathSync(
+      join(installed, 'node_modules/@oven', installedRuntime.package, 'bin/bun'),
+    )
     await checkInstalledDisplay({
       consumer: root,
       installed,

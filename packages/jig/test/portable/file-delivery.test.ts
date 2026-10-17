@@ -25,10 +25,74 @@ import {
 } from '../../src/internal/image-preview-policy.js'
 import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
+import { canonicalJson, type JsonValue } from '../../src/json.js'
 import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
 
 // These publisher inputs are ordinary packet data, not protected acceptance or
 // native cleanup evidence. Installed checkpoint lifecycle tests own those facts.
+for (const change of ['none', 'path', 'bytes', 'digest', 'missing', 'extra'] as const)
+  test(`checkpoint snapshot compares canonical retained manifest fields: ${change}`, async () =>
+    fixture(async (root) => {
+      const source = join(root, 'source')
+      await mkdir(source)
+      await writeFile(join(source, 'latest.txt'), '16')
+      const fd = privateOpenFileRoot(source)
+      const capture = capturePrivateOutput(fd)
+      closeSync(fd)
+      const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+      const identity = { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null }
+      const manifest = capture.files.map(({ path, bytes, digest }) => ({ path, bytes, digest }))
+      if (change === 'path') manifest[0]!.path = 'other.txt'
+      if (change === 'bytes') manifest[0]!.bytes++
+      if (change === 'digest') manifest[0]!.digest = `sha256:${'0'.repeat(64)}`
+      if (change === 'missing') manifest.pop()
+      if (change === 'extra') manifest.push({ ...manifest[0]!, path: 'extra.txt' })
+      // Protected storage and transport decode canonical JSON, whose object key
+      // order differs from the in-memory capture's field construction order.
+      const checkpoint = JSON.parse(
+        Buffer.from(
+          canonicalJson({
+            sequence: 16,
+            digest: sha256(Buffer.from('packet descriptor')),
+            identity,
+            evidence: { sequence: 16 },
+            files: { 'latest.txt': '16' },
+            manifest,
+          } as unknown as JsonValue),
+        ).toString(),
+      )
+      const destination = join(root, 'packet')
+      try {
+        await owner.prepare(destination, [])
+        const receipt = await owner.publish(
+          { status: 'succeeded', runId: identity.runId, outcome: 'done', output: null, checkpoint },
+          undefined,
+          checkpoint,
+          false,
+          undefined,
+          undefined,
+          capture,
+        )
+        if (change === 'none') {
+          expect(receipt).toMatchObject({ status: 'written', source: 'checkpoint' })
+          expect(await readFile(join(destination, 'files/latest.txt'), 'utf8')).toBe('16')
+          expect(
+            JSON.parse(await readFile(join(destination, 'result.json'), 'utf8')),
+          ).toMatchObject({
+            status: 'succeeded',
+            checkpoint,
+            delivery: receipt,
+          })
+        } else {
+          expect(receipt).toMatchObject({ status: 'failed', code: 'INVALID_FILES' })
+          await expect(stat(destination)).rejects.toMatchObject({ code: 'ENOENT' })
+        }
+      } finally {
+        await owner.close()
+        capture.close()
+      }
+    }))
+
 test('checkpoint packet publication preserves the supplied failure and binary manifest', async () =>
   fixture(async (root) => {
     const owner = new PrivateFileDeliveryOwner(new AbortController().signal)

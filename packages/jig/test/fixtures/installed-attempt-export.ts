@@ -101,7 +101,7 @@ await handle(async run=>{
   if(child.outcome!=='done'||!child.artifacts?.report) throw Error('No artifact');
   await run.call({operationId:'save',slot:'progress',input:{
     sequence:1,evidence:{saved:true},files:{'progress.txt':'accepted checkpoint'},
-    artifacts:{report:child.artifacts.report}}});
+    artifacts:{report:child.artifacts.report.reference}}});
   if(run.input==='fail') throw Error('Requested application failure after checkpoint');
   if(run.input==='cancel') await new Promise(resolve=>setTimeout(resolve,100000));
   return {outcome:'done',output:{completed:true},artifactResults:{report:child.artifacts.report}};
@@ -156,19 +156,30 @@ const consumer = `
 import assert from 'node:assert/strict';
 import {mkdir,readFile,rename,writeFile,readdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
-import {createAttemptClient} from '@jigging/jig/client';
+import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
+let stage='inspect', modeLabel='initial', terminalCode;
+process.on('uncaughtExceptionMonitor',error=>{
+  console.error('Foundation client failure: '+JSON.stringify({
+    application:'attempt-export',stage,mode:modeLabel,terminalCode,
+    ...(error instanceof AttemptClientError
+      ? {code:error.code,operation:error.operation,uncertain:error.uncertain}:{})
+  }));
+});
 const client=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),timeoutMs:195000});
 const inspected=await client.inspect({target:'binding:root'});
 const request={expectedApproval:inspected.approval,target:'binding:root',input:null,files:[],
   constraints:{durationMs:120000,resultBytes:1048576,artifactBytes:1048576},
   outputIntent:{packet:true,receive:['report']}};
 for(const mode of ['complete','fail','cancel']){
+  modeLabel=mode; stage='prepare'; terminalCode=undefined;
   const prepared=await client.prepare({...request,input:mode});
   await writeFile(mode+'-prepared.json',JSON.stringify(prepared),{flag:'wx',mode:0o600});
+  stage='submit';
   const owner=await client.submit({ticket:prepared.ticket,request:prepared.canonicalRequest});
   try {
     assert.equal(owner.role,'owner');
     if(mode==='cancel'){
+      stage='checkpoint-wait';
       const until=performance.now()+100000;
       for(;;){
         const result=await client.result({ticket:prepared.ticket});
@@ -176,19 +187,26 @@ for(const mode of ['complete','fail','cancel']){
         if(performance.now()>until) throw Error('No real accepted checkpoint');
         await Bun.sleep(50);
       }
+      stage='cancel';
       assert.equal((await client.cancel({ticket:prepared.ticket})).acknowledged,true);
     }
+    stage='completion';
     const observation=await owner.completion;
+    stage='completion-result';
+    terminalCode=observation?.terminal?.status==='failed'?observation.terminal.code:undefined;
     assert.equal(observation.cleanup,'confirmed');
     assert.equal(observation.terminal.status,mode==='complete'?'succeeded':'failed');
     if(mode==='cancel') assert.equal(observation.terminal.code,'CANCELLED');
+    stage='result';
     const result=await client.result({ticket:prepared.ticket});
     assert.equal(result.checkpoint.sequence,1);
     assert.equal(result.observation.receipt.runId,owner.receipt.runId);
     const source=mode==='complete'?'final':'checkpoint';
     const destination=mode+'-packet';
+    stage='export';
     const receipt=await client.export({ticket:prepared.ticket,destination,source});
     assert.equal(receipt.source,source);
+    stage='verify-export';
     const packet=JSON.parse(await readFile(destination+'/result.json','utf8'));
     assert.equal(packet.status,observation.terminal.status);
     assert.equal(packet.runId,owner.receipt.runId);
@@ -200,17 +218,22 @@ for(const mode of ['complete','fail','cancel']){
       assert.equal(await readFile(destination+'/files/progress.txt','utf8'),'accepted checkpoint');
     // Prove reconciliation consumes protected evidence, not the now absent packet.
     await rename(destination,destination+'-moved');
+    stage='reconcile-export';
     assert.deepEqual(await client.export({ticket:prepared.ticket,destination,source}),receipt);
     await assert.rejects(readFile(destination+'/result.json'));
     const collision=mode+'-collision';
+    stage='collision-export';
     await mkdir(collision); await writeFile(collision+'/sentinel','original');
     await assert.rejects(client.export({ticket:prepared.ticket,destination:collision,source}));
     assert.deepEqual(await readdir(collision),['sentinel']);
     assert.equal(await readFile(collision+'/sentinel','utf8'),'original');
+    stage='aborted-export';
     const abort=new AbortController(); abort.abort();
     await assert.rejects(client.export({ticket:prepared.ticket,destination:mode+'-aborted',source},{signal:abort.signal}));
     await assert.rejects(readFile(mode+'-aborted/result.json'));
+    stage='final-unavailable';
     if(mode!=='complete') await assert.rejects(client.export({ticket:prepared.ticket,destination:mode+'-final'}));
+    stage='final-lookup';
     assert.equal((await client.lookup({ticket:prepared.ticket})).receipt.runId,owner.receipt.runId);
   } finally { owner.close(); await owner.completion; }
 }

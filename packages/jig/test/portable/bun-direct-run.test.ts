@@ -2,20 +2,13 @@ import { describe, expect, test } from 'bun:test'
 import { createPrivateAcpAgentProvider } from '../../src/internal/acp-agent-provider.js'
 import {
   inspectPrivateBunDirectIdentity,
-  planPrivateBunDirectRun,
   requirePrivateBunDirectRecipe,
 } from '../../src/internal/bun-direct-run.js'
-import {
-  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-  privateBunExecutionArtifact,
-} from '../../src/internal/bun-execution-layout.js'
+import { privateBunExecutionArtifact } from '../../src/internal/bun-execution-layout.js'
 import { privateDomainDigest } from '../../src/internal/identity.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { openPrivateInstalledBunSupport } from '../../src/internal/installed-bun-support.js'
-import {
-  type PrivateLinuxBackendMechanismObservation,
-  PrivateLinuxCgroupBackend,
-} from '../../src/internal/linux-rootless-backend.js'
+import type { PrivateLinuxBackendMechanismSupport } from '../../src/internal/linux-rootless-backend.js'
 import { openPrivateAcpResources } from '../../src/internal/private-acp-resources.js'
 import {
   FINITE_ACP_CONTRACT_DIGEST,
@@ -27,48 +20,38 @@ import {
   type PrivateActivationRequest,
   restorePrivateActivationRequest,
 } from '../../src/project/package-resolution.js'
-import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
+import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
-class StaticMechanismBackend extends PrivateLinuxCgroupBackend {
-  override async observeMechanism(): Promise<PrivateLinuxBackendMechanismObservation> {
-    return MECHANISM
-  }
-}
-const MECHANISM: PrivateLinuxBackendMechanismObservation = Object.freeze({
-  support: Object.freeze({
-    kind: 'linux-rootless-cgroup-v2-bubblewrap-mechanism/1',
-    digest: digest('mechanism'),
-    trustedBubblewrapPath: '/test/bwrap',
-    trustedBubblewrapDigest: digest('bubblewrap'),
-    bubblewrapVersion: 'test',
-    trustedCoordinatorBunPath: '/test/bun',
-    trustedCoordinatorBunDigest: digest('coordinator-bun'),
-    trustedCoordinatorLibraryPath: '/test/lib',
-    trustedSupervisorPath: '/test/supervisor',
-    trustedSupervisorDigest: digest('supervisor'),
-    cgroupVersion: 2,
-    controllers: Object.freeze(['cpu', 'memory', 'pids']),
-    payloadUid: 1_000,
-    payloadGid: 1_000,
-    startupTimeoutMs: 1_000,
-  }),
-  authority: Object.freeze({
-    bootId: '00000000-0000-0000-0000-000000000000',
-    delegatedCgroup: '/test/cgroup',
-    delegatedCgroupDevice: '1',
-    delegatedCgroupInode: '2',
-  }),
+// Ordinary identity input only. Never presented as observed support or launch authority.
+const SUPPORT: PrivateLinuxBackendMechanismSupport = Object.freeze({
+  kind: 'linux-rootless-cgroup-v2-bubblewrap-mechanism/1',
+  digest: digest('mechanism'),
+  trustedBubblewrapPath: '/identity/bwrap',
+  trustedBubblewrapDigest: digest('bubblewrap'),
+  bubblewrapVersion: 'identity-input',
+  trustedCoordinatorBunPath: '/identity/bun',
+  trustedCoordinatorBunDigest: digest('coordinator-bun'),
+  trustedCoordinatorLibraryPath: '/identity/lib',
+  trustedSupervisorPath: '/identity/supervisor',
+  trustedSupervisorDigest: digest('supervisor'),
+  cgroupVersion: 2,
+  controllers: Object.freeze(['cpu', 'memory', 'pids']),
+  payloadUid: 1_000,
+  payloadGid: 1_000,
+  startupTimeoutMs: 1_000,
 })
+
+function digest(label: string): string {
+  return privateDomainDigest('JIG-Test-Bun-Direct/1', { label })
+}
+
 function activationRequest(acp = false): PrivateActivationRequest {
   const fields = Object.freeze({
     kind: 'activation-request/4' as const,
     target: Object.freeze({ kind: 'flow' as const, path: 'flows/example' }),
     mode: 'run' as const,
     packagePath: 'flows/example',
-    package: Object.freeze({
-      kind: 'flow-package/0' as const,
-      digest: digest('package'),
-    }),
+    package: Object.freeze({ kind: 'flow-package/0' as const, digest: digest('package') }),
     entrypoint: Object.freeze({ path: 'FLOW.ts', suffix: 'ts', selector: 'bun' }),
     settings: Object.freeze({}),
     slots: acp
@@ -94,23 +77,16 @@ function activationRequest(acp = false): PrivateActivationRequest {
     }),
   )
 }
-function digest(label: string): string {
-  return privateDomainDigest('JIG-Test-Bun-Direct/1', { label })
-}
 
-describe('private Bun direct Run', () => {
-  test('read-only identity matches Run planning, tracks environment changes, and cannot authorize execution', async () => {
+describe('private Bun direct identity inspection', () => {
+  test('tracks non-secret environment inputs without authorizing execution', async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
-    const resources = (model: string, key: string) =>
+    const resources = (model: string, key: string, modeId = 'default') =>
       openPrivateAcpResources(installedSupport, {}, process.cwd(), async () =>
         createPrivateAcpAgentProvider({
           client: 'openai-codex',
           model,
-          modeId: 'default',
+          modeId,
           credentialMode: 'subscription',
           adapterPath: installedSupport.installedCliPath,
           sandboxAdapterPath: '/agent/adapter.js',
@@ -125,133 +101,95 @@ describe('private Bun direct Run', () => {
       installedSupport,
       acpResources: resources('test-model-a', 'test-key-a'),
     }
-    const planned = await planPrivateBunDirectRun({ ...input, backend })
-    const inspected = await inspectPrivateBunDirectIdentity(input, MECHANISM.support)
-    expect(inspected).toEqual({
-      digest: planned.digest,
-      observationDigest: planned.observation.digest,
-    })
+    const inspected = await inspectPrivateBunDirectIdentity(input, SUPPORT)
     expect(() => requirePrivateBunDirectRecipe(inspected)).toThrow()
     expect(
       await inspectPrivateBunDirectIdentity(
         { ...input, acpResources: resources('test-model-a', 'test-key-b') },
-        MECHANISM.support,
+        SUPPORT,
       ),
     ).toEqual(inspected)
-    expect(
-      await inspectPrivateBunDirectIdentity(
-        { ...input, acpResources: resources('test-model-b', 'test-key-a') },
-        MECHANISM.support,
-      ),
-    ).not.toEqual(inspected)
+    for (const acpResources of [
+      resources('test-model-b', 'test-key-a'),
+      resources('test-model-a', 'test-key-a', 'review'),
+    ]) {
+      const changed = await inspectPrivateBunDirectIdentity({ ...input, acpResources }, SUPPORT)
+      expect(changed.digest).not.toBe(inspected.digest)
+      expect(changed.observationDigest).not.toBe(inspected.observationDigest)
+    }
     expect(
       await inspectPrivateBunDirectIdentity(input, {
-        ...MECHANISM.support,
+        ...SUPPORT,
         digest: digest('changed-support'),
       }),
     ).not.toEqual(inspected)
     await expect(
-      inspectPrivateBunDirectIdentity({ ...input, acpResources: undefined }, MECHANISM.support),
-    ).rejects.toBeDefined()
-  })
-  test('fixes the recipe envelope to the complete root Run timeout range', async () => {
-    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
-
-    const recipe = await planPrivateBunDirectRun({
-      request: activationRequest(),
-      installedSupport,
-      backend,
-    })
-
-    expect(recipe.wallClockCeilingMs).toBe(86_400_000)
-    expect(recipe.execution.layout).toEqual(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT)
-    expect(recipe.resourceCeilings).toEqual({
-      memoryBytes: 256 * 1024 * 1024,
-      pids: 64,
-      cpuQuotaMicros: 50_000,
-      cpuPeriodMicros: 100_000,
-      cleanupTimeoutMs: 5_000,
+      inspectPrivateBunDirectIdentity({ ...input, acpResources: undefined }, SUPPORT),
+    ).rejects.toMatchObject({
+      kind: 'unavailable',
+      code: 'PROJECT_ACP_UNAVAILABLE',
+      path: `${input.request.packagePath}/FLOW.ts`,
     })
   })
-  test('binds the selected Flow root and workspace aliases independently of retained bytes', async () => {
+
+  test('binds root, aliases and preparation inputs independently of retained package bytes', async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
     const request = activationRequest()
     const executionPackage = { kind: 'flow-package/0' as const, digest: digest('prepared') }
-    const executionLayout = {
+    const alias = { path: 'node_modules/helper', target: 'libs/first' }
+    const layout = {
       flowRoot: 'flows/first',
       members: ['flows/first', 'flows/second', 'libs/first', 'libs/second'],
-      aliases: [{ path: 'node_modules/helper', target: 'libs/first' }],
+      aliases: [alias],
     }
-    const plan = (layout: typeof executionLayout, preparationInputDigest?: string) =>
-      planPrivateBunDirectRun({
-        request,
-        execution: privateBunExecutionArtifact(
-          executionPackage,
-          layout,
-          preparationInputDigest === undefined
-            ? undefined
-            : { inputDigest: preparationInputDigest, package: executionPackage },
-        ),
-        installedSupport,
-        backend,
-      })
-    const withInputs = await plan(executionLayout, digest('workspace-inputs'))
-    const original = await plan(executionLayout)
-    const repeated = await plan(JSON.parse(JSON.stringify(executionLayout)))
-    const differentRoot = await plan({ ...executionLayout, flowRoot: 'flows/second' })
-    const differentAlias = await plan({
-      ...executionLayout,
-      aliases: [{ path: 'node_modules/helper', target: 'libs/second' }],
-    })
-
-    expect(repeated.digest).toBe(original.digest)
-    expect(repeated.observation.digest).toBe(original.observation.digest)
-    for (const changed of [differentRoot, differentAlias, withInputs]) {
-      expect(changed.request).toEqual(original.request)
-      expect(changed.execution.package).toEqual(original.execution.package)
+    const artifact = privateBunExecutionArtifact(executionPackage, layout)
+    expect(artifact.package).toEqual(executionPackage)
+    expect(artifact.layout).toEqual(layout)
+    const inspect = (value: typeof layout, inputDigest?: string) =>
+      inspectPrivateBunDirectIdentity(
+        {
+          request,
+          installedSupport,
+          execution: privateBunExecutionArtifact(
+            executionPackage,
+            value,
+            inputDigest === undefined ? undefined : { inputDigest, package: executionPackage },
+          ),
+        },
+        SUPPORT,
+      )
+    const original = await inspect(layout)
+    expect(await inspect(JSON.parse(JSON.stringify(layout)))).toEqual(original)
+    for (const changed of [
+      await inspect({ ...layout, flowRoot: 'flows/second' }),
+      await inspect({
+        ...layout,
+        aliases: [{ path: 'node_modules/helper', target: 'libs/second' }],
+      }),
+      await inspect(layout, digest('workspace-inputs')),
+    ]) {
       expect(changed.digest).not.toBe(original.digest)
-      expect(changed.observation.digest).not.toBe(original.observation.digest)
+      expect(changed.observationDigest).not.toBe(original.observationDigest)
     }
-    expect(original.execution.layout).toEqual(executionLayout)
-    expect(original.command).toEqual([
-      original.sandboxExecutablePath,
-      ...original.bunPolicy,
-      '/package/flows/first/FLOW.ts',
-    ])
-    expect(differentRoot.command.at(-1)).toBe('/package/flows/second/FLOW.ts')
-    executionLayout.aliases[0]!.target = 'libs/second'
-    expect(original.execution.layout.aliases[0]!.target).toBe('libs/first')
+    alias.target = 'libs/second'
+    expect(artifact.layout.aliases[0]?.target).toBe('libs/first')
   })
-  test('keeps the ordinary layout equivalent whether explicit or omitted', async () => {
+
+  test('keeps omitted and explicit ordinary execution identities equivalent', async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
-    const input = { request: activationRequest(), installedSupport, backend }
-    const implicit = await planPrivateBunDirectRun(input)
-    const explicit = await planPrivateBunDirectRun({
-      ...input,
-      execution: privateBunExecutionArtifact(input.request.package),
-    })
-    expect(explicit.digest).toBe(implicit.digest)
-    expect(explicit.observation.digest).toBe(implicit.observation.digest)
+    const input = { request: activationRequest(), installedSupport }
+    expect(
+      await inspectPrivateBunDirectIdentity(
+        { ...input, execution: privateBunExecutionArtifact(input.request.package) },
+        SUPPORT,
+      ),
+    ).toEqual(await inspectPrivateBunDirectIdentity(input, SUPPORT))
   })
-  test('rejects unsafe execution layout before producing a recipe', async () => {
+
+  test('rejects unsafe layout inputs without acquiring native authority', async () => {
     const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
-    for (const executionLayout of [
+    const request = activationRequest()
+    for (const layout of [
       { flowRoot: '../outside', members: ['flows/one'], aliases: [] },
       { flowRoot: 'flows/one', members: ['flows/other'], aliases: [] },
       {
@@ -261,135 +199,31 @@ describe('private Bun direct Run', () => {
       },
     ]) {
       await expect(
-        planPrivateBunDirectRun({
-          request: activationRequest(),
-          installedSupport,
-          backend,
-          execution: { package: activationRequest().package, layout: executionLayout },
-        }),
+        inspectPrivateBunDirectIdentity(
+          { request, installedSupport, execution: { package: request.package, layout } },
+          SUPPORT,
+        ),
       ).rejects.toThrow()
     }
   })
-  test('requires authenticated ACP resources and pins runtime policy without identifying credentials', async () => {
-    const installedSupport = await openPrivateInstalledBunSupport(installedBunLocation)
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
-    const request = activationRequest(true)
 
-    await expect(
-      planPrivateBunDirectRun({
-        request,
-        installedSupport,
-        backend,
-      }),
-    ).rejects.toMatchObject({
-      kind: 'unavailable',
-      code: 'PROJECT_ACP_UNAVAILABLE',
-      path: `${request.packagePath}/FLOW.ts`,
-    })
-
-    // Planning-only authenticated ACP fixtures: none of these files execute.
-    const provider = (secret: string, model = 'provider/test-model', modeId = 'default') =>
-      createPrivateAcpAgentProvider({
-        client: 'openai-codex',
-        model,
-        modeId,
-        credentialMode: 'subscription',
-        adapterPath: installedSupport.installedCliPath,
-        sandboxAdapterPath: '/agent/adapter.js',
-        executablePath: installedSupport.executablePath,
-        sandboxExecutablePath: '/agent/client',
-        environment: {},
-        startupInput: new TextEncoder().encode(secret),
-      })
-    const firstProvider = await provider('first-secret')
-    const rotatedProvider = await provider('rotated-secret')
-    const differentModelProvider = await provider('first-secret', 'provider/other-model')
-    const differentModeProvider = await provider('first-secret', 'provider/test-model', 'review')
-    const first = await planPrivateBunDirectRun({
-      request,
-      installedSupport,
-      backend,
-      acpResources: openPrivateAcpResources(
-        installedSupport,
-        {},
-        process.cwd(),
-        async () => firstProvider,
-      ),
-    })
-    const rotated = await planPrivateBunDirectRun({
-      request,
-      installedSupport,
-      backend,
-      acpResources: openPrivateAcpResources(
-        installedSupport,
-        {},
-        process.cwd(),
-        async () => rotatedProvider,
-      ),
-    })
-    const differentModel = await planPrivateBunDirectRun({
-      request,
-      installedSupport,
-      backend,
-      acpResources: openPrivateAcpResources(
-        installedSupport,
-        {},
-        process.cwd(),
-        async () => differentModelProvider,
-      ),
-    })
-    const differentMode = await planPrivateBunDirectRun({
-      request,
-      installedSupport,
-      backend,
-      acpResources: openPrivateAcpResources(
-        installedSupport,
-        {},
-        process.cwd(),
-        async () => differentModeProvider,
-      ),
-    })
-
-    expect(first.digest).toBe(rotated.digest)
-    expect(first.observation.digest).toBe(rotated.observation.digest)
-    expect(first.digest).not.toBe(differentModel.digest)
-    expect(first.observation.digest).not.toBe(differentModel.observation.digest)
-    expect(first.digest).not.toBe(differentMode.digest)
-    expect(first.observation.digest).not.toBe(differentMode.observation.digest)
-    expect(first.acp.session).toBe(firstProvider)
-    expect(JSON.stringify(first.observation)).not.toContain('secret')
-  })
-  test('keeps unavailable native runtime configuration scoped to matching ACP grants', async () => {
-    const backend = new StaticMechanismBackend({
-      bunPath: '/test/bun',
-      bunHostLibraryPath: '/test/lib',
-    })
-    const environments = [
+  test('scopes unavailable runtime configuration to matching ACP grants', async () => {
+    for (const environment of [
       { PATH: '', CODEX_PATH: '/missing/codex' },
       { PATH: '', CLAUDE_PATH: '/missing/claude' },
       { PATH: '' },
-    ] as const
-
-    for (const environment of environments) {
+    ]) {
       const host = await openPrivateInstalledBunHost(installedBunLocation, environment)
+      const input = {
+        installedSupport: host.installedBunSupport,
+        acpResources: host.acpResources,
+      }
+      expect(
+        (await inspectPrivateBunDirectIdentity({ ...input, request: activationRequest() }, SUPPORT))
+          .digest,
+      ).toBeString()
       await expect(
-        planPrivateBunDirectRun({
-          request: activationRequest(),
-          installedSupport: host.installedBunSupport,
-          backend,
-          acpResources: host.acpResources,
-        }),
-      ).resolves.toMatchObject({ request: { slots: {} } })
-      await expect(
-        planPrivateBunDirectRun({
-          request: activationRequest(true),
-          installedSupport: host.installedBunSupport,
-          backend,
-          acpResources: host.acpResources,
-        }),
+        inspectPrivateBunDirectIdentity({ ...input, request: activationRequest(true) }, SUPPORT),
       ).rejects.toMatchObject({ code: 'PROJECT_ACP_CODEX_EXECUTABLE', pointer: '/slots/session' })
     }
   })
