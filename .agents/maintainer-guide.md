@@ -458,24 +458,26 @@ reduce line or table count.
 
 ### Test real boundaries, never mocks
 
-Do not use mocks, stubs, spies, monkey-patched production functions, substitute
-stores or native owners, or fabricated execution, fencing and cleanup receipts.
+Never use mocks, stubs or spies. Do not monkey-patch production functions or
+substitute stores and native owners. Never fabricate execution, fencing or cleanup receipts.
 They can keep passing while the real integration is broken and become forgotten
 parallel implementations.
 
-Exercise the production boundary being claimed: real temporary storage, actual
-subprocesses, installed artifacts and the qualified native host where required.
+Exercise the production boundary a test claims. Use real temporary stores,
+subprocesses and installed artifacts. Native claims require their qualified host.
+
 Pure-function tests may supply ordinary data. Executable application methods
-and controlled protocol servers must perform their real task; they must not
-stand in for Jig's admission, storage, execution or cleanup machinery.
-Test failures through real invalid inputs, resource pressure, process loss and
-observable publication races rather than replacing the implementation.
+and controlled protocol servers must perform their real task.
+They must not replace Jig's admission, storage, execution or cleanup machinery.
+Trigger failures through invalid inputs, resource pressure, process loss or
+publication races. Never replace the implementation.
 
 Missing infrastructure is a visible unmet prerequisite, not permission to
 substitute a mock or skip a selected test. Replace existing test doubles with
-real-boundary coverage of their invariants; do not merely rename them or delete
-their assertions to obtain a green gate. Keep the migration inventory and
-unproved cases in `.tmp/`, not a permanent mock mode or exemption list.
+real-boundary coverage of their invariants. Do not rename doubles or delete
+assertions merely to obtain a green gate.
+Keep the migration inventory and unproved cases in `.tmp/`.
+Do not create permanent mock modes or exemption lists.
 
 ### Independent probes
 
@@ -525,8 +527,8 @@ not establish independence: report the consumer's actual prior context, inputs,
 assistance, and access boundaries.
 
 Host release qualification is maintainer-owned. Prepare and qualify an explicit
-supported capability envelope before asking external application teams to rely
-on it; do not make their daily development depend on continuous host repair.
+supported capability envelope before external application teams rely on it.
+Do not make their daily development depend on continuous host repair.
 Organize unfamiliar public-only consumption separately from platform work.
 Field feedback informs later decisions asynchronously, not readiness by agreement.
 

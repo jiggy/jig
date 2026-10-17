@@ -8,6 +8,11 @@ import { spawnSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import {
+  readPrivateAttemptRunCheckpoint,
+  readPrivateRootRun,
+  savePrivateAttemptRunCheckpoint,
+} from '../../src/internal/activation-admission-store.js'
 import { privateOwnFileCommand } from '../../src/internal/file-command.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
@@ -21,7 +26,7 @@ async function cli(root: string, args: string[]) {
   ])
   return { code, stdout, stderr }
 }
-async function fixture() {
+async function fixture(validation = false) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-checkpoint-proof-')))
   for (const name of ['root', 'worker']) {
     const path = join(root, 'flows', name)
@@ -41,7 +46,30 @@ async function fixture() {
       join(path, 'FLOW.ts'),
       name === 'worker'
         ? `import {handle} from './sdk/index.js'; await handle(async run=>{await Bun.sleep(run.input.ms);return {outcome:'done',output:{value:'settled'}}});`
-        : `import {handle} from './sdk/index.js'; import {writeFile} from 'node:fs/promises'; await handle(async run=>{
+        : validation
+          ? `import {handle} from './sdk/index.js'; await handle(async run=>{
+        let operation=0;
+        const save=input=>run.call({operationId:'save:'+ ++operation,slot:'progress',input});
+        const refused=async input=>{
+          try { await save(input); } catch { return true; }
+          throw new Error('invalid checkpoint was accepted');
+        };
+        const first={sequence:1,evidence:{candidate:'original'},files:{'first.txt':'original'}};
+        const receipt=await save(first);
+        first.files['first.txt']='mutated caller';
+        const refusals=[];
+        refusals.push(await refused({sequence:3,evidence:null,files:{}}));
+        refusals.push(await refused({sequence:2,evidence:null,files:{'../escape':'bad'}}));
+        refusals.push(await refused({sequence:2,evidence:null,files:{},artifacts:{candidate:'guessed'}}));
+        const retry=await save({sequence:1,evidence:{candidate:'original'},files:{'first.txt':'original'}});
+        if(retry.output.digest!==receipt.output.digest) throw new Error('rejected replacement changed progress');
+        const receipts=[receipt.output];
+        for(let sequence=2;sequence<=16;sequence++)
+          receipts.push((await save({sequence,evidence:{sequence},files:{'latest.txt':String(sequence)}})).output);
+        refusals.push(await refused({sequence:17,evidence:null,files:{}}));
+        return {outcome:'done',output:{receipts,refusals}};
+      });`
+          : `import {handle} from './sdk/index.js'; import {writeFile} from 'node:fs/promises'; await handle(async run=>{
         const workers=[1,2].map(i=>run.call({operationId:'worker:'+i,slot:'worker',input:{ms:i===1?300:run.input.mode==='complete'?500:60000}}));
         const save=(sequence,text)=>run.call({operationId:'save:'+sequence,slot:'progress',input:{sequence,evidence:{text},files:{'progress.txt':text}}});
         await save(1,'initial');
@@ -55,7 +83,7 @@ async function fixture() {
         join(path, 'FLOW.contract.json'),
         JSON.stringify({
           $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
-          attachments: { deliverables: 'read-write' },
+          ...(validation ? {} : { attachments: { deliverables: 'read-write' } }),
         }),
       )
       await cp(
@@ -100,6 +128,59 @@ async function noOwners(root: string, starts = 1) {
 }
 
 describe.serial('root retained progress', () => {
+  test(
+    'installed saves use protected sequence, replacement and sixteen-save limits without writable ports',
+    async () => {
+      const root = await fixture(true)
+      try {
+        const destination = join(root, 'validation')
+        const result = await cli(root, [
+          'run',
+          'binding:root',
+          '--input',
+          '{}',
+          '--out',
+          destination,
+          '--timeout',
+          process.platform === 'darwin' ? '60s' : '30s',
+        ])
+        expect(result.code, result.stderr + result.stdout).toBe(0)
+        const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
+        expect(JSON.parse(result.stdout)).toEqual(packet)
+        expect(packet.output.refusals).toEqual([true, true, true, true])
+        expect(
+          packet.output.receipts.map((receipt: { sequence: number }) => receipt.sequence),
+        ).toEqual(Array.from({ length: 16 }, (_, index) => index + 1))
+        const protectedCheckpoint = await readPrivateAttemptRunCheckpoint({
+          projectRoot: root,
+          runId: packet.runId,
+        })
+        expect(protectedCheckpoint).toEqual(packet.checkpoint)
+        expect(protectedCheckpoint?.sequence).toBe(16)
+        expect(protectedCheckpoint?.files).toEqual({ 'latest.txt': '16' })
+        expect(protectedCheckpoint?.digest).toBe(packet.output.receipts[15].digest)
+        if (!protectedCheckpoint) throw new Error('protected checkpoint is missing')
+        const run = await readPrivateRootRun({ projectRoot: root, runId: packet.runId })
+        await expect(
+          savePrivateAttemptRunCheckpoint({
+            projectRoot: root,
+            runId: run.runId,
+            epoch: run.coordinatorEpoch,
+            identity: protectedCheckpoint.identity,
+            value: { sequence: 16, evidence: null, files: {} },
+            artifacts: {},
+          }),
+        ).rejects.toThrow('unavailable')
+        expect(
+          await readPrivateAttemptRunCheckpoint({ projectRoot: root, runId: run.runId }),
+        ).toEqual(protectedCheckpoint)
+        await noOwners(root)
+      } finally {
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+    process.platform === 'darwin' ? 120_000 : 60_000,
+  )
   test(
     'installed command delivers normal output and retains saved files on deadline',
     async () => {

@@ -35,6 +35,7 @@ independently packaged for PyPI prereleases. Jig hosting is outside its scope.
 - `_artifacts.py` projects genuine per-Run opaque immutable `Artifact` objects.
   Initial read grants can be delegated. Calls serialize held reads or
   `create:True`. Handler `artifactResults` forwards selected held trees.
+
   Domain validation remains `{outcome, output}`, separate from host `artifacts`.
   The host checks rights and replay. SDK provenance grants no authority.
   Early release retains cancelled settlement and never resurrects rights.

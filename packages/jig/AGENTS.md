@@ -77,12 +77,10 @@ qualify an installed artifact or a different platform.
 - Change implementation, normative specification, schema, README, and tests
   together when a public contract changes.
 
-- Never use mocks. Do not replace host behavior with private test implementations,
-  rewritten workers, injected stores, clocks, transports, or simulated receipts.
-  Verify storage with real stores and process behavior with real subprocesses.
-  Installed and native claims require their ordinary public and qualified native paths.
-  Existing replacement-based tests are debt, not authorization or qualifying evidence.
-  This guidance change does not establish mock-free source or tests.
+- Follow the maintainer guide's
+  [no-mocks rule](../../.agents/maintainer-guide.md#test-real-boundaries-never-mocks).
+  Use real stores and subprocesses. Installed and native claims require their
+  ordinary public and qualified native paths. Never rewrite workers or simulate owners.
 
 - Attach expected rejection handlers before cancellation or asynchronous
   teardown can settle pending test operations. Still await both rejection and

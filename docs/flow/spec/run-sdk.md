@@ -28,7 +28,7 @@ ChannelContractIdentity
 ```
 
 The TypeScript projection additionally names `FlowCall`, `CallOptions`,
-`ChannelOptions`, and `ChannelCloseOptions`; Python expresses the same values as keyword-only method
+`ChannelOptions`, and `ChannelCloseOptions`. Python expresses the same values as keyword-only method
 arguments and uses ordinary task cancellation.
 
 `handle` receives this Flow's `flow/run` invocation. `run.call(...)` invokes a
@@ -39,26 +39,28 @@ accepts no method or operation selector.
 
 Authors use this same API when their Flow is launched directly or as another
 Flow's dependency. The distinction between `flow/run` and `flow/call` belongs
-to the host/component exchange; it does not require a second child-handler API.
+to the host/component exchange. It does not require a second child-handler API.
 
 `handle` owns protocol stdin and stdout for the process and handles exactly one
 root Run. The TypeScript SDK captures its transport first, then replaces the
-global console with one backed by stderr; an imported library that reads the
+global console with one backed by stderr. An imported library that reads the
 current global console during the handler is therefore safe. The Python SDK
 routes ordinary `print()` and `sys.stdout` output to stderr. Redirection remains
 installed after the one-shot call so later application output cannot become
 trailing protocol bytes.
 
 Output from modules evaluated before `handle`, a console/stdout reference
-cached before `handle`, raw writes to stdout or file descriptor 1, and a child
-process inheriting stdout remain invalid protocol output. Bare Run/0
+cached before `handle`, and raw writes to stdout or file descriptor 1 remain
+invalid protocol output. Output from a child process inheriting stdout remains
+invalid protocol output. Bare Run/0
 implementations are responsible for keeping protocol stdout clean. The SDK
 never treats malformed protocol output as a log.
 
 A TypeScript entrypoint may import only `handle` statically and dynamically
 import its application module from the handler. In that form the SDK installs
-console redirection before evaluating the later application graph, including
-its top-level console calls and any console methods it then caches. This is an
+console redirection before evaluating the later application graph.
+This includes its top-level console calls and any console methods it then caches.
+This is an
 authoring pattern, not a second SDK operation, and it does not make raw stdout
 or inherited child stdout valid.
 
@@ -128,10 +130,10 @@ declare function handle(handler: RunHandler): Promise<void>;
 ```
 
 `run.signal` reports root cancellation. If a call-specific signal is already
-aborted when `run.call` is invoked, or becomes aborted while
-that call is pending, the returned promise rejects with an `OperationError`
-whose `code` is exactly `CANCELLED`. The SDK sends `request/cancel` if the
-request reached the wire. This cancels the local wait promptly; it does not
+aborted when `run.call` is invoked, the returned promise rejects with an `OperationError` whose `code` is exactly `CANCELLED`.
+The same applies if that signal becomes aborted while the call is pending.
+The SDK sends `request/cancel` if the request reached the wire.
+This cancels the local wait promptly. It does not
 claim that remote work was undone.
 
 Code which catches only to observe this cancellation must rethrow every other
@@ -222,19 +224,19 @@ and sends `request/cancel` if the request reached the wire.
 
 Public type annotations describe JSON-shaped values, but the wire accepts only
 bounded [`FLOW JSON/0`](json-values.md). SDKs validate every value crossing the
-boundary. Invalid call arguments fail locally before a request is admitted;
-invalid handler results become `INVALID_RESULT`.
+boundary. Invalid call arguments fail locally before a request is admitted.
+Invalid handler results become `INVALID_RESULT`.
 
 Inbound values are isolated decoded snapshots. Each admitted outbound call is
 also snapshotted before asynchronous dispatch, so later caller mutation cannot
 change its wire meaning. The SDKs do not recursively freeze application
-containers; readonly or frozen outer declarations are authoring guidance, not
+containers. Readonly or frozen outer declarations are authoring guidance, not
 a new runtime object model.
 
 Call fields are closed: `operationId`, `slot`, `input` and only optional
-`intent`, `channels` and `attachments`. Optional-key presence enters Run/0 identity; omitted
+`intent`, `channels` and `attachments`. Optional-key presence enters Run/0 identity. Omitted
 channels and an explicit empty mapping remain distinct. TypeScript explicitly
-present `undefined` optional fields reject; Python `None` means omission for
+present `undefined` optional fields reject. Python `None` means omission for
 its optional keyword arguments. Intent is advisory metadata, never application
 input, Agent instructions, provider arguments or authority.
 
@@ -244,12 +246,14 @@ whose retry and deduplication meaning is defined by Run/0.
 ## 5. Results and errors
 
 `run.call` returns the complete `CallResult`, including its outcome and optional
-held `artifacts`. Artifact objects are not JSON/0 data; retain domain information
-using `{outcome: result.outcome, output: result.output}` and explicitly select
+held `artifacts`. Artifact objects are not JSON/0 data.
+Retain domain information using `{outcome: result.outcome, output: result.output}` and explicitly select
 forwarded artifacts in the handler's `artifactResults`. SDKs never unwrap
 output or translate declared outcomes into exceptions. Domain outcomes such as
-`blocked`, `limit` or `not-found` remain normal data; applications interpret them
-explicitly. A handler forwarding a result must declare any custom outcomes it
+`blocked`, `limit` or `not-found` remain normal data. Applications interpret them
+explicitly.
+
+A handler forwarding a result must declare any custom outcomes it
 can itself return.
 
 ### Immutable artifact handoff
@@ -259,7 +263,9 @@ An `Artifact` is an opaque, participant-held immutable tree with a readonly
 objects projected from host replies or initial readonly attachments can be used
 by that Run. The host, not SDK provenance, checks every actual right. Copied
 objects, guessed strings and objects from another Run cannot manufacture a held
-object. Released refs may serialize for exact replay; the host must distinguish
+object.
+
+Released refs may serialize for exact replay. The host must distinguish
 replay from a new reader and reject new use without rights. Artifact objects are
 not domain JSON values.
 
@@ -267,7 +273,7 @@ TypeScript attachment views retain `path` and `access`, with optional
 `artifact: Artifact` on a readonly view. Python uses the same keys in its
 `Attachment` typed dictionary (`run.attachments["source"]["artifact"]`).
 `CallAttachments` is a mapping to exactly `{"read": Artifact}` or
-`{"create": Literal[True]}`; readonly references can be delegated onward:
+`{"create": Literal[True]}`. Readonly references can be delegated onward:
 
 ```ts
 const made = await run.call({
@@ -300,13 +306,15 @@ Duplicate results preserve reference identity and do not create a new grant.
 Unknown ports and contract requirements remain host checks.
 
 Ordinary root cleanup automatically releases live rights, including late
-cancelled replies; authors need no cleanup loop. Advanced early release is
+cancelled replies. Authors need no cleanup loop.
+
+Advanced early release is
 `await run.release({operationId:"release:1", artifact: files})` or
 `await run.release(operation_id="release:1", artifact=files)`. Release settlement
 survives waiter cancellation and prevents additional reads or forwarding after
 acknowledgement. Accepted sibling readers continue. A replayed old result does
 not resurrect the released object. An unsupported optional release operation
-raises `OperationError("UNAVAILABLE")`; automatic cleanup still applies.
+raises `OperationError("UNAVAILABLE")`. Automatic cleanup still applies.
 
 Operational failure raises:
 
@@ -314,7 +322,7 @@ Operational failure raises:
 OperationError(code, message?, details?)
 ```
 
-Authors inspect `code`, `message`, and `details`; they do not branch on the
+Authors inspect `code`, `message`, and `details`. They do not branch on the
 human message. In Python, omitted details are represented by `None`.
 
 The thirteen Run/0 operational codes may cross the wire. `PROTOCOL_ERROR` and
@@ -329,29 +337,29 @@ rather than presenting it as an ordinary call failure.
 
 ## 6. Completion and cancellation
 
-The handler may issue concurrent calls; the SDK continues reading while
+The handler may issue concurrent calls. The SDK continues reading while
 responses arrive in any order and serializes writes. At most 64
 component-originated requests are live on the wire. It emits at most 65,536
-requests during the channel lifetime; a later call fails locally with
+requests during the channel lifetime. A later call fails locally with
 `OperationError` code `RESOURCE_EXHAUSTED` and emits no request.
 
 With channels, ordinary admission reserves at least one live slot and enough
 remaining lifetime request IDs for every allocated or pending-allocation
 endpoint's settlement. Settlement stays inside the same total wire ceilings.
 
-Handler return closes admission. The SDK does not detach calls: it requests
-cancellation for remaining owned work, waits for each wire request to settle,
-and refuses root success when the handler abandoned a live call. A cancelled
-local waiter retains an internal wire tombstone until its response or channel
-termination so a late response is not misclassified as an unknown ID. An
-explicitly cancelled and observed local wait is not abandonment: the handler
-may return a result, but the SDK sends that root result only after the cancelled
-wire request settles.
+Handler return closes admission. The SDK does not detach calls.
+It requests cancellation for remaining owned work and waits for each wire request to settle.
+It refuses root success when the handler abandoned a live call.
+
+A cancelled local waiter retains an internal wire tombstone until its response or channel termination.
+This prevents misclassification of a late response as an unknown ID.
+An explicitly cancelled and observed local wait is not abandonment.
+The handler may return a result, but the SDK sends that root result only after the cancelled wire request settles.
 
 Normal `try/catch`, `try/except`, `allSettled` and `gather` remain sufficient
 for settled recoverable failures. There is no acknowledgement operation or
 global settled-failure ledger. An ignored already-settled failure can escape
-detection; that does not waive live ownership, root cancellation, fatal
+detection. That does not waive live ownership, root cancellation, fatal
 transport loss, uncertain dispatch or failed cleanup. A conclusively cleaned
 child failure can remain recoverable in its healthy parent.
 
@@ -359,15 +367,15 @@ Handler settlement and invalid result checks precede implicit writer sealing.
 An activated unfinished receiver is abandonment unless it reached terminal
 failure or explicit disposal. Previously explicitly sealed intervals are not
 retracted by later producer failure. The host alone knows actual transfer and
-source state and performs eligible implicit sealing; SDKs never infer moved
+source state and performs eligible implicit sealing. SDKs never infer moved
 rights from final call outcomes. Retained read/disposal settlements finish
 before submitting the invocation terminal.
 
 Once an endpoint has been offered in a call's channel map, its terminal
-disposition is host-owned, including when admission fails or the callee fails
+disposition is host-owned. This includes cases where admission fails or the callee fails
 before sending data. Callers must not infer transfer from receiving a message
 or try to dispose all offered endpoints after failure. They still dispose
-active receivers they kept locally; the SDK tracks offered rights separately.
+active receivers they kept locally. The SDK tracks offered rights separately.
 
 The deadline is exposed as context, not implemented as an SDK timer. The host
 is responsible for enforcing it and terminating an uncooperative process.
@@ -396,7 +404,7 @@ handle(run)
 ```
 
 These examples require only the root `flow/run` operation. Availability of
-declared slots is host configuration; calling an unavailable slot
+declared slots is host configuration. Calling an unavailable slot
 returns `UNAVAILABLE`.
 
 ## 8. Call examples
@@ -435,10 +443,10 @@ handle(run)
 ```
 
 When a host binds `research`, JSON/0 `input` and any explicitly mapped channel
-or attachment rights cross through this SDK operation; the complete `CallResult`
+or attachment rights cross through this SDK operation. The complete `CallResult`
 returns separately, with opaque artifact objects outside domain JSON.
 Child context,
-authorization, and resource policy belong to the host; the SDK creates no
+authorization, and resource policy belong to the host. The SDK creates no
 implicit inheritance.
 
 The caller-supplied `operationId` retains all Run/0 join, conflict,
@@ -456,9 +464,9 @@ The implementations live under `packages/flow-sdk/` and
 
 ## 9. Channel projection
 
-TypeScript names the following interfaces; Python exposes corresponding
-protocols, with `start_sequence`, `aclose()`, `__anext__()` and async context
-management on receivers. Python channel options are keyword-only arguments.
+TypeScript names the following interfaces. Python exposes corresponding
+protocols. Receivers have `start_sequence`, `aclose()`, `__anext__()` and async context
+management. Python channel options are keyword-only arguments.
 
 ```ts
 interface ChannelContractIdentity {
@@ -502,19 +510,20 @@ interface ChannelBroadcast {
 Python absent contract identity is `None`. `schema` and `contract` are mutually
 exclusive, including explicit `schema: true`. Endpoint references remain
 private SDK/host machinery, never ordinary input data. Literal direct creation
-returns `ChannelPair`; literal broadcast returns `ChannelBroadcast` in both
+returns `ChannelPair`. Literal broadcast returns `ChannelBroadcast` in both
 SDKs. Python supplies matching typing overloads and `await source.subscribe()`.
 
-Only the creator retains `subscribe`; transferring `source.send` leaves that
+Only the creator retains `subscribe`. Transferring `source.send` leaves that
 authority with its creator. Each subscription gets a separate reader with an
 immutable starting sequence. Subscribe before producer dispatch when a consumer
 requires the beginning. Late readers receive only a suffix, not retained history.
+
 An allocated subscription is active work even before its first read and must
 finish or be disposed. Cancelling creation or subscription retains settlement
-and disposes late grants; failed cleanup cannot be recovered as success.
+and disposes late grants. Failed cleanup cannot be recovered as success.
 
 Broadcast sends do not wait for readers. A slow reader fails locally with
-`LAGGED`; a receiver-schema failure is likewise local. Both are distinct from
+`LAGGED`. A receiver-schema failure is likewise local. Both are distinct from
 a source/writer error, which aborts unsealed output for all readers. The caller
 still awaits execution independently and handles recoverable channel errors
 with ordinary language constructs.
@@ -522,16 +531,17 @@ with ordinary language constructs.
 `await sender.close({error: 'LAGGED'})`, or Python
 `await sender.close(error="LAGGED")`, declares incomplete output using ordinary
 writer authority. Clean `close()` is unchanged. Abnormal close may settle a
-source with pending sends; those send operations receive their own failures.
+source with pending sends. Those send operations receive their own failures.
 The close acknowledgement is observation evidence, never execution evidence.
+
 It wakes active receivers with the sticky stream error without cancelling the
-work. Repeated same-cause closes join settlement; a previously requested clean
+work. Repeated same-cause closes join settlement. A previously requested clean
 end cannot be rewritten as failure. Cancellation of a close waiter retains
 its settlement as before. Other producer error values are rejected locally.
 
 There is one iterator and one pending read per receiver, without prefetch.
 TypeScript iterator `return()` disposes on early loop exit. Python early exit
-requires `async with receiver` or explicit `aclose()` in `finally`; a bare
+requires `async with receiver` or explicit `aclose()` in `finally`. A bare
 `async for` break is insufficient. Fully exhausting either iterator is enough.
 
 Cancelling an active read starts retained receiver disposal. An uncancelled
@@ -539,8 +549,9 @@ close joins that disposal and every prior read/tombstone, exposing the first
 previously unexposed terminal cause. A cause received internally after its
 public read was cancelled has not yet been exposed. Repeated close suppresses
 that same cause only after a public operation raised/rejected with it. Cancelling
-a close waiter does not cancel settlement or lose its later cause. Ordinary
-language recovery applies; no acknowledgement or query operation is needed.
+a close waiter does not cancel settlement or lose its later cause.
+
+Ordinary language recovery applies. No acknowledgement or query operation is needed.
 
 Local failure to start a read is an operation failure, not proof that its
 endpoint ended. A fatal current-connection error remains fatal even when caught.

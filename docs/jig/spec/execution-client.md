@@ -4,7 +4,7 @@
 
 This contract governs local application execution through the installed host.
 The machine CLI and `@jigging/jig/client` use one acceptance and lifecycle model.
-The project authoring entrypoint remains inert; application clients do not import
+The project authoring entrypoint remains inert. Application clients do not import
 native host machinery or open private host state directly.
 
 FLOW still governs finite method invocation. Tasks, Kanban, Git, scheduling,
@@ -15,19 +15,21 @@ application responsibilities.
 
 | Verb | Request and result |
 | --- | --- |
-| `inspect` | Optional `target`; reads approved inventory or that target's retained interface and `approval`. It does not review source or establish launch readiness. |
-| `prepare` | `expectedApproval`, `target`, `input`, `files`, `constraints`, `outputIntent`; captures inputs and returns `Prepared`, including the opaque `ticket`, `canonicalRequest`, `requestDigest`, `submitBefore` and `retainUntil`. No work dispatches. |
-| `submit` | `ticket` plus the exact `canonicalRequest` as `request`; returns owner/observer acceptance and its receipt. Only the owner connection carries execution completion. |
-| `lookup` | `ticket`; reads identity, dispatch, execution, terminal, cleanup and retention observations without advancing execution. |
-| `cancel` | `ticket`; requests scoped revocation and returns `acknowledged` plus an observation. Acknowledgement is not confirmed cleanup. |
-| `result` | `ticket`; reads the observation, retained `output` when available, `artifactResults` and optional latest `checkpoint`. |
-| `export` | `ticket`, new `destination`, optional `source: 'final' \| 'checkpoint'` and optional final `artifactResult`; publishes retained bytes without execution and returns destination, manifest digest and actual source. |
+| `inspect` | Optional `target`. Reads approved inventory or that target's retained interface and `approval`. It does not review source or establish launch readiness. |
+| `prepare` | `expectedApproval`, `target`, `input`, `files`, `constraints`, `outputIntent`. Captures inputs and returns `Prepared`, including the opaque `ticket`, `canonicalRequest`, `requestDigest`, `submitBefore` and `retainUntil`. No work dispatches. |
+| `submit` | `ticket` plus the exact `canonicalRequest` as `request`. Returns owner/observer acceptance and its receipt. Only the owner connection carries execution completion. |
+| `lookup` | `ticket`. Reads identity, dispatch, execution, terminal, cleanup and retention observations without advancing execution. |
+| `cancel` | `ticket`. Requests scoped revocation and returns `acknowledged` plus an observation. Acknowledgement is not confirmed cleanup. |
+| `result` | `ticket`. Reads the observation, retained `output` when available, `artifactResults` and optional latest `checkpoint`. |
+| `export` | `ticket`, new `destination`, optional `source: 'final' \| 'checkpoint'` and optional final `artifactResult`. Publishes retained bytes without execution and returns destination, manifest digest and actual source. |
 
 `source` defaults to `final`. `artifactResult` selects one final name and
 cannot be combined with `source: 'checkpoint'`. `outputIntent.receive` selects
-retained artifact names, not live channel subscriptions; `packet` records packet
-intent, not a destination path. Prepare file entries use `{ port, source,
-selection }`; canonical file entries instead identify captured bytes with
+retained artifact names, not live channel subscriptions. `packet` records packet
+intent, not a destination path.
+
+Prepare file entries use `{ port, source,
+selection }`. Canonical file entries instead identify captured bytes with
 `{ port, manifestDigest, bytes }`. Submit the returned request unchanged.
 
 ### A complete application call
@@ -35,8 +37,8 @@ selection }`; canonical file entries instead identify captured bytes with
 This example assumes an already reviewed `binding:repair` with one unbound
 `source` read port and a declared forwarded result named `final`. The caller
 chooses the installed executable and project directory. Its application store
-must atomically persist the whole `Prepared` value with the task before submit:
-the injected transaction below is an application responsibility, not a Jig API.
+must atomically persist the whole `Prepared` value with the task before submit.
+The injected transaction below is an application responsibility, not a Jig API.
 
 ```ts
 import {
@@ -102,18 +104,18 @@ export async function repair(
 ```
 
 The application creates `exports/` beforehand and chooses a new destination.
-An observer may still find pending work; it must not treat the absence of a
+An observer may still find pending work. It must not treat the absence of a
 terminal as permission to submit another ticket. For interruption, call
 `client.cancel({ ticket: prepared.ticket })`, then read observations until the
-original owner settles. `submission.close()` revokes an owner connection's Run;
-closing an observer affects only that observer.
+original owner settles. `submission.close()` revokes an owner connection's Run.
+Closing an observer affects only that observer.
 
 `client.run(request)` is the one-shot prepare/submit/join convenience. For the
 same durability boundary use
 `client.run(request, { persist: persistTaskTransaction })`: the helper awaits
 that callback before submit. It returns `{ prepared, receipt, role,
 observation }`, not domain success or exported bytes. A rejected transport or
-aborted call can leave an incomplete observation; recover using the persisted
+aborted call can leave an incomplete observation. Recover using the persisted
 ticket, never an automatic new request. `AttemptClientError` exposes `code`,
 `operation` and conservative `uncertain` rather than subprocess stderr.
 
@@ -132,19 +134,19 @@ started execution.
 
 First acceptance atomically checks expected approval, binds the exact request to
 one Run and reserves the required lifecycle and promised result capacity before
-effects. Requested duration is frozen; its accepted absolute deadline is computed
+effects. Requested duration is frozen. Its accepted absolute deadline is computed
 once. Repeated contact cannot extend it.
 
 An exact duplicate with retained acceptance history identifies the original Run,
 independent of subsequent approval changes. Reusing the ticket with changed
-canonical meaning conflicts; it neither resolves against current approval nor
+canonical meaning conflicts. It neither resolves against current approval nor
 allocates another Run.
 
 The first accepted submit owns foreground execution. Duplicate callers are
 observers. Closing an observer does not cancel the original owner, close its
 project session or revoke unrelated work.
 
-Tickets identify records; they are not bearer permissions. Every operation still
+Tickets identify records. They are not bearer permissions. Every operation still
 requires the caller's independently established local project authority. Tickets
 and prepared input MUST NOT be placed in command arguments, diagnostics or
 observation dashboards.
@@ -157,10 +159,10 @@ extend a deadline, or repair missing state.
 
 Cancellation requests revocation of the original owned invocation. Request
 acknowledgement, local fencing and complete cleanup are separate facts. Natural
-completion may win the cancellation race; an accepted terminal remains immutable.
+completion may win the cancellation race. An accepted terminal remains immutable.
 
 The original safety owner must enforce deadlines and settle ownership without
-lookup polling. Losing the execution owner fences and settles work; it does not
+lookup polling. Losing the execution owner fences and settles work. It does not
 resume its Flow. Ordinary client/coordinator loss and independent-owner loss have
 separate enforcement and evidence obligations.
 
@@ -189,7 +191,7 @@ The guarantee covers the documented ordinary process-loss cases. It does not
 promise execution continuation across machine restart or detection of arbitrary
 trusted-operator rollback of protected state and its keys.
 
-Capacity exhaustion refuses new work before effects; it cannot evict required
+Capacity exhaustion refuses new work before effects. It cannot evict required
 non-reuse evidence or recommend deleting state or changing a ticket to retry
 uncertain work. Validity and minimum retention cutoffs are explicit in prepared
 results. Quotas and current availability remain inspectable bounded facts.
@@ -213,6 +215,7 @@ unaccepted preparation or a terminal refusal with no execution lifecycle.
 `possible` means effects cannot be excluded, including missing history and
 accepted work without a proved successful terminal. The current host reports
 `confirmed` for a successful execution terminal, not for every live dispatch.
+
 It does not establish that a particular package instruction or provider request
 ran, a remote consequence occurred, or the application's task succeeded.
 Terminal, cleanup and retained-byte observations must be interpreted independently.
@@ -227,12 +230,12 @@ bytes with accepted root-result retention before retiring live invocation rights
 Domain JSON, a pathname or a supplied digest cannot manufacture that selection.
 
 Export resolves retained host records and immutable bytes. An optional declared
-artifact-result name selects that original final snapshot; it is not a raw host
+artifact-result name selects that original final snapshot. It is not a raw host
 path or a new execution target. Export acquires a bounded read pin and publishes
 without replacement. Expiry cannot delete bytes under an accepted pin.
 
 Export failure never changes execution outcome or re-executes the method.
-Exported packets remain recorded local claims; their internal hashes establish
+Exported packets remain recorded local claims. Their internal hashes establish
 consistency, not newly authenticated host provenance. Protected lookup and saved
 packet inspection are different operations.
 
@@ -265,7 +268,7 @@ export async function exportProgress(
 
 Request limits are 24 hours duration, 1 MiB result JSON and 256 MiB artifact
 allowance. The artifact allowance bounds retained final and latest checkpoint
-bytes together; checkpoint aggregates also retain their own 16 MiB ceiling.
+bytes together. Checkpoint aggregates also retain their own 16 MiB ceiling.
 These are distinct from the live invocation's 256-reference, 16-snapshot,
 256-MiB aggregate artifact budget, which counts retained and materialized live
 bytes. Aliases do not create more live snapshot bytes.
@@ -274,9 +277,9 @@ Prepared inputs, accepted control/result reservations, retained artifacts and
 checkpoint bytes use the protected attempt store's shared 4 GiB quota.
 Review's source/prepared Package/0 archive is separate: 192 MiB per canonical
 artifact and 1 GiB per project. None of these increases per-invocation file
-limits. Reservations account for logical capacity before effects; they are not
-a physical filesystem allocation or a guarantee against filesystem `ENOSPC`,
-I/O failure, machine loss or trusted-operator state damage.
+limits. Reservations account for logical capacity before effects.
+They are not a physical filesystem allocation or a guarantee against filesystem
+`ENOSPC`, I/O failure, machine loss or trusted-operator state damage.
 
 Retention is bounded, not permanent archival storage. Cross-boot clock
 uncertainty may conservatively extend custody rather than reclaim required
@@ -288,21 +291,22 @@ history never establishes non-execution or grants replay permission.
 
 `jig attempt <operation> --json` is the installed machine boundary. Operations
 are `inspect`, `prepare`, `submit`, `lookup`, `cancel`, `result` and `export`.
-Requests and replies are closed, versioned, bounded JSON records;
-unsupported framing and unknown fields refuse without a fallback.
+Requests and replies are closed, versioned, bounded JSON records.
+Unsupported framing and unknown fields refuse without a fallback.
 
 Each stdin line has the envelope
 `{ "protocolVersion": 1, "operation": "<verb>", "request": { ... } }`.
-Unary replies have `event: "result"` and `value`; errors have `event: "error"`,
+Unary replies have `event: "result"` and `value`. Errors have `event: "error"`,
 `code` and a bounded `message`. Submit first emits `event: "accepted"` with
 `role` and `receipt`, then only the owner receives `event: "terminal"` with
 `observation`. Each frame also carries `protocolVersion` and `operation`.
+
 Requests are bounded to 1 MiB, stdout frames to 16 MiB and captured transport
 stderr to 64 KiB. An unknown field is not an extension point.
 
 Requests arrive on stdin, not argv. Submission reads one complete initial
 request while retaining the owning connection through settlement. Client loss
-and malformed extra input revoke that connection; closing a duplicate observer
+and malformed extra input revoke that connection. Closing a duplicate observer
 does not acquire cancellation authority over the original owner.
 
 Machine stdout contains only bounded protocol records. Human diagnostics use
@@ -316,10 +320,17 @@ framework. Importing it does not start a host.
 
 ## Verification obligations
 
-Qualify identical and conflicting concurrent submissions, approval races,
-process loss around acceptance/dispatch/terminal/retention/export, observational
-lookup, retirement-before-GC, clock anomalies, storage exhaustion, cancellation
-races and malformed framing.
+Qualify the following:
+
+- Identical and conflicting concurrent submissions.
+- Approval races.
+- Process loss around acceptance/dispatch/terminal/retention/export.
+- Observational lookup.
+- Retirement-before-GC.
+- Clock anomalies.
+- Storage exhaustion.
+- Cancellation races.
+- Malformed framing.
 
 Native descendant fencing, protected-state ordering, installed Node/Bun clients
 and public-only unfamiliar consumers require separate evidence. Source mocks
