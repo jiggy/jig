@@ -69,9 +69,7 @@ async function writeProject(root: string): Promise<void> {
   )
 
   await writeFile(join(worker, 'FLOW.ts'), bunWorkerProgram())
-  const sdk = join(worker, 'flow-sdk')
-  await mkdir(sdk)
-  await cp(flowSdkRuntimeDirectory, sdk, { recursive: true })
+  await copyFlowSdk(worker)
 
   const router = join(root, 'flows', 'ticket-router')
   const bug = join(root, 'flows', 'handle-bug')

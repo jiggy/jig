@@ -70,6 +70,10 @@ coordinator loss. Buffered response bytes do not establish application observati
 Retry only genuine SQLite busy reads within the original observation deadline.
 Busy or incomplete channel frames never establish acceptance.
 
+Trusted coordinator compositions forward the CLI's actual `channelOutput`.
+Do not drop selected channels while copying file or timeout options.
+Primitive fixtures copy the complete built public SDK runtime, not a source-file shortlist.
+
 `portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
 Its ordinary process adapter reports no native fencing.
 Valid protocol exchanges must still refuse execution success without qualified fencing.

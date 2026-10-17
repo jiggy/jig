@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
@@ -45,6 +45,78 @@ describe('private foreground command boundary', () => {
   test('requires explicit approval separately from a reviewed Plan', async () => {
     const failure = await invokeFailure(['apply', '.', '--plan', `sha256:${'0'.repeat(64)}`])
     expect(failure).toContain('apply requires explicit --yes approval')
+  })
+  test('executes generated worker and child through the complete unchanged public SDK', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-foreground-sdk-'))
+    try {
+      await writeProject(root)
+      const sdk = join(import.meta.dir, '../../../flow-sdk/dist')
+      const files = (await readdir(sdk, { recursive: true })).sort()
+      for (const name of ['worker', 'handle-bug']) {
+        const directory = join(root, 'flows', name)
+        const copied = join(directory, 'flow-sdk')
+        expect((await readdir(copied, { recursive: true })).sort()).toEqual(files)
+        for (const file of files) {
+          if ((await lstat(join(sdk, file))).isFile())
+            expect(await readFile(join(copied, file))).toEqual(await readFile(join(sdk, file)))
+        }
+        const scratch = join(root, `${name}-scratch`)
+        await mkdir(scratch)
+        const input = { kind: 'bug', ticket: 'copied-sdk-imports' }
+        const child = Bun.spawn([process.execPath, join(directory, 'FLOW.ts')], {
+          cwd: directory,
+          stdin: 'pipe',
+          stdout: 'pipe',
+          stderr: 'pipe',
+          timeout: 5_000,
+        })
+        try {
+          child.stdin.write(
+            `${JSON.stringify({
+              jsonrpc: '2.0',
+              id: 'sdk-imports',
+              method: 'flow/run',
+              params: {
+                protocol: 'run/0',
+                input,
+                settings: {},
+                attachments: {},
+                scratch,
+                deadlineUnixMs: Date.now() + 5_000,
+              },
+            })}\n`,
+          )
+          await child.stdin.flush()
+          const [stdout, stderr, exitCode] = await Promise.all([
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+            child.exited,
+          ])
+          expect(stderr).toBe('')
+          expect(exitCode).toBe(0)
+          expect(JSON.parse(stdout)).toMatchObject({
+            jsonrpc: '2.0',
+            id: 'sdk-imports',
+            result: {
+              outcome: 'done',
+              output:
+                name === 'worker'
+                  ? { worker: input }
+                  : {
+                      handled: 'bug',
+                      ticket: input.ticket,
+                      parentMarkerVisible: false,
+                    },
+            },
+          })
+        } finally {
+          child.kill('SIGKILL')
+          await child.exited
+        }
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
   test('constructs every named conversation peer', async () => {
     for (const peer of [

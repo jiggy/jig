@@ -39,6 +39,9 @@ await withPrivateInstallationVerification({}, async () => {
                 ...host,
                 runTimeoutMs: options?.runTimeoutMs ?? host.runTimeoutMs,
                 ...(options?.files === undefined ? {} : { files: options.files }),
+                ...(options?.channelOutput === undefined
+                  ? {}
+                  : { channelOutput: options.channelOutput }),
               },
             }),
         },
