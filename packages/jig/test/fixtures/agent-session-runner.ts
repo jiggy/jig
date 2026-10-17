@@ -3,17 +3,17 @@ import { join } from 'node:path'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { fixtureHost } from './agent-fixture-host.js'
-import { openDeterministicFiniteAcpHost } from './deterministic-acp-agent.js'
 
 const [projectRoot, releaseRoot, executablePath, submissionId, mode] = process.argv.slice(2)
 if (
   projectRoot === undefined ||
   releaseRoot === undefined ||
   executablePath === undefined ||
-  submissionId === undefined
+  submissionId === undefined ||
+  (mode !== undefined && !['root', 'specialist', 'http-chain'].includes(mode))
 ) {
   throw new Error(
-    'usage: agent-session-runner <project-root> <release-root> <bun-path> <submission-id> [root|specialist|http-chain|acp]',
+    'usage: agent-session-runner <project-root> <release-root> <bun-path> <submission-id> [root|specialist|http-chain]',
   )
 }
 
@@ -22,7 +22,7 @@ const session = await openPrivateProjectSession({
   onRootExecutionFailure: (evidence) =>
     console.error('agent-coordinator-root-execution-failure', JSON.stringify(evidence)),
   host: fixtureHost(
-    await (mode === 'acp' ? openDeterministicFiniteAcpHost : openPrivateInstalledBunHost)(
+    await openPrivateInstalledBunHost(
       {
         releaseRoot,
         executablePath,

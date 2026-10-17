@@ -37,8 +37,8 @@ import {
 import type { JsonObject, JsonValue } from '../../src/json.js'
 import { ChannelBroker } from '../../src/run/channels.js'
 import { RunHostSession } from '../../src/run/session.js'
-import { deterministicAcpProgram } from '.././fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
+import { rawFiniteAcpPeerProgram } from '../fixtures/raw-finite-acp-peer.js'
 import {
   childExit,
   collect,
@@ -206,12 +206,13 @@ describe('private rootless Linux Run', () => {
     ['exit', 'signal', 'linger'] as const
   ).entries()) {
     test(
-      'settles a contained finite ACP peer: %s' + ` (case ${suiteCaseIndex + 1})`,
+      'settles raw finite ACP resource transport: %s' + ` (case ${suiteCaseIndex + 1})`,
       () =>
         Reflect.apply(
           async (scenario) => {
             const host = await hostConfiguration()
-            const fixture = await createFixture(deterministicAcpProgram())
+            // Direct resource transport, not native client selection or provider qualification.
+            const fixture = await createFixture(rawFiniteAcpPeerProgram())
             const evidence = await mkdtemp(join(tmpdir(), 'jig-acp-settlement-evidence-'))
             const started = performance.now()
             const phases: { phase: string; timeMs: number }[] = []
@@ -373,7 +374,7 @@ describe('private rootless Linux Run', () => {
                   const dispatched = phases.find((item) => item.phase === 'prompt-dispatched')
                   const completed = phases.at(-1)
                   if (dispatched === undefined || completed === undefined)
-                    throw new Error('The native crash proof omitted its phase observations')
+                    throw new Error('The raw resource crash proof omitted its phase observations')
                   expect(completed.timeMs - dispatched.timeMs).toBeLessThan(5_000)
                 }
               }

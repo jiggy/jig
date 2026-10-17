@@ -34,7 +34,6 @@ import {
 import type { JsonObject, JsonValue } from '../../src/json.js'
 import { ChannelBroker } from '../../src/run/channels.js'
 import { RunHostSession } from '../../src/run/session.js'
-import { deterministicAcpProgram } from '.././fixtures/deterministic-acp-agent.js'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 import {
   childExit,

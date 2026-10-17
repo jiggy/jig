@@ -27,12 +27,7 @@ import {
   openPrivateProjectSession,
 } from '../../src/internal/project-session-controller.js'
 import { fixtureHost, MACOS_FIXTURE_SETTLEMENT_MS } from './agent-fixture-host.js'
-import {
-  openDeterministicFiniteAcpHost,
-  writeDeterministicAcpAgent,
-} from './deterministic-acp-agent.js'
 import { installedBunLocation } from './installed-bun-location.js'
-import { writeOrdinaryAcpAgent } from './ordinary-acp-agent.js'
 import { completedResponse, writeOrdinaryAgent } from './ordinary-agent.js'
 import { timeFixturePhase } from './phase-timing.js'
 
@@ -114,7 +109,6 @@ export const EXPECTED_STRUCTURED_AGENT_RESULT = Object.freeze({
 })
 export interface DispatchEvent {
   readonly scenario: string
-  readonly keyInEnvironment?: boolean
   readonly selectedSkill: boolean
   readonly hiddenSkill: boolean
 }
@@ -749,27 +743,18 @@ export function withStore<Value>(root: string, use: (database: any) => Value): V
   }
 }
 
-export async function dispatchServer(
-  events: DispatchEvent[],
-  key: string,
-  acp: boolean,
-): Promise<Server> {
+export async function dispatchServer(events: DispatchEvent[], key: string): Promise<Server> {
   const server = createServer(async (request, response) => {
     try {
       if (
         request.method !== 'POST' ||
-        request.url !== (acp ? '/dispatch' : '/v1/responses') ||
+        request.url !== '/v1/responses' ||
         request.headers.authorization !== `Bearer ${key}`
       ) {
         response.writeHead(404).end()
         return
       }
       const text = await new Response(request as any).text()
-      if (acp) {
-        events.push(JSON.parse(text) as DispatchEvent)
-        response.writeHead(204).end()
-        return
-      }
       const body = JSON.parse(text)
       if (
         body.stream !== false ||
@@ -1265,7 +1250,6 @@ export async function qualifyRepairScenario(
 
 export async function qualifyAgentFence(
   nested: boolean,
-  acp: boolean,
   temporaryRoot: string,
   initialCgroups: ReadonlySet<string>,
   initialTemporaryState: ReadonlySet<string>,
@@ -1274,15 +1258,10 @@ export async function qualifyAgentFence(
   const releaseRoot = await mkdtemp(join(temporaryRoot, 'jig-agent-lifecycle-release-'))
   const events: DispatchEvent[] = []
   const key = `synthetic-bearer-${basename(root)}`
-  const server = await dispatchServer(events, key, acp)
+  const server = await dispatchServer(events, key)
   const environment = { ...process.env }
   for (const name of Object.keys(environment)) {
-    if (
-      name.startsWith('OPENAI_') ||
-      name.startsWith('OPENROUTER_') ||
-      name === 'ACP_TEST_ENDPOINT'
-    )
-      delete environment[name]
+    if (name.startsWith('OPENAI_') || name.startsWith('OPENROUTER_')) delete environment[name]
   }
   let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
   let primaryFailure: unknown
@@ -1302,9 +1281,7 @@ export async function qualifyAgentFence(
   const onRootExecutionFailure = (evidence: { phase: string; causes: readonly string[] }) =>
     console.error('agent-root-execution-failure', JSON.stringify(evidence))
   const openHost = (location: PrivateInstalledBunLocation) =>
-    acp
-      ? openDeterministicFiniteAcpHost(location, environment, root)
-      : openPrivateInstalledBunHost(location, environment, root)
+    openPrivateInstalledBunHost(location, environment, root)
   try {
     const address = server.address()
     if (address === null || typeof address === 'string')
@@ -1313,16 +1290,11 @@ export async function qualifyAgentFence(
     await writeProject(root)
     if (nested) await writeSpecialistParent(root)
     environment.METHOD_TEST_TOKEN = key
-    if (acp) {
-      environment.ACP_TEST_ENDPOINT = `http://127.0.0.1:${address.port}/dispatch`
-      await writeDeterministicAcpAgent(releaseRoot)
-      await writeOrdinaryAcpAgent(root, 'codex')
-    } else
-      await writeOrdinaryAgent(root, {
-        url: `http://127.0.0.1:${address.port}/v1/responses`,
-        api: 'responses',
-        default: true,
-      })
+    await writeOrdinaryAgent(root, {
+      url: `http://127.0.0.1:${address.port}/v1/responses`,
+      api: 'responses',
+      default: true,
+    })
 
     session = await openPrivateProjectSession({
       directory: root,
@@ -1353,7 +1325,6 @@ export async function qualifyAgentFence(
     expect(events).toEqual([
       {
         scenario: 'success',
-        ...(acp ? { keyInEnvironment: false } : {}),
         selectedSkill: true,
         hiddenSkill: false,
       },
@@ -1402,7 +1373,7 @@ export async function qualifyAgentFence(
           outcome: 'done',
           output: {
             status: 'failed',
-            code: acp && scenario === 'malformed' ? 'UNCERTAIN' : 'INVALID_RESULT',
+            code: 'INVALID_RESULT',
           },
         },
       })
@@ -1480,7 +1451,7 @@ export async function qualifyAgentFence(
         location.releaseRoot,
         location.executablePath,
         'agent-coordinator-loss',
-        acp ? 'acp' : nested ? 'specialist' : 'root',
+        nested ? 'specialist' : 'root',
       ],
       {
         env: environment,

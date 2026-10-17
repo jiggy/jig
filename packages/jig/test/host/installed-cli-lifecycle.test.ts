@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -86,7 +87,9 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
     }
     const installed = realpathSync(join(root, 'node_modules/@jigging/jig'))
     const runtime = realpathSync(
-      join(installed, 'node_modules/@oven', installedRuntime.package, 'bin/bun'),
+      createRequire(join(installed, 'package.json')).resolve(
+        `@oven/${installedRuntime.package}/bin/bun`,
+      ),
     )
     await checkInstalledDisplay({
       consumer: root,
