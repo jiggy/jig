@@ -14,8 +14,8 @@ or both, then using ordinary code to produce a contact preview.
   `contacts/preview.json`.
 - `flows/map-code`, `map-agent`, and `map-mixed` implement the mapping contract.
 - `flows/convert` owns mapping validity and row acceptance rules.
-- `bindings` selects methods. `fixtures` and `test` own synthetic
-  demonstrations.
+- `bindings` selects methods. `fixtures` owns ordinary CSV inputs.
+- `test` owns pure mapping, conversion, view and actual filesystem checks.
 
 - `bindings/model.ts` owns the inline ACP client/model/turn/session policy.
   The default `jig.ts` selects only code-path packages and the code Binding.
@@ -71,17 +71,17 @@ or both, then using ordinary code to produce a contact preview.
 - Reader and exporter are composed through declared attachment maps. The root
   writes no files. Exported data is a preview, never an import receipt.
 - Retain recognizable malformed, unknown, ambiguous, and row-rejection cases.
-- Fault injection must be identified as a deterministic test, never live model
-  evidence.
+- Exercise composition through ordinary installed Runs. Never replace
+  `RunContext.call`, channels or native ownership in application tests.
 
 ## Verification
 
-- `bun test examples/contact-import/test` checks parsing, composition, and
-  policy. Shared mapper scenarios register distinct implementation names in test
-  reports.
+- `bun test examples/contact-import/test` checks pure parsing, mapping, conversion
+  and policy with actual filesystem inputs.
 - `scripts/test-release.sh` repeats these tests with the packed SDK.
-- Use an admitted installed run separately before claiming host or live Agent
-  behavior.
+- `bun test packages/jig/test/host/installed-contact-import.test.ts` checks actual
+  composition with qualified host prerequisites and ordinary deterministic tasks.
+  Keep live Agent judgment and untested failure windows separate.
 
 ## Child DOX Index
 

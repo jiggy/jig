@@ -87,6 +87,13 @@ Recorded packet inputs do not establish native execution or fencing.
 frozen packages and a real deterministic caption task through the installed host.
 It remains separate from live Agent judgment and untested fault windows.
 
+`host/installed-contact-import.test.ts` checks ordinary code, Agent-contract and
+mixed mapping through the installed host. Its deterministic header task performs
+the declared mapping work without claiming model quality.
+`host/installed-incident-brief.test.ts` checks the private handoff application
+with an ordinary bounded conversation task. Pure application cases do not prove
+dispatch races, native session restoration or cleanup.
+
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
 restoration without changing retained source. The opted-in whole

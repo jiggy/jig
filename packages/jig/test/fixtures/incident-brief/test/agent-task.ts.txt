@@ -1,0 +1,76 @@
+import { handle, type JsonValue, type RunResult } from '@jigging/flow'
+
+// An ordinary deterministic Agent task. It extracts supplied incident facts,
+// summarizes its actual local dialogue, and asks evidence questions.
+// It has no native client, retained session, restore path, or host authority.
+await handle(async (run): Promise<RunResult> => {
+  type Request = { instructions: string; guidance?: { label: string; text: string }[] }
+  const input = run.input as unknown as Request & { session?: unknown; conversation?: boolean }
+  if (input.session !== undefined) throw Error('This task does not retain or restore sessions.')
+  const guidance = new Map(input.guidance?.map((item) => [item.label, item.text]))
+  const supplied = guidance.get('supplied-context')
+  const snapshot = supplied ? JSON.parse(supplied) : undefined
+  const history: string[] = []
+  const notes = (files: { path: string; text: string }[]) =>
+    files.map((file) => `${file.path}: ${file.text}`).join('\n')
+  function respond(request: Request): string {
+    if (request.instructions.startsWith('Summarize the work so far')) {
+      if (!history.length) throw Error('No local work exists to summarize.')
+      return `Partial work, not verified evidence:\n${history.join('\n')}`
+    }
+    if (request.instructions.startsWith('Identify the most important ambiguity'))
+      return `Unverified analysis: ${notes(snapshot.files)}\nCorrelation does not establish the cause.`
+    if (request.instructions.startsWith('Now prepare the final independent review questions'))
+      return `Which independent measurement verifies these facts?\n${notes(snapshot.files)}\nWhat evidence establishes causation?`
+    const files = guidance.has('current-files')
+      ? JSON.parse(guidance.get('current-files')!)
+      : snapshot.files
+    const instructions = guidance.has('later-instructions-in-order')
+      ? JSON.parse(guidance.get('later-instructions-in-order')!)
+      : snapshot.laterInstructions
+    return `Internal brief; cause remains uncertain.\n${notes(files)}\nOrdered instructions:\n${instructions.map((item: { revision: number; text: string }) => `${item.revision}: ${item.text}`).join('\n')}`
+  }
+  if (!input.conversation) {
+    const bounds = JSON.parse(guidance.get('remaining-bounds')!)
+    if (bounds.remainingTurns !== 0 || bounds.deadlineUnixMs !== run.deadlineUnixMs)
+      throw Error('Successor must preserve the actual remaining bounds.')
+    if (!guidance.has('previous-summary-untrusted') || !guidance.has('earlier-context'))
+      throw Error('Successor omitted the prior work or earlier context.')
+    if (run.settings.refuseSuccessor)
+      return { outcome: 'blocked', output: { text: 'Cannot finish: independent verification is required.' } }
+    return { outcome: 'done', output: { text: respond(input) } }
+  }
+  const { commands, replies } = run.channels
+  if (commands?.direction !== 'receive' || replies?.direction !== 'send')
+    throw Error('Conversation requires ordinary command and reply channels.')
+  const responses = replies
+  let turn = 0
+  async function answer(request: Request) {
+    const text = respond(request)
+    history.push(text)
+    await responses.send({
+      type: 'result', turn, result: { outcome: 'done', output: { text } },
+    } as JsonValue)
+  }
+  await answer(input)
+  for await (const value of commands) {
+    const control = value as { type: string; turn: number; input?: Request }
+    if (control.type === 'prompt' && control.turn === turn + 1 && turn < 1) {
+      turn++
+      await replies.send({ type: 'accepted', command: 'prompt', turn })
+      await answer(control.input!)
+    } else if (control.type === 'interrupt' && control.turn === turn) {
+      // This task computes each answer before reading another control.
+      await replies.send({ type: 'rejected', command: 'interrupt', turn, code: 'NOT_RUNNING' })
+    } else if (control.type === 'close' && control.turn === turn) {
+      await replies.send({ type: 'accepted', command: 'close', turn })
+      if (!(await commands.next()).done) throw Error('Unexpected command after close.')
+      await replies.close()
+      await commands.close()
+      return { outcome: 'done', output: { turns: turn + 1 } }
+    } else {
+      throw Error('Unexpected command or exhausted turn budget.')
+    }
+  }
+  throw Error('Conversation ended without an explicit close.')
+})
