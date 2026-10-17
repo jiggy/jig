@@ -1145,6 +1145,7 @@ describe.serial('private rootless Linux hostile envelope', () => {
         delegatedCgroup,
         bunPath: host.bun,
         bunHostLibraryPath: host.bunHostLibraryPath,
+        supervisorPath: host.supervisorPath,
         bubblewrapPath: await realpath('/usr/bin/bwrap'),
         mounts: host.mounts,
         fixture,

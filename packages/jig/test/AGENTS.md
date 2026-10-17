@@ -127,6 +127,10 @@ must fail, never skip or substitute source evidence.
 Linux supervisor tests execute unchanged production code.
 Exact delayed-readiness, held-gate and injected setup-failure windows require
 genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
+
+Native fixtures use the official installed supervisor bundle and runtime mounts.
+`linux/linux-rootless-run.test.ts` executes the relocated bundle without adjacent
+source modules. This proves import closure, not delegated containment.
 `portable/bun-resolution-worker.test.ts` checks ordinary acquisition refusals
 through the unmodified worker, not a replacement registry argument.
 
@@ -137,6 +141,8 @@ Existing provider identity tests retain actual-file revalidation evidence.
 Native foreground identity-loss cases authenticate the exact fixture-owned
 directory before displacement. Restore that same inode before ordinary recovery.
 This does not prove every unconfirmed-fence or retry-memoization window.
+Durable sandbox state proves sealing, not native process or cgroup readiness.
+Observe actual task readiness before inspecting its process.
 
 `portable/project-evaluation-retention.test.ts` verifies descriptor-confined
 recipe capture, inert attachment authority, exact retained R/D reacquisition,

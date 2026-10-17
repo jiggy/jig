@@ -1,8 +1,8 @@
 import type { spawn } from 'node:child_process'
-import { mkdtemp, readdir, realpath, stat, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { resolvePrivateLinuxHostLoader } from '../src/internal/linux-host-paths.js'
+import { join } from 'node:path'
+import { openPrivateInstalledBunSupport } from '../src/internal/installed-bun-support.js'
 import {
   PrivateLinuxCgroupBackend,
   PrivateLinuxFenceUnconfirmedError,
@@ -20,20 +20,22 @@ interface HostConfiguration {
   readonly backend: PrivateLinuxCgroupBackend
   readonly bun: string
   readonly bunHostLibraryPath: string
+  readonly supervisorPath: string
   readonly mounts: readonly PrivateLinuxReadOnlyMount[]
 }
 async function hostConfiguration(): Promise<HostConfiguration> {
   if (delegatedCgroup === undefined)
     throw new Error('rootless proof host did not expose its delegated cgroup')
-  const bun = installedBunLocation.executablePath
-  const loader = await resolvePrivateLinuxHostLoader()
-  const bunHostLibraryPath = dirname(loader)
-  const mounts = await runtimeMounts(bun, loader, bunHostLibraryPath)
+  const support = await openPrivateInstalledBunSupport(installedBunLocation)
+  const bun = support.executablePath
+  const bunHostLibraryPath = support.hostLibraryDirectory
+  const supervisorPath = support.supervisorPath
   return {
     bun,
     bunHostLibraryPath,
-    mounts,
-    backend: new PrivateLinuxCgroupBackend({ bunPath: bun, bunHostLibraryPath }),
+    supervisorPath,
+    mounts: support.runtimeMounts,
+    backend: new PrivateLinuxCgroupBackend({ bunPath: bun, bunHostLibraryPath, supervisorPath }),
   }
 }
 function plan(
@@ -64,25 +66,6 @@ function plan(
       '/package/FLOW.ts',
     ],
   }
-}
-async function runtimeMounts(
-  bun: string,
-  loader: string,
-  libraryDirectory: string,
-): Promise<readonly PrivateLinuxReadOnlyMount[]> {
-  const libraries = ['libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0']
-  return Object.freeze([
-    Object.freeze({ source: bun, destination: '/jig-runtime/bun' }),
-    Object.freeze({ source: loader, destination: '/lib64/ld-linux-x86-64.so.2' }),
-    ...(await Promise.all(
-      libraries.map(async (name) =>
-        Object.freeze({
-          source: await realpath(join(libraryDirectory, name)),
-          destination: `/jig-runtime/lib/${name}`,
-        }),
-      ),
-    )),
-  ])
 }
 async function createFixture(source: string): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'jig-rootless-fixture-'))
@@ -192,7 +175,6 @@ export {
   plan,
   readLine,
   rootlessTemporaryEntry,
-  runtimeMounts,
   waitForFence,
   waitForMissing,
   waitForNoRunCgroups,

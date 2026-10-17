@@ -241,8 +241,15 @@ All selected domain requirements still apply.
   for full output and checkpoint evidence, and show the nonzero delivered file
   count. Omit null checkpoints from human results.
 
-  Uncertain delivery keeps evidence visible. Input errors name the approved
-  schema without guessing source freshness. Emit the dependency network notice
+  Uncertain delivery keeps evidence visible. INVALID_INPUT alone does not prove
+  a root input-schema or channel fault. Direct operators to inspect approved
+  input and channel declarations, check --input and connect required outputs
+  with --receive.
+
+  Closed type facts remain reported constraints, not proof of
+  root-schema provenance. Never classify from message text or expose private
+  diagnostic paths. Do not infer source freshness, no effects, or safe retries.
+  Emit the dependency network notice
   once per review before preparation, retaining package progress.
 
 ## Verification

@@ -33,7 +33,7 @@ import {
 } from './cli-presentation.js'
 import { PrivateCliProgress } from './cli-progress.js'
 import { renderReviewAgentSelections, renderReviewAgentSetup } from './cli-review-agent-setup.js'
-import { PrivateCliRunPresentation } from './cli-run-presentation.js'
+import { PrivateCliRunPresentation, privateCliInvalidInputText } from './cli-run-presentation.js'
 import { privateSavedResultPlain } from './cli-saved-result-presentation.js'
 import { asciiJsonString, CliDiagnostic, spellingHint, usage } from './cli-usage.js'
 import { privateCliValueFields } from './cli-value-presentation.js'
@@ -2786,7 +2786,10 @@ function renderRunFailure(
   if (terminal.code === 'INVALID_INPUT')
     return renderDiagnostic(
       'JIG_RUN_INPUT_INVALID',
-      `Input does not match the approved target input schema.${typeof details?.instancePointer === 'string' ? `\nValue: ${details.instancePointer === '' ? 'entire input' : asciiJsonString(details.instancePointer.slice(0, 512))}` : ''}${details?.keyword === 'enum' ? '\nThis field must be one of the choices declared in that schema.' : ''}${schemaTypeMismatchText(details?.typeMismatch) === undefined ? '' : `\n${schemaTypeMismatchText(details?.typeMismatch)}`}\n\nNext step: Inspect the approved schema and correct --input:\n\n  $ jig inspect ${shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`)}\n\nJig runs the last approved revision. If you edited the Flow or its schema, approve those edits first:\n\n  $ jig review`,
+      privateCliInvalidInputText(
+        details,
+        shellWord(target.kind === 'flow' ? `flow:${target.path}` : `binding:${target.id}`),
+      ),
     )
   if (terminal.status === 'lost')
     return renderDiagnostic(

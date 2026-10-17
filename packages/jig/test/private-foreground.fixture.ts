@@ -456,6 +456,7 @@ function childProgram(kind: 'bug' | 'question'): string {
     '  const marker = `${context.scratch}/parent-marker`;',
     '  const parentMarkerVisible = await Bun.file(marker).exists();',
     '  await Bun.write(marker, "child");',
+    '  if (release !== undefined) console.error("held-child-ready");',
     '  if (release !== undefined) { try { await release; } finally { clearInterval(keepAlive); } }',
     '  if (input.delayMs !== undefined) await Bun.sleep(input.delayMs);',
     `  return { outcome: "done", output: {`,

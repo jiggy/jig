@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
 import {
+  firstLine,
   invokeFailure,
   writeAgentFreeProject,
   writeAgentRouterProject,
@@ -52,7 +53,11 @@ describe('private foreground command boundary', () => {
       await writeProject(root)
       const sdk = join(import.meta.dir, '../../../flow-sdk/dist')
       const files = (await readdir(sdk, { recursive: true })).sort()
-      for (const name of ['worker', 'handle-bug']) {
+      for (const [name, held] of [
+        ['worker', false],
+        ['handle-bug', false],
+        ['handle-bug', true],
+      ] as const) {
         const directory = join(root, 'flows', name)
         const copied = join(directory, 'flow-sdk')
         expect((await readdir(copied, { recursive: true })).sort()).toEqual(files)
@@ -60,9 +65,13 @@ describe('private foreground command boundary', () => {
           if ((await lstat(join(sdk, file))).isFile())
             expect(await readFile(join(copied, file))).toEqual(await readFile(join(sdk, file)))
         }
-        const scratch = join(root, `${name}-scratch`)
+        const scratch = join(root, `${name}-${held}-scratch`)
         await mkdir(scratch)
-        const input = { kind: 'bug', ticket: 'copied-sdk-imports' }
+        const input = {
+          kind: 'bug',
+          ticket: 'copied-sdk-imports',
+          ...(held ? { holdUntilSignal: true } : {}),
+        }
         const child = Bun.spawn([process.execPath, join(directory, 'FLOW.ts')], {
           cwd: directory,
           stdin: 'pipe',
@@ -70,6 +79,7 @@ describe('private foreground command boundary', () => {
           stderr: 'pipe',
           timeout: 5_000,
         })
+        const [readiness, diagnostics] = held ? child.stderr.tee() : [undefined, child.stderr]
         try {
           child.stdin.write(
             `${JSON.stringify({
@@ -87,12 +97,17 @@ describe('private foreground command boundary', () => {
             })}\n`,
           )
           await child.stdin.flush()
+          if (held) {
+            expect(await firstLine(readiness!)).toBe('held-child-ready')
+            expect(child.exitCode).toBeNull()
+            child.kill('SIGUSR1')
+          }
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(child.stdout).text(),
-            new Response(child.stderr).text(),
+            new Response(diagnostics).text(),
             child.exited,
           ])
-          expect(stderr).toBe('')
+          expect(stderr).toBe(held ? 'held-child-ready\n' : '')
           expect(exitCode).toBe(0)
           expect(JSON.parse(stdout)).toMatchObject({
             jsonrpc: '2.0',

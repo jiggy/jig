@@ -951,9 +951,32 @@ describe.serial('private rootless project session', () => {
       await recovered.close()
       await expectNoChildResidue(root)
 
+      let heldDiagnostics = ''
+      const heldRecords: unknown[] = []
+      const uncertainHost = await openPrivateInstalledBunHost(installedBunLocation)
       const uncertainSession = await openPrivateProjectSession({
         directory: root,
-        host: await openPrivateInstalledBunHost(installedBunLocation),
+        host: {
+          ...uncertainHost,
+          channelOutput: {
+            receive: [],
+            async record(value) {
+              heldRecords.push(value)
+            },
+            diagnostic(bytes, operations, source) {
+              if (
+                operations?.length === 1 &&
+                operations[0] === 'errors:fence' &&
+                source?.call?.operationId === 'errors:fence' &&
+                source.call.publisher === 'root' &&
+                source.emitter === 'flow:errors:fence'
+              )
+                heldDiagnostics = (heldDiagnostics + Buffer.from(bytes).toString('utf8')).slice(
+                  -4096,
+                )
+            },
+          },
+        },
       })
       const uncertainRequest = {
         submissionId: 'child-slot-owner-identity-loss',
@@ -985,42 +1008,52 @@ describe.serial('private rootless project session', () => {
         expect(before.isSymbolicLink()).toBeFalse()
         expect(String(before.dev)).toBe(owner.ownerStateDevice)
         expect(String(before.ino)).toBe(owner.ownerStateInode)
-        // Observe the actual child executable inside this exact cgroup, not
-        // just the earlier durable sandbox allocation.
+        // The durable sealed row precedes admission and cgroup creation.
+        // Await actual application stderr, correlated to this child call.
         const activeDeadline = Date.now() + 20_000
-        let active = false
-        let activeChild: { pid: number; startTime: string; executable: string } | undefined
-        while (!active && Date.now() < activeDeadline) {
-          const pids = (await readFile(join(owner.runCgroup, 'cgroup.procs'), 'utf8'))
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean)
-          for (const pid of pids) {
-            const command = await readFile(`/proc/${pid}/cmdline`, 'utf8').catch((error) => {
-              if (error.code === 'ENOENT') return ''
-              throw error
-            })
-            if (command.split('\0').some((argument) => argument.endsWith('/FLOW.ts'))) {
-              const marker = await readFile(`/proc/${pid}/root/work/parent-marker`, 'utf8').catch(
-                (error) => {
-                  if (error.code === 'ENOENT') return ''
-                  throw error
-                },
-              )
-              if (marker === 'child') {
-                const status = await readFile(`/proc/${pid}/stat`, 'utf8')
-                activeChild = {
-                  pid: Number(pid),
-                  startTime: status.slice(status.lastIndexOf(')') + 2).split(' ')[19]!,
-                  executable: await readlink(`/proc/${pid}/exe`),
-                }
-                active = true
-              }
-            }
+        while (!heldDiagnostics.includes('held-child-ready\n') && Date.now() < activeDeadline) {
+          const status = await uncertainSession.rootAdministration.runStatus(uncertainReceipt)
+          if (status.state === 'terminal')
+            throw new Error(`held child terminated before readiness: ${JSON.stringify(status)}`)
+          const finalText = await readFile(
+            join(owner.ownerStateDirectory, 'final.json'),
+            'utf8',
+          ).catch((error) => {
+            if (error.code === 'ENOENT') return undefined
+            throw error
+          })
+          if (finalText !== undefined) {
+            const final = JSON.parse(finalText)
+            throw new Error(
+              `child published final before readiness: ${JSON.stringify({
+                stopReason: final.stopReason,
+                exitCode: final.exitCode,
+                signal: final.signal,
+                fenced: final.fenced,
+              })}`,
+            )
           }
-          if (!active) await Bun.sleep(20)
+          await Bun.sleep(20)
         }
-        expect(active).toBeTrue()
+        expect(heldDiagnostics).toContain('held-child-ready\n')
+        expect(heldRecords).toEqual([])
+        const pids = (await readFile(join(owner.runCgroup, 'cgroup.procs'), 'utf8'))
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean)
+        const activeChildren: { pid: number; startTime: string; command: string }[] = []
+        for (const pid of pids) {
+          const command = await readFile(`/proc/${pid}/cmdline`, 'utf8')
+          if (command.split('\0').some((argument) => argument.endsWith('/FLOW.ts'))) {
+            const status = await readFile(`/proc/${pid}/stat`, 'utf8')
+            activeChildren.push({
+              pid: Number(pid),
+              startTime: status.slice(status.lastIndexOf(')') + 2).split(' ')[19]!,
+              command,
+            })
+          }
+        }
+        expect(activeChildren).toHaveLength(1)
         const quarantine = `${owner.ownerStateDirectory}-quarantine`
         await expect(lstat(quarantine)).rejects.toMatchObject({ code: 'ENOENT' })
         await rename(owner.ownerStateDirectory, quarantine)
@@ -1038,8 +1071,7 @@ describe.serial('private rootless project session', () => {
         // The supervisor can still publish its genuine final receipt into the
         // original inode. The backend must refuse this noncanonical pathname.
         await symlink(quarantine, owner.ownerStateDirectory)
-        expect(activeChild).toBeDefined()
-        const held = activeChild!
+        const held = activeChildren[0]!
         const currentPids = (await readFile(join(owner.runCgroup, 'cgroup.procs'), 'utf8'))
           .trim()
           .split(/\s+/)
@@ -1048,7 +1080,7 @@ describe.serial('private rootless project session', () => {
         expect(currentStatus.slice(currentStatus.lastIndexOf(')') + 2).split(' ')[19]).toBe(
           held.startTime,
         )
-        expect(await readlink(`/proc/${held.pid}/exe`)).toBe(held.executable)
+        expect(await readFile(`/proc/${held.pid}/cmdline`, 'utf8')).toBe(held.command)
         process.kill(held.pid, 'SIGUSR1')
         const completionDeadline = Date.now() + 30_000
         let final: { fenced: boolean; ownerDigest: string } | undefined
