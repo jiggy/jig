@@ -174,6 +174,10 @@ Use actual stores, processes and qualified native owners for lifecycle evidence.
 Keep remaining migration gaps in `.tmp/`. Never treat replacement behavior as
 passing product evidence.
 
+Compare JSON evidence by exact keys, primitive types and values, and array order,
+not JavaScript object prototypes. This does not replace authenticity or
+object-identity checks for local owners and descriptors.
+
 `scripts/ci/test-suites.json` owns whole-file applicability. The shared suite
 inventory refuses unknown or ambiguous files. Select suites before execution.
 Selected suites must execute positively with zero skipped or filtered cases.

@@ -120,7 +120,66 @@ describe('RunHostSession with actual bounded protocol subprocesses', () => {
           },
         ).run()
         expect(peer.child.exitCode).toBe(0)
-        expect(peer.frames().at(-1).result.output).toEqual({ text: 'live' })
+        expect(peer.child.signalCode).toBeNull()
+        const frames = peer.frames()
+        // Run/0 requires the correlated root response to be the final frame.
+        // An unfenced adapter refusal alone cannot distinguish SDK success
+        // from a root error, even when the runtime exits zero.
+        const rootFrames = frames.filter((frame) => frame.id === 'host:1')
+        const last = frames.at(-1)
+        const runCodes = new Set([
+          'CANCELLED',
+          'DEADLINE_EXCEEDED',
+          'OWNER_CLOSED',
+          'OPERATION_CONFLICT',
+          'UNAVAILABLE',
+          'PERMISSION_DENIED',
+          'RESOURCE_EXHAUSTED',
+          'INVALID_INPUT',
+          'INVALID_RESULT',
+          'UNCERTAIN',
+          'EXECUTION_FAILED',
+          'LAGGED',
+          'DISCONNECTED',
+        ])
+        const diagnostic = JSON.stringify({
+          frameCount: frames.length,
+          frames: frames.slice(0, 32).map((frame) => ({
+            rootId: frame.id === 'host:1',
+            kind:
+              frame.method !== undefined
+                ? 'method'
+                : frame.error !== undefined
+                  ? 'error'
+                  : frame.result !== undefined
+                    ? 'result'
+                    : 'other',
+            errorCode: Number.isSafeInteger(frame.error?.code) ? frame.error.code : null,
+            runCode: runCodes.has(frame.error?.data?.code) ? frame.error.data.code : null,
+          })),
+          hostCode: terminal.status === 'failed' ? terminal.code : null,
+          exitCode: peer.child.exitCode,
+          signal: peer.child.signalCode,
+        })
+        expect(
+          {
+            rootCount: rootFrames.length,
+            lastIsRoot: last?.id === 'host:1',
+            lastIsResult: last !== undefined && Object.hasOwn(last, 'result'),
+            lastHasError: last !== undefined && Object.hasOwn(last, 'error'),
+          },
+          diagnostic,
+        ).toEqual({
+          rootCount: 1,
+          lastIsRoot: true,
+          lastIsResult: true,
+          lastHasError: false,
+        })
+        expect(last, diagnostic).toEqual({
+          jsonrpc: '2.0',
+          id: 'host:1',
+          result: { outcome: 'done', output: { text: 'live' } },
+        })
         expect(terminal).toMatchObject(unfenced)
       } finally {
         broker.abort('OWNER_CLOSED')

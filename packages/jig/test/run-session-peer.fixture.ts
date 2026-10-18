@@ -19,7 +19,12 @@ if (mode.startsWith('sdk')) {
       const next = receiver.next()
       await channel.send.send({ text: 'live' })
       const item = await next
-      assert.deepEqual(item, { done: false, value: { text: 'live' } })
+      // JSON objects may have null prototypes. Check exact data, not prototypes.
+      assert.deepEqual(Object.keys(item).sort(), ['done', 'value'])
+      assert.equal(item.done, false)
+      assert(item.value !== null && typeof item.value === 'object' && !Array.isArray(item.value))
+      assert.deepEqual(Object.keys(item.value), ['text'])
+      assert.equal(item.value.text, 'live')
       await channel.send.close()
       assert.equal((await receiver.next()).done, true)
       await receiver.close()
