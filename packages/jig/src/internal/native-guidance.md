@@ -461,6 +461,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Verification
 
+- Mac preparation lowers its closed mode to the existing work collector.
+  Capture the authenticated fenced descriptor before releasing the guardian collector.
+  Complete volume and owner cleanup before exposing the immutable package.
+  Missing collection, nonzero exit, recovered execution or uncertain cleanup grants no package.
+  Ordinary Flow snapshots and native stream ceilings remain unchanged.
+
 ### .. .. scripts native-support
 
 - `../../scripts/native-support.mjs` regenerates and checks both descriptor

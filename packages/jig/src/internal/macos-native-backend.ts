@@ -4,6 +4,8 @@ import { lstat, mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
+import type { CapturedPackage } from '../package/capture.js'
+import { requirePrivateBunPreparationOutput } from './bun-preparation-output.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
@@ -29,7 +31,10 @@ import {
   recoverPrivateMacosGuardian,
   releasePrivateMacosGuardian,
 } from './macos-guardian-client.js'
-import { retainPrivateMacosGuardianOutput } from './macos-guardian-output.js'
+import {
+  retainPrivateMacosGuardianOutput,
+  retainPrivateMacosPreparationOutput,
+} from './macos-guardian-output.js'
 import {
   type PrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
@@ -101,6 +106,7 @@ export interface PrivateMacosLaunchPlan {
   readonly environment?: Readonly<Record<string, string>>
   readonly files: PrivateMacosSandboxFiles
   readonly maxOutputBytes: number
+  readonly preparationOutput?: 'production' | 'evaluation'
   readonly storage?: PrivateMacosGuardianStorage
   readonly capturedInputs?: readonly PrivateMacosCapturedInput[]
   readonly inputDirectories?: readonly string[]
@@ -172,6 +178,7 @@ export interface PrivateMacosSealedOwner {
   ): Promise<PrivateMacosComponentProcess>
 }
 export type PrivateMacosComponentProcess = PrivateExecutionProcess & {
+  readonly packageOutput?: Promise<CapturedPackage>
   readonly output?: ReturnType<typeof retainPrivateMacosGuardianOutput>['output']
   readonly owner: PrivateMacosPreparedOwnerIdentity
   readonly process: Readonly<{ pid: number; version: number }>
@@ -468,7 +475,11 @@ export class PrivateMacosBackend {
         collection === 'output' || collection === 'evaluation'
           ? retainPrivateMacosGuardianOutput(guardian, collection)
           : undefined
-      const terminal = retained?.completion ?? guardian.completion
+      const preparation =
+        data.sealedPlan.preparationOutput === undefined
+          ? undefined
+          : retainPrivateMacosPreparationOutput(guardian, data.sealedPlan.preparationOutput)
+      const terminal = preparation?.completion ?? retained?.completion ?? guardian.completion
       const enforcement = terminal
         .then(async (result) => {
           const receipt = receiptFor(data.prepared, result)
@@ -496,11 +507,35 @@ export class PrivateMacosBackend {
             stopReason: commonStopReason(receipt.stopReason),
           }),
       )
+      const evidence = enforcement.then((receipt) => receipt.evidence)
+      const terminationReason = enforcement.then((receipt) => receipt.stopReason)
+      // Consumers may use only some projections. Keep the original failures observed.
+      for (const promise of [completion, evidence, terminationReason])
+        void promise.catch(() => undefined)
       let inputClosed = false
+      const packageOutput =
+        preparation === undefined
+          ? undefined
+          : enforcement.then(
+              () => preparation.packageOutput,
+              async (error) => {
+                const cleanup = await Promise.allSettled([
+                  preparation.packageOutput.then((captured) => captured.dispose()),
+                ])
+                if (cleanup[0]!.status === 'rejected')
+                  throw new AggregateError(
+                    [error, cleanup[0]!.reason],
+                    'native preparation enforcement and retirement failed',
+                  )
+                throw error
+              },
+            )
+      void packageOutput?.catch(() => undefined)
       let terminationRequested = false
       componentReturned = true
       return Object.freeze({
         ...(retained === undefined ? {} : { output: retained.output }),
+        ...(packageOutput === undefined ? {} : { packageOutput }),
         owner: data.prepared,
         process: processIdentity,
         envelope: envelopeFor(data),
@@ -508,8 +543,8 @@ export class PrivateMacosBackend {
         stderr: guardian.stderr,
         completion,
         enforcement,
-        evidence: enforcement.then((receipt) => receipt.evidence),
-        terminationReason: enforcement.then((receipt) => receipt.stopReason),
+        evidence,
+        terminationReason,
         async write(bytes: Uint8Array) {
           if (inputClosed) throw new Error('native macOS Run input is closed')
           await writeBytes(guardian!.stdin, bytes)
@@ -746,6 +781,12 @@ async function sealPlan(
   value: PrivateMacosLaunchPlan,
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): Promise<SealedPlan> {
+  const preparationOutput = requirePrivateBunPreparationOutput(value.preparationOutput)
+  if (
+    preparationOutput !== undefined &&
+    (value.storage?.collect !== 'work' || value.evaluationWorkspace !== undefined)
+  )
+    throw new TypeError('invalid native preparation collection plan')
   if (value === null || typeof value !== 'object' || !RUN_ID.test(value.runId))
     throw new TypeError('invalid native macOS launch plan')
   const command = [...value.command]
@@ -862,6 +903,7 @@ async function sealPlan(
     environment,
     files,
     maxOutputBytes: value.maxOutputBytes,
+    ...(preparationOutput === undefined ? {} : { preparationOutput }),
     ...(storage === undefined ? {} : { storage }),
     ...(evaluationWorkspace === undefined ? {} : { evaluationWorkspace }),
     capturedInputs: Object.freeze(captures),

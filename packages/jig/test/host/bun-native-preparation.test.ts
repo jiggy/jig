@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -22,6 +22,90 @@ import {
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
 describe.serial('private contained Bun dependency preparation', () => {
+  test('native evaluation preparation retains development closure after collector cleanup', async () => {
+    const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
+    const initialCgroups = new Set(await rootlessCgroups())
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-evaluation-preparation-')))
+    try {
+      await writeFile(
+        join(root, 'package.json'),
+        JSON.stringify({
+          name: 'evaluation-preparation-consumer',
+          private: true,
+          dependencies: { 'is-number': '7.0.0' },
+          devDependencies: { typescript: '5.7.3' },
+        }),
+      )
+      const lock = Bun.spawn(
+        [
+          process.execPath,
+          'install',
+          '--lockfile-only',
+          '--ignore-scripts',
+          '--registry=https://registry.npmjs.org',
+          '--no-progress',
+        ],
+        {
+          cwd: root,
+          env: {},
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [exit, stdout, stderr] = await Promise.all([
+        lock.exited,
+        new Response(lock.stdout).text(),
+        new Response(lock.stderr).text(),
+      ])
+      expect(exit, stdout + stderr).toBe(0)
+      const captured = await capturePackageDirectory(root)
+      try {
+        await initializePrivateActivationState({ projectRoot: root })
+        const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
+        try {
+          const host = await openPrivateInstalledBunHost(installedBunLocation)
+          const prepared = await preparePrivateBunPackage({
+            captured,
+            mode: 'evaluation',
+            installedSupport: host.installedBunSupport,
+            backend: host.backend,
+            projectRoot: root,
+            coordinator,
+          })
+          try {
+            expect(
+              prepared.captured.files.some(
+                ({ path }) => path === 'node_modules/typescript/lib/tsc.js',
+              ),
+            ).toBeTrue()
+            expect(
+              prepared.captured.files.some(
+                ({ path }) => path === 'node_modules/is-number/index.js',
+              ),
+            ).toBeTrue()
+            expect(await readdir(join(root, '.jig/private-preparation-owners'))).toEqual([])
+            expect(
+              (await prepared.captured.read('node_modules/typescript/lib/tsc.js')).byteLength,
+            ).toBeGreaterThan(0)
+            expect(Buffer.from(await prepared.captured.read('package.json'))).toEqual(
+              Buffer.from(await captured.read('package.json')),
+            )
+          } finally {
+            await prepared.captured.dispose()
+          }
+        } finally {
+          await coordinator.close()
+        }
+      } finally {
+        await captured.dispose()
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+      await waitForCgroups(initialCgroups)
+      await waitForTemporary(initialTemporary)
+    }
+  }, 60_000)
+
   test('workspace dependencies stay project-local while code edits assemble fresh reviewed source', async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-workspace-reuse-'))
     const put = async (path: string, value: unknown) => {

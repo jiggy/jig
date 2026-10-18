@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import { setTimeout as delay } from 'node:timers/promises'
+import { setTimeout as delay, setImmediate as yieldTurn } from 'node:timers/promises'
 import type { ProjectSession } from './administration/project.js'
 import { RootAdministrationError } from './administration/root.js'
 import type {
@@ -11,6 +11,7 @@ import type {
   PrepareRequest,
 } from './attempt-contract.js'
 import type { PrivateCliOptions } from './cli.js'
+import { CheckError } from './diagnostics.js'
 import {
   cancelPrivateAttempt,
   inspectPrivateApprovedProject,
@@ -26,6 +27,7 @@ import {
   privateAttemptRequest,
 } from './internal/prepared-attempt-store.js'
 import { PrivateRootRunFiles } from './internal/root-run-files.js'
+import { PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS } from './internal/root-run-timeout-policy.js'
 import { canonicalJson, type JsonObject, type JsonValue } from './json.js'
 
 type Invocation = Parameters<NonNullable<PrivateCliOptions['executeAttempt']>>[0]
@@ -112,7 +114,10 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
     switch (operation) {
       case 'inspect': {
         const { target } = invocation.request as AttemptRequests['inspect']
-        const value = await inspectPrivateApprovedProject(projectRoot, target)
+        const value = await observeProtectedState(
+          () => inspectPrivateApprovedProject(projectRoot, target),
+          invocation.signal,
+        )
         await write({ protocolVersion: 1, operation, event: 'result', value })
         return 0
       }
@@ -123,7 +128,10 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
       }
       case 'lookup': {
         const { ticket } = invocation.request as AttemptRequests['lookup']
-        const { observation } = await inspectPrivateAttempt({ projectRoot, ticket })
+        const { observation } = await observeProtectedState(
+          () => inspectPrivateAttempt({ projectRoot, ticket }),
+          invocation.signal,
+        )
         await write({ protocolVersion: 1, operation, event: 'result', value: observation })
         return 0
       }
@@ -135,7 +143,10 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
       }
       case 'result': {
         const { ticket } = invocation.request as AttemptRequests['result']
-        const value = await readPrivateAttemptResult({ projectRoot, ticket })
+        const value = await observeProtectedState(
+          () => readPrivateAttemptResult({ projectRoot, ticket }),
+          invocation.signal,
+        )
         await write({ protocolVersion: 1, operation, event: 'result', value })
         return 0
       }
@@ -157,6 +168,33 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
       message: privateAttemptFailureMessage(code),
     })
     return invocation.signal?.aborted ? 2 : 1
+  }
+}
+
+/** Reacquire only read-only snapshots after verified, fully disposed contention. */
+async function observeProtectedState<T>(
+  read: () => Promise<T>,
+  signal: AbortSignal | undefined,
+): Promise<T> {
+  const deadline = performance.now() + PRIVATE_ROOTLESS_COMMAND_OVERHEAD_ALLOWANCE_MS
+  for (;;) {
+    try {
+      return await read()
+    } catch (error) {
+      if (
+        !(error instanceof CheckError) ||
+        error.kind !== 'unavailable' ||
+        error.code !== 'ADMISSION_STATE_BUSY'
+      )
+        throw error
+      // Every failed owner has closed before this point. No mutating operation,
+      // corrupt state, transport failure or unresolved cleanup is replayed.
+      if (signal?.aborted || performance.now() >= deadline)
+        throw new PrivateAttemptError('PROJECT_BUSY', 'Protected project state remains busy.')
+      await yieldTurn()
+      if (signal?.aborted || performance.now() >= deadline)
+        throw new PrivateAttemptError('PROJECT_BUSY', 'Protected project state remains busy.')
+    }
   }
 }
 
@@ -357,6 +395,8 @@ export function privateAttemptFailureMessage(code: AttemptErrorCode): string {
       return 'The bounded host capacity is unavailable. Inspect existing work; do not replay uncertain attempts.'
     case 'CLEANUP_UNRESOLVED':
       return 'Cleanup is not confirmed. Preserve the original ticket and resolve its ownership before new work.'
+    case 'PROJECT_BUSY':
+      return 'Protected project state remains busy. Observe the original ticket again; do not replay work whose dispatch or cleanup is uncertain.'
     default:
       return 'The operation could not be confirmed. Reconcile the original ticket before deciding on new work.'
   }

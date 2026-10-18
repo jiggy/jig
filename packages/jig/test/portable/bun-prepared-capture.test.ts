@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from '../../src/internal/bun-native-preparation-protocol.js'
@@ -41,7 +41,7 @@ async function restore(
 ) {
   for (const file of prepared.files) {
     await mkdir(dirname(join(root, file.path)), { recursive: true })
-    await writeFile(join(root, file.path), Buffer.from(file.content, 'base64'))
+    await copyFile(join(dirname(root), file.path), join(root, file.path))
   }
   for (const alias of prepared.layout.aliases) {
     await mkdir(dirname(join(root, alias.path)), { recursive: true })

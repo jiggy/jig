@@ -157,6 +157,12 @@ Lookup is genuinely observational. It cannot acquire a pumping execution
 controller, dispatch pending work, recover by running a method, renew validity,
 extend a deadline, or repair missing state.
 
+Read-only `inspect`, `lookup` and `result` may wait for genuine protected-state
+contention within one bounded command allowance and caller cancellation.
+Each attempt must close its previous state owner before reacquiring a consistent
+snapshot. Persistent contention reports `PROJECT_BUSY`. This must not retry
+mutating operations, reset deadlines, or conceal unsafe state or failed cleanup.
+
 Cancellation requests revocation of the original owned invocation. Request
 acknowledgement, local fencing and complete cleanup are separate facts. Natural
 completion may win the cancellation race. An accepted terminal remains immutable.

@@ -9,7 +9,9 @@ import {
   readPrivateCapturedOutput,
 } from '../../src/internal/captured-output.js'
 import {
+  closePrivateExecutionDirectory,
   closePrivateExecutionOutput,
+  isPrivateOutputRetirementUnconfirmed,
   privateSnapshotExecutionOutput,
   resolvePrivateExecutionOutput,
 } from '../../src/internal/execution-output.js'
@@ -83,6 +85,32 @@ test('actual profile refusal remains collection failure, not snapshot retirement
     expect(fstatSync(fd).isDirectory()).toBe(true)
   } finally {
     closeSync(fd)
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('actual descriptor retirement failure stays sticky through nested cleanup aggregates', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-output-retirement-failure-'))
+  const directory = await open(root)
+  try {
+    // Lose the actual descriptor without replacing the FileHandle or its closer.
+    closeSync(directory.fd)
+    const first = closePrivateExecutionDirectory(directory)
+    const outcome = await first.then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(isPrivateOutputRetirementUnconfirmed(outcome)).toBeTrue()
+    expect(closePrivateExecutionDirectory(directory)).toBe(first)
+    const nested = new AggregateError([
+      new Error('capture refused'),
+      new AggregateError([outcome, new Error('snapshot retirement refused')]),
+    ])
+    expect(isPrivateOutputRetirementUnconfirmed(nested)).toBeTrue()
+    expect(
+      isPrivateOutputRetirementUnconfirmed(new AggregateError([new Error('capture refused')])),
+    ).toBeFalse()
+  } finally {
     await rm(root, { recursive: true, force: true })
   }
 })

@@ -45,6 +45,11 @@ actual installed evaluator execution in the host suites.
 and actual elapsed timers. Reboot, suspend and clock anomalies require separate
 native evidence. Never replace the production reader.
 
+`portable/attempt-observation-contention.test.ts` uses an actual SQLite writer
+and installed public result calls. It checks read-only waiting, unchanged
+protected bytes, non-contention refusal and caller cancellation, without
+creating approval, prepared-ticket or native-execution evidence.
+
 `portable/project-evaluation-input.test.ts` checks authentic candidate authority,
 review drift, inert candidate configuration and immutable merged phase inputs.
 These deterministic checks and `captured-output.test.ts`'s manifest/selection
@@ -142,6 +147,13 @@ Native fixtures use the official installed supervisor bundle and runtime mounts.
 source modules. This proves import closure, not delegated containment.
 `portable/bun-resolution-worker.test.ts` checks ordinary acquisition refusals
 through the unmodified worker, not a replacement registry argument.
+
+The same suite executes real locked production and evaluation preparations.
+It checks metadata-only stdout and captures actual prepared directories.
+Its registry dependencies are ordinary exact-version test inputs, not provider calls.
+`portable/bun-prepared-result.test.ts` checks real descriptor capture, source/layout
+validation, metadata mismatch, link refusal and decoded preparation limits.
+These cases do not qualify native collector transfer, fencing or cleanup.
 
 `portable/private-acp-resources.test.ts` checks closed policy inputs and actual
 missing-client discovery. Never replace the native client opener or mechanism.

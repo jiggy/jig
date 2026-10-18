@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { requirePrivateBunPreparationOutput } from './bun-preparation-output.js'
 import type { PrivateExecutionIntent } from './execution-intent.js'
 import type { PrivateLinuxLaunchPlan } from './linux-rootless-backend.js'
 import type { PrivateMacosOwnerStateAllocationIdentity } from './macos-backend-state.js'
@@ -28,6 +29,9 @@ export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): Priva
     ...(intent.network === undefined ? {} : { network: intent.network }),
     ...(intent.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     ...(intent.output === undefined ? {} : { output: intent.output }),
+    ...(intent.preparationOutput === undefined
+      ? {}
+      : { preparationOutput: intent.preparationOutput }),
     ...(intent.capturedInputs === undefined ? {} : { capturedInputs: intent.capturedInputs }),
     ...(intent.inputDirectories === undefined ? {} : { inputDirectories: intent.inputDirectories }),
     ...(intent.inputEmptyDirectories === undefined
@@ -47,6 +51,12 @@ export function privateMacosExecutionPlan(
   intent: PrivateExecutionIntent,
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): PrivateMacosLaunchPlan {
+  const preparationOutput = requirePrivateBunPreparationOutput(intent.preparationOutput)
+  if (
+    preparationOutput !== undefined &&
+    (intent.output || intent.evaluationWorkspace !== undefined)
+  )
+    throw new TypeError('Bun preparation collection cannot share another output profile')
   if (
     intent.macosCodexPreferenceNotifications !== undefined &&
     intent.macosCodexPreferenceNotifications !== true
@@ -176,17 +186,20 @@ export function privateMacosExecutionPlan(
           }),
     },
     maxOutputBytes: intent.maxOutputBytes,
+    ...(preparationOutput === undefined ? {} : { preparationOutput }),
     ...(intent.readOnlyCwd === undefined || (intent.inputDirectories?.length ?? 0) > 0
       ? {
           storage: {
             mountPath: data,
             bytes: intent.storageBytes,
             collect:
-              evaluationWorkspace !== undefined
-                ? ('evaluation' as const)
-                : intent.output
-                  ? ('output' as const)
-                  : null,
+              preparationOutput !== undefined
+                ? ('work' as const)
+                : evaluationWorkspace !== undefined
+                  ? ('evaluation' as const)
+                  : intent.output
+                    ? ('output' as const)
+                    : null,
           },
         }
       : {}),

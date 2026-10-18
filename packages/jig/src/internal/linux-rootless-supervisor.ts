@@ -88,6 +88,7 @@ interface Configuration {
   readonly network: 'isolated' | 'inherited'
   readonly nestedUserNamespaces: boolean
   readonly output: boolean
+  readonly preparationOutput: 'production' | 'evaluation' | null
   readonly capturedInputs: readonly {
     readonly fd: number
     readonly destination: string
@@ -298,7 +299,7 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
           'inherit',
           'pipe',
           'pipe',
-          configuration.output ? 'pipe' : 'ignore',
+          configuration.output || configuration.preparationOutput !== null ? 'pipe' : 'ignore',
           ...configuration.capturedInputs.map((file) => file.fd),
         ],
       },
@@ -325,12 +326,14 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
     // readiness. A failed write must settle through the same cleanup owner.
     ;(launched.stdio[4] as Writable).on('error', () => stop('setup_failed'))
     const ready = await readReady(launched)
-    if (configuration.output) {
+    if (configuration.output || configuration.preparationOutput !== null) {
       const sandboxPid = await readSandboxPid(launched)
       await outputReady(launched)
       // The trusted inner launcher blocks before package code can run.
       // This FD pins the mount, not a replaceable payload pathname.
-      if (configuration.evaluationWorkspace !== null) {
+      if (configuration.preparationOutput !== null) {
+        outputDirectory = await open(`/proc/${sandboxPid}/root/work`, 0x10000)
+      } else if (configuration.evaluationWorkspace !== null) {
         outputBacking = await open(`/proc/${sandboxPid}/root/jig-output`, 0x10000)
         outputDirectory = await open(`/proc/self/fd/${outputBacking.fd}/public`, 0x10000)
         const projectedReady = outputReady(launched)
@@ -824,6 +827,8 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   if (configuration.inputDirectories.length > 0) result.push('--remount-ro', '/jig-input')
   if (configuration.output) {
     result.push('--size', String(16 * 1024 * 1024), '--tmpfs', '/jig-output')
+  }
+  if (configuration.output || configuration.preparationOutput !== null) {
     result.push('--sync-fd', '4', '--json-status-fd', '5')
   }
   if (configuration.evaluationWorkspace !== null) {
@@ -863,7 +868,7 @@ function bubblewrapArguments(configuration: Configuration): string[] {
     MODULE_DESTINATION,
     configuration.evaluationWorkspace !== null
       ? '--inner-output-project'
-      : configuration.output
+      : configuration.output || configuration.preparationOutput !== null
         ? '--inner-output'
         : '--inner',
     JSON.stringify(
@@ -1015,6 +1020,7 @@ function requireStart(value: unknown): Configuration {
     'nestedUserNamespaces',
     'network',
     'output',
+    'preparationOutput',
     'ownerDigest',
     'ownerStateAllocationDigest',
     'ownerStateDirectory',
@@ -1082,6 +1088,9 @@ function requireStart(value: unknown): Configuration {
     (configuration.network !== 'isolated' && configuration.network !== 'inherited') ||
     typeof configuration.nestedUserNamespaces !== 'boolean' ||
     typeof configuration.output !== 'boolean' ||
+    ![null, 'production', 'evaluation'].includes(configuration.preparationOutput) ||
+    (configuration.preparationOutput !== null &&
+      (configuration.output || configuration.evaluationWorkspace !== null)) ||
     !Array.isArray(configuration.capturedInputs) ||
     configuration.capturedInputs.length > 64 ||
     !Array.isArray(configuration.inputDirectories) ||

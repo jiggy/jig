@@ -1,7 +1,122 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { decodePrivateBunPreparedResult } from '../../src/internal/bun-native-preparation.js'
+import { capturePrivateBunPreparationOutput } from '../../src/internal/bun-preparation-output.js'
+import { capturePackageDirectory } from '../../src/package/capture.js'
+
+for (const mode of ['production', 'evaluation'] as const)
+  test(`real preparation worker publishes ${mode} bytes through directory custody only`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-preparation-worker-'))
+    try {
+      const source = join(root, 'source')
+      const work = join(root, 'work')
+      await mkdir(source)
+      await mkdir(work)
+      const manifest = JSON.stringify({
+        name: 'preparation-consumer',
+        private: true,
+        dependencies: { 'is-number': '7.0.0' },
+        devDependencies: { typescript: '5.7.3' },
+      })
+      await writeFile(join(source, 'package.json'), manifest)
+      const lock = Bun.spawn(
+        [
+          process.execPath,
+          'install',
+          '--lockfile-only',
+          '--ignore-scripts',
+          '--registry=https://registry.npmjs.org',
+          '--no-progress',
+        ],
+        {
+          cwd: source,
+          env: {},
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [lockExit, lockOut, lockError] = await Promise.all([
+        lock.exited,
+        new Response(lock.stdout).text(),
+        new Response(lock.stderr).text(),
+      ])
+      expect(lockExit, lockOut + lockError).toBe(0)
+      const captured = await capturePackageDirectory(source)
+      try {
+        const files = []
+        for (const file of captured.files)
+          files.push({
+            path: file.path,
+            content: Buffer.from(await captured.read(file.path)).toString('base64'),
+          })
+        const worker = Bun.spawn(
+          [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, '../../src/internal/bun-native-preparation-worker.ts'),
+          ],
+          {
+            cwd: work,
+            env: {},
+            stdin: 'pipe',
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        )
+        worker.stdin.write(
+          JSON.stringify({ type: 'source', files, ...(mode === 'evaluation' ? { mode } : {}) }) +
+            '\n',
+        )
+        worker.stdin.end()
+        const [exit, stdout, stderr] = await Promise.all([
+          worker.exited,
+          new Response(worker.stdout).text(),
+          new Response(worker.stderr).text(),
+        ])
+        expect(exit, stdout + stderr).toBe(0)
+        expect(stderr).toBe('')
+        const metadata = JSON.parse(stdout)
+        expect(Object.keys(metadata).sort()).toEqual([
+          'bytes',
+          'digest',
+          'fileCount',
+          'layout',
+          'type',
+        ])
+        expect(stdout.length).toBeLessThan(2048)
+        const directory = await open(work, 'r')
+        try {
+          const prepared = await capturePrivateBunPreparationOutput(directory, mode)
+          try {
+            const result = await decodePrivateBunPreparedResult(prepared, metadata, {
+              captured,
+              mode,
+            })
+            expect(
+              result.captured.files.some(({ path }) => path === 'node_modules/is-number/index.js'),
+            ).toBeTrue()
+            expect(
+              result.captured.files.some(
+                ({ path }) => path === 'node_modules/typescript/lib/tsc.js',
+              ),
+            ).toBe(mode === 'evaluation')
+          } finally {
+            await prepared.dispose()
+          }
+        } finally {
+          await directory.close()
+        }
+      } finally {
+        await captured.dispose()
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }, 60_000)
 
 for (const mode of ['denied', 'unsupported-root'] as const) {
   test(`unmodified resolution worker refuses ${mode} before materialization`, async () => {

@@ -29,6 +29,12 @@ All selected domain requirements still apply.
   Request completion differs from client closure. Duplicate observers never inherit cancellation ownership.
   Keep execution, retained-byte availability, export and retirement facts distinct in machine and human output.
 
+  Observational machine commands may reacquire a read-only snapshot only after
+  typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command
+  allowance and preserve caller cancellation, without renewing either deadline.
+  Corruption, unrelated I/O and aggregate cleanup failures remain fatal.
+  Never apply this waiting policy to prepare, submit, cancel or export.
+
 ### src cli-discovery
 
 - `src/cli-discovery.ts` owns invocation guidance and shell completion.

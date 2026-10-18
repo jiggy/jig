@@ -1,5 +1,7 @@
-import { lstat, opendir, readFile, realpath } from 'node:fs/promises'
-import { join } from 'node:path'
+import { createReadStream } from 'node:fs'
+import { lstat, mkdir, opendir, readFile, realpath, rename } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { packageDigest } from '../package/digest.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
@@ -42,9 +44,14 @@ export async function capturePrivateBunPreparedTree(
   workspace?: Workspace,
   patchPaths: readonly string[] = [],
   mode: PrivateBunPreparationMode = 'production',
-): Promise<{ readonly files: readonly SourceFile[]; readonly layout: PrivateBunExecutionLayout }> {
+): Promise<{
+  readonly files: readonly { readonly path: string; readonly size: number }[]
+  readonly layout: PrivateBunExecutionLayout
+  readonly digest: string
+  readonly bytes: number
+}> {
   const limits = privateBunPreparationLimits(mode)
-  const files: SourceFile[] = []
+  const files: { readonly path: string; readonly size: number }[] = []
   const aliases: PrivatePackageAlias[] = []
   let total = 0
   const memberNames = new Map<string, string>()
@@ -136,7 +143,7 @@ export async function capturePrivateBunPreparedTree(
       total += bytes.byteLength
       if (total > limits.preparedBytes)
         throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
-      files.push(Object.freeze({ path, content: bytes.toString('base64') }))
+      files.push(Object.freeze({ path, size: bytes.byteLength }))
     }
   }
   await visit(packageRoot, '')
@@ -159,7 +166,24 @@ export async function capturePrivateBunPreparedTree(
       'PACKAGE_BUN_OUTPUT_LIMIT',
       'prepared dependency tree and layout are too large',
     )
-  return Object.freeze({ files: Object.freeze(files), layout })
+  const digest = await packageDigest(files, (file) =>
+    createReadStream(join(packageRoot, file.path)),
+  )
+  return Object.freeze({ files: Object.freeze(files), layout, digest, bytes: total })
+}
+
+/** Move selected bytes without duplicating the installed closure or retaining aliases. */
+export async function stagePrivateBunPreparedTree(
+  packageRoot: string,
+  prepared: Awaited<ReturnType<typeof capturePrivateBunPreparedTree>>,
+): Promise<void> {
+  const destination = join(dirname(packageRoot), 'prepared')
+  await mkdir(destination, { mode: 0o700 })
+  for (const file of prepared.files) {
+    const target = join(destination, file.path)
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 })
+    await rename(join(packageRoot, file.path), target)
+  }
 }
 
 export function requirePath(path: string): void {

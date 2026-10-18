@@ -171,6 +171,15 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### execution-output
 
+- Bun preparation uses its closed native work collector, not invocation output snapshots.
+  Its package capture borrows the original fenced directory once, without mutation retries.
+  Reject links, special files and mount crossings before exposing immutable bytes.
+  Close collector loans before native storage retirement and preserve close uncertainty.
+  Metadata or matching hashes cannot mint collector authority.
+
+  Nested cleanup aggregates retain retirement uncertainty and the original failure first.
+  Drain every cleanup owner even when termination or snapshot disposal fails.
+
 - `execution-output.ts` owns original directory and snapshot retirement.
   Close each actual handle once and memoize its result.
   Retain the original strongly until close fulfills.

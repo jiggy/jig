@@ -9,8 +9,6 @@ import {
 } from './bun-native-lock-policy.js'
 import {
   encodePrivateBunMessage,
-  PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES,
-  PRIVATE_BUN_PREPARATION_LIMITS,
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   type PrivateBunPreparationMode,
@@ -21,6 +19,7 @@ import {
   capturePrivateBunPreparedTree,
   requirePath,
   type SourceFile,
+  stagePrivateBunPreparedTree,
   WorkerFailure,
   type Workspace,
 } from './bun-prepared-capture.js'
@@ -107,6 +106,7 @@ try {
     Object.values(patches),
     mode,
   )
+  await stagePrivateBunPreparedTree(PACKAGE_ROOT, prepared)
   await sendPrepared(prepared)
   await outputQueue
 } catch (error) {
@@ -514,15 +514,14 @@ function enqueue(bytes: Uint8Array): Promise<void> {
 function sendPrepared(
   prepared: Awaited<ReturnType<typeof capturePrivateBunPreparedTree>>,
 ): Promise<void> {
-  const bytes = encodePrivateBunMessage({ type: 'prepared', ...prepared })
-  if (
-    !privateBunMessageFits(
-      bytes.byteLength - 1,
-      mode === 'evaluation'
-        ? PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES
-        : PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
-    )
-  ) {
+  const bytes = encodePrivateBunMessage({
+    type: 'prepared',
+    layout: prepared.layout,
+    fileCount: prepared.files.length,
+    bytes: prepared.bytes,
+    digest: prepared.digest,
+  })
+  if (!privateBunMessageFits(bytes.byteLength - 1, PRIVATE_BUN_PREPARED_MESSAGE_BYTES)) {
     throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
   }
   return enqueue(bytes)

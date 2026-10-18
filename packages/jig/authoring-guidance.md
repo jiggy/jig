@@ -39,6 +39,10 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### src package capture
 
+- Fenced preparation borrows its native directory for one strict capture attempt.
+  It rejects hardlinks and mount crossings without changing ordinary package capture.
+  The resulting package uses the same unnamed read-only backing and canonical identity.
+
 - `src/package/capture.ts` snapshots through held directory descriptors and
   rechecks source identity and contents. Linux uses unnamed temporary files.
   Qualified Mac capture opens a private reader beside its sole writer, unlinks

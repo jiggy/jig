@@ -64,6 +64,20 @@ test('one intent lowers to distinct host mechanisms without relocating literal a
   expect(mac.storage?.collect).toBeNull()
   expect(intent.command[0]).toEqual({ path: '/runtime/bun' })
 })
+for (const mode of ['production', 'evaluation'] as const)
+  test(`preparation ${mode} uses native work custody without ordinary output or larger streams`, () => {
+    const supplied = { ...intent, preparationOutput: mode, network: 'inherited' as const }
+    const linux = privateLinuxExecutionPlan(supplied)
+    const mac = privateMacosExecutionPlan(supplied, allocation)
+    expect(linux.preparationOutput).toBe(mode)
+    expect(linux.output).toBeUndefined()
+    expect(mac.preparationOutput).toBe(mode)
+    expect(mac.storage?.collect).toBe('work')
+    expect(mac.storage?.bytes).toBe(intent.storageBytes)
+    expect(mac.maxOutputBytes).toBe(intent.maxOutputBytes)
+    expect(() => privateMacosExecutionPlan({ ...supplied, output: true }, allocation)).toThrow()
+  })
+
 test('both native plans preserve a frozen boot cutoff instead of deriving authority from Unix', () => {
   const bootDeadline = { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: 1234 }
   const supplied = { ...intent, limits: { ...intent.limits, bootDeadline } }

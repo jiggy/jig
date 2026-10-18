@@ -167,19 +167,45 @@ export async function captureOpenedPackageDirectory(
   throw new Error('unreachable opened package capture attempt state')
 }
 
+/** One already-fenced preparation tree. Never retry mutation or accept hardlinks. */
+export async function capturePrivateFencedPreparationDirectory(
+  directory: FileHandle,
+  limits: { readonly maximumFiles: number; readonly maximumBytes: number },
+): Promise<CapturedPackage> {
+  const information = await directory.stat({ bigint: true })
+  if (!information.isDirectory()) throw new TypeError('preparation capture requires a directory')
+  return captureOpenedRootAttempt(
+    { requestedPath: 'prepared dependency tree', handle: directory, information },
+    false,
+    { includes: () => true, ...limits },
+    false,
+    true,
+  )
+}
+
 async function captureOpenedRootAttempt(
   root: OpenRoot,
   verifyPath: boolean,
   selection?: PackageCaptureSelection,
   contained = false,
+  singlyLinked = false,
 ): Promise<CapturedPackage> {
   let backing: FileHandle | undefined
   try {
     backing = await openAnonymousBacking(contained)
-    const { records, fingerprints } = await captureAttempt(root, backing, selection)
+    // Each selected Package/0 file has at most 64 path segments.
+    const maximumDirectories =
+      singlyLinked && selection !== undefined ? 1 + selection.maximumFiles * 64 : MAX_DIRECTORIES
+    const { records, fingerprints } = await captureAttempt(
+      root,
+      backing,
+      selection,
+      singlyLinked,
+      maximumDirectories,
+    )
     let verification: SourceFingerprint[]
     try {
-      verification = await fingerprintTree(root, selection)
+      verification = await fingerprintTree(root, selection, maximumDirectories)
     } catch (error) {
       if (isVerificationMutation(error)) {
         sourceChanged('package source changed before verification completed', root.requestedPath)
@@ -422,6 +448,8 @@ async function captureAttempt(
   root: OpenRoot,
   backing: FileHandle,
   selection?: PackageCaptureSelection,
+  singlyLinked = false,
+  maximumDirectories = MAX_DIRECTORIES,
 ): Promise<{ records: CapturedRecord[]; fingerprints: SourceFingerprint[] }> {
   const records: CapturedRecord[] = []
   const fingerprints: SourceFingerprint[] = []
@@ -435,8 +463,8 @@ async function captureAttempt(
 
   async function walk(directory: FileHandle, logicalDirectory: string): Promise<void> {
     directoryCount += 1
-    if (directoryCount > MAX_DIRECTORIES) {
-      unavailable('PACKAGE_RESOURCE_EXHAUSTED', `source exceeds ${MAX_DIRECTORIES} directories`)
+    if (directoryCount > maximumDirectories) {
+      unavailable('PACKAGE_RESOURCE_EXHAUSTED', `source exceeds ${maximumDirectories} directories`)
     }
     for await (const name of readDirectoryNames(directory)) {
       const logicalPath = validateLogicalPath(
@@ -448,6 +476,8 @@ async function captureAttempt(
         if (entry.information.isDirectory()) {
           const key = identityKey(entry.information)
           if (directories.has(key)) directoryAliasUnavailable(logicalPath)
+          if (singlyLinked && entry.information.dev !== root.information.dev)
+            invalid('PACKAGE_MOUNT', 'prepared directories cannot cross mounts', logicalPath)
           directories.add(key)
           await walk(entry.handle, logicalPath)
           continue
@@ -455,6 +485,10 @@ async function captureAttempt(
 
         if (records.length >= MAX_FILES)
           invalid('PACKAGE_LIMIT', `package exceeds ${MAX_FILES} files`, logicalPath)
+        if (singlyLinked && entry.information.nlink !== 1n)
+          invalid('PACKAGE_HARDLINK', 'prepared files must be singly linked', logicalPath)
+        if (singlyLinked && entry.information.dev !== root.information.dev)
+          invalid('PACKAGE_MOUNT', 'prepared files cannot cross mounts', logicalPath)
         if (
           selection !== undefined &&
           (records.length >= selection.maximumFiles ||
@@ -557,14 +591,15 @@ async function copyToBacking(
 async function fingerprintTree(
   root: OpenRoot,
   selection?: PackageCaptureSelection,
+  maximumDirectories = MAX_DIRECTORIES,
 ): Promise<SourceFingerprint[]> {
   const result: SourceFingerprint[] = []
   const directories = new Set<string>([identityKey(root.information)])
   let directoryCount = 0
   async function walk(directory: FileHandle, logicalDirectory: string): Promise<void> {
     directoryCount += 1
-    if (directoryCount > MAX_DIRECTORIES) {
-      unavailable('PACKAGE_RESOURCE_EXHAUSTED', `source exceeds ${MAX_DIRECTORIES} directories`)
+    if (directoryCount > maximumDirectories) {
+      unavailable('PACKAGE_RESOURCE_EXHAUSTED', `source exceeds ${maximumDirectories} directories`)
     }
     for await (const name of readDirectoryNames(directory)) {
       const logicalPath = validateLogicalPath(

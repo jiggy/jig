@@ -22,6 +22,11 @@ import { dirname, extname, join, posix } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { types as utilTypes } from 'node:util'
 import type { JsonValue } from '../json.js'
+import type { CapturedPackage } from '../package/capture.js'
+import {
+  capturePrivateBunPreparationOutput,
+  requirePrivateBunPreparationOutput,
+} from './bun-preparation-output.js'
 import { PRIVATE_OUTPUT_PATH } from './execution-intent.js'
 import { closePrivateExecutionOutput } from './execution-output.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
@@ -117,6 +122,7 @@ export interface PrivateLinuxLaunchPlan {
   readonly nestedUserNamespaces?: boolean
   /** One bounded anonymous output mount; its retained descriptor is host-only. */
   readonly output?: boolean
+  readonly preparationOutput?: 'production' | 'evaluation'
   readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
   readonly inputDirectories?: readonly string[]
   readonly inputEmptyDirectories?: readonly string[]
@@ -343,6 +349,7 @@ type FinalRecord = SupervisorTerminal | RecoveredFinal
 export type PrivateLinuxComponentProcess = PrivateExecutionProcess & {
   /** Read only after enforcement settles. Close after collection, including failure. */
   readonly output?: { readonly kind: 'linux-directory'; readonly directory: FileHandle }
+  readonly packageOutput?: Promise<CapturedPackage>
   readonly owner: PrivateLinuxPreparedOwnerIdentity
   readonly cgroup: {
     readonly runCgroup: string
@@ -716,7 +723,7 @@ export class PrivateLinuxCgroupBackend {
       requireReadyMessage(ready, preparedMessage, data)
       if (ready.supervisorPid !== supervisor.pid) throw new Error('output owner identity changed')
       await requirePayloadInCgroup(data.identity.runCgroup, ready.payloadPid)
-      if (data.sealedPlan.output) {
+      if (data.sealedPlan.output || data.sealedPlan.preparationOutput !== undefined) {
         if (!safePositiveInteger(ready.outputFd)) throw new Error('missing output handoff')
         outputDirectory = await open(`/proc/${ready.supervisorPid}/fd/${ready.outputFd}`, 0x10000)
         if (
@@ -786,13 +793,55 @@ export class PrivateLinuxCgroupBackend {
           }),
       )
       const evidence = enforcement.then((receipt) => receipt.evidence)
+      const preparationMode = data.sealedPlan.preparationOutput
+      const packageOutput =
+        preparationMode === undefined
+          ? undefined
+          : (async () => {
+              let captured: CapturedPackage | undefined
+              const failures: unknown[] = []
+              try {
+                const receipt = await enforcement
+                if (
+                  receipt.exitCode !== 0 ||
+                  receipt.signal !== null ||
+                  receipt.stopReason !== 'payload_exit'
+                )
+                  throw new Error('Bun preparation has no successful native terminal')
+                captured = await capturePrivateBunPreparationOutput(
+                  outputDirectory!,
+                  preparationMode,
+                )
+              } catch (error) {
+                failures.push(error)
+              }
+              const closed = await Promise.allSettled([
+                closePrivateExecutionOutput({
+                  kind: 'linux-directory',
+                  directory: outputDirectory!,
+                }),
+              ])
+              if (closed[0]!.status === 'rejected') {
+                failures.push(closed[0]!.reason)
+                const disposed = await Promise.allSettled([captured?.dispose()])
+                if (disposed[0]!.status === 'rejected') failures.push(disposed[0]!.reason)
+              }
+              if (failures.length === 1) throw failures[0]
+              if (failures.length > 1)
+                throw new AggregateError(
+                  failures,
+                  'Bun preparation collection and retirement failed',
+                )
+              return captured!
+            })()
+      void packageOutput?.catch(() => undefined)
       const terminationReason = enforcement.then((receipt) => receipt.stopReason)
       // Consumers may use only some projections. Keep rejection custody here
       // while returning the original promises so every awaited failure survives.
       for (const promise of [completion, evidence, terminationReason])
         void promise.catch(() => undefined)
       return Object.freeze({
-        ...(outputDirectory === undefined
+        ...(outputDirectory === undefined || preparationMode !== undefined
           ? {}
           : {
               output: Object.freeze({
@@ -800,6 +849,7 @@ export class PrivateLinuxCgroupBackend {
                 directory: outputDirectory,
               }),
             }),
+        ...(packageOutput === undefined ? {} : { packageOutput }),
         owner: data.prepared,
         cgroup: Object.freeze({
           runCgroup: data.identity.runCgroup,
@@ -1562,6 +1612,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     network: data.sealedPlan.network,
     nestedUserNamespaces: data.sealedPlan.nestedUserNamespaces,
     output: data.sealedPlan.output,
+    preparationOutput: data.sealedPlan.preparationOutput ?? null,
     capturedInputs: data.sealedPlan.capturedInputs.map((file, index) => ({
       fd: 6 + index,
       destination: file.destination,
@@ -1760,6 +1811,9 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     throw new TypeError('rootless Linux nested-user-namespace policy is invalid')
   }
   const output = value.output ?? false
+  const preparationOutput = requirePrivateBunPreparationOutput(value.preparationOutput)
+  if (preparationOutput !== undefined && (output || value.evaluationWorkspace !== undefined))
+    throw new TypeError('Bun preparation cannot share another native output profile')
   const evaluationWorkspace = normalizePrivateProjectEvaluationWorkspace(value.evaluationWorkspace)
   if (
     evaluationWorkspace !== undefined &&
@@ -1841,6 +1895,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     network,
     nestedUserNamespaces,
     output,
+    ...(preparationOutput === undefined ? {} : { preparationOutput }),
     capturedInputs: Object.freeze(capturedInputs.map((file) => Object.freeze({ ...file }))),
     inputDirectories: Object.freeze(inputDirectories),
     inputEmptyDirectories: Object.freeze(

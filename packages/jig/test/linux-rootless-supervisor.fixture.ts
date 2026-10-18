@@ -47,6 +47,7 @@ interface Configuration {
   readonly evaluationWorkspace: null
   readonly evaluationEntries: readonly []
   readonly output: false
+  readonly preparationOutput: null
   readonly command: readonly [string, ...string[]]
   readonly environment: Readonly<Record<string, string>>
   readonly network: 'isolated'
@@ -103,6 +104,7 @@ async function fixtureFor(runId: string): Promise<Fixture> {
     evaluationWorkspace: null,
     evaluationEntries: [],
     output: false,
+    preparationOutput: null,
     command: [bunPath, ...POLICY, '-e', `await Bun.write(${JSON.stringify(marker)}, "ran")`],
     environment: {},
     network: 'isolated',

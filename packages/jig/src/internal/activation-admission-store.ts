@@ -5125,14 +5125,30 @@ async function openStateOwner(
     })
     return owner
   } catch (error) {
+    const cleanup: unknown[] = []
     try {
       database?.close(true)
-    } catch {
-      /* preserve the primary open failure */
+    } catch (failure) {
+      cleanup.push(failure)
     }
-    await directory?.close().catch(() => undefined)
-    if (ownsRoot) await root.dispose().catch(() => undefined)
+    try {
+      await directory?.close()
+    } catch (failure) {
+      cleanup.push(failure)
+    }
+    if (ownsRoot) {
+      try {
+        await root.dispose()
+      } catch (failure) {
+        cleanup.push(failure)
+      }
+    }
     releaseTurn()
+    if (cleanup.length > 0)
+      throw new AggregateError(
+        [error, ...cleanup],
+        'private admission opening and cleanup did not both complete',
+      )
     if (isSqliteBusy(error)) busy()
     throw error
   }

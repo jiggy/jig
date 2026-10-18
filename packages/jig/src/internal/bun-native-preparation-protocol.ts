@@ -34,7 +34,7 @@ export function privateBunPreparationLimits(mode: PrivateBunPreparationMode) {
  * over-counted so every value admitted by the raw limits fits the line bound.
  */
 export function maximumPrivateBunFileMessageBytes(
-  type: 'source' | 'prepared',
+  type: 'source',
   maximumFiles: number,
   maximumContentBytes: number,
 ): number {
@@ -58,23 +58,8 @@ export const PRIVATE_BUN_SOURCE_MESSAGE_BYTES = maximumPrivateBunFileMessageByte
   PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes,
 )
 
-export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES =
-  maximumPrivateBunFileMessageBytes(
-    'prepared',
-    PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
-    PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
-  ) +
-  PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
-  Buffer.byteLength(',"layout":')
-
-export const PRIVATE_BUN_EVALUATION_PREPARED_MESSAGE_BYTES =
-  maximumPrivateBunFileMessageBytes(
-    'prepared',
-    PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS.preparedFiles,
-    PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS.preparedBytes,
-  ) +
-  PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
-  Buffer.byteLength(',"layout":')
+/** Success carries bounded layout/identity only. File bytes use native directory custody. */
+export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES = PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes + 1024
 
 export function privateBunMessageFits(bytes: number, maximum: number): boolean {
   return Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= maximum

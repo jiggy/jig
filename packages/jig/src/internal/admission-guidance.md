@@ -48,6 +48,10 @@ These links locate module rules. All selected domain requirements still apply.
   Its private snapshot is neither a public lookup response nor proof of current execution ownership.
   Checkpoint and export storage contracts are in [file guidance](files-guidance.md#attempt-checkpoint-and-export).
 
+  Failed state opening attempts database, directory and owned-root closure before
+  releasing its local turn. Preserve primary and cleanup errors together.
+  Cleanup uncertainty must not become a retriable contention refusal.
+
 ### contract-import
 
 - `contract-import.ts` owns explicit, inert contract-bundle copying: capture an
@@ -226,6 +230,18 @@ These links locate module rules. All selected domain requirements still apply.
   production-only installation does not suppress publication of the new lock.
 
   The subsequent install stays frozen and script-disabled.
+
+- `bun-preparation-output.ts` owns fixed native directory collection for both modes.
+  Both Bun preparation modes return metadata only on stdout: layout, file count,
+  logical bytes and canonical Package/0 digest.
+  The worker moves selected regular files into fixed `work/prepared` without
+  duplicating its closure. Workspace aliases remain separate layout metadata.
+  Native collectors retain original work descriptors and capture only after fencing.
+  Host-created immutable package bytes must match metadata, source and layout.
+
+  Production retains 4,096 records/32 MiB. Evaluation retains 8,192 records/128 MiB.
+  Layout bytes share each decoded allowance. Stream and storage limits stay separate.
+  Failed cleanup grants no prepared package. Recovery settles owners without recapture or replay.
 
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.

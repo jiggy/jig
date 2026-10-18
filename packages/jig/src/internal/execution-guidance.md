@@ -166,6 +166,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### execution-intent
 
+- `preparationOutput` selects only production or evaluation package collection.
+  It cannot share ordinary output or an evaluation workspace.
+  Linux pins original work custody before continuation through authenticated supervisor control.
+  Its package promise captures after successful enforcement and closes that original loan.
+  Native package promises retain rejection custody without replacing their original failures.
+
 - `execution-intent.ts` owns inert execution requirements: exact command and
   explicit path arguments, read-only projections, captured input capabilities,
   network choice, resource limits, storage and output bounds. Literal arguments
@@ -219,7 +225,7 @@ These links locate module rules. All selected domain requirements still apply.
   journals live under `.jig/private-root-owners`. Prerelease hosts must not
   recreate the former Linux-named directory as a compatibility path.
 
-- The Linux backend observes rejections of eagerly created completion, evidence,
+- Native backends observe rejections of eagerly created completion, evidence,
   and termination-reason projections even when a consumer uses only some of them.
   Return the original rejecting promises: observation must not replace failures
   with success or weaken enforcement uncertainty.

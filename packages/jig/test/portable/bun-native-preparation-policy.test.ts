@@ -431,13 +431,7 @@ describe('private Bun preparation policy', () => {
       ),
     )
     expect(PRIVATE_BUN_PREPARED_MESSAGE_BYTES).toBe(
-      maximumPrivateBunFileMessageBytes(
-        'prepared',
-        PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
-        PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
-      ) +
-        PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
-        Buffer.byteLength(',"layout":'),
+      PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes + 1024,
     )
     expect(PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes).toBe(1024 * 1024)
     const segment = '\u0001'.repeat(255)

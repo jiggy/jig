@@ -37,6 +37,8 @@ export interface PrivateExecutionIntent {
   readonly inputDirectories?: readonly string[]
   readonly inputEmptyDirectories?: readonly string[]
   readonly output?: boolean
+  /** Fixed dependency collection from fenced native work, separate from Flow output. */
+  readonly preparationOutput?: 'production' | 'evaluation'
   /** Fixed evaluator-only read-only C/R/D/prior tree with phase-owned output roots. */
   readonly evaluationWorkspace?: PrivateProjectEvaluationWorkspace
   readonly storageBytes: number

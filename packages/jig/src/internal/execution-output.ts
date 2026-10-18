@@ -8,12 +8,20 @@ export class PrivateOutputRetirementUnconfirmedError extends Error {
   }
 }
 
+/** Aggregating cleanup evidence must never hide original retirement uncertainty. */
+export function isPrivateOutputRetirementUnconfirmed(error: unknown): boolean {
+  return (
+    error instanceof PrivateOutputRetirementUnconfirmedError ||
+    (error instanceof AggregateError && error.errors.some(isPrivateOutputRetirementUnconfirmed))
+  )
+}
+
 const closingDirectories = new WeakMap<FileHandle, Promise<void>>()
 const retainedDirectories = new Set<FileHandle>()
 const closingCaptures = new WeakMap<PrivateCapturedOutput, Promise<void>>()
 const retainedCaptures = new Set<PrivateCapturedOutput>()
 
-function closeDirectory(directory: FileHandle): Promise<void> {
+export function closePrivateExecutionDirectory(directory: FileHandle): Promise<void> {
   const existing = closingDirectories.get(directory)
   if (existing !== undefined) return existing
   retainedDirectories.add(directory)
@@ -67,7 +75,7 @@ export async function resolvePrivateExecutionOutput(
 
 export function closePrivateExecutionOutput(output?: PrivateExecutionOutput): Promise<void> {
   if (output === undefined) return Promise.resolve()
-  if (output.kind === 'linux-directory') return closeDirectory(output.directory)
+  if (output.kind === 'linux-directory') return closePrivateExecutionDirectory(output.directory)
   // A rejected capture owns no snapshot. Its collection failure is separate
   // from cleanup; the backend must independently settle storage before completion.
   return output.ready
