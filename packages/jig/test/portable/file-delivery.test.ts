@@ -4,7 +4,17 @@ const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, spyOn, test } from 'bun:test'
 import { closeSync } from 'node:fs'
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   capturePrivateOutput,
@@ -27,6 +37,24 @@ import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
 import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
+
+test('packet preparation refuses a symlinked parent and accepts its canonical directory', async () =>
+  fixture(async (root) => {
+    const parent = join(root, 'parent')
+    const alias = join(root, 'alias')
+    await mkdir(parent)
+    await symlink(parent, alias)
+    const canonical = await realpath(alias)
+    const refused = new PrivateFileDeliveryOwner(new AbortController().signal)
+    const accepted = new PrivateFileDeliveryOwner(new AbortController().signal)
+    try {
+      await expect(refused.prepare(join(alias, 'packet'), [])).rejects.toThrow()
+      await accepted.prepare(join(canonical, 'packet'), [])
+      expect(await readdir(canonical)).toEqual([])
+    } finally {
+      await Promise.all([refused.close(), accepted.close()])
+    }
+  }))
 
 // These publisher inputs are ordinary packet data, not protected acceptance or
 // native cleanup evidence. Installed checkpoint lifecycle tests own those facts.

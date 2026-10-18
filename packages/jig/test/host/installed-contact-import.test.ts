@@ -1,6 +1,6 @@
 import { test } from 'bun:test'
 import assert from 'node:assert/strict'
-import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import {
@@ -15,7 +15,7 @@ requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
 
 test('installed contact import composes real mapping, conversion and Agent-contract header tasks', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-installed-contact-'))
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-installed-contact-')))
   let passed = false
   try {
     const command = foundationCommands(join(root, 'archive-commands'))

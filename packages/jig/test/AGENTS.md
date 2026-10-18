@@ -74,6 +74,10 @@ Trusted coordinator compositions forward the CLI's actual `channelOutput`.
 Do not drop selected channels while copying file or timeout options.
 Primitive fixtures copy the complete built public SDK runtime, not a source-file shortlist.
 
+Canonicalize fixture-owned temporary roots before deriving absolute packet paths
+or private SQLite observations. Keep no-follow acquisition and publication checks
+unchanged, including on Macs whose temporary-directory spelling is a symlink.
+
 `portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
 Its ordinary process adapter reports no native fencing.
 Valid protocol exchanges must still refuse execution success without qualified fencing.
