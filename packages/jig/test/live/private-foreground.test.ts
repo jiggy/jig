@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
@@ -24,7 +24,7 @@ const initialRootlessCgroups = new Set(await rootlessCgroups())
 
 describe.serial('private rootless project session', () => {
   test('executes one packed ordinary HTTP Agent choice and exact child without retaining its key', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-private-agent-router-'))
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-private-agent-router-')))
     let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
     try {
       await writeAgentRouterProject(root)

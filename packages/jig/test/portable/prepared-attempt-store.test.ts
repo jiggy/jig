@@ -1,6 +1,6 @@
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanonicalRequest } from '../../src/attempt-contract.js'
@@ -75,7 +75,7 @@ function transaction(db: Database, operation: () => void): void {
 }
 describe('protected prepared-attempt records', () => {
   test('accepted checkpoint survives closing and reopening the original EXTRA-synced SQLite owner', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'jig-checkpoint-reopen-'))
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'jig-checkpoint-reopen-')))
     const filename = join(directory, 'admission.sqlite')
     const { db, close } = fixture(filename)
     const runId = `sha256:${'e'.repeat(64)}`
@@ -614,7 +614,7 @@ describe('protected prepared-attempt records', () => {
     }
   })
   test('SQLite page exhaustion before acceptance rolls back the original allocation and reserves', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'jig-ticket-full-'))
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'jig-ticket-full-')))
     const { db, prepare, close } = fixture(join(directory, 'state.sqlite3'))
     try {
       const prepared = prepare()
@@ -643,7 +643,7 @@ describe('protected prepared-attempt records', () => {
     }
   }, 30_000)
   test('consumed reservation admits retained artifacts at a fixed SQLite page ceiling without duplicate capacity', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'jig-ticket-pages-'))
+    const directory = realpathSync(mkdtempSync(join(tmpdir(), 'jig-ticket-pages-')))
     const { db, close } = fixture(join(directory, 'state.sqlite3'))
     const contents = Buffer.alloc(4 * 1024 ** 2, 42)
     const snapshot = capturePrivateRetainedOutput({

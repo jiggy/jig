@@ -1,7 +1,7 @@
 import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -20,7 +20,7 @@ const testRoot = join(import.meta.dir, '..')
 
 for (const scenario of ['entrypoint', 'dependencies'] as const) {
   test(`packed project ${scenario} uses fresh reviewed data and immutable execution`, async () => {
-    const directory = await mkdtemp(join(tmpdir(), `jig-${scenario}-consumer-`))
+    const directory = await realpath(await mkdtemp(join(tmpdir(), `jig-${scenario}-consumer-`)))
     const packageRoot = join(testRoot, '..')
     const project = join(directory, 'project')
     const tooling = join(directory, 'tooling')

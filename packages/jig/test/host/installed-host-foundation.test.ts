@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -20,16 +20,17 @@ describe.serial('maintainer-owned installed host foundation (not unfamiliar usab
   let archives: FoundationArchives
   let completed = 0
   beforeAll(async () => {
-    root = await mkdtemp(join(tmpdir(), 'jig-installed-foundation-'))
+    root = await realpath(await mkdtemp(join(tmpdir(), 'jig-installed-foundation-')))
     archives = await freezeFoundationArchives(
       root,
       foundationCommands(join(root, 'archive-commands')),
     )
   }, 300_000)
   for (const application of ['adaptive', 'documents'] as const) {
-    const behavior = application === 'adaptive'
-      ? 'real nonzero evaluation stops later phases, then immutable accepted artifacts'
-      : 'immutable duplicate child handoff, cancellation and client death without replay'
+    const behavior =
+      application === 'adaptive'
+        ? 'real nonzero evaluation stops later phases, then immutable accepted artifacts'
+        : 'immutable duplicate child handoff, cancellation and client death without replay'
     test(`frozen public artifacts: independent ${application} application; ${behavior}`, async () => {
       await runInstalledFoundationApplication({
         directory: join(root!, application),
