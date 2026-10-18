@@ -60,8 +60,12 @@ describe.serial('private contained Bun dependency preparation', () => {
         new Response(lock.stderr).text(),
       ])
       expect(exit, stdout + stderr).toBe(0)
+      // Lock generation may populate Bun's local package cache even without installation.
+      // The authored preparation input retains the real lock, not generated node_modules.
+      await rm(join(root, 'node_modules'), { recursive: true, force: true })
       const captured = await capturePackageDirectory(root)
       try {
+        expect(captured.files.map(({ path }) => path)).toEqual(['bun.lock', 'package.json'])
         await initializePrivateActivationState({ projectRoot: root })
         const coordinator = await openPrivateProjectCoordinator({ projectRoot: root })
         try {
