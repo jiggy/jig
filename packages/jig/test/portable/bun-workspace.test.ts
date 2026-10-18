@@ -3,11 +3,12 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { normalizePrivateBunExecutionLayout } from '../../src/internal/bun-execution-layout.js'
 import { requirePrivateBunLockPolicy } from '../../src/internal/bun-native-lock-policy.js'
+import { decodePrivateBunPreparedResult } from '../../src/internal/bun-native-preparation.js'
+import { capturePrivateBunPreparationOutput } from '../../src/internal/bun-preparation-output.js'
 import { capturePrivateBunWorkspace } from '../../src/internal/bun-workspace-capture.js'
 import { privatePackageAliasText } from '../../src/internal/package-aliases.js'
 import {
@@ -618,6 +619,10 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
             mode === 'member-pinned' ? '0.1.0' : 'workspace:*',
           )
           let captured: Awaited<ReturnType<typeof value.capture>>
+          let directory: Awaited<ReturnType<typeof open>> | undefined
+          let preparedCapture:
+            | Awaited<ReturnType<typeof capturePrivateBunPreparationOutput>>
+            | undefined
           try {
             if (mode === 'unlocked-member-workspaces') {
               await value.put('libs/unrelated/package.json', {
@@ -805,34 +810,37 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
             }
             expect(exit, stdout).toBe(0)
             expect(result.type).toBe('prepared')
+            directory = await open(work, 'r')
+            preparedCapture = await capturePrivateBunPreparationOutput(directory, 'production')
+            if (captured === undefined) throw new Error('workspace was not captured')
+            const decoded = await decodePrivateBunPreparedResult(preparedCapture, result, {
+              captured: captured.captured,
+              workspace: { target: captured.target, selected: captured.selected },
+            })
             if (mode === 'patched') {
               for (const suffix of ['patches/semver.patch', 'node_modules/semver/jig-patch.js']) {
-                const file = result.files.find(
-                  (file: { path: string }) =>
-                    file.path === suffix || file.path.endsWith(`/${suffix}`),
+                const file = decoded.captured.files.find(
+                  ({ path }) => path === suffix || path.endsWith(`/${suffix}`),
                 )
                 expect(file, suffix).toBeDefined()
-                expect(Buffer.from(file.content, 'base64').toString()).toContain(
+                if (file === undefined) throw new Error(`prepared file is missing: ${suffix}`)
+                expect(Buffer.from(await decoded.captured.read(file.path)).toString()).toContain(
                   'patched dependency',
                 )
               }
             }
             const prepared = join(value.root, 'prepared')
-            for (const file of result.files) {
+            for (const file of decoded.captured.files) {
               expect(file.path).not.toContain('unrelated')
               await mkdir(dirname(join(prepared, file.path)), { recursive: true })
-              await writeFile(join(prepared, file.path), Buffer.from(file.content, 'base64'))
+              await writeFile(join(prepared, file.path), await decoded.captured.read(file.path))
             }
-            const layout = normalizePrivateBunExecutionLayout(result.layout)
+            const layout = decoded.layout
             expect(layout.flowRoot).toBe(rootApplication ? '' : target)
             if (mode === 'large')
-              expect(
-                Buffer.from(
-                  result.files.find(({ path }: { path: string }) => path === 'libs/leaf/large.txt')
-                    .content,
-                  'base64',
-                ).byteLength,
-              ).toBe(2 * 1024 * 1024)
+              expect((await decoded.captured.read('libs/leaf/large.txt')).byteLength).toBe(
+                2 * 1024 * 1024,
+              )
             for (const alias of layout.aliases) {
               await mkdir(dirname(join(prepared, alias.path)), { recursive: true })
               await symlink(privatePackageAliasText(alias), join(prepared, alias.path))
@@ -865,6 +873,8 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
             )
             expect(await readFile(join(prepared, 'bun.lock'), 'utf8')).toContain('workspace:')
           } finally {
+            await preparedCapture?.dispose()
+            await directory?.close()
             await captured?.captured.dispose()
             await value.dispose()
           }

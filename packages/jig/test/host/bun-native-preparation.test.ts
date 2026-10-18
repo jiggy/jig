@@ -26,6 +26,8 @@ describe.serial('private contained Bun dependency preparation', () => {
     const initialTemporary = new Set((await readdir(tmpdir())).filter(rootlessTemporaryEntry))
     const initialCgroups = new Set(await rootlessCgroups())
     const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-evaluation-preparation-')))
+    const cleanupFailures: unknown[] = []
+    let primaryFailure: { readonly error: unknown } | undefined
     try {
       await writeFile(
         join(root, 'package.json'),
@@ -91,19 +93,37 @@ describe.serial('private contained Bun dependency preparation', () => {
               Buffer.from(await captured.read('package.json')),
             )
           } finally {
-            await prepared.captured.dispose()
+            await prepared.captured.dispose().catch((error) => {
+              cleanupFailures.push(error)
+            })
           }
         } finally {
-          await coordinator.close()
+          await coordinator.dispose().catch((error) => {
+            cleanupFailures.push(error)
+          })
         }
       } finally {
-        await captured.dispose()
+        await captured.dispose().catch((error) => {
+          cleanupFailures.push(error)
+        })
       }
+    } catch (error) {
+      primaryFailure = { error }
     } finally {
-      await rm(root, { recursive: true, force: true })
-      await waitForCgroups(initialCgroups)
-      await waitForTemporary(initialTemporary)
+      const settled = await Promise.allSettled([
+        rm(root, { recursive: true, force: true }),
+        waitForCgroups(initialCgroups),
+        waitForTemporary(initialTemporary),
+      ])
+      for (const result of settled) {
+        if (result.status === 'rejected') cleanupFailures.push(result.reason)
+      }
     }
+    const failures =
+      primaryFailure === undefined ? cleanupFailures : [primaryFailure.error, ...cleanupFailures]
+    if (failures.length === 1) throw failures[0]
+    if (failures.length > 1)
+      throw new AggregateError(failures, 'evaluation preparation test and cleanup failed')
   }, 60_000)
 
   test('workspace dependencies stay project-local while code edits assemble fresh reviewed source', async () => {
