@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { main } from '../src/cli.js'
 import { privateOpenFileRoot, privateReadRegularFile, sha256 } from '../src/internal/file-input.js'
 import { privateCaptureSavedResult } from '../src/internal/saved-result.js'
+import { canonicalJson } from '../src/json.js'
 
 const work = process.argv[2]!
 const artifactText = 'PRIVATE_ACCEPTED_OR_REJECTED_ARTIFACT_BYTES'
@@ -49,7 +50,7 @@ assert.throws(() => fs.fstatSync(root), { code: 'EBADF' })
 assert.throws(() => privateReadRegularFile(root, 'result.json', 4096))
 
 const partial = await privateCaptureSavedResult(work)
-assert.deepEqual(partial.record, record)
+assert.deepEqual(canonicalJson(partial.record), canonicalJson(record))
 assert.equal(partial.complete, false)
 assert.equal(partial.preview('patch'), undefined)
 partial.close()
