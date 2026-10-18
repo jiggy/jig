@@ -1,7 +1,16 @@
 import { constants, Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { copyFile, lstat, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  writeFile,
+} from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { settleTestCommand } from '../bounded-command.js'
 
@@ -144,29 +153,102 @@ function resultPhaseSummary(stderr: string): string | undefined {
   }
 }
 
+async function reviewPhaseSummary(path: string): Promise<string> {
+  const phases = new Set([
+    'installed-host-opening',
+    'project-session-opening',
+    'project-planning',
+    'author-configuration-evaluation',
+    'author-support-verification',
+    'author-envelope-startup',
+    'author-execution-settlement',
+    'dependency-workspace-capture',
+    'dependency-preparation',
+    'dependency-reuse',
+    'project-session-close',
+    'macos-guardian-preparation',
+    'macos-guardian-admission',
+  ])
+  try {
+    const file = await open(path, 'r')
+    let text: string
+    try {
+      const bytes = Buffer.alloc(256 * 1024 + 1)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      if (bytesRead > 256 * 1024) return '{"status":"truncated","events":[]}'
+      text = bytes.subarray(0, bytesRead).toString('utf8')
+    } finally {
+      await file.close()
+    }
+    const lines = text.trimEnd().split('\n')
+    if (lines.length > 1026) return '{"status":"truncated","events":[]}'
+    const events = []
+    let truncated = false
+    for (const line of lines) {
+      const record = JSON.parse(line)
+      if (record === null || typeof record !== 'object') return '{"status":"invalid","events":[]}'
+      if (record.kind === 'truncated') truncated = true
+      if (!phases.has(record.phase)) continue
+      if (
+        !['start', 'end', 'instant'].includes(record.kind) ||
+        !Number.isFinite(record.timeMs) ||
+        record.timeMs < 0 ||
+        record.timeMs > 86_400_000 ||
+        (record.kind === 'end' && !['returned', 'failed'].includes(record.outcome))
+      )
+        return '{"status":"invalid","events":[]}'
+      events.push({
+        phase: record.phase,
+        kind: record.kind,
+        timeMs: record.timeMs,
+        ...(record.kind === 'end' ? { outcome: record.outcome } : {}),
+      })
+    }
+    // Keep the boundary, including failed ends, instead of an optimistic prefix.
+    if (events.length > 40) truncated = true
+    return JSON.stringify({
+      status: truncated ? 'truncated' : 'captured',
+      events: events.slice(-40),
+    })
+  } catch {
+    // Optional trace observation must not replace the original command failure.
+    return '{"status":"unavailable","events":[]}'
+  }
+}
+
 export function foundationCommands(evidence: string) {
   let sequence = 0
   return async (args: string[], cwd: string, timeoutMs = 195_000) => {
     await mkdir(evidence, { recursive: true, mode: 0o700 })
+    const commandEvidence = join(evidence, String(++sequence).padStart(3, '0'))
+    const reviewProfile =
+      args[1] === 'review' ? resolve(`${commandEvidence}.review.jsonl`) : undefined
     const child = Bun.spawn(args, {
       cwd,
-      env: foundationEnvironment(),
+      env: {
+        ...foundationEnvironment(),
+        ...(reviewProfile === undefined ? {} : { JIG_PRIVATE_PROFILE_FILE: reviewProfile }),
+      },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
     })
     const result = await settleTestCommand(child, {
-      evidence: join(evidence, String(++sequence).padStart(3, '0')),
+      evidence: commandEvidence,
       timeoutMs,
       graceMs: 10_000,
     })
     const diagnostic = /Diagnostic code: ([A-Z][A-Z0-9_]{0,63})\b/.exec(result.stderr)?.[1]
     const clientFailure = clientFailureSummary(result.stderr)
     const resultPhases = resultPhaseSummary(result.stderr)
+    const reviewPhases =
+      result.code !== 0 && reviewProfile !== undefined
+        ? await reviewPhaseSummary(reviewProfile)
+        : undefined
     assert.equal(
       result.code,
       0,
-      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}; see ${evidence}`,
+      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}${reviewPhases ? ` review phases: ${reviewPhases}` : ''}; see ${evidence}`,
     )
     return result
   }

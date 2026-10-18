@@ -41,6 +41,10 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   Result-trace summaries reproject at most fourteen fixed result-phase start/end
   records with bounded timings and closed outcomes. Never forward raw trace
   lines, header identities, paths, arbitrary fields or exception payloads.
+- Ordinary review commands enable the existing private profile in their own evidence directory.
+  Failure summaries project at most forty existing review phase events and closed capture status.
+  Read at most 256 KiB and 1026 records. Retain the final events when projection truncates.
+  Trace observation never replaces command failure. Evaluation preparation has no dedicated phase.
 - Exact repeated exports reconcile their original delivery. Collision checks use
   a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic

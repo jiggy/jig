@@ -3,7 +3,7 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
@@ -362,6 +362,82 @@ test('foundation command failures project only bounded fixed result phase facts'
       const rejected = await failureMessage(invalidLine)
       expect(rejected).not.toContain('result phases:')
     }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('foundation review failures retain real child profile phases without private fields', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-review-profile-summary-')))
+  try {
+    const module = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    await writeFile(
+      join(directory, 'review'),
+      `import { appendFileSync } from 'node:fs';
+      import { privateProfileActivate, privateProfileFinish, privateProfileSpan }
+        from ${JSON.stringify(module)};
+      const destination = process.env.JIG_PRIVATE_PROFILE_FILE;
+      privateProfileActivate();
+      await privateProfileSpan('author-support-verification', async () => 17);
+      try {
+        await privateProfileSpan('project-planning', async () => {
+          throw new Error('private exception payload');
+        });
+      } catch {}
+      privateProfileFinish();
+      appendFileSync(destination, JSON.stringify({
+        kind: 'instant', phase: 'dependency-reuse', timeMs: 1,
+        pid: 12345, path: '/private/profile-path', error: 'private exception payload'
+      }) + '\\n');
+      console.log('private stdout preserved');
+      console.error('Diagnostic code: INTERNAL');
+      console.error('private stderr preserved');
+      process.exit(7);`,
+    )
+    const evidence = join(directory, 'commands')
+    let failure: unknown
+    try {
+      await foundationCommands(evidence)([process.execPath, 'review'], directory)
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toMatchObject({ actual: 7, expected: 0 })
+    const message = (failure as Error).message
+    expect(message).toContain('Installed foundation command 1 failed (INTERNAL)')
+    expect(message).toContain('review phases: {"status":"captured"')
+    const projection = JSON.parse(/review phases: (\{.*\}); see /.exec(message)![1]!)
+    expect(projection.events).toEqual([
+      { phase: 'author-support-verification', kind: 'start', timeMs: expect.any(Number) },
+      {
+        phase: 'author-support-verification',
+        kind: 'end',
+        timeMs: expect.any(Number),
+        outcome: 'returned',
+      },
+      { phase: 'project-planning', kind: 'start', timeMs: expect.any(Number) },
+      { phase: 'project-planning', kind: 'end', timeMs: expect.any(Number), outcome: 'failed' },
+      { phase: 'dependency-reuse', kind: 'instant', timeMs: 1 },
+    ])
+    for (const value of [
+      '"pid"',
+      '/private/profile-path',
+      'private exception payload',
+      '"error"',
+      'private stdout preserved',
+      'private stderr preserved',
+    ])
+      expect(message).not.toContain(value)
+    const files = await readdir(evidence)
+    expect(files).toContain('001.review.jsonl')
+    expect((await stat(join(evidence, '001.review.jsonl'))).mode & 0o777).toBe(0o600)
+    const transcripts = await Promise.all(
+      files
+        .filter((name) => name !== '001.review.jsonl')
+        .map((name) => readFile(join(evidence, name), 'utf8')),
+    )
+    expect(transcripts.join('\n')).toContain('private stdout preserved')
+    expect(transcripts.join('\n')).toContain('private stderr preserved')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
