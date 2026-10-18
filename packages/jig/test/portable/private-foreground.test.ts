@@ -100,7 +100,8 @@ describe('private foreground command boundary', () => {
           if (held) {
             expect(await firstLine(readiness!)).toBe('held-child-ready')
             expect(child.exitCode).toBeNull()
-            child.kill('SIGUSR1')
+            // Use platform signal numbering, as the native held-child case does.
+            process.kill(child.pid, 'SIGUSR1')
           }
           const [stdout, stderr, exitCode] = await Promise.all([
             new Response(child.stdout).text(),
