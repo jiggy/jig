@@ -128,6 +128,7 @@ import {
   retainPrivateAttemptArtifacts,
   retirePrivateAttempts,
 } from './prepared-attempt-store.js'
+import { privateProfileSpan, privateProfileSyncSpan } from './private-profile.js'
 import { PrivateCheckpointRejected, type RunCheckpointIdentity } from './private-run-checkpoint.js'
 import { verifyPrivateRetainedProjectEvaluation } from './project-evaluation-retention.js'
 import {
@@ -2765,17 +2766,23 @@ export async function readPrivateAttemptResult(input: {
   readonly projectRoot: string
   readonly ticket: string
 }) {
-  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  const owner = await privateProfileSpan('result-open', () =>
+    openStateOwner(input.projectRoot, false, 'read-only'),
+  )
   let failure: unknown
   try {
-    const attempt = authenticatePrivateAttempt(
-      owner.database,
-      attemptProjectDigest(owner.root),
-      input.ticket,
+    const attempt = privateProfileSyncSpan('result-authenticate', () =>
+      authenticatePrivateAttempt(owner.database, attemptProjectDigest(owner.root), input.ticket),
     )
-    const retention = await observePrivateAttemptRetention(owner, attempt)
-    const retained = observePrivateAttempt(owner, attempt, retention)
-    const checkpoint = privateAttemptCheckpointSummary(owner, attempt, retention)
+    const retention = await privateProfileSpan('result-retention', () =>
+      observePrivateAttemptRetention(owner, attempt),
+    )
+    const retained = privateProfileSyncSpan('result-observe', () =>
+      observePrivateAttempt(owner, attempt, retention),
+    )
+    const checkpoint = privateProfileSyncSpan('result-checkpoint', () =>
+      privateAttemptCheckpointSummary(owner, attempt, retention),
+    )
     const output =
       retained.run?.terminal?.status === 'succeeded' &&
       retained.observation.retained === 'available'
@@ -2787,13 +2794,13 @@ export async function readPrivateAttemptResult(input: {
       artifactResults: retained.observation.receipt?.artifactResults ?? [],
       checkpoint,
     }
-    await owner.finish()
+    await privateProfileSpan('result-finish', () => owner.finish())
     return result
   } catch (error) {
     failure = error
     throw error
   } finally {
-    await disposeOperation(owner, undefined, failure)
+    await privateProfileSpan('result-dispose', () => disposeOperation(owner, undefined, failure))
   }
 }
 

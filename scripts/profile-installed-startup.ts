@@ -51,6 +51,13 @@ type TracePhase =
   | 'root-package-release'
   | 'root-owner-release'
   | 'project-session-close'
+  | 'result-open'
+  | 'result-authenticate'
+  | 'result-retention'
+  | 'result-observe'
+  | 'result-checkpoint'
+  | 'result-finish'
+  | 'result-dispose'
 
 interface CapturedCommand {
   readonly exitCode: number | null
@@ -104,6 +111,13 @@ const tracePhases = new Set<TracePhase>([
   'root-package-release',
   'root-owner-release',
   'project-session-close',
+  'result-open',
+  'result-authenticate',
+  'result-retention',
+  'result-observe',
+  'result-checkpoint',
+  'result-finish',
+  'result-dispose',
 ])
 
 const environment = requireProfileEnvironment()

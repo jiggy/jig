@@ -40,6 +40,13 @@ export type PrivateProfilePhase =
   | 'root-package-release'
   | 'root-owner-release'
   | 'project-session-close'
+  | 'result-open'
+  | 'result-authenticate'
+  | 'result-retention'
+  | 'result-observe'
+  | 'result-checkpoint'
+  | 'result-finish'
+  | 'result-dispose'
 
 interface PrivateProfileSpan {
   readonly spanId: number
@@ -162,7 +169,7 @@ export function privateProfileOperatorEnvironment(
   return Object.freeze(copy)
 }
 
-/** Called only after Jig has entered its exact rootless host envelope. */
+/** Called after host-envelope entry, or for non-executing attempt result observation. */
 export function privateProfileActivate(): void {
   if (configuredPath === undefined || activeCapture !== undefined) return
   const path = configuredPath
@@ -198,6 +205,32 @@ export async function privateProfileSpan<T>(
   let outcome: 'returned' | 'failed' = 'returned'
   try {
     return await operation()
+  } catch (error) {
+    outcome = 'failed'
+    throw error
+  } finally {
+    try {
+      capture.end(span, outcome)
+    } catch {
+      discardProfileCapture(capture)
+    }
+  }
+}
+
+/** Synchronous reads retain their original scheduling and exact failure identity. */
+export function privateProfileSyncSpan<T>(phase: PrivateProfilePhase, operation: () => T): T {
+  const capture = activeCapture
+  if (capture === undefined) return operation()
+  let span: PrivateProfileSpan | undefined
+  try {
+    span = capture.start(phase)
+  } catch {
+    discardProfileCapture(capture)
+  }
+  if (span === undefined) return operation()
+  let outcome: 'returned' | 'failed' = 'returned'
+  try {
+    return operation()
   } catch (error) {
     outcome = 'failed'
     throw error

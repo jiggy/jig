@@ -154,7 +154,7 @@ export default defineBinding({package:'flows/root',slots:{
 
 const consumer = `
 import assert from 'node:assert/strict';
-import {mkdir,readFile,rename,writeFile,readdir} from 'node:fs/promises';
+import {mkdir,open,readFile,rename,writeFile,readdir,unlink} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
 let stage='inspect', modeLabel='initial', terminalCode;
@@ -166,6 +166,43 @@ process.on('uncaughtExceptionMonitor',error=>{
   }));
 });
 const client=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),timeoutMs:195000});
+let resultOrdinal=0;
+const resultPhases=new Set(['result-open','result-authenticate','result-retention',
+  'result-observe','result-checkpoint','result-finish','result-dispose']);
+async function readResult(ticket){
+  const trace=resolve('result-profile-'+(++resultOrdinal)+'.jsonl');
+  const observer=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),
+    timeoutMs:195000,env:{...process.env,JIG_PRIVATE_PROFILE_FILE:trace}});
+  try {
+    const result=await observer.result({ticket});
+    await unlink(trace).catch(()=>{});
+    return result;
+  } catch(error) {
+    try {
+      const file=await open(trace,'r');
+      let text;
+      try {
+        const bytes=Buffer.alloc(8193);
+        const {bytesRead}=await file.read(bytes,0,bytes.length,0);
+        if(bytesRead>8192) throw Error('Diagnostic exceeds bound');
+        text=bytes.subarray(0,bytesRead).toString('utf8');
+      } finally { await file.close(); }
+      const phases=[];
+      for(const line of text.trim().split('\\n')){
+        const record=JSON.parse(line);
+        if(record.kind!=='start'&&record.kind!=='end') continue;
+        if(!resultPhases.has(record.phase)||!Number.isFinite(record.timeMs)||
+          record.timeMs<0||record.timeMs>86400000) continue;
+        if(record.kind==='end'&&record.outcome!=='returned'&&record.outcome!=='failed') continue;
+        if(phases.length===14) break;
+        phases.push({phase:record.phase,kind:record.kind,timeMs:record.timeMs,
+          ...(record.kind==='end'?{outcome:record.outcome}:{})});
+      }
+      console.error('Foundation result phases: '+JSON.stringify(phases));
+    } catch {}
+    throw error;
+  }
+}
 const inspected=await client.inspect({target:'binding:root'});
 const request={expectedApproval:inspected.approval,target:'binding:root',input:null,files:[],
   constraints:{durationMs:120000,resultBytes:1048576,artifactBytes:1048576},
@@ -182,7 +219,7 @@ for(const mode of ['complete','fail','cancel']){
       stage='checkpoint-wait';
       const until=performance.now()+100000;
       for(;;){
-        const result=await client.result({ticket:prepared.ticket});
+        const result=await readResult(prepared.ticket);
         if(result.checkpoint?.sequence===1) break;
         if(performance.now()>until) throw Error('No real accepted checkpoint');
         await Bun.sleep(50);
@@ -198,7 +235,7 @@ for(const mode of ['complete','fail','cancel']){
     assert.equal(observation.terminal.status,mode==='complete'?'succeeded':'failed');
     if(mode==='cancel') assert.equal(observation.terminal.code,'CANCELLED');
     stage='result';
-    const result=await client.result({ticket:prepared.ticket});
+    const result=await readResult(prepared.ticket);
     assert.equal(result.checkpoint.sequence,1);
     assert.equal(result.observation.receipt.runId,owner.receipt.runId);
     const source=mode==='complete'?'final':'checkpoint';

@@ -102,6 +102,48 @@ function clientFailureSummary(stderr: string): string | undefined {
   return undefined
 }
 
+function resultPhaseSummary(stderr: string): string | undefined {
+  const encoded = /^Foundation result phases: (\[[^\n]{0,4096}\])$/m.exec(stderr)?.[1]
+  if (encoded === undefined) return undefined
+  const phases = new Set([
+    'result-open',
+    'result-authenticate',
+    'result-retention',
+    'result-observe',
+    'result-checkpoint',
+    'result-finish',
+    'result-dispose',
+  ])
+  try {
+    const records = JSON.parse(encoded)
+    if (!Array.isArray(records) || records.length > 14) return undefined
+    const summary = []
+    for (const record of records) {
+      if (
+        record === null ||
+        typeof record !== 'object' ||
+        !phases.has(record.phase) ||
+        (record.kind !== 'start' && record.kind !== 'end') ||
+        !Number.isFinite(record.timeMs) ||
+        record.timeMs < 0 ||
+        record.timeMs > 86_400_000 ||
+        (record.kind === 'end' && record.outcome !== 'returned' && record.outcome !== 'failed')
+      )
+        return undefined
+      summary.push({
+        phase: record.phase,
+        kind: record.kind,
+        timeMs: record.timeMs,
+        ...(record.kind === 'end' ? { outcome: record.outcome } : {}),
+      })
+    }
+    return JSON.stringify(summary)
+  } catch {
+    // Only closed phase facts leave the private transcript; preserve command failure.
+    return undefined
+  }
+}
+
 export function foundationCommands(evidence: string) {
   let sequence = 0
   return async (args: string[], cwd: string, timeoutMs = 195_000) => {
@@ -120,10 +162,11 @@ export function foundationCommands(evidence: string) {
     })
     const diagnostic = /Diagnostic code: ([A-Z][A-Z0-9_]{0,63})\b/.exec(result.stderr)?.[1]
     const clientFailure = clientFailureSummary(result.stderr)
+    const resultPhases = resultPhaseSummary(result.stderr)
     assert.equal(
       result.code,
       0,
-      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}; see ${evidence}`,
+      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}; see ${evidence}`,
     )
     return result
   }

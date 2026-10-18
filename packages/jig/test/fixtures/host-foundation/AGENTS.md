@@ -38,6 +38,9 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 - Driver failures report fixed application stages and public client or terminal
   error codes. Preserve the original exception and exclude tickets, receipts,
   inputs, diagnostic payloads, and private state from this summary.
+  Result-trace summaries reproject at most fourteen fixed result-phase start/end
+  records with bounded timings and closed outcomes. Never forward raw trace
+  lines, header identities, paths, arbitrary fields or exception payloads.
 - Exact repeated exports reconcile their original delivery. Collision checks use
   a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic

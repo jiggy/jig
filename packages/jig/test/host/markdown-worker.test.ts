@@ -170,13 +170,17 @@ await handle(run => {
   const recipe = settled.length + 1;
   if (recipe > packet.recipes.length) throw Error('No remaining authored recipe');
   if (packet.recipes[recipe - 1].diagnostic) throw Error('Authored recipe is unavailable');
+  console.error(JSON.stringify({stage:'markdown-composition-decision',atUnixMs:Date.now(),recipe,settledCount:settled.length,recipeCount:packet.recipes.length}));
   return {outcome:'done',output:{text:'',structured:{action:'recipe',recipe,operand:'none',value:'',path:''}}};
 });\n`,
     )
     await writeFile(
       join(project, 'flows/sum/FLOW.ts'),
       `import {handle} from '@jigging/flow';
-await handle(run => ({outcome:'done',output:{sum:run.input.values.reduce((a,b)=>a+b,0),exact:run.input}}));\n`,
+await handle(run => {
+  console.error(JSON.stringify({stage:'markdown-composition-sum',atUnixMs:Date.now(),valueCount:run.input.values.length}));
+  return {outcome:'done',output:{sum:run.input.values.reduce((a,b)=>a+b,0),exact:run.input}};
+});\n`,
     )
     await mkdir(join(project, 'flows/procedure'))
     await writeFile(
@@ -202,19 +206,26 @@ await handle(run => ({outcome:'done',output:{sum:run.input.values.reduce((a,b)=>
       join(project, 'flows/coordinator/FLOW.ts'),
       `import {handle} from '@jigging/flow';
 await handle(async run => {
+  const mark = stage => console.error(JSON.stringify({stage,atUnixMs:Date.now()}));
+  mark('markdown-composition-coordinator-enter');
   const updates = await run.channel({schema:{}});
   const published = await run.channel({schema:{}});
+  mark('markdown-composition-channels-open');
   const work = run.call({operationId:'procedure',slot:'procedure',input:run.input,channels:{updates:updates.receive,published:published.send}});
-  const settled = work.then(result=>({result}),error=>({error}));
+  const settled = work.then(result=>{mark('markdown-composition-child-returned');return {result}},error=>{mark('markdown-composition-child-rejected');return {error}});
   try {
     await updates.send.send(null);
+    mark('markdown-composition-update-sent');
     await updates.send.close();
+    mark('markdown-composition-updates-closed');
     const message = await published.receive.next();
+    mark('markdown-composition-published-received');
     const completion = await settled;
     if ('error' in completion) throw completion.error;
     return {outcome:'done',output:{result:completion.result,message}};
   } finally {
     await published.receive.close();
+    mark('markdown-composition-published-closed');
     await settled;
   }
 });\n`,
@@ -238,7 +249,12 @@ await handle(async run => {
     await command([jig, 'review', '--yes'], project)
     const input = { values: [2, 3, 4], exact: ['😺', null], literal: '@previous' }
     const result = JSON.parse(
-      await command([jig, 'run', 'binding:coordinator', '--input', JSON.stringify(input)], project),
+      await command(
+        [jig, 'run', 'binding:coordinator', '--input', JSON.stringify(input)],
+        project,
+        0,
+        'installed Markdown channel composition',
+      ),
     )
     expect(result).toMatchObject({
       status: 'succeeded',

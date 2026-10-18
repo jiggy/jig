@@ -254,8 +254,9 @@ These links locate module rules. All selected domain requirements still apply.
   closure remains the independent emergency scope fence.
 
 - The optional installed-startup diagnostic accepts only a private local trace
-  destination. It activates after rootless-host acquisition. Before opening a
-  project session, it removes its selector from operator configuration. It
+  destination. It activates after rootless-host acquisition, or directly for
+  non-executing `attempt result` observation without host acquisition. Before
+  opening a project session, it removes its selector from operator configuration. It
   records fixed phase names and monotonic durations in an exclusive mode-0600
   file with bounded size. It records no source, Flow input, arguments,
   environment values, provider output, or filesystem paths. Capture failure must
@@ -278,8 +279,13 @@ These links locate module rules. All selected domain requirements still apply.
   well as contained effects.
 
   Aggregate counts identify no individual operation. No selector or trace is
-  passed to a child, and the existing 512-span/192-byte record bounds remain
+  passed to a Flow, and the existing 512-span/192-byte record bounds remain
   unchanged.
+
+  Result phases distinguish read-only opening, ticket authentication, retention,
+  Run observation, checkpoint projection, finish and disposal. Synchronous reads
+  remain synchronous. Failed spans preserve the original exception and cleanup
+  precedence. Phase timing does not establish a failure's underlying cause.
 
 - A current root Run may reacquire its exact pending fence for a bounded
   interval inside one ownership-settlement attempt. Exhaustion remains

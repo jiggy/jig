@@ -3,15 +3,52 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
 import {
   PrivateProfileCapture,
   privateProfileInstant,
   privateProfileOperatorEnvironment,
   privateProfileSpan,
+  privateProfileSyncSpan,
 } from '../../src/internal/private-profile.js'
+import { foundationCommands } from '../fixtures/host-foundation/materialize.js'
+import { installedBunLocation } from '../fixtures/installed-bun-location.js'
+
+test('installed public result records an observational refusal without creating project state', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-result-profile-control-')))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const client = createAttemptClient({
+      executable: join(installedBunLocation.releaseRoot, 'bin/jig'),
+      cwd: directory,
+      env: { ...process.env, JIG_PRIVATE_PROFILE_FILE: destination },
+    })
+    let failure: unknown
+    try {
+      // Unissued ordinary request data, not a fabricated prepared capability.
+      await client.result({ ticket: 'not-issued' })
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(AttemptClientError)
+    expect(failure).toMatchObject({ code: 'INTERNAL', operation: 'result', uncertain: false })
+    const events = (await readFile(destination, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(events.filter((event) => event.phase)).toEqual([
+      expect.objectContaining({ kind: 'start', phase: 'result-open' }),
+      expect.objectContaining({ kind: 'end', phase: 'result-open', outcome: 'failed' }),
+    ])
+    expect(await readdir(directory)).toEqual(['trace.jsonl'])
+    expect((await stat(destination)).mode & 0o777).toBe(0o600)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test('private profile records bounded fixed-name spans without replacing its destination', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-profile-test-'))
@@ -85,6 +122,16 @@ test('inactive profiling preserves the operation result and failure behavior', a
       throw failure
     }),
   ).rejects.toBe(failure)
+  const synchronous = Object.freeze({ value: 17 })
+  expect(privateProfileSyncSpan('result-authenticate', () => synchronous)).toBe(synchronous)
+  try {
+    privateProfileSyncSpan('result-observe', () => {
+      throw failure
+    })
+    throw new Error('Synchronous failure disappeared')
+  } catch (error) {
+    expect(error).toBe(failure)
+  }
 })
 test('private profile preserves partial phases after forced process termination', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-profile-interrupted-'))
@@ -172,6 +219,13 @@ test('planning and native subphases remain bounded names understood by the insta
       'macos-guardian-admission',
       'root-package-release',
       'root-owner-release',
+      'result-open',
+      'result-authenticate',
+      'result-retention',
+      'result-observe',
+      'result-checkpoint',
+      'result-finish',
+      'result-dispose',
     ] as const
     for (const phase of phases) {
       const span = profile.start(phase)
@@ -201,7 +255,7 @@ test('active native profiling preserves returned values and the exact thrown fai
       [
         process.execPath,
         '-e',
-        `import { privateProfileActivate, privateProfileFinish, privateProfileSpan } from ${JSON.stringify(module)};
+        `import { privateProfileActivate, privateProfileFinish, privateProfileSpan, privateProfileSyncSpan } from ${JSON.stringify(module)};
         privateProfileActivate();
         const value = await privateProfileSpan('finite-acp-revalidation', async () => 17);
         if (value !== 17) throw new Error('Result changed');
@@ -216,6 +270,12 @@ test('active native profiling preserves returned values and the exact thrown fai
         try {
           await privateProfileSpan('macos-guardian-admission', async () => { throw failure });
           throw new Error('Admission failure disappeared');
+        } catch (error) { if (error !== failure) throw error }
+        const observed = privateProfileSyncSpan('result-authenticate', () => guardian);
+        if (observed !== guardian) throw new Error('Synchronous value changed');
+        try {
+          privateProfileSyncSpan('result-observe', () => { throw failure });
+          throw new Error('Synchronous failure disappeared');
         } catch (error) { if (error !== failure) throw error }
         privateProfileFinish();`,
       ],
@@ -238,7 +298,70 @@ test('active native profiling preserves returned values and the exact thrown fai
       expect.objectContaining({ phase: 'finite-acp-containment', outcome: 'failed' }),
       expect.objectContaining({ phase: 'macos-guardian-preparation', outcome: 'returned' }),
       expect.objectContaining({ phase: 'macos-guardian-admission', outcome: 'failed' }),
+      expect.objectContaining({ phase: 'result-authenticate', outcome: 'returned' }),
+      expect.objectContaining({ phase: 'result-observe', outcome: 'failed' }),
     ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('foundation command failures project only bounded fixed result phase facts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-summary-'))
+  try {
+    const command = foundationCommands(join(directory, 'commands'))
+    async function failureMessage(line: string): Promise<string> {
+      try {
+        await command(
+          [process.execPath, '-e', `console.error(${JSON.stringify(line)}); process.exit(7)`],
+          directory,
+        )
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error)
+        return (error as Error).message
+      }
+      throw new Error('Nonzero child exit was not rejected')
+    }
+    const phases = [
+      'result-open',
+      'result-authenticate',
+      'result-retention',
+      'result-observe',
+      'result-checkpoint',
+      'result-finish',
+      'result-dispose',
+    ]
+    const records = phases.flatMap((phase) => [
+      { phase, kind: 'start', timeMs: 0, pid: 1234, path: '/private/trace' },
+      { phase, kind: 'end', timeMs: 1, outcome: 'failed', error: 'private exception payload' },
+    ])
+    const message = await failureMessage(`Foundation result phases: ${JSON.stringify(records)}`)
+    expect(message).toContain('Installed foundation command 1 failed')
+    expect(message).toContain('result phases: [{"phase":"result-open","kind":"start","timeMs":0}')
+    expect(message).toContain('"phase":"result-dispose","kind":"end","timeMs":1,"outcome":"failed"')
+    for (const privateValue of ['pid', '/private/trace', 'private exception payload', '"error"'])
+      expect(message).not.toContain(privateValue)
+
+    for (const invalid of [
+      [...records, records[0]],
+      [{ phase: 'private-phase', kind: 'start', timeMs: 0 }],
+      [{ phase: 'result-open', kind: 'header', timeMs: 0 }],
+      [{ phase: 'result-open', kind: 'start', timeMs: 86_400_001 }],
+      [{ phase: 'result-open', kind: 'end', timeMs: 0, outcome: 'private-outcome' }],
+      [null],
+    ]) {
+      const rejected = await failureMessage(`Foundation result phases: ${JSON.stringify(invalid)}`)
+      expect(rejected).toContain('failed')
+      expect(rejected).not.toContain('result phases:')
+    }
+    for (const invalidLine of [
+      'Foundation result phases: [not JSON]',
+      'prefix Foundation result phases: []',
+      `Foundation result phases: [${' '.repeat(4097)}]`,
+    ]) {
+      const rejected = await failureMessage(invalidLine)
+      expect(rejected).not.toContain('result phases:')
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

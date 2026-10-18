@@ -98,6 +98,11 @@ Hardware I/O failure windows require separate evidence.
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
 Pins and delivery receipts must come from the production owner.
+Its consumer may enable the existing private phase trace through the public
+client environment for each result command, using a unique absolute destination.
+On failure, report only bounded fixed result phases, outcomes and timings.
+Trace observation cannot replace the original error or expose raw records,
+header identities, paths, tickets or exception payloads.
 
 `linux/file-command-snapshot.test.ts` checks real sealed descriptors and the
 independent publication process after source removal.

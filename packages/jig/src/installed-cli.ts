@@ -181,10 +181,12 @@ async function runWithEnvironment(
           signal,
           privateCliCommandLifetimeMs(arguments_),
         )
+      const profileResult = arguments_[1] === 'result'
       const delivery = await privateConnectFileOwner()
       const outputStop = new AbortController()
       const stdout = new PrivateCliOutput(process.stdout, outputStop)
       const stderr = new PrivateCliOutput(process.stderr, outputStop)
+      if (profileResult) privateProfileActivate()
       try {
         const code = await main(arguments_, {
           executeAttempt: executePrivateCliAttempt,
@@ -218,7 +220,11 @@ async function runWithEnvironment(
         try {
           await Promise.all([stdout.flush(), stderr.flush()])
         } finally {
-          delivery?.close()
+          try {
+            delivery?.close()
+          } finally {
+            if (profileResult) privateProfileFinish()
+          }
         }
       }
     }
