@@ -23,6 +23,7 @@ type TracePhase =
   | 'author-execution-settlement'
   | 'dependency-workspace-capture'
   | 'project-planning'
+  | 'project-evaluation-review'
   | 'installed-host-opening'
   | 'project-session-opening'
   | 'dependency-preparation'
@@ -83,6 +84,7 @@ const tracePhases = new Set<TracePhase>([
   'author-execution-settlement',
   'dependency-workspace-capture',
   'project-planning',
+  'project-evaluation-review',
   'installed-host-opening',
   'project-session-opening',
   'dependency-preparation',

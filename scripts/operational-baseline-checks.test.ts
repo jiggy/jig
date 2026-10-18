@@ -440,6 +440,73 @@ for (const victim of ['descendant', 'root'] as const) {
   })
 }
 
+for (const victim of ['descendant', 'root'] as const) {
+  for (const stage of [
+    'command-json',
+    'command-terminal',
+    'parent-terminal',
+    'parent-receipt',
+    'command-exit',
+    'command-stderr',
+  ] as const) {
+    test(`memory validator attributes ${victim} rejection to ${stage} without private causes`, () => {
+      const fixture = memoryProofFixture(victim)
+      const privateText = 'private-command-payload-must-not-escape'
+      if (stage === 'command-json') fixture.command.stdout = privateText
+      if (stage === 'command-terminal') {
+        fixture.command.stdout = JSON.stringify({ privateText })
+      }
+      if (stage === 'parent-terminal') {
+        const terminal = JSON.parse(
+          Buffer.from(fixture.row.terminal_bytes as Uint8Array).toString(),
+        ) as MemoryRecord
+        if (victim === 'root') terminal.message = privateText
+        else memoryRecord(terminal.result).outcome = privateText
+        fixture.row.terminal_bytes = Buffer.from(memoryCanonical(terminal))
+        fixture.row.terminal_digest = memoryDigest('JIG-Private-Root-Terminal/1', terminal)
+        for (const name of ['provisional', 'admitted']) {
+          mutateMemoryCheckpoint(fixture, name, (value) => {
+            Object.assign(value, terminal)
+          })
+        }
+        fixture.command.stdout = JSON.stringify(
+          victim === 'root'
+            ? terminal
+            : {
+                status: 'succeeded',
+                ...memoryRecord(terminal.result),
+                diagnostics: terminal.diagnostics,
+              },
+        )
+      }
+      if (stage === 'parent-receipt') {
+        mutateMemoryCheckpoint(fixture, 'fence', (fence) => {
+          memoryRecord(fence.receipt).signal = privateText
+        })
+        mutateMemoryCheckpoint(fixture, 'release', (release) => {
+          release.fenceDigest = fixture.row.fence_digest
+        })
+      }
+      if (stage === 'command-exit') fixture.command.exitCode = 2
+      if (stage === 'command-stderr') fixture.command.stderr = privateText
+      let rejection: unknown
+      try {
+        checkInstalledMemoryProof(fixture)
+      } catch (error) {
+        rejection = error
+      }
+      expect(rejection).toBeInstanceOf(Error)
+      expect((rejection as Error).message).toBe(
+        `Installed memory enforcement proof rejected at ${stage}; inspect the retained private fixture`,
+      )
+      expect((rejection as Error).cause).toBeUndefined()
+      expect(Object.hasOwn(rejection!, 'actual')).toBe(false)
+      expect(Object.hasOwn(rejection!, 'expected')).toBe(false)
+      expect((rejection as Error).stack).not.toContain(privateText)
+    })
+  }
+}
+
 test('memory proof requires the current no-output request identity', () => {
   for (const output of [null, true, 'false']) {
     const fixture = memoryProofFixture('root')
@@ -813,7 +880,7 @@ const memoryProofStageFailures: readonly [
     },
   ],
   [
-    'command-result',
+    'command-stderr',
     (fixture) => {
       fixture.command.stderr = 'unrecognized private text'
     },

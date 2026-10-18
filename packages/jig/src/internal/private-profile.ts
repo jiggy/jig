@@ -12,6 +12,7 @@ export type PrivateProfilePhase =
   | 'author-execution-settlement'
   | 'dependency-workspace-capture'
   | 'project-planning'
+  | 'project-evaluation-review'
   | 'installed-host-opening'
   | 'project-session-opening'
   | 'dependency-preparation'

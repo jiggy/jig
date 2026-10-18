@@ -7,6 +7,7 @@ import { normalizeProjectEvaluation, type ProjectEvaluation } from '../project/e
 import type { PrivateBunExecutionLayout } from './bun-execution-layout.js'
 import { preparePrivateBunPackage } from './bun-native-preparation.js'
 import { privateDomainDigest } from './identity.js'
+import { privateProfileSpan } from './private-profile.js'
 import {
   normalizePrivateProjectEvaluationCompiler,
   normalizePrivateProjectEvaluationRecipe,
@@ -53,7 +54,9 @@ export async function reviewPrivateProjectEvaluation(
       ),
     ) as Record<string, unknown>
   const recipe = normalizePrivateProjectEvaluationRecipe(await json(captured, 'evaluation.json'))
-  const prepared = await preparePrivateBunPackage({ ...input, mode: 'evaluation' })
+  const prepared = await privateProfileSpan('dependency-preparation', () =>
+    preparePrivateBunPackage({ ...input, mode: 'evaluation' }),
+  )
   try {
     const visited = new Set<string>()
     const configuration = async (path: string, depth: number): Promise<Record<string, unknown>> => {

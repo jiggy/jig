@@ -203,6 +203,7 @@ test('planning and native subphases remain bounded names understood by the insta
       'author-envelope-startup',
       'author-execution-settlement',
       'dependency-workspace-capture',
+      'project-evaluation-review',
       'finite-acp-revalidation',
       'finite-acp-containment',
       'finite-acp-launch',
@@ -378,7 +379,8 @@ test('foundation review failures retain real child profile phases without privat
         from ${JSON.stringify(module)};
       const destination = process.env.JIG_PRIVATE_PROFILE_FILE;
       privateProfileActivate();
-      await privateProfileSpan('author-support-verification', async () => 17);
+      await privateProfileSpan('project-evaluation-review', async () =>
+        privateProfileSpan('dependency-preparation', async () => 17));
       try {
         await privateProfileSpan('project-planning', async () => {
           throw new Error('private exception payload');
@@ -408,9 +410,20 @@ test('foundation review failures retain real child profile phases without privat
     expect(message).toContain('review phases: {"status":"captured"')
     const projection = JSON.parse(/review phases: (\{.*\}); see /.exec(message)![1]!)
     expect(projection.events).toEqual([
-      { phase: 'author-support-verification', kind: 'start', timeMs: expect.any(Number) },
+      { phase: 'project-evaluation-review', kind: 'start', timeMs: expect.any(Number) },
       {
-        phase: 'author-support-verification',
+        phase: 'dependency-preparation',
+        kind: 'start',
+        timeMs: expect.any(Number),
+      },
+      {
+        phase: 'dependency-preparation',
+        kind: 'end',
+        timeMs: expect.any(Number),
+        outcome: 'returned',
+      },
+      {
+        phase: 'project-evaluation-review',
         kind: 'end',
         timeMs: expect.any(Number),
         outcome: 'returned',

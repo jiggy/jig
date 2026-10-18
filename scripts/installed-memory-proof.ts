@@ -12,7 +12,12 @@ type MemoryProofStage =
   | 'enforcement-fence'
   | 'release'
   | 'terminal-record'
-  | 'command-result'
+  | 'command-json'
+  | 'command-terminal'
+  | 'parent-terminal'
+  | 'parent-receipt'
+  | 'command-exit'
+  | 'command-stderr'
 
 export function selectFreshInstalledRun(
   beforeRunIds: readonly string[],
@@ -394,8 +399,11 @@ function validateMemoryProof(
     terminal.status === 'succeeded'
       ? { status: 'succeeded', ...record(terminal.result), diagnostics }
       : terminal
-  setStage('command-result')
-  assert.deepEqual(JSON.parse(command.stdout), publicTerminal)
+  setStage('command-json')
+  const commandTerminal: unknown = JSON.parse(command.stdout)
+  setStage('command-terminal')
+  assert.deepEqual(commandTerminal, publicTerminal)
+  setStage('parent-terminal')
   let terminalShape: 'parent-succeeded' | 'parent-sigkill'
   if (terminal.status === 'succeeded') {
     exact(terminal, ['status', 'result', 'diagnostics'])
@@ -405,9 +413,12 @@ function validateMemoryProof(
     const output = record(result.output)
     exact(output, ['exitCode'])
     positive(output.exitCode)
+    setStage('parent-receipt')
     assert.equal(receipt.exitCode, 0)
     assert.equal(receipt.signal, null)
+    setStage('command-exit')
     assert.equal(command.exitCode, 0)
+    setStage('command-stderr')
     assert.equal(command.stderr, '')
     terminalShape = 'parent-succeeded'
   } else {
@@ -417,9 +428,12 @@ function validateMemoryProof(
       message: 'component exited with code null and signal SIGKILL',
       diagnostics,
     })
+    setStage('parent-receipt')
     assert.equal(receipt.exitCode, null)
     assert.equal(receipt.signal, 'SIGKILL')
+    setStage('command-exit')
     assert.equal(command.exitCode, 1)
+    setStage('command-stderr')
     const message =
       'The Flow could not complete execution.\n\nReported cause:\n  ' +
       '"component exited with code null and signal SIGKILL"\n\n' +

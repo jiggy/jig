@@ -44,7 +44,10 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 - Ordinary review commands enable the existing private profile in their own evidence directory.
   Failure summaries project at most forty existing review phase events and closed capture status.
   Read at most 256 KiB and 1026 records. Retain the final events when projection truncates.
-  Trace observation never replaces command failure. Evaluation preparation has no dedicated phase.
+  Trace observation never replaces command failure.
+
+  Evaluation review includes operand capture, preparation, normalization and disposal.
+  Its nested dependency phase observes only actual preparation.
 - Exact repeated exports reconcile their original delivery. Collision checks use
   a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic

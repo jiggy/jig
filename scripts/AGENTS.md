@@ -130,6 +130,8 @@ operational baselines, and public-site assembly.
   Logged evidence contains only Run and receipt
   digests, counters and settlement facts, never owner tokens. Proof rejections
   name only a closed validation stage and never render private values or causes.
+  Command checks distinguish JSON parsing, terminal equality, parent terminal
+  shape, receipt disposition, exit status and stderr without changing acceptance.
   Like the operational baseline, it always checks live residue.
   `finishOperationalBaseline` removes only successful fixtures. It retains
   failed private state and the bounded memory command transcript.

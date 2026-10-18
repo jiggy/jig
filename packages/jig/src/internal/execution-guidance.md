@@ -103,6 +103,9 @@ These links locate module rules. All selected domain requirements still apply.
 - `private-profile.ts` owns opt-in bounded phase-only diagnostics, written
   before shutdown. Partial spans are not completion or machine-crash durability
   evidence.
+  `project-evaluation-review` covers evaluation operand capture, reacquisition, review, normalization and disposal.
+  Its nested `dependency-preparation` span covers only the actual development dependency preparer.
+  Failed phases preserve original exceptions and cleanup precedence. Timings do not establish causes.
 
 - The configuration evaluator shares only finite review-envelope setup. Its
   trusted manager runs fresh declaration subprocesses sequentially. It enforces

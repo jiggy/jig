@@ -189,38 +189,40 @@ export async function retainOpenedPackageProject(
       policy: GrantPolicy,
     ): Promise<PrivateRetainedProjectEvaluation | undefined> => {
       if (policy.kind !== 'evaluation') return
-      const { kind: _, ...grant } = policy
-      const key = JSON.stringify(grant)
-      const existing = reviewedEvaluations.get(key)
-      if (existing !== undefined) return existing
-      if (options.reviewEvaluation === undefined)
-        invalid(
-          'PROJECT_EVALUATION_UNAVAILABLE',
-          'evaluation review requires locked dependency preparation',
+      return privateProfileSpan('project-evaluation-review', async () => {
+        const { kind: _, ...grant } = policy
+        const key = JSON.stringify(grant)
+        const existing = reviewedEvaluations.get(key)
+        if (existing !== undefined) return existing
+        if (options.reviewEvaluation === undefined)
+          invalid(
+            'PROJECT_EVALUATION_UNAVAILABLE',
+            'evaluation review requires locked dependency preparation',
+          )
+        const retained = await captureBoundAttachments(
+          root,
+          { recipe: grant.recipe },
+          options.storeRoot,
         )
-      const retained = await captureBoundAttachments(
-        root,
-        { recipe: grant.recipe },
-        options.storeRoot,
-      )
-      const captured = await captureStoredPackage(
-        options.storeRoot,
-        normalizePackageArtifactRef({
-          kind: 'flow-package/0',
-          digest: retained.recipe!.digest,
-        }),
-      )
-      try {
-        const reviewed = normalizePrivateRetainedProjectEvaluation(
-          await options.reviewEvaluation(grant, captured),
+        const captured = await captureStoredPackage(
+          options.storeRoot,
+          normalizePackageArtifactRef({
+            kind: 'flow-package/0',
+            digest: retained.recipe!.digest,
+          }),
         )
-        if (reviewed.recipe.digest !== captured.digest)
-          throw new TypeError('evaluation review did not retain its captured recipe')
-        reviewedEvaluations.set(key, reviewed)
-        return reviewed
-      } finally {
-        await captured.dispose()
-      }
+        try {
+          const reviewed = normalizePrivateRetainedProjectEvaluation(
+            await options.reviewEvaluation(grant, captured),
+          )
+          if (reviewed.recipe.digest !== captured.digest)
+            throw new TypeError('evaluation review did not retain its captured recipe')
+          reviewedEvaluations.set(key, reviewed)
+          return reviewed
+        } finally {
+          await captured.dispose()
+        }
+      })
     }
     const bindings: RetainedBindingDeclaration[] = []
     for (const [index, member] of bindingSource.members.entries()) {

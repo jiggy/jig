@@ -158,6 +158,7 @@ async function reviewPhaseSummary(path: string): Promise<string> {
     'installed-host-opening',
     'project-session-opening',
     'project-planning',
+    'project-evaluation-review',
     'author-configuration-evaluation',
     'author-support-verification',
     'author-envelope-startup',
