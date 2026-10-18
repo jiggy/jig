@@ -248,9 +248,11 @@ await handle(async run => {
     )
     await command([jig, 'review', '--yes'], project)
     const input = { values: [2, 3, 4], exact: ['😺', null], literal: '@previous' }
+    // Budget all four native decision turns and the code child before submission.
+    // Progress never renews this deadline or the command and case timeouts.
     const result = JSON.parse(
       await command(
-        [jig, 'run', 'binding:coordinator', '--input', JSON.stringify(input)],
+        [jig, 'run', 'binding:coordinator', '--timeout', '45s', '--input', JSON.stringify(input)],
         project,
         0,
         'installed Markdown channel composition',

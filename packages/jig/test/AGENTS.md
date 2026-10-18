@@ -222,6 +222,10 @@ The installed composition case uses a real Agent-contract decision task, code
 child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
 and template inputs without substituting a Run context.
 
+The composition requests 45 seconds before submission for its four native
+decision turns and code child. The command remains bounded at 60 seconds and
+the case at 120 seconds. Progress cannot renew any of these deadlines.
+
 Repair leaf proofs use separate successful and unsuccessful whole files. Each
 retains its original guardian observer, scenario body, fresh consumer and
 platform-specific timer. Neither shares admission, execution or cleanup with the
