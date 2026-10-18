@@ -669,7 +669,12 @@ async function runFoundationApplication(
   )
   try {
     database.exec('PRAGMA query_only = ON')
-    assert.deepEqual(database.query('SELECT count(*) AS n FROM root_child_owners').get(), { n: 0 })
+    const row = database
+      .query<{ readonly n: unknown }, []>('SELECT count(*) AS n FROM root_child_owners')
+      .get()
+    assert.ok(row)
+    assert.deepEqual(Object.keys(row), ['n'])
+    assert.equal(row.n, 0)
   } finally {
     database.close()
   }

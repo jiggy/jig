@@ -140,11 +140,15 @@ export default defineBinding({package:'flows/root',slots:{
   )
   try {
     db.exec('PRAGMA query_only = ON')
-    assert.deepEqual(
-      db.query('SELECT count(*) AS n FROM attempt_export_pins WHERE released = 0').get(),
-      { n: 0 },
-    )
-    assert.deepEqual(db.query('SELECT count(*) AS n FROM root_child_owners').get(), { n: 0 })
+    for (const query of [
+      'SELECT count(*) AS n FROM attempt_export_pins WHERE released = 0',
+      'SELECT count(*) AS n FROM root_child_owners',
+    ]) {
+      const row = db.query<{ readonly n: unknown }, []>(query).get()
+      assert.ok(row)
+      assert.deepEqual(Object.keys(row), ['n'])
+      assert.equal(row.n, 0)
+    }
   } finally {
     db.close()
   }

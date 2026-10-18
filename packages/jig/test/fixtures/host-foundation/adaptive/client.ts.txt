@@ -51,7 +51,7 @@ const output = retained.output as {
 }
 assert.equal(output.accepted, true)
 assert.equal(output.answer, 42)
-assert.deepEqual(output.independentCheck, { accepted: true, answer: 42, readonly: true })
+assert.deepEqual(JSON.parse(JSON.stringify(output.independentCheck)), { accepted: true, answer: 42, readonly: true })
 assert.deepEqual(output.cycles.map(c => c.cycle), [1, 2])
 assert.notEqual(output.cycles[0]!.evidence.candidateDigest, output.cycles[1]!.evidence.candidateDigest)
 for (const key of ['recipeDigest', 'dependencyDigest', 'environmentDigest'])
@@ -64,7 +64,7 @@ stage = 'export-selected'
 await client.export({ ticket: execution.prepared.ticket, destination: 'selected-evidence', artifactResult: 'evidence' })
 stage = 'verify-export'
 const packet = JSON.parse(await readFile('packet/result.json', 'utf8'))
-assert.deepEqual(packet.output, retained.output)
+assert.deepEqual(packet.output, JSON.parse(JSON.stringify(retained.output)))
 const generated = JSON.parse(await readFile('packet/files/evidence/generated/answer.json', 'utf8'))
 assert.deepEqual(generated, { answer: 42 })
 assert.equal((await readFile('packet/files/evidence/generated/marker.bin')).toString('hex'), '0080ff')

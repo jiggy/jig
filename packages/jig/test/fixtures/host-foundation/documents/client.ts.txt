@@ -112,7 +112,7 @@ try {
   assert.equal(completed?.cleanup, 'confirmed')
   stage = 'result'
   const result = await client.result({ ticket: prepared.ticket })
-  assert.deepEqual(result.output, { valid: true, readonly: true })
+  assert.deepEqual(JSON.parse(JSON.stringify(result.output)), { valid: true, readonly: true })
   assert.equal(result.observation.receipt?.runId, owner.receipt.runId)
   assert.deepEqual(result.artifactResults.map(a => [a.name, a.availability]),
     [['document', 'available']])
