@@ -262,6 +262,13 @@ These links locate module rules. All selected domain requirements still apply.
   Keep that socket open for cooperative cancellation and confirmed cleanup. Its
   closure remains the independent emergency scope fence.
 
+  Before readiness, an authenticated refusal handoff gives the outer coordinator
+  sole diagnostic ownership. It never acknowledges acquisition or grants execution.
+  Without that handoff the child retains its failure diagnostic. Preserve inherited
+  terminal streams rather than filtering or buffering stderr to remove duplicates.
+  Close every accepted startup connection before joining server shutdown, including
+  refused and incomplete peers. A stopped peer must not hold cleanup open.
+
 - The optional installed-startup diagnostic accepts only a private local trace
   destination. It activates after rootless-host acquisition, or directly for
   non-executing `attempt result` observation without host acquisition. Before

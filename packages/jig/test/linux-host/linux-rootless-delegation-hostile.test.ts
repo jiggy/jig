@@ -2,11 +2,15 @@ const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.m
 
 import { expect, test } from 'bun:test'
 import { randomBytes } from 'node:crypto'
-import { realpath, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import {
   acquireOrReexecutePrivateRootlessLinux,
   reexecutePrivateRootlessLinuxCommand,
 } from '../../src/internal/linux-rootless-delegation.js'
+import { settleTestCommand } from '../fixtures/bounded-command.js'
 
 interface AcknowledgedWitness {
   readonly delegatedCgroup: string
@@ -211,6 +215,24 @@ function pause(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds))
 }
 
+async function managerUnitNames(control: string): Promise<readonly string[]> {
+  const child = Bun.spawn(
+    [control, '--user', 'list-units', '--all', '--no-legend', '--plain', 'jig-*'],
+    { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+  )
+  const [code, stdout, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ])
+  expect(code, stderr).toBe(0)
+  return stdout
+    .split('\n')
+    .map((line) => line.trim().split(/\s+/)[0]!)
+    .filter((name) => name !== '')
+    .sort()
+}
+
 test('continues in the already delegated process without reexecution', async () => {
   const processId = process.pid
   const result = await acquireOrReexecutePrivateRootlessLinux()
@@ -218,6 +240,152 @@ test('continues in the already delegated process without reexecution', async () 
   expect(result.kind).toBe('private-rootless-linux-ready/1')
   expect(process.pid).toBe(processId)
 })
+test('authenticated startup refusal transfers diagnostics without acknowledging acquisition', async () => {
+  const manager = await fixedManager()
+  const control = await fixedControl()
+  const unit = `jig-${randomBytes(12).toString('hex')}.scope`
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-refusal-handoff-')))
+  const witness = join(root, 'observed.json')
+  const moduleUrl = new URL('../src/internal/linux-rootless-delegation.ts', suiteTestUrl).href
+  const script = [
+    `import {acquireOrReexecutePrivateRootlessLinux, privateRootlessLinuxDiagnosticOwnedByParent} from ${JSON.stringify(moduleUrl)};`,
+    "import {writeFile} from 'node:fs/promises';",
+    'try {',
+    '  await acquireOrReexecutePrivateRootlessLinux();',
+    '} catch (error) {',
+    `  await writeFile(${JSON.stringify(witness)}, JSON.stringify({`,
+    '    code: error.code, parentOwned: privateRootlessLinuxDiagnosticOwnedByParent(error),',
+    '  }), {mode: 0o600});',
+    '  process.exitCode = 2;',
+    '}',
+  ].join('\n')
+  try {
+    const failure = await reexecutePrivateRootlessLinuxCommand(
+      manager,
+      unit,
+      [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', script],
+      '/',
+      { ...process.env, JIG_BWRAP_PATH: join(root, 'missing-bubblewrap') },
+      2_000,
+      5_000,
+    ).then(
+      () => undefined,
+      (error) => error,
+    )
+    expect(failure).toBeInstanceOf(Error)
+    expect(JSON.parse(await Bun.file(witness).text())).toEqual({
+      code: 'SANDBOX_UNAVAILABLE',
+      parentOwned: true,
+    })
+    await expectManagerUnitsAbsent(control, unit)
+  } finally {
+    await forceCollect(control, unit)
+    await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)
+test('collects a stopped refused startup peer without waiting for its socket', async () => {
+  const manager = await fixedManager()
+  const control = await fixedControl()
+  const unit = `jig-${randomBytes(12).toString('hex')}.scope`
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-held-startup-')))
+  const witness = join(root, 'observed.json')
+  const moduleUrl = new URL('../src/internal/linux-rootless-delegation.ts', suiteTestUrl).href
+  const peer = [
+    "import {connect} from 'node:net';",
+    "import {writeFileSync} from 'node:fs';",
+    "const socket = connect('\\0' + process.env.JIG_PRIVATE_ROOTLESS_READY_SOCKET);",
+    "socket.once('connect', () => socket.write(process.env.JIG_PRIVATE_ROOTLESS_READY_TOKEN + ':unavailable\\n'));",
+    "let input = '';",
+    "socket.on('data', (chunk) => {",
+    '  input += chunk;',
+    "  if (input === 'unavailable\\n') {",
+    `    writeFileSync(${JSON.stringify(witness)}, JSON.stringify({pid:process.pid}), {mode:0o600});`,
+    "    process.kill(process.pid, 'SIGSTOP');",
+    '  }',
+    '});',
+    "socket.on('error', () => {});",
+  ].join('\n')
+  const wrapper = [
+    `import {reexecutePrivateRootlessLinuxCommand} from ${JSON.stringify(moduleUrl)};`,
+    'try {',
+    `  await reexecutePrivateRootlessLinuxCommand(${JSON.stringify(manager)}, ${JSON.stringify(unit)},`,
+    `    ${JSON.stringify([process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', peer])},`,
+    "    '/', process.env, 2_000, 30_000);",
+    '  process.exitCode = 1;',
+    '} catch {',
+    "  console.log('startup refused');",
+    '}',
+  ].join('\n')
+  const child = Bun.spawn(
+    [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '-e', wrapper],
+    { cwd: '/', env: process.env, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
+  )
+  const settled = settleTestCommand(child, {
+    evidence: join(root, 'command'),
+    timeoutMs: 10_000,
+  }).then(
+    (value) => ({ value }),
+    (error: unknown) => ({ error }),
+  )
+  let passed = false
+  try {
+    const observation = (await waitForJsonFile(witness, 2_000)) as { pid: number }
+    expect(Object.keys(observation)).toEqual(['pid'])
+    expect(Number.isSafeInteger(observation.pid) && observation.pid > 0).toBeTrue()
+    expect(await readFile(`/proc/${observation.pid}/status`, 'utf8')).toMatch(/^State:\s+T\b/m)
+    const outcome = await settled
+    if ('error' in outcome) throw outcome.error
+    const result = outcome.value
+    expect(result.code, result.stderr).toBe(0)
+    expect(child.signalCode).toBeNull()
+    expect(result.stdout).toBe('startup refused\n')
+    await expectProcessAbsent(observation.pid, 2_000)
+    await expectManagerUnitsAbsent(control, unit)
+    passed = true
+  } finally {
+    try {
+      await forceCollect(control, unit)
+    } finally {
+      if (child.exitCode === null) child.kill('SIGKILL')
+      await settled
+      if (passed) await rm(root, { recursive: true, force: true })
+    }
+  }
+}, 30_000)
+test('installed acquisition refusal has one diagnostic owner and no retained scope', async () => {
+  const control = await fixedControl()
+  const before = await managerUnitNames(control)
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-startup-refusal-')))
+  let passed = false
+  try {
+    const selectedPath = join(root, 'PRIVATE_MISSING_BUBBLEWRAP')
+    const child = Bun.spawn(
+      [fileURLToPath(new URL('../bin/jig', suiteTestUrl)), 'review', '--yes'],
+      {
+        cwd: root,
+        env: { ...process.env, JIG_BWRAP_PATH: selectedPath },
+        stdin: 'ignore',
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const result = await settleTestCommand(child, {
+      evidence: join(root, 'command'),
+      timeoutMs: 15_000,
+    })
+    expect(result.code, result.stderr).toBe(2)
+    expect(child.signalCode).toBeNull()
+    expect(result.stdout).toBe('')
+    expect(result.stderr.match(/Diagnostic code: SANDBOX_UNAVAILABLE/g)).toHaveLength(1)
+    expect(result.stderr).toContain('JIG_BWRAP_PATH')
+    expect(result.stderr).not.toContain(selectedPath)
+    await expect(stat(join(root, '.jig'))).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await managerUnitNames(control)).toEqual(before)
+    passed = true
+  } finally {
+    if (passed) await rm(root, { recursive: true, force: true })
+  }
+}, 30_000)
 test('prepares and collects one real transient delegated user scope', async () => {
   const manager = await fixedManager()
   const unit = `jig-${randomBytes(12).toString('hex')}.scope`

@@ -28,6 +28,15 @@ Bun records the dependency in `flows/escape/package.json` and writes its lock.
 Keep both files with the Flow. Runtime imports belong in `dependencies`.
 Development-only tools belong in `devDependencies`.
 
+Declare every runtime library in the Flow that imports it, including
+`@jigging/flow`. Installing the SDK only at the application root does not
+declare it for a nested Flow. Jig prepares the Flow's declared dependency
+closure, not the application's ambient `node_modules`.
+
+The application manifest separately declares dependencies used by `jig.ts`
+and its `npm:` Flow targets. A library import and an invocation slot are
+different dependencies.
+
 If `jig.ts` uses explicit membership, add `flows/escape` to its `flows` list.
 
 ### 2. Use the library
@@ -68,6 +77,7 @@ change the code or dependencies.
 | No authored lock exists | Decide whether to permit fresh resolution for this review. Read the network conditions below. |
 | The supplied lock is stale or invalid | Update it with Bun. Review again. Jig does not repair it implicitly. |
 | `PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED` | Use a [supported lock format](#lock-formats). Changing dependency sources cannot fix the format. |
+| `PACKAGE_BUN_MANIFEST_SOURCE` | Replace unsupported sources with default-registry versions or [declared workspace members](#local-workspace-packages). A `file:` archive is not supported. |
 | A workspace member or build output is missing | Correct the declaration or build the library. Jig does not fall back to npm. |
 | The prepared tree exceeds its limit | Inspect the reported manifest and runtime dependencies. Jig does not silently omit dependencies. |
 | Approved bytes are missing or corrupt | Preserve the reported evidence. Jig refuses instead of resolving packages again. |
@@ -88,8 +98,9 @@ approves execution only.
 
 `--yes` does not grant resolution permission.
 
-Only supported default-registry dependencies are accepted. Git, file, tarball,
-and custom-registry dependencies remain unsupported. Known unsupported root
+External dependencies must use the supported default registry.
+Declared local workspaces use the [workspace path below](#local-workspace-packages).
+Git, file, tarball, and custom-registry dependencies remain unsupported. Known unsupported root
 declarations fail before resolution. Transitive declarations may fail after
 requests.
 
@@ -103,8 +114,8 @@ It is not the generated dependency lock.
 
 ## Lock formats
 
-Prefer an authored lock when sharing dependencies across machines. To create one
-without a local installation tree:
+Prefer an authored lock when sharing dependencies across machines.
+Generate the text lock:
 
 ```sh
 bun install --lockfile-only
@@ -148,6 +159,43 @@ Root `name` or `version` edits do not make a lock stale. Bun does not reliably
 retain that metadata. Jig still checks dependency selections and member metadata.
 Root manifest changes still require review.
 
+### Consuming a frozen candidate
+
+Use the candidate's exact published dependency versions in each importing Flow.
+A moving `@alpha` tag does not identify frozen bytes.
+Generate a supported lock to retain the resolved registry versions and integrity.
+
+Installing an SDK archive at the application root does not supply a nested
+Flow's execution dependencies. Declaring that archive as a Flow-local `file:`
+dependency is also unsupported. For an unpublished candidate, use a declared
+workspace with the package's exported files present before review.
+
+A complete built package archive can instead supply an ordinary workspace
+member. Extract the whole archive unchanged into that member:
+
+```sh
+mkdir -p packages/flow-sdk
+tar -xzf /absolute/path/to/flow-candidate.tgz --strip-components=1 -C packages/flow-sdk
+```
+
+Declare both the importing Flow and extracted library in the workspace root:
+
+```json
+{ "private": true, "workspaces": ["flows/*", "packages/*"] }
+```
+
+Declare the SDK in the importing Flow's `package.json`:
+
+```json
+{ "dependencies": { "@jigging/flow": "workspace:*" } }
+```
+
+Keep the archive's manifest, exports, and files unchanged.
+Follow the [workspace steps below](#local-workspace-packages) to install and review.
+This consumes extracted regular files through workspace capture, not an archive
+dependency. Private TypeScript sources are not required when exported files
+already exist.
+
 ## Local workspace packages
 
 Use ordinary Bun workspaces to share a library before publishing it. Declare the
@@ -164,7 +212,7 @@ Declare the dependency in the Flow:
 ```
 
 1. Run `bun install` at the workspace root.
-2. Build libraries whose exports point to generated files.
+2. If exported generated files are missing, build those libraries before review.
 3. Run `jig review` from the Jig application.
 
 No publication, copied library, or separate Flow installation is needed. An
@@ -192,7 +240,7 @@ installer inputs and preparation support still match.
 
 It is never shared between Jig projects.
 
-Build exported files before review. Missing members or outputs fail without
+Ensure exported files exist before review. Missing members or outputs fail without
 registry fallback. Members need unique names and safe relative paths. Root
 `patchedDependencies` supports exact versions and bounded root-relative `.patch`
 files.

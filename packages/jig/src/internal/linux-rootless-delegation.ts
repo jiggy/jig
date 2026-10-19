@@ -50,6 +50,13 @@ const CONTROL_OUTPUT_BYTES = 16 * 1024
 const COLLECTION_TIMEOUT_MS = 2_000
 const MAX_MOVE_ROUNDS = 32
 const BUN_POLICY = Object.freeze(['--no-env-file', '--no-install', '--config=/dev/null'] as const)
+const UNAVAILABLE_FRAME = 'unavailable\n'
+const parentOwnedDiagnostics = new WeakSet<PrivateRootlessLinuxAcquisitionError>()
+
+/** Only an authenticated refusal handoff transfers diagnostic ownership. */
+export function privateRootlessLinuxDiagnosticOwnedByParent(error: unknown): boolean {
+  return error instanceof PrivateRootlessLinuxAcquisitionError && parentOwnedDiagnostics.has(error)
+}
 
 interface PrivateFileInformation {
   readonly uid: number
@@ -150,14 +157,20 @@ export async function acquireOrReexecutePrivateRootlessLinux(
     const environment = dependencies.environment()
     const marker = parseMarker(environment)
     if (marker !== undefined) {
-      await dependencies.prepareScope(marker.unit)
-      const observation = await dependencies.acquire()
-      requirePreparedObservation(observation, marker.unit)
-      await dependencies.acknowledgeReady(marker, observation.delegatedCgroup)
-      delete environment[SCOPE_VARIABLE]
-      delete environment[SOCKET_VARIABLE]
-      delete environment[TOKEN_VARIABLE]
-      return ready(observation)
+      try {
+        await dependencies.prepareScope(marker.unit)
+        const observation = await dependencies.acquire()
+        requirePreparedObservation(observation, marker.unit)
+        await dependencies.acknowledgeReady(marker, observation.delegatedCgroup)
+        delete environment[SCOPE_VARIABLE]
+        delete environment[SOCKET_VARIABLE]
+        delete environment[TOKEN_VARIABLE]
+        return ready(observation)
+      } catch {
+        const refusal = new PrivateRootlessLinuxAcquisitionError()
+        if (await reportUnavailableToParent(marker)) parentOwnedDiagnostics.add(refusal)
+        throw refusal
+      }
     }
 
     const managerPath = await dependencies.resolveManager()
@@ -179,7 +192,8 @@ export async function acquireOrReexecutePrivateRootlessLinux(
       commandLifetimeMs,
       input.signal,
     )
-  } catch {
+  } catch (error) {
+    if (privateRootlessLinuxDiagnosticOwnedByParent(error)) throw error
     throw new PrivateRootlessLinuxAcquisitionError()
   }
 }
@@ -818,6 +832,7 @@ function readinessServer(
   let lifetimeSettled = false
   let lifetimeSocket: Socket | undefined
   let interruptionRequested = false
+  const sockets = new Set<Socket>()
   const acknowledged = new Promise<boolean>((resolve) => {
     resolveAcknowledged = resolve
   })
@@ -825,6 +840,7 @@ function readinessServer(
     resolveLifetimeEnded = resolve
   })
   const server = createServer((socket) => {
+    sockets.add(socket)
     let input = ''
     socket.setEncoding('utf8')
     socket.on('error', () => {
@@ -839,11 +855,16 @@ function readinessServer(
         resolveAcknowledged(true)
         socket.write('ready\n')
         if (interruptionRequested) socket.write('interrupt\n')
-      } else if (Buffer.byteLength(input) >= 65) {
+      } else if (input === `${token}:${UNAVAILABLE_FRAME}` && !settled) {
+        settled = true
+        resolveAcknowledged(false)
+        socket.end(UNAVAILABLE_FRAME)
+      } else if (Buffer.byteLength(input) >= Buffer.byteLength(`${token}:${UNAVAILABLE_FRAME}`)) {
         socket.destroy()
       }
     })
     socket.on('close', () => {
+      sockets.delete(socket)
       if (lifetimeSocket === socket && !lifetimeSettled) {
         lifetimeSettled = true
         resolveLifetimeEnded()
@@ -871,7 +892,7 @@ function readinessServer(
         settled = true
         resolveAcknowledged(false)
       }
-      lifetimeSocket?.destroy()
+      for (const socket of sockets) socket.destroy()
       if (!lifetimeSettled) {
         lifetimeSettled = true
         resolveLifetimeEnded()
@@ -882,6 +903,31 @@ function readinessServer(
 }
 
 const retainedLifetimeSockets = new Set<Socket>()
+
+async function reportUnavailableToParent(marker: DelegationMarker): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = connect(`\0${marker.socketPath}`)
+    let input = ''
+    let settled = false
+    const finish = (acknowledged: boolean): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      socket.destroy()
+      resolve(acknowledged)
+    }
+    const timeout = setTimeout(() => finish(false), READY_TIMEOUT_MS)
+    socket.setEncoding('utf8')
+    socket.once('connect', () => socket.write(`${marker.token}:${UNAVAILABLE_FRAME}`))
+    socket.on('data', (chunk) => {
+      input += chunk
+      if (input === UNAVAILABLE_FRAME) finish(true)
+      else if (Buffer.byteLength(input) >= Buffer.byteLength(UNAVAILABLE_FRAME)) finish(false)
+    })
+    socket.once('error', () => finish(false))
+    socket.once('close', () => finish(false))
+  })
+}
 
 async function acknowledgeReady(marker: DelegationMarker, delegatedCgroup: string): Promise<void> {
   await new Promise<void>((resolve, reject) => {

@@ -145,6 +145,13 @@ genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
 Native fixtures use the official installed supervisor bundle and runtime mounts.
 `linux/linux-rootless-run.test.ts` executes the relocated bundle without adjacent
 source modules. This proves import closure, not delegated containment.
+
+`linux-host/linux-rootless-delegation-hostile.test.ts` also invokes the installed
+CLI with an actually missing Bubblewrap selection. It requires one public refusal,
+no project-state creation and unchanged scope/timer inventory.
+Its real scoped peer separately observes authenticated refusal ownership while
+the outer owner still rejects acquisition and collects the exact manager units.
+
 `portable/bun-resolution-worker.test.ts` checks ordinary acquisition refusals
 through the unmodified worker, not a replacement registry argument.
 

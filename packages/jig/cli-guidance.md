@@ -138,6 +138,10 @@ All selected domain requirements still apply.
   Launcher failures follow the same structure. Never introduce a separate raw
   diagnostic style or route machine output through styling. Shell completion
   must work with macOS's system Bash 3.2 without installing another shell.
+
+  Authenticated Linux startup refusals are explained once by their outer owner.
+  Sandbox guidance names absolute `JIG_BWRAP_PATH` selection when ordinary host
+  locations do not contain Bubblewrap, without guessing which prerequisite failed.
   Collect replies with portable array/read operations. Major terminal sections
   need visible boundaries. Secondary metadata uses gray while consent, policy
   values, and recovery actions remain prominent.

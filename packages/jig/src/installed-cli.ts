@@ -30,7 +30,10 @@ import {
   privateInstalledEnvironmentCheck,
 } from './internal/installed-bun-host.js'
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
-import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
+import {
+  acquireOrReexecutePrivateRootlessLinux,
+  privateRootlessLinuxDiagnosticOwnedByParent,
+} from './internal/linux-rootless-delegation.js'
 import {
   privateProfileActivate,
   privateProfileFinish,
@@ -379,11 +382,12 @@ async function runWithEnvironment(
       delivery?.close()
     }
   } catch (error) {
+    if (privateRootlessLinuxDiagnosticOwnedByParent(error)) return exit(2)
     if (error instanceof PrivateRootlessLinuxAcquisitionError) {
       process.stderr.write(
         privateCliStderrDiagnostic(
           'SANDBOX_UNAVAILABLE',
-          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nNext step: https://jig.md/guide/#supported-host',
+          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nIf Bubblewrap is outside the normal host-tool locations, set JIG_BWRAP_PATH to its absolute executable path; adding it to PATH alone does not select it.\nNext step: https://jig.md/guide/#supported-host',
         ),
       )
     } else {
