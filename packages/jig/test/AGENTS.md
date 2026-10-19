@@ -320,6 +320,13 @@ JSON:
 
 ## HTTP readonly qualification
 
+The packed HTTP Agent coordinator-loss barrier projects existing coordinator
+stderr only on failure. Emit closed phase, error-class and code allowlists,
+collection status and finite counts, never raw stderr or request contents.
+Limit input to 16 KiB, eight records, and eight causes per record.
+Projection failures preserve the assertion. Process teardown preserves both errors.
+Portable parser cases prove redaction and bounds, not native execution.
+
 The actual contained-effect fixture captures the generated HTTP intent, proves
 file-only Mac lowering and unchanged Linux lowering, and retains
 failure/cancellation cleanup and diagnostic privacy. Native scope tests require

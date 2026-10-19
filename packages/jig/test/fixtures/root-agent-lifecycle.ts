@@ -37,6 +37,79 @@ const HOSTILE =
   (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
 const OPENROUTER_RESPONSES_TEST_BASE_URL = 'https://openrouter.ai/api/v1'
 
+/** Inert stderr projection, not execution or cleanup evidence. */
+export function httpCoordinatorFailureEvidence(stderr: string) {
+  if (Buffer.byteLength(stderr) > 16 * 1024) return []
+  const phases = new Set([
+    'planning',
+    'materialization',
+    'support',
+    'projection',
+    'sealing',
+    'channels',
+    'admission',
+    'protocol',
+    'child-settlement',
+    'fence',
+    'settlement',
+    'child-flow-allocation',
+    'child-flow-preparation',
+    'child-flow-sealing',
+    'child-flow-admission',
+    'child-flow-protocol',
+    'child-flow-settlement',
+    'child-flow-cleanup',
+  ])
+  for (const prefix of ['contained-effect', 'child-contained-effect']) {
+    for (const phase of [
+      'preparation',
+      'sealing',
+      'admission',
+      'collection',
+      'settlement',
+      'cleanup',
+    ])
+      phases.add(`${prefix}-${phase}`)
+  }
+  const names = new Set(['Error', 'AggregateError', 'TypeError', 'RangeError'])
+  const codes = new Set([
+    'RESOURCE_EXHAUSTED',
+    'DEADLINE_EXCEEDED',
+    'CANCELLED',
+    'MACOS_CONTROL_DEADLINE',
+    'MACOS_GUARDIAN_BOOTSTRAP',
+    'MACOS_GUARDIAN_CONNECTION_LOST',
+    'MACOS_GUARDIAN_BEFORE_READINESS',
+    'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED',
+    'MACOS_GUARDIAN_JOB_PRESENT',
+    'MACOS_STARTUP_CANCELLED',
+    'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE',
+    'NATIVE_OUTPUT_LOST_DURING_CLEANUP',
+    'NATIVE_OUTPUT_NOT_CAPTURED',
+    'OUTPUT_CAPTURE_DEADLINE',
+  ])
+  const failures: { phase: string; causes: string[] }[] = []
+  for (const line of stderr.split('\n')) {
+    const prefix = 'agent-coordinator-root-execution-failure '
+    if (!line.startsWith(prefix) || failures.length >= 8) continue
+    try {
+      const value = JSON.parse(line.slice(prefix.length))
+      if (!phases.has(value?.phase) || !Array.isArray(value.causes)) continue
+      const causes: string[] = []
+      for (const cause of value.causes.slice(0, 8)) {
+        if (typeof cause !== 'string') continue
+        const [name, code, extra] = cause.split(':')
+        if (!names.has(name) || extra !== undefined) continue
+        if (code === undefined || codes.has(code)) causes.push(cause)
+      }
+      failures.push({ phase: value.phase, causes })
+    } catch {
+      // Malformed or unrelated stderr is never diagnostic output.
+    }
+  }
+  return failures
+}
+
 export async function repairOutputCapture(
   ready: Extract<PrivateExecutionOutput, { kind: 'snapshot' }>['ready'],
 ) {

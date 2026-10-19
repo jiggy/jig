@@ -12,6 +12,7 @@ import { writeOrdinaryAgent } from '../fixtures/ordinary-agent.js'
 import {
   addBatchRepairFixture,
   agentMethodCallerProgram,
+  httpCoordinatorFailureEvidence,
   writeAgentMethodProject,
   writeProject,
   writeRepairWorkspace,
@@ -21,6 +22,52 @@ import {
 
 const testRoot = join(import.meta.dir, '..')
 const temporaryRoot = await realpath(tmpdir())
+
+test('projects only closed coordinator failure facts from inert stderr input', () => {
+  const prefix = 'agent-coordinator-root-execution-failure '
+  const record = (value: unknown) => prefix + JSON.stringify(value)
+  const secret = 'PRIVATE_TOKEN_PATH_RECEIPT_REQUEST'
+  const projected = httpCoordinatorFailureEvidence(
+    [
+      secret,
+      `${prefix}{`,
+      record({ phase: secret, causes: ['Error'] }),
+      record({ phase: 'protocol', causes: secret }),
+      record({
+        phase: 'admission',
+        causes: [
+          'Error:MACOS_GUARDIAN_BEFORE_READINESS',
+          'AggregateError',
+          `Error:${secret}`,
+          `${secret}:CANCELLED`,
+          'Error:CANCELLED:extra',
+          { message: secret },
+        ],
+        message: secret,
+        args: [secret],
+      }),
+      record({ phase: 'child-settlement', causes: ['TypeError', 'Error:DEADLINE_EXCEEDED'] }),
+    ].join('\n'),
+  )
+  expect(projected).toEqual([
+    { phase: 'admission', causes: ['Error:MACOS_GUARDIAN_BEFORE_READINESS', 'AggregateError'] },
+    { phase: 'child-settlement', causes: ['TypeError', 'Error:DEADLINE_EXCEEDED'] },
+  ])
+  expect(JSON.stringify(projected)).not.toContain(secret)
+  expect(httpCoordinatorFailureEvidence('')).toEqual([])
+  expect(
+    httpCoordinatorFailureEvidence(
+      record({ phase: 'protocol', causes: ['Error'], message: secret.repeat(1_000) }),
+    ),
+  ).toEqual([])
+  expect(
+    httpCoordinatorFailureEvidence(
+      Array.from({ length: 20 }, () =>
+        record({ phase: 'fence', causes: Array(20).fill('Error') }),
+      ).join('\n'),
+    ),
+  ).toEqual(Array.from({ length: 8 }, () => ({ phase: 'fence', causes: Array(8).fill('Error') })))
+})
 
 test('contact-import variants are valid current FLOW packages', async () => {
   const root = await mkdtemp(join(temporaryRoot, 'jig-contact-packages-'))
