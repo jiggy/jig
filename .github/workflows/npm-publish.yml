@@ -1,6 +1,6 @@
 name: Publish npm prereleases
 run-name: Reconcile qualified npm prereleases
-"true":
+on:
   workflow_run:
     workflows:
       - CI
@@ -452,9 +452,6 @@ jobs:
     env:
       RELEASE_GROUP: host
       SOURCE_REVISION: ${{ needs.authorize.outputs.source_revision }}
-      FLOW_NEW: ${{ needs.publish_host.outputs.flow_new }}
-      FLOW_STATE: ${{ needs.publish_host.outputs.flow_state }}
-      FLOW_VERSION: ${{ needs.publish_host.outputs.flow_version }}
       GH_TOKEN: ${{ github.token }}
       JIG_NEW: ${{ needs.publish_host.outputs.jig_new }}
       JIG_STATE: ${{ needs.publish_host.outputs.jig_state }}

@@ -219,6 +219,8 @@ They consume frozen package exports with tracked test helpers and installed
 
 ## Verification
 
+- Workflow contract tests parse YAML 1.2 and check GitHub trigger keys and registry environments.
+
 - `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite
   discovery, exact PR merge state, independent input scope and failed or forged
   host-job results. Archive/API fixtures cover source/run/attempt/profile/digest

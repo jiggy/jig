@@ -10,7 +10,8 @@
     "packages/jig/test/fixtures/incident-brief/flows/*"
   ],
   "devDependencies": {
-    "@biomejs/biome": "2.5.12"
+    "@biomejs/biome": "2.5.12",
+    "yaml": "2.9.0"
   },
   "patchedDependencies": {
     "@agentclientprotocol/codex-acp@1.8.0": "packages/jig/patches/codex-acp@1.8.0.patch",
