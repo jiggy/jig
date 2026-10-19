@@ -32,10 +32,10 @@
     "LICENSE"
   ],
   "peerDependencies": {
-    "@jigging/flow": "0.1.0-alpha.14"
+    "@jigging/flow": "0.1.0-alpha.15"
   },
   "devDependencies": {
-    "@jigging/flow": "0.1.0-alpha.14",
+    "@jigging/flow": "0.1.0-alpha.15",
     "@types/node": "24.13.3",
     "typescript": "7.0.2"
   }

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "devDependencies": {
-    "@jigging/flow": "0.1.0-alpha.14",
+    "@jigging/flow": "0.1.0-alpha.15",
     "csv-parse": "6.1.0",
     "@jigging/reporting": "0.1.0-alpha.1"
   },
