@@ -759,7 +759,7 @@ order, and current evidence.
 | Why does this product exist? | [`product-compass.md`](product-compass.md) and its doctrine reading map |
 | What rules bind this edit? | Root and nearest applicable `AGENTS.md` files, plus this required engineering guide |
 | What can a user do now? | [`README.md`](../README.md) and public documentation under [`docs/`](../docs/) |
-| What does FLOW mean? | Normative material under [`docs/flow/spec/`](../docs/flow/spec/) |
+| What does FLOW mean? | Normative material in the [FLOW specifications](https://github.com/jiggy/flow/tree/main/docs/flow/spec) |
 | What does Jig currently promise? | [`docs/jig/`](../docs/jig/) and package READMEs |
 | What is the security boundary? | [`SECURITY.md`](../SECURITY.md) and the nearest implementation `AGENTS.md` |
 | How is a release built and published? | [`RELEASING.md`](../RELEASING.md), manifests, and [`.github/AGENTS.md`](../.github/AGENTS.md) |
