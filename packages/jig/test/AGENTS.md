@@ -108,6 +108,8 @@ delivered files must agree. Completed-Run/source-edit/re-review/new-generation
 execution remains independently required by the installed package dependency and
 full package-smoke consumers.
 
+The deterministic factory peer reads the final JSON line after the complete multiline repair instructions.
+
 Keep all three factory Runs and their existing limits, result, delivery,
 observation and cleanup assertions.
 

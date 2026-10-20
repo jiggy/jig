@@ -260,7 +260,7 @@ export async function qualifyInstalledSoftwareFactory(
       `import {handle} from '@jigging/flow';
 await handle(async run => {
  const instructions=run.input.instructions;
- const input=JSON.parse(instructions.slice(instructions.indexOf('\\n')+1));
+ const input=JSON.parse(instructions.slice(instructions.lastIndexOf('\\n')+1));
  const replacements=input.editPaths.map(path=>{
    let content=input.files[path];
    if(path==='src/parse.ts'&&content.includes('parseTime')) content=content.replace('if (hour > 23)','if (hour > 23 || minute > 59)');
