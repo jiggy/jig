@@ -18,6 +18,21 @@ import { privateMacosSandboxProfile } from '../../src/internal/macos-sandbox-pro
 const [launcher, payload, directory] = process.argv.slice(2) as [string, string, string]
 const phase = (value: string) =>
   appendFileSync(join(directory, 'phase'), `${value}\n`, { mode: 0o600 })
+const boundedCount = (value: number) => (Number.isSafeInteger(value) && value >= 0 ? value : null)
+const cleanupSample = () => {
+  try {
+    const sample = owner.sample()
+    const active =
+      sample.active >= 0n && sample.active <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(sample.active)
+        : null
+    const observedMembers = boundedCount(sample.observedMembers)
+    if (active === null || observedMembers === null) return { status: 'unavailable' }
+    return { status: 'available', active, observedMembers, complete: sample.complete }
+  } catch {
+    return { status: 'unavailable' }
+  }
+}
 phase('starting')
 const owner = acquirePrivateMacosCoalition()
 phase('coalition-acquired')
@@ -162,10 +177,29 @@ try {
       throw new Error('invalid payload result')
     // The raw launcher reports its entry's actual termination. This fixture
     // owns and fences any remaining coalition work after the deliberate crash.
-    if (mode === 'crash') owner.signalMembers('kill')
+    const signalCount = mode === 'crash' ? boundedCount(owner.signalMembers('kill')) : null
     const settledBy = performance.now() + 3000
+    const cleanupStart = mode === 'crash' ? cleanupSample() : undefined
     while (!owner.empty() && performance.now() < settledBy) await Bun.sleep(20)
-    if (!owner.empty()) throw new Error('launcher left descendants')
+    if (!owner.empty()) {
+      if (mode === 'crash') {
+        try {
+          console.error(
+            JSON.stringify({
+              phase: 'crash:cleanup-failed',
+              signalCount,
+              samples: [
+                { phase: 'cleanup-start', ...cleanupStart },
+                { phase: 'inner-deadline', ...cleanupSample() },
+              ],
+            }),
+          )
+        } catch {
+          // Diagnostics cannot replace the failed kernel-empty check.
+        }
+      }
+      throw new Error('launcher left descendants')
+    }
     phase(`${mode}:empty`)
   }
 } catch (error) {

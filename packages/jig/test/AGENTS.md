@@ -94,6 +94,11 @@ The native lifecycle suites own the resource's successful execution and fencing.
 `portable/execution-output.test.ts` uses actual descriptors and captured snapshots.
 Guardian collection and recovery need genuine native owners.
 
+`fixtures/macos-exec-owner.ts` preserves the actual SIGABRT and original kernel-empty settlement allowance.
+Its inner-crash failure projection contains at most two fixed-phase coalition samples and the original signal count.
+That projection contains only bounded active/member counts, completeness and unavailable status.
+It exposes no identities and supplies no fencing evidence.
+
 Portable presentation and delivery inspection cases check pure rendering, stored
 bytes and actual elapsed completion limits. They do not prove authenticated
 capture, retirement acknowledgements or native cleanup.
