@@ -12,7 +12,7 @@ case "$#" in
     fi
     ;;
   2)
-    if [[ "$1" == --shard && "$2" =~ ^[0-2]$ ]]; then mode=shard; shard=$2
+    if [[ "$1" == --shard && "$2" =~ ^[0-9]$ ]]; then mode=shard; shard=$2
     else echo 'Expected --shard followed by a selected architecture shard' >&2; exit 2
     fi
     ;;

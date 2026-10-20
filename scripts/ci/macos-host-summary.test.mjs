@@ -81,7 +81,7 @@ async function fixture(architecture, run) {
     }))
     const jobsPath = resolve(root, 'jobs.json')
     await writeFile(jobsPath, JSON.stringify(jobs))
-    const summarize = async () => {
+    const summarize = async (expectedShardCount = count) => {
       const output = resolve(root, 'summary.json')
       const result = spawnSync(
         'python3',
@@ -89,7 +89,7 @@ async function fixture(architecture, run) {
           'scripts/ci/macos-host-summary.py',
           architecture,
           revision,
-          String(count),
+          String(expectedShardCount),
           root,
           jobsPath,
           output,
@@ -129,12 +129,16 @@ test('summary projects the single complete validator and optional timings on bot
           (row) => row.timing.wait_seconds === 120 && row.timing.job_seconds === 600,
         ),
       )
+      result = await f.summarize(f.count - 1)
+      assert.equal(result.status, 1)
+      assert.equal(result.report.qualified, false)
       await writeFile(f.jobsPath, 'malformed optional timing')
       result = await f.summarize()
       assert.equal(result.status, 0, result.stderr)
       assert.equal(result.report.qualified, true)
       assert.equal(result.report.timing_available, false)
-      await rm(resolve(f.directories[0], 'shard-0.complete'))
+      const lastShard = f.count - 1
+      await rm(resolve(f.directories[lastShard], `shard-${lastShard}.complete`))
       result = await f.summarize()
       assert.equal(result.status, 1)
       assert.equal(result.report.qualified, false)

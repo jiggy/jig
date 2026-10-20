@@ -114,9 +114,10 @@ test('synthetic costs balance whole files and fixed overhead before prioritizing
   }
   const expected = {
     x64: [
-      { seconds: 140, files: [workspace, storage] },
-      { seconds: 132, files: [checkpoint, specialist, future] },
-      { seconds: 140, files: [factory, portable] },
+      { seconds: 92, files: [factory, future] },
+      { seconds: 100, files: [checkpoint, portable] },
+      { seconds: 110, files: [workspace, storage] },
+      { seconds: 110, files: [specialist] },
     ],
     arm64: [
       { seconds: 210, files: [checkpoint, factory, storage] },
@@ -232,10 +233,11 @@ test('the Mac group runner preserves the first child failure and starts no later
   }
 })
 
-test('both architecture plans cover identical work within five runner slots', async () => {
+test('four Intel and two Apple Silicon shards cover identical work', async () => {
   const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
   const plans = Object.keys(MAC_HOST_SHARDS).map((arch) => planMacHostTests(files, arch))
-  assert.equal(plans.flat().length, 5)
+  assert.deepEqual(MAC_HOST_SHARDS, { x64: 4, arm64: 2 })
+  assert.equal(plans.flat().length, 6)
   const membership = (plan) =>
     plan
       .flatMap((s) => s.groups)
@@ -251,7 +253,7 @@ test('both architecture plans cover identical work within five runner slots', as
   assert.throws(() => planMacHostTests(files))
   for (const args of [
     ['run', 'arm64', '2'],
-    ['run', 'x64', '3'],
+    ['run', 'x64', '4'],
     ['plan', 'x64'],
     ['run', 'ia32', '0'],
     ['run', '0'],

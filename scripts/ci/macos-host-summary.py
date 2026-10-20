@@ -22,7 +22,7 @@ def duration(start, end):
 def summarize(architecture, revision, count, evidence, jobs):
     if architecture not in ("x64", "arm64") or not re.fullmatch("[0-9a-f]{40}", revision):
         raise ValueError("invalid architecture or revision")
-    if type(count) is not int or count not in (2, 3):
+    if type(count) is not int or count <= 0:
         raise ValueError("invalid shard count")
     # One source-pinned validator owns every report, marker and command inventory.
     # This module only projects its validated facts and optional runner timing.

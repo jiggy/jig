@@ -81,7 +81,7 @@ jobs:
         include:
           -
             arch: "x64"
-            shard: 2
+            shard: 3
             installed: true
           -
             arch: "x64"
@@ -90,6 +90,10 @@ jobs:
           -
             arch: "x64"
             shard: 1
+            installed: false
+          -
+            arch: "x64"
+            shard: 2
             installed: false
           -
             arch: "arm64"
@@ -238,7 +242,7 @@ jobs:
         include:
           -
             arch: "x64"
-            count: 3
+            count: 4
           -
             arch: "arm64"
             count: 2
