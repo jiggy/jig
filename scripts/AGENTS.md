@@ -60,8 +60,9 @@ operational baselines, and public-site assembly.
   use exact versioned public artifacts from `jiggy/flow`, not local builds.
 
   A failed stage stops later execution and archive-success verification. It
-  includes the authored examples' deterministic application tests and the
-  external FLOW dependency boundary. It also checks the shared Agent method and
+  includes the authored examples' deterministic application tests, the private
+  conversation-handoff fixture, and the external FLOW dependency boundary.
+  It also checks the shared Agent method and
   ordinary ACP package. FLOW owns SDK, authoring, and conformance qualification.
   Refuse missing Python build/test tools before builds and long tests.
 

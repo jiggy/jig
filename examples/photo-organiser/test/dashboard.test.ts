@@ -32,8 +32,14 @@ test('the photo page follows work and leads with the visual result only after co
   expect(JSON.stringify(copying)).not.toContain('"kind":"artifact"')
   const ready = checked({ phase: 'ready', photos: [photo], plan: [planned] })
   expect(ready.sections[0]?.title).toBe('Before and after')
-  expect(JSON.stringify(ready)).toContain('overview/contact-sheet.svg')
+  expect(ready.sections[0]?.blocks[0]).toMatchObject({
+    references: [
+      { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+      { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
+    ],
+  })
   expect(JSON.stringify(ready)).toContain(planned.destination)
+  expect(JSON.stringify(ready)).toContain('"path":"lake-picnic/2026-06-14-p01.png"')
 })
 
 test('a later file failure retains the checked plan without declaring a finished collection', () => {

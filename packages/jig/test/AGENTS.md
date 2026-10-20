@@ -126,6 +126,11 @@ dispatch races, native session restoration or cleanup.
 with an ordinary deterministic assessment task. Pure support tests own policy
 and views, not dispatch or native cleanup.
 
+`host/installed-kitchen-roster.test.ts` checks the decomposed kitchen application
+with an ordinary deterministic proposal Flow. It requires real review, CSV
+artifact delivery, impossible-input refusal, unchanged inputs and native cleanup.
+Pure kitchen helpers and views do not qualify cancellation or exporter dispatch.
+
 Frozen Bun consumers bind the complete candidate closure through root
 `dependencies` and matching `overrides`. Peer edges must use those same archives.
 Do not reset caches or extend installation budgets to hide incomplete binding.

@@ -90,8 +90,8 @@ use-case and orchestration hypotheses.
   checks, reveals Jig's execution boundary, and ends at a first run with visible
   prerequisites.
 - `guide/contact-import.md` owns the introductory CSV preview walkthrough: code,
-  Agent and mixed mappers share one contract, and code validates the rows. Its
-  writable target receives a fresh temporary packet. `--out` retains it.
+  Agent and mixed mappers share one contract, and code validates the rows.
+  Its declared preview artifact receives a fresh temporary packet. `--out` retains it.
 
 - `guide/support-case.md` follows contact import with a useful policy decision.
   An Agent proposes a disputed charge. Code checks supplied account records. The

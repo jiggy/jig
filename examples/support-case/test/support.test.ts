@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test'
 import duplicate from '../fixtures/duplicate.json'
 import notDuplicate from '../fixtures/not-duplicate.json'
 import overLimit from '../fixtures/over-limit.json'
-import { type Account, decide } from '../flows/resolve/policy'
+import { type Account, decide } from '../flows/check-credit/policy'
 
 const proposal = { chargeId: 'ch-102', requestedCreditCents: 2400 }
 const account = () => structuredClone(duplicate.account) as Account

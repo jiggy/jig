@@ -135,6 +135,7 @@ export async function runInstalledPhotoProject(options: {
   const { directory, archives, reporting, qualification } = options
   const frozenDigests = await Promise.all([archives.jig, archives.flow, reporting].map(hash))
   const { project, command, cli } = await materializePhotoProject(directory, archives, reporting)
+  const sourceBefore = await tree(join(project, 'fixtures/photos'))
   const before = await foundationResidue(qualification, command, directory)
   await command(
     [cli, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
@@ -231,6 +232,7 @@ export async function runInstalledPhotoProject(options: {
       ),
     )
   }
+  assert.deepEqual(await tree(join(project, 'fixtures/photos')), sourceBefore)
   assert.equal(await hash(join(project, 'jig.lock')), lock)
   assert.deepEqual(
     (await readdir(join(project, '.jig/private-root-owners'))).filter((name) =>

@@ -1,19 +1,17 @@
 import { afterEach, expect, test } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  identity,
-  inspect,
-  readRepairInput,
-  unifiedPatch,
-  writeRepairDeliverables,
-} from '../flows/project/files.ts'
+import { checkRepair as inspect } from '../flows/check-repair/evidence.ts'
+import { identity } from '../flows/check-repair/identity.ts'
+import { patchFiles } from '../flows/export-patch/method.ts'
+import { unifiedPatch } from '../flows/export-patch/patch.ts'
+import { readProject as readRepairInput } from '../flows/read-project/capture.ts'
 import { digest } from '../flows/repair/policy.ts'
 import { input, repairResultData } from './fixture.ts'
 
 // Packet values are validator inputs, not evidence that execution occurred.
-// File capture and publication exercise actual temporary files.
+// File capture exercises actual temporary files. Patch export tests format data.
 const roots: string[] = []
 afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true })
@@ -48,22 +46,24 @@ test('single issues select reviewed acceptance data without sending the selector
     'Select a check set',
   )
 })
-test('accepted packet data produces complete files without overwriting an existing packet', async () => {
-  const root = await directory()
+test('accepted packet data produces complete review file contents', () => {
   const result = repairResultData()
-  await writeRepairDeliverables(root, input, result)
-  expect((await readdir(root)).sort()).toEqual([
+  const files = patchFiles({
+    issue: input.issue,
+    originals: input.files,
+    checked: inspect(input, result),
+  })
+  expect(Object.keys(files).sort()).toEqual([
     'goal.txt',
     'proposal-1.patch',
     'review.patch',
     'summary.txt',
   ])
-  expect(await readFile(join(root, 'goal.txt'), 'utf8')).toBe(`${input.issue}\n`)
-  const patch = await readFile(join(root, 'review.patch'), 'utf8')
+  expect(files['goal.txt']).toBe(`${input.issue}\n`)
+  const patch = files['review.patch']!
   expect(patch).toContain('--- a/src/parse.ts')
   expect(patch).toContain('--- a/src/report.ts')
   expect(patch).not.toContain('--- a/test/')
-  await expect(writeRepairDeliverables(root, input, result)).rejects.toThrow()
 })
 test('decoded packet data accepts null-prototype records and rejects changed verdicts', () => {
   const decoded = JSON.parse(JSON.stringify(repairResultData()), (_key, value) =>
@@ -75,16 +75,34 @@ test('decoded packet data accepts null-prototype records and rejects changed ver
   decoded.output.attempts[0].evaluation.acceptance[0].passed = false
   expect(() => inspect(input, decoded)).toThrow('contradicts collected command behavior')
 })
-test('unsuccessful packet data retains both proposals without a review patch', async () => {
-  const root = await directory()
-  await writeRepairDeliverables(root, input, repairResultData(false))
-  expect((await readdir(root)).sort()).toEqual([
+test('the checker rejects replacement commands and extra reviewed-command arguments in packet data', () => {
+  for (const [index, invocation] of [
+    [0, ['node', 'test', 'test/project.test.ts']],
+    [0, ['bun', 'test', 'unrelated.test.ts']],
+    [0, ['bun', 'test', 'test/project.test.ts', '--only']],
+    [0, ['bun', 'test']],
+    [1, ['node', 'src/cli.ts', ...input.cases[0]!.args]],
+    [1, ['bun', 'different-cli.ts', ...input.cases[0]!.args]],
+    [1, ['bun', 'src/cli.ts', ...input.cases[0]!.args, '--other']],
+  ] as const) {
+    const altered = structuredClone(repairResultData())
+    altered.output.attempts[0]!.evaluation.commands[index]!.invocation = [...invocation]
+    expect(() => inspect(input, altered)).toThrow('complete reviewed command')
+  }
+})
+test('unsuccessful packet data retains both proposals without a review patch', () => {
+  const files = patchFiles({
+    issue: input.issue,
+    originals: input.files,
+    checked: inspect(input, repairResultData(false)),
+  })
+  expect(Object.keys(files).sort()).toEqual([
     'goal.txt',
     'proposal-1.patch',
     'proposal-2.patch',
     'summary.txt',
   ])
-  expect(await readFile(join(root, 'summary.txt'), 'utf8')).toContain('unsuccessful')
+  expect(files['summary.txt']).toContain('unsuccessful')
 })
 test('pure inspection rejects contradicted checks or edited packet data', () => {
   for (const mutate of [
@@ -94,6 +112,8 @@ test('pure inspection rejects contradicted checks or edited packet data', () => 
     (v: any) => (v.output.attempts[0].proposal.replacements[0].path = 'test/project.test.ts'),
     (v: any) => (v.output.attempts[0].evaluation.commands[1].stdout.text = '{"passed":true}'),
     (v: any) => (v.output.attempts[0].evaluation.commands[1].stdinDigest = 'wrong'),
+    (v: any) => v.output.attempts[0].evaluation.commands[0].invocation.push('--filter'),
+    (v: any) => (v.output.attempts[0].evaluation.commands[1].invocation[1] = 'src/other.ts'),
     (v: any) => (v.output.attempts[0].evaluation.commands[1].stdout.truncated = true),
     (v: any) => (v.output.attempts = []),
   ]) {

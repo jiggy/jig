@@ -4,9 +4,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { RunResult } from '@jigging/flow'
 import { runMethod as convert } from '../flows/convert/method.ts'
-import { runMethod as importer, parseContacts } from '../flows/import/method.ts'
+import { exportPreview } from '../flows/export-preview/method.ts'
 import { runMethod as known } from '../flows/map-code/method.ts'
 import { runMethod as mixed } from '../flows/map-mixed/method.ts'
+import { parseContacts } from '../flows/read-contacts/csv.ts'
+import { readContacts } from '../flows/read-contacts/method.ts'
 
 const headers = ['Customer', 'Email address', 'Company']
 const mapping = { name: 0, email: 1, organization: 2 }
@@ -107,8 +109,8 @@ test('a structurally valid semantic error remains reviewable, not magically dete
   })
 })
 
-async function withImport(
-  work: (run: Parameters<typeof importer>[0], out: string) => Promise<void>,
+async function withContactFiles(
+  work: (run: Parameters<typeof readContacts>[0], out: string) => Promise<void>,
 ) {
   const root = await mkdtemp(join(tmpdir(), 'contact-import-'))
   try {
@@ -122,7 +124,7 @@ async function withImport(
         source: { access: 'read', path: join(root, 'source') },
         preview: { access: 'read-write', path: join(root, 'preview') },
       },
-    } as Parameters<typeof importer>[0]
+    } as Parameters<typeof readContacts>[0]
     await work(run, join(root, 'preview/preview.json'))
   } finally {
     await rm(root, { recursive: true, force: true })
@@ -139,10 +141,44 @@ test('all mapper implementations expose the same input and result contracts', as
     ).toEqual(expected)
 })
 
-test('invalid CSV fails before any child work', async () =>
-  withImport(async (run, out) => {
+test('the reader rejects invalid CSV without producing a preview', async () =>
+  withContactFiles(async (run, out) => {
     await writeFile(join(run.attachments.source!.path, 'contacts.csv'), await fixture('malformed'))
-    // No child capability exists in this context. Parsing must fail first.
-    await expect(importer(run)).rejects.toThrow('headings')
+    // Exercise the actual reader and filesystem, not a coordinator with fake calls.
+    await expect(readContacts(run)).rejects.toThrow('headings')
     expect(await Bun.file(out).exists()).toBe(false)
+  }))
+
+test('the reader captures the known CSV and leaves the source unchanged', async () =>
+  withContactFiles(async (run, out) => {
+    const before = await fixture('known')
+    const result = await readContacts(run)
+    expect(result.outcome).toBe('done')
+    expect(result.output).toEqual(parseContacts(bytes(before)))
+    expect(await Bun.file(join(run.attachments.source!.path, 'contacts.csv')).text()).toBe(before)
+    expect(await Bun.file(out).exists()).toBe(false)
+  }))
+
+test('the independent exporter writes the complete preview without overwriting files', async () =>
+  withContactFiles(async (run, out) => {
+    const converted = await convert({
+      input: { ...parseContacts(bytes(await fixture('known'))), mapping },
+      signal: signal(),
+    })
+    const exporter = {
+      input: converted.output,
+      signal: signal(),
+      attachments: { files: { access: 'read-write' as const, path: join(out, '..') } },
+    }
+    const result = await exportPreview(exporter)
+    expect(result.output).toMatchObject({
+      file: 'preview.json',
+      status: 'ready',
+      accepted: 2,
+      rejected: 1,
+    })
+    const saved = await Bun.file(out).text()
+    expect(JSON.parse(saved)).toEqual(converted.output)
+    await expect(exportPreview(exporter)).rejects.toThrow()
+    expect(await Bun.file(out).text()).toBe(saved)
   }))

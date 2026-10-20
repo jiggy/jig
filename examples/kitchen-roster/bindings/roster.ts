@@ -11,7 +11,7 @@ export default defineBinding({
     'check-roster': 'flow:flows/check-roster',
     'export-roster': {
       target: 'flow:flows/export-roster',
-      attachments: { files: { into: 'files', directory: 'schedule' } },
+      attachments: { files: { create: true } },
     },
   },
 })

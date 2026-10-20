@@ -7,7 +7,7 @@
     "./route": "./route.ts"
   },
   "dependencies": {
-    "@jigging/agent-method": "0.1.0-alpha.8",
+    "@jigging/agent-method": "0.1.0-alpha.9",
     "@jigging/flow": "0.1.0-alpha.15",
     "@jigging/reporting": "0.1.0-alpha.1"
   }

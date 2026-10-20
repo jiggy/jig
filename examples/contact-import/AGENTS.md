@@ -10,8 +10,8 @@ or both, then using ordinary code to produce a contact preview.
 - `flows/import` owns the short coordinator and one typed Contact preview page.
 - `flows/read-contacts` owns bounded CSV capture and parsing with read-only source.
 - `flows/export-preview` writes supplied preview JSON into its own output
-  attachment. The coordinator checks metadata before exposing
-  `contacts/preview.json`.
+  attachment. The coordinator checks metadata, then forwards the immutable
+  files artifact as `artifactResults.preview`, delivered at `files/preview/preview.json`.
 - `flows/map-code`, `map-agent`, and `map-mixed` implement the mapping contract.
 - `flows/convert` owns mapping validity and row acceptance rules.
 - `bindings` selects methods. `fixtures` owns ordinary CSV inputs.
@@ -29,7 +29,7 @@ or both, then using ordinary code to produce a contact preview.
 - `jig.ts` owns the complete default invocation:
   `binding:code --input '{}' --attach source=fixtures/known --timeout 1m`.
   Ordinary `jig run` uses reviewed defaults and receives a fresh temporary
-  packet for its writable preview. The README explains temporary cleanup and
+  packet for its forwarded preview. The README explains temporary cleanup and
   optional retained `--out` destinations without overwrite behavior. Explicit
   targets bypass defaults. Display choices remain operator options.
 
@@ -68,8 +68,10 @@ or both, then using ordinary code to produce a contact preview.
 
 ## Work Guidance
 
-- Reader and exporter are composed through declared attachment maps. The root
-  writes no files. Exported data is a preview, never an import receipt.
+- The reader uses a fixed read mapping. The exporter uses reviewed
+  `files: { create: true }` mapping and explicit call creation. The root
+  declares the `preview` artifact result, not writable output, and writes no
+  files. Exported data is a preview, never an import receipt.
 - Retain recognizable malformed, unknown, ambiguous, and row-rejection cases.
 - Exercise composition through ordinary installed Runs. Never replace
   `RunContext.call`, channels or native ownership in application tests.

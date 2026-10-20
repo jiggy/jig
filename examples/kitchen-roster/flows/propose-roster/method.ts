@@ -45,6 +45,10 @@ export async function runMethod(
     },
   })
   run.signal.throwIfAborted()
+  return interpretProposal(response)
+}
+
+export function interpretProposal(response: RunResult): RunResult {
   if (!object(response.output)) {
     throw new TypeError('The Agent returned an invalid response.')
   }

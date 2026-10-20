@@ -1,4 +1,4 @@
-import { writeFile } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
@@ -52,9 +52,11 @@ export async function exportPatch(
     throw new TypeError('Supply a writable files attachment.')
   const data = run.input as unknown as ReviewData
   const files = patchFiles(data)
+  const review = join(destination.path, 'review')
+  await mkdir(review)
   for (const [name, text] of Object.entries(files)) {
     run.signal.throwIfAborted()
-    await writeFile(join(destination.path, name), text, { flag: 'wx' })
+    await writeFile(join(review, name), text, { flag: 'wx' })
   }
   run.signal.throwIfAborted()
   reporter?.view('patches', { title: 'Exported review files', landing: true }).update({
@@ -70,7 +72,7 @@ export async function exportPatch(
             columns: [{ key: 'file', label: 'File', type: 'reference' }],
             rows: Object.keys(files).map((name, index) => ({
               id: `file-${index}`,
-              cells: { file: { kind: 'artifact', attachment: 'files', path: name } },
+              cells: { file: { kind: 'artifact', attachment: 'files', path: `review/${name}` } },
             })),
             total: Object.keys(files).length,
           },

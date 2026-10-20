@@ -57,6 +57,10 @@ while application checks and operator authority control file effects.
   organiser attachment or copy/broker slot. Final names supply packet prefixes.
   Leaf paths and manifest rows stay relative to the leaf output. Independent
   file methods keep the same contracts when called as standalone root Flows.
+
+  Each call explicitly requests `files: {create: true}` and requires its returned
+  artifact grant. Dashboard references name `copies` or `overview` with leaf-relative
+  paths, never a root output folder.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary
   packet. Retained `--out` paths must be new.
 - TUI and web share the exact public reporting contract and artifact

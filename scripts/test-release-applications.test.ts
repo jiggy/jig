@@ -34,18 +34,19 @@ test('complete source applications install frozen candidates with a fresh Bun ca
     expect(result.error, `${result.stdout}\n${result.stderr}`).toBeUndefined()
     expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0)
     const output = `${result.stdout}\n${result.stderr}`
-    expect(output.match(/packages installed/g)?.length).toBe(6)
-    // The production normalizer verifies copied tests against exact source bytes.
-    const report = readFileSync(join(reports, 'source-applications.xml'), 'utf8')
-    for (const application of [
+    const applications = [
+      'kitchen-roster',
       'photo-organiser',
       'tested-patch',
       'software-factory',
       'support-case',
       'contact-import',
       'incident-brief',
-    ])
-      expect(report).toContain(`${application}/test/`)
+    ]
+    expect(output.match(/packages installed/g)?.length).toBe(applications.length)
+    // The production normalizer verifies copied tests against exact source bytes.
+    const report = readFileSync(join(reports, 'source-applications.xml'), 'utf8')
+    for (const application of applications) expect(report).toContain(`${application}/test/`)
   } finally {
     rmSync(temporary, { recursive: true, force: true })
   }

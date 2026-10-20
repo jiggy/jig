@@ -16,7 +16,8 @@ authored examples, not independent consumer evidence or promoted Starters.
   explains its procedure, `FLOW.ts` implements it, `FLOW.meta.json` owns
   optional metadata and slot declarations, and `FLOW.contract.json` owns
   invocation constraints.
-- Platform contracts remain owned by `docs/`, `packages/`, and `conformance/`.
+- Jig contracts remain owned by `docs/jig/` and `packages/`.
+  FLOW owns its specifications, SDKs and conformance in its independent repository.
 
 ## Local Contracts
 

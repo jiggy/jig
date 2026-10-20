@@ -162,9 +162,9 @@ no partial photo files. The full proposal must validate before any copies are
 written. No retry or silent fallback follows `blocked`, `limit`, uncertain dispatch
 or cancellation.
 
-The tests construct duplicate, missing and unknown ID proposals, and prove that
-invalid proposals create no files. Deterministic substitutes establish those
-checks, not live model quality or injection resistance.
+Pure tests reject duplicate, missing and unknown ID proposals. Independent file
+tests execute the actual methods and verify rejection before writes.
+These checks establish neither live model quality nor injection resistance.
 
 From the repository root after workspace setup:
 
@@ -172,9 +172,12 @@ From the repository root after workspace setup:
 bun test examples/photo-organiser/test
 ```
 
-The tests validate the emitted request with the same public Agent preparation
-used by ACP, then cover composed leaf calls, copied bytes, contact-sheet contents,
-invalid proposals, inconsistent child results, source validation, cancellation
-and ordinary reporting declarations. The test call seam models folder visibility
-with temporary folders; it does not prove native imports. Installed
-host execution and live Agent quality require separate evidence.
+The pure tests validate the response schema with public Agent preparation.
+They cover proposal and child-result acceptance, source validation and reporting
+projections. Independent file tests check copied bytes, contact-sheet contents,
+invalid assignments, cancellation and exclusive creation.
+
+The installed consumer in `packages/jig/test/host/installed-photo-organiser.test.ts`
+executes the unchanged application with frozen packages and a real caption-task
+Flow. It checks final packet paths, bytes, unchanged inputs and native ownership
+cleanup. That separate native check does not establish live Agent judgment.

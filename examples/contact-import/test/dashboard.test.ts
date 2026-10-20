@@ -50,7 +50,7 @@ test('the complete contact page bounds worst-case text and discloses omitted rec
       headers: ['\u0001'.repeat(80), 'Email', 'Organization'],
       records: 100,
       preview,
-      file: 'contacts/preview.json',
+      file: 'preview.json',
     }),
   )
   const accepted = item.sections[2].blocks[0]
@@ -61,7 +61,7 @@ test('the complete contact page bounds worst-case text and discloses omitted rec
   expect(rejected.total).toBe(100)
   expect(JSON.stringify(item)).toContain('[excerpt]')
   expect(item.sections[4].blocks[0].references).toEqual([
-    { kind: 'artifact', attachment: 'preview', path: 'contacts/preview.json' },
+    { kind: 'artifact', attachment: 'preview', path: 'preview.json' },
   ])
   expect(preview.accepted[0]!.contact.name.length).toBe(2048)
   checked(mappingView(['Name', 'Email', 'Organization'], 100, { outcome: 'done', output: preview }))

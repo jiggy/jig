@@ -5,9 +5,9 @@
     "limit": "The Agent stopped at its limit."
   },
   "attachments": {
-    "source": "read",
-    "deliverables": "read-write"
+    "source": "read"
   },
+  "artifactResults": ["deliverables"],
   "channels": {
     "progress": {
       "direction": "send",

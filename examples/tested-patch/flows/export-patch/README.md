@@ -7,5 +7,6 @@ review data reports acceptance. Return the exact produced filenames.
 
 The caller owns evidence acceptance: independently calling this exporter can
 format caller claims, but cannot prove that checks ran. The application first
-calls `check-repair` and imports this folder at `deliverables/review`. Exclusive
+calls `check-repair` and forwards the immutable output as `deliverables`.
+The exporter owns the `review/` subdirectory. Exclusive
 creation preserves existing files. This Flow never applies a patch or runs code.

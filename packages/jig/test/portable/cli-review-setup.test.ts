@@ -66,17 +66,41 @@ const blocked: PrivateAgentReadinessReport = {
 }
 
 test('omitted policy rows do not erase the primary refusal from rendering', () => {
-  const text = renderReviewAgentSetup(blocked, { details: false, retryCommand: 'jig review' })
-  expect(text).toContain('Pi is selected')
-  expect(text).toContain('bindings/model.ts')
-  expect(text).toContain('Any existing approval remains unchanged')
+  for (const details of [false, true]) {
+    const text = renderReviewAgentSetup(blocked, {
+      details,
+      retryCommand: 'jig review',
+      agentRetryCommands: {
+        codex: 'jig review --agent codex',
+        claude: 'jig review --agent claude',
+        pi: 'jig review --agent pi',
+      },
+    })
+    expect(text).toContain(details ? 'Pi is selected' : 'Pi executable not found')
+    expect(text).toContain('bindings/model.ts')
+    expect(text).toContain(
+      details ? 'Any existing approval remains unchanged' : 'Previous approval unchanged',
+    )
+    if (!details) {
+      expect(text).toContain('$ jig review --agent codex')
+      expect(text).toContain('login and readiness not checked')
+    }
+  }
 })
 
 test('non-ACP unavailability is not rendered as an ACP refusal', () => {
   expect(
     renderReviewAgentSetup(
       { ...blocked, selectedAcpUnavailable: false, primaryIssue: undefined, uncheckedResources: 1 },
-      { details: false, retryCommand: 'jig review' },
+      {
+        details: false,
+        retryCommand: 'jig review',
+        agentRetryCommands: {
+          codex: 'jig review --agent codex',
+          claude: 'jig review --agent claude',
+          pi: 'jig review --agent pi',
+        },
+      },
     ),
   ).toBe('')
 })

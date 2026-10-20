@@ -14,7 +14,7 @@ import {
   checkCopiedPhotos,
   checkProposal,
 } from '../flows/organise/plan.ts'
-import { photosView } from '../flows/organise/view.ts'
+import { photoBoxView } from '../flows/organise/view.ts'
 
 const fixtureFolder = join(import.meta.dir, '../fixtures/photos')
 const catalogue = readCatalogue(await Bun.file(join(fixtureFolder, 'photos.json')).json())
@@ -34,6 +34,10 @@ const proposal = {
   assignments: catalogue.map((photo) => ({ id: photo.id, event: fixtureEvent(photo.caption) })),
 }
 const plan = checkProposal(catalogue, proposal)
+const deliveredPlan = plan.map((photo) => ({
+  ...photo,
+  destination: `copies/${photo.destination}`,
+}))
 const firstAssignment = proposal.assignments[0]
 const secondPhoto = catalogue[1]
 if (firstAssignment === undefined || secondPhoto === undefined) {
@@ -168,8 +172,8 @@ test('source capture rejects a catalogue whose original is missing', async () =>
 
 test('all four pure view projections satisfy the public reporting schema', () => {
   for (const snapshot of [
-    photosView(),
-    photosView(plan, true),
+    photoBoxView({ phase: 'reading' }),
+    photoBoxView({ phase: 'ready', photos: catalogue, plan: deliveredPlan }),
     groupingView(12),
     groupingView(12, true),
     copiesView(),
@@ -179,12 +183,18 @@ test('all four pure view projections satisfy the public reporting schema', () =>
   ]) {
     validateReportingMessage({ kind: 'view', id: 'photos', title: 'Photos', ...snapshot })
   }
-  expect(photosView(plan, true).sections[0]?.blocks[1]).toMatchObject({
+  const completed = photoBoxView({ phase: 'ready', photos: catalogue, plan: deliveredPlan })
+  expect(completed.sections[0]?.blocks[0]).toMatchObject({
     references: [
       { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
       { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
     ],
   })
+  for (const photo of plan) {
+    expect(JSON.stringify(completed)).toContain(
+      JSON.stringify({ kind: 'artifact', attachment: 'copies', path: photo.destination }),
+    )
+  }
 })
 
 test('the private response schema passes the public Agent preparation validator', () => {

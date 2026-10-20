@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import cases from '../flows/project/logs-cases.json'
+import cases from '../flows/read-project/logs-cases.json'
 import { evaluate } from '../flows/repair/evidence.ts'
 import { candidate, digest, type RepairInput, sha256 } from '../flows/repair/policy.ts'
 import issue from '../issue.json'

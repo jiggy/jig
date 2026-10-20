@@ -51,7 +51,15 @@ export async function runInstalledContactProject(options: {
     120_000,
   )
   const project = join(directory, 'project')
-  for (const name of ['import', 'map-code', 'map-agent', 'map-mixed', 'convert'])
+  for (const name of [
+    'import',
+    'read-contacts',
+    'map-code',
+    'map-agent',
+    'map-mixed',
+    'convert',
+    'export-preview',
+  ])
     await cp(join(example, 'flows', name), join(project, 'flows', name), {
       recursive: true,
       filter: (source) => basename(source) !== 'node_modules',
@@ -181,18 +189,19 @@ await handle(async run => {
   assert.equal(result.output.rejected[0].record, 3)
   assert.equal(result.delivery.status, 'written')
   assert.equal(result.delivery.source, 'final')
-  // Native root output is flat beneath files/, not prefixed by its port name.
-  const preview = join(packet, 'files/preview.json')
+  // The coordinator forwards the exporter's immutable artifact under its result name.
+  const preview = join(packet, 'files/preview/preview.json')
   const previewBytes = await readFile(preview)
   assert.deepEqual(result.delivery.files, [
     {
-      path: 'preview.json',
+      path: 'preview/preview.json',
       bytes: previewBytes.length,
       digest: `sha256:${createHash('sha256').update(previewBytes).digest('hex')}`,
     },
   ])
   assert.deepEqual(JSON.parse(previewBytes.toString('utf8')), result.output)
-  assert.deepEqual(await readdir(join(packet, 'files')), ['preview.json'])
+  assert.deepEqual(await readdir(join(packet, 'files')), ['preview'])
+  assert.deepEqual(await readdir(join(packet, 'files/preview')), ['preview.json'])
   for (const method of ['map-agent', 'map-mixed'])
     for (const [headers, mapping] of [
       [['Organisation', 'Courriel', 'Nom complet'], { name: 2, email: 1, organization: 0 }],

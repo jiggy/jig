@@ -1,10 +1,12 @@
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { join } from 'node:path'
-import { tmpdir } from 'node:os'
-import { fileURLToPath } from 'node:url'
 import { spawn } from 'node:child_process'
+import { mkdtemp, open, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { PrivateDeliveryAuthorityRetirement } from '../../src/internal/delivery-inspection.js'
 import { privateImagePreviewProcess } from '../../src/internal/image-preview.js'
+import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 
 const fixture = fileURLToPath(
   new URL('../fixtures/image-preview-process-fixture.ts', import.meta.url),
@@ -158,3 +160,49 @@ test('decoder crashes and oversized replies settle as unavailable', async () => 
     ).toBeUndefined()
   }
 })
+
+test('a busy decoder settles before actual descriptor retirement under the existing inspection deadline', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-image-retirement-'))
+  const ready = join(root, 'ready.json')
+  const handle = await open(join(root, 'captured'), 'w+')
+  const abort = new AbortController()
+  const started = privatePresentationNow()
+  const deadline = started + 4000
+  const result = privateImagePreviewProcess(
+    fixture,
+    Buffer.from(JSON.stringify({ mode: 'wasm', ready })),
+    abort.signal,
+    started + 2000,
+  )
+  let settled = false
+  void result.then(
+    () => {
+      settled = true
+    },
+    () => {
+      settled = true
+    },
+  )
+  try {
+    const evidence = await waitForReady(ready)
+    expect(evidence.capped).toBeTrue()
+    expect(settled).toBeFalse()
+    const retirement = new PrivateDeliveryAuthorityRetirement(async () => {
+      await result
+      expect(() => process.kill(evidence.pid, 0)).toThrow()
+      await handle.close()
+    })
+    const closing = retirement.retire({ deadline })
+    expect(retirement.retire({ deadline })).toBe(closing)
+    await closing
+    expect(settled).toBeTrue()
+    await expect(handle.stat()).rejects.toMatchObject({ code: 'EBADF' })
+    expect(privatePresentationNow()).toBeLessThan(deadline)
+    await retirement.close()
+  } finally {
+    abort.abort()
+    await result
+    await handle.close()
+    await rm(root, { recursive: true, force: true })
+  }
+}, 8000)

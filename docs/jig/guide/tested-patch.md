@@ -32,11 +32,11 @@ jig run
 ```
 
 The entrypoint supplies `issue.json`, the read-only fixture and a five-minute deadline.
-Its writable deliverables receive a fresh packet directory in operating-system
+Its declared deliverable artifact receives a fresh packet directory in operating-system
 temporary storage, reported on stderr. Repeating `jig run` leaves earlier packets
-intact, but the operating system may clear temporary storage. Use
-`jig run --out ./repair-result` for a retained location that does not already
-exist; Jig never overwrites a packet. Open `result.json` in the reported destination.
+intact, but the operating system may clear temporary storage.
+Use `jig run --out ./repair-result` for a new retained location.
+Jig never overwrites a packet. Open `result.json` in the reported destination.
 
 The optional `updates` channel carries the semantic views; the independent `progress`
 channel retains closed phase records. Add `--receive progress` to observe the current
@@ -46,7 +46,7 @@ NDJSON. A phase message reports activity; the terminal record and command
 evidence establish the result. Progress is transient and does not preserve
 partial patches.
 
-Open `files/review/summary.txt` inside the reported destination. A `review.patch` appears beside it
+Open `files/deliverables/review/summary.txt` inside the reported destination. A `review.patch` appears beside it
 only when the repair passed the checks. The destination must be new and
 outside the selected source. Candidate commands do not install dependencies.
 
@@ -88,9 +88,9 @@ expectations never change to make the repair pass.
 
 The `read-project` Flow owns source capture and fixed case selection.
 `check-repair` independently validates returned command evidence and
-recomputes verdicts. `export-patch` formats that supplied review data into its
-own output folder, imported at `deliverables/review`. It never applies
-changes. The root page projects these results without repeating their policy.
+recomputes verdicts. `export-patch` formats that supplied review data below
+`review/` in its own output. The coordinator forwards the immutable artifact as `deliverables`.
+The exporter never applies changes. The root page projects these results without repeating their policy.
 
 Three different kinds of evidence appear in the result:
 
@@ -100,18 +100,18 @@ Three different kinds of evidence appear in the result:
 | Ordinary repository tests | Useful project checks, but candidate code can interfere with their runner. |
 | Independent application assertions | Whether captured CLI output and exit match unchanged expected behavior, without importing candidate code or trusting its pass flag. |
 
-The root checks the evidence against its captured files and acceptance cases,
-then constructs an applicable patch from the validated replacement text.
+The root calls the checker with its captured files and acceptance cases,
+then requests patch export from the validated replacement text.
 Passing a finite case set is not proof of general correctness.
 
 ## Read the result
 
 | File | Meaning |
 | --- | --- |
-| `files/review/goal.txt` | Complete original repair request, including any displayed excerpt. |
-| `files/review/review.patch` | A patch backed by reproduced failure and passing candidate checks. Still requires human review. |
-| `files/review/proposal-N.patch` | Each validated proposal, including unsuccessful attempts. |
-| `files/review/summary.txt` | Review-ready or unsuccessful, with the method's reason. |
+| `files/deliverables/review/goal.txt` | Complete original repair request, including any displayed excerpt. |
+| `files/deliverables/review/review.patch` | A patch backed by reproduced failure and passing candidate checks. Still requires human review. |
+| `files/deliverables/review/proposal-N.patch` | Each validated proposal, including unsuccessful attempts. |
+| `files/deliverables/review/summary.txt` | Review-ready or unsuccessful, with the method's reason. |
 | `result.json` | Host outcome, input identities, original and candidate evidence, and published file manifest. |
 
 Read the Flow's outcome, not just the CLI exit code: `done` means a passing

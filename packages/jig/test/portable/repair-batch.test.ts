@@ -2,8 +2,8 @@ import { expect, test } from 'bun:test'
 import { cp, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadChecks } from '../../../../examples/tested-patch/flows/project/checks.ts'
-import { readRepairInput } from '../../../../examples/tested-patch/flows/project/files.ts'
+import { readProject as readRepairInput } from '../../../../examples/tested-patch/flows/read-project/capture.ts'
+import { loadChecks } from '../../../../examples/tested-patch/flows/read-project/checks.ts'
 import { batchJobs, patchConflicts } from '../fixtures/repair-batch/flows/project/batch.ts'
 
 const job = {
