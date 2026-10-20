@@ -1,6 +1,8 @@
 import { flowSdkDirectory } from './../fixtures/flow-dependency'
 import { dirname as suiteDirname } from 'node:path'
+
 const suiteTestRoot = suiteDirname(import.meta.dir)
+
 import { describe, expect, test } from 'bun:test'
 import {
   lstat,
@@ -44,6 +46,7 @@ import { projectError as projectFailure } from '../../src/internal/project-sessi
 import { canonicalJson, JSON_1_LIMITS } from '../../src/json.js'
 import { EVALUATOR_HINTS } from '../../src/project/evaluator-diagnostics.js'
 import { createProject, type ProjectInitFileSystem } from '../../src/project-init.js'
+
 const cli = resolve(suiteTestRoot, '../src/cli.ts')
 function withoutPresentationControls(text: string): string {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: Permit only SGR styling and the progress renderer's exact line-clear prefix, not arbitrary ANSI.
@@ -2569,6 +2572,46 @@ describe('finite Jig project commands', () => {
     )
     expect(invocation.error).not.toContain('\u202e')
   })
+  for (const [label, lockPath, repair] of [
+    ['standalone', 'flows/worker/bun.lock', "--cwd 'flows/worker'"],
+    ['workspace', '../../bun.lock', "--cwd '../..'"],
+    ['root', 'bun.lock', "--cwd '.'"],
+    ['quoted', "flows/user's box/bun.lock", "--cwd 'flows/user'\\''s box'"],
+    ['terminal control', 'flows/box-\u202e/bun.lock', undefined],
+  ] as const) {
+    test(`stale dependency lock gives a safe repair command (${label})`, async () => {
+      const events: string[] = []
+      const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'private-token', {
+        code: 'PACKAGE_BUN_LOCK_STALE',
+        path: '../../packages/library/package.json',
+        pointer: '/version',
+        lockPath,
+      })
+      const invocation = commandInvocation(
+        fakeHost(fakeSession(events, { planFailure: failure }), events),
+      )
+      expect(
+        await main(['review', '--allow-resolution-network', '--yes'], invocation.options),
+      ).toBe(1)
+      expect(events).toEqual(['acquire:/project', 'plan:update', 'close'])
+      expect(invocation.error).toContain(
+        'The package declarations in package.json no longer match bun.lock.',
+      )
+      expect(invocation.error).toContain('Location: "../../packages/library/package.json"')
+      expect(invocation.error).toContain('Value: "/version"')
+      expect(invocation.error).toContain('Dependency lock: ')
+      expect(invocation.error).toContain('$ bun install --lockfile-only --ignore-scripts')
+      if (repair !== undefined) expect(invocation.error).toContain(repair)
+      else expect(invocation.error).toContain('Open the directory containing the supplied bun.lock')
+      expect(invocation.error).toContain(
+        'Inspect the updated bun.lock, then rerun your jig review command.',
+      )
+      expect(invocation.error).toContain(
+        '--allow-resolution-network permits resolving missing locks; it does not update a supplied lock.',
+      )
+      expect(invocation.error).not.toMatch(/private-token|\u202e/)
+    })
+  }
   for (const [suiteCaseIndex, suiteCaseValue] of [
     [
       'SCHEMA_INVALID',

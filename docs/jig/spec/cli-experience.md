@@ -121,25 +121,42 @@ workspace before hiding the cause and disclose clipping.
 
 ### Workspace navigation
 
-The explicit workspace groups host Execution, Activity and Delivered files separately
-from every attributed application view. Saved inspection has exactly one Recorded
-result, Captured files and Diagnostics destination, supplied by the recorded host
-adapter. Author-supplied names never select host navigation. A navigation rail is
-available at 150 columns and 24 rows; smaller layouts retain the current-view trail.
-`v` opens a grouped chooser that reveals the selected attributed destination within
-the viewport. Tab/Shift-Tab cycle the same destinations. View selection preserves
+The explicit workspace presents root-publisher application pages first.
+Inspector contains host Execution, Activity, Delivered files and attributed
+child views. Publisher identity, rather than an authored title, determines the
+group. A Flow invoked directly owns the root page even if it is also used as a
+child elsewhere.
+
+Saved inspection has exactly one Recorded result, Captured files and
+Diagnostics destination, supplied by the recorded host adapter.
+Author-supplied names never select host navigation. A navigation rail is
+available at 150 columns and 24 rows. Smaller layouts retain the current-view
+trail.
+
+`v` opens a grouped chooser that reveals the selected destination within the
+viewport. Tab/Shift-Tab cycle the same destinations. View selection preserves
 viewer-local filters, sorting and stable record identity.
 
-All valid block types are reachable in supplied order. Lists use dense rows and
-aligned declared columns, showing at most the first three fields; full expansion
-retains every supplied field. Automatic context requires at least 118 columns and
-24 rows and meaningful additional selected content: authored details, hidden fields,
-facts, remaining or clipped report text, captured content, or an observed call's
-known cause or strictly scoped related report. Generic lifecycle metadata alone
-never splits the Execution view. Local action feedback remains visible without
-opening a duplicate pane and without replacing sticky attention. Empty-detail
-requests explain that fact. Report clipping accounts for prefixes, display cells
-and encoded bytes; the complete retained source stays reachable through expansion.
+Application pages compose the supplied summary, sections, reports, facts and
+progress in order. Reports wrap and facts show their labels and values in
+place. Reading them does not require expanding an inspector record.
+Collections use aligned columns, showing as many declared fields as fit.
+Hidden fields and viewport overflow remain disclosed and every retained field
+stays reachable through expansion. Keyboard selection, filtering, sorting and
+typed references continue to work on the composed page.
+
+Inspection lists use dense rows with at most the first three fields. Automatic
+context requires at least 118 columns and 24 rows and meaningful additional
+selected content. On an application page it opens for selected collection rows
+or artifact evidence. Ordinary page blocks do not automatically allocate a
+second pane.
+
+Generic lifecycle metadata alone never splits the Execution view. Local action
+feedback remains visible without opening a duplicate pane and without
+replacing sticky attention. Empty-detail requests explain that fact. Report
+clipping accounts for prefixes, display cells and encoded bytes.
+
+The complete retained source stays reachable through expansion.
 
 Selection alone never navigates a record/call reference. A selected entry with
 exactly one distinct typed artifact reference, considering all cells and supplied
@@ -308,24 +325,39 @@ available in TUI/web. Final evidence remains independent of optional updates.
    selection is a shell preference available before project loading, not a
    `jig.ts` authoring or approval setting. Plain output ignores themes.
 4. **Readable failures.** Order the failure summary, relevant location, known
-   explanation/recovery, and diagnostic code. Codes support search and software;
-   they must not replace the explanation. Name known missing prerequisites.
+   explanation/recovery, and diagnostic code. Codes support search and
+   software. They must not replace the explanation. Name known missing
+   prerequisites.
+
    Unknown causes stay unknown, with a bounded diagnostic step rather than a
    guessed repair or raw exception. Explicitly identify absent diagnostic text
-   and an unretained cause; never direct users to inspect nonexistent evidence.
-   Show one failure explanation, retaining additional details without repeating
-   the raw status/code/message as a separate result block. Explain whether work started and whether
-   effects or cleanup are uncertain whenever that affects recovery.
-   Preserve value-free expected/received JSON type facts for schema type errors
-   across planning and execution boundaries. Never echo rejected values or
-   arbitrary worker messages to manufacture a more detailed cause.
-   Schema authoring failures identify the required FLOW Schema/0 root identifier
-   when `$schema` is missing or wrong. Invalid JSON, unsupported keywords,
-   references and exceeded limits give bounded corrections and the relevant
-   FLOW specification, without echoing rejected values or compiler exceptions.
-   Missing or invalid files in the installed Jig runtime have a closed
-   installation-repair explanation; raw paths and filesystem exceptions remain
-   private, and a later revalidation failure must not imply that no work started.
+   and an unretained cause. Never direct users to inspect nonexistent
+   evidence. Show one failure explanation, retaining additional details
+   without repeating the raw status/code/message as a separate result block.
+
+   Explain whether work started and whether effects or cleanup are uncertain
+   whenever that affects recovery. Preserve value-free expected/received JSON
+   type facts for schema type errors across planning and execution boundaries.
+   Never echo rejected values or arbitrary worker messages to manufacture a
+   more detailed cause. Schema authoring failures identify the required FLOW
+   Schema/0 root identifier when `$schema` is missing or wrong.
+
+   Invalid JSON, unsupported keywords, references and exceeded limits give
+   bounded corrections and the relevant FLOW specification, without echoing
+   rejected values or compiler exceptions. A stale dependency lock identifies
+   the mismatched manifest and field when known, and the authored lock
+   relative to the reviewed project. Give a shell-safe
+   `bun install --lockfile-only --ignore-scripts` command selecting the verified
+   lock directory. Explain where to run it. Direct the user to inspect the
+   changed lock before reviewing again. Unsafe terminal characters in the
+   directory require navigation guidance instead of a pasteable path.
+
+   Explain that `--allow-resolution-network` resolves missing locks and does
+   not update supplied locks. Never silently replace an authored lock. Missing
+   or invalid files in the installed Jig runtime have a closed
+   installation-repair explanation. Raw paths and filesystem exceptions remain
+   private, and a later revalidation failure must not imply that no work
+   started.
 5. **Useful next actions.** Successful setup and review identify the next
    supported action. Failures give a verified command, specific correction, or
    relevant documentation when available. Never invent commands or recommend
@@ -623,46 +655,57 @@ and unconfirmed cleanup retain their existing fatal behavior.
 Retain the authoritative typed qualification cause independently of bounded
 presentation. An incomplete, absent or saturated issue report cannot permit
 approval. Do not substitute a generic unavailable-target count for an ACP cause.
-State that an observed selected Agent prerequisite stopped project review, and
-that a ready code entrypoint does not bypass it. Do not claim that skipped or
-remaining checks completed. Prior admission remains unchanged and never bypasses
-current Run admission or environment checks. No Flow or model call starts.
-Review may already have prepared dependencies or written explicitly requested
-`--generate-contracts` outputs; it promises no new approval and no automatic ACP
-policy write, not that no other work occurred.
 
-The ordinary error presents, in order:
+State that the selected Agent prerequisite stopped project review. Detailed
+output explains that a ready code entrypoint does not bypass it. Do not claim
+that skipped or remaining checks completed. Prior admission remains unchanged
+and never bypasses current Run admission or environment checks. No Flow or model
+call starts.
 
-1. A concise title and known cause, retaining the existing diagnostic code and
-   unavailable-setup exit 2.
-2. The captured policy location, affected Binding/slot and effective selected
-   client. Inline policies identify the Binding; named policies identify their
-   JSON file and compactly list affected recipients. If a review argument supplied
-   the client, distinguish that origin from the source client.
-3. Passively detected alternatives only for executable-unavailable failures,
-   labelled as executable detection, not authentication, native qualification or
-   universal compatibility. Discovery executes no client and reads no secrets.
-4. Repair for the selected client's installation or rejected path override,
-   alongside conditional manual source changes or explicit review-client selection
-   for detected alternatives. An unusable explicit override is not proof of a
-   missing installation; identify the override name, never its value, when known.
-   Otherwise use honest override-or-PATH wording. Other setup causes receive their
-   own repair, and unknown/internal failures retain uncertainty and safe public
-   diagnostics. Mention model pins or retention only when present, preserve turn
-   limits and never rank clients or imply compatible retention.
-5. One shell-word-formatted retry command for the same project and explicitly
-   requested review options. Never add networking, `--yes` or
-   `--allow-authority-changes` to recovery advice. Commands retain a readable `$`
-   prefix/plain fallback; paths never become shell operators.
-6. No new approval, any existing approval unchanged, and no Flow started.
+Review may already have prepared dependencies or written outputs explicitly
+requested with `--generate-contracts`. No new approval or automatic ACP policy
+edit occurs. Other review work may have occurred.
 
-Place repair and the exact retry before report accounting. Compact output retains
-known omissions and uncompleted checks; complete observed counts and limit
-reassurance belong under `--details`. For a detected executable alternative,
-an unpinned policy without retention may suggest adding or replacing `--agent`
-on the shown retry. Explain its global scope, unchanged source and need to repeat
-it on later reviews. Other policies can refuse the choice; detection never
-promises authentication or readiness.
+The ordinary error leads with the selected client's known cause and captured
+policy location. Inline policies identify their Binding file and slot. Named
+policies identify their JSON file and compactly list affected recipients.
+Computed or unknown locations retain their uncertainty. An explicit client
+override distinguishes the effective client from the source client.
+
+Show a short selected-client repair and a complete retry command. For executable
+failures, an unpinned policy without retention may also show commands for detected
+alternatives. Label detection as executable discovery, with login and readiness
+unchecked.
+
+Explain each alternative's scope across native Agent policies, unchanged
+source and need to repeat the flag. Other policies can refuse that choice.
+Discovery executes no client and reads no secrets.
+
+Commands preserve the same project and explicitly requested review options.
+Alternative commands replace only the client argument. Never add networking,
+`--yes` or `--allow-authority-changes` to recovery advice. Commands retain a
+readable `$` prefix and plain fallback. Quote project paths as shell words.
+Never replace text inside a quoted project path to construct another command.
+
+An unusable explicit override is not proof of a missing installation. Identify
+the override name, never its value, and explain that PATH was not used.
+Other executable repairs name the selected override and PATH. Other
+setup causes receive their own repair. Unknown failures retain uncertainty.
+Model pins and retention restrictions remain visible when they prevent a suggested
+client switch.
+
+Retain the diagnostic code, unavailable-setup exit 2, unchanged prior approval,
+and absence of Flow or model execution. Put recovery before report accounting.
+Compact output discloses known omissions and unfinished checks. Point to
+`--details` for source provenance, full recipient context, installation rules,
+manual source edits and complete retained report accounting. Detailed output
+preserves model, retention and turn-limit guidance when relevant.
+
+Use red for the failure heading and amber for the unavailable Agent cause.
+Emphasize action headings and apply ordinary command syntax colours.
+Locations, diagnostic codes and the details hint are secondary. Colour never
+implies an alternative is ready. Plain, redirected and colour-disabled output
+retain the same facts and commands.
 
 Locations MUST refer to immutable source captured for this candidate. A direct
 non-overridden declaration or JSON policy may use a syntactically verified client

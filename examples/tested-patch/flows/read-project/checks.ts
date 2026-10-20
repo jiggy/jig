@@ -28,7 +28,7 @@ export async function loadChecks(
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   ).catch(() => {
     throw new TypeError(
-      `Cannot read ${filename}. Add the check set to the root Flow package and review the application.`,
+      `Cannot read ${filename}. Add the check set to the read-project Flow package and review the application.`,
     )
   })
   let value: unknown

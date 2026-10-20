@@ -41,12 +41,130 @@ function report(issues = [issue()]): PrivateAgentReadinessReport {
   }
 }
 const options = {
-  details: false,
+  details: true,
   retryCommand: "jig review './project' --allow-resolution-network --verification strict",
+  agentRetryCommands: {
+    codex: "jig review './project' --agent codex --allow-resolution-network --verification strict",
+    claude:
+      "jig review './project' --agent claude --allow-resolution-network --verification strict",
+    pi: "jig review './project' --agent pi --allow-resolution-network --verification strict",
+  },
 }
 
+describe('concise review Agent recovery', () => {
+  const compactOptions = { ...options, details: false }
+
+  test('one missing client has a short cause, location and complete recovery commands', () => {
+    const text = renderReviewAgentSetup(
+      report([issue({ alternatives: ['codex'] })]),
+      compactOptions,
+    )
+    expect(text).toBe(`Review could not finish
+
+  Agent unavailable: Pi executable not found.
+  Selection: "bindings/model.ts":5:33; slot "native".
+
+  Next step
+    Install Pi, add it to PATH, or set PI_PATH to its absolute executable path.
+    $ ${options.retryCommand}
+
+  Or use Codex
+    Executable found; login and readiness not checked.
+    $ ${options.agentRetryCommands.codex}
+    All native Agent policies; source unchanged. Repeat --agent codex next review.
+
+  Diagnostic code: PROJECT_ACP_PI_EXECUTABLE
+
+  No new approval. Previous approval unchanged. No Flow or model call started.
+  Setup details: add --details to your review command.
+`)
+    expect(text.split(/\s+/).length).toBeLessThan(140)
+    expect(text).not.toContain('Affected direct recipients')
+    expect(text).not.toContain('captured source client literal')
+    expect(text).not.toContain('Shell aliases')
+    expect(text).not.toContain('--yes')
+    expect(text).not.toContain('--allow-authority-changes')
+  })
+
+  test('colour highlights the blocker and actions without changing plain or narrow output', () => {
+    const text = renderReviewAgentSetup(
+      report([issue({ alternatives: ['codex'] })]),
+      compactOptions,
+    )
+    for (const columns of [undefined, 80, 32]) {
+      const plain = privateCliHumanText(text, false, columns)
+      const colored = privateCliHumanText(text, true, columns)
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: Compare styled terminal data with its plain fallback.
+      expect(colored.replace(/\u001b\[[0-9;]*m/g, '')).toBe(plain)
+      expect(colored).toContain('\u001b[1;31mReview could not finish')
+      expect(colored).toContain('\u001b[1;33m  Agent unavailable:')
+      expect(colored).toContain('\u001b[1m  Next step')
+      expect(colored).toContain('\u001b[1m  Or use Codex')
+      expect(colored).toContain('\u001b[90m  Selection:')
+      expect(colored).toContain('\u001b[90m  Diagnostic code:')
+      expect(plain).toContain(`$ ${options.agentRetryCommands.codex}`)
+      expect(plain).not.toContain('\u001b')
+    }
+  })
+
+  test('a rejected override needs repair without claiming the client is missing', () => {
+    const text = renderReviewAgentSetup(
+      report([issue({ rejectedOverride: 'PI_PATH' })]),
+      compactOptions,
+    )
+    expect(text).toContain('PI_PATH was rejected. PATH was not used.')
+    expect(text).toContain('Set PI_PATH to an absolute Pi executable, or unset it to use PATH.')
+    expect(text).not.toContain('executable not found')
+  })
+
+  test('model pins, retention and non-executable causes do not suggest a client-switch command', () => {
+    for (const value of [
+      issue({ policy: { kind: 'acp', client: 'pi', model: 'chosen-model' } }),
+      issue({ policy: { kind: 'acp', client: 'codex', retainSessions: true } }),
+      issue({ code: 'PROJECT_ACP_PI_MODEL' }),
+      issue({ alternatives: [] }),
+    ]) {
+      const text = renderReviewAgentSetup(report([value]), compactOptions)
+      expect(text).toContain(options.retryCommand)
+      expect(text).not.toContain('  Or use ')
+      expect(text).not.toContain('Executable found;')
+      expect(text).not.toContain(options.agentRetryCommands.codex)
+    }
+  })
+
+  test('shared policies, effective overrides and uncertain source locations remain explicit', () => {
+    const text = renderReviewAgentSetup(
+      report([
+        issue({
+          source: 'named',
+          location: { path: 'custom-policy/agent.json', kind: 'unlocated' },
+          client: 'codex',
+          sourceClient: 'pi',
+          override: 'codex',
+          code: 'PROJECT_ACP_CODEX_EXECUTABLE',
+          alternatives: [],
+        }),
+      ]),
+      compactOptions,
+    )
+    expect(text).toContain('Named policy (exact client line unknown): "custom-policy/agent.json"')
+    expect(text).toContain('Client: "codex" from --agent codex; source: "pi"')
+    expect(text).toContain('Affects: "binding:model"; slot "native"')
+    const computed = renderReviewAgentSetup(
+      report([
+        issue({
+          location: { path: 'bindings/model.ts', kind: 'selection-context' },
+        }),
+      ]),
+      compactOptions,
+    )
+    expect(computed).toContain('Selection context: "bindings/model.ts"')
+    expect(computed).not.toContain('change the source client value')
+  })
+})
+
 describe('read-only review Agent setup diagnostics', () => {
-  test('shows known cause, captured literal, passive alternatives, selected-client repair and one safe retry', () => {
+  test('details retain provenance, passive alternatives, selected-client repair and one safe retry', () => {
     const text = renderReviewAgentSetup(report(), options)
     expect(text).toContain('Review could not finish')
     expect(text).toContain('Pi is selected, but no usable executable')
@@ -66,7 +184,7 @@ describe('read-only review Agent setup diagnostics', () => {
     expect(text).toContain('add --agent claude or --agent codex on the retry below')
     expect(text).toContain('every selected ACP policy')
     expect(text).toContain('Repeat the option on later reviews')
-    expect(text).not.toContain('All observed source policy facts')
+    expect(text).toContain('All observed source policy facts')
     expect(text).toContain('No new approval was recorded. Any existing approval remains unchanged.')
     expect(text).toContain('No Flow or model call started.')
   })
@@ -197,7 +315,7 @@ describe('read-only review Agent setup diagnostics', () => {
         slot: 'native',
       })),
     })
-    const compact = renderReviewAgentSetup(report([value]), options)
+    const compact = renderReviewAgentSetup(report([value]), { ...options, details: false })
     expect(compact).toContain('4093 known direct recipients are omitted')
     const detailed = renderReviewAgentSetup(report([value]), { ...options, details: true })
     expect(detailed).toContain('known direct recipients are omitted')
@@ -208,20 +326,23 @@ describe('read-only review Agent setup diagnostics', () => {
 
   test('literal source and recipient values stay escaped in plain, narrow and redirected presentation', () => {
     const value = issue({
+      source: 'named',
       location: { path: 'bindings/emoji-😀\n\u001b[31m.ts', kind: 'unlocated' },
       recipients: [
         { binding: 'fake\nProject ready', declaration: 'fake\u001b[0m.ts', slot: 'native' },
       ],
     })
-    const text = renderReviewAgentSetup(report([value]), options)
-    expect(text).not.toContain('\u001b')
-    expect(text).not.toContain('😀')
-    expect(text).toContain('\\ud83d\\ude00')
-    expect(text).toContain('\\u000aProject ready')
-    const plain = privateCliHumanText(text, false, 32)
-    expect(plain).not.toContain('\u001b')
-    expect(plain).toContain('PROJECT_ACP_PI_EXECUTABLE')
-    expect(plain).toContain(`$ ${options.retryCommand}`)
+    for (const details of [false, true]) {
+      const text = renderReviewAgentSetup(report([value]), { ...options, details })
+      expect(text).not.toContain('\u001b')
+      expect(text).not.toContain('😀')
+      expect(text).toContain('\\ud83d\\ude00')
+      expect(text).toContain('\\u000aProject ready')
+      const plain = privateCliHumanText(text, false, 32)
+      expect(plain).not.toContain('\u001b')
+      expect(plain).toContain('PROJECT_ACP_PI_EXECUTABLE')
+      expect(plain).toContain(`$ ${options.retryCommand}`)
+    }
   })
 })
 

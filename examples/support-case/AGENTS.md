@@ -7,10 +7,13 @@ eligibility and customer-facing claims.
 
 ## Ownership
 
-- `flows/assess/` owns one bounded interpretation and its closed proposal
-  contract.
-- `flows/resolve/` owns account consistency checks, fixed duplicate-credit
-  policy, and deterministic replies. `bindings/support.ts` selects its assessor.
+- `flows/assess/` owns one bounded interpretation and its closed proposal contract.
+- `flows/check-credit/` owns account consistency checks, fixed
+  duplicate-credit policy and deterministic replies. It receives account facts
+  and a proposal only.
+- `flows/resolve/` coordinates assessment and eligibility checks, rejects conflicting
+  account identities before paid work, and owns the typed Support case page.
+  `bindings/support.ts` selects both focused methods.
 - `bindings/agent.ts` and the declared ACP dependency supply the assessor's
   ordinary Agent implementation through `jig.ts`'s contract-keyed default. The
   explicit client is editable operator configuration, not a Jig default.
@@ -18,9 +21,9 @@ eligibility and customer-facing claims.
 - `test/` owns deterministic application checks. The public walkthrough belongs
   in `docs/jig/guide/support-case.md`.
 
-- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy. The
-  assessor keeps its small private response schema beside its Agent call.
-  Complete proposal validation and the resolver's credit policy remain
+- `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
+  The assessor keeps its small private response schema beside its Agent call.
+  Complete proposal validation and the credit checker’s policy remain
   independent.
 
 ## Local Contracts
@@ -46,24 +49,27 @@ eligibility and customer-facing claims.
 - Each Flow is self-contained. `FLOW.contract.json` describes the shared
   boundary. Code owns relational checks and semantic policy, not Jig.
 
-- Package-local `dashboard.ts` projections offer Case and Charges through the
-  optional canonical `progress` channel. FLOW entrypoints own scoped publishers,
-  activity and failure notices. Pure methods retain their exact results and
-  policy. The existing reporting profile serves terminal and web without display
-  code. Tests validate complete escaped items, provisional meanings and evidence
-  links.
+- The coordinator’s `dashboard.ts` projects a small typed state into one
+  Support case page with request, relevant charges, provisional
+  interpretation, checked decision and draft reply. Its bounded charge excerpt
+  always includes the proposed charge and a matching earlier payment. Child
+  views remain independently useful through the optional canonical `progress`
+  channel. FLOW entrypoints own scoped publishers, activity and failure
+  notices.
+
+  Pure methods retain their exact results and policy. The existing reporting
+  profile serves terminal and web without display code. Tests validate
+  complete escaped items, provisional meanings and evidence links.
 
 ## Work Guidance
 
-- Complexity cap: one assessment plus one code-owned eligibility decision. Keep
-  supplied records and final results. Live billing, duplicate delivery,
-  transaction recovery, and interactive update intake need their own teaching
-  case.
-- Keep the two-method path readable. Add complexity only for a useful consumer
-  task.
-- Do not equate an eligible charge with correct interpretation of customer
-  intent. Do not equate deterministic adversarial tests with model injection
-  resistance.
+- Scope cap: one request, one assessment and one fixed eligibility policy.
+  Flow count is not capped. Keep supplied records and final results. Live
+  billing, duplicate delivery, transaction recovery, and interactive update
+  intake need their own teaching case.
+- Keep the composed methods small, orthogonal and readable. Add complexity only for a useful consumer task.
+- Do not equate an eligible charge with correct interpretation of customer intent,
+  or deterministic adversarial tests with model injection resistance.
 
 ## Verification
 

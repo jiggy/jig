@@ -159,6 +159,11 @@ An introductory example must teach this practice as clearly as production code.
 A short coordinator can compose substantial work without implementing every
 stage itself.
 
+Keep each Flow small enough to understand as a whole, with one orthogonal
+responsibility. Give it a self-explaining verb-and-object name, narrow inputs
+and an explicit result. Judge size by what a reader must hold in their head,
+not a line-count target.
+
 When a workflow stage has a meaningful input and result, extract it as an
 independent Flow. Grouping captions, creating a contact sheet, finding duplicate
 images and applying a checked copy plan are examples of distinct capabilities.
@@ -183,6 +188,24 @@ merely to make an example look small.
 - Prefer explicit, readable composition over generic frameworks, hidden state or
   configurable orchestration layers. Modularity should make responsibilities
   easier to understand and methods easier to use separately.
+
+### Give applications their own presentation
+
+A coordinator owns the application's purpose and state. Project that state
+into one cohesive root landing view through the portable reporting agreement,
+with presentation in a focused ordinary module. Update it as work advances or
+stops. Show proposals as provisional and accepted results only after
+application checks.
+
+Child Flows retain their own independently useful views and callable
+contracts. Jig supplies the run shell, inspection tools, observed host facts
+and evidence access. Rendering a domain page never makes an application claim
+a host verdict.
+
+Keep dashboard code equally simple. Use a small typed application state and
+plain projection functions. Name sections after the user's task and keep
+validation and effects in their owning methods. Avoid a generic page framework
+or a second workflow hidden inside presentation.
 
 ### Capture, review, and admission
 

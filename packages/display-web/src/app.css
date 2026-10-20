@@ -1068,8 +1068,7 @@ footer {
     max-width: 160px;
   }
   nav small,
-  .nav-icon,
-  .nav-group {
+  .nav-icon {
     display: none;
   }
   .sidebar-tools {
@@ -1216,4 +1215,118 @@ footer {
 :root[data-theme="color-free"] .file-preview [class^="syntax-"],
 :root[data-theme="color-free"] .file-preview [class^="csv-column-"] {
   color: inherit;
+}
+
+.application-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.application-workspace.show-detail {
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr);
+}
+.application-page {
+  min-width: 0;
+}
+.application-heading {
+  padding: 4px 0 20px;
+}
+.application-summary {
+  font-size: 16px;
+  line-height: 1.6;
+  max-width: 80ch;
+}
+.application-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.application-section {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--pane);
+}
+.application-section-wide {
+  grid-column: 1 / -1;
+}
+.application-section h3 {
+  margin-top: 0;
+}
+.application-block + .application-block {
+  margin-top: 14px;
+}
+.application-inspect {
+  font-size: 12px;
+  margin-top: 6px;
+}
+.application-table {
+  overflow-x: auto;
+}
+.application-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.application-table th,
+.application-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  white-space: pre-wrap;
+  min-width: 100px;
+}
+.application-table tr.selected {
+  background: var(--selected);
+}
+.application-table .application-inspect {
+  font-size: inherit;
+  margin: 0;
+}
+.application-workspace .back-to-records {
+  display: block;
+}
+@media (max-width: 1000px) {
+  .application-workspace.show-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .application-workspace.show-detail .application-page {
+    display: none;
+  }
+}
+
+.application-block > .application-inspect,
+.application-heading > .application-inspect {
+  padding: 2px 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--secondary);
+  text-decoration: underline;
+}
+.application-workspace.show-detail .application-sections {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (max-width: 700px) {
+  .application-sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .nav-group {
+    display: block;
+    font-size: 9px;
+    margin: 0 7px 2px;
+  }
+  nav {
+    align-items: end;
+  }
+}
+
+.application-workspace.show-detail.expanded {
+  grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1.8fr);
+}
+@media (max-width: 1000px) {
+  .application-workspace.show-detail.expanded {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

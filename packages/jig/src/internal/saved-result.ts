@@ -1,9 +1,7 @@
-import { privateImagePreview } from './image-preview.js'
-import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
-import type { DisplayImagePreview } from '@jigging/display-model'
-import type { PrivatePreview } from '../cli-run-model.js'
 import { closeSync } from 'node:fs'
 import { resolve } from 'node:path'
+import type { DisplayImagePreview } from '@jigging/display-model'
+import type { PrivatePreview } from '../cli-run-model.js'
 import { decodeJson1, JSON_1_LIMITS, type JsonValue } from '../json.js'
 import {
   PRIVATE_DIRECTORY_OPEN_FLAGS,
@@ -14,6 +12,9 @@ import {
   privateReadRegularFile,
   sha256,
 } from './file-input.js'
+import { privateImagePreview } from './image-preview.js'
+import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
+import { privatePresentationNow } from './root-run-timeout-policy.js'
 
 const FILE_BYTES = 16 * 1024 * 1024
 const PREVIEW_BYTES = PRIVATE_PREVIEW_LIMITS.textBytes
@@ -106,11 +107,12 @@ export interface PrivateSavedResult {
 export async function privateCaptureSavedResult(
   directory: string,
   signal?: AbortSignal,
+  captureImages = true,
 ): Promise<PrivateSavedResult> {
-  const deadline = performance.now() + 10_000
+  const deadline = privatePresentationNow() + PRIVATE_PREVIEW_LIMITS.totalRenderMs
   const check = () => {
     signal?.throwIfAborted()
-    if (performance.now() >= deadline) throw new Error('capture deadline')
+    if (privatePresentationNow() >= deadline) throw new Error('capture deadline')
   }
   let root: number | undefined, filesRoot: number | undefined, report: Buffer | undefined
   const retained = new Map<string, Buffer>()
@@ -184,17 +186,35 @@ export async function privateCaptureSavedResult(
     closeDirectories()
     signal?.throwIfAborted()
     let imageBytes = 0
-    for (const [path, bytes] of retained) {
-      check()
-      const image = await privateImagePreview(bytes, signal)
-      signal?.throwIfAborted()
-      if (image) {
-        const charge = privatePreviewStringBytes(image.base64)
-        if (imageBytes + charge <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
-          images.set(path, image)
-          imageBytes += charge
+    const previewCancellation = new AbortController()
+    const cancelPreviews = () => previewCancellation.abort()
+    const previewDeadline = setTimeout(
+      cancelPreviews,
+      Math.max(0, deadline - privatePresentationNow()),
+    )
+    signal?.addEventListener('abort', cancelPreviews, { once: true })
+    try {
+      for (const [path, bytes] of retained) {
+        signal?.throwIfAborted()
+        if (
+          !captureImages ||
+          previewCancellation.signal.aborted ||
+          privatePresentationNow() >= deadline
+        )
+          break
+        const image = await privateImagePreview(bytes, previewCancellation.signal, deadline)
+        signal?.throwIfAborted()
+        if (image) {
+          const charge = privatePreviewStringBytes(image.base64)
+          if (imageBytes + charge <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
+            images.set(path, image)
+            imageBytes += charge
+          }
         }
       }
+    } finally {
+      clearTimeout(previewDeadline)
+      signal?.removeEventListener('abort', cancelPreviews)
     }
     const capturedReport = report
     let closed = false

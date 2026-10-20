@@ -441,6 +441,23 @@ export type ViewerDetailPart =
   | { kind: 'heading' | 'text' | 'note' | 'value'; text: string }
   | { kind: 'field'; label: string; value: Value }
 
+/** Application blocks are read in place; collection rows retain inspectable detail. */
+export function viewerApplicationParts(record: ViewerRecord): ViewerDetailPart[] | undefined {
+  if (record.kind === 'summary') return [{ kind: 'text', text: record.text ?? '' }]
+  const block = record.block
+  if (!block) return undefined
+  if (block.kind === 'facts') return block.items.map((item) => ({ kind: 'field', ...item }))
+  if (block.kind === 'progress') return [{ kind: 'text', text: progressText(block, 80) }]
+  return [
+    { kind: 'text', text: block.text },
+    ...(block.references ?? []).map((value) => ({
+      kind: 'field' as const,
+      label: 'Evidence · r to inspect',
+      value,
+    })),
+  ]
+}
+
 export function viewerDetailParts(
   model: ViewerModel,
   record: ViewerRecord,
@@ -718,12 +735,12 @@ function tabs(model: ViewerModel, width: number): string {
     .map((entry, index) => (index === current ? `[${entry.label}]` : entry.label))
     .map(
       (label, index) =>
-        `${index && entries[index]!.group !== entries[index - 1]!.group ? 'Application › ' : ''}${label}`,
+        `${index === 0 || entries[index]!.group !== entries[index - 1]!.group ? (entries[index]!.group === 'application' ? 'Application › ' : entries[index]!.group === 'recorded' ? 'Recorded › ' : 'Inspector › ') : ''}${label}`,
     )
     .join(' | ')
   if (terminalWidth(all) <= width) return all
   return truncateTerminalText(
-    `${current + 1}/${entries.length} [${entries[current]?.label ?? 'Activity'}]  v all views · Tab next`,
+    `${entries[current]?.group === 'application' ? 'Application' : entries[current]?.group === 'recorded' ? 'Recorded' : 'Inspector'} › [${entries[current]?.label ?? 'Activity'}] · ${current + 1}/${entries.length} · v all views · Tab next`,
     width,
   )
 }
@@ -971,7 +988,7 @@ export function viewerFrame(
                 ? 'APPLICATION'
                 : group === 'recorded'
                   ? 'RECORDED'
-                  : 'RUN'
+                  : 'INSPECTOR'
             }
             yield `${entry.key === panel.selected ? '> ' : '  '}${escapeTerminalText(entry.title)}${entry.source ? ` · ${escapeTerminalText(entry.source)}` : ''}`
           }
@@ -990,7 +1007,7 @@ export function viewerFrame(
         content = wrapTerminalText(
           panels.at(-2)?.kind === 'filter'
             ? 'Filter editing\nPrintable text is literal, including q j k s r ! ?.\nEnter applies; Escape discards; Backspace/Delete removes the last scalar.\nTab and arrow controls do nothing. Ctrl-C stops live work; Ctrl-D asks before leaving.'
-            : 'Workspace help\nv: all grouped views. Tab / Shift-Tab: Execution, Activity, Delivered files and application views.\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: expand full detail or retained file content; Escape returns from an overlay or reference jump, and stays at the top level. Wide screens show useful selected context.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a typed reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause and workspace facts; d: attributed diagnostic reports; ?: this help.\nq: confirm leaving; live work continues inline, settled inspection closes. Stay is selected first; arrows or Tab choose, Enter confirms, Escape stays. Ctrl-C: stop live work, confirm closing settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
+            : 'Workspace help\nv: all grouped views. Tab / Shift-Tab: application pages, then Inspector (Execution, Activity, Delivered files and child views).\nArrows / j k: select each summary, report, facts, progress or collection row.\nEnter: expand full detail or retained file content; Escape returns from an overlay or reference jump, and stays at the top level. Wide screens show useful selected context.\nc: next collection; /: edit a collection filter; s: sort supplied rows.\nr: choose a typed reference; Enter activates only in that chooser.\nLeft / Right: collapse or expand the actual tree; in attention or diagnostics choose reports.\nBrackets / PageUp / PageDown: body scroll; Home / End: list ends.\n!: full retained cause and workspace facts; d: attributed diagnostic reports; ?: this help.\nq: confirm leaving; live work continues inline, settled inspection closes. Stay is selected first; arrows or Tab choose, Enter confirms, Escape stays. Ctrl-C: stop live work, confirm closing settled inspection.\nHost returns, application claims, cleanup and delivery remain separate.\nReports are literal; no application readiness is inferred.\nHistory and capture are bounded; omitted content is disclosed.',
           width,
         )
       else if (panel.kind === 'attention') {
@@ -1075,7 +1092,16 @@ export function viewerFrame(
           secondaryPrefix?: string
         }[] = [],
         tables = new Map<string, ReturnType<typeof viewerTableColumns>>()
-      const sideBySide = width >= 118 && bodyRoom >= 10 && viewerHasContext(model, model.record),
+      const applicationPage = Boolean(
+        model.selected && !model.selected.role && model.selected.publisher === model.rootSourceId,
+      )
+      const sideBySide =
+          (!applicationPage ||
+            Boolean(model.record?.row) ||
+            viewerReferences(model.record).some((ref) => ref.kind === 'artifact')) &&
+          width >= 118 &&
+          bodyRoom >= 10 &&
+          viewerHasContext(model, model.record),
         listWidth = sideBySide ? Math.max(58, Math.floor((width - 3) * 0.55)) : width,
         detailWidth = width - listWidth - 3
       model.local.teaserWidth = teaserWidth(listWidth)
@@ -1112,7 +1138,7 @@ export function viewerFrame(
                 collection,
                 rows,
                 listWidth,
-                3,
+                applicationPage ? 8 : 3,
               )
           tables.set(collection.id, table)
           if (priorCollection !== collection.id) {
@@ -1179,6 +1205,24 @@ export function viewerFrame(
           text = () =>
             `${'  '.repeat(Math.min(record.depth ?? 0, 12))}${model.descendants(record.call!.key).length ? (model.treeExpanded(record.call!.key) ? '▾' : '▸') : '·'} ${escapeTerminalText(record.call!.intent ?? record.call!.slot)} · ${record.call!.state}${record.hidden ? ` (${record.hidden} calls${record.issues ? `; ${record.issues} issues` : ''})` : ''}`
         else text = () => escapeTerminalText(record.text ?? '').split('\n')[0] ?? ''
+        const pageParts = applicationPage ? viewerApplicationParts(record) : undefined
+        if (pageParts) {
+          const pageText = pageParts
+            .map((part) =>
+              part.kind === 'field'
+                ? `${part.label}: ${displayCell(model, record.publisher ?? model.rootSourceId, part.value)}`
+                : part.text,
+            )
+            .join('\n')
+          for (const [index, line] of [...wrapTerminalText(pageText, listWidth - 2)].entries()) {
+            body.push({
+              key: record.key,
+              text: () => `${index === 0 ? prefix : '  '}${line}`,
+              ...(selected ? { tone: 'selection' as const } : {}),
+            })
+          }
+          continue
+        }
         body.push({
           key: record.key,
           text: () => truncateTerminalText(prefix + text(), listWidth, 4096),

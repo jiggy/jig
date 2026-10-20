@@ -1,8 +1,8 @@
-import { displayViewKey } from '@jigging/display-model'
 import { expect, test } from 'bun:test'
-import { FixtureModel, NativeRenderer, prepareNative } from './fixtures.js'
+import { displayViewKey } from '@jigging/display-model'
 import { nativeCells } from '../src/native.js'
 import type { TuiTheme } from '../src/types.js'
+import { FixtureModel, NativeRenderer, prepareNative } from './fixtures.js'
 
 // biome-ignore lint/suspicious/noControlCharactersInRegex: Observe native ANSI frame bytes.
 const strip = (text: string) => text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
@@ -75,6 +75,50 @@ test('native panes render unrelated semantic records, selected detail, attributi
     expect(frame.text).toMatch(sgr)
     expect(process.stdin.isRaw).toBe(raw)
     expect(process.stdin.listenerCount('data')).toBe(listeners)
+  } finally {
+    dashboard.close()
+    model.close()
+  }
+})
+
+test('native child views retain dense facts and the Inspector context pane', async () => {
+  const model = new FixtureModel()
+  const supplied = {
+    kind: 'view' as const,
+    id: 'same-view',
+    title: 'Supplied facts',
+    summary: 'Root page and child Inspector use the same supplied facts.',
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'facts' as const,
+            items: [
+              { label: 'First field', value: 'Visible value' },
+              { label: 'Second field', value: 'Context value' },
+              { label: 'Third field', value: 'More context' },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+  model.acceptView('root', supplied)
+  model.acceptView('child', supplied)
+  model.select(displayViewKey(JSON.stringify(['root', supplied.id])))
+  const dashboard = await NativeRenderer.create(await prepareNative(), model, 100, 30)
+  try {
+    expect((await dashboard.frame(100, 30, { panels: [] }, 0, false)).text).toContain(
+      'Second field: Context value',
+    )
+    model.select(displayViewKey(JSON.stringify(['child', supplied.id])))
+    model.selectRecord('block:0:0')
+    const child = await dashboard.frame(100, 30, { panels: [] }, 0, false)
+    expect(child.text).toContain('Facts')
+    expect(child.text).not.toContain('Second field: Context value')
+    const wide = await dashboard.frame(140, 30, { panels: [] }, 0, false)
+    expect(wide.text).toContain('Context')
+    expect(wide.text).toContain('Context value')
   } finally {
     dashboard.close()
     model.close()

@@ -1,9 +1,9 @@
-import { validDisplayImage, type DisplayImagePreview } from '@jigging/display-model'
 import {
   attentionImportance,
   type DisplayAttribution,
   type DisplayCallState,
   type DisplayFact,
+  type DisplayImagePreview,
   type DisplaySnapshot,
   type DisplaySnapshotEnvelope,
   displayDestinations,
@@ -11,6 +11,7 @@ import {
   type RecordedViewRole,
   recordReferences,
   validateDisplaySnapshot,
+  validDisplayImage,
 } from '@jigging/display-model'
 import type {
   Block,
@@ -471,9 +472,7 @@ export class ViewerModel {
         (this.workspace.phase === 'settled' ? roots[0] : undefined)
       if (landing && (this.#surface === 'activity' || this.workspace.phase === 'settled')) {
         this.#surface = landing.key
-        if (this.workspace.phase === 'settled')
-          this.local.record =
-            this.records().find((record) => record.row)?.key ?? this.records()[0]?.key
+        if (this.workspace.phase === 'settled') this.local.record = this.records()[0]?.key
       } else if (this.workspace.recorded && !keys.includes(this.#surface))
         this.#surface = keys[0] ?? 'files'
     }
@@ -514,8 +513,10 @@ export class ViewerModel {
         key: view.id,
         title: view.value.title,
         source: view.sourceLabel,
+        sourceId: view.publisher,
         role: view.role,
       })),
+      this.rootSourceId,
     )
   }
   collections(): Collection[] {

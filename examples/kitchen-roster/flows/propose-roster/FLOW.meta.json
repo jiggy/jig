@@ -1,0 +1,9 @@
+{
+  "name": "propose-roster",
+  "description": "Ask one configured Agent to propose the eight kitchen assignments.",
+  "uses": {
+    "agent": {
+      "contract": "./contracts/agent-run/contract.json"
+    }
+  }
+}

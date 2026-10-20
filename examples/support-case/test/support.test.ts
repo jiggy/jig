@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test'
 import type { JsonValue } from '@jigging/flow'
-import { assess } from '../flows/assess/assess'
-import { resolve } from '../flows/resolve/resolve'
-import { type Account, decide } from '../flows/resolve/policy'
 import duplicate from '../fixtures/duplicate.json'
 import notDuplicate from '../fixtures/not-duplicate.json'
 import overLimit from '../fixtures/over-limit.json'
+import { assess } from '../flows/assess/assess'
+import { checkCredit } from '../flows/check-credit/method.ts'
+import { type Account, decide } from '../flows/check-credit/policy'
+import { resolve } from '../flows/resolve/resolve'
 
 const proposal = { chargeId: 'ch-102', requestedCreditCents: 2400 }
 const signal = () => new AbortController().signal
@@ -20,6 +21,8 @@ describe('support case policy outside Agent judgment', () => {
       signal: signal(),
       call: async (request) => {
         children++
+        if (request.slot === 'credit')
+          return checkCredit({ input: request.input, signal: signal() })
         expect(request.slot).toBe('assessment')
         expect(request.input).toEqual(duplicate)
         return assess({
@@ -47,7 +50,7 @@ describe('support case policy outside Agent judgment', () => {
         proposal,
       },
     })
-    expect(children).toBe(1)
+    expect(children).toBe(2)
     expect(agents).toBe(1)
   })
 
@@ -87,13 +90,15 @@ describe('support case policy outside Agent judgment', () => {
         input,
         signal: signal(),
         call: async (request) =>
-          assess({
-            input: request.input,
-            call: async () => ({
-              outcome: 'done',
-              output: { text: 'Approved!', structured: suggested },
-            }),
-          }),
+          request.slot === 'credit'
+            ? checkCredit({ input: request.input, signal: signal() })
+            : assess({
+                input: request.input,
+                call: async () => ({
+                  outcome: 'done',
+                  output: { text: 'Approved!', structured: suggested },
+                }),
+              }),
       })
       expect(result).toMatchObject({
         outcome: 'done',
@@ -165,10 +170,12 @@ describe('support case policy outside Agent judgment', () => {
         input: duplicate,
         signal: signal(),
         call: async (request) =>
-          assess({
-            input: request.input,
-            call: async () => ({ outcome, output: { text: 'Unable to assess.' } }),
-          }),
+          request.slot === 'credit'
+            ? checkCredit({ input: request.input, signal: signal() })
+            : assess({
+                input: request.input,
+                call: async () => ({ outcome, output: { text: 'Unable to assess.' } }),
+              }),
       })
       expect(result).toEqual({ outcome, output: { reason: 'Unable to assess.' } })
     })
@@ -182,13 +189,15 @@ describe('support case policy outside Agent judgment', () => {
         input: duplicate,
         signal: signal(),
         call: async (request) =>
-          assess({
-            input: request.input,
-            call: async () => {
-              calls++
-              throw failure
-            },
-          }),
+          request.slot === 'credit'
+            ? checkCredit({ input: request.input, signal: signal() })
+            : assess({
+                input: request.input,
+                call: async () => {
+                  calls++
+                  throw failure
+                },
+              }),
       }),
     ).rejects.toBe(failure)
     expect(calls).toBe(1)

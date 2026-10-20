@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadChecks } from '../flows/project/checks.ts'
+import { loadChecks } from '../flows/read-project/checks.ts'
 import { parseInput } from '../flows/repair/policy.ts'
 import { input } from './fixture.ts'
 

@@ -195,10 +195,13 @@ async function requireSupportedLock(
         'optionalDependencies',
         'peerDependencies',
       ]
+      // Bun does not maintain root identity metadata as a dependency selection.
+      // Member identities still determine workspace aliases and version matches.
+      const identityFields = path === '' ? [] : ['name', 'version']
       const field =
         entry === undefined
           ? 'workspace entry'
-          : (['name', 'version'].find((field) => manifest[field] !== entry[field]) ??
+          : (identityFields.find((field) => manifest[field] !== entry[field]) ??
             dependencyFields.find(
               (field) =>
                 !workspaceDependencyMapMatches(

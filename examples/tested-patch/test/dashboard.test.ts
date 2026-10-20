@@ -1,71 +1,99 @@
 import { expect, test } from 'bun:test'
 import { type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
-
-function checked(view: ViewSnapshot, id = 'test') {
-  const item = validateReportingMessage({ kind: 'view', id, title: 'Domain view', ...view })
-  expect(Buffer.byteLength(JSON.stringify(item))).toBeLessThanOrEqual(32768)
-  return item as any
-}
-
-import { checksView, evidenceView, repairView } from '../flows/project/dashboard.ts'
+import { patchReviewView } from '../flows/project/dashboard.ts'
 import {
   checksView as workerChecks,
   repairView as workerRequest,
 } from '../flows/repair/dashboard.ts'
 import { input } from './fixture.ts'
 
-test('maximum repair views expose check meaning without source text or child-namespace call links', () => {
-  const check = {
-    repositoryTestsPassed: false,
-    accepted: false,
-    acceptance: Array.from({ length: 8 }, (_, index) => ({
-      id: String(index) + '\u0001'.repeat(62),
-      passed: index === 0,
-    })),
-  }
-  const maximal = {
+function checked(view: ViewSnapshot) {
+  const item = validateReportingMessage({ kind: 'view', id: 'test', title: 'Domain view', ...view })
+  expect(Buffer.byteLength(JSON.stringify(item))).toBeLessThanOrEqual(32768)
+  return item as any
+}
+const check = {
+  repositoryTestsPassed: false,
+  accepted: false,
+  acceptance: Array.from({ length: 8 }, (_, index) => ({
+    id: String(index) + '\u0001'.repeat(62),
+    passed: index === 0,
+  })),
+}
+
+test('the complete review page bounds escaped input and compares all fixed checks without child call links', () => {
+  const request = {
     ...input,
     issue: 'G' + '\u0001'.repeat(7999),
     editPaths: Array.from({ length: 8 }, (_, index) => `src/${index}${'p'.repeat(240)}.ts`),
   }
+  const acceptance = {
+    ready: false,
+    reason: '\u0001'.repeat(4096),
+    baseline: check,
+    attempts: [{ evaluation: check }, { evaluation: check }],
+    proposals: [],
+  }
+  const item = checked(
+    patchReviewView({
+      phase: 'ready',
+      request,
+      captured: input,
+      checked: acceptance,
+      files: ['review/summary.txt'],
+    }),
+  )
+  expect(JSON.stringify(item)).toContain('[Excerpt; complete value')
+  expect(JSON.stringify(item)).not.toContain(input.files['src/cli.ts']!)
+  const comparison = item.sections[2].blocks[0]
+  expect(comparison.rows).toHaveLength(9)
+  expect(comparison.columns.map((column: any) => column.label)).toEqual([
+    'Check',
+    'Original',
+    'Proposal 1',
+    'Proposal 2',
+  ])
+  expect(JSON.stringify(item)).not.toContain('"kind":"call"')
   const result = {
     outcome: 'blocked',
-    output: {
-      reason: '\u0001'.repeat(4096),
-      baseline: check,
-      attempts: [{ evaluation: check }, { evaluation: check }],
-    },
+    output: { reason: acceptance.reason, baseline: check, attempts: acceptance.attempts },
   }
-  for (const view of [repairView, workerRequest]) {
-    const item = checked(view(maximal, result))
-    expect(JSON.stringify(item)).toContain('[Excerpt; complete value')
-    expect(JSON.stringify(item)).not.toContain(input.files['src/cli.ts']!)
-  }
-  const caller = checked(checksView(result, true))
-  expect(caller.sections[0].blocks[1].rows).toHaveLength(27)
-  expect(JSON.stringify(caller)).not.toContain('"kind":"call"')
+  checked(workerRequest(request, result))
   const worker = checked(workerChecks(result, false, true))
   expect(JSON.stringify(worker)).toContain('"operationId":"attempt-2-8"')
   expect(worker.summary).toContain('provisional')
-  expect(caller.summary).toContain('recomputed')
 })
 
-test('review references require caller acceptance and retain the exact requested goal file', () => {
-  const pending = checked(evidenceView())
-  expect(pending.sections[0].blocks[0].rows).toEqual([])
-  expect(checked(repairView(input, { outcome: 'done', output: {} })).summary).toContain(
-    'Worker reports',
+test('unvalidated and interrupted work exposes no final file references', () => {
+  const pending = checked(patchReviewView({ phase: 'checking', request: input, captured: input }))
+  expect(JSON.stringify(pending)).toContain('No proposal has been accepted')
+  expect(JSON.stringify(pending)).not.toContain('"kind":"artifact"')
+  const interrupted = checked(
+    patchReviewView({ phase: 'failed', request: input, reason: 'The export is unconfirmed.' }),
   )
-  expect(checked(repairView(input, { outcome: 'done', output: {} }, true)).summary).toContain(
-    'independently validated',
+  expect(JSON.stringify(interrupted)).toContain('The export is unconfirmed.')
+  expect(JSON.stringify(interrupted)).not.toContain('"kind":"artifact"')
+})
+
+test('the accepted page links the patch and original requested goal after export', () => {
+  const ready = checked(
+    patchReviewView({
+      phase: 'ready',
+      request: input,
+      checked: {
+        ready: true,
+        reason: 'Checks passed.',
+        baseline: check,
+        attempts: [{ evaluation: check }],
+        proposals: [],
+      },
+      files: ['review/goal.txt', 'review/review.patch'],
+    }),
   )
-  const evidence = checked(
-    evidenceView(['goal.txt', 'summary.txt', 'proposal-1.patch', 'review.patch']),
-  )
-  expect(evidence.sections[0].blocks[0].rows.at(-1).cells.content).toEqual({
+  expect(JSON.stringify(ready)).toContain('independently validated')
+  expect(ready.sections.at(-1).blocks[0].rows.at(-1).cells.content).toEqual({
     kind: 'artifact',
     attachment: 'deliverables',
-    path: 'review.patch',
+    path: 'review/review.patch',
   })
-  expect(evidence.summary).toContain('after verified packet delivery')
 })

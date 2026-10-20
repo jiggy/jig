@@ -1,0 +1,123 @@
+{
+  "attachments": {
+    "source": "read"
+  },
+  "input": {
+    "type": "object",
+    "properties": {
+      "issue": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      },
+      "editPaths": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 8,
+        "items": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      },
+      "checks": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 32
+      }
+    },
+    "required": ["issue", "editPaths"],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "issue": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "editPaths": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            }
+          },
+          "files": {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 16,
+            "additionalProperties": {
+              "type": "string",
+              "maxLength": 65536
+            }
+          },
+          "cases": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "args": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "items": {
+                    "type": "string",
+                    "maxLength": 1024
+                  }
+                },
+                "stdin": {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                "stdout": {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                "stderr": {
+                  "type": "string",
+                  "maxLength": 8192
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                }
+              },
+              "required": ["id", "args", "stdin", "stdout", "stderr", "exitCode"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["issue", "editPaths", "files", "cases"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/reporting/reporting.json"
+    }
+  }
+}

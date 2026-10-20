@@ -129,7 +129,7 @@ source_protocol_stage() {
   bun packages/reporting/test/package-smoke.ts
 }
 source_applications_stage() {
-for application in photo-organiser tested-patch software-factory support-case contact-import incident-brief; do
+for application in kitchen-roster photo-organiser tested-patch software-factory support-case contact-import incident-brief; do
   application_source="examples/$application"
   if [ "$application" = incident-brief ]; then
     application_source="packages/jig/test/fixtures/incident-brief"

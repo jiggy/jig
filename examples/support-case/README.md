@@ -39,11 +39,13 @@ Agent follows their requests for an improper credit, code cannot produce an
 eligible credit: the first has no duplicate, the second exceeds the USD 50 ceiling.
 All fixtures are synthetic; no payments or messages are sent.
 
-Two Flows divide the work:
+Three focused Flows divide the work:
 
 - `assess` proposes a disputed charge and amount through one Agent call.
-- `resolve` calls its configured `assessment` slot, checks the proposal against
-  supplied records and reviewed policy, and constructs the decision and reply.
+- `check-credit` checks the proposal against supplied records and reviewed
+  policy, then constructs the decision and reply. It receives no customer text.
+- `resolve` coordinates the assessment and credit checker and publishes the
+  application page. Neither child imports the other’s source.
 
 `done` means the decision completed: `credit_eligible`, `no_credit`, or
 `manual_review`. `blocked` and `limit` mean the assessment could not complete.
@@ -57,10 +59,12 @@ This policy does not prove that the Agent identified the customer's intent corre
 
 ## Follow the work
 
-**Case** follows the request, proposed charge and code-owned eligibility decision.
-**Charges** keeps the supplied chronological records available for comparison; long
-lists explicitly show their retained excerpt. The assessor's own Case view stops at a
-proposal. An eligible decision never claims that a credit was issued.
+**Support case** presents the customer request, relevant supplied charges,
+interpretation, checked policy decision and draft reply on one page. It follows
+assessment and eligibility checking; the proposal stays provisional until checks
+finish. Up to twelve charges are shown, including the proposed charge and any
+matching earlier settled payment. Complete facts remain in the input and result.
+Child views remain available in Inspector and on independent invocation.
 
 Add `--display tui` for a terminal workspace or `--display web` for the same
 views in a browser. Open the private link printed after execution starts. The completed inspector

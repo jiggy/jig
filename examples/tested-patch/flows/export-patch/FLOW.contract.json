@@ -1,0 +1,123 @@
+{
+  "attachments": {
+    "files": "read-write"
+  },
+  "input": {
+    "type": "object",
+    "properties": {
+      "issue": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      },
+      "originals": {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 16,
+        "additionalProperties": {
+          "type": "string",
+          "maxLength": 65536
+        }
+      },
+      "checked": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "object",
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 2
+                },
+                "replacements": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "maxLength": 512
+                      },
+                      "content": {
+                        "type": "string",
+                        "maxLength": 65536
+                      }
+                    },
+                    "required": ["path", "content"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["number", "replacements"],
+              "additionalProperties": false
+            }
+          },
+          "baseline": {
+            "type": "object"
+          },
+          "attempts": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+              "type": "object"
+            }
+          }
+        },
+        "required": ["ready", "reason", "proposals", "baseline", "attempts"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["issue", "originals", "checked"],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "files": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        },
+        "required": ["ready", "files"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/reporting/reporting.json"
+    }
+  }
+}

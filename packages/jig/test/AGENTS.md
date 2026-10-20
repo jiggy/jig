@@ -72,12 +72,17 @@ clock substitution.
 qualification also runs shared lifecycle suites, fresh installed consumers and
 genuine offline clients.
 
-Image rendering and unavailable-production fallback cases belong to the portable
-suite. Actual JavaScript and Wasm thread-exit cases remain a manual candidate
-qualification with `JIG_NATIVE_IMAGE_THREAD_TEST=1`. Qualified Bun cannot
-currently interrupt its spinning Wasm worker. Both modes retain their
-ready-message barrier, exit join and five-second case limit. A successful
-renderer test does not qualify thread lifetime or enable production decoding.
+Image rendering, process lifetime and bounded fallback cases belong to the
+portable suite. Production decoding uses a disposable process, with busy
+JavaScript/Wasm, watchdog, parent loss and joined cancellation covered by
+`portable/image-preview-process.test.ts`. The earlier JavaScript and Wasm
+thread-exit experiments remain a manual candidate qualification with
+`JIG_NATIVE_IMAGE_THREAD_TEST=1`. Qualified Bun cannot currently interrupt its
+spinning Wasm worker.
+
+Both modes retain their ready-message barrier, exit join and five-second case
+limit. A successful renderer test does not qualify thread lifetime. These
+experiments do not control production process decoding.
 
 `host/markdown-worker.test.ts` exercises only the installed CLI and its packed
 worker. Its fresh temporary root owns consumers and failure evidence. It does
@@ -123,6 +128,12 @@ Close. Source-Linux refusal omissions earn no native proof.
 
 Live observations, delivery and interruption remain in
 `host/package-provider-observation.test.ts`.
+
+`host/installed-workspace-provider.test.ts` exercises stale-lock recovery through
+the public CLI in root, member and nested consumer projects. Execute the printed
+Bun command for real declaration mismatches. Root name/version edits must
+review successfully without altering the authored lock. Preserve the prior
+approval on refusal and require successful review after each repair.
 
 Root Agent live suites select one exact client/input contract per file. Codex
 subscription requires its native executable and CODEX_HOME. Codex Responses

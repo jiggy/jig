@@ -55,7 +55,8 @@ operational baselines, and public-site assembly.
   Protocol-only execution builds authoring separately before its stage starts.
 
   A failed stage stops later execution and archive-success verification. It
-  includes the authored examples' deterministic application tests and the
+  includes the authored examples' deterministic application tests, the private
+  conversation-handoff fixture, and the
   optional contract author's Node mapping/type/lifecycle checks. It also checks
   the shared Agent method and ordinary ACP package. Refuse missing Python
   build/test tools or separately installed Run/0 fixture dependencies before

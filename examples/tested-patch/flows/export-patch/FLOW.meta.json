@@ -1,0 +1,4 @@
+{
+  "name": "tested-patch-export-patch",
+  "description": "Export supplied repair review data as patches and a summary."
+}

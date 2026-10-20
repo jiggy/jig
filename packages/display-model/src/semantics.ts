@@ -18,8 +18,10 @@ export function displayDestinations(
     key: string
     title: string
     source: string
+    sourceId?: string | undefined
     role?: RecordedViewRole | undefined
   }[],
+  rootSourceId?: string,
 ): DisplayDestination[] {
   const report = views.find((view) => view.role === 'recorded-report')
   const diagnostics = views.find((view) => view.role === 'recorded-diagnostics')
@@ -60,15 +62,25 @@ export function displayDestinations(
           })),
       ]
     : [
+        ...views
+          .filter((view) => rootSourceId === undefined || view.sourceId === rootSourceId)
+          .map((view) => ({
+            ...view,
+            key: displayViewKey(view.key),
+            icon: '◈',
+            group: 'application' as const,
+          })),
         { key: 'overview', title: 'Execution', source: '', icon: '↳', group: 'run' },
         { key: 'activity', title: 'Activity', source: '', icon: '≡', group: 'run' },
         { key: 'files', title: 'Delivered files', source: '', icon: '▤', group: 'run' },
-        ...views.map((view) => ({
-          ...view,
-          key: displayViewKey(view.key),
-          icon: '◈',
-          group: 'application' as const,
-        })),
+        ...views
+          .filter((view) => rootSourceId !== undefined && view.sourceId !== rootSourceId)
+          .map((view) => ({
+            ...view,
+            key: displayViewKey(view.key),
+            icon: '◈',
+            group: 'run' as const,
+          })),
       ]
 }
 

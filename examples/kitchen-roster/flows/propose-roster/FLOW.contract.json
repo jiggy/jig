@@ -1,0 +1,215 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "input": {
+    "type": "object",
+    "properties": {
+      "scenario": {
+        "type": "object",
+        "properties": {
+          "volunteers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 24
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 48
+                },
+                "roles": {
+                  "type": "array",
+                  "items": {
+                    "enum": ["cook", "serve"]
+                  },
+                  "minItems": 1,
+                  "maxItems": 2
+                },
+                "available": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "from": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 1439
+                      },
+                      "until": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 1440
+                      }
+                    },
+                    "required": ["from", "until"],
+                    "additionalProperties": false
+                  },
+                  "minItems": 1,
+                  "maxItems": 4
+                },
+                "maxMinutes": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 240
+                },
+                "preference": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 160
+                }
+              },
+              "required": ["id", "name", "roles", "available", "maxMinutes", "preference"],
+              "additionalProperties": false
+            },
+            "minItems": 6,
+            "maxItems": 6
+          },
+          "shifts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 24
+                },
+                "from": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1439
+                },
+                "until": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1440
+                }
+              },
+              "required": ["id", "from", "until"],
+              "additionalProperties": false
+            },
+            "minItems": 4,
+            "maxItems": 4
+          }
+        },
+        "required": ["volunteers", "shifts"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["scenario"],
+    "additionalProperties": false
+  },
+  "result": {
+    "oneOf": [
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": ["done"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "enum": ["proposed", "review"]
+              },
+              "assignments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "shiftId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 24
+                    },
+                    "role": {
+                      "enum": ["cook", "serve"]
+                    },
+                    "volunteerId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 24
+                    }
+                  },
+                  "required": ["shiftId", "role", "volunteerId"],
+                  "additionalProperties": false
+                },
+                "minItems": 0,
+                "maxItems": 8
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 240
+              }
+            },
+            "required": ["status", "assignments", "reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": ["blocked"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      },
+      {
+        "type": "object",
+        "properties": {
+          "outcome": {
+            "enum": ["limit"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 240
+              }
+            },
+            "required": ["reason"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["outcome", "output"],
+        "additionalProperties": false
+      }
+    ]
+  },
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/reporting/reporting.json"
+    }
+  },
+  "outcomes": {
+    "blocked": "The scenario is uncovered or a complete roster needs review.",
+    "limit": "The Agent reaches its configured limit."
+  }
+}

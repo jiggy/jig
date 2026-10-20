@@ -44,12 +44,18 @@ That destination must be new. Jig never overwrites an earlier result.
 
 ## Follow the work
 
-Add `--display tui` or `--display web` to see **Photo box**, a complete list of
-original filenames and checked destinations with artifact references.
-Open `overview/contact-sheet.svg` from the result packet in a browser or image viewer to
-see before and after. Shared image previews are awaiting runtime qualification.
-`copies/manifest.csv` offers a coloured table or raw text in the browser, and coloured
-columns in the TUI.
+Add `--display tui` or `--display web` to open **Photo box**. One page follows
+reading, grouping, assignment checks, copying and contact-sheet creation. Photos
+appear as soon as the source is captured; event names and destinations appear
+only after the complete proposal passes checks.
+
+The completed page leads with **Before and after**: open its contact-sheet
+reference to compare the original box with organised copies. Select a photo for
+its caption and delivered-image reference, or open the manifest for every path.
+The shared web display previews captured images; TUI keeps readable evidence
+references and text fallback. The full SVG keeps its original resolution.
+A stopped page retains known photos and checked plans without claiming a complete
+collection. Child Flow views and execution details remain in Inspector.
 
 Each Flow uses `withReporting` from `@jigging/reporting` for its optional
 `progress` channel. Its `contracts/reporting` folder carries the complete
@@ -113,7 +119,7 @@ configured Agent. These declarations make each responsibility explicit.
 
 Inside the organiser, `method.ts` coordinates calls. `catalogue.ts` checks the
 source, `plan.ts` accepts assignments and checks child result metadata, and
-`view.ts` projects the completed collection for inspection. The organiser writes
+`view.ts` projects a small typed application state as work advances or stops. The organiser writes
 no photo files itself.
 
 `flows/copy-photos` owns byte-preserving copies and the CSV. `flows/contact-sheet`

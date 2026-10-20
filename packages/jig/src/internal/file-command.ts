@@ -397,10 +397,14 @@ export async function privateOwnFileCommand(
                 socket.destroy()
               })
           } else if (request.type === 'preview') {
-            if (typeof request.path !== 'string' || !publication)
+            if (
+              typeof request.path !== 'string' ||
+              !Number.isSafeInteger(request.deadline) ||
+              !publication
+            )
               throw new Error('preview unavailable')
             await publication
-            const preview = await owner.inspectionPreview(request.path)
+            const preview = await owner.inspectionPreview(request.path, Number(request.deadline))
             send(socket, {
               ok: true,
               preview,
@@ -679,7 +683,12 @@ export function privateFileDeliveryConnection(
     options?: PrivateDeliveryInspectionOptions,
   ): Promise<PrivateDeliveryInspectionPreview> => {
     if (!inspection) return { state: 'unavailable', bytes: 0, clipped: false }
-    const operation = request({ type: 'preview', path })
+    const deadline = Math.min(
+      options?.previewDeadline ?? Infinity,
+      options?.deadline ?? privatePresentationNow() + PRIVATE_PREVIEW_LIMITS.renderMs,
+    )
+    if (!Number.isSafeInteger(deadline)) throw new Error('Invalid preview deadline')
+    const operation = request({ type: 'preview', path, deadline })
     const reply = options ? await privateBoundInspection(operation, options) : await operation
     const preview = reply.preview as Record<string, JsonValue> | null
     if (

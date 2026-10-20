@@ -1,37 +1,43 @@
 import { expect, test } from 'bun:test'
 import { type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
+import input from '../fixtures/duplicate.json'
+import { caseView as proposal, chargesView as proposalCharges } from '../flows/assess/dashboard.ts'
+import { decide } from '../flows/check-credit/policy.ts'
+import { type SupportState, supportCaseView } from '../flows/resolve/dashboard.ts'
 
-function checked(view: ViewSnapshot, id = 'test') {
-  const item = validateReportingMessage({ kind: 'view', id, title: 'Domain view', ...view })
+function checked(view: ViewSnapshot) {
+  const item = validateReportingMessage({ kind: 'view', id: 'test', title: 'Domain view', ...view })
   expect(Buffer.byteLength(JSON.stringify(item))).toBeLessThanOrEqual(32768)
   return item as any
 }
 
-import input from '../fixtures/duplicate.json'
-import { caseView as proposal, chargesView as proposalCharges } from '../flows/assess/dashboard.ts'
-import { caseView as decision, chargesView as decisionCharges } from '../flows/resolve/dashboard.ts'
-
-test('policy decision and proposal use different claims, while retaining supplied charge context', () => {
-  const assessed = { outcome: 'done', output: { chargeId: 'ch-102', requestedCreditCents: 2400 } }
-  const proposed = checked(proposal(input, true, assessed))
-  expect(proposed.summary).toContain('no credit decision has been made')
-  expect(JSON.stringify(proposed.sections)).toContain('Pending application checks')
+test('the application keeps the request, relevant charges, policy and reply together', () => {
+  const suggested = { chargeId: 'ch-102', requestedCreditCents: 2400 }
+  expect(checked(proposal(input, true, { outcome: 'done', output: suggested })).summary).toContain(
+    'no credit decision has been made',
+  )
   const final = checked(
-    decision(input, false, {
-      outcome: 'done',
-      output: {
-        disposition: 'credit_eligible',
-        reason: 'verified_duplicate',
-        reply: 'Eligible; no credit has been issued.',
-        proposal: assessed.output,
-      },
+    supportCaseView({
+      input,
+      phase: 'ready',
+      proposal: suggested,
+      decision: decide(input.account, suggested),
     }),
   )
-  expect(final.summary).toContain('none has been issued')
-  expect(JSON.stringify(final)).toContain('verified_duplicate')
+  expect(final.sections.map((section: any) => section.title)).toEqual([
+    'Case status',
+    'Customer request',
+    'Supplied charges',
+    'Interpretation and policy',
+    'Draft reply',
+  ])
+  expect(JSON.stringify(final)).toContain('none has been issued')
+  expect(JSON.stringify(final)).toContain('earlier settled payment')
+  const pending = checked(supportCaseView({ input, phase: 'checking', proposal: suggested }))
+  expect(JSON.stringify(pending)).toContain('Pending account and policy checks')
 })
 
-test('maximum supplied records and escaped requests are bounded with visible omissions', () => {
+test('maximum escaped requests and charges fit the complete page with disclosed excerpts', () => {
   const maximal = {
     message: '\u0001'.repeat(8000),
     account: {
@@ -44,25 +50,31 @@ test('maximum supplied records and escaped requests are bounded with visible omi
       })),
     },
   }
-  for (const [view, list] of [
-    [decision, decisionCharges],
-    [proposal, proposalCharges],
-  ] as const) {
-    expect(JSON.stringify(checked(view(maximal, view === proposal)))).toContain(
-      '[Excerpt; complete value',
-    )
-    const item = checked(list(maximal))
-    expect(item.sections[0].blocks[0].rows).toHaveLength(12)
-    expect(item.sections[0].blocks[0].total).toBe(32)
+  const item = checked(
+    supportCaseView({ input: maximal, phase: 'blocked', reason: '\u0001'.repeat(4096) }),
+  )
+  expect(JSON.stringify(item)).toContain('[Excerpt; complete value')
+  expect(item.sections[2].blocks[0].rows).toHaveLength(12)
+  expect(item.sections[2].blocks[0].total).toBe(32)
+  checked(proposal(maximal, true))
+  checked(proposalCharges(maximal))
+})
+
+test('a disputed charge beyond the excerpt and its earlier match remain visible', () => {
+  const charges = Array.from({ length: 32 }, (_, index) => ({
+    id: `charge-${index}`,
+    invoiceId: `invoice-${index}`,
+    amountCents: 2400,
+    status: 'settled',
+  }))
+  charges[31]!.invoiceId = charges[24]!.invoiceId
+  const state: SupportState = {
+    input: { message: 'The later payment is a duplicate.', account: { id: 'account', charges } },
+    phase: 'checking',
+    proposal: { chargeId: 'charge-31', requestedCreditCents: 2400 },
   }
-  expect(
-    JSON.stringify(
-      checked(
-        decision(input, false, {
-          outcome: 'blocked',
-          output: { reason: 'No assessment is available.' },
-        }),
-      ),
-    ),
-  ).toContain('No assessment is available.')
+  const visible = checked(supportCaseView(state)).sections[2].blocks[0].rows
+  expect(visible.map((row: any) => row.cells.charge)).toContain('charge-31')
+  expect(visible.map((row: any) => row.cells.charge)).toContain('charge-24')
+  expect(visible.find((row: any) => row.cells.charge === 'charge-31').cells.proposed).toBe(true)
 })

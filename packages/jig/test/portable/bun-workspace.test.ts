@@ -599,7 +599,7 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
     'patch-invalid',
     'root',
     'root-pinned',
-    'root-stale',
+    'root-metadata',
     'member-pinned',
   ] as const
 ).entries()) {
@@ -609,7 +609,8 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
       Reflect.apply(
         async (mode) => {
           const patchMode = mode === 'patched' || mode.startsWith('patch-')
-          const rootApplication = mode === 'root' || mode === 'root-pinned' || mode === 'root-stale'
+          const rootApplication =
+            mode === 'root' || mode === 'root-pinned' || mode === 'root-metadata'
           const value = await fixture(
             mode === 'versions' || mode === 'unlocked-versions' || patchMode,
             rootApplication,
@@ -711,9 +712,14 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
                 type: 'module',
                 exports: './index.js',
               })
-            if (mode === 'root-stale') {
+            if (mode === 'root-metadata') {
               const lock = await readFile(join(value.root, 'bun.lock'), 'utf8')
-              await value.put('bun.lock', lock.replace('root-app', 'old-root-app'))
+              const rootName = '"name": "root-app"'
+              expect(lock).toContain(rootName)
+              await value.put(
+                'bun.lock',
+                lock.replace(rootName, '"name": "old-root-app",\n      "version": "2.0.0"'),
+              )
             }
             if (mode === 'patch-stale') {
               const manifest = JSON.parse(await readFile(join(value.root, 'package.json'), 'utf8'))
@@ -786,22 +792,13 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
               expect(result.code).toBe('PACKAGE_BUN_PREPARATION_FAILED')
               return
             }
-            if (
-              mode === 'stale' ||
-              mode === 'root-stale' ||
-              mode === 'patch-stale' ||
-              mode === 'patch-missing'
-            ) {
+            if (mode === 'stale' || mode === 'patch-stale' || mode === 'patch-missing') {
               expect(exit).toBe(1)
               expect(result.code).toBe(
                 mode === 'patch-missing'
                   ? 'PACKAGE_BUN_SOURCE_UNSUPPORTED'
                   : 'PACKAGE_BUN_LOCK_STALE',
               )
-              if (mode === 'root-stale') {
-                expect(result.message).toContain('package.json: name')
-                expect(result.location).toEqual({ path: 'package.json', pointer: '/name' })
-              }
               if (mode === 'stale')
                 expect(result.message).toContain('libs/leaf/package.json: version')
               return

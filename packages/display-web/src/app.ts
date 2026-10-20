@@ -1,17 +1,18 @@
-import type { DetailBlock, Reference, Value } from '@jigging/reporting'
-import {
-  attentionImportance,
-  displayViewKey,
-  detectDisplayTextFormat,
-  displayTextTokens,
-  displayDelimitedRows,
-} from '@jigging/display-model'
-import { type ComponentChildren, h, render } from 'preact'
 import type {
   DisplayAttribution,
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
 } from '@jigging/display-model'
+import {
+  attentionImportance,
+  detectDisplayTextFormat,
+  displayDelimitedRows,
+  displayTextTokens,
+  displayViewKey,
+} from '@jigging/display-model'
+import type { DetailBlock, Reference, Value } from '@jigging/reporting'
+import { type ComponentChildren, h, render } from 'preact'
+import { ApplicationPage } from './application.js'
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
 import {
   PrivateBrowserClock,
@@ -26,8 +27,8 @@ import {
   privateBrowserRowKey,
   privateBrowserSurvivingSelection,
   privateBrowserTabs,
-  privateBrowserView,
   privateBrowserValue,
+  privateBrowserView,
 } from './navigation.js'
 import {
   privateBrowserCallSpans,
@@ -83,6 +84,8 @@ const currentLocal = (): PrivateBrowserLocal => {
   return local.get(destinationKey)!
 }
 const view = () => privateBrowserView(client?.body, destinationKey)
+const isApplicationPage = () =>
+  privateBrowserTabs(client?.body).some((tab) => tab.id === destinationKey && tab.application)
 const records = (): PrivateBrowserRecord[] => {
   const selected = view()
   return selected ? privateBrowserRecords(selected, currentLocal()) : []
@@ -127,7 +130,10 @@ function redraw(): void {
       if (landing) {
         destinationKey = displayViewKey(landing.id)
         landed = true
-      } else if (snapshot.workspace.phase === 'settled' && rootViews.length)
+      } else if (
+        rootViews.length &&
+        (destinationKey === 'activity' || snapshot.workspace.phase === 'settled')
+      )
         destinationKey = displayViewKey(rootViews[0]!.id)
     }
     for (const item of snapshot.views) {
@@ -149,10 +155,7 @@ function redraw(): void {
           state.sorts.delete(key)
       const nextRecords = privateBrowserRecords(item, state)
       const keys = nextRecords.map((record) => record.key)
-      if (
-        state.selected ||
-        (snapshot.workspace.phase === 'settled' && !humanNavigation && viewKey === destinationKey)
-      ) {
+      if (state.selected) {
         state.selected = privateBrowserSurvivingSelection(
           previousKeys.get(viewKey) ?? [],
           state.selected,
@@ -256,6 +259,11 @@ function focusSelectedEntry(): void {
     )
     ?.focus()
 }
+function focusDetailReturn(): void {
+  const breakpoint = isApplicationPage() ? '(max-width: 1000px)' : '(max-width: 599px)'
+  if (matchMedia(breakpoint).matches)
+    document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
+}
 function select(key: string): void {
   humanNavigation = true
   currentLocal().selected = key
@@ -264,8 +272,7 @@ function select(key: string): void {
   currentLocal().reference = undefined
   feedback = ''
   redraw()
-  if (matchMedia('(max-width: 599px)').matches)
-    document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
+  focusDetailReturn()
 }
 function selectCall(id: string): void {
   selectedCall = id
@@ -276,8 +283,7 @@ function selectCall(id: string): void {
     call = client?.body?.calls.find((item) => item.id === call!.parentId)
   }
   redraw()
-  if (matchMedia('(max-width: 599px)').matches)
-    document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
+  focusDetailReturn()
 }
 function openPanel(next: typeof panel): void {
   const body = document.getElementById('view-panel')
@@ -308,10 +314,13 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
   }
   humanNavigation = true
   if (target.kind === 'artifact') {
+    currentLocal().selected = record.key
+    currentLocal().detailOpen = true
     currentLocal().reference = reference
     currentLocal().previewSearch = ''
     currentLocal().previewScroll = undefined
     redraw()
+    focusDetailReturn()
     return
   }
   if (target.kind === 'record') {
@@ -443,7 +452,7 @@ function recordTeaser(record: PrivateBrowserRecord): ComponentChildren {
     )
   return literal(teaser(record.block?.kind === 'report' ? record.block.text : (record.text ?? '')))
 }
-function ApplicationList(): ComponentChildren {
+function InspectorList(): ComponentChildren {
   const selected = view()
   if (!selected) return null
   const state = currentLocal()
@@ -591,6 +600,42 @@ function ApplicationList(): ComponentChildren {
       ]
     }),
   )
+}
+
+function ApplicationList(): ComponentChildren {
+  const selected = view()
+  if (!selected) return null
+  const state = currentLocal()
+  return h(ApplicationPage, {
+    view: selected,
+    local: state,
+    records: records(),
+    onSelect: select,
+    onRecordKeyDown: recordKeyDown,
+    onFilter: (collection, query) => {
+      humanNavigation = true
+      state.filters.set(collection, query)
+      const next = records().map((record) => record.key)
+      state.selected = privateBrowserSurvivingSelection(
+        previousKeys.get(destinationKey) ?? [],
+        state.selected,
+        next,
+      )
+      previousKeys.set(destinationKey, next)
+      redraw()
+    },
+    onSort: (collection, key, descending) => {
+      humanNavigation = true
+      if (key) state.sorts.set(collection, { key, descending })
+      else state.sorts.delete(collection)
+      redraw()
+    },
+    renderBlock: (block, record) => h(Block, { block, record }),
+    renderValue: (value, record) =>
+      value !== null && typeof value === 'object'
+        ? h(ReferenceButton, { value, record })
+        : literal(privateBrowserValue(value)),
+  })
 }
 
 function recordKeyDown(event: KeyboardEvent): void {
@@ -1592,11 +1637,16 @@ function Tabs(): ComponentChildren {
         h(
           'div',
           { key: tab.id },
-          index === 0
-            ? h('p', { class: 'nav-group', role: 'presentation' }, 'Run inspection')
-            : null,
-          tab.application && !tabs[index - 1]?.application
-            ? h('p', { class: 'nav-group', role: 'presentation' }, 'Application views')
+          index === 0 || Boolean(tab.application) !== Boolean(tabs[index - 1]?.application)
+            ? h(
+                'p',
+                { class: 'nav-group', role: 'presentation' },
+                tab.application
+                  ? 'Application'
+                  : client?.current?.mode === 'recorded-packet'
+                    ? 'Recorded packet'
+                    : 'Inspector',
+              )
             : null,
           button(
             h(
@@ -1942,10 +1992,10 @@ function App(): ComponentChildren {
                     : h(
                         'div',
                         {
-                          class: `workspace ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                          class: `${isApplicationPage() ? 'application-workspace' : 'workspace'} ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
                         },
-                        h(ApplicationList, {}),
-                        h(SelectedDetail, {}),
+                        isApplicationPage() ? h(ApplicationList, {}) : h(InspectorList, {}),
+                        state.detailOpen ? h(SelectedDetail, {}) : null,
                       ),
         ),
       ),

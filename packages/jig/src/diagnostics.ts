@@ -6,6 +6,7 @@ export class CheckError extends Error {
   readonly path?: string
   readonly pointer?: string
   readonly typeMismatch?: import('./schema/types.js').SchemaTypeMismatch
+  readonly lockPath?: string
 
   constructor(
     kind: DiagnosticKind,
@@ -14,6 +15,7 @@ export class CheckError extends Error {
     path?: string,
     pointer?: string,
     typeMismatch?: import('./schema/types.js').SchemaTypeMismatch,
+    lockPath?: string,
   ) {
     super(message)
     this.name = 'CheckError'
@@ -22,6 +24,7 @@ export class CheckError extends Error {
     if (path !== undefined) this.path = path
     if (pointer !== undefined) this.pointer = pointer
     if (typeMismatch !== undefined) this.typeMismatch = typeMismatch
+    if (lockPath !== undefined) this.lockPath = lockPath
   }
 }
 

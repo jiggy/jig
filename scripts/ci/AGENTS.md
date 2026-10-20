@@ -16,8 +16,8 @@ preparation never becomes a consumer requirement.
   belongs only to the experimental profile and retains its manual opt-in. It
   cannot qualify a release.
 
-  Production image decoding remains unavailable while Wasm thread termination is
-  unproved.
+  Production image decoding uses a disposable process. The portable suite owns
+  its lifetime and fallback cases. Those checks do not qualify the thread experiment.
 - `host-scope.mjs` avoids native allocation only for a verified two-parent PR
   merge with an entirely independent delta. That delta must contain only site
   files, non-specification documentation, Python SDK/reporting files, or

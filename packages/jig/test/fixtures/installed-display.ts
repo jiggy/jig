@@ -175,7 +175,7 @@ console.log(path);
         'bearer-required',
         'recorded-capture',
         'immutable-previews',
-        'captured-svg-fallback',
+        'captured-raster-preview',
         'exact-origin-close',
         'piped-input',
         'joined-exit',

@@ -1,4 +1,10 @@
 import { PassThrough, Writable } from 'node:stream'
+import {
+  callObservationSpans,
+  detectDisplayTextFormat,
+  displayDuration,
+  displayTextTokens,
+} from '@jigging/display-model'
 import type { Reference } from '@jigging/reporting'
 import type {
   BoxRenderable,
@@ -11,6 +17,7 @@ import {
   type ViewerDetailPart,
   type ViewerState,
   viewerAligned,
+  viewerApplicationParts,
   viewerDetailParts,
   viewerFrame,
   viewerHasContext,
@@ -19,12 +26,6 @@ import {
   viewerTableColumns,
 } from './presentation/projection.js'
 import { syntaxHex } from './presentation/style.js'
-import {
-  callObservationSpans,
-  displayDuration,
-  detectDisplayTextFormat,
-  displayTextTokens,
-} from '@jigging/display-model'
 import {
   escapeTerminalText,
   terminalWidth,
@@ -639,7 +640,7 @@ export class NativeRenderer {
     const rail = width >= 150 && height >= 24
     this.#navigation.visible = rail
     this.#navigation.title = model.workspace.recorded ? ' Saved packet ' : ' Run workspace '
-    this.#tabs.content = `${destination?.group === 'application' ? `Application · ${one(destination.source)} › ` : model.workspace.recorded ? 'Recorded › ' : 'Run › '}[${one(destination?.title ?? 'Activity')}] · v all views${rail ? '' : ' · Tab next'}`
+    this.#tabs.content = `${destination?.group === 'application' ? `Application · ${one(destination.source)} › ` : model.workspace.recorded ? 'Recorded › ' : 'Inspector › '}[${one(destination?.title ?? 'Activity')}] · v all views${rail ? '' : ' · Tab next'}`
     const sticky = model.sticky
     const omissions = Object.entries(model.journalOmitted)
       .filter(([, n]) => n)
@@ -679,7 +680,16 @@ export class NativeRenderer {
         : ''
     const teaserWidth = (cells: number) => Math.max(1, cells - 6 - terminalWidth(selectedPrefix))
     model.local.teaserWidth = teaserWidth(available)
-    const wide = width >= 118 && height >= 24 && viewerHasContext(model, model.record)
+    const applicationPage = Boolean(
+      model.selected && !model.selected.role && model.selected.publisher === model.rootSourceId,
+    )
+    const wide =
+      (!applicationPage ||
+        Boolean(model.record?.row) ||
+        viewerReferences(model.record).some((ref) => ref.kind === 'artifact')) &&
+      width >= 118 &&
+      height >= 24 &&
+      viewerHasContext(model, model.record)
     const detailWidth = Math.max(40, Math.floor(available * 0.42))
     const listWidth = wide ? available - detailWidth - 1 : available
     model.local.teaserWidth = teaserWidth(listWidth)
@@ -740,7 +750,11 @@ export class NativeRenderer {
             group = entry.group
             this.#text(
               this.#navigation,
-              group === 'application' ? '\nAPPLICATION' : group === 'recorded' ? 'RECORDED' : 'RUN',
+              group === 'application'
+                ? '\nAPPLICATION'
+                : group === 'recorded'
+                  ? 'RECORDED'
+                  : 'INSPECTOR',
               'muted',
               true,
             )
@@ -791,7 +805,11 @@ export class NativeRenderer {
               group = entry.group
               this.#text(
                 this.#detail,
-                group === 'application' ? 'APPLICATION' : group === 'recorded' ? 'RECORDED' : 'RUN',
+                group === 'application'
+                  ? 'APPLICATION'
+                  : group === 'recorded'
+                    ? 'RECORDED'
+                    : 'INSPECTOR',
                 'muted',
                 true,
               )
@@ -872,7 +890,7 @@ export class NativeRenderer {
               record.collection,
               rows,
               listWidth - 4,
-              3,
+              applicationPage ? 8 : 3,
             )
             const filter = model.local.filters.get(collection)
             const sort = model.local.sorts.get(collection)
@@ -895,16 +913,25 @@ export class NativeRenderer {
             )
           }
           const selected = model.record?.key === record.key
+          const pageParts = applicationPage ? viewerApplicationParts(record) : undefined
           const row = new this.core.BoxRenderable(this.renderer, {
             id: `record-${index}`,
             width: '100%',
-            height: 1,
+            ...(pageParts ? {} : { height: 1 }),
             flexShrink: 0,
             flexDirection: 'column',
             backgroundColor: selected ? p.select : p.panel,
           })
           this.#list.add(row)
-          this.#row(row, record, listWidth - 4, record.collection ? table : undefined, spans.spans)
+          if (pageParts) this.#parts(row, pageParts, record.publisher ?? model.rootSourceId)
+          else
+            this.#row(
+              row,
+              record,
+              listWidth - 4,
+              record.collection ? table : undefined,
+              spans.spans,
+            )
           if (selected && this.#selection !== `${model.surface}:${record.key}`)
             this.#reveal = `record-${index}`
         }

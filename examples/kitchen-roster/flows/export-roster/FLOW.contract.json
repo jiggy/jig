@@ -1,0 +1,86 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "input": {
+    "type": "object",
+    "properties": {
+      "rows": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "shiftId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24
+            },
+            "from": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 1439
+            },
+            "until": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1440
+            },
+            "role": {
+              "enum": ["cook", "serve"]
+            },
+            "volunteerId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 24
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 48
+            }
+          },
+          "required": ["shiftId", "from", "until", "role", "volunteerId", "name"],
+          "additionalProperties": false
+        },
+        "minItems": 8,
+        "maxItems": 8
+      }
+    },
+    "required": ["rows"],
+    "additionalProperties": false
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "enum": ["done"]
+      },
+      "output": {
+        "type": "object",
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 8,
+            "maximum": 8
+          },
+          "file": {
+            "enum": ["roster.csv"]
+          }
+        },
+        "required": ["count", "file"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "channels": {
+    "progress": {
+      "direction": "send",
+      "delivery": "broadcast",
+      "required": false,
+      "contract": "./contracts/reporting/reporting.json"
+    }
+  },
+  "attachments": {
+    "files": "read-write"
+  }
+}

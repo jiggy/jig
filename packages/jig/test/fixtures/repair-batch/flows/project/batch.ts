@@ -1,17 +1,31 @@
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
+import { checkRepair } from '../../../../../../../examples/tested-patch/flows/check-repair/evidence.ts'
+import { identity } from '../../../../../../../examples/tested-patch/flows/check-repair/identity.ts'
+import { patchFiles } from '../../../../../../../examples/tested-patch/flows/export-patch/method.ts'
+import { readProject } from '../../../../../../../examples/tested-patch/flows/read-project/capture.ts'
 import {
   checkName,
   loadChecks,
-} from '../../../../../../../examples/tested-patch/flows/project/checks.ts'
-import {
-  identity,
-  inspect,
-  readRepairInput,
-  repairDeliverables,
-  writeRepairDeliverables,
-} from '../../../../../../../examples/tested-patch/flows/project/files.ts'
+} from '../../../../../../../examples/tested-patch/flows/read-project/checks.ts'
+
+function reviewFiles(input: Parameters<typeof checkRepair>[0], result: RunResult) {
+  return patchFiles({
+    issue: input.issue,
+    originals: input.files,
+    checked: checkRepair(input, result),
+  })
+}
+async function writeReviewFiles(
+  path: string,
+  input: Parameters<typeof checkRepair>[0],
+  result: RunResult,
+) {
+  for (const [name, text] of Object.entries(reviewFiles(input, result))) {
+    await writeFile(join(path, name), text, { flag: 'wx' })
+  }
+}
 
 interface Job {
   id: string
@@ -82,10 +96,10 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
   for (const job of jobs)
     prepared.push({
       job,
-      input: await readRepairInput(
+      input: await readProject(
         { issue: job.issue, editPaths: job.editPaths },
         join(source.path, job.directory),
-        await loadChecks(job.checks),
+        await loadChecks(job.checks, job.checks === 'timesheet' ? import.meta.dir : undefined),
       ),
     })
   const changes: { job: string; path: string; content: string }[] = []
@@ -128,9 +142,9 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
           clearTimeout(timer)
         }
         run.signal.throwIfAborted()
-        let checked: ReturnType<typeof inspect>
+        let checked: ReturnType<typeof checkRepair>
         try {
-          checked = inspect(input, result)
+          checked = checkRepair(input, result)
         } catch (error) {
           return {
             ...captured,
@@ -142,8 +156,8 @@ export async function repairBatch(run: RunContext): Promise<RunResult> {
         }
         const output = join(deliverables.path, job.id)
         await mkdir(output)
-        await writeRepairDeliverables(output, input, result)
-        for (const [path, text] of Object.entries(repairDeliverables(input, result)))
+        await writeReviewFiles(output, input, result)
+        for (const [path, text] of Object.entries(reviewFiles(input, result)))
           retainedFiles[`${job.id}/${path}`] = text
         if (checked.ready) {
           const attempt = (result.output as any).attempts.at(-1)

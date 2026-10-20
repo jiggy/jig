@@ -10,7 +10,9 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - `src/client.ts` owns bounded synchronization, memory capability and preview
   requests. `src/navigation.ts` owns viewer-local semantic selection/references.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
-- `src/app.ts`, `src/app.css` and `src/index.html` own inert browser rendering.
+- `src/application.ts` composes authored sections and complete-column tables.
+  `src/app.ts`, `src/app.css` and `src/index.html` own inert browser
+  rendering.
 - `scripts/build-assets.ts` emits fixed self-contained values for the declared
   `./assets` export. `src/index.ts` declares public browser helpers.
 - Package tests, metadata, README, notices and justfile own this release unit.
@@ -44,9 +46,13 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 
 ## Work Guidance
 
-- Appearance uses fixed accessible icon buttons with names, tooltips, focus and
-  pressed state. Default System follows browser preference. Choices are
+- Appearance uses fixed accessible icon buttons with names, tooltips, focus
+  and pressed state. Default System follows browser preference. Choices are
   viewer-local.
+- Root application pages precede Inspector and child views by verified
+  publisher identity. Compose authored sections in place. Details open on
+  demand. Preserve full columns, literal data, stable local state and all
+  inspection destinations.
 - Preserve list/context/expanded-evidence hierarchy, keyboard focus, compact
   navigation, diagnostic uncertainty and captured-file findings.
 - Routine replacement belongs in quiet synchronization. Actual loss remains

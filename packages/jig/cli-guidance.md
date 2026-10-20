@@ -54,6 +54,16 @@ All selected domain requirements still apply.
   truncated issue rows. Inspection discloses retained availability separately
   from environment freshness. Chooser selects ready routes only.
 
+  Ordinary Agent setup errors show a short cause, captured location and copyable
+  recovery commands. Keep source provenance, full installation rules and manual
+  policy edits under `--details`. Build alternative commands from parsed review
+  arguments, preserving project quoting and explicit permissions. Never replace
+  client-like text inside a quoted project path.
+
+  Style the failure heading red, the missing prerequisite amber and recovery
+  headings prominently. Use ordinary command syntax colours and secondary
+  location/code text. Colour-free output retains every fact and command.
+
   Installing a client requires renewed review before an unavailable retained
   route can run. Review also separates source capture, per-package dependency
   capture, preparation/reuse and review retention, with stage-local timing.
@@ -292,13 +302,22 @@ Trusted root admission starts screen entry and the CLI joins it before
 settlement. Early host stages, call observations and diagnostics remain visible.
 Post-settlement inspection owns no execution/channel lifetime.
 
-Select immutable delivery capture before publication. Preview suppliers receive
-only artifact identity and capture generation, never mutable destinations or
-arbitrary paths. Navigation is renderer-local and cannot mutate host
-observations. `image-preview-policy.ts` owns bounded raster preview data. The
-bundled image worker and pinned renderer/font bytes participate in installed
-support identity. Production file-image decoding remains unavailable until
-independent fencing can interrupt Wasm on the qualified Bun profiles.
+Select immutable delivery capture before publication. Preview suppliers
+receive only artifact identity and capture generation, never mutable
+destinations or arbitrary paths. Navigation is renderer-local and cannot
+mutate host observations. `image-preview-policy.ts` owns bounded raster
+preview data.
+
+The bundled image worker and pinned renderer/font bytes participate in
+installed support identity. A disposable process owns image decoding. Its
+separate watchdog limits each image to five seconds. An open stdin pipe
+controls its lifetime.
+
+Pipe loss kills the decoder. Cancellation kills and joins it before reuse. The
+private command carries earlier preview cutoffs to the decoder timer.
+Image-content limits do not bound total Bun RSS.
+
+Saved-image preparation has a ten-second aggregate limit.
 
 Text and saved-file access remain usable. Auto/plain commit complete essential
 causes outside redraw. Entered TUI restores the screen, then commits retained
