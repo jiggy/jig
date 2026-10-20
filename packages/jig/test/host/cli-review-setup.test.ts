@@ -109,7 +109,11 @@ describe.serial('installed review setup with actual configuration evaluation', (
         expect(result.code, result.stderr).toBe(2)
         expect(result.stderr).toContain('Review could not finish')
         expect(result.stderr).toContain('bindings/model.ts')
-        expect(result.stderr).toContain('Any existing approval remains unchanged')
+        expect(result.stderr).toContain(
+          args.includes('--details')
+            ? 'Any existing approval remains unchanged'
+            : 'Previous approval unchanged',
+        )
         expect(result.stdout).not.toContain('Project ready')
         expect(await readFile(join(root, 'jig.lock'))).toEqual(lock)
         expect(await readFile(join(root, 'bindings/model.ts'))).toEqual(source)

@@ -228,7 +228,8 @@ await handle(async run => {
     reason: 'No qualified, available volunteer can cover shift-4 as cook.',
   })
   assert.equal(stopped.delivery.status, 'written')
-  assert.equal(stopped.delivery.source, 'final')
+  // No artifact was forwarded: this packet retains only the stopped result.
+  assert.equal(stopped.delivery.source, 'none')
   assert.deepEqual(stopped.delivery.files, [])
   assert.deepEqual(await readdir(join(stoppedPacket, 'files')), [])
   assert.equal(await hash(join(project, 'jig.lock')), lock)
