@@ -159,9 +159,9 @@ export async function buildCandidates(
         'install',
         '--ignore-scripts',
         '--config=/dev/null',
-        ...Object.values(CANDIDATE_PACKAGES).flatMap((name) => ['--filter', name]),
-        '--filter',
-        '@jigging/flow-authoring',
+        ...Object.entries(CANDIDATE_PACKAGES).flatMap(([kind, name]) =>
+          kind === 'flow-sdk' ? [] : ['--filter', name],
+        ),
         '--cache-dir',
         join(temporary, 'cache'),
         '--backend=copyfile',

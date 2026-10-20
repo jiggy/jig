@@ -163,7 +163,7 @@ jobs:
           printf 'ready=true\n' >> "$GITHUB_OUTPUT"
       -
         name: "Install host-test dependencies"
-        run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/flow-authoring --filter @jigging/agent-acp --filter @jigging/flow --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui"
+        run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/agent-acp --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui"
       -
         name: "Build source-test workspace packages"
         if: "matrix.suite != 'installed-evidence'"

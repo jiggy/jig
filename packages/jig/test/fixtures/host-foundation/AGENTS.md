@@ -10,6 +10,8 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 
 - `materialize.ts` constructs two independent temporary consumer repositories and
   installs exact frozen Jig/FLOW archives using the installed-test conventions.
+- Without a supplied FLOW archive, freeze the installed public SDK package.
+  Never require a neighboring SDK source checkout.
 - `adaptive/` owns deterministic candidate production, reviewed evaluation,
   independent acceptance, and explicit final artifact selection.
 - `documents/` owns a separate noncoding producer/validator application.

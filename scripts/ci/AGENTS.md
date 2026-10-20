@@ -65,6 +65,7 @@ preparation never becomes a consumer requirement.
   release archives. Display packages qualify through Jig's gate. The protected publication selectors are HTTP Agent, ACP Agent, and Jig.
 
   FLOW SDK archives are published dependencies frozen as qualification inputs.
+  Workspace installation selects only Jig-owned packages, never external FLOW packages.
   Installed qualifications build no source packages.
 
 They consume frozen package exports with tracked test helpers and installed

@@ -3,7 +3,7 @@
 set -eu
 
 if [ "$#" -ne 2 ]; then
-  echo "usage: scripts/build-site.sh <flow|jig> <output-directory>" >&2
+  echo "usage: scripts/build-site.sh <jig> <output-directory>" >&2
   exit 2
 fi
 
@@ -11,7 +11,7 @@ site_name=$1
 case $site_name in
   jig) ;;
   *)
-    echo "the site must be flow or jig" >&2
+    echo "the site must be jig" >&2
     exit 2
     ;;
 esac
@@ -60,7 +60,7 @@ cp -- "$repository/site/theme/fonts/"*-LICENSE.txt "$staging/font-licenses/"
 const { readFileSync, readdirSync, statSync } = require('node:fs');
 const { join, relative } = require('node:path');
 const [root, site] = process.argv.slice(2);
-const origin = site === 'jig' ? 'https://jig.md' : 'https://flow.jig.md';
+const origin = 'https://jig.md';
 const index = readFileSync(join(root, 'llms.txt'), 'utf8');
 const bundle = readFileSync(join(root, 'llms-full.txt'), 'utf8');
 if (!index.trim() || !bundle.trim()) throw new Error('Empty agent documentation');
@@ -104,26 +104,7 @@ for route in index.html guide/index.html guide/understand.html; do
     exit 1
   fi
 done
-if [ "$site_name" = flow ] && [ ! -s "$staging/guide/start.html" ]; then
-  echo "the FLOW authoring entrypoint is missing" >&2
-  exit 1
-fi
-
 case $site_name in
-  flow)
-    for guide in python typescript markdown skills platforms runtimes; do
-      if [ ! -s "$staging/guide/$guide.html" ]; then
-        echo "the FLOW $guide guide is missing" >&2
-        exit 1
-      fi
-    done
-    schema_map='docs/flow/spec/machine/invocation-contract-0.schema.json|invocation-contract-0.schema.json|https://flow.jig.md/schemas/invocation-contract-0.schema.json
-docs/flow/spec/machine/channel-contract-0.schema.json|channel-contract-0.schema.json|https://flow.jig.md/schemas/channel-contract-0.schema.json
-docs/flow/spec/machine/run-0-errors.json|run-0-errors.json|-
-docs/flow/spec/machine/run-0.schema.json|run-0.json|https://flow.jig.md/schemas/run-0.json
-docs/flow/spec/machine/schema-0.json|schema-0.json|https://flow.jig.md/schemas/schema-0.json'
-    forbidden_page='spec/project-policy.html'
-    ;;
   jig)
     if [ ! -s "$staging/guide/contact-import.html" ]; then
       echo "the code-and-Agent composition guide is missing" >&2

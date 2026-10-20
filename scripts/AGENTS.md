@@ -54,21 +54,24 @@ operational baselines, and public-site assembly.
   stages in one built workspace. Omitted stages perform no setup or execution.
   Selected reports bind the complete whole-file suite inventory. Its default
   runs all stages serially after shared builds and archive freezing. Jig's
-  portable build owns its complete package graph, including authoring.
-  Protocol-only execution builds authoring separately before its stage starts.
+  portable build owns its complete local package graph.
+
+  FLOW SDKs and authoring
+  use exact versioned public artifacts from `jiggy/flow`, not local builds.
 
   A failed stage stops later execution and archive-success verification. It
-  includes the authored examples' deterministic application tests, the private
-  conversation-handoff fixture, and the
-  optional contract author's Node mapping/type/lifecycle checks. It also checks
-  the shared Agent method and ordinary ACP package. Refuse missing Python
-  build/test tools or separately installed Run/0 fixture dependencies before
-  builds and long tests, with the existing setup commands. CI supplies the
-  verified canonical eight-package bundle through `CI_CANDIDATE_BUNDLE`. Local
-  runs freeze complete SDK, reporting, HTTP Agent, ACP Agent, semantic model,
-  web/TUI renderer and Jig archives.
+  includes the authored examples' deterministic application tests and the
+  external FLOW dependency boundary. It also checks the shared Agent method and
+  ordinary ACP package. FLOW owns SDK, authoring, and conformance qualification.
+  Refuse missing Python build/test tools before builds and long tests.
 
-  Their owning packers place these archives under a canonical temporary root.
+  CI supplies the
+  verified canonical eight-package bundle through `CI_CANDIDATE_BUNDLE`. Local
+  runs freeze the exact public SDK archive alongside reporting, HTTP Agent, ACP
+  Agent, semantic model, web/TUI renderer and Jig archives.
+
+  Local packers and the public SDK fetch place archives under a canonical
+  temporary root.
   Source workspace builds remain separate from installed archive proof. It
   passes `FLOW_SDK_PACKAGE_ARCHIVE`, `REPORTING_PACKAGE_ARCHIVE`,
   `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE`,
@@ -96,7 +99,8 @@ operational baselines, and public-site assembly.
 
   This mapping uses no lifecycle scripts and makes no edits to source manifests.
   Generated workspace `node_modules` links are excluded from those copies.
-  This permits testing an SDK before its version reaches npm.
+  Full Jig CI fetches FLOW archives at their exact published versions.
+  Publish a newly adopted FLOW candidate before qualifying dependent Jig releases.
 
   It does not claim live Agent quality or independent consumer proof.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
@@ -172,9 +176,9 @@ operational baselines, and public-site assembly.
 - Site assembly verifies every public HTML page has indexed Markdown and
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.
-- Site assembly requires both products’ home, guide, and understanding routes,
-  plus FLOW’s authoring entrypoint, SDK/Markdown/Skill guides, and Jig’s
-  contact-import composition guide.
+- Site assembly requires Jig's home, guide, and understanding routes, plus its
+  contact-import composition guide. FLOW owns its separate site and authoring
+  guidance.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles, JSON
   content types, and canonical bytes. Neither operation is runtime invocation

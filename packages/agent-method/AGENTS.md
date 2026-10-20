@@ -90,8 +90,8 @@ ordinary Flow, preserving operator ownership of Agent execution.
 - Preserve the shared 64-group, 1,024-item, 1 MiB content and 1 MiB rendered
   prompt limits. Reject duplicate selections, invalid UTF-8 and symlinks.
 - Runtime dependencies are bundled. Installed consumers need no build hook.
-- The source workspace uses `workspace:*` for SDK development. Extracted source
-  uses the packed versioned development dependencies and an ordinary Bun lock.
+- Source builds use the exact public SDK development dependency and an ordinary
+  Bun lock. No neighboring FLOW checkout is a build input.
   Publish dependencies before packages that require them for source rebuilds.
 - The ordinary ACP package imports this same method. `checkAgentResult` lets
   consumers independently check any selected Agent's dynamic structured result.

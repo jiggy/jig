@@ -3,13 +3,14 @@ import { test } from 'bun:test'
 import assert from 'node:assert/strict'
 import { appendFile, cp, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import type { PrivateCallEvent } from '../../src/cli-run-model.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import type { PrivateRunDiagnosticSource } from '../../src/internal/run-channels.js'
 import { canonicalJson } from '../../src/json.js'
 import { fixtureHost } from '../fixtures/agent-fixture-host.js'
+import { flowSdkRuntimeDirectory } from '../fixtures/flow-dependency.js'
 import {
   foundationCommands,
   foundationResidue,
@@ -35,7 +36,7 @@ test(
       for (const name of ['outer', 'parent', 'leaf']) {
         const flow = join(root, 'flows', name)
         await mkdir(flow, { recursive: true })
-        await cp(resolve(import.meta.dir, '../../../flow-sdk/dist'), join(flow, 'sdk'), {
+        await cp(flowSdkRuntimeDirectory, join(flow, 'sdk'), {
           recursive: true,
         })
         await writeFile(

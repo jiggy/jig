@@ -3,22 +3,12 @@
 set -eu
 
 if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
-  echo "usage: scripts/check-site.sh <flow|jig> [base-url]" >&2
+  echo "usage: scripts/check-site.sh <jig> [base-url]" >&2
   exit 2
 fi
 
 site_name=$1
 case $site_name in
-  flow)
-    default_base=https://flow.jig.md
-    home_title='<title>FLOW</title>'
-    guide_title='<title>FLOW specifications - FLOW</title>'
-    json_map='docs/flow/spec/machine/invocation-contract-0.schema.json|schemas/invocation-contract-0.schema.json
-docs/flow/spec/machine/channel-contract-0.schema.json|schemas/channel-contract-0.schema.json
-docs/flow/spec/machine/run-0-errors.json|schemas/run-0-errors.json
-docs/flow/spec/machine/run-0.schema.json|schemas/run-0.json
-docs/flow/spec/machine/schema-0.json|schemas/schema-0.json'
-    ;;
   jig)
     default_base=https://jig.md
     home_title='<title>Jig</title>'
@@ -26,6 +16,7 @@ docs/flow/spec/machine/schema-0.json|schemas/schema-0.json'
     json_map='packages/reporting/src/reporting.json|contracts/reporting.json
 docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
+docs/jig/spec/machine/project-evaluation-recipe-1.schema.json|schemas/project-evaluation-recipe-1.schema.json
 docs/jig/spec/contracts/agent-run/contract.json|contracts/agent-run/contract.json
 docs/jig/spec/contracts/agent-run/contracts/acp-public-updates.json|contracts/agent-run/contracts/acp-public-updates.json
 docs/jig/spec/contracts/agent-run/contracts/agent-commands.json|contracts/agent-run/contracts/agent-commands.json
@@ -36,10 +27,11 @@ docs/jig/spec/contracts/finite-acp/responses.json|contracts/finite-acp/responses
 docs/jig/spec/contracts/acp-public-updates.json|contracts/acp-public-updates.json
 docs/jig/spec/contracts/http-request/contract.json|contracts/http-request/contract.json
 docs/jig/spec/contracts/project-command/contract.json|contracts/project-command/contract.json
+docs/jig/spec/contracts/project-evaluation/contract.json|contracts/project-evaluation/contract.json
 docs/jig/spec/contracts/run-checkpoint/contract.json|contracts/run-checkpoint/contract.json'
     ;;
   *)
-    echo "the site must be flow or jig" >&2
+    echo "the site must be jig" >&2
     exit 2
     ;;
 esac
@@ -72,12 +64,13 @@ grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
 if [ "$site_name" = jig ]; then
-  for contract in reporting agent-run project-command http-request run-checkpoint acp-public-updates finite-acp; do
+  for contract in reporting agent-run project-command project-evaluation http-request run-checkpoint acp-public-updates finite-acp; do
     case $contract in
       agent-run) title='<title>Agent Run contract - Jig</title>' ;;
       reporting) title='<title>Reporting contract - Jig</title>' ;;
       http-request) title='<title>HTTP Request contract - Jig</title>' ;;
       project-command) title='<title>Project Command contract - Jig</title>' ;;
+      project-evaluation) title='<title>Project Evaluation contract - Jig</title>' ;;
       run-checkpoint) title='<title>Run Checkpoint contract - Jig</title>' ;;
       acp-public-updates) title='<title>ACP public updates contract - Jig</title>' ;;
       finite-acp) title='<title>Finite ACP contract - Jig</title>' ;;

@@ -36,7 +36,7 @@
     "test"
   ],
   "devDependencies": {
-    "@jigging/flow": "0.1.0-alpha.13",
+    "@jigging/flow": "0.1.0-alpha.15",
     "@jigging/agent-method": "workspace:*",
     "@types/node": "24.13.3",
     "typescript": "7.0.2"

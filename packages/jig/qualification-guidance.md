@@ -47,8 +47,11 @@ These links locate module rules. All selected domain requirements still apply.
   notices own package assembly inputs. Bun generates the ignored root workspace
   lock. `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated. Jig builds web and
-  TUI through their owning recipes. Each builds the model, which builds FLOW and
-  Reporting. Do not repeat those prerequisite requests directly in Jig.
+  TUI through their owning recipes. Each builds the model and its local
+  Reporting dependency.
+
+  FLOW uses versioned public artifacts, not a local SDK
+  build. Do not repeat those prerequisite requests directly in Jig.
 
   Standalone package recipes keep their complete dependencies.
 
@@ -181,8 +184,9 @@ These links locate module rules. All selected domain requirements still apply.
   checks a real decision task, code child and SDK channel composition.
   Neither case substitutes a Run context or native provider.
   It honors
-  `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`. Otherwise pack built
-  candidates. Failed public commands retain their consumer and diagnostics under
+  `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`. Otherwise pack the built
+  Jig candidate and pack the installed public SDK. Failed public commands
+  retain their consumer and diagnostics under
   the selected temporary root for investigation.
 
 ### test host installed-* tests
@@ -287,7 +291,8 @@ These links locate module rules. All selected domain requirements still apply.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
   `REPORTING_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
   `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged candidate artifacts. Otherwise they
-  pack already-built packages without rebuilding during execution. The native
+  pack already-built Jig-owned packages and the installed public SDK
+  without rebuilding during execution. The native
   Codex immediate-interruption qualification separately installs the frozen Jig
   candidate and published conversation dependencies in an ordinary consumer. It
   imports the published Agent contract through the public CLI, then checks the

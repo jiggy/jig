@@ -13,6 +13,7 @@ import {
 } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { settleTestCommand } from '../bounded-command.js'
+import { flowSdkDirectory } from '../flow-dependency.js'
 
 export type FoundationApplication = 'adaptive' | 'documents'
 export interface FoundationArchives {
@@ -294,7 +295,7 @@ export async function freezeFoundationArchives(
     return { path: frozen, digest: before }
   }
   const jig = await freeze('JIG_PACKAGE_ARCHIVE', packageRoot, 'jig')
-  const flow = await freeze('FLOW_SDK_PACKAGE_ARCHIVE', resolve(packageRoot, '../flow-sdk'), 'flow')
+  const flow = await freeze('FLOW_SDK_PACKAGE_ARCHIVE', flowSdkDirectory, 'flow')
   const result = { jig: jig.path, flow: flow.path, jigDigest: jig.digest, flowDigest: flow.digest }
   await writeFile(join(root, 'frozen-artifacts.json'), JSON.stringify(result, null, 2), {
     flag: 'wx',

@@ -3,6 +3,7 @@ import { lstat, mkdir, mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
+import { flowSdkRuntimeDirectory } from '../fixtures/flow-dependency.js'
 import {
   firstLine,
   invokeFailure,
@@ -51,7 +52,7 @@ describe('private foreground command boundary', () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-foreground-sdk-'))
     try {
       await writeProject(root)
-      const sdk = join(import.meta.dir, '../../../flow-sdk/dist')
+      const sdk = flowSdkRuntimeDirectory
       const files = (await readdir(sdk, { recursive: true })).sort()
       for (const [name, held] of [
         ['worker', false],

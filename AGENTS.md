@@ -227,5 +227,5 @@ Default section order:
   implementations, with their package-local tests and artifacts.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Build, verification,
   release-candidate, and site-assembly entrypoints.
-- [site/AGENTS.md](site/AGENTS.md) — FLOW and Jig public-site configuration,
-  static root files, shared tooling, and deployment topology.
+- [site/AGENTS.md](site/AGENTS.md) — Jig public-site configuration, static root
+  files, shared tooling, and deployment topology.

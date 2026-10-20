@@ -107,7 +107,7 @@
     "@jigging/agent-acp": "workspace:*",
     "@jigging/agent-method": "workspace:*",
     "@jigging/flow-authoring": "0.1.0-alpha.1",
-    "@jigging/flow": "0.1.0-alpha.13",
+    "@jigging/flow": "0.1.0-alpha.15",
     "@types/commonmark": "0.27.10",
     "commonmark": "0.31.2",
     "@agentclientprotocol/claude-agent-acp": "0.73.0",
