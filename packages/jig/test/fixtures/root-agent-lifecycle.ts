@@ -1,4 +1,3 @@
-import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import {
   copyFile,
@@ -27,6 +26,7 @@ import {
   openPrivateProjectSession,
 } from '../../src/internal/project-session-controller.js'
 import { fixtureHost, MACOS_FIXTURE_SETTLEMENT_MS } from './agent-fixture-host.js'
+import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency.js'
 import { installedBunLocation } from './installed-bun-location.js'
 import { completedResponse, writeOrdinaryAgent } from './ordinary-agent.js'
 import { timeFixturePhase } from './phase-timing.js'
@@ -1054,6 +1054,11 @@ export async function firstLine(stream: ReadableStream<Uint8Array>): Promise<str
     reader.releaseLock()
   }
 }
+/** Root artifact names prefix the exporter's own review directory in a packet. */
+export function repairPacketDirectory(packet: string): string {
+  return join(packet, 'files', 'deliverables', 'review')
+}
+
 export async function qualifyRepairScenario(
   scenario: 'successful' | 'unsuccessful' | 'batch' | 'mixed-batch',
   temporaryRoot: string,
@@ -1188,16 +1193,16 @@ export async function qualifyRepairScenario(
         outcome: 'done',
         delivery: { status: 'written' },
       })
-      expect(await readFile(join(out, 'files/review/summary.txt'), 'utf8')).toContain(
+      expect(await readFile(join(repairPacketDirectory(out), 'summary.txt'), 'utf8')).toContain(
         'review-ready',
       )
-      expect(await readFile(join(out, 'files/review/goal.txt'), 'utf8')).toBe(
+      expect(await readFile(join(repairPacketDirectory(out), 'goal.txt'), 'utf8')).toBe(
         JSON.parse(await readFile(join(project, 'issue.json'), 'utf8')).issue + '\n',
       )
-      expect(await readFile(join(out, 'files/review/review.patch'), 'utf8')).toContain(
+      expect(await readFile(join(repairPacketDirectory(out), 'review.patch'), 'utf8')).toContain(
         '--- a/src/parse.ts',
       )
-      expect(await readFile(join(out, 'files/review/review.patch'), 'utf8')).toContain(
+      expect(await readFile(join(repairPacketDirectory(out), 'review.patch'), 'utf8')).toContain(
         '--- a/src/report.ts',
       )
       expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
@@ -1237,7 +1242,7 @@ export async function qualifyRepairScenario(
       expect(unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false)).toBe(
         true,
       )
-      expect((await readdir(join(failedOut, 'files/review'))).sort()).toEqual([
+      expect((await readdir(repairPacketDirectory(failedOut))).sort()).toEqual([
         'goal.txt',
         'proposal-1.patch',
         'proposal-2.patch',

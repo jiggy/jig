@@ -259,6 +259,9 @@ retains its original guardian observer, scenario body, fresh consumer and
 platform-specific timer. Neither shares admission, execution or cleanup with the
 other.
 
+Standalone repair packet observers include the declared root artifact name
+before the exporter's relative `review/` directory.
+
 Project Command coordinator-loss recovery keeps a fresh eight-failure batch for
 each of its two bounded reopen attempts. Observe real acquisition failures
 without replacing native recovery. Diagnostic failures cannot replace the original

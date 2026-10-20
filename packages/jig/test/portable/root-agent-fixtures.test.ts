@@ -13,6 +13,7 @@ import {
   addBatchRepairFixture,
   agentMethodCallerProgram,
   httpCoordinatorFailureEvidence,
+  repairPacketDirectory,
   writeAgentMethodProject,
   writeProject,
   writeRepairWorkspace,
@@ -270,6 +271,11 @@ test('constructs the repair application with unchanged sources and ordinary work
       }
       expect(await Bun.file(join(copied, 'sdk/index.js')).exists()).toBe(false)
     }
+    const projectPackage = await checkPackageDirectory(join(root, 'project/flows/project'))
+    const artifactNames = projectPackage.invocation?.artifactResults ?? []
+    expect(artifactNames).toEqual(['deliverables'])
+    const packet = join(root, 'packet')
+    expect(repairPacketDirectory(packet)).toBe(join(packet, 'files', ...artifactNames, 'review'))
     const lock = await readFile(join(root, 'bun.lock'), 'utf8')
     for (const name of [
       '@jigging/flow',
