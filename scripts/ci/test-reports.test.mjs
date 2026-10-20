@@ -104,6 +104,10 @@ function fixture(architecture) {
     'packages/jig/test/host/root-agent-repair.test.ts',
     'packages/jig/test/host/root-agent-http-composition.test.ts',
     'packages/jig/test/host/root-agent-composition.test.ts',
+    // Exercise all four Intel shards despite the installed-consumer reservation.
+    'packages/jig/test/host/root-agent-fences-specialist.test.ts',
+    'packages/jig/test/host/installed-incident-brief.test.ts',
+    'packages/jig/test/host/installed-host-foundation.test.ts',
     'packages/jig/test/host/root-agent-repair-batch.test.ts',
     'packages/jig/test/host/installed-workspace-provider.test.ts',
     'packages/jig/test/host/installed-package-provider.test.ts',
