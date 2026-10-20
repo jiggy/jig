@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process'
+import { realpathSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import {
   ATTEMPT_FRAME_BYTES,
@@ -18,6 +20,7 @@ import {
   parseAttemptEnvelope,
   parseAttemptFrame,
 } from './attempt-contract.js'
+import { attemptRequestDigest } from './attempt-request-identity.js'
 
 export * from './attempt-contract.js'
 
@@ -78,11 +81,11 @@ export function createAttemptClient(options: AttemptClientOptions) {
     verb: AttemptVerb,
     request: AttemptRequests[AttemptVerb],
     call: AttemptCallOptions = {},
-    expectedRequestDigest?: string,
   ) {
     // Serialize once, then validate and retain exactly the JSON sent to the peer.
     // Reading the caller's object again could observe getters, toJSON, or mutation.
     let bytes: Buffer
+    let expectedExport: { destination: string; source: 'final' | 'checkpoint' } | undefined
     try {
       bytes = Buffer.from(`${JSON.stringify({ protocolVersion: 1, operation: verb, request })}\n`)
       if (bytes.length > ATTEMPT_REQUEST_BYTES) throw new AttemptContractError()
@@ -90,9 +93,22 @@ export function createAttemptClient(options: AttemptClientOptions) {
         verb,
         decodeAttemptLine(bytes.subarray(0, -1), ATTEMPT_REQUEST_BYTES),
       ).request
+      if (verb === 'export') {
+        const exported = request as AttemptRequests['export']
+        expectedExport = {
+          // The child observes its actual working directory. Do not resolve
+          // destination symlinks: the copier only normalizes that path lexically.
+          destination: resolve(realpathSync(options.cwd), exported.destination),
+          source: exported.source ?? 'final',
+        }
+      }
     } catch {
       throw new AttemptContractError()
     }
+    const expectedRequestDigest =
+      verb === 'submit'
+        ? attemptRequestDigest((request as AttemptRequests['submit']).request)
+        : undefined
     let accept!: (value: AttemptSubmission) => void
     let rejectAccepted!: (error: Error) => void
     const accepted = new Promise<AttemptSubmission>((resolve, reject) => {
@@ -224,7 +240,23 @@ export function createAttemptClient(options: AttemptClientOptions) {
           const { files: originalFiles, ...originalFields } = original
           const { files: canonicalFiles, ...canonicalFields } = canonical
           if (
-            !isDeepStrictEqual(originalFields, canonicalFields) ||
+            value.value.requestDigest !== attemptRequestDigest(canonical) ||
+            !isDeepStrictEqual(
+              {
+                ...originalFields,
+                outputIntent: {
+                  ...originalFields.outputIntent,
+                  receive: [...originalFields.outputIntent.receive].sort(),
+                },
+              },
+              {
+                ...canonicalFields,
+                outputIntent: {
+                  ...canonicalFields.outputIntent,
+                  receive: [...canonicalFields.outputIntent.receive].sort(),
+                },
+              },
+            ) ||
             !isDeepStrictEqual(
               originalFiles.map((file) => file.port).sort(),
               canonicalFiles.map((file) => file.port).sort(),
@@ -232,6 +264,13 @@ export function createAttemptClient(options: AttemptClientOptions) {
           )
             throw new AttemptContractError()
         }
+        if (
+          value.operation === 'export' &&
+          value.event === 'result' &&
+          (value.value.destination !== expectedExport?.destination ||
+            value.value.source !== expectedExport?.source)
+        )
+          throw new AttemptContractError()
         finalFrame = value
       }
     }
@@ -334,7 +373,6 @@ export function createAttemptClient(options: AttemptClientOptions) {
         'submit',
         { ticket: retainedPrepared.ticket, request: retainedPrepared.canonicalRequest },
         call,
-        retainedPrepared.requestDigest,
       ).accepted
       const observation = await submission.completion
       return {

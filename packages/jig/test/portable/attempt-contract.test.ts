@@ -100,6 +100,44 @@ describe('attempt machine contract consistency', () => {
     ).toThrow(AttemptContractError)
   })
 
+  test('result artifact availability agrees exactly with its receipt', () => {
+    const first = { name: 'first', manifestDigest: digest, availability: 'available' as const }
+    const second = { name: 'second', availability: 'unavailable' as const }
+    const observation = {
+      ...success(null),
+      receipt: { ...receipt, artifactResults: [first, second] },
+    }
+    expect(() =>
+      result(observation, {
+        output: null,
+        artifactResults: [
+          { availability: 'available', manifestDigest: digest, name: 'first' },
+          second,
+        ],
+      }),
+    ).not.toThrow()
+    for (const artifactResults of [
+      [],
+      [first],
+      [first, second, first],
+      [second, first],
+      [{ ...first, name: 'changed' }, second],
+      [{ ...first, manifestDigest: `sha256:${'b'.repeat(64)}` }, second],
+      [{ ...first, availability: 'expired' }, second],
+      [{ name: 'first', availability: 'available' }, second],
+    ])
+      expect(() => result(observation, { output: null, artifactResults })).toThrow(
+        AttemptContractError,
+      )
+    for (const observation of [
+      { identity: 'prepared', dispatch: 'not-dispatched' },
+      { identity: 'unavailable', dispatch: 'possible', retained: 'unavailable' },
+    ] as const) {
+      expect(() => result(observation)).not.toThrow()
+      expect(() => result(observation, { artifactResults: [first] })).toThrow(AttemptContractError)
+    }
+  })
+
   for (const operation of ['lookup', 'cancel', 'result'] as const) {
     test(`${operation} rejects contradictory lifecycle fields`, () => {
       const accepted = {

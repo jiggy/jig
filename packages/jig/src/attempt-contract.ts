@@ -382,6 +382,17 @@ const results: Record<keyof AttemptResults, Check> = {
   result: (value) => {
     record({ observation, artifactResults: array(artifact) }, { output: json, checkpoint })(value)
     const result = value as AttemptResults['result']
+    const artifacts = result.observation.receipt?.artifactResults ?? []
+    if (
+      result.artifactResults.length !== artifacts.length ||
+      result.artifactResults.some(
+        (entry, index) =>
+          entry.name !== artifacts[index]?.name ||
+          entry.manifestDigest !== artifacts[index]?.manifestDigest ||
+          entry.availability !== artifacts[index]?.availability,
+      )
+    )
+      fail()
     const terminal = result.observation.terminal
     const hasOutput = Object.hasOwn(result, 'output')
     const available =

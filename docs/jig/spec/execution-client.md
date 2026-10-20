@@ -126,6 +126,11 @@ and retains immutable input, target, selected approval, declared file identity,
 requested execution constraints and output intent. It dispatches no package,
 Agent, evaluation or command work.
 
+Canonical requests order files by port and requested artifact-result names lexically.
+The request digest is SHA-256 of the ASCII domain `JIG-Prepared-Attempt-Request/1`,
+one zero byte, and the canonical JSON bytes of that request.
+The client checks preparation and acceptance digests against this same identity.
+
 A durable caller MUST persist the prepared ticket and canonical request in its
 own durable task transaction before launch-capable submission. A one-shot joined
 helper may coordinate preparation and submission, but cannot provide application
@@ -226,6 +231,10 @@ It does not establish that a particular package instruction or provider request
 ran, a remote consequence occurred, or the application's task succeeded.
 Terminal, cleanup and retained-byte observations must be interpreted independently.
 
+Result replies repeat their observation receipt's artifact availability exactly.
+Without a receipt, their final-artifact list is empty.
+Checkpoint artifacts remain a separate observation.
+
 The normal joined helper coordinates these facts without reducing them to an
 application-success boolean. A method's `blocked` outcome remains a domain
 answer, not a host decision that a task succeeded.
@@ -244,6 +253,9 @@ Export failure never changes execution outcome or re-executes the method.
 Exported packets remain recorded local claims. Their internal hashes establish
 consistency, not newly authenticated host provenance. Protected lookup and saved
 packet inspection are different operations.
+
+Export replies must match the requested destination, resolved against the client working directory, and selected source.
+Omitting `source` selects `final`.
 
 Checkpoint export selects the latest accepted aggregate rather than unfinished
 scratch or a previous final result. After confirmed cleanup it can preserve

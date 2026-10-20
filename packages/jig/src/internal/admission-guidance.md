@@ -24,6 +24,9 @@ These links locate module rules. All selected domain requirements still apply.
   Acceptance shares the original root allocation transaction. Missing prepared state never allocates work.
   Retirement commits before deletion. Unresolved owners and unreleased copier pins block collection.
 
+  The store and application client share pure request identity through `../attempt-request-identity.ts`.
+  This comparison grants no authority and imports no host machinery into the client.
+
 - Prepared input, retained output, consumed metadata, outstanding reservations and row/index headroom share one 4 GiB logical budget.
   Control consumption transactionally spends dedicated `attempt_reservations` rows of at most 1 MiB each.
   Metadata writes never rebuild untouched control/result chunks.

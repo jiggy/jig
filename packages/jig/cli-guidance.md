@@ -22,7 +22,9 @@ All selected domain requirements still apply.
 ### Installed-host client
 
 - `src/client.ts` and pure `src/attempt-contract.ts` own the separate
-  installed-host application client. Importing it starts no process and grants no authority.
+  installed-host application client.
+  Private `src/attempt-request-identity.ts` shares canonical request hashing with the store without importing host machinery.
+  Importing the client starts no process and grants no authority.
   It uses the installed machine boundary, never embedded native internals or private-state reads.
 
   `src/cli-attempt-io.ts` bounds machine requests without consuming the owning submit connection.
@@ -33,6 +35,7 @@ All selected domain requirements still apply.
   The request byte limit includes its terminating LF.
   Bind prepared replies and acceptance receipts to that snapshot before exposing acceptance.
   Validate lifecycle consistency and retained-output digests, not only reply field shapes.
+  Export replies retain the selected source and destination. Final artifact availability repeats its receipt exactly.
 
   Observational machine commands may reacquire a read-only snapshot only after
   typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command

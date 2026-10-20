@@ -7,6 +7,7 @@ import {
   type Prepared,
   parseAttemptRequest,
 } from '../attempt-contract.js'
+import { attemptRequestDigest } from '../attempt-request-identity.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateAttemptClock } from './attempt-clock.js'
 import {
@@ -367,7 +368,7 @@ export function privateAttemptRequest(value: CanonicalRequest): CanonicalRequest
   return decodeJson1(bytes) as unknown as CanonicalRequest
 }
 export function privateAttemptRequestDigest(request: CanonicalRequest): string {
-  return privateDomainDigest('JIG-Prepared-Attempt-Request/1', request as unknown as JsonValue)
+  return attemptRequestDigest(request)
 }
 export function privateAttemptManifestDigest(
   files: readonly { path: string; bytes: number; digest: string }[],

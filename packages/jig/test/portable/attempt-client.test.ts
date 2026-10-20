@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { chmod, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { createServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative, resolve } from 'node:path'
+import { attemptRequestDigest } from '../../src/attempt-request-identity.js'
 import {
   ATTEMPT_REQUEST_BYTES,
   type CanonicalRequest,
@@ -23,12 +24,14 @@ const request: CanonicalRequest = {
 let directory: string
 let executable: string
 beforeAll(async () => {
-  directory = await mkdtemp(join(tmpdir(), 'jig-client-'))
+  directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-client-')))
   executable = join(directory, 'installed fixture')
   await writeFile(
     executable,
     `#!${process.execPath}
 const { connect } = require('node:net');
+const { resolve } = require('node:path');
+const { attemptRequestDigest } = require(${JSON.stringify(resolve(import.meta.dir, '../../src/attempt-request-identity.ts'))});
 const mode = process.env.FIXTURE_MODE;
 let text = '', sent = false;
 const digest = ${JSON.stringify(digest)};
@@ -36,6 +39,7 @@ const receipt = {runId:'original',requestDigest:digest,acceptedAt:'2026-01-01T00
 const observation = {identity:'accepted',dispatch:'possible',receipt,execution:'terminal',cleanup:'confirmed',retained:'available',terminal:{status:'lost',code:'COORDINATOR_LOST',message:'lost'}};
 let operation;
 const emit = value => process.stdout.write(JSON.stringify({protocolVersion:1,operation,...value})+'\\n');
+process.stdin.setEncoding('utf8');
 process.stdin.on('data', chunk => {
  text += chunk;
  if(sent || !text.includes('\\n')) return;
@@ -55,6 +59,13 @@ process.stdin.on('data', chunk => {
  if(mode === 'oversize') { process.stdout.write('x'.repeat(16777217)); return; }
  if(mode === 'uncertain-before-accepted') { emit({event:'error',code:'EXECUTION_UNCERTAIN',message:'private-ticket'}); return; }
  if(operation === 'submit') {
+   const meaning = structuredClone(envelope.request.request);
+   if(mode === 'accepted-input') meaning.input = {changed:true};
+   if(mode === 'accepted-files') meaning.files = [{port:'source',manifestDigest:digest,bytes:1}];
+   if(mode === 'accepted-constraints') meaning.constraints.durationMs++;
+   if(mode === 'accepted-output') meaning.outputIntent.packet = !meaning.outputIntent.packet;
+   if(mode === 'accepted-receive') meaning.outputIntent.receive = ['changed'];
+   receipt.requestDigest = attemptRequestDigest(meaning);
    if(mode === 'wrong-accepted-target') receipt.target = 'binding:other';
    if(mode === 'wrong-accepted-approval') receipt.approval = 'sha256:'+'f'.repeat(64);
    emit({event:'accepted',role:mode==='observer'?'observer':'owner',receipt});
@@ -72,16 +83,22 @@ process.stdin.on('data', chunk => {
    if(mode === 'request-size' && Buffer.byteLength(text) !== ${ATTEMPT_REQUEST_BYTES}) process.exit(9);
    emit({event:'result',value:{state:'unchecked',approval:digest,targets:[]}});
  } else if(operation === 'prepare') {
-   const canonicalRequest = {...envelope.request,files:envelope.request.files.map(file=>({port:file.port,manifestDigest:digest,bytes:1}))};
+   const canonicalRequest = {...envelope.request,files:envelope.request.files.map(file=>({port:file.port,manifestDigest:digest,bytes:1})).sort((a,b)=>a.port<b.port?-1:a.port>b.port?1:0),outputIntent:{...envelope.request.outputIntent,receive:[...envelope.request.outputIntent.receive].sort()}};
    if(mode==='prepare-target') canonicalRequest.target='binding:other';
    if(mode==='prepare-approval') canonicalRequest.expectedApproval='sha256:'+'f'.repeat(64);
    if(mode==='prepare-input') canonicalRequest.input={changed:true};
    if(mode==='prepare-constraints') canonicalRequest.constraints.durationMs++;
    if(mode==='prepare-output') canonicalRequest.outputIntent.packet=!canonicalRequest.outputIntent.packet;
+   if(mode==='prepare-receive-name') canonicalRequest.outputIntent.receive[0]='changed';
+   if(mode==='prepare-receive-count') canonicalRequest.outputIntent.receive.pop();
    if(mode==='prepare-port') canonicalRequest.files[0].port='other';
    if(mode==='prepare-missing-file') canonicalRequest.files=[];
    if(mode==='prepare-extra-file') canonicalRequest.files.push({port:'extra',manifestDigest:digest,bytes:1});
-   emit({event:'result',value:{ticket:'private-ticket',requestDigest:mode==='prepared-digest'?'sha256:'+'f'.repeat(64):digest,submitBefore:'2026-01-01T00:00:00Z',retainUntil:'2026-01-02T00:00:00Z',canonicalRequest}});
+   emit({event:'result',value:{ticket:'private-ticket',requestDigest:mode==='prepared-digest'?'sha256:'+'f'.repeat(64):attemptRequestDigest(canonicalRequest),submitBefore:'2026-01-01T00:00:00Z',retainUntil:'2026-01-02T00:00:00Z',canonicalRequest}});
+ } else if(operation === 'export') {
+   const destination = resolve(process.cwd(),envelope.request.destination);
+   const source = envelope.request.source ?? 'final';
+   emit({event:'result',value:{destination:mode==='export-destination'?destination+'-other':mode==='export-relative'?envelope.request.destination:destination,manifestDigest:digest,source:mode==='export-source'?(source==='final'?'checkpoint':'final'):source}});
  } else emit({event:'result',value:observation});
 });
 process.stdin.on('end', () => {
@@ -398,4 +415,162 @@ test('async persistence cannot mutate the prepared identity before launch', asyn
       },
     }),
   ).rejects.toThrow('Invalid attempt machine record')
+})
+
+for (const mode of [
+  'accepted-input',
+  'accepted-files',
+  'accepted-constraints',
+  'accepted-output',
+  'accepted-receive',
+]) {
+  test(`direct submit rejects ${mode} despite matching target and approval`, async () => {
+    await expect(client(mode).submit({ ticket: 'private-ticket', request })).rejects.toHaveProperty(
+      'code',
+      'PROTOCOL_ERROR',
+    )
+  })
+}
+
+test('direct submit identity preserves ordinary input array order', async () => {
+  const value = { ...request, input: { ordered: ['second', 'first'] } }
+  const submission = await client().submit({ ticket: 'private-ticket', request: value })
+  expect(submission.receipt.requestDigest).toBe(attemptRequestDigest(value))
+  await submission.completion
+  expect(attemptRequestDigest(value)).not.toBe(
+    attemptRequestDigest({ ...value, input: { ordered: ['first', 'second'] } }),
+  )
+})
+
+test('request identity canonicalizes only file-port and retained-name order without deduplication', () => {
+  const value = {
+    ...request,
+    files: [
+      { port: 'z', manifestDigest: digest, bytes: 2 },
+      { port: 'a', manifestDigest: digest, bytes: 1 },
+    ],
+    outputIntent: { packet: true, receive: ['z', 'a'] },
+  }
+  expect(attemptRequestDigest(value)).toBe(
+    attemptRequestDigest({
+      ...value,
+      files: [...value.files].reverse(),
+      outputIntent: { packet: true, receive: ['a', 'z'] },
+    }),
+  )
+  expect(attemptRequestDigest(value)).not.toBe(
+    attemptRequestDigest({
+      ...value,
+      outputIntent: { packet: true, receive: ['a', 'z', 'z'] },
+    }),
+  )
+})
+
+test('prepare permits only file-port and artifact-name ordering canonicalization', async () => {
+  const prepared = await client().prepare({
+    ...request,
+    input: { ordered: ['second', 'first'] },
+    files: [
+      { port: 'z', source: './z', selection: ['b', 'a'] },
+      { port: 'a', source: './a', selection: ['a'] },
+    ],
+    outputIntent: { packet: true, receive: ['z', 'a'] },
+  })
+  expect(prepared.canonicalRequest.files.map((file) => file.port)).toEqual(['a', 'z'])
+  expect(prepared.canonicalRequest.outputIntent.receive).toEqual(['a', 'z'])
+  expect(prepared.canonicalRequest.input).toEqual({ ordered: ['second', 'first'] })
+  expect(prepared.requestDigest).toBe(attemptRequestDigest(prepared.canonicalRequest))
+})
+
+for (const mode of ['prepare-receive-name', 'prepare-receive-count']) {
+  test(`prepare rejects ${mode} rather than treating changed names as reordering`, async () => {
+    await expect(
+      client(mode).prepare({
+        ...request,
+        outputIntent: { packet: true, receive: ['z', 'a'] },
+      }),
+    ).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+  })
+}
+
+for (const source of [undefined, 'final', 'checkpoint'] as const) {
+  test(`export correlates ${source ?? 'default-final'} source and cwd-relative destination`, async () => {
+    const destination = './exports/../exports/packet'
+    expect(
+      await client().export({
+        ticket: 'private-ticket',
+        destination,
+        ...(source === undefined ? {} : { source }),
+        ...(source === 'final' ? { artifactResult: 'selected' } : {}),
+      }),
+    ).toEqual({
+      destination: resolve(directory, destination),
+      manifestDigest: digest,
+      source: source ?? 'final',
+    })
+  })
+}
+
+for (const mode of ['export-destination', 'export-source', 'export-relative']) {
+  test(`export rejects ${mode} unrelated to the serialized request`, async () => {
+    await expect(
+      client(mode).export({ ticket: 'private-ticket', destination: './exports/packet' }),
+    ).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+  })
+}
+
+test('export validates serialized destination and source rather than later caller mutation', async () => {
+  const value = {
+    ticket: 'private-ticket',
+    destination: './ignored',
+    source: 'checkpoint' as const,
+    toJSON: () => ({
+      ticket: 'private-ticket',
+      destination: './exports/../exports/transmitted',
+      source: 'final',
+    }),
+  }
+  const pending = client().export(value)
+  value.destination = './changed'
+  expect(await pending).toEqual({
+    destination: resolve(directory, 'exports/transmitted'),
+    manifestDigest: digest,
+    source: 'final',
+  })
+})
+
+test('export preserves absolute destination identity', async () => {
+  const destination = resolve(directory, 'exports/absolute')
+  expect(
+    (await client().export({ ticket: 'private-ticket', destination, artifactResult: 'selected' }))
+      .destination,
+  ).toBe(destination)
+})
+
+test('export resolves relative destinations from the actual child working directory', async () => {
+  const linkedDirectory = join(directory, 'cwd-link')
+  await symlink(directory, linkedDirectory, 'dir')
+  const linked = createAttemptClient({
+    executable,
+    cwd: linkedDirectory,
+    env: { ...process.env, FIXTURE_MODE: 'normal' },
+    timeoutMs: 5000,
+  })
+  expect(
+    (await linked.export({ ticket: 'private-ticket', destination: './exports/linked' }))
+      .destination,
+  ).toBe(resolve(directory, 'exports/linked'))
+})
+
+test('export accepts a relative configured working directory', async () => {
+  const relativeClient = createAttemptClient({
+    executable,
+    cwd: relative(process.cwd(), directory),
+    env: { ...process.env, FIXTURE_MODE: 'normal' },
+    timeoutMs: 5000,
+  })
+  expect(
+    (await relativeClient.export({ ticket: 'private-ticket', destination: './exports/relative' }))
+      .destination,
+  ).toBe(resolve(directory, 'exports/relative'))
 })
