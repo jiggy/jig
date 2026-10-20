@@ -12,6 +12,7 @@ import {
   requireRevision,
   verifyCandidateBundle,
 } from './candidate-provenance.mjs'
+import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './release-readiness.mjs'
 
 export function githubClient(repository = process.env.GITHUB_REPOSITORY) {
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? ''))
@@ -284,9 +285,6 @@ export async function acquireLinuxQualification({
   extract,
 }) {
   requireRevision(sourceRevision)
-  const { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } = await import(
-    './release-readiness.mjs'
-  )
   const expected = {
     repository,
     workflowPath: '.github/workflows/linux-host-conformance.yml',

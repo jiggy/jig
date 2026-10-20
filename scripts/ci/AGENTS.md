@@ -99,6 +99,10 @@ They consume frozen package exports with tracked test helpers and installed
   original CI candidate. Native receipts additionally bind the exact full Linux
   receipt. Early native input receipts route pending/failing descendants but
   cannot qualify them.
+
+  Required CI job names match the current workflow, including Python reporting.
+  Candidate acquisition imports readiness validators statically so the CLI cannot deadlock on a circular dynamic import.
+
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
 

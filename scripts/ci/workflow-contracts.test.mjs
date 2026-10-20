@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readdir, readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { parse } from 'yaml'
+import { CI_QUALIFICATION_JOBS } from './release-readiness.mjs'
 
 const workflows = new URL('../../.github/workflows/', import.meta.url)
 const rootKeys = new Set([
@@ -14,6 +15,20 @@ const rootKeys = new Set([
   'concurrency',
   'jobs',
 ])
+
+test('release readiness requires the current CI job names and matrix', async () => {
+  const workflow = parse(await readFile(new URL('ci.yml', workflows), 'utf8'))
+  const names = []
+  for (const [id, job] of Object.entries(workflow.jobs)) {
+    const template = job.name ?? id
+    const matrix = job.strategy?.matrix
+    const rows = matrix?.include ?? matrix?.package?.map((name) => ({ package: name })) ?? [{}]
+    for (const row of rows)
+      names.push(template.replace(/\$\{\{\s*matrix\.(\w+)\s*\}\}/g, (_, key) => row[key]))
+  }
+  for (const required of CI_QUALIFICATION_JOBS)
+    assert.ok(names.includes(required), `Missing required CI job: ${required}`)
+})
 
 test('every workflow declares GitHub triggers using YAML 1.2 keys', async () => {
   for (const file of await readdir(workflows)) {

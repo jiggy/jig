@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -29,6 +29,49 @@ const buildProfile = {
   npmVersion: '11.6.2',
   justVersion: 'just 1.43.1',
 }
+
+test('native acquisition CLI loads readiness before making its GitHub request', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-native-acquisition-cli-'))
+  try {
+    await writeFile(
+      join(temporary, 'gh'),
+      '#!/bin/sh\necho "fixture GitHub refusal" >&2\nexit 7\n',
+      {
+        mode: 0o700,
+      },
+    )
+    const child = spawnSync(
+      process.execPath,
+      [
+        new URL('./candidate-transfer.mjs', import.meta.url).pathname,
+        'acquire-linux',
+        join(temporary, 'bundle'),
+        '--source',
+        source,
+        '--linux-run',
+        '200',
+        '--qualification-output',
+        join(temporary, 'qualification'),
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 10_000,
+        env: {
+          PATH: `${temporary}:${process.env.PATH}`,
+          GITHUB_REPOSITORY: repository,
+          GITHUB_SHA: source,
+          GITHUB_REF: 'refs/heads/main',
+          GITHUB_EVENT_NAME: 'workflow_run',
+        },
+      },
+    )
+    assert.equal(child.status, 1, child.stderr)
+    assert.match(child.stderr, /fixture GitHub refusal/)
+    assert.doesNotMatch(child.stderr, /unsettled top-level await/)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
 
 function run(id, event = 'push', overrides = {}) {
   return {
