@@ -154,19 +154,39 @@ function resultPhaseSummary(stderr: string): string | undefined {
   }
 }
 
-async function reviewPhaseSummary(path: string): Promise<string> {
+async function profilePhaseSummary(path: string, kind: 'review' | 'run'): Promise<string> {
   const phases = new Set([
     'installed-host-opening',
     'project-session-opening',
-    'project-planning',
-    'project-evaluation-review',
-    'author-configuration-evaluation',
-    'author-support-verification',
-    'author-envelope-startup',
-    'author-execution-settlement',
-    'dependency-workspace-capture',
-    'dependency-preparation',
-    'dependency-reuse',
+    ...(kind === 'review'
+      ? [
+          'project-planning',
+          'project-evaluation-review',
+          'author-configuration-evaluation',
+          'author-support-verification',
+          'author-envelope-startup',
+          'author-execution-settlement',
+          'dependency-workspace-capture',
+          'dependency-preparation',
+          'dependency-reuse',
+        ]
+      : [
+          'root-submission-persistence',
+          'linux-owner-state-initialization',
+          'rootless-containment-startup',
+          'flow-execution',
+          'contained-effect-planning',
+          'contained-effect-allocation',
+          'contained-effect-sealing',
+          'contained-effect-launch',
+          'contained-effect-collection',
+          'contained-effect-settlement',
+          'operation-owner-settlement',
+          'root-fence',
+          'root-settlement',
+          'root-package-release',
+          'root-owner-release',
+        ]),
     'project-session-close',
     'macos-guardian-preparation',
     'macos-guardian-admission',
@@ -220,16 +240,18 @@ async function reviewPhaseSummary(path: string): Promise<string> {
 
 export function foundationCommands(evidence: string) {
   let sequence = 0
-  return async (args: string[], cwd: string, timeoutMs = 195_000) => {
+  return async (args: string[], cwd: string, timeoutMs = 195_000, profile?: 'run') => {
     await mkdir(evidence, { recursive: true, mode: 0o700 })
     const commandEvidence = join(evidence, String(++sequence).padStart(3, '0'))
     const reviewProfile =
       args[1] === 'review' ? resolve(`${commandEvidence}.review.jsonl`) : undefined
+    const runProfile = profile === 'run' ? resolve(`${commandEvidence}.run.jsonl`) : undefined
     const child = Bun.spawn(args, {
       cwd,
       env: {
         ...foundationEnvironment(),
         ...(reviewProfile === undefined ? {} : { JIG_PRIVATE_PROFILE_FILE: reviewProfile }),
+        ...(runProfile === undefined ? {} : { JIG_FOUNDATION_RUN_PROFILE_FILE: runProfile }),
       },
       stdin: 'ignore',
       stdout: 'pipe',
@@ -245,12 +267,16 @@ export function foundationCommands(evidence: string) {
     const resultPhases = resultPhaseSummary(result.stderr)
     const reviewPhases =
       result.code !== 0 && reviewProfile !== undefined
-        ? await reviewPhaseSummary(reviewProfile)
+        ? await profilePhaseSummary(reviewProfile, 'review')
+        : undefined
+    const runPhases =
+      result.code !== 0 && runProfile !== undefined
+        ? await profilePhaseSummary(runProfile, 'run')
         : undefined
     assert.equal(
       result.code,
       0,
-      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}${reviewPhases ? ` review phases: ${reviewPhases}` : ''}; see ${evidence}`,
+      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}${reviewPhases ? ` review phases: ${reviewPhases}` : ''}${runPhases ? ` run phases: ${runPhases}` : ''}; see ${evidence}`,
     )
     return result
   }
@@ -647,6 +673,7 @@ async function runFoundationApplication(
     ],
     project,
     application === 'documents' ? 600_000 : 300_000,
+    application === 'adaptive' ? 'run' : undefined,
   )
   assert.equal(await digest(join(project, 'jig.lock')), lock)
   const verified = JSON.parse(await readFile(join(project, 'verified.json'), 'utf8'))

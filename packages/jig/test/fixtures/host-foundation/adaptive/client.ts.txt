@@ -13,11 +13,18 @@ process.on('uncaughtExceptionMonitor', error => {
   }))
 })
 const cwd = process.cwd()
-const client = createAttemptClient({ executable: resolve(process.argv[2]!), cwd, timeoutMs: 195_000 })
+const { JIG_FOUNDATION_RUN_PROFILE_FILE: runProfile, ...environment } = process.env
+const options = { executable: resolve(process.argv[2]!), cwd, timeoutMs: 195_000, env: environment }
+const client = createAttemptClient(options)
+// Only this Run receives the maintainer trace. Later observations and exports
+// keep their ordinary client and cannot collide with its exclusive trace file.
+const runClient = runProfile === undefined ? client : createAttemptClient({
+  ...options, env: { ...environment, JIG_PRIVATE_PROFILE_FILE: runProfile },
+})
 const inspected = await client.inspect({ target: 'binding:root' }) as { approval?: string }
 assert.match(inspected.approval!, /^sha256:[a-f0-9]{64}$/)
 stage = 'run'
-const execution = await client.run({
+const execution = await runClient.run({
   expectedApproval: inspected.approval!, target: 'binding:root',
   input: { operand: 21, multiplier: 2 }, files: [],
   constraints: { durationMs: 120_000, resultBytes: 1_048_576, artifactBytes: 8_388_608 },

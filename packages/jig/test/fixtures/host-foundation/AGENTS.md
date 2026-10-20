@@ -50,6 +50,15 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 
   Evaluation review includes operand capture, preparation, normalization and disposal.
   Its nested dependency phase observes only actual preparation.
+- The adaptive driver's joined Run may enable the existing private phase trace.
+  Only its Run client receives that environment. Observation and export clients remain unprofiled.
+  The fixture selector stays out of every installed command's environment.
+  Run failure summaries reuse the review trace's input, record and event bounds.
+
+  Project only existing host, containment, execution and settlement phases.
+  Preserve both candidate cycles within one original 120-second root Run.
+  Phase ceilings do not establish measured payload time or the deadline's underlying cause.
+  Existing aggregate spans do not isolate every evaluator substep.
 - Exact repeated exports reconcile their original delivery. Collision checks use
   a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic
