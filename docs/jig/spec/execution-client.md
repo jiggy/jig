@@ -307,8 +307,9 @@ Unary replies have `event: "result"` and `value`. Errors have `event: "error"`,
 `role` and `receipt`, then only the owner receives `event: "terminal"` with
 `observation`. Each frame also carries `protocolVersion` and `operation`.
 
-Requests are bounded to 1 MiB, stdout frames to 16 MiB and captured transport
-stderr to 64 KiB. An unknown field is not an extension point.
+Requests, including their terminating LF, are bounded to 1 MiB.
+Stdout frames are bounded to 16 MiB and captured transport stderr to 64 KiB.
+An unknown field is not an extension point.
 
 Requests arrive on stdin, not argv. Submission reads one complete initial
 request while retaining the owning connection through settlement. Client loss

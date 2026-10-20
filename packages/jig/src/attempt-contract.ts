@@ -1,4 +1,5 @@
-import { decodeJson1, type JsonValue, validateJson1 } from './json.js'
+import { createHash } from 'node:crypto'
+import { canonicalJson, decodeJson1, type JsonValue, validateJson1 } from './json.js'
 
 export const ATTEMPT_REQUEST_BYTES = 1_048_576
 export const ATTEMPT_FRAME_BYTES = 16_777_216
@@ -316,7 +317,7 @@ const terminal: Check = (v) => {
     )(v)
   else record({ status: choice(['lost']), code: choice(['COORDINATOR_LOST']), message: string })(v)
 }
-const observation: Check = record(
+const observationShape: Check = record(
   {
     identity: choice(['prepared', 'accepted', 'retired', 'unavailable']),
     dispatch: choice(['not-dispatched', 'possible', 'confirmed']),
@@ -330,6 +331,21 @@ const observation: Check = record(
     reason: choice(ATTEMPT_ERROR_CODES),
   },
 )
+const observation: Check = (value) => {
+  observationShape(value)
+  const o = value as AttemptObservation
+  if (o.identity !== 'accepted') {
+    if (o.receipt || o.execution || o.terminal || o.cleanup) fail()
+    if (o.dispatch === 'confirmed' || o.retained === 'available') fail()
+    if (o.identity === 'prepared' && o.dispatch !== 'not-dispatched') fail()
+    if (o.identity === 'unavailable' && o.dispatch !== 'possible') fail()
+    return
+  }
+  if (!o.receipt || !o.execution || !o.cleanup || !o.retained) fail()
+  if ((o.execution === 'terminal') !== (o.terminal !== undefined)) fail()
+  if (o.dispatch === 'not-dispatched' && !o.terminal) fail()
+  if ((o.dispatch === 'confirmed') !== (o.terminal?.status === 'succeeded')) fail()
+}
 const requests: Record<AttemptVerb, Check> = {
   inspect: record({}, { target: string }),
   prepare: record({
@@ -363,7 +379,22 @@ const results: Record<keyof AttemptResults, Check> = {
   }),
   lookup: observation,
   cancel: record({ acknowledged: boolean, observation }),
-  result: record({ observation, artifactResults: array(artifact) }, { output: json, checkpoint }),
+  result: (value) => {
+    record({ observation, artifactResults: array(artifact) }, { output: json, checkpoint })(value)
+    const result = value as AttemptResults['result']
+    const terminal = result.observation.terminal
+    const hasOutput = Object.hasOwn(result, 'output')
+    const available =
+      terminal?.status === 'succeeded' && result.observation.retained === 'available'
+    if (hasOutput !== available) fail()
+    if (
+      hasOutput &&
+      terminal?.status === 'succeeded' &&
+      terminal.resultDigest !==
+        `sha256:${createHash('sha256').update(canonicalJson(result.output!)).digest('hex')}`
+    )
+      fail()
+  },
   export: record({
     destination: string,
     manifestDigest: digest,

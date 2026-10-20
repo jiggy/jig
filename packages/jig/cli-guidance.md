@@ -29,6 +29,11 @@ All selected domain requirements still apply.
   Request completion differs from client closure. Duplicate observers never inherit cancellation ownership.
   Keep execution, retained-byte availability, export and retirement facts distinct in machine and human output.
 
+  Serialize each request once and validate the exact transmitted JSON snapshot.
+  The request byte limit includes its terminating LF.
+  Bind prepared replies and acceptance receipts to that snapshot before exposing acceptance.
+  Validate lifecycle consistency and retained-output digests, not only reply field shapes.
+
   Observational machine commands may reacquire a read-only snapshot only after
   typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command
   allowance and preserve caller cancellation, without renewing either deadline.

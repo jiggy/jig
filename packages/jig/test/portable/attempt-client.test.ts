@@ -4,6 +4,7 @@ import { createServer, type Socket } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
+  ATTEMPT_REQUEST_BYTES,
   type CanonicalRequest,
   createAttemptClient,
   parseAttemptEnvelope,
@@ -68,9 +69,19 @@ process.stdin.on('data', chunk => {
    if(mode === 'lossy-stderr') observation.terminal = {status:'failed',code:'EXECUTION_FAILED',message:'reported failure',diagnostics:{stderr:'\\ufffd'.repeat(65536),stderrBytes:65536,stderrTruncated:false}};
    setTimeout(() => emit({event:'terminal',observation}), 30);
  } else if(operation === 'inspect') {
+   if(mode === 'request-size' && Buffer.byteLength(text) !== ${ATTEMPT_REQUEST_BYTES}) process.exit(9);
    emit({event:'result',value:{state:'unchecked',approval:digest,targets:[]}});
  } else if(operation === 'prepare') {
-   emit({event:'result',value:{ticket:'private-ticket',requestDigest:digest,submitBefore:'2026-01-01T00:00:00Z',retainUntil:'2026-01-02T00:00:00Z',canonicalRequest:envelope.request}});
+   const canonicalRequest = {...envelope.request,files:envelope.request.files.map(file=>({port:file.port,manifestDigest:digest,bytes:1}))};
+   if(mode==='prepare-target') canonicalRequest.target='binding:other';
+   if(mode==='prepare-approval') canonicalRequest.expectedApproval='sha256:'+'f'.repeat(64);
+   if(mode==='prepare-input') canonicalRequest.input={changed:true};
+   if(mode==='prepare-constraints') canonicalRequest.constraints.durationMs++;
+   if(mode==='prepare-output') canonicalRequest.outputIntent.packet=!canonicalRequest.outputIntent.packet;
+   if(mode==='prepare-port') canonicalRequest.files[0].port='other';
+   if(mode==='prepare-missing-file') canonicalRequest.files=[];
+   if(mode==='prepare-extra-file') canonicalRequest.files.push({port:'extra',manifestDigest:digest,bytes:1});
+   emit({event:'result',value:{ticket:'private-ticket',requestDigest:mode==='prepared-digest'?'sha256:'+'f'.repeat(64):digest,submitBefore:'2026-01-01T00:00:00Z',retainUntil:'2026-01-02T00:00:00Z',canonicalRequest}});
  } else emit({event:'result',value:observation});
 });
 process.stdin.on('end', () => {
@@ -284,4 +295,107 @@ test('one-shot run needs no persistence callback and adds no alternative lifecyc
   expect(result.role).toBe('owner')
   expect(result.receipt.runId).toBe('original')
   expect(result.observation?.execution).toBe('terminal')
+})
+
+// These executable peers exercise transport validation, not native admission,
+// execution, fencing, protected identity, or cleanup.
+test('request byte ceiling includes UTF-8 JSON and its terminating LF', async () => {
+  const overhead = Buffer.byteLength(
+    `${JSON.stringify({ protocolVersion: 1, operation: 'inspect', request: { target: '' } })}\n`,
+  )
+  const target =
+    'é'.repeat(Math.floor((ATTEMPT_REQUEST_BYTES - overhead) / 2)) +
+    'x'.repeat((ATTEMPT_REQUEST_BYTES - overhead) % 2)
+  expect(await client('request-size').inspect({ target })).toEqual({
+    state: 'unchecked',
+    approval: digest,
+    targets: [],
+  })
+  await expect(client('request-size').inspect({ target: `${target}x` })).rejects.toThrow(
+    'Invalid attempt machine record',
+  )
+})
+
+test('validates serialized toJSON output rather than a different object view', async () => {
+  const value = { target: 'binding:test', toJSON: () => ({ target: 42 }) }
+  await expect(client().inspect(value)).rejects.toThrow('Invalid attempt machine record')
+})
+
+test('reads request getters once and compares acceptance to the transmitted snapshot', async () => {
+  let reads = 0
+  const value = {
+    ...request,
+    get target() {
+      reads++
+      return reads === 1 ? 'binding:test' : 'binding:other'
+    },
+  }
+  const submission = await client().submit({ ticket: 'private-ticket', request: value })
+  expect((await submission.completion)?.receipt?.target).toBe('binding:test')
+  expect(reads).toBe(1)
+})
+
+test('caller mutation after submit cannot change acceptance validation', async () => {
+  const value = structuredClone(request)
+  const pending = client().submit({ ticket: 'private-ticket', request: value })
+  value.target = 'binding:other'
+  const submission = await pending
+  await submission.completion
+  expect(submission.receipt.target).toBe('binding:test')
+})
+
+for (const mode of [
+  'prepare-target',
+  'prepare-approval',
+  'prepare-input',
+  'prepare-constraints',
+  'prepare-output',
+  'prepare-port',
+  'prepare-missing-file',
+  'prepare-extra-file',
+]) {
+  test(`${mode} cannot replace the transmitted preparation invariant`, async () => {
+    await expect(
+      client(mode).prepare({
+        ...request,
+        files: [{ port: 'source', source: './source', selection: ['a'] }],
+      }),
+    ).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+  })
+}
+
+test('prepared file identities may capture bytes without replacing their ports', async () => {
+  const prepared = await client().prepare({
+    ...request,
+    files: [{ port: 'source', source: './source', selection: ['a'] }],
+  })
+  expect(prepared.canonicalRequest.files).toEqual([
+    { port: 'source', manifestDigest: digest, bytes: 1 },
+  ])
+})
+
+test('prepare equality uses the original transmitted snapshot after caller mutation', async () => {
+  const value = structuredClone(request)
+  const pending = client().prepare(value)
+  value.input = { changed: true }
+  expect((await pending).canonicalRequest.input).toBeNull()
+})
+
+test('joined run binds acceptance to the prepared digest', async () => {
+  await expect(client('prepared-digest').run(request)).rejects.toHaveProperty(
+    'code',
+    'PROTOCOL_ERROR',
+  )
+})
+
+test('async persistence cannot mutate the prepared identity before launch', async () => {
+  await expect(
+    client().run(request, {
+      persist: async (prepared) => {
+        await Promise.resolve()
+        prepared.canonicalRequest.target = 'binding:other'
+        prepared.requestDigest = `sha256:${'f'.repeat(64)}`
+      },
+    }),
+  ).rejects.toThrow('Invalid attempt machine record')
 })

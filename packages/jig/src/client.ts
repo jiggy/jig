@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { isDeepStrictEqual } from 'node:util'
 import {
   ATTEMPT_FRAME_BYTES,
   ATTEMPT_REQUEST_BYTES,
@@ -14,8 +15,8 @@ import {
   decodeAttemptLine,
   type Prepared,
   type PrepareRequest,
+  parseAttemptEnvelope,
   parseAttemptFrame,
-  parseAttemptRequest,
 } from './attempt-contract.js'
 
 export * from './attempt-contract.js'
@@ -77,12 +78,21 @@ export function createAttemptClient(options: AttemptClientOptions) {
     verb: AttemptVerb,
     request: AttemptRequests[AttemptVerb],
     call: AttemptCallOptions = {},
+    expectedRequestDigest?: string,
   ) {
-    parseAttemptRequest(verb, request)
-    const bytes = Buffer.from(
-      JSON.stringify({ protocolVersion: 1, operation: verb, request }) + '\n',
-    )
-    if (bytes.length - 1 > ATTEMPT_REQUEST_BYTES) throw new AttemptContractError()
+    // Serialize once, then validate and retain exactly the JSON sent to the peer.
+    // Reading the caller's object again could observe getters, toJSON, or mutation.
+    let bytes: Buffer
+    try {
+      bytes = Buffer.from(`${JSON.stringify({ protocolVersion: 1, operation: verb, request })}\n`)
+      if (bytes.length > ATTEMPT_REQUEST_BYTES) throw new AttemptContractError()
+      request = parseAttemptEnvelope(
+        verb,
+        decodeAttemptLine(bytes.subarray(0, -1), ATTEMPT_REQUEST_BYTES),
+      ).request
+    } catch {
+      throw new AttemptContractError()
+    }
     let accept!: (value: AttemptSubmission) => void
     let rejectAccepted!: (error: Error) => void
     const accepted = new Promise<AttemptSubmission>((resolve, reject) => {
@@ -177,7 +187,9 @@ export function createAttemptClient(options: AttemptClientOptions) {
         const submitted = request as AttemptRequests['submit']
         if (
           value.receipt.target !== submitted.request.target ||
-          value.receipt.approval !== submitted.request.expectedApproval
+          value.receipt.approval !== submitted.request.expectedApproval ||
+          (expectedRequestDigest !== undefined &&
+            value.receipt.requestDigest !== expectedRequestDigest)
         )
           throw new AttemptContractError()
         role = value.role
@@ -205,7 +217,23 @@ export function createAttemptClient(options: AttemptClientOptions) {
           throw new AttemptContractError()
         finalFrame = value
         close()
-      } else finalFrame = value
+      } else {
+        if (value.operation === 'prepare' && value.event === 'result') {
+          const original = request as PrepareRequest
+          const canonical = value.value.canonicalRequest
+          const { files: originalFiles, ...originalFields } = original
+          const { files: canonicalFiles, ...canonicalFields } = canonical
+          if (
+            !isDeepStrictEqual(originalFields, canonicalFields) ||
+            !isDeepStrictEqual(
+              originalFiles.map((file) => file.port).sort(),
+              canonicalFiles.map((file) => file.port).sort(),
+            )
+          )
+            throw new AttemptContractError()
+        }
+        finalFrame = value
+      }
     }
     child.stdout.on('data', (chunk: Buffer) => {
       if (stopped) return
@@ -295,14 +323,26 @@ export function createAttemptClient(options: AttemptClientOptions) {
     /** One-shot by default; durable callers persist before launch through the same lifecycle. */
     async run(request: PrepareRequest, call: AttemptRunOptions = {}) {
       const prepared = await unary('prepare', request, call)
+      const retainedPrepared = decodeAttemptLine(
+        Buffer.from(JSON.stringify(prepared)),
+      ) as unknown as Prepared
       await call.persist?.(prepared)
+      // Persistence is application code and can yield. Never launch a changed
+      // ticket/request or accept a digest changed through that callback.
+      if (!isDeepStrictEqual(prepared, retainedPrepared)) throw new AttemptContractError()
       const submission = await execute(
         'submit',
-        { ticket: prepared.ticket, request: prepared.canonicalRequest },
+        { ticket: retainedPrepared.ticket, request: retainedPrepared.canonicalRequest },
         call,
+        retainedPrepared.requestDigest,
       ).accepted
       const observation = await submission.completion
-      return { prepared, receipt: submission.receipt, role: submission.role, observation }
+      return {
+        prepared: retainedPrepared,
+        receipt: submission.receipt,
+        role: submission.role,
+        observation,
+      }
     },
   }
 }
