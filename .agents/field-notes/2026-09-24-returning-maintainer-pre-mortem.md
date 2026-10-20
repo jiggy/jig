@@ -45,7 +45,7 @@ model, or implementation authorize itself.
 
 Current explanations of that purpose and the commitments it implies live in
 the [shared purpose](../doctrine/purpose.md),
-[FLOW doctrine](../doctrine/flow.md),
+[FLOW doctrine](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md),
 [Jig doctrine](../doctrine/jig.md), and
 [cross-product design judgment](../doctrine/design-judgment.md). Use those
 owners to resolve decisions; use this retrospective only to remember why
@@ -463,7 +463,7 @@ this particular discussion; the original evidence window and dated observations
 above remain intact. It is optional, historical context. The
 [product compass](../product-compass.md), relevant
 [doctrine](../doctrine/purpose.md),
-[FLOW](../doctrine/flow.md) and [Jig](../doctrine/jig.md) branches,
+[FLOW](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md) and [Jig](../doctrine/jig.md) branches,
 [design judgment](../doctrine/design-judgment.md),
 [maintainer guide](../maintainer-guide.md), specifications, code, and current
 evidence remain authoritative.

@@ -113,7 +113,7 @@ export async function qualifyCandidate(
     const consumer = join(temporary, 'npm-consumer')
     await mkdir(consumer)
     if (kind === 'flow') {
-      run(tools.bun, ['packages/flow-sdk/test/package-smoke.ts'], options)
+      run(tools.bun, ['scripts/test-flow-dependency.ts'], options)
       gates.push('package-smoke')
       run(
         tools.npm,

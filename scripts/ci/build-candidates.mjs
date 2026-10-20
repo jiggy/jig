@@ -178,13 +178,26 @@ export async function buildCandidates(
       const directory = join(staging, kind)
       await mkdir(directory)
       const packageRoot = join(source, 'packages', kind)
-      run(
-        tools.bun,
-        kind === 'jig'
-          ? ['scripts/pack.ts', '--destination', directory]
-          : ['pm', 'pack', '--ignore-scripts', '--destination', directory],
-        { ...options, cwd: packageRoot },
-      )
+      if (kind === 'flow-sdk') {
+        const manifest = JSON.parse(
+          await readFile(join(source, 'packages/jig/package.json'), 'utf8'),
+        )
+        const version = manifest.devDependencies['@jigging/flow']
+        if (!/^\d+\.\d+\.\d+-alpha\.\d+$/.test(version))
+          throw new Error('FLOW dependency must have one exact version')
+        run(
+          tools.npm,
+          ['pack', `@jigging/flow@${version}`, '--ignore-scripts', '--pack-destination', directory],
+          options,
+        )
+      } else
+        run(
+          tools.bun,
+          kind === 'jig'
+            ? ['scripts/pack.ts', '--destination', directory]
+            : ['pm', 'pack', '--ignore-scripts', '--destination', directory],
+          { ...options, cwd: packageRoot },
+        )
       const archives = (await readdir(directory)).filter((path) => path.endsWith('.tgz'))
       if (archives.length !== 1) throw new Error(`Expected exactly one ${kind} candidate`)
       const filename = archives[0]
@@ -204,6 +217,7 @@ export async function buildCandidates(
             sha256: hash,
             gates: [],
             qualification: 'pending',
+            origin: kind === 'flow-sdk' ? 'published-dependency' : 'jig-source',
             bunVersion: tools.identity.version,
             bunRevision: tools.identity.revision,
             nodeVersion: tools.nodeVersion,

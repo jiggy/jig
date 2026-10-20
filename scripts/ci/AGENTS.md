@@ -50,8 +50,7 @@ preparation never becomes a consumer requirement.
   native-residue attestations for their owners. Source inventory comes from the
   checkout, never a supplied selection plan. Installed completion markers carry
   no test-case credit.
-- `build-candidates.mjs` archives clean tracked source and freezes all eight npm
-  archives. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
+- `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry
   pending qualification. Expensive consumer tests run after artifact retention.
@@ -63,11 +62,12 @@ preparation never becomes a consumer requirement.
   profiles and descriptor inputs use these same component identities.
   `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
   FLOW/Agent/standalone-display/Jig installed obligations, without rebuilding
-  release archives. Display packages qualify through Jig's gate. The four
-  protected publication selectors remain FLOW, HTTP Agent, ACP Agent and Jig.
+  release archives. Display packages qualify through Jig's gate. The protected publication selectors are HTTP Agent, ACP Agent, and Jig.
+
+  FLOW SDK archives are published dependencies frozen as qualification inputs.
   Installed qualifications build no source packages.
 
-  They consume frozen package exports with tracked test helpers and installed
+They consume frozen package exports with tracked test helpers and installed
   tooling. Jig's CI receipt lists only its six actual gates: three standalone
   display consumers, ordinary Jig package smoke and local/global npm help. CI
   keeps native Run flags clear and provisions no containment host. Operational
@@ -98,7 +98,11 @@ preparation never becomes a consumer requirement.
   native obligations after completion events. Qualification receipts bind the
   original CI candidate. Native receipts additionally bind the exact full Linux
   receipt. Early native input receipts route pending/failing descendants but
-  cannot qualify them. FLOW readiness remains independent of host failures.
+  cannot qualify them.
+
+  Required CI job names match the current workflow, including Python reporting.
+  Candidate acquisition imports readiness validators statically so the CLI cannot deadlock on a circular dynamic import.
+
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
 
@@ -109,14 +113,6 @@ preparation never becomes a consumer requirement.
   IDs before the unchanged newest-match and receipt checks. Validate creation
   timestamps, keep inclusive boundaries and refuse incomplete bounded
   pagination.
-- `python-readiness.mjs` independently binds a main-push CI run's current
-  attempt, Python builder, six installed interpreter/OS profiles, source suite
-  and final gate. It binds them to the original SDK artifact ID/digest,
-  source-bound receipt and archive hashes. Build-only receipts require this
-  fresh execution before publication. Python has no Jig host prerequisite.
-  Protected publication revalidates the fixed snapshot after queueing and
-  verifies every pending archive before OIDC mutation. SDK acquisition and
-  post-publication checks use immutable IDs.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
@@ -226,6 +222,8 @@ preparation never becomes a consumer requirement.
 - Review the matching host-conformance workflow in the same change.
 
 ## Verification
+
+- Workflow contract tests parse YAML 1.2 and check GitHub trigger keys and registry environments.
 
 - `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite
   discovery, exact PR merge state, independent input scope and failed or forged

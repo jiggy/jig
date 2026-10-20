@@ -40,7 +40,7 @@ export const CI_QUALIFICATION_JOBS = Object.freeze([
   'Quick development checks',
   'Build public sites',
   'Source and package tests',
-  'Build Python SDK artifacts',
+  'Build Python reporting artifacts',
   'test',
   ...PYTHON_INSTALLED_JOBS,
   ...['flow', 'agent', 'acp', 'jig'].map((kind) => `Build ${kind} release candidate`),

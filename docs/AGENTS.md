@@ -7,7 +7,7 @@ catalogues for FLOW and Jig.
 
 ## Ownership
 
-- `flow/` owns portable FLOW meaning and explanatory FLOW guidance.
+- The FLOW repository owns portable meaning and explanatory FLOW guidance.
 - `jig/` owns Jig host contracts, current guidance, and product research.
 - `site/` renders and publishes this content. It does not own its meaning.
 - `AGENTS.md` is repository-operational metadata and is not public site
@@ -88,7 +88,5 @@ catalogues for FLOW and Jig.
 
 ## Child DOX Index
 
-- [flow/AGENTS.md](flow/AGENTS.md) — Portable FLOW specifications and public
-  guidance.
 - [jig/AGENTS.md](jig/AGENTS.md) — Jig specifications, product guidance, use
   cases, and orchestration research.

@@ -173,7 +173,10 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
       capture.close()
     }
     await rm(join(root, 'files', 'patch'))
-    expect(Bun.spawnSync(['/usr/bin/mkfifo', join(root, 'files', 'patch')]).exitCode).toBe(0)
+    expect(
+      Bun.spawnSync([Bun.which('mkfifo') ?? '/usr/bin/mkfifo', join(root, 'files', 'patch')])
+        .exitCode,
+    ).toBe(0)
     const before = performance.now()
     capture = await privateCaptureSavedResult(root)
     try {
@@ -183,7 +186,9 @@ test('unread named pipes and symlinked artifacts cannot stall or escape capture'
       capture.close()
     }
     await rm(join(root, 'result.json'))
-    expect(Bun.spawnSync(['/usr/bin/mkfifo', join(root, 'result.json')]).exitCode).toBe(0)
+    expect(
+      Bun.spawnSync([Bun.which('mkfifo') ?? '/usr/bin/mkfifo', join(root, 'result.json')]).exitCode,
+    ).toBe(0)
     await expect(privateCaptureSavedResult(root)).rejects.toThrow('valid result.json')
   }))
 test('whole manifest refusal precedes reads and preserves only the valid report', async () =>

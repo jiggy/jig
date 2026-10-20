@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from './fixtures/flow-dependency'
 import { expect } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, resolve } from 'node:path'
@@ -144,7 +145,7 @@ export function createMarkdownFixtures() {
       packageName === 'jig'
         ? [process.execPath, 'scripts/pack.ts', '--destination', artifacts]
         : [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
-      resolve(packageRoot, '..', packageName),
+      packageName === 'flow-sdk' ? flowSdkDirectory : resolve(packageRoot, '..', packageName),
     )
     const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
     expect(archives).toHaveLength(1)

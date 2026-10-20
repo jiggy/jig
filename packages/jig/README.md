@@ -195,8 +195,8 @@ standard for portable methods.
 
 ## License and editable source
 
-Jig's adoption notice and complete Bread text are in [LICENSE.md](LICENSE.md),
-with retained [pricing](PRICING.md) and the [license mapping](LICENSES.md).
+Jig's adoption notice and complete Bread text are in [LICENSE.md](https://github.com/jiggy/flow/blob/main/packages/jig/LICENSE.md),
+with retained [pricing](https://github.com/jiggy/flow/blob/main/packages/jig/PRICING.md) and the [license mapping](https://github.com/jiggy/flow/blob/main/packages/jig/LICENSES.md).
 Jig is source-available: personal non-business use, genuine evaluation, and
 business use below US$1m in consolidated group annual revenue are free. Larger
 groups need company coverage for operational use. Purchases preserve rights to

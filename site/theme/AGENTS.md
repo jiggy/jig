@@ -78,7 +78,7 @@ shared reading experience.
 
 ## Verification
 
-- Build both sites and inspect homepages and guides in both themes at mobile and
+- Build this repository's site and inspect homepages and guides in both themes at mobile and
   desktop widths, including 320px reflow and reduced motion.
 - Exercise search, empty results, keyboard-only navigation, walkthrough tabs,
   and Markdown copying. Check browser errors and accessibility violations.

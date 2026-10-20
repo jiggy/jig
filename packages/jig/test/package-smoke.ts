@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from './fixtures/flow-dependency'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
@@ -167,7 +168,8 @@ try {
     runtime,
     command,
     run,
-    requireRunRefusal: process.platform === 'darwin' || process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1',
+    requireRunRefusal:
+      process.platform === 'darwin' || process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1',
   })
   assert.notEqual((await stat(executable)).mode & 0o111, 0)
   assert.notEqual((await stat(piLauncher)).mode & 0o111, 0)
@@ -1221,7 +1223,7 @@ async function selectArchive(
     packageName === 'jig'
       ? ['bun', 'scripts/pack.ts', '--destination', artifacts]
       : ['bun', 'pm', 'pack', '--ignore-scripts', '--destination', artifacts],
-    resolve(packageRoot, '..', packageName),
+    packageName === 'flow-sdk' ? flowSdkDirectory : resolve(packageRoot, '..', packageName),
   )
   const archives = (await readdir(artifacts)).filter((name) => name.endsWith('.tgz'))
   assert.equal(archives.length, 1)

@@ -1,3 +1,4 @@
+import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import {
   copyFile,
@@ -226,7 +227,7 @@ export async function writeProject(root: string): Promise<void> {
     }),
   )
   await writeFile(join(flow, 'FLOW.ts'), flowProgram())
-  await cp(join(testRoot, '../../flow-sdk/src'), join(flow, 'flow-sdk'), { recursive: true })
+  await cp(flowSdkRuntimeDirectory, join(flow, 'flow-sdk'), { recursive: true })
 }
 
 export function agentPromptPayload(prompt: string): any {
@@ -296,7 +297,7 @@ export async function writeAgentMethodProject(
     await cp(join(router, 'flow-sdk'), join(specialist, 'flow-sdk'), { recursive: true })
     await writeFile(
       join(specialist, 'FLOW.ts'),
-      `import { handle } from './flow-sdk/index.ts';
+      `import { handle } from './flow-sdk/index.js';
 await handle(async run => {
   if (process.env.METHOD_TEST_TOKEN !== undefined) throw new Error('credential leaked');
   return await run.call({operationId: 'left', slot: 'agent', input: run.input});
@@ -312,7 +313,7 @@ export default defineBinding({package:'flows/specialist', slots:{agent:'binding:
 
 export function agentMethodCallerProgram(): string {
   return [
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'await handle(async (run) => {',
     '  const { scenario } = run.input as { scenario: string };',
     '  try {',
@@ -395,7 +396,11 @@ export async function writeRepairWorkspace(
           '--destination',
           artifacts,
         ],
-        { cwd: join(testRoot, '../..', name), stdout: 'pipe', stderr: 'pipe' },
+        {
+          cwd: name === 'flow-sdk' ? flowSdkDirectory : join(testRoot, '../..', name),
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
       )
       const [code, stdout, stderr] = await Promise.all([
         pack.exited,
@@ -550,7 +555,7 @@ export async function writeSpecialistParent(root: string): Promise<void> {
   await writeFile(
     join(parent, 'FLOW.ts'),
     [
-      'import { handle } from "./flow-sdk/index.ts";',
+      'import { handle } from "./flow-sdk/index.js";',
       'await handle(async (run) => {',
       '  const input = run.input as { scenario: string; direct?: boolean };',
       '  return await run.call({ operationId: `agent:${input.scenario}`,',
@@ -566,7 +571,7 @@ export async function writeSpecialistParent(root: string): Promise<void> {
 export function flowProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'async function selectedSkills() {',
     '  const root = new URL("./skills/selected/", import.meta.url);',
     '  const files = [];',

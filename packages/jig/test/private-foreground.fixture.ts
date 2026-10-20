@@ -1,3 +1,4 @@
+import { flowSdkRuntimeDirectory } from './fixtures/flow-dependency'
 import { expect } from 'bun:test'
 import { cp, lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
@@ -78,20 +79,7 @@ async function writeProject(root: string): Promise<void> {
   await writeFile(join(worker, 'FLOW.ts'), bunWorkerProgram())
   const sdk = join(worker, 'flow-sdk')
   await mkdir(sdk)
-  for (const name of [
-    'index.ts',
-    'channels.ts',
-    'json.ts',
-    'protocol.ts',
-    'session.ts',
-    'transport.ts',
-    'types.ts',
-  ]) {
-    await writeFile(
-      join(sdk, name),
-      await readFile(join(import.meta.dir, '..', '..', 'flow-sdk', 'src', name)),
-    )
-  }
+  await cp(flowSdkRuntimeDirectory, sdk, { recursive: true })
 
   const router = join(root, 'flows', 'ticket-router')
   const bug = join(root, 'flows', 'handle-bug')
@@ -283,7 +271,7 @@ async function writeAgentRouterProject(root: string): Promise<void> {
       join(directory, 'FLOW.ts'),
       [
         '#!/usr/bin/env bun',
-        'import { handle } from "./flow-sdk/index.ts";',
+        'import { handle } from "./flow-sdk/index.js";',
         `await handle(async (run) => ({ outcome: "done", output: { handled: ${JSON.stringify(route)}, input: run.input } }));`,
         '',
       ].join('\n'),
@@ -308,7 +296,7 @@ async function writeAgentRouterProject(root: string): Promise<void> {
 function agentRouterProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'const responseSchema = {',
     '  $schema: "https://flow.jig.md/schemas/schema-0.json",',
     '  type: "object", properties: { decision: {',
@@ -385,7 +373,7 @@ function ticketSchema(kind?: 'bug' | 'question'): string {
 function routerProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'await handle(async (context) => {',
     '  const input = context.input as { scenario: string; kind: "bug" | "question"; ticket: string };',
     '  await Bun.write(`${context.scratch}/parent-marker`, "parent");',
@@ -467,7 +455,7 @@ function routerProgram(): string {
 function childProgram(kind: 'bug' | 'question'): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'await handle(async (context) => {',
     '  const started = Date.now();',
     '  const input = context.input as { kind: string; ticket: string; delayMs?: number };',
@@ -489,7 +477,7 @@ function childProgram(kind: 'bug' | 'question'): string {
 function throwingChildProgram(message: string): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     `await handle(async () => { throw new Error(${JSON.stringify(message)}); });`,
     '',
   ].join('\n')
@@ -497,7 +485,7 @@ function throwingChildProgram(message: string): string {
 function invalidResultChildProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'await handle(async () => ({ outcome: "done", output: { valid: false } }));',
     '',
   ].join('\n')
@@ -505,7 +493,7 @@ function invalidResultChildProgram(): string {
 function recursiveChildProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     'await handle(async (context) => await context.call({',
     '  operationId: "recursive:inner",',
     '  slot: "not-admitted",',
@@ -517,25 +505,12 @@ function recursiveChildProgram(): string {
 async function copyFlowSdk(directory: string): Promise<void> {
   const target = join(directory, 'flow-sdk')
   await mkdir(target)
-  for (const name of [
-    'index.ts',
-    'channels.ts',
-    'json.ts',
-    'protocol.ts',
-    'session.ts',
-    'transport.ts',
-    'types.ts',
-  ]) {
-    await writeFile(
-      join(target, name),
-      await readFile(join(import.meta.dir, '..', '..', 'flow-sdk', 'src', name)),
-    )
-  }
+  await cp(flowSdkRuntimeDirectory, target, { recursive: true })
 }
 async function writeChannelProject(root: string): Promise<void> {
   const flow = join(root, 'flows/worker')
   await mkdir(flow, { recursive: true })
-  await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
+  await cp(flowSdkRuntimeDirectory, join(flow, 'sdk'), { recursive: true })
   await writeFile(
     join(root, 'jig.ts'),
     [
@@ -602,7 +577,7 @@ async function writeChildChannelProject(root: string): Promise<void> {
   for (const name of ['root', 'worker', 'monitor', 'mismatch']) {
     const directory = join(root, 'flows', name)
     await mkdir(directory, { recursive: true })
-    await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(directory, 'sdk'), {
+    await cp(flowSdkRuntimeDirectory, join(directory, 'sdk'), {
       recursive: true,
     })
     const channels =
@@ -764,7 +739,7 @@ async function writeBroadcastChannelProject(root: string): Promise<void> {
   for (const name of ['root', 'worker', 'monitor']) {
     const directory = join(root, 'flows', name)
     await mkdir(directory, { recursive: true })
-    await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(directory, 'sdk'), {
+    await cp(flowSdkRuntimeDirectory, join(directory, 'sdk'), {
       recursive: true,
     })
     const channels =
@@ -871,7 +846,7 @@ async function writeChannelConversationProject(root: string, peer: DatasetPeer):
   // prepared archive qualification separately checks the distribution closure.
   for (const name of ['investigate', 'analysis', 'dataset']) {
     const flow = join(root, 'flows', name)
-    await cp(join(import.meta.dir, '../../flow-sdk/dist'), join(flow, 'sdk'), { recursive: true })
+    await cp(flowSdkRuntimeDirectory, join(flow, 'sdk'), { recursive: true })
     for (const file of await readdir(flow)) {
       if (!file.endsWith('.ts')) continue
       const path = join(flow, file)
@@ -1063,7 +1038,7 @@ else process.stdout.write(${decode});`,
 function bunWorkerProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.ts";',
+    'import { handle } from "./flow-sdk/index.js";',
     '',
     'await handle(async (context) => {',
     '  const delayMs = typeof context.input === "object" && context.input !== null &&',

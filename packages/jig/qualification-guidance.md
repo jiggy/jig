@@ -90,10 +90,9 @@ These links locate module rules. All selected domain requirements still apply.
   text. Packaging uses `npm ci` and fails on stale integrity.
 
   The final tarball uses pinned build-only `tar` to normalize file order,
-  timestamps and ownership on both Linux and Mac. The local authoring archive
-  lock admits the exact Bun 1.3.3 and 1.4.2 gzip outputs of identical tar
-  contents. Neither platform may refresh that integrity during packing.
-  Consumers do not resolve the authoring workspace package from a registry.
+  timestamps and ownership on both Linux and Mac. The npm lock pins the public FLOW authoring archive and complete compiler closure.
+  Packing never rebuilds or repacks the authoring dependency.
+  Runtime consumers use the private bundled compiler without registry access.
 
 ## Local Contracts
 

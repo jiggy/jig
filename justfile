@@ -2,11 +2,8 @@
 #                                   MODULES                                    #
 # ---------------------------------------------------------------------------- #
 
-mod flow "packages/flow-sdk/justfile"
 mod agent "packages/agent-method/justfile"
 mod acp "packages/agent-acp/justfile"
-mod authoring "packages/flow-authoring/justfile"
-mod python "packages/jiggy-flow/justfile"
 mod reporting "packages/reporting/justfile"
 mod python_reporting "packages/jiggy-reporting/justfile"
 mod display_model "packages/display-model/justfile"
@@ -45,7 +42,7 @@ build: jig::build
 @lint *paths:
     bun x --no-install biome lint --files-ignore-unknown=true --no-errors-on-unmatched "$@"
 
-# Run ordinary method, SDK, Jig, and Run/0 tests
+# Run Jig, flavored method, and application source tests
 [positional-arguments]
 @test *args:
     #!/usr/bin/env bash
@@ -65,14 +62,8 @@ build: jig::build
     done <<< "$protocol"
     bun test "${files[@]}" "$@"
     if (( ${#node_files[@]} )); then
-        just authoring::build
         "${FLOW_NODE:-node}" --test "${node_files[@]}"
     fi
-
-# Run the portable Run/0 corpus
-[positional-arguments]
-@test-run-0 *args:
-    bun test conformance/run-0 "$@"
 
 # Run the installed operational baseline with its documented host prerequisites
 @test-baseline:

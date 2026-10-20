@@ -170,7 +170,9 @@ describe('static Codex npm installation selection', () => {
     const f = await fixture()
     const manifest = join(f.pkg, 'package.json')
     await rm(manifest)
-    expect(Bun.spawnSync(['/usr/bin/mkfifo', '-m', '600', manifest]).exitCode).toBe(0)
+    expect(
+      Bun.spawnSync([Bun.which('mkfifo') ?? '/usr/bin/mkfifo', '-m', '600', manifest]).exitCode,
+    ).toBe(0)
     const module = new URL('../src/internal/native-agent-executable.ts', suiteTestUrl).href
     const child = Bun.spawn(
       [

@@ -72,7 +72,7 @@ describe.serial('private contained Agent Run lifecycle', () => {
             )
             await writeFile(
               join(directory, 'FLOW.ts'),
-              `import {handle} from './flow-sdk/index.ts';
+              `import {handle} from './flow-sdk/index.js';
           await handle(async run => { ${
             level < 5
               ? `return await run.call({operationId: 'next', slot: 'next', input: run.input});`
@@ -163,7 +163,7 @@ describe.serial('private contained Agent Run lifecycle', () => {
       await writeFile(
         join(root, 'flows/router/FLOW.ts'),
         `
-        import { handle } from './flow-sdk/index.ts';
+        import { handle } from './flow-sdk/index.js';
         await handle(async () => {
           const child = Bun.spawn([process.execPath, '--no-env-file', '--no-install',
             '--config=/dev/null', '-e', 'const file = process.cwd()+"/check.txt"; await Bun.write(file, "42"); console.log(await Bun.file(file).text())'],

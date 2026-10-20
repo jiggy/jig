@@ -62,7 +62,7 @@ Agents, methods, tools, checks, and feedback loops that perform useful work.
 Someone can concentrate on one capability while others compose it into
 systems they could not readily build alone. Improvements can then contribute
 to further applications, subject to evaluation in each setting. The reasoning
-and limits of that compounding belong in [FLOW](flow.md).
+and limits of that compounding belong in [FLOW](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md).
 
 That opportunity depends on being able to use a method without adopting its
 author's entire application, provider arrangements, and execution policy.

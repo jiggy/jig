@@ -11,7 +11,6 @@
     just --justfile ../display-tui/justfile build
     just --justfile ../agent-method/justfile build
     just --justfile ../agent-acp/justfile build
-    just --justfile ../flow-authoring/justfile build
     mkdir -p bin libexec/agent libexec/evaluator libexec/preparation libexec/authoring
     mkdir -p libexec/contracts/reporting libexec/contracts/acp-public-updates
     cp ../reporting/src/reporting.json libexec/contracts/reporting/reporting.json
@@ -35,7 +34,7 @@
     bun build src/internal/project-evaluator-worker.ts --target=bun --format=esm --outfile=libexec/evaluator/project-evaluator-worker.js
     bun build src/internal/http-request-worker.ts --target=bun --format=esm --outfile=libexec/http-request-worker.js
     bun build src/internal/markdown-runtime-worker.ts --target=bun --format=esm --outfile=libexec/markdown-runtime.js
-    cp ../flow-sdk/LICENSE libexec/flow.LICENSE
+    bun -e 'await Bun.write("libexec/flow.LICENSE", Bun.file(new URL("../LICENSE", import.meta.resolve("@jigging/flow"))))'
     bun build src/internal/codex-agent-launcher.ts --target=bun --format=esm --outfile=libexec/agent/codex-agent-launcher.js
     cp node_modules/@agentclientprotocol/codex-acp/dist/index.js libexec/agent/codex-acp.js
     cp node_modules/@agentclientprotocol/codex-acp/LICENSE libexec/agent/codex-acp.LICENSE

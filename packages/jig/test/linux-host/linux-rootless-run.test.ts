@@ -1,3 +1,4 @@
+import { flowSdkDirectory } from './../fixtures/flow-dependency'
 import { afterAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import {
@@ -1125,10 +1126,10 @@ describe('private rootless Linux Run', () => {
   test('executes one FLOW Run/0 component through the rootless envelope', async () => {
     const host = await hostConfiguration()
     const fixture = await createFixture(`
-      import { handle } from "/flow-sdk/src/index.ts";
+      import { handle } from "/flow-sdk/dist/index.js";
       await handle(async (run) => ({ outcome: "done", output: { input: run.input, settings: run.settings } }));
     `)
-    const sdk = fileURLToPath(new URL('../../../flow-sdk', import.meta.url))
+    const sdk = flowSdkDirectory
     try {
       const base = plan(host, fixture, 'run-wire')
       const component = await host.backend.launch({

@@ -11,11 +11,8 @@ const COMMAND_TIMEOUT_MS = 10_000
 const INVENTORY_TIMEOUT_MS = 30_000
 const justfiles = [
   'justfile',
-  'packages/flow-sdk/justfile',
   'packages/agent-method/justfile',
   'packages/agent-acp/justfile',
-  'packages/flow-authoring/justfile',
-  'packages/jiggy-flow/justfile',
   'packages/reporting/justfile',
   'packages/jiggy-reporting/justfile',
   'packages/display-model/justfile',
@@ -113,13 +110,7 @@ test('root build delegates the complete package graph to Jig exactly once', asyn
   for (const dependency of ['flow-sdk', 'reporting', 'display-model'])
     expect(jig.stderr).not.toContain(`just --justfile ../${dependency}/justfile build`)
   let previous = -1
-  for (const packageName of [
-    'display-web',
-    'display-tui',
-    'agent-method',
-    'agent-acp',
-    'flow-authoring',
-  ]) {
+  for (const packageName of ['display-web', 'display-tui', 'agent-method', 'agent-acp']) {
     const command = `just --justfile ../${packageName}/justfile build`
     const index = root.stderr.indexOf(command)
     expect(index).toBeGreaterThan(previous)
@@ -148,32 +139,11 @@ test('root build delegates the complete package graph to Jig exactly once', asyn
     'display_model::build',
   ])
   expect(model.code).toBe(0)
-  for (const dependency of ['flow-sdk', 'reporting']) {
+  for (const dependency of ['reporting']) {
     const index = model.stderr.indexOf(`just --justfile ../${dependency}/justfile build`)
     expect(index).toBeGreaterThanOrEqual(0)
     expect(index).toBeLessThan(model.stderr.indexOf('tsc -p tsconfig.json'))
   }
-})
-
-test('standalone authoring build still invokes its owning compiler once', async () => {
-  await withFixture(async (directory, environment) => {
-    const result = await run(
-      ['--justfile', join(directory, 'justfile'), 'authoring::build'],
-      environment,
-    )
-    expect(result.code).toBe(0)
-    expect(
-      result.stdout
-        .trim()
-        .split('\n')
-        .map((line) => JSON.parse(line)),
-    ).toEqual([
-      {
-        cwd: join(directory, 'packages/flow-authoring'),
-        args: ['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'],
-      },
-    ])
-  })
 })
 
 test(
@@ -231,15 +201,9 @@ test(
       const args = ['a path with spaces', '$(touch SHOULD_NOT_EXIST)', '; echo unsafe', '']
       for (const [recipe, cwd, prefix] of [
         ['jig::test', 'packages/jig', ['test', './test/portable/fixture.test.ts']],
-        ['flow::test', 'packages/flow-sdk', ['test']],
         ['display_model::test', 'packages/display-model', ['test']],
         ['display_web::test', 'packages/display-web', ['test']],
         ['display_tui::test', 'packages/display-tui', ['test']],
-        [
-          'site::dev-flow',
-          'site',
-          ['node_modules/@rspress/core/bin/rspress.js', 'dev', '-c', 'flow/rspress.config.ts'],
-        ],
         [
           'site::dev-jig',
           'site',
@@ -361,24 +325,6 @@ test('packing explicitly builds first and preserves the destination argument', a
     result.stderr.indexOf('bun scripts/pack.ts'),
   )
   expect(result.stderr).toContain('bun scripts/pack.ts "$@"')
-  await withFixture(async (directory, environment) => {
-    const destination = join(directory, 'package archives')
-    const packed = await run(
-      ['--justfile', join(directory, 'justfile'), 'flow::pack', '--destination', destination],
-      environment,
-    )
-    expect(packed.code).toBe(0)
-    const calls = packed.stdout
-      .trim()
-      .split('\n')
-      .map((line) => JSON.parse(line))
-    expect(calls).toHaveLength(3)
-    expect(calls[1].args).toEqual(['node_modules/typescript/bin/tsc', '-p', 'tsconfig.json'])
-    expect(calls[2]).toEqual({
-      cwd: join(directory, 'packages/flow-sdk'),
-      args: ['pm', 'pack', '--ignore-scripts', '--destination', destination],
-    })
-  })
 })
 
 test('ordinary Agent packing uses Bun after building, without a custom packer', async () => {

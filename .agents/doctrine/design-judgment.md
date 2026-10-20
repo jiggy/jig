@@ -1,6 +1,6 @@
 # Design in service of capability and agency
 
-Design decisions serve [FLOW's capability compounding](flow.md) and
+Design decisions serve [FLOW's capability compounding](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md) and
 [Jig's agency through power under control](jig.md), under the shared purpose
 to [expand human possibility](purpose.md). This is the wider layer of the
 pyramid: it turns the product principles into responsibilities, constraints,
@@ -65,7 +65,7 @@ universal application model. Flows perform bounded work; optional invocation
 contracts name interfaces, including services backed by host-held powers.
 Uniform calls do not make that native authority package authority. FLOW's
 independent method boundary does not adopt Jig's host policy. The product
-reasoning lives in [FLOW](flow.md) and [Jig](jig.md); the
+reasoning lives in [FLOW](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md) and [Jig](jig.md); the
 [communication guide](../communication.md) owns the architectural analogy's use.
 
 ## 2. Preserve the promise with the least burden

@@ -7,7 +7,6 @@ import { join, relative } from 'node:path'
 
 const revision = 'a'.repeat(40)
 const packages = [
-  ['flow', '@jigging/flow'],
   ['agent', '@jigging/agent-method'],
   ['acp', '@jigging/agent-acp'],
   ['jig', '@jigging/jig'],
@@ -18,7 +17,7 @@ async function releaseScript() {
     join(import.meta.dir, '../.github/workflows/npm-publish.yml'),
   ).text()
   const workflow = Bun.YAML.parse(source) as any
-  return workflow.jobs.publish.steps.find((step: any) => step.id === 'release').run as string
+  return workflow.jobs.publish_host.steps.find((step: any) => step.id === 'release').run as string
 }
 
 const fakeNpm = `#!/usr/bin/env bun
@@ -293,7 +292,7 @@ test('partial release verifies existing bytes before ordered missing publishes',
     expect(result.output.match(/_state=published/g)).toHaveLength(2)
     const published = result.state.calls.filter((call: string[]) => call[0] === 'publish')
     expect(published.map((call: string[]) => call[1])).toEqual(
-      packages.slice(2).map(([_, name]) => archives[name]),
+      packages.slice(1).map(([_, name]) => archives[name]),
     )
   })
 }, 45_000)
@@ -326,18 +325,11 @@ test('a changed host archive fails its entire group before any host publication'
   })
 }, 45_000)
 
-test('FLOW publishes independently even when a host candidate is invalid', async () => {
-  await fixture('0.1.0-alpha.16', async ({ state, archives, root }) => {
-    await writeFile(archives['@jigging/jig'], 'invalid host archive')
+test('Jig refuses FLOW publication selectors before registry access', async () => {
+  await fixture('0.1.0-alpha.16', async ({ state, root }) => {
     const result = await run(root, state, 'flow')
-    expect(result.result.status).toBe(0)
-    expect(result.output).toContain('flow_state=published')
-    expect(result.output).not.toContain('jig_state=')
-    expect(
-      result.state.calls
-        .filter((call: string[]) => call[0] === 'publish')
-        .map((call: string[]) => call[1]),
-    ).toEqual([archives['@jigging/flow']])
+    expect(result.result.status).not.toBe(0)
+    expect(result.state.calls).toEqual([])
   })
 }, 45_000)
 
@@ -501,21 +493,18 @@ for (const [label, value] of [
   })
 }
 
-test('publication and tagging use separate SDK and host qualification paths', async () => {
+test('Jig publication and tagging retain host qualification while FLOW belongs to its own repo', async () => {
   const workflow = Bun.YAML.parse(
     await Bun.file(join(import.meta.dir, '../.github/workflows/npm-publish.yml')).text(),
   ) as any
   const jobs = workflow.jobs
-  expect(jobs.publish.needs).toBe('authorize')
-  expect(jobs.publish.if).toContain("ready_flow == 'true'")
+  expect(jobs.publish).toBeUndefined()
+  expect(jobs.tag).toBeUndefined()
   expect(jobs.authorize['timeout-minutes']).toBe(5)
-  expect(jobs.publish.env.RELEASE_GROUP).toBe('flow')
-  expect(jobs.publish_host.needs).toEqual(['authorize', 'publish'])
+  expect(jobs.publish_host.needs).toEqual(['authorize'])
   expect(jobs.publish_host.env.RELEASE_GROUP).toBe('host')
-  expect(jobs.publish_host.steps).toEqual(jobs.publish.steps)
-  expect(jobs.tag.needs).toEqual(['authorize', 'publish'])
   expect(jobs.tag_host.needs).toEqual(['authorize', 'publish_host'])
-  for (const job of [jobs.publish, jobs.publish_host]) {
+  for (const job of [jobs.publish_host]) {
     expect(job.permissions).toEqual({ actions: 'read', 'id-token': 'write' })
     expect(job.steps.some((step: any) => step.uses?.startsWith('actions/checkout'))).toBe(false)
     expect(

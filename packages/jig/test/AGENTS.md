@@ -30,6 +30,14 @@ and native Mac whole suites under these owners. Mac file-import and input-alias
 cases require the native opt-in. The ordinary installed mapped-files consumer
 remains a package-smoke obligation using frozen Jig and FLOW SDK archives.
 
+## FLOW dependencies
+
+Resolve SDK runtime files through the declared external package entrypoint.
+Never require a neighboring FLOW checkout or copy its private source.
+Installed artifact tests use frozen supplied archives or the installed public package.
+`fixtures/flow-conformance/` retains explicit Apache-licensed parser and authoring regression snapshots.
+FLOW owns their canonical meaning. Coordinate snapshot changes with the adopted FLOW candidate.
+
 ## Execution contracts
 
 `scripts/ci/test-suites.json` owns whole-file applicability. The shared suite
@@ -104,6 +112,8 @@ before its explicit and automatic Runs. Their complete job evidence and all nine
 delivered files must agree. Completed-Run/source-edit/re-review/new-generation
 execution remains independently required by the installed package dependency and
 full package-smoke consumers.
+
+The deterministic factory peer reads the final JSON line after the complete multiline repair instructions.
 
 Keep all three factory Runs and their existing limits, result, delivery,
 observation and cleanup assertions.

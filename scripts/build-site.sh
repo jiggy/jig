@@ -9,7 +9,7 @@ fi
 
 site_name=$1
 case $site_name in
-  flow|jig) ;;
+  jig) ;;
   *)
     echo "the site must be flow or jig" >&2
     exit 2
@@ -85,18 +85,12 @@ NODE
 
 actual=$(
   find \
-    "$repository/docs/flow/spec/machine" \
-    "$repository/docs/jig/spec/machine" \
+    "$repository/docs/$site_name/spec/machine" \
     -maxdepth 1 -type f -name '*.json' -print |
     sed "s|^$repository/||" |
     LC_ALL=C sort
 )
-expected='docs/flow/spec/machine/channel-contract-0.schema.json
-docs/flow/spec/machine/invocation-contract-0.schema.json
-docs/flow/spec/machine/run-0-errors.json
-docs/flow/spec/machine/run-0.schema.json
-docs/flow/spec/machine/schema-0.json
-docs/jig/spec/machine/jig-lock-1.schema.json
+expected='docs/jig/spec/machine/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json'
 if [ "$actual" != "$expected" ]; then
   echo "the public machine-file inventory changed; review build-site.sh" >&2

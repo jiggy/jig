@@ -142,17 +142,6 @@ operational baselines, and public-site assembly.
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed. Residue or
   removal failures never replace the original failure or establish success.
-- `build-python-sdk.py` builds and qualifies wheel/sdist pairs. Candidate mode
-  requires clean Git source and records exact revision and artifact hashes. It
-  uses one fixed archive timestamp so shallow CI checkouts and full-history
-  checkouts produce the same bytes for unchanged package source. CI uses
-  `--build-only` to freeze checked distributions before the fresh installed
-  interpreter/OS matrix. Its receipt explicitly marks qualification pending.
-  Build success alone cannot authorize publication.
-
-  Source release tests consume the retained SDK and reporting distributions when
-  supplied, while keeping source, protocol, typing and release reconciliation
-  tests.
 - `build-agent-candidate.ts` builds ordinary HTTP/ACP Agent packages from clean
   archived source with normal Bun packing, then checks exact installed bytes and
   records inventory, revision and hashes. It grants no native or model work.
@@ -160,8 +149,6 @@ operational baselines, and public-site assembly.
   directories on Linux and Mac using a same-filesystem move and exact directory
   identity. Refuse existing or racing destinations. Remove only a nested copy of
   the original staging inode, never another builder's output.
-- `pypi-release.py` performs read-only registry reconciliation, staging missing
-  distributions and refusing conflicting bytes. It never uploads or rebuilds.
 - `ci/` owns whole-suite inventories, native PR scope, canonical candidate
   provenance and transfer, observed execution evidence, release readiness, and
   disposable CI-host proof.
@@ -226,11 +213,9 @@ operational baselines, and public-site assembly.
 - `profile-installed-startup.ts` refuses hosts outside the exact Linux and Mac
   qualification profiles. Validate that refusal and obtain timing evidence from
   the opt-in host workflow steps.
-- `python3 -m unittest discover -s scripts -p test_pypi_release.py` verifies
-  partial retries, registry failures, and immutable candidate/registry bytes.
 - `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
   shell against controlled registry responses without credentials, including
-  independent FLOW publication and host-group preflight refusal. Controlled
+  host-group preflight refusal. Controlled
   registry/API emulators use the test runner's Bun to avoid repeated mock
   interpreter startup. The real publisher still performs its Node checks.
 - `node --test scripts/ci/*.test.mjs` checks complete suite execution, verified

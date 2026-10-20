@@ -1,3 +1,4 @@
+import { flowSdkRuntimeDirectory } from './../fixtures/flow-dependency'
 import { dirname as suiteDirname } from 'node:path'
 
 const suiteTestRoot = suiteDirname(import.meta.dir)
@@ -26,7 +27,7 @@ async function fixture() {
   for (const name of ['root', 'worker']) {
     const path = join(root, 'flows', name)
     await mkdir(join(path, 'contracts'), { recursive: true })
-    await cp(join(suiteTestRoot, '../../flow-sdk/dist'), join(path, 'sdk'), { recursive: true })
+    await cp(flowSdkRuntimeDirectory, join(path, 'sdk'), { recursive: true })
     await writeFile(
       join(path, 'FLOW.meta.json'),
       JSON.stringify({

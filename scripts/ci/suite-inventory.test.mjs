@@ -60,7 +60,7 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
     'packages/jig/test/host/package-provider-observation.test.ts',
     'packages/jig/test/live/client.test.ts',
     'packages/jig/test/startup/native-agent-startup.test.ts',
-    'packages/flow-authoring/test/authoring.node.mjs',
+    'packages/agent-method/test/method.test.ts',
     'packages/display-tui/test/native.test.ts',
     'packages/jig/test/experimental/image-preview.test.ts',
   ]
@@ -68,7 +68,7 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
   const filesFor = (target, profile) => filesForTarget(files, target, affectedManifest, profile)
   assert.ok(!filesFor('source-portable', 'portable').includes(files[1]))
   assert.ok(filesFor('source-portable', 'portable-linux').includes(files[1]))
-  assert.deepEqual(filesFor('source-protocol'), ['packages/flow-authoring/test/authoring.node.mjs'])
+  assert.deepEqual(filesFor('source-protocol'), ['packages/agent-method/test/method.test.ts'])
   assert.ok(filesFor('linux').includes(files[2]))
   assert.ok(!filesFor('linux').includes(files[3]))
   assert.ok(filesFor('macos-x64').includes(files[3]))

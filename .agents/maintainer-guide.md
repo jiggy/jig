@@ -266,7 +266,7 @@ Top-level import logging, cached earlier console methods, raw writes to file
 descriptor 1, and child processes inheriting stdout remain unsafe.
 
 The full contract belongs in the
-[Run SDK specification](../docs/flow/spec/run-sdk.md).
+[Run SDK specification](https://flow.jig.md/spec/run-sdk).
 
 Internal exported symbols remain private machinery unless an independent
 consumer has exercised and earned a public interface. One implementation is not
@@ -346,7 +346,7 @@ For composition changes, read
 [Bindings](../docs/jig/spec/project-policy.md#5-bindings) and
 [Direct Run](../docs/jig/spec/project-policy.md#8-direct-run). They own exact
 selection, branch reservations, aggregate limits, deadlines, and cleanup.
-[Run/0](../docs/flow/spec/run-protocol.md) owns process-boundary identity, join,
+[Run/0](https://flow.jig.md/spec/run-protocol) owns process-boundary identity, join,
 conflict, cancellation, deadline, and uncertainty.
 [Checkpoints](../docs/jig/spec/run-checkpoint.md) own bounded root evidence
 retention while workers remain active.
@@ -762,8 +762,10 @@ Do not claim dictionary compliance or certified ASD-STE100 compliance from these
 
 Use the `jiggy` GitHub organization and npm names under `@jigging/*` until the
 owner obtains and selects the npm `@jiggy` scope. Keep FLOW technically and
-publicly independent of Jig. Retain the monorepo until separation has concrete
-value.
+publicly independent of Jig. FLOW specifications, SDKs, conformance, and independent authoring belong to `jiggy/flow`.
+Jig owns its host, displays, flavored Flows, reporting profiles, and applications.
+Use public versioned FLOW dependencies without requiring its checkout.
+Never rewrite Jig history during repository separation.
 
 Keep repository tasks in justfiles, not `package.json` scripts. Manifests
 declare metadata and dependencies. Just owns build, test, formatting, and
@@ -780,7 +782,7 @@ order, and current evidence.
 | Why does this product exist? | [`product-compass.md`](product-compass.md) and its doctrine reading map |
 | What rules bind this edit? | Root and nearest applicable `AGENTS.md` files, plus this required engineering guide |
 | What can a user do now? | [`README.md`](../README.md) and public documentation under [`docs/`](../docs/) |
-| What does FLOW mean? | Normative material under [`docs/flow/spec/`](../docs/flow/spec/) |
+| What does FLOW mean? | Normative material in the [FLOW specifications](https://github.com/jiggy/flow/tree/main/docs/flow/spec) |
 | What does Jig currently promise? | [`docs/jig/`](../docs/jig/) and package READMEs |
 | What is the security boundary? | [`SECURITY.md`](../SECURITY.md) and the nearest implementation `AGENTS.md` |
 | How is a release built and published? | [`RELEASING.md`](../RELEASING.md), manifests, and [`.github/AGENTS.md`](../.github/AGENTS.md) |

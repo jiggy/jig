@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import featureCases from '../../../../conformance/run-0/fixtures/invocation-features.json'
+import featureCases from '../fixtures/flow-conformance/invocation-features.json'
 import { CHANNEL_CONTRACT_SCHEMA } from '../../src/channel-contract.js'
 import { CheckError } from '../../src/diagnostics.js'
 import {

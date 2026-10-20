@@ -136,11 +136,13 @@ export async function observedCount({
         new Set(testFiles).size !== testFiles.length ||
         new Set(markers).size !== markers.length ||
         JSON.stringify([...testFiles].sort()) !== JSON.stringify(markers.sort()) ||
-        pythonSummaries.length !== 4 ||
-        reports.length !== 4 ||
+        pythonSummaries.length !== 1 ||
+        reports.length !== 1 ||
         pythonSummaries.some((match) => Number(match[1]) <= 0)
       )
-        throw new Error('Python source proof differs from its exact file inventory or four suites')
+        throw new Error(
+          'Python source proof differs from its exact file inventory or the reporting suite',
+        )
     }
     return {
       count: reports.reduce((sum, report) => sum + report.count, 0),
@@ -170,7 +172,7 @@ export async function observedCount({
       if (/^FAILED\b|^OK \(skipped=|^skipped=/m.test(text))
         throw new Error('Failed or skipped Python source proof')
       const summaries = [...text.matchAll(/^Ran (\d+) tests? in [^\n]+\n\nOK\s*$/gm)]
-      if (summaries.length < 4 || summaries.some((match) => Number(match[1]) <= 0))
+      if (summaries.length !== 1 || summaries.some((match) => Number(match[1]) <= 0))
         throw new Error('Missing complete Python source suites')
       report.count += summaries.reduce((sum, match) => sum + Number(match[1]), 0)
     }

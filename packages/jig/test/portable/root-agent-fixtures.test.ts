@@ -50,7 +50,7 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
         process.execPath,
         '--no-env-file',
         '-e',
-        'import { handle } from "./flows/router/flow-sdk/index.ts"; if (typeof handle !== "function") throw new Error("missing handle");',
+        'import { handle } from "./flows/router/flow-sdk/index.js"; if (typeof handle !== "function") throw new Error("missing handle");',
       ],
       { cwd: root, stdout: 'pipe', stderr: 'pipe' },
     )

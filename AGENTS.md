@@ -23,7 +23,7 @@ Before making project decisions:
 
 1. Read the [product compass](.agents/product-compass.md).
 2. Read the [shared purpose](.agents/doctrine/purpose.md).
-3. Read the relevant [FLOW](.agents/doctrine/flow.md) or
+3. Read the relevant [FLOW](https://github.com/jiggy/flow/blob/main/.agents/doctrine/flow.md) or
    [Jig](.agents/doctrine/jig.md) branch. For cross-project work, read both.
 4. Read [design judgment](.agents/doctrine/design-judgment.md). Relate material
    choices to the principles they serve. Independent probe consumers do not make
@@ -219,8 +219,6 @@ Default section order:
   repository-native agent skills.
 - [.github/AGENTS.md](.github/AGENTS.md) — Continuous integration, release,
   host-conformance, and public-site automation.
-- [conformance/AGENTS.md](conformance/AGENTS.md) — Implementation-independent
-  executable evidence for versioned FLOW protocol candidates.
 - [docs/AGENTS.md](docs/AGENTS.md) — Public specifications, current product
   guidance, and research catalogues.
 - [examples/AGENTS.md](examples/AGENTS.md) — Authored applications exercising

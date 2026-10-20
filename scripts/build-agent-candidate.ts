@@ -81,11 +81,7 @@ try {
     ],
     source,
   )
-  command(
-    'just',
-    ['flow::build', 'agent::build', ...(kind === 'agent-acp' ? ['acp::build'] : [])],
-    source,
-  )
+  command('just', ['agent::build', ...(kind === 'agent-acp' ? ['acp::build'] : [])], source)
   const relativePackage = `packages/${kind}`
   command(process.execPath, ['test', `${relativePackage}/test`], source)
   command(
