@@ -12,9 +12,9 @@ import {
   open,
   readFile,
   readlink,
+  rename,
   rm,
   symlink,
-  unlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -409,10 +409,10 @@ test('artifact acquisition rejects links and non-regular or oversized files thro
 test('non-regular generated outputs and destination files refuse without following links', async () => {
   const output = join(generated, 'packages/jig/package.json')
   const file = await open(output, constants.O_RDONLY | constants.O_NOFOLLOW)
-  let contents, mode
+  let contents
   try {
     contents = await file.readFile()
-    mode = (await file.stat()).mode & 0o777
+    const mode = (await file.stat()).mode & 0o777
     await file.chmod(0o755)
     try {
       await assert.rejects(createPrepared(generated, identity), /regular non-executable files/)
@@ -424,14 +424,14 @@ test('non-regular generated outputs and destination files refuse without followi
   }
   const target = join(temporary, 'unmodified-link-target.json')
   await writeFile(target, contents)
-  await unlink(output)
-  await symlink(target, output)
+  const original = join(temporary, 'original-generated-package.json')
+  await rename(output, original)
   try {
+    await symlink(target, output)
     await assert.rejects(createPrepared(generated, identity), /regular non-executable files/)
     assert.deepEqual(await readFile(target), contents)
   } finally {
-    await unlink(output)
-    await writeFile(output, contents, { mode, flag: 'wx' })
+    await rename(original, output)
   }
 
   const linkedWriter = await clone('linked-destination')
