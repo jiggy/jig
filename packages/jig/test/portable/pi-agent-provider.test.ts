@@ -18,6 +18,7 @@ import {
   createPrivatePiSubscriptionAgentProvider,
   openPrivatePiAgentProvider,
 } from '../../src/internal/pi-agent-provider.js'
+import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
 import { nativeElf } from '.././fixtures/native-elf.js'
 import { nativeMachO } from '.././fixtures/native-macho.js'
 
@@ -218,6 +219,7 @@ describe('private native Pi Agent provider', () => {
       },
     })
     expect(runtime.readOnlyMounts.some(({ source }) => source === credentialPath)).toBe(false)
+    await rejectsCredentialOutput(runtime, 'subscription-access')
     expect(JSON.stringify(provider)).not.toContain('subscription-access')
     expect(decoder.decode(runtime.startupInput!())).not.toContain('unselected-access')
     expect(JSON.stringify(runtime.environment)).not.toContain('subscription-access')
@@ -283,6 +285,7 @@ describe('private native Pi Agent provider', () => {
       ),
     ).toBe(true)
 
+    await rejectsCredentialOutput(runtime, 'first-gateway-secret')
     const projected = startupJson(runtime.startupInput!())
     expect(projected).toEqual({
       openrouter: { type: 'api_key', key: 'first-gateway-secret' },
@@ -356,6 +359,7 @@ describe('private native Pi Agent provider', () => {
         expires: 4_102_444_800_000,
       },
     })
+    await rejectsCredentialOutput(runtime, 'first-access-token')
     expect(JSON.stringify(first)).not.toContain('access-token')
     expect(JSON.stringify(runtime.environment)).not.toContain('access-token')
   })

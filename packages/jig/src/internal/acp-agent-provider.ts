@@ -49,6 +49,8 @@ export interface PrivateAcpAgentProviderConfiguration {
   readonly nestedUserNamespaces?: boolean
   /** Only the Codex factory selects this authenticated installed host observer. */
   readonly macosCodexPreferencesObserverPath?: string
+  /** Literal credentials for private output rejection, excluded from identity. */
+  readonly secrets?: readonly string[]
   /** Secret or ephemeral client bootstrap bytes, never part of provider identity. */
   readonly startupInput?: Uint8Array
   /** Recheck ephemeral startup authority immediately before each launch. */
@@ -84,6 +86,8 @@ export interface PrivateAcpAgentRuntime {
   readonly readOnlyMounts: readonly PrivateLinuxReadOnlyMount[]
   /** Return a fresh copy of bounded bootstrap bytes for one process. */
   readonly startupInput?: () => Uint8Array
+  /** Fresh mutable rejection patterns for one launch. The caller clears them. */
+  readonly secretBytes: () => Uint8Array[]
 }
 
 interface ExactMount extends PrivateLinuxReadOnlyMount {
@@ -134,6 +138,27 @@ export async function createPrivateAcpAgentProvider(
     value.authentication === undefined ? undefined : normalizeAuthentication(value.authentication)
   const startupInput =
     value.startupInput === undefined ? undefined : normalizeStartupInput(value.startupInput)
+  const secrets = value.secrets ?? []
+  if (!Array.isArray(secrets) || secrets.length > 16)
+    throw new Error('ACP Agent output credentials exceed their bound')
+  const secretBytes = secrets.flatMap((secret) => {
+    if (
+      typeof secret !== 'string' ||
+      !secret.length ||
+      Buffer.byteLength(secret) > STARTUP_INPUT_BYTES
+    )
+      throw new Error('ACP Agent output credential is invalid')
+    const bearerValue = /^Bearer /i.test(secret) ? secret.slice(7) : undefined
+    const credential = bearerValue ?? secret
+    if (credential.length > 0 && Buffer.byteLength(credential) < 8)
+      throw new Error('ACP Agent output credential is invalid')
+    const values = bearerValue === undefined ? [secret] : [secret, bearerValue]
+    return values
+      .filter(Boolean)
+      .flatMap((text) => [Buffer.from(text), Buffer.from(JSON.stringify(text).slice(1, -1))])
+  })
+  if ((startupInput !== undefined || authentication !== undefined) && secretBytes.length === 0)
+    throw new Error('ACP Agent credentials require output rejection patterns')
   const revalidateStartupInput = value.revalidateStartupInput
   if (revalidateStartupInput !== undefined && typeof revalidateStartupInput !== 'function') {
     throw new Error('ACP Agent startup-input validation is invalid')
@@ -231,6 +256,7 @@ export async function createPrivateAcpAgentProvider(
               return startupInput.slice()
             },
           }),
+      secretBytes: () => secretBytes.map((bytes) => Uint8Array.from(bytes)),
       nestedUserNamespaces,
       ...(macosCodexPreferences === undefined
         ? {}

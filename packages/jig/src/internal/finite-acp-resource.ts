@@ -20,6 +20,7 @@ import {
   type ChannelParticipant,
   type ResolvedChannelContract,
 } from '../run/channels.js'
+import { RunHostFatalOperationError } from '../run/session.js'
 import type { PrivateAcpAgentRuntime } from './acp-agent-provider.js'
 import type {
   PrivateExecutionComponentProcess,
@@ -74,6 +75,7 @@ export interface PrivateFiniteAcpEndpoints {
   readonly owner: ChannelParticipant
   readonly requests: string
   readonly responses: string
+  readonly onFatalOperation?: ((error: RunHostFatalOperationError) => void) | undefined
 }
 
 /** Data-plane seam only. The caller must admit, own, fence and release the process. */
@@ -127,6 +129,7 @@ export async function runPrivateFiniteAcpResource(
   signal.addEventListener('abort', stopped, { once: true })
   if (signal.aborted) stopped()
   const frames = new FiniteAcpFrames('requests')
+  let secrets: Uint8Array[] = []
   let writes = Promise.resolve()
   let closed = false
   let interruptTimer: ReturnType<typeof setTimeout> | undefined
@@ -144,6 +147,7 @@ export async function runPrivateFiniteAcpResource(
     return pending
   }
   const send = async (value: JsonObject): Promise<void> => {
+    assertPrivateFiniteAcpPublicOutput(value, secrets)
     for (const fragment of fragmentFiniteAcpFrame(decoder.decode(canonicalJson(value)))) {
       await endpoints.owner.send(
         endpoints.responses,
@@ -285,6 +289,8 @@ export async function runPrivateFiniteAcpResource(
   }
   try {
     local.signal.throwIfAborted()
+    secrets = runtime.secretBytes()
+    assertPrivateFiniteAcpPublicOutput(ready as unknown as JsonValue, secrets)
     const stderr = discard(component.stderr)
     track(stderr)
     // The trusted launcher consumes startup bytes before it starts the native client.
@@ -310,6 +316,7 @@ export async function runPrivateFiniteAcpResource(
       ...(sessionId === undefined ? {} : { sessionId }),
     })
   } catch (error) {
+    if (error instanceof RunHostFatalOperationError) endpoints.onFatalOperation?.(error)
     local.abort()
     endpoints.owner.failWriter(
       endpoints.responses,
@@ -320,6 +327,8 @@ export async function runPrivateFiniteAcpResource(
     await Promise.allSettled(tasks)
     throw error
   } finally {
+    for (const secret of secrets) secret.fill(0)
+    secrets = []
     if (interruptTimer !== undefined) clearTimeout(interruptTimer)
     signal.removeEventListener('abort', stopped)
     local.abort()
@@ -417,4 +426,29 @@ function object(value: unknown): JsonObject {
 
 function invalid(message: string): never {
   throw new PrivateFiniteAcpPolicyError(message)
+}
+
+/** Reject private literal values in an already validated public projection. */
+export function assertPrivateFiniteAcpPublicOutput(
+  value: JsonValue,
+  secrets: readonly Uint8Array[],
+): void {
+  if (typeof value === 'string') {
+    const bytes = Buffer.from(value)
+    try {
+      if (
+        secrets.some((secret) =>
+          bytes.includes(Buffer.from(secret.buffer, secret.byteOffset, secret.byteLength)),
+        )
+      )
+        throw new RunHostFatalOperationError('EXECUTION_FAILED', undefined, 'credential')
+    } finally {
+      bytes.fill(0)
+    }
+  } else if (value !== null && typeof value === 'object') {
+    for (const [key, child] of Object.entries(value)) {
+      assertPrivateFiniteAcpPublicOutput(key, secrets)
+      assertPrivateFiniteAcpPublicOutput(child, secrets)
+    }
+  }
 }

@@ -93,6 +93,7 @@ describe('private Bun direct identity inspection', () => {
           executablePath: installedSupport.executablePath,
           sandboxExecutablePath: '/agent/client',
           environment: {},
+          secrets: [key],
           startupInput: new TextEncoder().encode(key),
         }),
       )

@@ -6,6 +6,7 @@ import { canonicalJson, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { ChannelOperationError } from '../run/channels.js'
 import {
+  type RunHostFatalOperationError,
   type RunHostOperationDispatcher,
   type RunHostOperationTerminal,
   RunHostSession,
@@ -479,6 +480,7 @@ async function startOrResumeCurrentExecution(
       }
       input.files?.retainOutput(component.output)
       const parent = work
+      let session: RunHostSession
       const dispatcher = operationDispatcher(
         input,
         parent,
@@ -487,37 +489,40 @@ async function startOrResumeCurrentExecution(
         channelInspected,
         recipe,
         fileContext,
+        (error) => {
+          session.failOperation(error)
+          openedChannels.broker.abort(error.code)
+        },
         attemptConstraints,
       )
       failurePhase = 'protocol'
-      provisional = await privateProfileSpan('flow-execution', () =>
-        new RunHostSession(
-          component,
-          {
-            input: work.run.input,
-            settings: recipe.request.settings,
-            attachments: Object.fromEntries(
-              Object.entries(fileProjection?.attachments ?? {}).map(([name, attachment]) => [
-                name,
-                {
-                  ...attachment,
-                  path: privateExecutionLocations(plan.ownerAllocation).attachment(
-                    name,
-                    attachment.access,
-                  ),
-                },
-              ]),
-            ),
-            channels: openedChannels.grants,
-            scratch: privateExecutionLocations(plan.ownerAllocation).scratch,
-            deadlineUnixMs: plan.effectiveDeadlineUnixMs,
-            ...(input.signal === undefined ? {} : { signal: input.signal }),
-          },
-          { cancellationGraceMs: plan.cancellationGraceMs },
-          dispatcher,
-          { remainingTimeMs: () => privateBootRemaining(plan.effectiveBootDeadline) },
-        ).run(),
+      session = new RunHostSession(
+        component,
+        {
+          input: work.run.input,
+          settings: recipe.request.settings,
+          attachments: Object.fromEntries(
+            Object.entries(fileProjection?.attachments ?? {}).map(([name, attachment]) => [
+              name,
+              {
+                ...attachment,
+                path: privateExecutionLocations(plan.ownerAllocation).attachment(
+                  name,
+                  attachment.access,
+                ),
+              },
+            ]),
+          ),
+          channels: openedChannels.grants,
+          scratch: privateExecutionLocations(plan.ownerAllocation).scratch,
+          deadlineUnixMs: plan.effectiveDeadlineUnixMs,
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
+        },
+        { cancellationGraceMs: plan.cancellationGraceMs },
+        dispatcher,
+        { remainingTimeMs: () => privateBootRemaining(plan.effectiveBootDeadline) },
       )
+      provisional = await privateProfileSpan('flow-execution', () => session.run())
       if (
         provisional.status === 'failed' &&
         provisional.details !== undefined &&
@@ -1395,6 +1400,7 @@ function operationDispatcher(
   inspected: InspectedPackage,
   recipe: PrivateDirectRunRecipe,
   files: PrivateFlowFileContext,
+  onFatalOperation: (error: RunHostFatalOperationError) => void,
   constraints?: AttemptConstraints,
 ): RunHostOperationDispatcher | undefined {
   const target = findPrivateActivationCandidateTargetV5(parent.candidate, parent.run.target)
@@ -1479,6 +1485,7 @@ function operationDispatcher(
           () =>
             executePrivateRootFlowCall({
               ...operationInput(input, parent),
+              onFatalOperation,
               files,
               onFailure: (phase, error) => input.onFailure?.(`child-flow-${phase}`, error),
               onEffectFailure: (phase, error) =>
@@ -1589,6 +1596,7 @@ function operationDispatcher(
           }
           return executePrivateRootFiniteAcp({
             ...invocation,
+            onFatalOperation,
             provider,
             onFailure: (phase, error) => input.onFailure?.(`finite-acp-${phase}`, error),
           })

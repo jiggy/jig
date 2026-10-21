@@ -287,7 +287,7 @@ export async function projectPrivateCodexSubscriptionCredential(path: string): P
       },
     }),
   )
-  return requireSubscriptionCredential(projected)
+  return requireSubscriptionCredential(projected).bytes
 }
 
 /**
@@ -299,7 +299,7 @@ export async function createPrivateCodexSubscriptionAgentProvider(
   value: PrivateCodexSubscriptionAgentConfiguration,
 ): Promise<PrivateAcpAgentProvider> {
   await requireManagedRequirements(value.requirementsPath)
-  const credential = requireSubscriptionCredential(value.credential)
+  const { bytes: credential, secrets } = requireSubscriptionCredential(value.credential)
   const model = value.model
   return await createPrivateAcpAgentProvider({
     client: CODEX_CLIENT,
@@ -312,10 +312,11 @@ export async function createPrivateCodexSubscriptionAgentProvider(
     environment: codexEnvironment(true, model, value),
     configuration: model === undefined ? [] : [{ configId: 'model', value: model }],
     modeId: 'read-only',
+    secrets,
     startupInput: frameStartupInput(credential),
     revalidateStartupInput: (): void => {
       const checked = requireSubscriptionCredential(credential)
-      checked.fill(0)
+      checked.bytes.fill(0)
     },
     nestedUserNamespaces: true,
     ...(value.macosPreferencesObserverPath === undefined
@@ -396,6 +397,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
         role: 'support',
       },
     ],
+    secrets: [value.apiKey],
     authentication: {
       identity: {
         method: 'api-key',
@@ -520,7 +522,10 @@ async function requireManagedRequirements(path: string): Promise<void> {
   }
 }
 
-function requireSubscriptionCredential(value: Uint8Array): Uint8Array {
+function requireSubscriptionCredential(value: Uint8Array): {
+  readonly bytes: Uint8Array
+  readonly secrets: readonly string[]
+} {
   if (
     !(value instanceof Uint8Array) ||
     value.byteLength === 0 ||
@@ -576,7 +581,12 @@ function requireSubscriptionCredential(value: Uint8Array): Uint8Array {
   ) {
     throw new Error('Codex subscription credential is invalid')
   }
-  return bytes
+  return {
+    bytes,
+    secrets: [accessToken, idToken, refreshToken].filter(
+      (token): token is string => typeof token === 'string' && token.length > 0,
+    ),
+  }
 }
 
 async function exactFile(path: string, label: string): Promise<string> {

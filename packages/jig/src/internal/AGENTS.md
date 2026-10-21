@@ -47,6 +47,10 @@ plus native rules on Mac.
 - Flow code receives no ambient host authority. Minimize environment, mounts,
   executables, network, credentials, and capabilities explicitly.
 
+- Native ACP public delivery rejects literal provider credentials before sending projected strings.
+  Rejection immediately stops the root Run before exposing a catchable child failure.
+  The Agent guide owns matching limits and launch-copy cleanup.
+
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
 

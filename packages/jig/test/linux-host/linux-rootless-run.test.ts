@@ -1,4 +1,3 @@
-import { flowSdkDirectory } from './../fixtures/flow-dependency'
 import { afterAll, describe, expect, test } from 'bun:test'
 import { spawn } from 'node:child_process'
 import {
@@ -32,6 +31,7 @@ import {
 import type { JsonObject, JsonValue } from '../../src/json.js'
 import { ChannelBroker } from '../../src/run/channels.js'
 import { RunHostSession } from '../../src/run/session.js'
+import { flowSdkDirectory } from './../fixtures/flow-dependency'
 import { rawFiniteAcpPeerProgram } from '../fixtures/raw-finite-acp-peer.js'
 import {
   childExit,
@@ -186,7 +186,16 @@ describe('private rootless Linux Run', () => {
     }, 60_000)
   }
   for (const [suiteCaseIndex, suiteCaseValue] of (
-    ['exit', 'signal', 'linger'] as const
+    [
+      'exit',
+      'signal',
+      'linger',
+      'credential-text',
+      'credential-id',
+      'credential-plan',
+      'credential-ready',
+      'cancel',
+    ] as const
   ).entries()) {
     test(
       'settles raw finite ACP resource transport: %s' + ` (case ${suiteCaseIndex + 1})`,
@@ -217,6 +226,7 @@ describe('private rootless Linux Run', () => {
                 expect(event.scenario).toBe(scenario)
                 if (event.phase === undefined) expect(event.keyInEnvironment).toBe(false)
                 mark(event.phase ?? 'prompt-dispatched')
+                if (scenario === 'cancel') setTimeout(() => abort.abort(), 100)
                 return new Response('recorded')
               },
             })
@@ -234,7 +244,10 @@ describe('private rootless Linux Run', () => {
                 network: 'inherited',
               })
               mark('contained-peer-started')
+              const patterns = [new TextEncoder().encode(key)]
+              let fatal = false
               const runtime: PrivateAcpAgentRuntime = {
+                secretBytes: () => patterns,
                 client: 'fixture',
                 adapterPath: join(fixture, 'FLOW.ts'),
                 sandboxAdapterPath: '/package/FLOW.ts',
@@ -278,19 +291,29 @@ describe('private rootless Linux Run', () => {
                   owner,
                   requests: grants.requests!.endpoint,
                   responses: grants.responses!.endpoint,
+                  onFatalOperation(error) {
+                    expect(error.reason).toBe('credential')
+                    fatal = true
+                  },
                 },
                 abort.signal,
+                undefined,
+                scenario === 'credential-ready'
+                  ? { bootstrap: new Uint8Array(), restoreSessionId: key }
+                  : undefined,
               ).then(
                 (result) => ({ result }),
                 (error) => ({ error }),
               )
               const frames = new FiniteAcpFrames('responses')
+              const exposed: JsonValue[] = []
               const next = async (): Promise<JsonObject> => {
                 for (;;) {
                   const item = (await app.next(responses.receive.endpoint)) as JsonObject
                   if (item.end !== undefined)
                     throw new Error('finite responses ended before the expected reply')
                   const value = (item.item as JsonObject).value as JsonObject
+                  exposed.push(value)
                   if (value.kind === 'ready') return value
                   const text = frames.accept(value)
                   if (text !== undefined) return JSON.parse(text)
@@ -302,24 +325,38 @@ describe('private rootless Linux Run', () => {
                 ))
                   await app.send(requests.send.endpoint, fragment as unknown as JsonValue)
               }
-              expect((await next()).kind).toBe('ready')
-              await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
-              expect((await next()).id).toBe(1)
-              await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
-              expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
-              await request(3, 'session/prompt', {
-                sessionId: 'fixture-session',
-                prompt: [{ type: 'text', text: `scenario:${scenario}` }],
-              })
-              if (scenario === 'linger') {
-                expect((await next()).method).toBe('session/update')
-                expect((await next()).result).toEqual({ stopReason: 'end_turn' })
-                mark('turn-completed')
-                app.close(requests.send.endpoint)
-              } else {
+              if (scenario === 'credential-ready') {
                 await expect(next()).rejects.toThrow()
+              } else {
+                expect((await next()).kind).toBe('ready')
+                await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })
+                expect((await next()).id).toBe(1)
+                await request(2, 'session/new', { cwd: '/work', mcpServers: [] })
+                expect((await next()).result).toEqual({ sessionId: 'fixture-session' })
+                await request(3, 'session/prompt', {
+                  sessionId: 'fixture-session',
+                  prompt: [{ type: 'text', text: `scenario:${scenario}` }],
+                })
+                if (scenario === 'linger') {
+                  expect((await next()).method).toBe('session/update')
+                  expect((await next()).result).toEqual({ stopReason: 'end_turn' })
+                  mark('turn-completed')
+                  app.close(requests.send.endpoint)
+                } else {
+                  await expect(next()).rejects.toThrow()
+                }
               }
               const settled = await work
+              expect(JSON.stringify(exposed)).not.toContain(key)
+              expect(patterns.every((pattern) => pattern.every((byte) => byte === 0))).toBe(true)
+              if (scenario.startsWith('credential-')) {
+                expect(fatal).toBe(true)
+                expect(settled.result).toBeUndefined()
+                expect((settled.error as Error).message).toBe(
+                  'Native ACP output contained a private credential',
+                )
+                expect(String(settled.error)).not.toContain(key)
+              }
               mark('resource-settled')
               const fence = await component.enforcement
               await writeFile(
@@ -335,7 +372,9 @@ describe('private rootless Linux Run', () => {
               )
               expect(fence.fenced).toBe(true)
               expect(fence.stopReason).not.toBe('deadline')
-              expect(phases.filter((item) => item.phase === 'prompt-dispatched')).toHaveLength(1)
+              expect(phases.filter((item) => item.phase === 'prompt-dispatched')).toHaveLength(
+                scenario === 'credential-ready' ? 0 : 1,
+              )
               if (scenario === 'linger') {
                 expect(settled.result).toMatchObject({
                   closed: true,

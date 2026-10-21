@@ -11,6 +11,19 @@ if (mode.startsWith('sdk')) {
       console.log('ordinary diagnostic')
       return { outcome: 'done', output: { greeting: 'hello' } }
     }
+    if (mode === 'sdk-credential-oracle' || mode === 'sdk-catch-child') {
+      for (const [index, candidate] of (mode === 'sdk-catch-child'
+        ? ['guessable-token']
+        : ['ordinary answer', 'guessable-token', 'later guess']
+      ).entries()) {
+        try {
+          await context.call({ operationId: `guess-${index}`, slot: 'work', input: candidate })
+        } catch {
+          return { outcome: 'done', output: candidate }
+        }
+      }
+      return { outcome: 'done', output: 'no match' }
+    }
     if (mode.startsWith('sdk-channel-')) {
       const channel = mode.endsWith('broadcast')
         ? await context.channel({ delivery: 'broadcast' })

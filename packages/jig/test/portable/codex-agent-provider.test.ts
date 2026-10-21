@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { privateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
+import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
@@ -18,6 +19,7 @@ import {
   files,
   temporary,
 } from '.././codex-agent-provider.fixture.js'
+import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
 
 afterEach(async () => {
   await Promise.all([...temporary].map((path) => rm(path, { recursive: true, force: true })))
@@ -110,6 +112,10 @@ describe('private native Codex Agent provider', () => {
       { source: support.certificatesPath, destination: '/etc/ssl/certs/ca-certificates.crt' },
     ])
     expect(runtime.nestedUserNamespaces).toBe(true)
+    await rejectsCredentialOutput(
+      runtime,
+      JSON.parse(new TextDecoder().decode(originalCredential)).tokens.access_token,
+    )
     const startup = runtime.startupInput!()
     expect(new DataView(startup.buffer, startup.byteOffset, 4).getUint32(0, false)).toBe(
       originalCredential.byteLength,
@@ -138,6 +144,30 @@ describe('private native Codex Agent provider', () => {
     })
 
     expect(first.digest).toBe(second.digest)
+  })
+  test('matches only nonempty subscription tokens without rejecting account IDs', async () => {
+    const support = await files()
+    const credential = credentialValue('a', 'secret-one')
+    const selected = await createPrivateCodexSubscriptionAgentProvider({
+      ...support,
+      credential: encoder.encode(JSON.stringify(credential)),
+    })
+    const patterns = privateAcpAgentRuntime(selected).secretBytes()
+    try {
+      const values = patterns.map((bytes) => new TextDecoder().decode(bytes))
+      expect(values).toContain(credential.tokens.access_token)
+      expect(values).toContain(credential.tokens.id_token)
+      expect(values).not.toContain(credential.tokens.account_id)
+      expect(values).not.toContain('')
+      expect(() =>
+        assertPrivateFiniteAcpPublicOutput({ text: 'ordinary answer', accountId: 'a' }, patterns),
+      ).not.toThrow()
+      expect(() =>
+        assertPrivateFiniteAcpPublicOutput({ text: credential.tokens.access_token }, patterns),
+      ).toThrow('Native ACP output contained a private credential')
+    } finally {
+      for (const pattern of patterns) pattern.fill(0)
+    }
   })
   test('rechecks bearer expiry immediately before launch', async () => {
     const support = await files()
@@ -220,6 +250,7 @@ describe('private native Codex Agent provider', () => {
       model: 'provider/test-model',
     })
     const runtime = privateAcpAgentRuntime(first)
+    await rejectsCredentialOutput(runtime, 'first-secret')
 
     expect(first).toMatchObject({
       client: 'openai-codex',
@@ -262,6 +293,27 @@ describe('private native Codex Agent provider', () => {
     expect(runtime.startupInput).toBeUndefined()
     expect(JSON.stringify(first)).not.toContain('first-secret')
     expect(JSON.stringify(runtime.environment)).not.toContain('first-secret')
+  })
+  test('rejects short raw API credentials and accepts the eight-byte boundary', async () => {
+    const support = await files()
+    for (const apiKey of ['a', 'aa', 'aaa', 'aaaa', 'aaaaa', 'aaaaaa', 'aaaaaaa', 'ééé']) {
+      await expect(
+        createPrivateCodexOpenAIApiAgentProvider({
+          ...support,
+          apiKey,
+          model: 'provider/test-model',
+        }),
+      ).rejects.toThrow('ACP Agent output credential is invalid')
+    }
+    for (const apiKey of ['12345678', 'éééé']) {
+      const selected = await createPrivateCodexOpenAIApiAgentProvider({
+        ...support,
+        apiKey,
+        model: 'provider/test-model',
+      })
+      const runtime = privateAcpAgentRuntime(selected)
+      rejectsCredentialOutput(runtime, apiKey)
+    }
   })
   test('rejects malformed Responses API configuration', async () => {
     const support = await files()

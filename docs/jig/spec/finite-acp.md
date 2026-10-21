@@ -191,6 +191,16 @@ withheld. One conversation permits at most 4,096 updates, 8 MiB of assistant
 text and 256 permission requests; raw native protocol ingress remains bounded
 at 32 MiB before projection. The host accounts for ignored frames too.
 
+Before public delivery, the host rejects projected strings containing a literal credential supplied to the selected native client.
+This includes assistant text, message identifiers, plan content, native session identifiers and restored-session ready records.
+A match fails the owning root Run, terminates native work and prevents session retention.
+This applies through nested Flows before any catchable match-dependent failure reaches application code.
+Diagnostics use fixed text without the credential.
+
+Matching includes unprefixed Bearer values and JSON escapes.
+It does not detect arbitrary encodings, transformations or credentials split across separate ACP messages.
+The selected client remains trusted with its credential.
+
 Request errors retain a safe integer native code and the fixed message
 `Native ACP request failed`; raw native text and data are withheld. For the
 host-selected Codex client only, a `session/new` error with code `-32603`, message

@@ -1,7 +1,13 @@
 import { describe, expect, test } from 'bun:test'
 import type { PrivateExecutionProcess } from '../../src/internal/execution-process.js'
+import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import { ChannelBroker } from '../../src/run/channels.js'
-import { type RunHostInvocation, RunHostSession } from '../../src/run/session.js'
+import {
+  type RunHostCall,
+  RunHostFatalOperationError,
+  type RunHostInvocation,
+  RunHostSession,
+} from '../../src/run/session.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
 // Reaping these finite, descendant-free peers is NOT native fencing evidence.
@@ -86,6 +92,61 @@ async function exchange(mode: string, input = invocation(), limits = {}) {
   }
 }
 describe('RunHostSession with actual bounded protocol subprocesses', () => {
+  for (const nested of [false, true]) {
+    test(`credential matching stops ${nested ? 'nested and root' : 'root'} peers before they can return a guess`, async () => {
+      const root = launch(nested ? 'sdk-catch-child' : 'sdk-credential-oracle')
+      const child = nested ? launch('sdk-credential-oracle') : undefined
+      const patterns = [new TextEncoder().encode('guessable-token')]
+      const checked: unknown[] = []
+      let session: RunHostSession
+      const check = async (call: RunHostCall) => {
+        checked.push(call.input)
+        try {
+          assertPrivateFiniteAcpPublicOutput(call.input, patterns)
+        } catch (error) {
+          expect(error).toBeInstanceOf(RunHostFatalOperationError)
+          session.failOperation(error as RunHostFatalOperationError)
+          throw error
+        }
+        return { status: 'succeeded' as const, result: { outcome: 'done', output: null } }
+      }
+      try {
+        session = new RunHostSession(
+          root.process,
+          invocation(),
+          {},
+          {
+            call:
+              child === undefined
+                ? check
+                : async (_call, signal) => {
+                    const result = await new RunHostSession(
+                      child.process,
+                      { ...invocation(), signal },
+                      {},
+                      {
+                        call: check,
+                      },
+                    ).run()
+                    expect(result.status).toBe('failed')
+                    return { status: 'failed', code: 'UNCERTAIN', message: 'child failed' }
+                  },
+          },
+        )
+        const terminal = await session.run()
+        expect(terminal).toMatchObject(unfenced)
+        expect(checked).toEqual(['ordinary answer', 'guessable-token'])
+        for (const peer of [root, ...(child === undefined ? [] : [child])]) {
+          expect(peer.frames().some((frame) => frame.id === 'host:1')).toBe(false)
+          expect(peer.child.signalCode).toBe('SIGKILL')
+        }
+      } finally {
+        patterns[0]!.fill(0)
+        await root.dispose()
+        await child?.dispose()
+      }
+    })
+  }
   test('SDK root result and diagnostics do not confer native fencing', async () => {
     const run = await exchange('sdk')
     expect(run.exitCode).toBe(0)

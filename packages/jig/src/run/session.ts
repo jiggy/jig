@@ -68,8 +68,14 @@ export class RunHostFatalOperationError extends Error {
   constructor(
     readonly code: 'UNCERTAIN' | 'EXECUTION_FAILED',
     options?: ErrorOptions,
+    readonly reason: 'ownership' | 'credential' = 'ownership',
   ) {
-    super('owned operation cleanup or fencing is unconfirmed', options)
+    super(
+      reason === 'credential'
+        ? 'Native ACP output contained a private credential'
+        : 'owned operation cleanup or fencing is unconfirmed',
+      options,
+    )
   }
 }
 
@@ -303,7 +309,9 @@ export class RunHostSession {
 
     try {
       if (this.invocation.signal?.aborted) {
-        this.observeCancellation('CANCELLED', 'root Run was cancelled before dispatch')
+        if (this.invocation.signal.reason instanceof RunHostFatalOperationError)
+          this.failOperation(this.invocation.signal.reason)
+        else this.observeCancellation('CANCELLED', 'root Run was cancelled before dispatch')
       } else if (this.remainingTimeMs() <= 0) {
         this.observeBudgetStop()
       } else {
@@ -347,6 +355,25 @@ export class RunHostSession {
       return this.finish(exitResult.value)
     } finally {
       this.clearWatchers()
+    }
+  }
+
+  /** Stop the root before a descendant can expose a credential-match failure. */
+  failOperation(error: RunHostFatalOperationError): void {
+    this.localTerminal ??= {
+      code: error.code,
+      message:
+        error.reason === 'credential'
+          ? 'Native ACP output contained a private credential'
+          : 'owned operation cleanup or fencing is unconfirmed',
+    }
+    this.rootOpen = false
+    if (error.reason === 'credential') {
+      this.abortOwnedOperations(error)
+      this.startTermination()
+    } else {
+      this.abortOwnedOperations()
+      this.graceTimer ??= setTimeout(() => this.startTermination(), this.limits.cancellationGraceMs)
     }
   }
 
@@ -653,17 +680,8 @@ export class RunHostSession {
         if (error instanceof ChannelOperationError)
           return failedOperation(error.code, error.message, error.details)
         if (error instanceof RunHostFatalOperationError) {
-          this.localTerminal ??= {
-            code: error.code,
-            message: 'owned operation cleanup or fencing is unconfirmed',
-          }
-          this.rootOpen = false
-          this.abortOwnedOperations()
-          this.graceTimer ??= setTimeout(
-            () => this.startTermination(),
-            this.limits.cancellationGraceMs,
-          )
-          return failedOperation(error.code, 'owned operation cleanup or fencing is unconfirmed')
+          this.failOperation(error)
+          return failedOperation(error.code, this.localTerminal!.message)
         }
         return failedOperation(
           error instanceof InvalidDispatcherResult ? 'INVALID_RESULT' : 'EXECUTION_FAILED',
@@ -930,12 +948,12 @@ export class RunHostSession {
     )
   }
 
-  private abortOwnedOperations(): void {
+  private abortOwnedOperations(reason?: unknown): void {
     for (const controller of this.channelRequests.values()) controller.abort()
     this.dispatcher?.channels?.abort(this.localTerminal?.code ?? 'OWNER_CLOSED')
     for (const operation of this.operations.values()) {
       if (operation.terminal === undefined && !operation.controller.signal.aborted) {
-        operation.controller.abort()
+        operation.controller.abort(reason)
       }
     }
   }
@@ -984,7 +1002,10 @@ export class RunHostSession {
   private armCancellation(): void {
     const signal = this.invocation.signal
     if (signal !== undefined) {
-      this.abortListener = () => this.observeCancellation('CANCELLED', 'root Run was cancelled')
+      this.abortListener = () => {
+        if (signal.reason instanceof RunHostFatalOperationError) this.failOperation(signal.reason)
+        else this.observeCancellation('CANCELLED', 'root Run was cancelled')
+      }
       signal.addEventListener('abort', this.abortListener, { once: true })
     }
     this.armDeadlineTimer()
