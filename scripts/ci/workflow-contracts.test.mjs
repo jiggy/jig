@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
-import { readdir, readFile } from 'node:fs/promises'
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import { CI_QUALIFICATION_JOBS } from './release-readiness.mjs'
@@ -15,6 +18,37 @@ const rootKeys = new Set([
   'concurrency',
   'jobs',
 ])
+
+async function runWriterStep(step, env) {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-release-summary-'))
+  const summary = join(directory, 'summary.md')
+  try {
+    const result = spawnSync(
+      '/bin/bash',
+      ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', step.run],
+      {
+        cwd: directory,
+        env: {
+          PATH: '/usr/bin:/bin',
+          GITHUB_SERVER_URL: 'https://github.com',
+          GITHUB_REPOSITORY: 'jiggy/release-fixture',
+          GITHUB_STEP_SUMMARY: summary,
+          ...env,
+        },
+        encoding: 'utf8',
+        timeout: 5_000,
+      },
+    )
+    assert.ifError(result.error)
+    return {
+      status: result.status,
+      output: result.stdout + result.stderr,
+      summary: await readFile(summary, 'utf8'),
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+}
 
 test('release readiness requires the current CI job names and matrix', async () => {
   const workflow = parse(await readFile(new URL('ci.yml', workflows), 'utf8'))
@@ -178,6 +212,7 @@ test('release writer consumes exact prepared data and validates it before mintin
   const validateIndex = writer.steps.findIndex((step) =>
     step.run?.includes('prepared.mjs restore-lock'),
   )
+  const setupIndex = writer.steps.findIndex((step) => step.id === 'release-setup')
   const tokenIndex = writer.steps.findIndex((step) =>
     step.uses?.startsWith('actions/create-github-app-token@'),
   )
@@ -186,7 +221,10 @@ test('release writer consumes exact prepared data and validates it before mintin
   )
   assert.ok(currentIndex >= 0 && downloadIndex > currentIndex)
   assert.ok(
-    validateIndex > downloadIndex && tokenIndex > validateIndex && versionIndex > tokenIndex,
+    validateIndex > downloadIndex &&
+      setupIndex > validateIndex &&
+      tokenIndex > setupIndex &&
+      versionIndex > tokenIndex,
   )
   const current = writer.steps[currentIndex]
   assert.match(current.run, /git\/ref\/heads\/main/)
@@ -201,8 +239,138 @@ test('release writer consumes exact prepared data and validates it before mintin
     writer.steps[validateIndex].run,
     'node scripts/release/prepared.mjs restore-lock "$RUNNER_TEMP/prepared-release/release-changes.json"',
   )
-  for (const index of [downloadIndex, validateIndex, tokenIndex, versionIndex])
+  for (const index of [downloadIndex, validateIndex, setupIndex, tokenIndex, versionIndex])
     assert.match(writer.steps[index].if, /steps\.current\.outputs\.current == 'true'/)
+})
+
+test('release setup reports both token modes and rejects each incomplete App configuration', async () => {
+  const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
+  const setup = workflow.jobs.version.steps.find((step) => step.id === 'release-setup')
+  assert.ok(setup)
+  assert.deepEqual(setup.env, {
+    HAS_RELEASE_APP_ID: `\${{ vars.RELEASE_APP_ID != '' }}`,
+    HAS_RELEASE_APP_PRIVATE_KEY: `\${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}`,
+  })
+  assert.equal(setup.if, "steps.current.outputs.current == 'true'")
+  assert.equal(setup['continue-on-error'], undefined)
+  assert.doesNotMatch(setup.run, /\b(?:gh|curl|wget)\b|\$\{\{/)
+  for (const [id, key, missing, settingsPath] of [
+    ['false', 'false', undefined, undefined],
+    ['true', 'true', undefined, undefined],
+    ['true', 'false', 'secret RELEASE_APP_PRIVATE_KEY', 'secrets/actions'],
+    ['false', 'true', 'variable RELEASE_APP_ID', 'variables/actions'],
+  ]) {
+    const result = await runWriterStep(setup, {
+      HAS_RELEASE_APP_ID: id,
+      HAS_RELEASE_APP_PRIVATE_KEY: key,
+    })
+    assert.equal(result.status, missing ? 1 : 0, result.output)
+    if (missing) {
+      assert.ok(
+        result.output.includes(
+          `::error::Incomplete release App configuration: missing ${missing}.`,
+        ),
+      )
+      assert.ok(result.summary.includes(`${missing} is missing`))
+      assert.ok(
+        result.summary.includes(
+          `https://github.com/jiggy/release-fixture/settings/${settingsPath}`,
+        ),
+      )
+      assert.match(result.summary, /remove the other App setting/)
+      assert.match(result.summary, /Re-run all jobs/)
+      assert.match(result.summary, /dispatch \*\*Release versions\*\* on current \*\*main\*\*/)
+      assert.match(result.summary, /Do not choose \*\*Re-run failed jobs\*\*/)
+    } else if (id === 'true') {
+      assert.match(result.summary, /Using the configured release GitHub App/)
+      assert.match(result.summary, /installed on this repository/)
+      assert.match(result.summary, /Contents: write/)
+      assert.match(result.summary, /Pull requests: write/)
+      assert.doesNotMatch(result.output, /::error::/)
+    } else {
+      assert.match(result.summary, /Using \*\*GITHUB_TOKEN\*\*/)
+      assert.match(result.summary, /No App secrets are required/)
+      assert.match(result.summary, /Settings → Actions → General/)
+      assert.match(
+        result.summary,
+        /https:\/\/github\.com\/jiggy\/release-fixture\/settings\/actions/,
+      )
+      assert.match(result.summary, /Workflow permissions/)
+      assert.match(result.summary, /Allow GitHub Actions to create and approve pull requests/)
+      assert.doesNotMatch(result.output, /::error::/)
+    }
+  }
+})
+
+test('release failure summaries run after failure without credentials or a successful-outcome override', async () => {
+  const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
+  const writer = workflow.jobs.version
+  const diagnosticIndex = writer.steps.findIndex((step) =>
+    step.run?.includes('## Release PR automation failed'),
+  )
+  const diagnostic = writer.steps[diagnosticIndex]
+  const versionIndex = writer.steps.findIndex((step) => step.id === 'version')
+  assert.ok(diagnosticIndex > versionIndex)
+  assert.equal(
+    diagnostic.if,
+    "failure() && (steps.app-token.outcome == 'failure' || steps.version.outcome == 'failure')",
+  )
+  assert.deepEqual(diagnostic.env, {
+    HAS_RELEASE_APP_ID: `\${{ vars.RELEASE_APP_ID != '' }}`,
+  })
+  assert.equal(writer['continue-on-error'], undefined)
+  for (const step of writer.steps) assert.equal(step['continue-on-error'], undefined)
+  assert.doesNotMatch(diagnostic.run, /\b(?:gh|curl|wget)\b|\$\{\{/)
+  for (const app of ['false', 'true']) {
+    const result = await runWriterStep(diagnostic, { HAS_RELEASE_APP_ID: app })
+    assert.equal(result.status, 0, result.output)
+    assert.match(result.summary, /Inspect the failed step for the exact error/)
+    assert.match(result.summary, /Re-run all jobs/)
+    assert.match(result.summary, /dispatch \*\*Release versions\*\* on current \*\*main\*\*/)
+    assert.match(result.summary, /Do not choose \*\*Re-run failed jobs\*\*/)
+    if (app === 'false') {
+      assert.match(
+        result.summary,
+        /If the error says \*\*GitHub Actions is not permitted to create or approve pull requests\*\*/,
+      )
+      assert.match(result.summary, /Workflow permissions/)
+      assert.match(result.summary, /Allow GitHub Actions to create and approve pull requests/)
+      assert.match(result.summary, /No App secrets are required/)
+    } else {
+      assert.match(result.summary, /For App authentication errors/)
+      assert.match(result.summary, /installed|installation/)
+      assert.match(result.summary, /RELEASE_APP_ID/)
+      assert.match(result.summary, /RELEASE_APP_PRIVATE_KEY/)
+      assert.doesNotMatch(result.summary, /This run used \*\*GITHUB_TOKEN\*\*/)
+    }
+  }
+})
+
+test('successful built-in release PRs link the actual approval and maintainer merge handoff', async () => {
+  const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
+  const handoff = workflow.jobs.version.steps.find((step) =>
+    step.run?.includes('Approve workflows to run'),
+  )
+  assert.ok(handoff)
+  assert.equal(
+    handoff.if,
+    "steps.version.outputs.pr-number != '' && steps.app-token.outputs.token == ''",
+  )
+  assert.deepEqual(handoff.env, {
+    RELEASE_PR_NUMBER: `\${{ steps.version.outputs.pr-number }}`,
+  })
+  assert.doesNotMatch(handoff.run, /\b(?:gh|curl|wget)\b|\$\{\{/)
+  const result = await runWriterStep(handoff, { RELEASE_PR_NUMBER: '123' })
+  assert.equal(result.status, 0, result.output)
+  assert.match(
+    result.summary,
+    /\[release PR #123\]\(https:\/\/github\.com\/jiggy\/release-fixture\/pull\/123\)/,
+  )
+  assert.match(result.summary, /If shown, select \*\*Approve workflows to run\*\*/)
+  assert.match(result.summary, /required checks and reviews, then merge it as a maintainer/)
+  assert.match(result.summary, /human merge starts the required main-push qualification/)
+  assert.match(result.summary, /Do not substitute a manually dispatched check run/)
+  assert.match(result.summary, /No App secrets are required/)
 })
 
 test('release App access is repository-scoped and automatic merge preserves normal policy', async () => {

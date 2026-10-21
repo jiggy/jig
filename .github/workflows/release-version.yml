@@ -106,6 +106,44 @@ jobs:
       - name: Validate prepared changes and restore the inert workspace lock
         if: steps.current.outputs.current == 'true'
         run: node scripts/release/prepared.mjs restore-lock "$RUNNER_TEMP/prepared-release/release-changes.json"
+      - name: Explain and validate release setup
+        if: steps.current.outputs.current == 'true'
+        id: release-setup
+        env:
+          HAS_RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID != '' }}
+          HAS_RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+        run: |
+          settings_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/settings"
+          printf '%s\n' '## Release setup' '' >> "$GITHUB_STEP_SUMMARY"
+          if [ "$HAS_RELEASE_APP_ID" != "$HAS_RELEASE_APP_PRIVATE_KEY" ]; then
+            if [ "$HAS_RELEASE_APP_ID" = 'true' ]; then
+              missing='secret RELEASE_APP_PRIVATE_KEY'
+              settings_path='secrets/actions'
+            else
+              missing='variable RELEASE_APP_ID'
+              settings_path='variables/actions'
+            fi
+            echo "::error::Incomplete release App configuration: missing $missing. Add it, or remove the other App setting to use GITHUB_TOKEN."
+            printf '%s\n' \
+              "**Release App configuration is incomplete: $missing is missing.**" \
+              "Add it under [Settings → Secrets and variables → Actions]($settings_url/$settings_path)." \
+              'Or remove the other App setting to use the built-in token.' '' \
+              'After correction, choose **Re-run all jobs**, or dispatch **Release versions** on current **main**.' \
+              'Do not choose **Re-run failed jobs**: each attempt requires a newly generated artifact.' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          if [ "$HAS_RELEASE_APP_ID" = 'true' ]; then
+            printf '%s\n' \
+              'Using the configured release GitHub App.' \
+              'It must be installed on this repository with **Contents: write** and **Pull requests: write**.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            printf '%s\n' \
+              'Using **GITHUB_TOKEN**. **No App secrets are required.**' '' \
+              "Open [Settings → Actions → General]($settings_url/actions)." \
+              'Under **Workflow permissions**, enable **Allow GitHub Actions to create and approve pull requests**.' \
+              'An organization policy may require an organization owner to enable this option.' '' \
+              'A maintainer must approve workflows if requested and merge the PR after required checks and reviews.' >> "$GITHUB_STEP_SUMMARY"
+          fi
       - name: Create repository-scoped release token
         if: steps.current.outputs.current == 'true' && vars.RELEASE_APP_ID != ''
         id: app-token
@@ -130,6 +168,30 @@ jobs:
           pr-title: "Release Jig packages"
           pr-base-branch: main
           push-with-git-cli: false
+      - name: Explain release PR failure and recovery
+        if: failure() && (steps.app-token.outcome == 'failure' || steps.version.outcome == 'failure')
+        env:
+          HAS_RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID != '' }}
+        run: |
+          settings_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/settings"
+          {
+            printf '%s\n' '## Release PR automation failed' '' 'Inspect the failed step for the exact error.' ''
+            if [ "$HAS_RELEASE_APP_ID" = 'true' ]; then
+              printf '%s\n' \
+                'For App authentication errors, verify its installation on this repository and its **Contents: write** and **Pull requests: write** permissions.' \
+                "Check variable [RELEASE_APP_ID]($settings_url/variables/actions) and secret [RELEASE_APP_PRIVATE_KEY]($settings_url/secrets/actions)."
+            else
+              printf '%s\n' \
+                'This run used **GITHUB_TOKEN**. No App secrets are required.' \
+                'If the error says **GitHub Actions is not permitted to create or approve pull requests**, check the repository setting below.' \
+                "Open [Settings → Actions → General]($settings_url/actions)." \
+                'Under **Workflow permissions**, enable **Allow GitHub Actions to create and approve pull requests**.' \
+                'An organization owner may need to permit this setting.'
+            fi
+            printf '%s\n' '' \
+              'After correction, choose **Re-run all jobs**, or dispatch **Release versions** on current **main**.' \
+              'Do not choose **Re-run failed jobs**: each attempt requires a newly generated artifact.'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Request automatic merge under repository policy
         if: steps.version.outputs.pr-number != '' && steps.app-token.outputs.token != '' && vars.RELEASE_AUTO_MERGE == 'true'
         env:
@@ -140,6 +202,14 @@ jobs:
           gh pr merge "$RELEASE_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --squash --match-head-commit "$release_head"
       - name: Explain the built-in token handoff
         if: steps.version.outputs.pr-number != '' && steps.app-token.outputs.token == ''
+        env:
+          RELEASE_PR_NUMBER: ${{ steps.version.outputs.pr-number }}
         run: |
-          echo "The release PR uses GITHUB_TOKEN. Approve or trigger its required workflows, then merge it as a maintainer."
-          echo "Configure RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY for automatic event propagation."
+          release_pr_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/pull/$RELEASE_PR_NUMBER"
+          printf '%s\n' '## Release PR ready for a maintainer' '' \
+            "Open [release PR #$RELEASE_PR_NUMBER]($release_pr_url)." \
+            'This PR uses **GITHUB_TOKEN**. No App secrets are required.' '' \
+            'If shown, select **Approve workflows to run** on the PR.' \
+            'Wait for the required checks and reviews, then merge it as a maintainer.' \
+            'The human merge starts the required main-push qualification.' \
+            'Do not substitute a manually dispatched check run for that evidence.' >> "$GITHUB_STEP_SUMMARY"

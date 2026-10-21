@@ -260,6 +260,10 @@ They consume frozen package exports with tracked test helpers and installed
   They require dependency execution in a read-only job and an immutable artifact handoff to a fresh writer.
   The writer validates prepared data before App token creation and installs no workspace dependencies.
 
+  They execute the setup shell for absent, complete, and incomplete App
+  configuration. They exercise failure summaries and successful PR handoffs
+  without credentials or API calls.
+
 - `node --test scripts/ci/release-base.test.mjs` exercises real Git comparisons,
   advancing PR bases, push ranges, manual parents, and invalid event identities.
   Release-plan integration tests reject stale generated plans after an empty
