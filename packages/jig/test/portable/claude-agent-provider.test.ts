@@ -13,6 +13,7 @@ import {
   openPrivateClaudeAgentProvider,
   PRIVATE_CLAUDE_DEFAULT_ANTHROPIC_BASE_URL,
 } from '../../src/internal/claude-agent-provider.js'
+import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
 import { nativeElf } from '.././fixtures/native-elf.js'
 import { nativeMachO } from '.././fixtures/native-macho.js'
 
@@ -255,6 +256,7 @@ describe('private native Claude Code Agent provider', () => {
     expect(new DataView(startup.buffer, startup.byteOffset, 4).getUint32(0, false)).toBe(
       'first-subscription-secret'.length,
     )
+    await rejectsCredentialOutput(runtime, 'first-subscription-secret')
     expect(new TextDecoder().decode(startup.slice(4))).toBe('first-subscription-secret')
     startup.fill(0)
     expect(new TextDecoder().decode(runtime.startupInput!().slice(4))).toBe(
@@ -317,6 +319,7 @@ describe('private native Claude Code Agent provider', () => {
     expect(runtime.modeId).toBe('default')
     expect(runtime.sessionMeta).toEqual(sessionMeta('provider/test-model'))
     expect(runtime.authentication).toBeUndefined()
+    await rejectsCredentialOutput(runtime, 'first-secret')
     expect(new TextDecoder().decode(runtime.startupInput!().slice(4))).toBe('first-secret')
     expect(JSON.stringify(first)).not.toContain('first-secret')
     expect(JSON.stringify(runtime.environment)).not.toContain('first-secret')
@@ -352,6 +355,7 @@ describe('private native Claude Code Agent provider', () => {
         'https://gateway.example/anthropic',
       ),
     )
+    await rejectsCredentialOutput(runtime, 'first-bearer-secret')
     expect(new TextDecoder().decode(runtime.startupInput!().slice(4))).toBe('first-bearer-secret')
     expect(JSON.stringify(first)).not.toContain('bearer-secret')
     expect(JSON.stringify(runtime.environment)).not.toContain('bearer-secret')

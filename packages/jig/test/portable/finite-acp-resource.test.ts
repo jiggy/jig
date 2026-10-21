@@ -6,6 +6,7 @@ import {
   PrivateFiniteAcpPolicy,
   PrivateFiniteAcpPolicyError,
 } from '../../src/internal/finite-acp-policy.js'
+import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import type { JsonObject } from '../../src/json.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
@@ -102,6 +103,25 @@ function peer(mode = 'dialogue', client?: string, maxTurns = 1) {
 }
 
 describe('finite ACP resource dependencies with actual bounded wire peers', () => {
+  test('rejects literal and JSON-escaped credentials in nested public projections', () => {
+    const secret = 'credential-"\\-é'
+    const escaped = JSON.stringify(secret).slice(1, -1)
+    const patterns = [encoder.encode(secret), encoder.encode(escaped)]
+    try {
+      for (const text of [secret, escaped]) {
+        expect(() => assertPrivateFiniteAcpPublicOutput({ content: { text } }, patterns)).toThrow(
+          'Native ACP output contained a private credential',
+        )
+      }
+      expect(() =>
+        assertPrivateFiniteAcpPublicOutput({ content: { text: 'ordinary answer' } }, patterns),
+      ).not.toThrow()
+      expect(() => assertPrivateFiniteAcpPublicOutput({ [secret]: 'value' }, patterns)).toThrow()
+    } finally {
+      for (const pattern of patterns) pattern.fill(0)
+    }
+  })
+
   for (const client of ['openai-codex', 'other-client']) {
     test(`native ${client} identity controls configuration-failure projection`, async () => {
       const p = peer('failed-new', client)

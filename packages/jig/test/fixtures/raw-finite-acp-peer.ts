@@ -10,7 +10,7 @@ const send = value => process.stdout.write(JSON.stringify(value) + '\\n');
 const reply = (id, result) => send({jsonrpc:'2.0', id, result});
 async function prompt(message) {
   const text = message.params.prompt.map(item => item.text ?? '').join('');
-  const scenario = ['signal','exit','linger'].find(value => text.includes('scenario:' + value));
+  const scenario = ['credential-text','credential-id','credential-plan','cancel','signal','exit','linger'].find(value => text.includes('scenario:' + value));
   if (!scenario || !authentication) throw new Error('invalid fixture prompt');
   const event = {scenario, keyInEnvironment:process.env.METHOD_TEST_TOKEN !== undefined};
   const recorded = await fetch(authentication.endpoint, {method:'POST', headers:{authorization:'Bearer ' + authentication.credential}, body:JSON.stringify(event)});
@@ -18,6 +18,18 @@ async function prompt(message) {
   // Explicit fault injection, not a reproduction of an unprompted native crash.
   if (scenario === 'signal') { console.error('fixture: deliberately raising SIGSEGV'); process.kill(process.pid, 'SIGSEGV'); return; }
   if (scenario === 'exit') { console.error('fixture: deliberately exiting 17'); process.exit(17); }
+  if (scenario === 'cancel') {
+    setInterval(() => {}, 1000);
+    return;
+  }
+  if (scenario.startsWith('credential-')) {
+    const secret = authentication.credential;
+    const update = scenario === 'credential-plan'
+      ? {sessionUpdate:'plan',entries:[{content:secret,priority:'high',status:'pending'}]}
+      : {sessionUpdate:'agent_message_chunk',content:{type:'text',text:scenario === 'credential-text' ? secret : 'ordinary answer'},...(scenario === 'credential-id' ? {messageId:secret} : {})};
+    send({jsonrpc:'2.0',method:'session/update',params:{sessionId:'fixture-session',update}});
+    return;
+  }
   if (scenario === 'linger') {
     shutdownScenario = scenario;
     // Keep this real process alive after protocol completion and stdin EOF.

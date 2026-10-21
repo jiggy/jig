@@ -260,6 +260,14 @@ async function createPiProvider(value: {
         SSL_CERT_FILE: SANDBOX_CERTIFICATES_PATH,
       }),
       configuration: [{ configId: 'model', value: selection }],
+      secrets: Object.entries(JSON.parse(decoder.decode(credential))[value.provider])
+        .filter(
+          ([key, token]) =>
+            ['key', 'access', 'refresh'].includes(key) &&
+            typeof token === 'string' &&
+            token.length > 0,
+        )
+        .map(([, token]) => token as string),
       startupInput,
       ...(value.credentialMode === 'pi-subscription'
         ? {

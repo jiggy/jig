@@ -28,6 +28,7 @@ async function provider(
     configuration: [{ configId: 'model', value: 'provider/model' }],
     modeId: 'read-only',
     readOnlyMounts,
+    secrets: [`Bearer ${credential}`],
     authentication: {
       identity: { method: 'gateway', endpoint },
       clientAuthCapabilities: { _meta: { gateway: true } },
@@ -68,6 +69,11 @@ describe('private ACP Agent provider', () => {
     const rotated = await provider(support, 'rotated-secret')
 
     expect(first.digest).toBe(rotated.digest)
+    expect(
+      privateAcpAgentRuntime(first)
+        .secretBytes()
+        .map((bytes) => new TextDecoder().decode(bytes)),
+    ).toContain('first-secret')
     expect(JSON.stringify(first)).not.toContain('secret')
     expect(privateAcpAgentRuntime(first).authentication?.request).toEqual({
       methodId: 'gateway',
@@ -139,6 +145,7 @@ describe('private ACP Agent provider', () => {
     } as const
     const first = await createPrivateAcpAgentProvider({
       ...base,
+      secrets: ['first-secret'],
       startupInput: new TextEncoder().encode('first-secret'),
       revalidateStartupInput: () => {
         if (!valid) throw new Error('startup authority expired')
@@ -146,9 +153,22 @@ describe('private ACP Agent provider', () => {
     })
     const rotated = await createPrivateAcpAgentProvider({
       ...base,
+      secrets: ['rotated-secret'],
       startupInput: new TextEncoder().encode('rotated-secret'),
     })
     expect(first.digest).toBe(rotated.digest)
+    const patterns = privateAcpAgentRuntime(first).secretBytes()
+    expect(new TextDecoder().decode(patterns[0])).toBe('first-secret')
+    for (const pattern of patterns) pattern.fill(0)
+    expect(new TextDecoder().decode(privateAcpAgentRuntime(first).secretBytes()[0])).toBe(
+      'first-secret',
+    )
+    await expect(
+      createPrivateAcpAgentProvider({
+        ...base,
+        startupInput: new TextEncoder().encode('unguarded-secret'),
+      }),
+    ).rejects.toThrow('credentials require output rejection patterns')
     expect(new TextDecoder().decode(privateAcpAgentRuntime(first).startupInput!())).toBe(
       'first-secret',
     )

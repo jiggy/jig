@@ -136,6 +136,7 @@ export async function createPrivateClaudeSubscriptionAgentProvider(
     return await createPrivateAcpAgentProvider({
       ...baseConfiguration(value, model, 'subscription'),
       credentialMode: 'claude-subscription',
+      secrets: [value.token],
       startupInput,
     })
   } finally {
@@ -158,6 +159,7 @@ export async function createPrivateClaudeAnthropicApiAgentProvider(
     return await createPrivateAcpAgentProvider({
       ...baseConfiguration(value, value.model, authentication, baseURL),
       credentialMode: `anthropic-${authentication}`,
+      secrets: [value.credential],
       startupInput,
     })
   } finally {

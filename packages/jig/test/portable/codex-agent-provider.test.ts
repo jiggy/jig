@@ -18,6 +18,7 @@ import {
   files,
   temporary,
 } from '.././codex-agent-provider.fixture.js'
+import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
 
 afterEach(async () => {
   await Promise.all([...temporary].map((path) => rm(path, { recursive: true, force: true })))
@@ -110,6 +111,10 @@ describe('private native Codex Agent provider', () => {
       { source: support.certificatesPath, destination: '/etc/ssl/certs/ca-certificates.crt' },
     ])
     expect(runtime.nestedUserNamespaces).toBe(true)
+    await rejectsCredentialOutput(
+      runtime,
+      JSON.parse(new TextDecoder().decode(originalCredential)).tokens.access_token,
+    )
     const startup = runtime.startupInput!()
     expect(new DataView(startup.buffer, startup.byteOffset, 4).getUint32(0, false)).toBe(
       originalCredential.byteLength,
@@ -220,6 +225,7 @@ describe('private native Codex Agent provider', () => {
       model: 'provider/test-model',
     })
     const runtime = privateAcpAgentRuntime(first)
+    await rejectsCredentialOutput(runtime, 'first-secret')
 
     expect(first).toMatchObject({
       client: 'openai-codex',

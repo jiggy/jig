@@ -88,6 +88,12 @@ These links locate module rules. All selected domain requirements still apply.
   validation. `finite-acp-resource.ts` owns bounded framing, private startup and
   authentication, and essential channel delivery.
 
+  Credentialed providers supply private literal rejection patterns outside provider identity.
+  The resource checks every projected string before public channel delivery.
+  A match fails the resource with fixed text and triggers native termination.
+  Launch copies are cleared after completion, failure or cancellation.
+  Matching covers literal values and JSON escapes, not arbitrary encodings or values split across ACP messages.
+
   Ordinary Agent Flows own protocol dialogue and answer interpretation. The
   resource reports actual termination only. `root-finite-acp-controller.ts` owns
   its durable lifetime, cancellation, fencing and recovery. Negotiate typed

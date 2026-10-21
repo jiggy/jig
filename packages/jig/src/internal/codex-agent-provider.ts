@@ -312,6 +312,9 @@ export async function createPrivateCodexSubscriptionAgentProvider(
     environment: codexEnvironment(true, model, value),
     configuration: model === undefined ? [] : [{ configId: 'model', value: model }],
     modeId: 'read-only',
+    secrets: Object.values(JSON.parse(decoder.decode(credential)).tokens).filter(
+      (token): token is string => typeof token === 'string' && token.length > 0,
+    ),
     startupInput: frameStartupInput(credential),
     revalidateStartupInput: (): void => {
       const checked = requireSubscriptionCredential(credential)
@@ -396,6 +399,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
         role: 'support',
       },
     ],
+    secrets: [value.apiKey],
     authentication: {
       identity: {
         method: 'api-key',
