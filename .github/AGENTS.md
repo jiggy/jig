@@ -55,8 +55,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   rebuild a release.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
-  verified PR base, previous main revision, or manual source parent.
-  Missing baselines fail. A generated release must reproduce the version plan.
+  tested PR merge's verified first parent, previous main revision, or manual
+  source parent. The PR merge must match the workflow source and event head.
+  Its first parent may advance beyond the event's recorded base only through
+  verified ancestry. Missing or unrelated baselines fail.
+
+  A generated release must reproduce the version plan from that exact base.
   A branch name or bot identity grants no exemption.
 
   Candidate jobs retain their archives, then perform read-only registry checks.

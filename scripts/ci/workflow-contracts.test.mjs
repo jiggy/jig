@@ -71,6 +71,8 @@ test('release intent is an unconditional part of the required CI aggregate', asy
   assert.equal(workflow.on.push.paths, undefined)
   const quick = workflow.jobs['quick-checks']
   assert.equal(quick.if, undefined)
+  const checkout = quick.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
+  assert.equal(checkout.with['fetch-depth'], 0)
   const checkIndex = quick.steps.findIndex((step) =>
     step.run?.includes('scripts/release/cli.mjs check'),
   )
@@ -78,9 +80,9 @@ test('release intent is an unconditional part of the required CI aggregate', asy
   const check = quick.steps[checkIndex]
   assert.equal(check.if, undefined)
   assert.equal(check['continue-on-error'], undefined)
-  assert.match(check.env.RELEASE_BASE_REVISION, /github\.event\.pull_request\.base\.sha/)
-  assert.match(check.env.RELEASE_BASE_REVISION, /github\.event\.before/)
-  assert.match(check.run, /git rev-parse HEAD\^/)
+  assert.equal(check.env?.RELEASE_BASE_REVISION, undefined)
+  assert.match(check.run, /release_base="\$\(node scripts\/ci\/release-base\.mjs\)"/)
+  assert.doesNotMatch(check.run, /HEAD\^|pull_request\.base\.sha/)
   assert.match(check.run, /check --base "\$release_base"/)
   const evidenceIndex = quick.steps.findIndex((step) =>
     step.run?.includes('scripts/ci/job-evidence.mjs'),

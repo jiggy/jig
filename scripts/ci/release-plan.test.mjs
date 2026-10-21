@@ -7,6 +7,7 @@ import test from 'node:test'
 import { PACKAGES } from '../release/catalog.mjs'
 import { checkRelease, releasePlan, versionRelease } from '../release/cli.mjs'
 import { git, releaseState, sourceDigest } from '../release/state.mjs'
+import { releaseBase } from './release-base.mjs'
 
 const repository = resolve(import.meta.dirname, '../..')
 const changesetsCli = join(repository, 'node_modules/@changesets/cli/bin.js')
@@ -393,6 +394,66 @@ test('a release PR must regenerate after its target base advances', async (t) =>
   const advanced = commit(root)
   git(root, ['merge', '--quiet', '--no-ff', '-m', 'Simulated PR merge', 'release-test'])
   await assert.rejects(checkRelease(root, advanced), /Release plan is stale/)
+})
+
+test('feature release checks exclude target changes made after the event base', async (t) => {
+  const { root, base: eventBase } = await fixture(t)
+  git(root, ['checkout', '--quiet', '-b', 'feature-test'])
+  await put(root, 'packages/agent-method/src/index.ts', 'export const value = 2\n')
+  await note(root, 'method-pr-fix', ['@jigging/agent-method'])
+  const head = commit(root, 'Covered feature change')
+
+  git(root, ['checkout', '--quiet', 'main'])
+  const jig = await get(root, 'packages/jig/package.json')
+  jig.version = '0.1.0-alpha.38'
+  await put(root, 'packages/jig/package.json', jig)
+  const advanced = commit(root, 'Concurrent target version bump')
+  git(root, ['merge', '--quiet', '--no-ff', '-m', 'Test PR against current target', 'feature-test'])
+  const source = git(root, ['rev-parse', 'HEAD']).trim()
+  await assert.rejects(checkRelease(root, eventBase), /versions manually/)
+
+  const selected = releaseBase({
+    repository: root,
+    env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_SHA: source },
+    event: { pull_request: { base: { sha: eventBase }, head: { sha: head } } },
+  })
+  assert.equal(selected, advanced)
+  const checked = await checkRelease(root, selected)
+  assert.equal(checked.mode, 'feature')
+  assert.deepEqual(checked.affectedPackages, ['@jigging/agent-method'])
+  assert.deepEqual(checked.changesets, ['method-pr-fix'])
+})
+
+test('generated release replay rejects an empty target advance despite matching source bytes', async (t) => {
+  const { root } = await fixture(t)
+  await note(root, 'jig-fix', ['@jigging/jig'])
+  const base = commit(root)
+  git(root, ['checkout', '--quiet', '-b', 'release-test'])
+  const marker = await versionRelease(root)
+  const head = commit(root, 'Generated release')
+
+  git(root, ['checkout', '--quiet', 'main'])
+  git(root, ['commit', '--quiet', '--allow-empty', '-m', 'Advance target without source edits'])
+  const advanced = git(root, ['rev-parse', 'HEAD']).trim()
+  assert.notEqual(advanced, base)
+  git(root, [
+    'merge',
+    '--quiet',
+    '--no-ff',
+    '-m',
+    'Test stale release against target',
+    'release-test',
+  ])
+  const source = git(root, ['rev-parse', 'HEAD']).trim()
+  assert.equal(await sourceDigest(root, source), marker.sourceDigest)
+
+  const selected = releaseBase({
+    repository: root,
+    env: { GITHUB_EVENT_NAME: 'pull_request', GITHUB_SHA: source },
+    event: { pull_request: { base: { sha: base }, head: { sha: head } } },
+  })
+  assert.equal(selected, advanced)
+  await assert.rejects(checkRelease(root, selected), /Release plan is stale/)
 })
 
 test('unsupported note-only filenames fail instead of silently losing release intent', async (t) => {

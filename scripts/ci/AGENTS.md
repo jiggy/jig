@@ -30,6 +30,16 @@ preparation never becomes a consumer requirement.
 
   An omitted PR creates no host qualification receipt. No selection modes,
   result reuse, compact witnesses or recurring audit jobs exist.
+- `release-base.mjs` selects the required release check's comparison commit.
+  It verifies the workflow source and both parents of a PR merge.
+  The second parent must equal the event head. The event base must be an
+  ancestor of the first parent, which supplies the comparison commit.
+
+  Push checks retain the event's previous revision. Manual checks use the
+  source's first parent. Missing, unrelated, or uncertain baselines fail.
+
+  A newer tested base never relaxes generated release replay. The marker must
+  name that exact base, even when its advance changes no files.
 - Source execution keeps one `source-tests` workflow job and workspace, with
   distinct `source-portable`, `source-protocol`, `source-applications` and
   `source-python` evidence. CI and local execution run selected stages serially
@@ -244,11 +254,16 @@ They consume frozen package exports with tracked test helpers and installed
 
 - Workflow contract tests parse YAML 1.2 and check GitHub trigger keys and registry environments.
   They require the release-impact check in Quick and its existing aggregate.
+  The check uses the verified Git comparison resolver before release validation.
   They check main-only version generation without registry authority, scoped App
   tokens, and the protected release PR merge policy.
   They require dependency execution in a read-only job and an immutable artifact handoff to a fresh writer.
   The writer validates prepared data before App token creation and installs no workspace dependencies.
 
+- `node --test scripts/ci/release-base.test.mjs` exercises real Git comparisons,
+  advancing PR bases, push ranges, manual parents, and invalid event identities.
+  Release-plan integration tests reject stale generated plans after an empty
+  base advance. They preserve feature coverage after unrelated main version changes.
 - `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite
   discovery, exact PR merge state, independent input scope and failed or forged
   host-job results. Archive/API fixtures cover source/run/attempt/profile/digest
