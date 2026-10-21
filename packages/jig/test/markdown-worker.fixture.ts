@@ -1,7 +1,7 @@
-import { flowSdkDirectory } from './fixtures/flow-dependency'
 import { expect } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, realpath, stat, writeFile } from 'node:fs/promises'
 import { basename, isAbsolute, join, resolve } from 'node:path'
+import { flowSdkDirectory } from './fixtures/flow-dependency'
 
 const packageRoot = resolve(import.meta.dir, '..')
 const block = (instruction: string) => `\`\`\`flow\n${instruction}\n\`\`\`\n`
@@ -157,13 +157,14 @@ export function createMarkdownFixtures() {
     expectedCode = 0,
     stage?: string,
     expectedDiagnostic?: string,
+    timeoutMs = 60_000,
   ): Promise<string> {
     const started = Date.now()
     // This installed check must neither depend on nor spend operator Agent access.
     const env = Object.fromEntries(
       Object.entries(process.env).filter(([key]) => !/^(OPENAI_|OPENROUTER_|JIG_AGENT_)/.test(key)),
     )
-    const child = Bun.spawn(args, { cwd, env, stdout: 'pipe', stderr: 'pipe', timeout: 60_000 })
+    const child = Bun.spawn(args, { cwd, env, stdout: 'pipe', stderr: 'pipe', timeout: timeoutMs })
     const [code, stdout, stderr] = await Promise.all([
       child.exited,
       new Response(child.stdout).text(),
