@@ -246,6 +246,8 @@ They consume frozen package exports with tracked test helpers and installed
   They require the release-impact check in Quick and its existing aggregate.
   They check main-only version generation without registry authority, scoped App
   tokens, and the protected release PR merge policy.
+  They require dependency execution in a read-only job and an immutable artifact handoff to a fresh writer.
+  The writer validates prepared data before App token creation and installs no workspace dependencies.
 
 - `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite
   discovery, exact PR merge state, independent input scope and failed or forged

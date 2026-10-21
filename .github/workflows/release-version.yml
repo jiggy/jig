@@ -10,13 +10,15 @@ concurrency:
   group: release-version-main
   cancel-in-progress: false
 jobs:
-  version:
+  generate:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
+    outputs:
+      pending: ${{ steps.plan.outputs.pending }}
+      artifact-id: ${{ steps.prepared.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -50,8 +52,62 @@ jobs:
           const plan = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/release-plan.json`, 'utf8'))
           appendFileSync(process.env.GITHUB_OUTPUT, `pending=${plan.pendingChangesets.length > 0}\n`)
           NODE
+      - name: Generate release changes without repository write authority
+        if: steps.plan.outputs.pending == 'true'
+        run: |
+          just release-version
+          node scripts/release/prepared.mjs create "$RUNNER_TEMP/release-changes.json"
+      - name: Retain prepared release data
+        if: steps.plan.outputs.pending == 'true'
+        id: prepared
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-changes-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-changes.json
+          retention-days: 7
+          if-no-files-found: error
+          overwrite: false
+  version:
+    needs: generate
+    if: github.ref == 'refs/heads/main' && needs.generate.outputs.pending == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - name: Check current main before repository writes
+        id: current
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_main=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$current_main" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "A newer main revision owns the release PR."
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Download the exact prepared release artifact
+        if: steps.current.outputs.current == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          artifact-ids: ${{ needs.generate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/prepared-release
+          merge-multiple: true
+      - name: Validate prepared changes and restore the inert workspace lock
+        if: steps.current.outputs.current == 'true'
+        run: node scripts/release/prepared.mjs restore-lock "$RUNNER_TEMP/prepared-release/release-changes.json"
       - name: Create repository-scoped release token
-        if: steps.plan.outputs.pending == 'true' && vars.RELEASE_APP_ID != ''
+        if: steps.current.outputs.current == 'true' && vars.RELEASE_APP_ID != ''
         id: app-token
         uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
         with:
@@ -62,13 +118,14 @@ jobs:
           permission-contents: write
           permission-pull-requests: write
       - name: Maintain the release pull request
-        if: steps.plan.outputs.pending == 'true'
+        if: steps.current.outputs.current == 'true'
         id: version
-        # changesets/action v2.1.2: versioning only, without publication.
+        # v2.1.2 reads workspace data with bundled dependencies. Its custom
+        # script applies prepared data without running the installed CLI.
         uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51
         with:
           github-token: ${{ steps.app-token.outputs.token || github.token }}
-          script: just release-version
+          script: node scripts/release/prepared.mjs apply "${{ runner.temp }}/prepared-release/release-changes.json"
           commit-message: "chore: version Jig packages"
           pr-title: "Release Jig packages"
           pr-base-branch: main

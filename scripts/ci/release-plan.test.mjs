@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -8,6 +9,7 @@ import { checkRelease, releasePlan, versionRelease } from '../release/cli.mjs'
 import { git, releaseState, sourceDigest } from '../release/state.mjs'
 
 const repository = resolve(import.meta.dirname, '../..')
+const changesetsCli = join(repository, 'node_modules/@changesets/cli/bin.js')
 const json = (value) => `${JSON.stringify(value, null, 2)}\n`
 
 async function put(root, path, value) {
@@ -17,6 +19,26 @@ async function put(root, path, value) {
 
 async function get(root, path) {
   return JSON.parse(await readFile(join(root, path), 'utf8'))
+}
+
+function stockChangesets(root, args) {
+  return execFileSync(process.execPath, [changesetsCli, ...args], {
+    cwd: root,
+    encoding: 'utf8',
+    timeout: 120_000,
+    maxBuffer: 8 * 1024 * 1024,
+    env: { ...process.env, CI: 'true', NO_COLOR: '1' },
+  })
+}
+
+async function stockStatus(root) {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-release-stock-status-'))
+  try {
+    stockChangesets(root, ['status', '--output', join(temporary, 'plan.json')])
+    return await get(temporary, 'plan.json')
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
 }
 
 function commit(root, message = 'Fixture change') {
@@ -377,7 +399,6 @@ test('unsupported note-only filenames fail instead of silently losing release in
   const { root, base } = await fixture(t)
   await put(root, '.changeset/.hidden.md', 'Hidden files are not Changesets notes.\n')
   await put(root, '.changeset/README.md', 'Release documentation.\n')
-  await put(root, '.changeset/AGENTS.md', 'Release guidance.\n')
   const notesBase = commit(root)
   assert.deepEqual((await checkRelease(root, base)).changesets, [])
   assert.deepEqual((await releasePlan(root)).pendingChangesets, [])
@@ -393,4 +414,90 @@ test('unsupported note-only filenames fail instead of silently losing release in
   await note(root, 'fix acp', ['@jigging/agent-acp'])
   commit(root)
   await assert.rejects(checkRelease(root, notesBase), /Unsupported changeset filename: fix acp\.md/)
+})
+
+test('guidance filenames fail before planning or versioning, regardless of case', async (t) => {
+  const stockIgnores = new Set(['AGENTS', 'CLAUDE', 'GEMINI'])
+  for (const id of [
+    'AGENTS',
+    'agents',
+    'Agents',
+    'CLAUDE',
+    'claude',
+    'Claude',
+    'GEMINI',
+    'gemini',
+    'Gemini',
+  ]) {
+    const { root, base } = await fixture(t)
+    await note(root, id, ['@jigging/jig'])
+    const head = commit(root)
+    const status = await stockStatus(root)
+    const stockConsumes = !stockIgnores.has(id)
+    assert.deepEqual(
+      status.changesets.map(({ id }) => id),
+      stockConsumes ? [id] : [],
+    )
+
+    const expected = {
+      message: `Guidance file .changeset/${id}.md is not a release note. Move its instructions outside .changeset/.`,
+    }
+    await assert.rejects(checkRelease(root, base), expected)
+    await assert.rejects(releasePlan(root), expected)
+    await assert.rejects(releaseState(root, head), expected)
+    await assert.rejects(versionRelease(root), expected)
+    assert.equal(git(root, ['status', '--porcelain']), '', 'refusal must precede version edits')
+
+    if (stockConsumes) stockChangesets(root, ['version'])
+    else
+      assert.throws(
+        () => stockChangesets(root, ['version']),
+        (error) => error.status === 1 && /No unreleased changesets found/.test(error.stdout),
+      )
+    assert.equal(
+      (await get(root, 'packages/jig/package.json')).version,
+      stockConsumes ? '0.1.0-alpha.38' : '0.1.0-alpha.37',
+    )
+    const retained = `.changeset/${stockConsumes ? 'pre/' : ''}${id}.md`
+    assert.match(await readFile(join(root, retained), 'utf8'), /Fix the package behavior/)
+  }
+})
+
+test('README spelling, hidden files, and extension filters agree with real status and version', async (t) => {
+  for (const readme of ['README.md', 'readme.md', 'ReadMe.md']) {
+    const { root } = await fixture(t)
+    const ignored = ['.hidden.md', '.AGENTS.md', 'ignored.MD', readme]
+    for (const filename of ignored)
+      await put(root, `.changeset/${filename}`, 'This is not release frontmatter.\n')
+    await note(root, 'normal-note', ['@jigging/jig'])
+    const base = commit(root)
+    const status = await stockStatus(root)
+    const plan = await releasePlan(root)
+    assert.deepEqual(
+      status.changesets.map(({ id }) => id),
+      ['normal-note'],
+    )
+    assert.deepEqual(plan.pendingChangesets, ['normal-note'])
+    assert.deepEqual(
+      plan.releases,
+      status.releases.map(({ name, type, oldVersion, newVersion }) => ({
+        name,
+        type,
+        oldVersion,
+        newVersion,
+      })),
+    )
+    const marker = await versionRelease(root)
+    assert.deepEqual(marker.releases, plan.releases)
+    assert.deepEqual(
+      marker.changesets.map(({ id }) => id),
+      ['normal-note'],
+    )
+    const head = commit(root)
+    assert.equal((await releaseState(root, head)).eligible, true)
+    assert.equal((await checkRelease(root, base)).mode, 'versioned')
+    assert.deepEqual((await releasePlan(root)).pendingChangesets, [])
+    for (const filename of ignored)
+      assert.ok(await readFile(join(root, `.changeset/${filename}`), 'utf8'))
+  }
 })

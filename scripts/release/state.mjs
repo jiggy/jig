@@ -9,7 +9,7 @@ export const alphaVersion = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-alpha\.(0
 const revisionPattern = /^[0-9a-f]{40}$/
 const digestPattern = /^[0-9a-f]{64}$/
 const activeNote = /^\.changeset\/([A-Za-z0-9][A-Za-z0-9_-]*)\.md$/
-const ignoredNotes = new Set(['AGENTS.md', 'CLAUDE.md', 'GEMINI.md'])
+const guidanceNote = /^(?:AGENTS|CLAUDE|GEMINI)\.md$/i
 
 export function git(root, args, options = {}) {
   return execFileSync('git', ['-C', root, ...args], {
@@ -62,6 +62,15 @@ export async function sourceText(root, path, revision, optional = false) {
   }
 }
 
+export function sourceEntriesDigest(entries) {
+  return sha256(
+    [...entries]
+      .sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)))
+      .map(({ mode, hash, path }) => `${mode} ${hash}\t${path}\0`)
+      .join(''),
+  )
+}
+
 export async function sourceDigest(root, revision) {
   const entries = []
   for (const entry of sourceFiles(root, revision)) {
@@ -88,8 +97,18 @@ export async function sourceDigest(root, revision) {
       hash: createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex'),
     })
   }
-  entries.sort((a, b) => Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)))
-  return sha256(entries.map(({ mode, hash, path }) => `${mode} ${hash}\t${path}\0`).join(''))
+  return sourceEntriesDigest(entries)
+}
+
+export function dependentNote(notes) {
+  const direct = new Set(notes.flatMap((note) => note.releases.map(({ name }) => name)))
+  const indirect = releaseClosure(direct).filter((name) => !direct.has(name))
+  if (!indirect.length) return undefined
+  const id = `release-dependents-${sha256(JSON.stringify(notes.map(({ id, sha256 }) => ({ id, sha256 })))).slice(0, 16)}`
+  return {
+    id,
+    text: `---\n${indirect.map((name) => `${JSON.stringify(name)}: patch`).join('\n')}\n---\n\nRebuild packages that include changed workspace inputs.\n`,
+  }
 }
 
 export function parseChangeset(text, id) {
@@ -121,12 +140,15 @@ export async function pendingChangesets(root, revision) {
   for (const { path } of sourceFiles(root, revision)) {
     if (!path.startsWith('.changeset/')) continue
     const filename = path.slice('.changeset/'.length)
+    if (guidanceNote.test(filename))
+      throw new Error(
+        `Guidance file .changeset/${filename} is not a release note. Move its instructions outside .changeset/.`,
+      )
     if (
       filename.includes('/') ||
       filename.startsWith('.') ||
       !filename.endsWith('.md') ||
-      /^README\.md$/i.test(filename) ||
-      ignoredNotes.has(filename)
+      /^README\.md$/i.test(filename)
     )
       continue
     const match = activeNote.exec(path)

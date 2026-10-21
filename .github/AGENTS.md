@@ -94,6 +94,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   revisions and leave no-change runs without a new PR.
   The version action creates Git changes only. It never publishes packages.
 
+  Install dependencies, plan versions, and execute Changesets only on the
+  generation runner with repository read permission. Retain only prepared JSON
+  data in an immutable artifact bound to the source, run, and attempt.
+
+  Use a fresh writer runner without installed dependencies or transferred code.
+  Download the exact artifact ID. Validate its source and permitted changes
+  before restoring its inert workspace lock or minting an App token.
+  The pinned version action applies validated data through the standard-library
+  helper. It never invokes the local Changesets CLI.
+
   Scope an optional release App token to this repository with only contents
   and pull-request write permissions. Keep credentials absent from PR checks.
   Without the App, document the built-in token's required maintainer handoff.

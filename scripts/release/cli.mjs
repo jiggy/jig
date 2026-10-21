@@ -15,11 +15,11 @@ import {
 } from './catalog.mjs'
 import {
   alphaVersion,
+  dependentNote,
   git,
   pendingChangesets,
   releaseState,
   requireRevision,
-  sha256,
   sourceDigest,
   sourceFiles,
   sourceText,
@@ -58,17 +58,6 @@ async function inventory(root, revision) {
       throw new Error(`Add the new package to the release catalog: ${value.name}`)
   }
   return manifests
-}
-
-function dependentNote(notes) {
-  const direct = new Set(notes.flatMap((note) => note.releases.map(({ name }) => name)))
-  const indirect = releaseClosure(direct).filter((name) => !direct.has(name))
-  if (!indirect.length) return undefined
-  const id = `${generatedPrefix}${sha256(JSON.stringify(notes.map(({ id, sha256 }) => ({ id, sha256 })))).slice(0, 16)}`
-  return {
-    id,
-    text: `---\n${indirect.map((name) => `${JSON.stringify(name)}: patch`).join('\n')}\n---\n\nRebuild packages that include changed workspace inputs.\n`,
-  }
 }
 
 async function currentNotes(root, revision) {

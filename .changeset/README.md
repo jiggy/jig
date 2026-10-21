@@ -5,6 +5,8 @@ Select each directly changed npm package and describe its change.
 The release command includes packages that bundle those inputs automatically.
 
 Add a new note for each PR. Existing pending notes cannot cover another PR.
+Keep `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` outside this directory.
+Release checks reject these filenames regardless of case.
 Agent archives include their tests and documentation, so those changes need notes.
 Unshipped tests, ordinary documentation, and site changes need no release note.
 Copied contracts, licenses, and shared build inputs can affect several packages.

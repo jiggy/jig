@@ -20,10 +20,15 @@ cannot authorize publication under the previous package versions.
 Install repository dependencies with `bun i`, then run:
 
 ```sh
+git fetch origin main
 just changeset
 just release-plan
-just release-check origin/main
+just release-check "$(git merge-base origin/main HEAD)"
 ```
+
+The fetch updates `origin/main`. The merge base is the latest shared ancestor
+of your branch and `origin/main`. It remains a valid local comparison when
+`main` advances after your branch diverges.
 
 Select each package directly affected by the change. Write a short description
 of the behavior users receive. Use `patch` for fixes, `minor` for added features,
@@ -84,11 +89,21 @@ updates and skips superseded revisions. It generates a PR only when new
 changesets are pending. Maintainers can rerun it through manual dispatch on
 `main`.
 
-The pinned Changesets version action invokes `just release-version`. That
-command updates package versions, changelogs, dependent pins, and
+The generator invokes `just release-version`. That command updates package
+versions, changelogs, dependent pins, and
 `.changeset/release.json` together. The metadata binds the generated release
 plan to its source inputs. The check replays generation to validate release PRs.
 A branch name or bot identity never exempts a PR from validation.
+
+Release dependency installation and Changesets execution run in a job with
+only repository read permission. It has no release App credentials.
+It retains the prepared version changes as an immutable workflow artifact.
+
+On a fresh runner, the writer downloads the exact artifact and validates its
+source and permitted changes. The writer installs no dependencies and executes
+no code from the artifact. The pinned Changesets version action applies the
+validated output and maintains the release PR. Only this job receives GitHub
+write authority and the optional release App token.
 
 Review the generated changes as one release. Further feature merges update the
 same release PR. Generated metadata must match the complete versioned source.
@@ -196,7 +211,8 @@ contain no task or lifecycle scripts. Local `just agent::pack`,
 `just acp::pack`, and `just jig::pack` build before packing. Publication consumes
 only archives already built and qualified by CI.
 
-Bun generates the ignored root workspace lock. Regenerate it when needed and
+Bun generates the ignored, disposable root workspace lock, including during
+release generation. Regenerate it when needed and
 never edit it manually. Independently tracked lockfiles are not disposable.
 After version generation, regenerate the root lock before rebuilding local
 packages so packed manifests use the current workspace versions.

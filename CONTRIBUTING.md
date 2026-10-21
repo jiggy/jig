@@ -199,10 +199,15 @@ Include a changeset when your PR changes a package's published or bundled
 output. Run these commands from the repository root:
 
 ```sh
+git fetch origin main
 just changeset
 just release-plan
-just release-check origin/main
+just release-check "$(git merge-base origin/main HEAD)"
 ```
+
+The fetch updates `origin/main`. The merge base is the latest shared ancestor
+of your branch and `origin/main`. It remains a valid local comparison when
+`main` advances after your branch diverges.
 
 Choose each directly affected package and describe the change users receive.
 Use `patch` for fixes, `minor` for features, and `major` for breaking changes.

@@ -95,27 +95,112 @@ test('release generation is serialized, scoped to main, and has no registry auth
   assert.deepEqual(workflow.on.push.branches, ['main'])
   assert.equal(workflow.on.push.paths, undefined)
   assert.equal(workflow.concurrency['cancel-in-progress'], false)
-  const jobs = Object.values(workflow.jobs)
-  assert.equal(jobs.length, 1)
-  const [job] = jobs
-  assert.equal(job.if, "github.ref == 'refs/heads/main'")
-  assert.deepEqual(job.permissions, { contents: 'write', 'pull-requests': 'write' })
-  assert.equal(job.environment, undefined)
-  const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
-  assert.equal(checkout.with.ref, `\${{ github.sha }}`)
-  assert.equal(checkout.with['fetch-depth'], 0)
-  assert.equal(checkout.with['persist-credentials'], false)
-  const version = job.steps.find((step) => step.uses?.startsWith('changesets/action/version@'))
+  assert.deepEqual(workflow.permissions, { contents: 'read' })
+  const { generate, version: writer } = workflow.jobs
+  assert.equal(generate.if, "github.ref == 'refs/heads/main'")
+  assert.equal(writer.needs, 'generate')
+  assert.match(writer.if, /github\.ref == 'refs\/heads\/main'/)
+  assert.match(writer.if, /needs\.generate\.outputs\.pending == 'true'/)
+  const version = writer.steps.find((step) => step.uses?.startsWith('changesets/action/version@'))
   assert.ok(version)
-  assert.match(version.if, /steps\.plan\.outputs\.pending == 'true'/)
-  assert.equal(version.with.script, 'just release-version')
+  assert.match(version.if, /steps\.current\.outputs\.current == 'true'/)
   assert.equal(version.with['pr-base-branch'], 'main')
   assert.equal(version.with['push-with-git-cli'], false)
-  for (const step of job.steps) {
-    if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/)
-    assert.doesNotMatch(step.run ?? '', /\b(?:npm|bun|changeset)\s+publish\b/)
-    assert.doesNotMatch(step.uses ?? '', /^changesets\/action(?:\/publish)?@/)
+  for (const job of Object.values(workflow.jobs)) {
+    assert.equal(job.environment, undefined)
+    const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
+    assert.equal(checkout.with.ref, `\${{ github.sha }}`)
+    assert.equal(checkout.with['fetch-depth'], 0)
+    assert.equal(checkout.with['persist-credentials'], false)
+    for (const step of job.steps) {
+      if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/)
+      assert.doesNotMatch(step.run ?? '', /\b(?:npm|bun|changeset)\s+publish\b/)
+      assert.doesNotMatch(step.uses ?? '', /^changesets\/action(?:\/publish)?@/)
+    }
   }
+})
+
+test('release dependency execution is confined to the read-only generation runner', async () => {
+  const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
+  const { generate, version: writer } = workflow.jobs
+  assert.deepEqual(generate.permissions, { contents: 'read' })
+  assert.deepEqual(writer.permissions, { contents: 'write', 'pull-requests': 'write' })
+  assert.doesNotMatch(JSON.stringify(generate), /secrets\.|create-github-app-token|app-token/)
+  assert.ok(generate.steps.some((step) => step.run === 'bun install --ignore-scripts'))
+  assert.ok(generate.steps.some((step) => step.run?.includes('scripts/release/cli.mjs plan')))
+  assert.ok(generate.steps.some((step) => step.run?.includes('just release-version')))
+
+  const allowedWriterActions = new Set([
+    'actions/checkout',
+    'actions/setup-node',
+    'actions/download-artifact',
+    'actions/create-github-app-token',
+    'changesets/action/version',
+  ])
+  for (const step of writer.steps) {
+    if (step.uses) assert.ok(allowedWriterActions.has(step.uses.split('@')[0]), step.uses)
+    assert.doesNotMatch(step.run ?? '', /\b(?:bun|npm|npx|pnpm|yarn|just)\b|node_modules|cli\.mjs/)
+  }
+  const version = writer.steps.find((step) => step.uses?.startsWith('changesets/action/version@'))
+  assert.equal(
+    version.with.script,
+    `node scripts/release/prepared.mjs apply "\${{ runner.temp }}/prepared-release/release-changes.json"`,
+  )
+})
+
+test('release writer consumes exact prepared data and validates it before minting the App token', async () => {
+  const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
+  const { generate, version: writer } = workflow.jobs
+  const upload = generate.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'))
+  assert.ok(upload)
+  assert.equal(upload.with.path, `\${{ runner.temp }}/release-changes.json`)
+  assert.equal(
+    upload.with.name,
+    `release-changes-\${{ github.sha }}-r\${{ github.run_id }}-a\${{ github.run_attempt }}`,
+  )
+  assert.equal(upload.with.overwrite, false)
+  assert.equal(upload.with['if-no-files-found'], 'error')
+  assert.equal(generate.outputs['artifact-id'], `\${{ steps.${upload.id}.outputs.artifact-id }}`)
+  const preparation = generate.steps.find((step) => step.run?.includes('prepared.mjs create'))
+  assert.ok(preparation)
+  assert.ok(preparation.run.indexOf('just release-version') >= 0)
+  assert.ok(
+    preparation.run.indexOf('just release-version') <
+      preparation.run.indexOf('prepared.mjs create'),
+  )
+
+  const currentIndex = writer.steps.findIndex((step) => step.id === 'current')
+  const downloadIndex = writer.steps.findIndex((step) =>
+    step.uses?.startsWith('actions/download-artifact@'),
+  )
+  const validateIndex = writer.steps.findIndex((step) =>
+    step.run?.includes('prepared.mjs restore-lock'),
+  )
+  const tokenIndex = writer.steps.findIndex((step) =>
+    step.uses?.startsWith('actions/create-github-app-token@'),
+  )
+  const versionIndex = writer.steps.findIndex((step) =>
+    step.uses?.startsWith('changesets/action/version@'),
+  )
+  assert.ok(currentIndex >= 0 && downloadIndex > currentIndex)
+  assert.ok(
+    validateIndex > downloadIndex && tokenIndex > validateIndex && versionIndex > tokenIndex,
+  )
+  const current = writer.steps[currentIndex]
+  assert.match(current.run, /git\/ref\/heads\/main/)
+  assert.match(current.run, /"\$current_main" = "\$GITHUB_SHA"/)
+  const download = writer.steps[downloadIndex]
+  assert.deepEqual(download.with, {
+    'artifact-ids': `\${{ needs.generate.outputs.artifact-id }}`,
+    path: `\${{ runner.temp }}/prepared-release`,
+    'merge-multiple': true,
+  })
+  assert.equal(
+    writer.steps[validateIndex].run,
+    'node scripts/release/prepared.mjs restore-lock "$RUNNER_TEMP/prepared-release/release-changes.json"',
+  )
+  for (const index of [downloadIndex, validateIndex, tokenIndex, versionIndex])
+    assert.match(writer.steps[index].if, /steps\.current\.outputs\.current == 'true'/)
 })
 
 test('release App access is repository-scoped and automatic merge preserves normal policy', async () => {
