@@ -30,9 +30,11 @@ for (const mode of ['bind', 'tmpfs', 'file', 'freshness'] as const) {
         }),
       )
       const mounted = mode === 'file' ? join(project, 'mounted.ts') : join(project, 'mounted')
+      // util-linux also requires UID 0 for mounts without an fstab entry.
+      // Bubblewrap maps this namespace's root to the unprivileged host user.
       const mountArgs =
         mode === 'freshness'
-          ? ['--cap-add', 'CAP_SYS_ADMIN']
+          ? ['--uid', '0', '--gid', '0', '--cap-add', 'CAP_SYS_ADMIN']
           : mode === 'tmpfs'
             ? ['--tmpfs', mounted]
             : [

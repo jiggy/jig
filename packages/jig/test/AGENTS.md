@@ -262,6 +262,8 @@ installed entry alone selects contained capture. Neither rewrites source.
 `linux-host/project-source-mounts.test.ts` checks real bind, tmpfs and file
 mount refusal, including declaration reads and freshness after a new bind mount
 in the fixture-owned user and mount namespace.
+The freshness fixture maps namespace root to the unprivileged host user for util-linux mount authorization.
+Only that namespace retains `CAP_SYS_ADMIN` for the post-capture mount and unmount.
 The installed composition case uses a real Agent-contract decision task, code
 child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
 and template inputs without substituting a Run context.
