@@ -2,8 +2,8 @@ import { type BigIntStats, constants } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import {
-  openPrivateChild,
   openPrivateDirectory,
+  openPrivateSourceChild,
   statPrivateChild,
 } from '../internal/descriptor-files.js'
 import { type CapturedPackage, captureOpenedPackageDirectory } from '../package/capture.js'
@@ -418,7 +418,7 @@ async function openChildDirectory(
 
   let handle: FileHandle
   try {
-    handle = await openPrivateChild(
+    handle = await openPrivateSourceChild(
       parent,
       name,
       constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,

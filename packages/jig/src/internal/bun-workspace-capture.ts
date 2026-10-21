@@ -16,7 +16,7 @@ import {
   requirePrivateBunResolutionManifest,
 } from './bun-native-lock-policy.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
-import { openPrivateChild, privateDirectoryEntries } from './descriptor-files.js'
+import { openPrivateSourceChild, privateDirectoryEntries } from './descriptor-files.js'
 
 const MANIFEST_BYTES = 1024 * 1024
 const MAX_MEMBERS = 256
@@ -485,7 +485,7 @@ async function openBeneath(root: FileHandle, path: string): Promise<FileHandle> 
   let current = root
   try {
     for (const part of path.split('/')) {
-      const next = await openPrivateChild(
+      const next = await openPrivateSourceChild(
         current,
         part,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
@@ -507,7 +507,7 @@ async function readOptional(
 ): Promise<Uint8Array | undefined> {
   let handle: FileHandle
   try {
-    handle = await openPrivateChild(
+    handle = await openPrivateSourceChild(
       directory,
       name,
       constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,

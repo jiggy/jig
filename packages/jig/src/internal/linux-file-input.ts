@@ -34,14 +34,19 @@ interface Ffi {
   ptr(value: Uint8Array): number
   read: { i32(pointer: number): number }
 }
-let native: { ffi: Ffi; symbols: Record<string, NativeFunction> } | undefined
-function calls() {
-  if (native !== undefined) return native
+const nativeControls = new Map<boolean, { ffi: Ffi; symbols: Record<string, NativeFunction> }>()
+function calls(contained = false) {
+  const cached = nativeControls.get(contained)
+  if (cached !== undefined) return cached
   if (process.platform !== 'linux' || process.arch !== 'x64')
     throw new Error('Linux x64 file controls are unavailable')
   const ffi = createRequire(import.meta.url)('bun:ffi') as Ffi
   try {
-    const libc = posix.join(dirname(resolvePrivateLinuxHostLoaderSync()), 'libc.so.6')
+    // Only the contained Markdown recapture selects the sealed sandbox library.
+    // Host source capture always resolves the system-owned glibc installation.
+    const libc = contained
+      ? '/jig-runtime/lib/libc.so.6'
+      : posix.join(dirname(resolvePrivateLinuxHostLoaderSync()), 'libc.so.6')
     const { symbols } = ffi.dlopen(libc, {
       syscall: { args: ['i64', 'i32', 'ptr', 'ptr', 'u64'], returns: 'i32' },
       memfd_create: { args: ['ptr', 'u32'], returns: 'i32' },
@@ -49,15 +54,16 @@ function calls() {
       renameat2: { args: ['i32', 'ptr', 'i32', 'ptr', 'u32'], returns: 'i32' },
       __errno_location: { args: [], returns: 'ptr' },
     })
-    native = { ffi, symbols }
+    const native = { ffi, symbols }
+    nativeControls.set(contained, native)
     return native
   } catch {
     throw new PrivateFileInputError('native')
   }
 }
-function result(value: number): number {
+function result(value: number, native?: ReturnType<typeof calls>): number {
   if (value >= 0) return value
-  const { ffi, symbols } = calls()
+  const { ffi, symbols } = native ?? calls()
   const code = getSystemErrorName(-ffi.read.i32(symbols.__errno_location!()))
   const reason = {
     ELOOP: 'symlink',
@@ -80,13 +86,15 @@ export function privateLinuxOpenAt(
   path: string,
   flags: number,
   beneath = true,
+  contained = false,
 ): number {
-  const { ffi, symbols } = calls()
+  const native = calls(contained)
+  const { ffi, symbols } = native
   const name = cString(path)
   const how = Buffer.alloc(24)
   how.writeBigUInt64LE(BigInt(flags | O_CLOEXEC), 0)
   how.writeBigUInt64LE(BigInt(NO_SYMLINKS | (beneath ? BENEATH | NO_XDEV : 0)), 16)
-  return result(symbols.syscall!(437, directory, ffi.ptr(name), ffi.ptr(how), 24))
+  return result(symbols.syscall!(437, directory, ffi.ptr(name), ffi.ptr(how), 24), native)
 }
 
 export function privateLinuxPublishDirectory(

@@ -49,7 +49,7 @@ beforeAll(async () => {
       join(libexec, 'macos-descriptor-bridge.dylib'),
     )
   const build = await Bun.build({
-    entrypoints: [join(packageRoot, 'src/internal/markdown-runtime-worker.ts')],
+    entrypoints: [join(packageRoot, 'test/fixtures/markdown-source-worker.ts')],
     target: 'bun',
     format: 'esm',
     outdir: libexec,

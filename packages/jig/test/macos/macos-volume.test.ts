@@ -21,6 +21,7 @@ import {
 } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { openPrivateSourceChild } from '../../src/internal/descriptor-files.js'
 import {
   privateCaptureAttachments,
   privateOpenFileRoot,
@@ -34,6 +35,11 @@ import {
   recoverPrivateMacosVolume,
   releasePrivateMacosVolume,
 } from '../../src/internal/macos-volume.js'
+import { discover } from '../../src/project/author.js'
+import { captureAuthorModule } from '../../src/project/author-module.js'
+import { captureDeclarationSource } from '../../src/project/declaration-source.js'
+import { captureFlowSource } from '../../src/project/flow-source.js'
+import { openPrivateProjectRoot } from '../../src/project/root.js'
 
 async function allocation() {
   const root = await mkdtemp('/private/tmp/jig-volume-')
@@ -195,6 +201,23 @@ test('native volume enforces shared capacity, protects backing, and authenticate
       expect(() => privateReadRegularFile(parent, 'mount/Readme', 32)).toThrow('mount boundary')
     } finally {
       closeSync(parent)
+    }
+
+    await writeFile(join(mount, 'jig.ts'), 'export default {};\n')
+    const project = await openPrivateProjectRoot(root)
+    try {
+      await expect(
+        openPrivateSourceChild(project.handle, 'mount', constants.O_RDONLY | constants.O_DIRECTORY),
+      ).rejects.toMatchObject({ code: 'EXDEV' })
+      await expect(captureAuthorModule(root, 'mount/jig.ts')).rejects.toThrow('mount boundary')
+      await expect(captureDeclarationSource(project, discover('mount'))).rejects.toThrow(
+        'mount boundary',
+      )
+      await expect(captureFlowSource(root, { kind: 'members', paths: ['mount'] })).rejects.toThrow(
+        'mount boundary',
+      )
+    } finally {
+      await project.dispose()
     }
 
     await expect(recoverPrivateMacosVolume(control, 'f'.repeat(64))).rejects.toThrow(

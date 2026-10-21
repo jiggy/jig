@@ -46,8 +46,28 @@ export function privateMacosOpenFileRoot(path: string): number {
   }
 }
 
-/** Bounded no-link walk anchored to the original descriptor. Each opened
- * component must remain on its filesystem and mount; no pathname is reopened. */
+/** Open one child on the held parent's filesystem and mount without links. */
+export function privateMacosSourceOpenAt(directory: number, name: string, flags: number): number {
+  const original = fstatSync(directory, { bigint: true }),
+    mount = privateMacosFilesystem(directory)
+  const next = privateMacosOpenFdAt(directory, name, flags)
+  try {
+    const entry = fstatSync(next, { bigint: true }),
+      filesystem = privateMacosFilesystem(next)
+    if (
+      entry.dev !== original.dev ||
+      filesystem.device !== mount.device ||
+      filesystem.mountpoint !== mount.mountpoint
+    )
+      throw new PrivateFileInputError('cross-mount')
+    return next
+  } catch (error) {
+    closeSync(next)
+    throw error
+  }
+}
+
+/** Bounded no-link walk; each accepted child preserves the original root mount. */
 export function privateMacosInputOpenAt(
   directory: number,
   path: string,
@@ -63,10 +83,8 @@ export function privateMacosInputOpenAt(
       return privateMacosOpenAncestryDirectory(directory, path === '..')
     }
     const parts = privateFilePath(path).split('/')
-    const original = fstatSync(directory, { bigint: true }),
-      mount = privateMacosFilesystem(directory)
     for (const [index, part] of parts.entries()) {
-      const next = privateMacosOpenFdAt(
+      const next = privateMacosSourceOpenAt(
         current,
         part,
         index === parts.length - 1
@@ -78,14 +96,6 @@ export function privateMacosInputOpenAt(
       current = next
       owned = true
       if (closePrevious) closeSync(previous)
-      const entry = fstatSync(next, { bigint: true }),
-        filesystem = privateMacosFilesystem(next)
-      if (
-        entry.dev !== original.dev ||
-        filesystem.device !== mount.device ||
-        filesystem.mountpoint !== mount.mountpoint
-      )
-        throw new PrivateFileInputError('cross-mount')
     }
     owned = false
     return current

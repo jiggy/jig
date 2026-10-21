@@ -2,8 +2,8 @@ import { type BigIntStats, constants } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
 import { invalid, unavailable } from '../diagnostics.js'
 import {
-  openPrivateChild,
   openPrivateDirectory,
+  openPrivateSourceChild,
   statPrivateChild,
 } from '../internal/descriptor-files.js'
 import type { ProjectSource } from './author.js'
@@ -465,7 +465,7 @@ async function openEntry(
   }
   let handle: FileHandle
   try {
-    handle = await openPrivateChild(
+    handle = await openPrivateSourceChild(
       parent,
       name,
       constants.O_RDONLY |

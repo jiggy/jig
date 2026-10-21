@@ -3,7 +3,7 @@ import { type BigIntStats, constants } from 'node:fs'
 import type { FileHandle } from 'node:fs/promises'
 import { dirname, join as joinPath, normalize as normalizePath } from 'node:path/posix'
 import { invalid, unavailable } from '../diagnostics.js'
-import { openPrivateChild, statPrivateChild } from '../internal/descriptor-files.js'
+import { openPrivateSourceChild, statPrivateChild } from '../internal/descriptor-files.js'
 import { canonicalJson, type JsonValue } from '../json.js'
 import { fullCaseFold15_1 } from '../package/paths.js'
 import {
@@ -515,7 +515,7 @@ async function openEntry(
 
   let handle: FileHandle
   try {
-    handle = await openPrivateChild(
+    handle = await openPrivateSourceChild(
       parent,
       name,
       constants.O_RDONLY |

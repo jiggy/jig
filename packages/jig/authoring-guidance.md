@@ -53,6 +53,8 @@ These links locate module rules. All selected domain requirements still apply.
 - Project source, declaration and static author-module capture use the same
   closed descriptor operations on Linux and qualified Darwin. Workspace capture
   preserves declared source/dependency selection and raw-name validation.
+  Every descendant open rejects nested mounts, including same-filesystem bind mounts and mounted regular files.
+  Initial capture and freshness verification use the same mount-safe operation.
   Filesystem capture does not independently qualify Bun installation or
   execution.
 

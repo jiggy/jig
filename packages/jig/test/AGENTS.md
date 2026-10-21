@@ -254,6 +254,14 @@ experiments do not control production process decoding.
 worker. Its fresh temporary root owns consumers and failure evidence. It does
 not build a second source worker. Source-worker compilation and direct protocol
 exchanges belong to `portable/markdown-worker.test.ts`.
+
+Its source fixture uses
+real host package capture and the shared `markdown-runtime-invocation.ts`. The
+installed entry alone selects contained capture. Neither rewrites source.
+
+`linux-host/project-source-mounts.test.ts` checks real bind, tmpfs and file
+mount refusal, including declaration reads and freshness after a new bind mount
+in the fixture-owned user and mount namespace.
 The installed composition case uses a real Agent-contract decision task, code
 child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
 and template inputs without substituting a Run context.

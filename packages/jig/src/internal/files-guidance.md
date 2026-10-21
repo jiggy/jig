@@ -33,6 +33,15 @@ These links locate module rules. All selected domain requirements still apply.
   link, and reacquires verified anonymous snapshots. Store enumeration retains
   and rechecks directory descriptors instead of following child paths.
 
+  Source descendants use `openPrivateSourceChild` for every directory and regular file, including freshness checks.
+  Linux uses `openat2` with beneath, no-symlink and no-cross-mount resolution.
+  Darwin checks each child's device, filesystem device and mountpoint against its held parent.
+  Each accepted child preserves the selected root mount through the complete walk.
+  General state creation retains its separate descriptor operations.
+
+  Contained Markdown recapture uses the same resolution controls with the fixed sandbox glibc path.
+  Project data never selects that library path.
+
   Project sessions retain their protected store parent through all planning and
   Run operations, then close it after root settlement and before the project
   owner. Acquisition failures and checkpoint recovery close that same owner.

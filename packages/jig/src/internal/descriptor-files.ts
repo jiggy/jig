@@ -1,4 +1,5 @@
 import type { BigIntStats, Dirent } from 'node:fs'
+import { closeSync, constants } from 'node:fs'
 import {
   type FileHandle,
   link,
@@ -12,6 +13,8 @@ import {
   symlink,
   unlink,
 } from 'node:fs/promises'
+import { PrivateFileInputError } from './file-input-policy.js'
+import { privateLinuxOpenAt } from './linux-file-input.js'
 import {
   privateMacosDescriptorPath,
   privateMacosDirectory,
@@ -25,6 +28,7 @@ import {
   privateMacosSymlinkAt,
   privateMacosUnlinkAt,
 } from './macos-descriptor-files.js'
+import { privateMacosSourceOpenAt } from './macos-file-input.js'
 import { privateRawDirectory } from './raw-directory.js'
 
 const references = new WeakSet<object>()
@@ -175,6 +179,56 @@ export async function openPrivateChild(
   if (process.platform === 'darwin') return privateMacosOpenAt(parent.fd, name, flags, mode)
   requireLinux()
   return open(`/proc/self/fd/${parent.fd}/${name}`, flags, mode)
+}
+
+/** Source walks must use this for every component, including regular files.
+ * Each child stays on its parent's mount, preserving the selected root mount
+ * transitively. Never reopen a visible pathname after this check. */
+export async function openPrivateSourceChild(
+  parent: FileHandle,
+  name: string,
+  flags: number,
+  contained = false,
+): Promise<FileHandle> {
+  requireLeaf(name)
+  if (flags & ~(constants.O_NOFOLLOW | constants.O_NONBLOCK | constants.O_DIRECTORY))
+    throw new TypeError('source capture requires read-only flags')
+  let fd: number
+  try {
+    if (process.platform === 'darwin') fd = privateMacosSourceOpenAt(parent.fd, name, flags)
+    else {
+      requireLinux()
+      fd = privateLinuxOpenAt(parent.fd, name, flags, true, contained)
+    }
+  } catch (error) {
+    // Preserve errno-based absence/race handling without attachment diagnostics.
+    if (error instanceof PrivateFileInputError) {
+      const codes: Partial<Record<PrivateFileInputError['reason'], string>> = {
+        missing: 'ENOENT',
+        symlink: 'ELOOP',
+        access: 'EACCES',
+        'cross-mount': 'EXDEV',
+        kernel: 'ENOSYS',
+      }
+      throw Object.assign(
+        new Error(
+          error.reason === 'cross-mount'
+            ? 'source crosses a mount boundary; use a source tree without nested mounts'
+            : 'source file controls refused the entry; check the source and supported-host requirements',
+        ),
+        { code: codes[error.reason] ?? 'ENOTSUP' },
+      )
+    }
+    throw error
+  }
+  try {
+    // The same pinned Bun FileHandle seam used by the native Mac adapter.
+    const Constructor = parent.constructor as new (fd: number) => FileHandle
+    return new Constructor(fd)
+  } catch (error) {
+    closeSync(fd)
+    throw error
+  }
 }
 
 export async function statPrivateChild(parent: FileHandle, name: string): Promise<BigIntStats> {
