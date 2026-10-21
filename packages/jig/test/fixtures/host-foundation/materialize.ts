@@ -9,6 +9,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rm,
   writeFile,
 } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -282,6 +283,26 @@ export function foundationCommands(evidence: string) {
   }
 }
 type Command = ReturnType<typeof foundationCommands>
+
+/** Author a real lock before qualifying a frozen source workspace through review. */
+export async function lockFoundationWorkspace(project: string, command: Command): Promise<string> {
+  await command(
+    [
+      process.execPath,
+      '--no-env-file',
+      '--config=/dev/null',
+      'install',
+      '--lockfile-only',
+      '--ignore-scripts',
+      '--no-progress',
+    ],
+    project,
+    120_000,
+  )
+  await rm(join(project, 'node_modules'), { recursive: true, force: true })
+  return readFile(join(project, 'bun.lock'), 'utf8')
+}
+
 const digest = async (path: string) =>
   `sha256:${createHash('sha256')
     .update(await readFile(path))
@@ -655,12 +676,10 @@ async function runFoundationApplication(
       project,
     )
   // Review the operator recipe once. All candidate iterations happen inside this admission.
-  // The frozen public SDK is a declared source workspace without an authored
-  // project lock. This explicit permission is review-only, never Run authority.
-  await command(
-    [cli, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
-    project,
-  )
+  // Lock the ordinary workspace before review of the frozen public SDK.
+  const sourceLock = await lockFoundationWorkspace(project, command)
+  await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
+  assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   const lock = await digest(join(project, 'jig.lock'))
   await command(
     [

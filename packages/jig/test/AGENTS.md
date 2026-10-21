@@ -196,6 +196,11 @@ lock/request identities. It does not qualify native preparation or execution.
 Resolve SDK runtime files through the declared external package entrypoint.
 Never require a neighboring FLOW checkout or copy its private source.
 Installed artifact tests use frozen supplied archives or the installed public package.
+
+Foundation and application consumers author their frozen-library workspace locks before review through `lockFoundationWorkspace`.
+Their reviews preserve those lock bytes without resolution permission.
+Dedicated dependency-preparation suites retain unlocked-resolution coverage and its explicit permission.
+
 `fixtures/flow-conformance/` retains explicit Apache-licensed parser and authoring regression snapshots.
 FLOW owns their canonical meaning. Coordinate snapshot changes with the adopted FLOW candidate.
 

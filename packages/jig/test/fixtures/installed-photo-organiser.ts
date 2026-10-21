@@ -7,6 +7,7 @@ import {
   type FoundationQualification,
   foundationCommands,
   foundationResidue,
+  lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
 
 const repository = resolve(import.meta.dir, '../../../..')
@@ -137,10 +138,9 @@ export async function runInstalledPhotoProject(options: {
   const { project, command, cli } = await materializePhotoProject(directory, archives, reporting)
   const sourceBefore = await tree(join(project, 'fixtures/photos'))
   const before = await foundationResidue(qualification, command, directory)
-  await command(
-    [cli, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
-    project,
-  )
+  const sourceLock = await lockFoundationWorkspace(project, command)
+  await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
+  assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   const lock = await hash(join(project, 'jig.lock'))
   const packet = join(directory, 'packet')
   const invoked = await command(

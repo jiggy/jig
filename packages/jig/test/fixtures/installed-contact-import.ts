@@ -7,6 +7,7 @@ import {
   type FoundationQualification,
   foundationCommands,
   foundationResidue,
+  lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
 
 const example = resolve(import.meta.dir, '../../../../examples/contact-import')
@@ -138,10 +139,9 @@ await handle(async run => {
   }
   const cli = join(directory, 'node_modules/.bin/jig')
   const before = await foundationResidue(qualification, command, directory)
-  await command(
-    [cli, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
-    project,
-  )
+  const sourceLock = await lockFoundationWorkspace(project, command)
+  await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
+  assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   const lock = await hash(join(project, 'jig.lock'))
   const packet = join(directory, 'packet')
   const invoked = await command(
