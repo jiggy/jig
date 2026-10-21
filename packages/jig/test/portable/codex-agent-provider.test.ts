@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { privateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
+import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
@@ -143,6 +144,30 @@ describe('private native Codex Agent provider', () => {
     })
 
     expect(first.digest).toBe(second.digest)
+  })
+  test('matches only nonempty subscription tokens without rejecting account IDs', async () => {
+    const support = await files()
+    const credential = credentialValue('a', 'secret-one')
+    const selected = await createPrivateCodexSubscriptionAgentProvider({
+      ...support,
+      credential: encoder.encode(JSON.stringify(credential)),
+    })
+    const patterns = privateAcpAgentRuntime(selected).secretBytes()
+    try {
+      const values = patterns.map((bytes) => new TextDecoder().decode(bytes))
+      expect(values).toContain(credential.tokens.access_token)
+      expect(values).toContain(credential.tokens.id_token)
+      expect(values).not.toContain(credential.tokens.account_id)
+      expect(values).not.toContain('')
+      expect(() =>
+        assertPrivateFiniteAcpPublicOutput({ text: 'ordinary answer', accountId: 'a' }, patterns),
+      ).not.toThrow()
+      expect(() =>
+        assertPrivateFiniteAcpPublicOutput({ text: credential.tokens.access_token }, patterns),
+      ).toThrow('Native ACP output contained a private credential')
+    } finally {
+      for (const pattern of patterns) pattern.fill(0)
+    }
   })
   test('rechecks bearer expiry immediately before launch', async () => {
     const support = await files()

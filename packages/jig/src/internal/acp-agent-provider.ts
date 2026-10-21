@@ -148,7 +148,10 @@ export async function createPrivateAcpAgentProvider(
       Buffer.byteLength(secret) > STARTUP_INPUT_BYTES
     )
       throw new Error('ACP Agent output credential is invalid')
-    const values = /^Bearer /i.test(secret) ? [secret, secret.slice(7)] : [secret]
+    const bearerValue = /^Bearer /i.test(secret) ? secret.slice(7) : undefined
+    if (bearerValue !== undefined && bearerValue.length > 0 && Buffer.byteLength(bearerValue) < 8)
+      throw new Error('ACP Agent output credential is invalid')
+    const values = bearerValue === undefined ? [secret] : [secret, bearerValue]
     return values
       .filter(Boolean)
       .flatMap((text) => [Buffer.from(text), Buffer.from(JSON.stringify(text).slice(1, -1))])

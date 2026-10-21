@@ -89,6 +89,9 @@ These links locate module rules. All selected domain requirements still apply.
   authentication, and essential channel delivery.
 
   Credentialed providers supply private literal rejection patterns outside provider identity.
+  Bearer credentials with nonempty values shorter than eight UTF-8 bytes are refused before launch.
+  Codex subscription patterns include only nonempty access, ID and refresh tokens.
+
   The resource checks every projected string before public channel delivery.
   A match fails the resource with fixed text and triggers native termination.
   Launch copies are cleared after completion, failure or cancellation.

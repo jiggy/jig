@@ -110,6 +110,26 @@ describe('private ACP Agent provider', () => {
       }),
     ).rejects.toThrow('launch environment is invalid')
   })
+  test('rejects nonempty Bearer values shorter than eight UTF-8 bytes', async () => {
+    const support = await files()
+    for (const credential of ['a', 'aa', 'aaa', 'aaaa', 'aaaaa', 'aaaaaa', 'aaaaaaa', 'ééé']) {
+      await expect(provider(support, credential)).rejects.toThrow(
+        'ACP Agent output credential is invalid',
+      )
+    }
+  })
+  test('keeps both Bearer forms at the byte boundary and permits an empty value', async () => {
+    const support = await files()
+    for (const credential of ['12345678', 'éééé', '']) {
+      const selected = await provider(support, credential)
+      const patterns = privateAcpAgentRuntime(selected)
+        .secretBytes()
+        .map((bytes) => new TextDecoder().decode(bytes))
+      expect(patterns).toContain(`Bearer ${credential}`)
+      if (credential.length > 0) expect(patterns).toContain(credential)
+      expect(patterns).not.toContain('')
+    }
+  })
   test('binds non-secret authentication and support behavior into identity', async () => {
     const support = await files()
     const first = await provider(support, 'first-secret')
