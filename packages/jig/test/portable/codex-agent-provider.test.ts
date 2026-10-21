@@ -294,6 +294,27 @@ describe('private native Codex Agent provider', () => {
     expect(JSON.stringify(first)).not.toContain('first-secret')
     expect(JSON.stringify(runtime.environment)).not.toContain('first-secret')
   })
+  test('rejects short raw API credentials and accepts the eight-byte boundary', async () => {
+    const support = await files()
+    for (const apiKey of ['a', 'aa', 'aaa', 'aaaa', 'aaaaa', 'aaaaaa', 'aaaaaaa', 'ééé']) {
+      await expect(
+        createPrivateCodexOpenAIApiAgentProvider({
+          ...support,
+          apiKey,
+          model: 'provider/test-model',
+        }),
+      ).rejects.toThrow('ACP Agent output credential is invalid')
+    }
+    for (const apiKey of ['12345678', 'éééé']) {
+      const selected = await createPrivateCodexOpenAIApiAgentProvider({
+        ...support,
+        apiKey,
+        model: 'provider/test-model',
+      })
+      const runtime = privateAcpAgentRuntime(selected)
+      rejectsCredentialOutput(runtime, apiKey)
+    }
+  })
   test('rejects malformed Responses API configuration', async () => {
     const support = await files()
     await expect(
