@@ -58,6 +58,12 @@ preparation never becomes a consumer requirement.
   alongside the three display packages, rather than another protected
   publication selector.
 
+  Before archiving, it reads the source-pinned release state from
+  `scripts/release/state.mjs`. Candidate receipt version 2 binds that state,
+  including the release-plan digest for an eligible generated version commit.
+  Pending changeset coverage permits source qualification with unchanged package
+  versions. It grants no publication readiness.
+
   Its Python package is `jiggy-reporting`. Source ownership, distribution
   profiles and descriptor inputs use these same component identities.
   `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
@@ -77,6 +83,10 @@ They consume frozen package exports with tracked test helpers and installed
   that full Linux receipt.
 - `candidate-provenance.mjs` validates exact source, producer, build profile,
   archive contents, resolution and hashes, and writes qualification receipts.
+  Its closed release record requires the three protected package versions to
+  match their frozen archives. Unknown release fields, foreign source, pending
+  external FLOW coverage and malformed eligibility refuse qualification.
+
   `candidate-transfer.mjs` checks GitHub repository/workflow/event/head
   identity, current run attempt, immutable artifact ID/digest and expiry before
   safely extracting the bundle. PR head metadata differs from its tested merge
@@ -100,6 +110,11 @@ They consume frozen package exports with tracked test helpers and installed
   original CI candidate. Native receipts additionally bind the exact full Linux
   receipt. Early native input receipts route pending/failing descendants but
   cannot qualify them.
+
+  Canonical source must be an eligible generated release with no pending
+  changesets. Feature source and stale release plans cannot receive readiness,
+  even when all execution evidence passed. Every protected publication retains
+  complete CI, Linux, both Mac architectures and native-client qualification.
 
   Required CI job names match the current workflow, including Python reporting.
   Candidate acquisition imports readiness validators statically so the CLI cannot deadlock on a circular dynamic import.
@@ -167,9 +182,12 @@ They consume frozen package exports with tracked test helpers and installed
 - The matching Linux and Mac host-conformance workflows own runner selection.
 - `npm-candidate-preflight.mjs` checks a frozen candidate's source revision,
   digest and manifest, then compares any existing exact public npm version's
-  whole archive bytes. Only an explicit registry E404 means unpublished. It
-  executes no package code, publishes nothing, and cannot replace the protected
-  publisher's later group and channel reconciliation.
+  whole archive bytes. A verified canonical pending changeset may defer this
+  comparison only for its covered Jig-owned package. The required release-impact
+  check independently verifies the PR's new coverage. FLOW and final generated
+  versions retain the complete registry check. Only an explicit registry E404
+  means unpublished. It executes no package code, publishes nothing, and cannot
+  replace the protected publisher's later group and channel reconciliation.
 - `probe-macos-host.ts` observes native process identity and coalition
   accounting prerequisites on hosted Intel and Apple Silicon candidates. It
   starts no package work and does not bypass the backend's qualified-platform
@@ -225,6 +243,9 @@ They consume frozen package exports with tracked test helpers and installed
 ## Verification
 
 - Workflow contract tests parse YAML 1.2 and check GitHub trigger keys and registry environments.
+  They require the release-impact check in Quick and its existing aggregate.
+  They check main-only version generation without registry authority, scoped App
+  tokens, and the protected release PR merge policy.
 
 - `node --test scripts/ci/*.test.mjs` includes disposable Git fixtures for suite
   discovery, exact PR merge state, independent input scope and failed or forged
@@ -251,7 +272,9 @@ They consume frozen package exports with tracked test helpers and installed
   execution, missing/cancelled/stale proof and optional timing failures.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
   and identical versions, immutable collisions, registry errors and changed
-  candidate evidence without credentials or registry mutations.
+  candidate evidence without credentials or registry mutations. It also checks
+  pending package coverage, strict final-version and FLOW comparisons, and
+  refusal of malformed canonical release evidence.
 - `node --test scripts/ci/promote-directory.test.mjs` verifies exact directory
   promotion and preservation of existing or racing outputs on Linux and Mac.
 - `node --test scripts/ci/install-macos-test-clients.test.mjs` exercises bounded

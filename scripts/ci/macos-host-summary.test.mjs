@@ -4,7 +4,12 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
-import { digest, PACKAGE_LAYOUT, writeCandidateReceipt } from './candidate-provenance.mjs'
+import {
+  digest,
+  PACKAGE_LAYOUT,
+  RELEASE_PACKAGE_LAYOUT,
+  writeCandidateReceipt,
+} from './candidate-provenance.mjs'
 import {
   INSTALLED_STARTUP_TEST,
   MAC_HOST_SHARDS,
@@ -191,6 +196,18 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     const candidate = await writeCandidateReceipt({
       root: canonical,
       sourceRevision: revision,
+      release: {
+        schemaVersion: 1,
+        sourceRevision: revision,
+        eligible: false,
+        reason: 'feature-source',
+        packages: Object.entries(RELEASE_PACKAGE_LAYOUT).map(([kind, name]) => ({
+          kind,
+          name,
+          version: '0.1.0-alpha.1',
+        })),
+        pendingPackages: [],
+      },
       producer: {
         repository: 'local/local',
         workflowPath: '.github/workflows/ci.yml',

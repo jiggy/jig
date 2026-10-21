@@ -8,6 +8,7 @@ import {
   digest,
   githubContext,
   PACKAGE_LAYOUT,
+  RELEASE_PACKAGE_LAYOUT,
   verifyCandidateBundle,
   writeCandidateReceipt,
   writeQualificationReceipt,
@@ -51,6 +52,19 @@ const profile = {
   npmVersion: '11.6.2',
   justVersion: 'just 1.43.1',
 }
+const releaseFixture = () => ({
+  schemaVersion: 1,
+  sourceRevision: source,
+  eligible: true,
+  reason: 'versioned-release',
+  packages: Object.entries(RELEASE_PACKAGE_LAYOUT).map(([kind, name]) => ({
+    kind,
+    name,
+    version: '0.1.0-alpha.1',
+  })),
+  pendingPackages: [],
+  releasePlanSha256: 'e'.repeat(64),
+})
 
 async function bundleFixture(action) {
   const temporary = await mkdtemp(join(tmpdir(), 'jig-candidate-provenance-test-'))
@@ -81,6 +95,7 @@ async function bundleFixture(action) {
     const receipt = await writeCandidateReceipt({
       root,
       sourceRevision: source,
+      release: releaseFixture(),
       producer,
       buildProfile: profile,
       resolutionFiles: ['resolution/bun.lock'],
@@ -196,6 +211,63 @@ test('canonical build profile cannot silently adopt the Mac source runtime or a 
     ]) {
       await writeFile(path, JSON.stringify({ ...receipt, buildProfile }))
       await assert.rejects(verifyCandidateBundle(root), /build profile/)
+    }
+  })
+})
+
+test('candidate release eligibility is closed, source-bound and matches the frozen package versions', async () => {
+  await bundleFixture(async ({ root }) => {
+    const path = join(root, 'CANDIDATE.json')
+    const receipt = JSON.parse(await readFile(path, 'utf8'))
+    for (const change of [
+      { sourceRevision: workflowHead },
+      { eligible: 'true' },
+      { reason: 'approved' },
+      { releasePlanSha256: 'invalid' },
+      { extra: true },
+      { packages: receipt.release.packages.slice(1) },
+      {
+        packages: receipt.release.packages.map((entry) => ({
+          ...entry,
+          version: '0.1.0-alpha.2',
+        })),
+      },
+      { pendingPackages: ['@jigging/jig'] },
+    ]) {
+      await writeFile(
+        path,
+        JSON.stringify({ ...receipt, release: { ...receipt.release, ...change } }),
+      )
+      await assert.rejects(verifyCandidateBundle(root), /candidate release|SHA256|pending release/i)
+    }
+    for (const change of [{ schemaVersion: 1 }, { release: undefined }, { unexpected: true }]) {
+      await writeFile(path, JSON.stringify({ ...receipt, ...change }))
+      await assert.rejects(verifyCandidateBundle(root), /candidate receipt/)
+    }
+  })
+})
+
+test('pending source receipts qualify exact archives without granting release eligibility', async () => {
+  await bundleFixture(async ({ root }) => {
+    const path = join(root, 'CANDIDATE.json')
+    const receipt = JSON.parse(await readFile(path, 'utf8'))
+    const { releasePlanSha256: _plan, ...release } = receipt.release
+    release.eligible = false
+    release.reason = 'pending-changesets'
+    release.pendingPackages = ['@jigging/agent-method', '@jigging/agent-acp', '@jigging/jig']
+    await writeFile(path, JSON.stringify({ ...receipt, release }))
+    assert.equal((await verifyCandidateBundle(root)).release.eligible, false)
+    for (const pendingPackages of [
+      ['@jigging/flow'],
+      ['@jigging/jig', '@jigging/jig'],
+      ['unknown'],
+      ['@jigging/agent-method'],
+    ]) {
+      await writeFile(
+        path,
+        JSON.stringify({ ...receipt, release: { ...release, pendingPackages } }),
+      )
+      await assert.rejects(verifyCandidateBundle(root), /pending release/)
     }
   })
 })
@@ -548,7 +620,9 @@ function readinessFixture() {
     ]),
   )
   const canonicalReceipt = {
+    schemaVersion: 2,
     sourceRevision: source,
+    release: releaseFixture(),
     producer: { ...producer },
     receiptSha256: candidate.receiptSha256,
   }
@@ -638,6 +712,27 @@ test('readiness accepts complete canonical qualification even when native descen
     await resolveTriggerSource({ client: fixture.client, repository, triggerRunId: 400 }),
     source,
   )
+})
+
+test('complete qualification cannot publish feature, pending or stale versioned source', async () => {
+  for (const reason of ['feature-source', 'pending-changesets', 'stale-release-plan']) {
+    const fixture = readinessFixture()
+    const { releasePlanSha256: _plan, ...release } = fixture.canonicalReceipt.release
+    fixture.canonicalReceipt.release = {
+      ...release,
+      eligible: false,
+      reason,
+      pendingPackages: reason === 'pending-changesets' ? ['@jigging/jig'] : [],
+    }
+    const result = await fixture.check()
+    assert.equal(result.readyFlow, false)
+    assert.equal(result.readyHost, false)
+    assert.equal(result.flowSnapshot, null)
+    assert.equal(result.hostSnapshot, null)
+    assert.ok(
+      result.reasons.some((message) => message.includes(`not a versioned release: ${reason}`)),
+    )
+  }
 })
 
 test('duplicate and out-of-order completion events re-evaluate the same full prerequisite set', async () => {

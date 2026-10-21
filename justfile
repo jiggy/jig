@@ -28,6 +28,19 @@ build: jig::build
 @format *paths:
     bun x --no-install biome format --write --files-ignore-unknown=true --no-errors-on-unmatched "$@"
 
+# Record package release intent without editing numeric versions
+[positional-arguments]
+@changeset *args:
+    node node_modules/@changesets/cli/bin.js "$@"
+
+# Preview pending package versions and their dependency closure
+@release-plan:
+    node scripts/release/cli.mjs plan
+
+# Generate versions, changelogs and derived pins for the maintained release PR
+@release-version:
+    node scripts/release/cli.mjs version
+
 # ---------------------------------------------------------------------------- #
 #                                    CHECKS                                    #
 # ---------------------------------------------------------------------------- #
@@ -41,6 +54,11 @@ build: jig::build
 [positional-arguments]
 @lint *paths:
     bun x --no-install biome lint --files-ignore-unknown=true --no-errors-on-unmatched "$@"
+
+# Validate release coverage against an explicit Git baseline
+[positional-arguments]
+@release-check base:
+    node scripts/release/cli.mjs check --base "$1"
 
 # Run Jig, flavored method, and application source tests
 [positional-arguments]

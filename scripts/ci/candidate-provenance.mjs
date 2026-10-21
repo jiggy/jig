@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { lstat, readdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { releaseClosure } from '../release/catalog.mjs'
 
 export const PACKAGE_LAYOUT = Object.freeze({
   'flow-sdk': '@jigging/flow',
@@ -14,6 +15,95 @@ export const PACKAGE_LAYOUT = Object.freeze({
   'display-tui': '@jigging/display-tui',
   jig: '@jigging/jig',
 })
+export const RELEASE_PACKAGE_LAYOUT = Object.freeze({
+  'agent-method': '@jigging/agent-method',
+  'agent-acp': '@jigging/agent-acp',
+  jig: '@jigging/jig',
+})
+
+function requireKeys(value, keys, label) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).length !== keys.length ||
+    Object.keys(value).some((key) => !keys.includes(key))
+  )
+    throw new Error(`Invalid ${label} fields`)
+}
+
+export function validateCandidateRelease(release, sourceRevision, packages) {
+  requireKeys(
+    release,
+    [
+      'schemaVersion',
+      'sourceRevision',
+      'eligible',
+      'reason',
+      'packages',
+      'pendingPackages',
+      ...(release?.eligible === true ? ['releasePlanSha256'] : []),
+    ],
+    'candidate release',
+  )
+  if (
+    release.schemaVersion !== 1 ||
+    release.sourceRevision !== requireRevision(sourceRevision) ||
+    typeof release.eligible !== 'boolean' ||
+    (release.eligible
+      ? release.reason !== 'versioned-release'
+      : !['pending-changesets', 'feature-source', 'stale-release-plan'].includes(release.reason))
+  )
+    throw new Error('Invalid candidate release identity or eligibility')
+  if (release.eligible) requireDigest(release.releasePlanSha256)
+  if (
+    !Array.isArray(release.packages) ||
+    release.packages.length !== Object.keys(RELEASE_PACKAGE_LAYOUT).length
+  )
+    throw new Error('Incomplete candidate release package set')
+  const seen = new Set()
+  for (const entry of release.packages) {
+    requireKeys(entry, ['kind', 'name', 'version'], 'candidate release package')
+    if (
+      seen.has(entry.kind) ||
+      RELEASE_PACKAGE_LAYOUT[entry.kind] !== entry.name ||
+      !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|next)(?:\.[0-9A-Za-z-]+)*$/.test(
+        entry.version ?? '',
+      )
+    )
+      throw new Error('Invalid candidate release package')
+    seen.add(entry.kind)
+    if (
+      packages &&
+      !packages.some(
+        (candidate) =>
+          candidate.kind === entry.kind &&
+          candidate.name === entry.name &&
+          candidate.version === entry.version,
+      )
+    )
+      throw new Error('Candidate release version does not match its archive')
+  }
+  const allowedPending = new Set(
+    Object.entries(PACKAGE_LAYOUT)
+      .filter(([kind]) => kind !== 'flow-sdk')
+      .map(([, name]) => name),
+  )
+  if (
+    !Array.isArray(release.pendingPackages) ||
+    new Set(release.pendingPackages).size !== release.pendingPackages.length ||
+    release.pendingPackages.some((name) => !allowedPending.has(name)) ||
+    (release.eligible && release.pendingPackages.length > 0) ||
+    (release.reason !== 'pending-changesets' && release.pendingPackages.length > 0)
+  )
+    throw new Error('Invalid candidate pending release packages')
+  if (
+    JSON.stringify([...release.pendingPackages].sort()) !==
+    JSON.stringify(releaseClosure(release.pendingPackages))
+  )
+    throw new Error('Incomplete candidate pending release closure')
+  return release
+}
 
 export const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const tarOptions = {
@@ -119,6 +209,7 @@ export function validateBuildProfile(profile) {
 export async function writeCandidateReceipt({
   root,
   sourceRevision,
+  release,
   producer,
   buildProfile = {},
   resolutionFiles = [],
@@ -162,7 +253,16 @@ export async function writeCandidateReceipt({
       sha256: digest(await readFile(await regularFile(root, path))),
     })
   if (!resolution.length) throw new Error('Candidate must retain its actual dependency resolution')
-  const receipt = { schemaVersion: 1, sourceRevision, producer, buildProfile, resolution, packages }
+  validateCandidateRelease(release, sourceRevision, packages)
+  const receipt = {
+    schemaVersion: 2,
+    sourceRevision,
+    release,
+    producer,
+    buildProfile,
+    resolution,
+    packages,
+  }
   await writeFile(resolve(root, 'CANDIDATE.json'), `${JSON.stringify(receipt, null, 2)}\n`, {
     flag: 'wx',
   })
@@ -173,7 +273,20 @@ export async function verifyCandidateBundle(root, expected = {}) {
   root = resolve(root)
   const receiptPath = await regularFile(root, 'CANDIDATE.json')
   const receipt = await readMetadata(receiptPath)
-  if (receipt.schemaVersion !== 1) throw new Error('Unsupported candidate receipt')
+  if (receipt.schemaVersion !== 2) throw new Error('Unsupported candidate receipt')
+  requireKeys(
+    receipt,
+    [
+      'schemaVersion',
+      'sourceRevision',
+      'release',
+      'producer',
+      'buildProfile',
+      'resolution',
+      'packages',
+    ],
+    'candidate receipt',
+  )
   requireRevision(receipt.sourceRevision)
   validateProducer(receipt.producer)
   validateBuildProfile(receipt.buildProfile)
@@ -190,6 +303,7 @@ export async function verifyCandidateBundle(root, expected = {}) {
     receipt.packages.length !== Object.keys(PACKAGE_LAYOUT).length
   )
     throw new Error('Incomplete candidate package set')
+  validateCandidateRelease(receipt.release, receipt.sourceRevision, receipt.packages)
   const seen = new Set()
   for (const entry of receipt.packages) {
     if (seen.has(entry.kind) || PACKAGE_LAYOUT[entry.kind] !== entry.name)

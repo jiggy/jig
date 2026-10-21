@@ -11,6 +11,7 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
+    "@changesets/cli": "3.0.3",
     "yaml": "2.9.0"
   },
   "patchedDependencies": {

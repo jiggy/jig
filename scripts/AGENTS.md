@@ -8,6 +8,10 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `release/` owns package changeset coverage, independent prerelease planning,
+  dependency propagation, generated pins, and source-bound release metadata.
+  The required quick CI job validates every change against its Git baseline.
+  Feature PRs declare intent without editing generated version outputs.
 - `check-docs.ts` owns documentation metadata, local links, source anchors,
   changed-paragraph structural writing checks, and built-site routes and anchors.
   It uses an explicit Git baseline without an external skill dependency.
@@ -275,6 +279,8 @@ operational baselines, and public-site assembly.
 
 ## Child DOX Index
 
+- [release/AGENTS.md](release/AGENTS.md) — Changeset coverage, version generation,
+  derived dependency pins, and release eligibility.
 - [ci/AGENTS.md](ci/AGENTS.md) — Whole-suite inventories, native PR scope,
   canonical candidates, release readiness, observed proof, disposable Linux
   hosts and native Macs.

@@ -1,0 +1,88 @@
+name: Release versions
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: null
+permissions:
+  contents: read
+concurrency:
+  group: release-version-main
+  cancel-in-progress: false
+jobs:
+  version:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: 1.43.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.3
+      - run: bun install --ignore-scripts
+      - name: Plan the current main release
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_main=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
+          if [ "$current_main" != "$GITHUB_SHA" ]; then
+            echo "A newer main revision owns the release PR."
+            echo "pending=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/release/cli.mjs plan --output "$RUNNER_TEMP/release-plan.json"
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from 'node:fs'
+          const plan = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/release-plan.json`, 'utf8'))
+          appendFileSync(process.env.GITHUB_OUTPUT, `pending=${plan.pendingChangesets.length > 0}\n`)
+          NODE
+      - name: Create repository-scoped release token
+        if: steps.plan.outputs.pending == 'true' && vars.RELEASE_APP_ID != ''
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Maintain the release pull request
+        if: steps.plan.outputs.pending == 'true'
+        id: version
+        # changesets/action v2.1.2: versioning only, without publication.
+        uses: changesets/action/version@ae32849d5ba541f9ae29e40e22a623bc13562f51
+        with:
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
+          script: just release-version
+          commit-message: "chore: version Jig packages"
+          pr-title: "Release Jig packages"
+          pr-base-branch: main
+          push-with-git-cli: false
+      - name: Request automatic merge under repository policy
+        if: steps.version.outputs.pr-number != '' && steps.app-token.outputs.token != '' && vars.RELEASE_AUTO_MERGE == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_PR_NUMBER: ${{ steps.version.outputs.pr-number }}
+        run: |
+          release_head=$(gh pr view "$RELEASE_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq .headRefOid)
+          gh pr merge "$RELEASE_PR_NUMBER" --repo "$GITHUB_REPOSITORY" --auto --squash --match-head-commit "$release_head"
+      - name: Explain the built-in token handoff
+        if: steps.version.outputs.pr-number != '' && steps.app-token.outputs.token == ''
+        run: |
+          echo "The release PR uses GITHUB_TOKEN. Approve or trigger its required workflows, then merge it as a maintainer."
+          echo "Configure RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY for automatic event propagation."

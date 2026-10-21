@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { promoteDirectory } from '../promote-directory.mjs'
+import { releaseState } from '../release/state.mjs'
 import { PACKAGE_LAYOUT } from './candidate-provenance.mjs'
 
 export const CANDIDATE_PACKAGES = PACKAGE_LAYOUT
@@ -129,6 +130,7 @@ export async function buildCandidates(
     throw new Error('The tracked working tree must be clean before building candidates')
   const revision = run('git', ['rev-parse', 'HEAD'], { cwd: repository })
   if (!/^[0-9a-f]{40}$/.test(revision)) throw new Error('Invalid candidate source revision')
+  const release = await releaseState(repository, revision)
   const output = resolve(destination)
   try {
     await lstat(output)
@@ -236,6 +238,7 @@ export async function buildCandidates(
     await receiptWriter({
       root: staging,
       sourceRevision: revision,
+      release,
       buildProfile: {
         ...tools.identity,
         nodeVersion: tools.nodeVersion,

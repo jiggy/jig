@@ -58,6 +58,12 @@ jobs:
         with:
           bun-version: 1.3.3
       - run: bun install --ignore-scripts
+      - name: Check release intent and generated versions
+        env:
+          RELEASE_BASE_REVISION: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          release_base="${RELEASE_BASE_REVISION:-$(git rev-parse HEAD^)}"
+          node scripts/release/cli.mjs check --base "$release_base"
       - name: Check development and release automation
         run: |
           set -o pipefail

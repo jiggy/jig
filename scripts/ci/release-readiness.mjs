@@ -8,6 +8,7 @@ import {
   parseOptions,
   readMetadata,
   requireRevision,
+  validateCandidateRelease,
   validateProducer,
   verifyCandidateBundle,
 } from './candidate-provenance.mjs'
@@ -257,6 +258,10 @@ async function loadCanonical(client, repository, run, source) {
     if (receipt.producer[key] !== wanted) throw new Error('Canonical producer trust mismatch')
   if (!/^[0-9a-f]{64}$/.test(receipt.receiptSha256 ?? ''))
     throw new Error('Missing canonical receipt digest')
+  if (receipt.schemaVersion !== 2) throw new Error('Unsupported canonical candidate receipt')
+  const release = validateCandidateRelease(receipt.release, source, receipt.packages)
+  if (!release.eligible)
+    throw new Error(`Canonical source is not a versioned release: ${release.reason}`)
   return {
     sourceRevision: source,
     receiptSha256: receipt.receiptSha256,

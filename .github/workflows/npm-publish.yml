@@ -206,8 +206,26 @@ jobs:
           if (createHash('sha256').update(bytes).digest('hex') !== process.env.EXPECTED_RECEIPT_SHA256)
             throw new Error('candidate receipt differs from authorized artifact');
           const receipt = JSON.parse(bytes);
-          if (receipt.schemaVersion !== 1 || receipt.sourceRevision !== process.env.SOURCE_REVISION)
+          if (receipt.schemaVersion !== 2 || receipt.sourceRevision !== process.env.SOURCE_REVISION)
             throw new Error('candidate receipt source mismatch');
+          const release = receipt.release;
+          if (release?.schemaVersion !== 1 || release.eligible !== true ||
+              release.reason !== 'versioned-release' || release.sourceRevision !== receipt.sourceRevision ||
+              !/^[0-9a-f]{64}$/.test(release.releasePlanSha256 ?? '') ||
+              !Array.isArray(release.pendingPackages) || release.pendingPackages.length !== 0 ||
+              !Array.isArray(release.packages) || release.packages.length !== 3)
+            throw new Error('candidate does not carry an applied release plan');
+          for (const [kind, name] of [
+            ['agent-method', '@jigging/agent-method'],
+            ['agent-acp', '@jigging/agent-acp'],
+            ['jig', '@jigging/jig'],
+          ]) {
+            const planned = release.packages.filter((item) => item.kind === kind);
+            const candidates = receipt.packages.filter((item) => item.kind === kind);
+            if (planned.length !== 1 || candidates.length !== 1 || planned[0].name !== name ||
+                candidates[0].name !== name || planned[0].version !== candidates[0].version)
+              throw new Error('candidate package differs from its release plan');
+          }
           NODE
 
           archive_digest() {

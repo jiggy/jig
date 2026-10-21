@@ -193,6 +193,33 @@ coverage. Complete Linux and Intel/Apple Silicon qualification remains in CI.
 Run this pass while other Jig work on the same host is idle so the residue
 comparison describes this test run.
 
+## Package release changes
+
+Include a changeset when your PR changes a package's published or bundled
+output. Run these commands from the repository root:
+
+```sh
+just changeset
+just release-plan
+just release-check origin/main
+```
+
+Choose each directly affected package and describe the change users receive.
+Use `patch` for fixes, `minor` for features, and `major` for breaking changes.
+The release planner adds affected dependents, including Jig's bundled packages.
+Shipped documentation, notices, build inputs, and Agent tests can require a
+release even when runtime behavior stays unchanged.
+
+Feature PRs must not edit package versions, generated changelogs, or release
+metadata. Automation maintains a release PR with those changes and derived
+dependency pins. Ordinary documentation and unshipped tests need no changeset
+unless they affect package output.
+
+The required CI aggregate validates package coverage and generated release
+changes. After the release PR merges, all publication gates qualify the exact
+merged revision. Publication consumes those retained archives.
+See [Releasing](RELEASING.md) for the package scope and GitHub setup.
+
 ## Biome
 
 The root development dependency pins Biome 2.5.12 to match `biome.json`.
