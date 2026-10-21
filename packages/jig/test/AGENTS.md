@@ -162,6 +162,11 @@ Linux supervisor tests execute unchanged production code.
 Exact delayed-readiness, held-gate and injected setup-failure windows require
 genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
 
+`linux-host/linux-preparation-deadline.test.ts` uses real elapsed late admission,
+native fencing and residue checks. Pre-admission cancellation must not acquire
+a deadline classification. These cases do not extend configuration-evaluator
+or Run limits.
+
 Native fixtures use the official installed supervisor bundle and runtime mounts.
 `linux/linux-rootless-run.test.ts` executes the relocated bundle without adjacent
 source modules. This proves import closure, not delegated containment.
