@@ -201,6 +201,7 @@ type ChildFailurePhase =
   | 'cleanup'
 
 type ChildCallInput = ChildInput & {
+  readonly onFatalOperation: (error: RunHostFatalOperationError) => void
   readonly call: RunHostCall
   readonly parentDeadlineUnixMs: number
   readonly signal: AbortSignal
@@ -686,7 +687,7 @@ function selectChild(input: ChildInput, slot: string) {
 }
 
 function specialistDispatcher(
-  input: ChildInput & { readonly call: RunHostCall },
+  input: ChildCallInput,
   selected: NonNullable<ReturnType<typeof selectChild>>,
   parentDeadlineUnixMs: number,
   inspected: InspectedPackage,

@@ -85,6 +85,8 @@ unchanged, including on Macs whose temporary-directory spelling is a symlink.
 
 `portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
 Its ordinary process adapter reports no native fencing.
+Credential cases exercise the production output check and root fatal-operation callback through real root and nested protocol peers.
+They establish stopped delivery, not native client or controller qualification.
 Valid protocol exchanges must still refuse execution success without qualified fencing.
 Native lifecycle suites own successful execution and complete descendant cleanup.
 
@@ -227,6 +229,7 @@ reset a sealed or active Run deadline.
 `linux-host/linux-rootless-run.test.ts` retains raw finite-resource transport
 cases through the actual backend, peer processes and enforcement receipts.
 These cases do not qualify supported native client selection or authentication.
+Credential cases also reject restored-session ready records before startup or public delivery.
 Native client behavior requires ordinary selected clients in the startup and live suites.
 Do not substitute the installed host's ACP resource opener.
 

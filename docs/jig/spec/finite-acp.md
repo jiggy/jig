@@ -192,8 +192,9 @@ text and 256 permission requests; raw native protocol ingress remains bounded
 at 32 MiB before projection. The host accounts for ignored frames too.
 
 Before public delivery, the host rejects projected strings containing a literal credential supplied to the selected native client.
-This includes assistant text, message identifiers, plan content and native session identifiers.
-A match fails the resource, terminates native work and prevents session retention.
+This includes assistant text, message identifiers, plan content, native session identifiers and restored-session ready records.
+A match fails the owning root Run, terminates native work and prevents session retention.
+This applies through nested Flows before any catchable match-dependent failure reaches application code.
 Diagnostics use fixed text without the credential.
 
 Matching includes unprefixed Bearer values and JSON escapes.

@@ -148,6 +148,7 @@ type ProviderCallInput = AcpRecoveryInput & {
   readonly signal: AbortSignal
   readonly channels?: { readonly caller: ChannelParticipant; readonly broker: ChannelBroker }
   readonly onFailure?: ((phase: PrivateFiniteAcpFailurePhase, error: unknown) => void) | undefined
+  readonly onFatalOperation: (error: RunHostFatalOperationError) => void
 }
 
 export type PrivateFiniteAcpFailurePhase =
@@ -236,6 +237,7 @@ export async function executePrivateRootFiniteAcp(
           owner: participant,
           requests: grants.requests!.endpoint,
           responses: grants.responses!.endpoint,
+          onFatalOperation: input.onFatalOperation,
         }
       },
     })
@@ -495,6 +497,7 @@ async function executeOwnedProvider(
         },
       )
     }
+    if (error instanceof RunHostFatalOperationError) throw error
     if (input.signal.aborted)
       return failed('CANCELLED', `the finite ACP operation was cancelled while ${phase}`)
     if (privateBootRemaining(effectiveBootDeadline) <= 0) {

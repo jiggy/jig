@@ -90,10 +90,13 @@ These links locate module rules. All selected domain requirements still apply.
 
   Credentialed providers supply private literal rejection patterns outside provider identity.
   Nonempty credentials shorter than eight UTF-8 bytes are refused before launch, with or without a Bearer prefix.
-  Codex subscription patterns include only nonempty access, ID and refresh tokens.
+  Codex subscription output patterns include only nonempty access, ID and refresh tokens.
+  Retained-history screening additionally includes credential-bearing environment values, gateway headers and all startup-token strings.
 
-  The resource checks every projected string before public channel delivery.
-  A match fails the resource with fixed text and triggers native termination.
+  The resource checks every projected string, including restored-session ready records, before public channel delivery.
+  A match immediately fails the root Run through its private fatal-operation callback, including from nested Flows.
+  This stops application delivery before publishing a match-dependent channel or operation failure.
+  Native termination and owned cleanup still complete, and diagnostics use fixed text.
   Launch copies are cleared after completion, failure or cancellation.
   Matching covers literal values and JSON escapes, not arbitrary encodings or values split across ACP messages.
 

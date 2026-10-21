@@ -1,8 +1,8 @@
 import { expect } from 'bun:test'
 import type { PrivateAcpAgentRuntime } from '../src/internal/acp-agent-provider.js'
-import { PrivateFiniteAcpPolicyError } from '../src/internal/finite-acp-policy.js'
 import { assertPrivateFiniteAcpPublicOutput } from '../src/internal/finite-acp-resource.js'
 import type { JsonValue } from '../src/json.js'
+import { RunHostFatalOperationError } from '../src/run/session.js'
 
 /** Pure projection checks. Native resource termination requires the host suite. */
 export function rejectsCredentialOutput(selected: PrivateAcpAgentRuntime, secret: string): void {
@@ -13,6 +13,7 @@ export function rejectsCredentialOutput(selected: PrivateAcpAgentRuntime, secret
       { messageId: secret },
       { entries: [{ content: secret, priority: 'high', status: 'pending' }] },
       { sessionId: secret },
+      { kind: 'ready', restoreSessionId: secret },
       { future: [{ nested: { [secret]: 'value' } }] },
     ]
     for (const value of values) {
@@ -22,7 +23,8 @@ export function rejectsCredentialOutput(selected: PrivateAcpAgentRuntime, secret
       } catch (caught) {
         error = caught
       }
-      expect(error).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+      expect(error).toBeInstanceOf(RunHostFatalOperationError)
+      expect((error as RunHostFatalOperationError).reason).toBe('credential')
       expect((error as Error).message).toBe('Native ACP output contained a private credential')
       expect(String(error)).not.toContain(secret)
     }
