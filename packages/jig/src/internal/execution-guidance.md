@@ -230,6 +230,12 @@ These links locate module rules. All selected domain requirements still apply.
   Return the original rejecting promises: observation must not replace failures
   with success or weaken enforcement uncertainty.
 
+- Linux startup expiry before the prepared handshake retains
+  `PrivateExecutionPreparationDeadlineError` only after the exact native owner
+  has an authenticated deadline fence. Local custody must close and automatic
+  owner state must be released first. A failed handshake or elapsed wall time alone does
+  not prove expiry. Unconfirmed cleanup retains its fatal failure.
+
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner rows
   and independent supervision survive coordinator loss without replay.

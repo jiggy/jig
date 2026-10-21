@@ -29,7 +29,11 @@ import {
 } from './bun-preparation-output.js'
 import { PRIVATE_OUTPUT_PATH } from './execution-intent.js'
 import { closePrivateExecutionOutput } from './execution-output.js'
-import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
+import {
+  type PrivateExecutionExit,
+  PrivateExecutionPreparationDeadlineError,
+  type PrivateExecutionProcess,
+} from './execution-process.js'
 import {
   PRIVATE_FILE_LIMITS,
   PRIVATE_READ_INPUT_BYTES,
@@ -926,6 +930,10 @@ export class PrivateLinuxCgroupBackend {
             'native output custody close did not settle',
           ),
         )
+      // Only authenticated native fencing can establish preparation expiry.
+      // Guest errors, elapsed wall time and a failed handshake cannot do so.
+      if (!preparedReached && fence.stopReason === 'deadline')
+        throw new PrivateExecutionPreparationDeadlineError(error)
       if (preparedReached || fence.stopReason === 'recovered') throw error
       throw asFenceUnconfirmed(error)
     }
