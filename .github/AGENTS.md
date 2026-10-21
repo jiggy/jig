@@ -23,6 +23,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Pin third-party actions by full commit.
 - Install Just 1.43.1 in jobs that build packages or sites. The protected npm
   publisher consumes existing archives and requires neither Just nor source.
+- Install CI's pinned npm in a fresh runner-temporary prefix and add its binaries
+  to `GITHUB_PATH`. Verify the version before exposing that path.
+  Do not replace the npm installation performing the install.
 - Grant each job only the authority it needs. Build jobs must not inherit
   publication or Git-write authority.
 - The separate Native Agent API Qualification workflow runs after successful

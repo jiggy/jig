@@ -29,7 +29,11 @@ jobs:
         with:
           bun-version: 1.3.3
       - name: Install the pinned npm packer
-        run: npm install --global npm@11.6.2
+        run: |
+          npm_prefix=$(mktemp -d "$RUNNER_TEMP/npm.XXXXXX")
+          npm install --global --prefix "$npm_prefix" --ignore-scripts npm@11.6.2
+          test "$("$npm_prefix/bin/npm" --version)" = 11.6.2
+          printf '%s\n' "$npm_prefix/bin" >> "$GITHUB_PATH"
       - name: Freeze canonical packages before qualification
         run: node scripts/ci/build-candidates.mjs "$RUNNER_TEMP/candidates"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -348,7 +352,11 @@ jobs:
         with:
           bun-version: 1.3.3
       - name: Install the pinned npm qualifier
-        run: npm install --global npm@11.6.2
+        run: |
+          npm_prefix=$(mktemp -d "$RUNNER_TEMP/npm.XXXXXX")
+          npm install --global --prefix "$npm_prefix" --ignore-scripts npm@11.6.2
+          test "$("$npm_prefix/bin/npm" --version)" = 11.6.2
+          printf '%s\n' "$npm_prefix/bin" >> "$GITHUB_PATH"
       - name: Read the canonical candidate bytes
         env:
           GH_TOKEN: ${{ github.token }}
