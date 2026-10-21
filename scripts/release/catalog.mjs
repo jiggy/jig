@@ -66,8 +66,8 @@ export function packageInputs(path) {
       '@jigging/display-web',
       '@jigging/display-tui',
     ]
-  if (path === 'scripts/ci/build-candidates.mjs' || path === 'scripts/build-agent-candidate.ts')
-    return PUBLISHED_PACKAGES.map(({ name }) => name)
+  if (path === 'scripts/ci/build-candidates.mjs') return PACKAGES.map(({ name }) => name)
+  if (path === 'scripts/build-agent-candidate.ts') return PUBLISHED_PACKAGES.map(({ name }) => name)
   if (path.startsWith('patches/') || /^(?:tsconfig(?:\.[^/]+)?\.json|bunfig\.toml)$/.test(path))
     return PACKAGES.map(({ name }) => name)
   return []

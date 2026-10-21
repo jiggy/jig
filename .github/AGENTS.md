@@ -108,6 +108,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   The pinned version action applies validated data through the standard-library
   helper. It never invokes the local Changesets CLI.
 
+  Retry writer failures by rerunning all jobs or manually dispatching on current
+  main. Each attempt must generate its own prepared artifact.
+
   Scope an optional release App token to this repository with only contents
   and pull-request write permissions. Keep credentials absent from PR checks.
   Without the App, document the built-in token's required maintainer handoff.

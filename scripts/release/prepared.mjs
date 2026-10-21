@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readFile, readlink, unlink, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { lstat, mkdir, open, readFile, readlink, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { isDeepStrictEqual } from 'node:util'
@@ -20,6 +21,7 @@ import {
 
 const maximumBytes = 16 * 1024 * 1024
 const projectInit = 'packages/jig/src/project-init.ts'
+const reportingNotice = 'packages/display-model/THIRD_PARTY_NOTICES'
 const dependencySections = [
   'dependencies',
   'devDependencies',
@@ -182,11 +184,25 @@ export async function validatePrepared(root, prepared, identity) {
     )
     requireProjectInit = before !== expectedProjectInit
   }
+  let expectedReportingNotice
+  let requireReportingNotice = false
+  if (base.has(reportingNotice)) {
+    const before = await sourceText(root, reportingNotice, prepared.sourceRevision)
+    const pattern = /^@jigging\/reporting \S+(?= is an exact external dependency under$)/gm
+    if ([...before.matchAll(pattern)].length !== 1)
+      throw new Error('Reporting notice must have one canonical dependency version')
+    expectedReportingNotice = before.replace(
+      pattern,
+      `@jigging/reporting ${versions.get('@jigging/reporting')}`,
+    )
+    requireReportingNotice = before !== expectedReportingNotice
+  }
   const changelogs = new Set(
     marker.releases.map(({ name }) => `packages/${name.slice('@jigging/'.length)}/CHANGELOG.md`),
   )
   const allowed = new Set([MARKER, ...manifests, ...changelogs, ...consumed.keys(), ...deleted])
   if (base.has(projectInit)) allowed.add(projectInit)
+  if (base.has(reportingNotice)) allowed.add(reportingNotice)
   const resulting = new Map(base)
   for (const [path, file] of files) {
     if (!allowed.has(path)) throw new Error('Prepared release contains a forbidden output path')
@@ -209,6 +225,11 @@ export async function validatePrepared(root, prepared, identity) {
     } else if (path === projectInit) {
       if (file.contents !== expectedProjectInit)
         throw new Error('Prepared project source may change only the canonical ACP version literal')
+    } else if (path === reportingNotice) {
+      if (file.contents !== expectedReportingNotice)
+        throw new Error(
+          'Prepared display-model notice may change only the canonical Reporting version',
+        )
     } else if (consumed.has(path) && file.contents !== consumed.get(path)) {
       throw new Error('Prepared consumed note differs from its exact source')
     }
@@ -223,6 +244,8 @@ export async function validatePrepared(root, prepared, identity) {
     if (!files.has(path)) throw new Error('Prepared release is missing a synchronized manifest')
   if (requireProjectInit && !files.has(projectInit))
     throw new Error('Prepared release is missing the synchronized project ACP version')
+  if (requireReportingNotice && !files.has(reportingNotice))
+    throw new Error('Prepared release is missing the synchronized Reporting notice')
   if (
     sourceEntriesDigest([...resulting.values()].filter(({ path }) => path !== MARKER)) !==
     marker.sourceDigest
@@ -324,6 +347,32 @@ export async function applyPrepared(root, prepared, identity) {
   return marker
 }
 
+export async function readPrepared(path) {
+  let artifact
+  try {
+    artifact = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+  } catch (error) {
+    if (error.code === 'ELOOP') throw new Error('Invalid prepared release artifact')
+    throw error
+  }
+  try {
+    const stat = await artifact.stat()
+    if (!stat.isFile() || stat.size > maximumBytes)
+      throw new Error('Invalid prepared release artifact')
+    const contents = Buffer.alloc(stat.size + 1)
+    let length = 0
+    while (length < contents.length) {
+      const { bytesRead } = await artifact.read(contents, length, contents.length - length, null)
+      if (!bytesRead) break
+      length += bytesRead
+    }
+    if (length !== stat.size) throw new Error('Prepared release artifact changed while reading')
+    return JSON.parse(contents.subarray(0, length).toString('utf8'))
+  } finally {
+    await artifact.close()
+  }
+}
+
 async function main() {
   const [command, path, ...extra] = process.argv.slice(2)
   if (!['create', 'restore-lock', 'apply'].includes(command) || !path || extra.length)
@@ -334,10 +383,7 @@ async function main() {
     await writeFile(path, json(await createPrepared(root, identity)), { flag: 'wx', mode: 0o600 })
     return
   }
-  const stat = await lstat(path)
-  if (!stat.isFile() || stat.size > maximumBytes)
-    throw new Error('Invalid prepared release artifact')
-  const prepared = JSON.parse(await readFile(path, 'utf8'))
+  const prepared = await readPrepared(path)
   if (command === 'restore-lock') await restoreWorkspaceLock(root, prepared, identity)
   else await applyPrepared(root, prepared, identity)
 }

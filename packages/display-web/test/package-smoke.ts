@@ -108,7 +108,8 @@ try {
   await assert.rejects(access(join(temporary, 'node_modules/@opentui')))
   const installed = join(temporary, 'node_modules/@jigging/display-web')
   const manifest = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'))
-  assert.equal(manifest.version, '0.1.0-alpha.1')
+  const sourceManifest = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'))
+  assert.equal(manifest.version, sourceManifest.version)
   assert.equal(manifest.scripts, undefined)
   await assert.rejects(access(join(installed, 'src')))
   for (const path of await files(join(installed, 'dist'))) {

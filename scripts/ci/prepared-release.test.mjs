@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+import { constants } from 'node:fs'
 import {
   appendFile,
   chmod,
@@ -7,6 +9,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readlink,
   rm,
@@ -22,6 +25,7 @@ import { checkRelease, versionRelease } from '../release/cli.mjs'
 import {
   applyPrepared,
   createPrepared,
+  readPrepared,
   restoreWorkspaceLock,
   validatePrepared,
 } from '../release/prepared.mjs'
@@ -71,19 +75,33 @@ function commit(root, message = 'Apply prepared release') {
   return git(root, ['rev-parse', 'HEAD']).trim()
 }
 
-async function ignoredLock(root) {
+async function workingFile(path) {
+  let file
   try {
-    const path = join(root, 'bun.lock')
-    const stat = await lstat(path)
-    return {
-      mode: stat.mode,
-      link: stat.isSymbolicLink(),
-      contents: stat.isSymbolicLink() ? await readlink(path) : await readFile(path, 'utf8'),
-    }
+    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   } catch (error) {
     if (error.code === 'ENOENT') return null
+    if (error.code === 'ELOOP') return { link: true, contents: Buffer.from(await readlink(path)) }
     throw error
   }
+  try {
+    const stat = await file.stat()
+    assert.ok(stat.isFile(), 'Diagnostic input must be a regular file or symbolic link')
+    return {
+      mode: stat.mode,
+      link: false,
+      contents: await file.readFile(),
+      mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
+    }
+  } finally {
+    await file.close()
+  }
+}
+
+async function ignoredLock(root) {
+  const file = await workingFile(join(root, 'bun.lock'))
+  return file && { mode: file.mode, link: file.link, contents: file.contents.toString('utf8') }
 }
 
 async function snapshot(root) {
@@ -175,22 +193,14 @@ test('prepared release round trip reproduces the real generated tree without wri
       const before = expected.get(path)
       const after = committed.get(path)
       if (before?.mode === after?.mode && before?.hash === after?.hash) continue
-      const stat = await lstat(join(writer, path)).catch((error) => {
-        if (error.code === 'ENOENT') return undefined
-        throw error
-      })
-      const bytes = stat
-        ? stat.isSymbolicLink()
-          ? await readlink(join(writer, path))
-          : await readFile(join(writer, path))
-        : undefined
+      const working = await workingFile(join(writer, path))
       differences.push({
         path,
         expected: before,
         committed: after,
-        workingHash: bytes === undefined ? null : blobHash(bytes),
-        mtimeMs: stat?.mtimeMs,
-        ctimeMs: stat?.ctimeMs,
+        workingHash: working ? blobHash(working.contents) : null,
+        mtimeMs: working?.mtimeMs,
+        ctimeMs: working?.ctimeMs,
       })
     }
     diagnostics = {
@@ -371,15 +381,46 @@ test('incomplete or altered generated plans and consumed notes cannot be transfe
   await rejectWithoutWrites(writer, missing, 'missing marker', /missing its generated plan/)
 })
 
+test('artifact acquisition rejects links and non-regular or oversized files through the opened handle', async () => {
+  const directory = join(temporary, 'artifact-reads')
+  await mkdir(directory)
+  const path = join(directory, 'release.json')
+  await writeFile(path, json(payload), { flag: 'wx' })
+  assert.deepEqual(await readPrepared(path), payload)
+
+  const link = join(directory, 'linked.json')
+  await symlink(path, link)
+  await assert.rejects(readPrepared(link), /Invalid prepared release artifact/)
+  await assert.rejects(readPrepared(directory), /Invalid prepared release artifact/)
+  const pipe = join(directory, 'release-pipe')
+  execFileSync('mkfifo', [pipe])
+  await assert.rejects(readPrepared(pipe), /Invalid prepared release artifact/)
+
+  const oversized = join(directory, 'oversized.json')
+  const file = await open(oversized, 'wx')
+  try {
+    await file.truncate(16 * 1024 * 1024 + 1)
+  } finally {
+    await file.close()
+  }
+  await assert.rejects(readPrepared(oversized), /Invalid prepared release artifact/)
+})
+
 test('non-regular generated outputs and destination files refuse without following links', async () => {
   const output = join(generated, 'packages/jig/package.json')
-  const contents = await readFile(output)
-  const mode = (await lstat(output)).mode & 0o777
-  await chmod(output, 0o755)
+  const file = await open(output, constants.O_RDONLY | constants.O_NOFOLLOW)
+  let contents, mode
   try {
-    await assert.rejects(createPrepared(generated, identity), /regular non-executable files/)
+    contents = await file.readFile()
+    mode = (await file.stat()).mode & 0o777
+    await file.chmod(0o755)
+    try {
+      await assert.rejects(createPrepared(generated, identity), /regular non-executable files/)
+    } finally {
+      await file.chmod(mode)
+    }
   } finally {
-    await chmod(output, mode)
+    await file.close()
   }
   const target = join(temporary, 'unmodified-link-target.json')
   await writeFile(target, contents)
@@ -390,7 +431,7 @@ test('non-regular generated outputs and destination files refuse without followi
     assert.deepEqual(await readFile(target), contents)
   } finally {
     await unlink(output)
-    await writeFile(output, contents, { mode })
+    await writeFile(output, contents, { mode, flag: 'wx' })
   }
 
   const linkedWriter = await clone('linked-destination')
@@ -443,4 +484,83 @@ test('dirty, stale, and dependency-installed writer checkouts reject the whole a
     await readFile(join(installed, 'node_modules', 'existing-input'), 'utf8'),
     'Preserve installed input.\n',
   )
+})
+
+test('Reporting releases transfer exact display versions and notices and refuse coherent notice tampering', async () => {
+  const producer = await clone('reporting-generator')
+  const noticePath = 'packages/display-model/THIRD_PARTY_NOTICES'
+  const previousNotice = await readFile(join(producer, noticePath), 'utf8')
+  const previousReporting = JSON.parse(
+    await readFile(join(producer, 'packages/reporting/package.json'), 'utf8'),
+  ).version
+  await writeFile(
+    join(producer, '.changeset/prepared-reporting-fixture.md'),
+    '---\n"@jigging/reporting": patch\n---\n\nExercise Reporting notice transfer with generated display versions.\n',
+    { flag: 'wx' },
+  )
+  const reportingSource = commit(producer, 'Add Reporting release intent')
+  await copyFile(join(repository, 'bun.lock'), join(producer, 'bun.lock'))
+  const generatedMarker = await versionRelease(producer, { cli })
+  const candidate = await createPrepared(producer, identity)
+  const reportingVersion = generatedMarker.releases.find(
+    ({ name }) => name === '@jigging/reporting',
+  )?.newVersion
+  assert.ok(reportingVersion)
+  assert.notEqual(reportingVersion, previousReporting)
+  for (const name of ['display-model', 'display-web', 'display-tui']) {
+    const release = generatedMarker.releases.find((release) => release.name === `@jigging/${name}`)
+    assert.ok(release, `Reporting must propagate to ${name}`)
+    assert.notEqual(release.newVersion, release.oldVersion)
+    const manifest = JSON.parse(await readFile(join(producer, `packages/${name}/package.json`)))
+    assert.equal(manifest.version, release.newVersion)
+    assert.equal(manifest.dependencies['@jigging/reporting'], reportingVersion)
+  }
+  const notice = candidate.files.find(({ path }) => path === noticePath)
+  assert.ok(notice, 'Reporting generation must transfer the synchronized model notice')
+  assert.equal(
+    notice.contents,
+    previousNotice.replace(
+      `@jigging/reporting ${previousReporting} is an exact external dependency under`,
+      `@jigging/reporting ${reportingVersion} is an exact external dependency under`,
+    ),
+  )
+
+  const writer = await clone('reporting-writer')
+  git(writer, ['fetch', '--quiet', producer, reportingSource])
+  git(writer, ['checkout', '--quiet', '--detach', reportingSource])
+  const original = await snapshot(writer)
+  const validated = await validatePrepared(writer, candidate, identity)
+  assert.deepEqual(validated.marker, generatedMarker)
+  assert.deepEqual(await snapshot(writer), original, 'Reporting validation must be read-only')
+  assert.equal(await ignoredLock(writer), null)
+
+  const omitted = structuredClone(candidate)
+  omitted.files = omitted.files.filter(({ path }) => path !== noticePath)
+  rebindDigest(writer, omitted)
+  await rejectWithoutWrites(
+    writer,
+    omitted,
+    'missing Reporting notice with a coherent digest',
+    /missing the synchronized Reporting notice/,
+  )
+  for (const contents of [previousNotice, `${notice.contents}\nUnapproved notice addition.\n`]) {
+    const altered = structuredClone(candidate)
+    altered.files.find(({ path }) => path === noticePath).contents = contents
+    rebindDigest(writer, altered)
+    await rejectWithoutWrites(
+      writer,
+      altered,
+      'altered Reporting notice with a coherent digest',
+      /may change only the canonical Reporting version/,
+    )
+  }
+
+  await restoreWorkspaceLock(writer, candidate, identity)
+  await applyPrepared(writer, candidate, identity)
+  assert.equal(await readFile(join(writer, noticePath), 'utf8'), notice.contents)
+  assert.equal(await sourceDigest(writer), await sourceDigest(producer))
+  const revision = commit(writer, 'Apply prepared Reporting release')
+  assert.equal((await releaseState(writer, revision)).eligible, true)
+  assert.equal((await checkRelease(writer, reportingSource, { cli })).mode, 'versioned')
+  await assert.rejects(lstat(join(writer, 'node_modules')), { code: 'ENOENT' })
 })

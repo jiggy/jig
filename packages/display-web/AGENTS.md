@@ -66,6 +66,7 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   and public semantic fixture tests.
 - `just test-package` uses exact model/web/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or native dependency.
+  The harness matches the installed version to this package's source manifest.
 - Installed host browser checks separately qualify actual asset embedding,
   authenticated transport, captured files, keyboard use and explicit Close.
 

@@ -121,6 +121,11 @@ async function fixture(t) {
     'packages/jig/src/project-init.ts',
     "const AGENT_ACP_VERSION = '0.1.0-alpha.11'\nconst GREETING_SDK_VERSION = '0.1.0-alpha.15'\n",
   )
+  await put(
+    root,
+    'packages/display-model/THIRD_PARTY_NOTICES',
+    'Third-party fixture notice.\n\n@jigging/reporting 0.1.0-alpha.1 is an exact external dependency under\nMPL-2.0. Preserve the license and source notice.\n',
+  )
   return { root, base: commit(root, 'Initial fixture') }
 }
 
@@ -207,6 +212,38 @@ test('root tooling stays independent, but dependency patches require all affecte
   )
   commit(root)
   assert.equal((await checkRelease(root, patchedBase)).affectedPackages.length, 7)
+})
+
+test('candidate builder coverage includes every package each builder can change', async (t) => {
+  const protectedNames = ['@jigging/agent-acp', '@jigging/agent-method', '@jigging/jig']
+  const qualificationNames = [
+    '@jigging/display-model',
+    '@jigging/display-tui',
+    '@jigging/display-web',
+    '@jigging/reporting',
+  ]
+  for (const [path, expected] of [
+    ['scripts/ci/build-candidates.mjs', [...protectedNames, ...qualificationNames].sort()],
+    ['scripts/build-agent-candidate.ts', protectedNames],
+  ]) {
+    const { root, base } = await fixture(t)
+    await put(root, path, '// Changed package archive construction.\n')
+    await note(root, 'protected-builder-change', protectedNames)
+    commit(root)
+    if (path === 'scripts/ci/build-candidates.mjs') {
+      await assert.rejects(
+        checkRelease(root, base),
+        /Missing new changesets for: @jigging\/display-model, @jigging\/display-tui, @jigging\/display-web, @jigging\/reporting/,
+      )
+      await note(root, 'qualification-builder-change', qualificationNames)
+      commit(root)
+    }
+    assert.deepEqual((await checkRelease(root, base)).affectedPackages, expected)
+    assert.deepEqual(
+      (await releasePlan(root)).releases.map(({ name }) => name),
+      expected,
+    )
+  }
 })
 
 test('real Changesets preserves independent alpha counters and synchronizes all internal pins', async (t) => {
@@ -312,6 +349,8 @@ test('feature-only clones and detached checkouts generate and replay without a l
 
 test('qualification input releases propagate to Jig without adding publication selectors', async (t) => {
   const { root } = await fixture(t)
+  const noticePath = join(root, 'packages/display-model/THIRD_PARTY_NOTICES')
+  const notice = await readFile(noticePath, 'utf8')
   await note(root, 'renderer-fix', ['@jigging/display-web'])
   commit(root)
   const plan = await releasePlan(root)
@@ -329,6 +368,53 @@ test('qualification input releases propagate to Jig without adding publication s
     (await get(root, 'packages/jig/package.json')).devDependencies['@jigging/display-web'],
     '0.1.0-alpha.2',
   )
+  assert.equal(await readFile(noticePath, 'utf8'), notice)
+})
+
+test('Reporting releases synchronize the shipped notice and dependent display versions', async (t) => {
+  const { root } = await fixture(t)
+  const path = 'packages/display-model/THIRD_PARTY_NOTICES'
+  const before = await readFile(join(root, path), 'utf8')
+  await note(root, 'reporting-change', ['@jigging/reporting'])
+  const base = commit(root)
+  const marker = await versionRelease(root)
+  assert.deepEqual(
+    Object.fromEntries(marker.releases.map(({ name, newVersion }) => [name, newVersion])),
+    {
+      '@jigging/display-model': '0.1.0-alpha.2',
+      '@jigging/display-tui': '0.1.0-alpha.2',
+      '@jigging/display-web': '0.1.0-alpha.2',
+      '@jigging/jig': '0.1.0-alpha.38',
+      '@jigging/reporting': '0.1.0-alpha.2',
+    },
+  )
+  assert.equal(
+    await readFile(join(root, path), 'utf8'),
+    before.replace('@jigging/reporting 0.1.0-alpha.1', '@jigging/reporting 0.1.0-alpha.2'),
+  )
+  for (const kind of ['display-model', 'display-web', 'display-tui'])
+    assert.equal(
+      (await get(root, `packages/${kind}/package.json`)).dependencies['@jigging/reporting'],
+      '0.1.0-alpha.2',
+    )
+  const head = commit(root, 'Generated Reporting release')
+  assert.equal(await sourceDigest(root, head), marker.sourceDigest)
+  assert.equal((await checkRelease(root, base)).mode, 'versioned')
+})
+
+test('release generation refuses missing or ambiguous canonical Reporting declarations', async (t) => {
+  for (const duplicate of [false, true]) {
+    const { root } = await fixture(t)
+    const path = 'packages/display-model/THIRD_PARTY_NOTICES'
+    const original = await readFile(join(root, path), 'utf8')
+    await put(root, path, duplicate ? `${original}\n${original}` : 'No dependency declaration.\n')
+    await note(root, 'reporting-change', ['@jigging/reporting'])
+    commit(root)
+    await assert.rejects(
+      versionRelease(root),
+      /Reporting notice must have one canonical dependency version/,
+    )
+  }
 })
 
 test('manual versions, changelogs, removed intent, and external package notes fail', async (t) => {

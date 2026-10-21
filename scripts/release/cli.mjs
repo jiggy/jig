@@ -222,6 +222,17 @@ async function synchronizePins(root) {
       ),
     )
   }
+  const reportingNotice = 'packages/display-model/THIRD_PARTY_NOTICES'
+  const notice = await sourceText(root, reportingNotice, undefined, true)
+  if (notice !== undefined) {
+    const pattern = /^@jigging\/reporting \S+(?= is an exact external dependency under$)/gm
+    if ([...notice.matchAll(pattern)].length !== 1)
+      throw new Error('Reporting notice must have one canonical dependency version')
+    await writeFile(
+      join(root, reportingNotice),
+      notice.replace(pattern, `@jigging/reporting ${packages.get('@jigging/reporting').version}`),
+    )
+  }
 }
 
 export async function versionRelease(root = defaultRoot, { cli = defaultCli } = {}) {

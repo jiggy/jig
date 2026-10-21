@@ -90,7 +90,7 @@ changesets are pending. Maintainers can rerun it through manual dispatch on
 `main`.
 
 The generator invokes `just release-version`. That command updates package
-versions, changelogs, dependent pins, and
+versions, changelogs, dependent pins, dependency notices, and
 `.changeset/release.json` together. The metadata binds the generated release
 plan to its source inputs. The check replays generation to validate release PRs.
 A branch name or bot identity never exempts a PR from validation.
@@ -104,6 +104,14 @@ source and permitted changes. The writer installs no dependencies and executes
 no code from the artifact. The pinned Changesets version action applies the
 validated output and maintains the release PR. Only this job receives GitHub
 write authority and the optional release App token.
+
+Prepared data is bound to one workflow run and attempt. After a writer failure,
+select **Re-run all jobs**, or manually dispatch `Release versions` on current
+`main`. This generates fresh data for the new attempt.
+
+**Re-run failed jobs** retains the successful generator's artifact from the
+earlier attempt. The retried writer rejects that artifact because its attempt
+identity differs.
 
 Review the generated changes as one release. Further feature merges update the
 same release PR. Generated metadata must match the complete versioned source.
