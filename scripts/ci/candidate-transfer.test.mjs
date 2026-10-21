@@ -7,6 +7,7 @@ import { test } from 'node:test'
 import {
   digest,
   PACKAGE_LAYOUT,
+  RELEASE_PACKAGE_LAYOUT,
   verifyCandidateBundle,
   writeCandidateReceipt,
 } from './candidate-provenance.mjs'
@@ -148,6 +149,18 @@ async function withFixture(runs, action) {
       const receipt = await writeCandidateReceipt({
         root,
         sourceRevision: source,
+        release: {
+          schemaVersion: 1,
+          sourceRevision: source,
+          eligible: false,
+          reason: 'feature-source',
+          packages: Object.entries(RELEASE_PACKAGE_LAYOUT).map(([kind, name]) => ({
+            kind,
+            name,
+            version: '0.1.0-alpha.1',
+          })),
+          pendingPackages: [],
+        },
         producer: {
           repository,
           workflowPath,

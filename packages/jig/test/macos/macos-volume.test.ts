@@ -310,7 +310,20 @@ test('native volume enforces shared capacity, protects backing, and authenticate
     guardian.stdin.end()
     const completion = await guardian.completion
     expect(completion.fenced).toBe(true)
-    expect(completion.result?.exitCode).toBe(0)
+    const writerFailure =
+      stderr.length <= 256
+        ? /^volume-writer-result writer=[01] read=(-1|\d{1,2}) read_errno=\d{1,3} wait_ok=[01] wait_errno=\d{1,3} exit=(-1|\d{1,3}) signal=(-1|[1-9]\d?)\n$/.exec(
+            stderr,
+          )
+        : null
+    const writerDiagnostic =
+      writerFailure?.[0] === stderr &&
+      Number(writerFailure[1]) <= 16 &&
+      Number(writerFailure[2]) <= 255 &&
+      Number(writerFailure[3]) <= 31
+        ? stderr.trimEnd()
+        : 'volume writer result unavailable'
+    expect(completion.result?.exitCode, writerDiagnostic).toBe(0)
     expect(stderr).toBe('')
     const reported = JSON.parse(stdout)
     expect(reported).toMatchObject({ backingDenied: true, full: true, reaped: 2 })

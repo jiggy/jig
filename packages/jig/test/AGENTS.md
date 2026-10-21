@@ -103,6 +103,12 @@ Its inner-crash failure projection contains at most two fixed-phase coalition sa
 That projection contains only bounded active/member counts, completeness and unavailable status.
 It exposes no identities and supplies no fencing evidence.
 
+`macos/macos-volume.test.ts` projects only the C fixture's bounded writer-result
+record: writer index, pipe read count/errno, wait success/errno and child exit or
+signal. Validate its exact format before adding assertion context. Preserve both
+writers, alarms, limits, failure outcomes, capacity checks and authenticated
+recovery. Diagnostics grant no execution or cleanup evidence.
+
 Portable presentation and delivery inspection cases check pure rendering, stored
 bytes and actual elapsed completion limits. They do not prove authenticated
 capture, retirement acknowledgements or native cleanup.

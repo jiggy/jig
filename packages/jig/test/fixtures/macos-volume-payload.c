@@ -42,9 +42,20 @@ int main(int argc, char **argv) {
   size_t total=0; int full=0;
   for(int i=0;i<2;i++) {
     close(pipes[i][1]); struct result result={0,0};
-    ssize_t n=read(pipes[i][0],&result,sizeof(result)); close(pipes[i][0]);
-    int status=0; if(waitpid(children[i],&status,0)!=children[i] ||
-      n!=sizeof(result) || !WIFEXITED(status) || WEXITSTATUS(status)) return 7;
+    ssize_t n=read(pipes[i][0],&result,sizeof(result));
+    int read_error=n<0?errno:0;
+    close(pipes[i][0]);
+    int status=0; pid_t waited=waitpid(children[i],&status,0);
+    int wait_error=waited<0?errno:0;
+    if(waited!=children[i] || n!=sizeof(result) || !WIFEXITED(status) || WEXITSTATUS(status)) {
+      int wait_ok=waited==children[i];
+      fprintf(stderr,
+        "volume-writer-result writer=%d read=%zd read_errno=%d wait_ok=%d wait_errno=%d exit=%d signal=%d\n",
+        i,n,read_error,wait_ok,wait_error,
+        wait_ok && WIFEXITED(status)?WEXITSTATUS(status):-1,
+        wait_ok && WIFSIGNALED(status)?WTERMSIG(status):-1);
+      return 7;
+    }
     if(result.error && result.error!=ENOSPC) return 8;
     total+=result.bytes; full|=result.error==ENOSPC;
   }

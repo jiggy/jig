@@ -98,6 +98,7 @@ and portable reporting data without a Jig host or execution owner.
 - `just test-package` with frozen package archives exercises an ordinary
   consumer through declared exports with no Jig package. Installed Jig proof is
   separate.
+  The harness matches the installed version to this package's source manifest.
 - Native evidence requires an available supported native platform. Skipped
   native tests do not qualify it or another operating system.
 

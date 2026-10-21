@@ -269,6 +269,11 @@ These links locate module rules. All selected domain requirements still apply.
   Close every accepted startup connection before joining server shutdown, including
   refused and incomplete peers. A stopped peer must not hold cleanup open.
 
+  The manager may collect an exited scope before its observed cgroup path is resolved.
+  Cleanup retains the validated path on `ENOENT` and still requires both manager-unit collection and filesystem absence.
+  Other lookup errors and noncanonical paths remain refusals.
+  This observation grants no ownership and does not change collection deadlines.
+
 - The optional installed-startup diagnostic accepts only a private local trace
   destination. It activates after rootless-host acquisition, or directly for
   non-executing `attempt result` observation without host acquisition. Before

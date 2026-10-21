@@ -689,14 +689,26 @@ async function observeControlGroup(
         throw new Error('the user manager returned an invalid transient scope path')
       }
       const path = `${CGROUP_ROOT}${relative}`
-      if ((await realpath(path)) !== path)
-        throw new Error('the transient scope path is not canonical')
-      return path
+      return await observePrivateRootlessLinuxControlGroupPath(path)
     }
     if (state.loadState === 'not-found' && Date.now() >= deadline) return undefined
     if (Date.now() >= deadline) return undefined
     await delay(20)
   }
+}
+
+/** Cleanup observation only. The caller validates the exact manager scope path. */
+export async function observePrivateRootlessLinuxControlGroupPath(path: string): Promise<string> {
+  try {
+    if ((await realpath(path)) !== path)
+      throw new Error('the transient scope path is not canonical')
+  } catch (error) {
+    // The manager may collect an exited scope between its property read and
+    // this lookup. Retain the path so cleanup still verifies its absence after
+    // independently confirming that the manager unit has been collected.
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
+  return path
 }
 
 async function requireUnitCollected(

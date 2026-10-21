@@ -117,7 +117,24 @@ async function fixture(
   const archives: Record<string, string> = {}
   const state: Record<string, any> = { packages: {}, calls: [] }
   const candidates = join(root, 'candidates')
-  const receipt: any = { schemaVersion: 1, sourceRevision: revision, packages: [] }
+  const receipt: any = {
+    schemaVersion: 2,
+    sourceRevision: revision,
+    packages: [],
+    release: {
+      schemaVersion: 1,
+      sourceRevision: revision,
+      eligible: true,
+      reason: 'versioned-release',
+      releasePlanSha256: 'd'.repeat(64),
+      pendingPackages: [],
+      packages: packages.map(([kind, name]) => ({
+        kind: { agent: 'agent-method', acp: 'agent-acp', jig: 'jig' }[kind],
+        name,
+        version,
+      })),
+    },
+  }
   await mkdir(candidates)
   try {
     for (const [kind, name] of packages) {
@@ -354,6 +371,42 @@ test('replayed candidate receipts fail before registry reads or publication', as
     expect(result.result.stderr).toContain('candidate receipt differs from authorized artifact')
     expect(result.state.calls).toEqual([])
   })
+})
+
+test('publication refuses unversioned source and inconsistent release plans before external access', async () => {
+  for (const mutation of ['pending', 'source', 'version', 'missing']) {
+    await fixture('0.1.0-alpha.16', async ({ state, root }) => {
+      const path = join(root, 'candidates', 'CANDIDATE.json')
+      const receipt = JSON.parse(await readFile(path, 'utf8'))
+      if (mutation === 'pending') {
+        receipt.release.eligible = false
+        receipt.release.reason = 'pending-changesets'
+        receipt.release.pendingPackages = ['@jigging/jig']
+        delete receipt.release.releasePlanSha256
+      } else if (mutation === 'source') {
+        receipt.release.sourceRevision = 'b'.repeat(40)
+      } else if (mutation === 'version') {
+        receipt.release.packages[0].version = '0.1.0-alpha.17'
+      } else {
+        delete receipt.release
+      }
+      const bytes = JSON.stringify(receipt)
+      await writeFile(path, bytes)
+      await writeFile(
+        join(root, 'authorized-receipt.sha256'),
+        createHash('sha256').update(bytes).digest('hex'),
+      )
+      const result = await run(root, state)
+      expect(result.result.status).not.toBe(0)
+      expect(result.result.stderr).toContain(
+        mutation === 'version'
+          ? 'candidate package differs from its release plan'
+          : 'candidate does not carry an applied release plan',
+      )
+      expect(result.state.calls).toEqual([])
+      expect(result.state.githubCalls).toBeUndefined()
+    })
+  }
 })
 
 test('self-consistent replacement archives still require the authorized candidate hash', async () => {

@@ -148,6 +148,11 @@ test('build-only producer freezes one workspace build, eight archives and actual
     const output = join(f.root, 'candidate')
     await buildCandidates(output, f)
     const receipt = await verifyCandidateBundle(output)
+    assert.equal(receipt.schemaVersion, 2)
+    assert.equal(receipt.release.eligible, false)
+    assert.equal(receipt.release.reason, 'feature-source')
+    assert.deepEqual(receipt.release.pendingPackages, [])
+    assert.equal(receipt.release.sourceRevision, receipt.sourceRevision)
     assert.equal(receipt.packages.length, 8)
     assert.deepEqual(
       receipt.packages.map(({ kind }) => kind),
@@ -189,6 +194,61 @@ test('build-only producer freezes one workspace build, eight archives and actual
     }
     assert.equal(execute('git', ['status', '--porcelain'], { cwd: f.repository }), '')
     assert.equal((await readFile(join(output, 'SHA256SUMS'), 'utf8')).trim().split('\n').length, 8)
+  } finally {
+    await f.cleanup()
+  }
+})
+
+test('source-pinned pending changesets bind their complete bundled release closure without editing versions', async () => {
+  const f = await fixture()
+  try {
+    await mkdir(join(f.repository, '.changeset'))
+    await writeFile(
+      join(f.repository, '.changeset/config.json'),
+      JSON.stringify({
+        fixed: [],
+        linked: [],
+        ignore: [],
+        commit: false,
+        access: 'public',
+        privatePackages: { version: false, tag: false },
+      }),
+    )
+    await writeFile(
+      join(f.repository, '.changeset/pre.json'),
+      JSON.stringify({ mode: 'pre', tag: 'alpha' }),
+    )
+    await writeFile(
+      join(f.repository, '.changeset/agent-fix.md'),
+      '---\n"@jigging/agent-method": patch\n---\n\nFix the Agent implementation.\n',
+    )
+    execute('git', ['add', '.changeset'], { cwd: f.repository })
+    execute(
+      'git',
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.invalid',
+        'commit',
+        '--quiet',
+        '-m',
+        'release intent',
+      ],
+      { cwd: f.repository },
+    )
+    const output = join(f.root, 'candidate')
+    await buildCandidates(output, f)
+    const receipt = await verifyCandidateBundle(output)
+    assert.equal(receipt.release.eligible, false)
+    assert.equal(receipt.release.reason, 'pending-changesets')
+    assert.deepEqual(receipt.release.pendingPackages, [
+      '@jigging/agent-acp',
+      '@jigging/agent-method',
+      '@jigging/jig',
+    ])
+    assert.ok(receipt.packages.every((entry) => entry.version === '0.1.0-alpha.1'))
+    assert.equal(execute('git', ['status', '--porcelain'], { cwd: f.repository }), '')
   } finally {
     await f.cleanup()
   }

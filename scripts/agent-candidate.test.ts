@@ -968,6 +968,11 @@ test('Mac qualification copies the supplied candidate bytes and refuses archive 
     for (const name of ['qualify-macos-host.sh', 'candidate-provenance.mjs']) {
       await copyFile(join(root, 'scripts/ci', name), join(repository, 'scripts/ci', name))
     }
+    await mkdir(join(repository, 'scripts/release'))
+    await copyFile(
+      join(root, 'scripts/release/catalog.mjs'),
+      join(repository, 'scripts/release/catalog.mjs'),
+    )
     await writeFile(
       join(repository, 'scripts/ci/macos-host-test-shards.mjs'),
       `
@@ -1018,7 +1023,9 @@ else exit 42; fi`,
       'candidate fixture',
     ])
     const revision = execute('git', ['rev-parse', 'HEAD'])
-    const { PACKAGE_LAYOUT, writeCandidateReceipt } = await import('./ci/candidate-provenance.mjs')
+    const { PACKAGE_LAYOUT, RELEASE_PACKAGE_LAYOUT, writeCandidateReceipt } = await import(
+      './ci/candidate-provenance.mjs'
+    )
     for (const [kind, name] of Object.entries(PACKAGE_LAYOUT)) {
       const contents = join(directory, 'contents', kind)
       await mkdir(join(contents, 'package'), { recursive: true })
@@ -1044,6 +1051,18 @@ else exit 42; fi`,
     await writeCandidateReceipt({
       root: canonical,
       sourceRevision: revision,
+      release: {
+        schemaVersion: 1,
+        sourceRevision: revision,
+        eligible: false,
+        reason: 'feature-source',
+        packages: Object.entries(RELEASE_PACKAGE_LAYOUT).map(([kind, name]) => ({
+          kind,
+          name,
+          version: '0.1.0-alpha.1',
+        })),
+        pendingPackages: [],
+      },
       producer: {
         repository: 'local/local',
         workflowPath: '.github/workflows/ci.yml',

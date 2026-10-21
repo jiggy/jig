@@ -50,6 +50,7 @@ with their producer. This package owns readonly display data and pure meaning.
   malformed data, identity, omissions and observation intervals.
 - `just test-package` uses supplied exact model/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or renderer dependency.
+  The harness matches the installed version to this package's source manifest.
 
 ## Child DOX Index
 

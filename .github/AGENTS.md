@@ -14,6 +14,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - `workflows/` owns automation triggers, permissions, jobs, and retained
   artifacts.
 - Checked-in justfiles and scripts own reusable build and test logic.
+- `workflows/release-version.yml` maintains one generated release PR from
+  pending Changesets. `scripts/release/` owns package coverage and version
+  generation. `RELEASING.md` owns contributor and repository setup instructions.
 
 ## Local Contracts
 
@@ -51,9 +54,21 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
 - CI reports quick development/release checks and site builds independently of
-  the longer source suite. Candidate jobs retain their archives, then check
-  exact public registry bytes read-only so a reused version fails before merge.
-  This does not replace publication's complete group preflight and rechecks.
+  the longer source suite. Quick checks validate release coverage against the
+  tested PR merge's verified first parent, previous main revision, or manual
+  source parent. The PR merge must match the workflow source and event head.
+  Its first parent may advance beyond the event's recorded base only through
+  verified ancestry. Missing or unrelated baselines fail.
+
+  A generated release must reproduce the version plan from that exact base.
+  A branch name or bot identity grants no exemption.
+
+  Candidate jobs retain their archives, then perform read-only registry checks.
+  Pending changesets distinguish development bytes from versioned release
+  candidates. Only validated release state can authorize publication.
+  Versioned candidates retain exact registry byte checks. This does not replace
+  publication's complete group preflight and rechecks.
+
   Preserve `test` as a fail-closed aggregate of every CI job and its observed
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual runs require complete host coverage.
@@ -75,7 +90,32 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Publish Agent/Jig npm candidates only after all required gates succeed for the
   exact source revision. These gates are CI, complete Linux Host Conformance,
   complete hosted Intel and Apple Silicon Mac conformance, and Native Agent API
-  Qualification. Preflight every selected host archive before mutation.
+  Qualification. The canonical candidate must also contain eligible generated
+  release metadata bound to that source. Preflight every selected host archive
+  before mutation.
+- Release generation runs only for main pushes or manual dispatch on main.
+  Serialize updates without cancelling an active run. Skip superseded source
+  revisions and leave no-change runs without a new PR.
+  The version action creates Git changes only. It never publishes packages.
+
+  Install dependencies, plan versions, and execute Changesets only on the
+  generation runner with repository read permission. Retain only prepared JSON
+  data in an immutable artifact bound to the source, run, and attempt.
+
+  Use a fresh writer runner without installed dependencies or transferred code.
+  Download the exact artifact ID. Validate its source and permitted changes
+  before restoring its inert workspace lock or minting an App token.
+  The pinned version action applies validated data through the standard-library
+  helper. It never invokes the local Changesets CLI.
+
+  Retry writer failures by rerunning all jobs or manually dispatching on current
+  main. Each attempt must generate its own prepared artifact.
+
+  Scope an optional release App token to this repository with only contents
+  and pull-request write permissions. Keep credentials absent from PR checks.
+  Without the App, document the built-in token's required maintainer handoff.
+  Optional App-based auto-merge obeys existing checks and review rules.
+  Never use the built-in token to merge a release and suppress main-push CI.
 - CI runs its complete fixed source, site, Python and npm profiles. Source
   targets run serially in one workspace after shared builds and archive
   freezing, with separate complete reports for each stage. A failed stage stops

@@ -58,6 +58,10 @@ jobs:
         with:
           bun-version: 1.3.3
       - run: bun install --ignore-scripts
+      - name: Check release intent and generated versions
+        run: |
+          release_base="$(node scripts/ci/release-base.mjs)"
+          node scripts/release/cli.mjs check --base "$release_base"
       - name: Check development and release automation
         run: |
           set -o pipefail
