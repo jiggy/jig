@@ -305,7 +305,7 @@ test('release setup reports both token modes and rejects each incomplete App con
   }
 })
 
-test('release failure summaries run after failure without credentials or a successful-outcome override', async () => {
+test('release failure summaries preserve the outcome and report recovery without guessing a cause', async () => {
   const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
   const writer = workflow.jobs.version
   const diagnosticIndex = writer.steps.findIndex((step) =>
@@ -318,35 +318,20 @@ test('release failure summaries run after failure without credentials or a succe
     diagnostic.if,
     "failure() && (steps.app-token.outcome == 'failure' || steps.version.outcome == 'failure')",
   )
-  assert.deepEqual(diagnostic.env, {
-    HAS_RELEASE_APP_ID: `\${{ vars.RELEASE_APP_ID != '' }}`,
-  })
+  assert.equal(diagnostic.env, undefined)
   assert.equal(writer['continue-on-error'], undefined)
   for (const step of writer.steps) assert.equal(step['continue-on-error'], undefined)
   assert.doesNotMatch(diagnostic.run, /\b(?:gh|curl|wget)\b|\$\{\{/)
-  for (const app of ['false', 'true']) {
-    const result = await runWriterStep(diagnostic, { HAS_RELEASE_APP_ID: app })
-    assert.equal(result.status, 0, result.output)
-    assert.match(result.summary, /Inspect the failed step for the exact error/)
-    assert.match(result.summary, /Re-run all jobs/)
-    assert.match(result.summary, /dispatch \*\*Release versions\*\* on current \*\*main\*\*/)
-    assert.match(result.summary, /Do not choose \*\*Re-run failed jobs\*\*/)
-    if (app === 'false') {
-      assert.match(
-        result.summary,
-        /If the error says \*\*GitHub Actions is not permitted to create or approve pull requests\*\*/,
-      )
-      assert.match(result.summary, /Workflow permissions/)
-      assert.match(result.summary, /Allow GitHub Actions to create and approve pull requests/)
-      assert.match(result.summary, /No App secrets are required/)
-    } else {
-      assert.match(result.summary, /For App authentication errors/)
-      assert.match(result.summary, /installed|installation/)
-      assert.match(result.summary, /RELEASE_APP_ID/)
-      assert.match(result.summary, /RELEASE_APP_PRIVATE_KEY/)
-      assert.doesNotMatch(result.summary, /This run used \*\*GITHUB_TOKEN\*\*/)
-    }
-  }
+  const result = await runWriterStep(diagnostic, {})
+  assert.equal(result.status, 0, result.output)
+  assert.match(result.summary, /Inspect the failed step for the exact error/)
+  assert.match(result.summary, /Re-run all jobs/)
+  assert.match(result.summary, /dispatch \*\*Release versions\*\* on current \*\*main\*\*/)
+  assert.match(result.summary, /Do not choose \*\*Re-run failed jobs\*\*/)
+  assert.doesNotMatch(
+    result.summary,
+    /GITHUB_TOKEN|RELEASE_APP|authentication|permissions|settings\//i,
+  )
 })
 
 test('successful built-in release PRs link the actual approval and maintainer merge handoff', async () => {

@@ -262,7 +262,8 @@ They consume frozen package exports with tracked test helpers and installed
 
   They execute the setup shell for absent, complete, and incomplete App
   configuration. They exercise failure summaries and successful PR handoffs
-  without credentials or API calls.
+  without credentials or API calls. Generic failures must not imply an
+  authentication or policy cause.
 
 - `node --test scripts/ci/release-base.test.mjs` exercises real Git comparisons,
   advancing PR bases, push ranges, manual parents, and invalid event identities.

@@ -170,28 +170,11 @@ jobs:
           push-with-git-cli: false
       - name: Explain release PR failure and recovery
         if: failure() && (steps.app-token.outcome == 'failure' || steps.version.outcome == 'failure')
-        env:
-          HAS_RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID != '' }}
         run: |
-          settings_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/settings"
-          {
-            printf '%s\n' '## Release PR automation failed' '' 'Inspect the failed step for the exact error.' ''
-            if [ "$HAS_RELEASE_APP_ID" = 'true' ]; then
-              printf '%s\n' \
-                'For App authentication errors, verify its installation on this repository and its **Contents: write** and **Pull requests: write** permissions.' \
-                "Check variable [RELEASE_APP_ID]($settings_url/variables/actions) and secret [RELEASE_APP_PRIVATE_KEY]($settings_url/secrets/actions)."
-            else
-              printf '%s\n' \
-                'This run used **GITHUB_TOKEN**. No App secrets are required.' \
-                'If the error says **GitHub Actions is not permitted to create or approve pull requests**, check the repository setting below.' \
-                "Open [Settings → Actions → General]($settings_url/actions)." \
-                'Under **Workflow permissions**, enable **Allow GitHub Actions to create and approve pull requests**.' \
-                'An organization owner may need to permit this setting.'
-            fi
-            printf '%s\n' '' \
-              'After correction, choose **Re-run all jobs**, or dispatch **Release versions** on current **main**.' \
-              'Do not choose **Re-run failed jobs**: each attempt requires a newly generated artifact.'
-          } >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '## Release PR automation failed' '' \
+            'Inspect the failed step for the exact error.' '' \
+            'After correction, choose **Re-run all jobs**, or dispatch **Release versions** on current **main**.' \
+            'Do not choose **Re-run failed jobs**: each attempt requires a newly generated artifact.' >> "$GITHUB_STEP_SUMMARY"
       - name: Request automatic merge under repository policy
         if: steps.version.outputs.pr-number != '' && steps.app-token.outputs.token != '' && vars.RELEASE_AUTO_MERGE == 'true'
         env:

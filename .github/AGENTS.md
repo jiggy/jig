@@ -116,9 +116,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Report release setup in the writer's job summary using only credential-presence
   flags. Reject incomplete App configuration before token creation.
-  Failure summaries preserve the failed outcome and make policy advice
-  conditional on the logged error. Setup diagnostics request no administration
-  authority.
+  Keep authentication guidance in the setup summary. Failure summaries preserve
+  the failed outcome and direct maintainers to the exact error and recovery.
+  Do not infer authentication problems from a generic step failure.
+  Setup diagnostics request no administration authority.
 
   Scope an optional release App token to this repository with only contents
   and pull-request write permissions. Keep credentials absent from PR checks.
