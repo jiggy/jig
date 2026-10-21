@@ -23,6 +23,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - Pin third-party actions by full commit.
 - Install Just 1.43.1 in jobs that build packages or sites. The protected npm
   publisher consumes existing archives and requires neither Just nor source.
+- Install CI's pinned npm in a fresh runner-temporary prefix and add its binaries
+  to `GITHUB_PATH`. Verify the version before exposing that path.
+  Do not replace the npm installation performing the install.
 - Grant each job only the authority it needs. Build jobs must not inherit
   publication or Git-write authority.
 - The separate Native Agent API Qualification workflow runs after successful
@@ -111,9 +114,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Retry writer failures by rerunning all jobs or manually dispatching on current
   main. Each attempt must generate its own prepared artifact.
 
+  Report release setup in the writer's job summary using only credential-presence
+  flags. Reject incomplete App configuration before token creation.
+  Keep authentication guidance in the setup summary. Failure summaries preserve
+  the failed outcome and direct maintainers to the exact error and recovery.
+  Do not infer authentication problems from a generic step failure.
+  Setup diagnostics request no administration authority.
+
   Scope an optional release App token to this repository with only contents
   and pull-request write permissions. Keep credentials absent from PR checks.
-  Without the App, document the built-in token's required maintainer handoff.
+  Without the App, summarize the Actions PR setting and required maintainer
+  handoff. Link the generated PR and name its workflow-approval button.
   Optional App-based auto-merge obeys existing checks and review rules.
   Never use the built-in token to merge a release and suppress main-push CI.
 - CI runs its complete fixed source, site, Python and npm profiles. Source
