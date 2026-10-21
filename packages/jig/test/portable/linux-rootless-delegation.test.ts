@@ -1,11 +1,15 @@
 import { describe, expect, test } from 'bun:test'
 import { constants } from 'node:fs'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   PrivateRootlessLinuxAcquisitionError,
   type PrivateRootlessLinuxAcquisitionObservation,
 } from '../../src/internal/linux-rootless-acquisition.js'
 import {
   acquireOrReexecutePrivateRootlessLinux,
+  observePrivateRootlessLinuxControlGroupPath,
   type PrivateRootlessLinuxDelegationDependencies,
   type PrivateRootlessLinuxScopeDependencies,
   preparePrivateRootlessLinuxScope,
@@ -348,5 +352,51 @@ describe('private transient scope preparation', () => {
     const missingSelf = scopeFixture()
     missingSelf.processes.splice(0, Infinity, 55)
     await expect(preparePrivateRootlessLinuxScope(UNIT, missingSelf.dependencies)).rejects.toThrow()
+  })
+})
+
+describe('private transient scope path observation', () => {
+  test('keeps an observed path after its directory is removed', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-collected-scope-')))
+    try {
+      const path = join(root, 'observed.scope')
+      await mkdir(path)
+      expect(await observePrivateRootlessLinuxControlGroupPath(path)).toBe(path)
+
+      await rm(path, { recursive: true })
+      expect(await observePrivateRootlessLinuxControlGroupPath(path)).toBe(path)
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('refuses a real symlink redirect', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-redirected-scope-')))
+    try {
+      const target = join(root, 'target')
+      const path = join(root, 'observed.scope')
+      await mkdir(target)
+      await symlink(target, path)
+
+      await expect(observePrivateRootlessLinuxControlGroupPath(path)).rejects.toThrow(
+        'the transient scope path is not canonical',
+      )
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
+  test('propagates a non-directory lookup failure', async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-invalid-scope-')))
+    try {
+      const file = join(root, 'regular-file')
+      await writeFile(file, 'not a directory\n')
+
+      await expect(
+        observePrivateRootlessLinuxControlGroupPath(join(file, 'observed.scope')),
+      ).rejects.toMatchObject({ code: 'ENOTDIR' })
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
   })
 })
