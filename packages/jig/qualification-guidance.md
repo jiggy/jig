@@ -14,13 +14,15 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Ownership
 
-- `test/` owns unit, integration, fault-injection, packed-package, and
+- `test/` owns pure-function, integration, process-loss, packed-package, and
   proof-host evidence. `test/fixtures/agent-fixture-host.ts` keeps explicit
   native composition budgets shared with independent coordinator fixtures and
   the installed-package Agent composition smoke. The smoke passes the public
   `--timeout` option and leaves production defaults unchanged.
-  `test/fixtures/channel-conversation/` owns the synthetic named-channel peers
+  `test/fixtures/channel-conversation/` owns real executable named-channel methods
   used by installed foreground tests, independently of public example selection.
+  Controlled methods and protocol servers must perform their real task.
+  They must never replace Jig admission, stores, native clients, execution or cleanup.
 
 - Project Command lifecycle proofs reuse the explicit native composition budget
   for success, cancellation and coordinator loss. Their deadline case uses its
@@ -45,8 +47,11 @@ These links locate module rules. All selected domain requirements still apply.
   notices own package assembly inputs. Bun generates the ignored root workspace
   lock. `dist/`, `bin/`, `libexec/`, and package-root copies of `LICENSE.md`,
   `PRICING.md`, `LICENSES.md`, and `LICENSES/` are generated. Jig builds web and
-  TUI through their owning recipes. Each builds the model, which builds FLOW and
-  Reporting. Do not repeat those prerequisite requests directly in Jig.
+  TUI through their owning recipes. Each builds the model and its local
+  Reporting dependency.
+
+  FLOW uses versioned public artifacts, not a local SDK
+  build. Do not repeat those prerequisite requests directly in Jig.
 
   Standalone package recipes keep their complete dependencies.
 
@@ -118,7 +123,7 @@ These links locate module rules. All selected domain requirements still apply.
   `test/macos/macos-guardian*.test.ts` group with `JIG_MACOS_PROCESS_TEST=1` on
   a qualified Mac. Ordinary source execution selects portable suites. Native
   suites fail missing prerequisites. `jig::check` adds the native regression
-  pass. Run existing consumers alongside new injected cases. Verify typed
+  pass. Run existing consumers alongside real failure cases. Verify typed
   preparation causes together with fenced completion and cleanup.
 
   Guardian storage modes register distinct sequential tests with fresh compiled
@@ -160,10 +165,12 @@ These links locate module rules. All selected domain requirements still apply.
 - Mac Codex preference qualification uses
   `test/macos-23E224/macos-preferences-observer.test.ts` and
   `test/macos/macos-preferences-boundary.test.ts` with
-  `JIG_MACOS_PROCESS_TEST=1`. The actual-observer positive and injected-policy
-  cases require native Intel 23E224 without configured Codex MDM. They prove
+  `JIG_MACOS_PROCESS_TEST=1`. Actual-observer positive cases require native
+  Intel 23E224 without configured Codex MDM. They prove
   closed decisions, inherited sandbox refusal and parent-loss expiry, not
-  installed MDM consumption. The raw boundary test checks populated synthetic
+  installed MDM consumption. Policy refusal requires actual native policy, never an injected observer result.
+
+  The raw boundary test checks populated test
   preferences, read-only counters, inherited rights and cleanup. Genuine startup
   is qualified separately by `test/startup/native-agent-startup.test.ts`. Other
   Mac profiles must explicitly refuse Codex selection while retaining their
@@ -173,9 +180,13 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `test/host/markdown-worker.test.ts` checks installed Markdown's
   Agent-admission requirement and Agent-free code execution with the complete
-  packed FLOW SDK in an ordinary declared workspace. It honors
-  `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`. Otherwise pack built
-  candidates. Failed public commands retain their consumer and diagnostics under
+  packed FLOW SDK in an ordinary declared workspace. A separate fresh consumer
+  checks a real decision task, code child and SDK channel composition.
+  Neither case substitutes a Run context or native provider.
+  It honors
+  `JIG_PACKAGE_ARCHIVE` and `FLOW_SDK_PACKAGE_ARCHIVE`. Otherwise pack the built
+  Jig candidate and pack the installed public SDK. Failed public commands
+  retain their consumer and diagnostics under
   the selected temporary root for investigation.
 
 ### test host installed-* tests
@@ -239,9 +250,11 @@ These links locate module rules. All selected domain requirements still apply.
   specialist → Agent composition, named-contract substitution, Markdown
   selection and independent decision rejection. It honors `JIG_PACKAGE_ARCHIVE`,
   `FLOW_SDK_PACKAGE_ARCHIVE` and `AGENT_METHOD_PACKAGE_ARCHIVE`. Failed smoke
-  consumers and candidate archives remain available for diagnosis. Mac's fresh
-  initialized greeting retains its cold registry preparation and scratch/child
-  execution checks.
+  consumers and candidate archives remain available for diagnosis.
+
+  Mac's fresh initialized greeting uses the frozen public SDK as an ordinary
+  declared workspace member. It retains scratch and child execution checks
+  without claiming public registry availability.
 
   When `JIG_MACOS_TEST_TIMINGS_DIRECTORY` is configured, only its first review
   writes the existing bounded private phase trace to
@@ -257,7 +270,7 @@ These links locate module rules. All selected domain requirements still apply.
   and FLOW SDK archives on the selected native test host. Its ordinary project
   invokes a file Flow directly, then maps concurrent siblings and a nested child
   through the public CLI and SDK. Check binary and empty-file delivery,
-  immutable source preservation, and live complete imports before each call
+  immutable source preservation, and immutable artifact handoff before each call
   returns. Final packet rules remain independent.
 
 - The same installed smoke runs `test/installed-conversation-adoption.ts` in a
@@ -278,7 +291,8 @@ These links locate module rules. All selected domain requirements still apply.
 - Agent lifecycle suites accept `FLOW_SDK_PACKAGE_ARCHIVE`,
   `REPORTING_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
   `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged candidate artifacts. Otherwise they
-  pack already-built packages without rebuilding during execution. The native
+  pack already-built Jig-owned packages and the installed public SDK
+  without rebuilding during execution. The native
   Codex immediate-interruption qualification separately installs the frozen Jig
   candidate and published conversation dependencies in an ordinary consumer. It
   imports the published Agent contract through the public CLI, then checks the
@@ -288,16 +302,17 @@ These links locate module rules. All selected domain requirements still apply.
 
   Published conversation dependencies remain separately identified. This is
   installed candidate evidence, not a registry publication proof.
-  `finite-acp-lifecycle.test.ts` also runs the private incident-brief fixture
-  with packed dependencies and a deterministic native peer. It checks two
-  branches, predecessor settlement, one successor and residue, not model
-  quality. Failed handoff fixtures retain bounded phase/dispatch timing with
+  Native lifecycle qualification must use genuine selected clients with packed dependencies.
+  Check two branches, predecessor settlement, one successor and residue independently of model quality.
+  Existing replacement-peer lifecycle cases do not qualify native behavior and require real-boundary replacement.
+
+  Failed handoff fixtures retain bounded phase/dispatch timing with
   their results. Timing is diagnostic evidence, not permission to extend
   execution deadlines.
 
 ### linux-rootless-run tests
 
-- `linux-rootless-run.test.ts` isolates real finite ACP exit, automatic crash
-  fencing and shutdown-grace fencing with a synthetic authenticated peer. Its
-  deliberate payload/launcher SIGSEGV probes retain bounded process-state and
-  fencing evidence, not native-client qualification or crash-origin proof.
+- `linux-rootless-run.test.ts` must verify real finite ACP exit, automatic crash
+  fencing and shutdown-grace fencing through genuine native subprocesses. Its
+  deliberate payload SIGSEGV probe retains bounded process-state and fencing
+  evidence, not native-client qualification or trusted-launcher crash-origin proof.

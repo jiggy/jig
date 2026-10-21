@@ -12,8 +12,10 @@ export const PRIVATE_FILE_LIMITS = Object.freeze({
 })
 export const PRIVATE_CAPTURE_LIMITS = Object.freeze({
   input: PRIVATE_FILE_LIMITS.bytes,
+  'artifact-input': 16 * 1024 * 1024,
   output: 16 * 1024 * 1024,
 })
+export const PRIVATE_READ_INPUT_BYTES = PRIVATE_CAPTURE_LIMITS['artifact-input']
 export type PrivateCapturePurpose = keyof typeof PRIVATE_CAPTURE_LIMITS
 /** Capture/import borrows one bounded buffer, never another complete file tree. */
 export const PRIVATE_CAPTURE_CHUNK_BYTES = 64 * 1024

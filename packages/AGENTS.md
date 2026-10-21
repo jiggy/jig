@@ -12,7 +12,8 @@ semantic display model and renderers, and their qualification inputs.
 - The TypeScript packages are Bun workspaces. Bun generates the ignored root
   `bun.lock` during installation. It is disposable, not maintained by hand or
   committed. Python retains its own packaging.
-- `docs/flow/spec/` and `docs/jig/spec/` own normative contracts.
+- `docs/jig/spec/` owns Jig's normative contracts. FLOW specifications, SDKs,
+  conformance, and independent authoring belong to `jiggy/flow`.
 - Repository scripts and workflows own cross-package release automation.
 
 ## Local Contracts
@@ -22,8 +23,8 @@ semantic display model and renderers, and their qualification inputs.
 - Run `bun install` at the repository root to install all package workspaces.
   Keep Bun's isolated workspace layout. Clean installs regenerate the lock from
   manifests. Do not restore per-workspace Bun locks. Example applications and
-  their Flows are workspace members. Examples pin matching SDK versions so Bun
-  can substitute the local workspaces.
+  their Flows are workspace members. Examples consume exact versioned public
+  FLOW SDK dependencies, not local SDK workspace substitutions.
 
   Application-only method packages may use `workspace:*` for explicit source
   composition.

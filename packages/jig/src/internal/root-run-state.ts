@@ -2,7 +2,7 @@ import { invalid } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonValue, validateJson1 } from '../json.js'
 import type { RunTargetIdentity } from '../project/package-project.js'
 import { normalizeProjectPath } from '../project/paths.js'
-import type { RunHostTerminal } from '../run/session.js'
+import { parseArtifactReferences, type RunHostTerminal } from '../run/session.js'
 import { privateDomainDigest } from './identity.js'
 import {
   normalizePrivateRunFileIdentity,
@@ -316,7 +316,15 @@ export function normalizePrivateRootTerminal(value: unknown): PrivateRootRunTerm
       ['status', 'result', 'diagnostics'],
       'successful root Run terminal',
     )
-    const result = exactRecord(root.result, ['outcome', 'output'], 'root Run result')
+    const hasArtifacts =
+      root.result !== null &&
+      typeof root.result === 'object' &&
+      Object.hasOwn(root.result, 'artifacts')
+    const result = exactRecord(
+      root.result,
+      ['outcome', 'output', ...(hasArtifacts ? ['artifacts'] : [])],
+      'root Run result',
+    )
     if (typeof result.outcome !== 'string' || result.outcome.length === 0)
       throw new TypeError('root Run outcome is invalid')
     return Object.freeze({
@@ -324,6 +332,9 @@ export function normalizePrivateRootTerminal(value: unknown): PrivateRootRunTerm
       result: Object.freeze({
         outcome: result.outcome,
         output: decodeJson1(canonicalJson(result.output as JsonValue)),
+        ...(hasArtifacts
+          ? { artifacts: parseArtifactReferences(result.artifacts as JsonValue) }
+          : {}),
       }),
       diagnostics: normalizeDiagnostics(root.diagnostics),
     })

@@ -1,20 +1,18 @@
-const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
-
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, open, rm, symlink, writeFile } from 'node:fs/promises'
+import { link, mkdir, mkdtemp, open, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { capturePrivateOutput } from '../../src/internal/captured-output.js'
 import { codexStartupFeatures } from '../../src/internal/codex-agent-launcher.js'
 import {
   collectPrivateCodexSession,
+  PRIVATE_CODEX_SESSION_BYTES,
   PrivateNativeHistoryUnavailable,
   parsePrivateNativeSessionRequest,
   privateCodexSessionBootstrap,
   privateCodexSessionSecrets,
   validatePrivateCodexSession,
 } from '../../src/internal/codex-session-state.js'
-import { settleTestCommand } from '.././fixtures/bounded-command.js'
 
 const nativeId = '01a0a189-e9a2-76c3-a8ca-964e885f05e6'
 const rolloutPath = `sessions/2026/09/14/rollout-2026-09-14T20-09-25-${nativeId}.jsonl`
@@ -90,16 +88,39 @@ test('immutable history snapshots retain validation after their execution storag
     await rm(root, { recursive: true, force: true })
   }
 })
-test('only known collected-file profile violations become optional retention loss', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-history-error-evidence-'))
-  const child = Bun.spawn(
-    [process.execPath, new URL('./fixtures/native-history-errors.ts', suiteTestUrl).pathname],
-    { stdout: 'pipe', stderr: 'pipe' },
-  )
-  const result = await settleTestCommand(child, { evidence: join(root, 'classification') })
-  expect(result.code, result.stderr).toBe(0)
-  expect(result.stdout.trim()).toBe('native history error classification passed')
-})
+for (const violation of ['oversized', 'hardlinked'] as const) {
+  test(`actual ${violation} rollout becomes unsupported history`, async () => {
+    const root = await mkdtemp(join(tmpdir(), 'jig-history-profile-'))
+    const outputPath = join(root, 'output')
+    await mkdir(dirname(join(outputPath, rolloutPath)), { recursive: true })
+    const output = await open(outputPath, 'r')
+    try {
+      const path = join(outputPath, rolloutPath)
+      await writeFile(path, state().bytes)
+      if (violation === 'oversized') {
+        const rollout = await open(path, 'r+')
+        try {
+          await rollout.truncate(PRIVATE_CODEX_SESSION_BYTES + 1)
+        } finally {
+          await rollout.close()
+        }
+      } else {
+        await link(path, join(root, 'outside-output-alias'))
+      }
+      expect(() => collectPrivateCodexSession(output, nativeId, [])).toThrow(
+        PrivateNativeHistoryUnavailable,
+      )
+      try {
+        collectPrivateCodexSession(output, nativeId, [])
+      } catch (error) {
+        expect(error).toMatchObject({ reason: 'unsupported-history' })
+      }
+    } finally {
+      await output.close()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+}
 test('expected missing history has a reason; descriptor failures remain errors', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-history-empty-'))
   const output = await open(root, 'r')

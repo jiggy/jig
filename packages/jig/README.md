@@ -109,6 +109,35 @@ A Binding can pin a declared read attachment with
 `attachments: { reference: './resources/reference' }`. Review captures and
 identifies its files; Runs use those approved bytes without repeating `--attach`
 or exposing the live source directory. See [working with files](https://jig.md/guide/files).
+Child routes can combine fixed reads with `{ create: true }` writable mappings
+or `{ supplied: 'read' }` held-artifact inputs. Each call owns fresh output;
+`FLOW.contract.json` declares allowed forwarded `artifactResults` names
+separately from ordinary domain results.
+
+Applications can execute through `@jigging/jig/client`, separately from the
+inert authoring import. Its seven installed-host operations are `inspect`,
+`prepare`, `submit`, `lookup`, `cancel`, `result` and `export`. Prepare captures
+immutable input without dispatch; durable applications persist the returned
+ticket and canonical request in their own task transaction before submit.
+`run(request)` is a one-shot helper; `run(request, { persist })` awaits that
+transaction callback before launch. An accepted receipt binds the original
+target and approval. Duplicate observers never take over or cancel its owner.
+Read [application execution](https://jig.md/spec/execution-client) for complete
+typed examples, conservative dispatch observations and recovery without replay.
+
+Export uses retained final bytes or the latest accepted checkpoint without
+rerunning work. Checkpoints need no writable root attachment or output
+destination; after confirmed cleanup, checkpoint export preserves the original
+failed/lost status. Native root writable files stay flat under packet `files/`;
+forwarded snapshots use `files/<result-name>/`. Explicit final-name export
+selects that snapshot without its name prefix.
+
+Live artifacts have a 256 MiB aggregate budget. Durable requests separately
+select retained artifact allowance up to 256 MiB for final and latest checkpoint
+bytes, within a shared 4 GiB attempt store. Review's Package/0 archive has its
+own 1 GiB project cap. Reserved capacity is logical accounting, not a physical
+filesystem free-space or `ENOSPC` guarantee. Missing history is never proof
+that work did not run.
 
 For service access, `slots: { reference: 'grant:documents' }` selects an independently
 configured operator grant. Jig enforces its exact endpoint, method, credential
@@ -132,7 +161,9 @@ files are captured when invoked. Targets with file outputs receive a fresh
 temporary packet when output is omitted; Jig reports its path. Packets survive
 command exit, but the operating system may clear temporary storage. Use `--out DIR`
 to keep a packet in a chosen location; existing destinations are never replaced.
-Targets without file outputs return their result on stdout unless output is selected.
+Targets with neither a writable attachment nor declared `artifactResults`
+return their result on stdout unless output is selected. Either declaration
+makes a target packet-eligible, even when a handler forwards no artifacts.
 A target-only string is valid too. See [project entrypoints](https://jig.md/guide/configuration#project-entrypoint).
 
 `inspect` lists approved targets or shows a target's retained interface without

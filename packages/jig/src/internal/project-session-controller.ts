@@ -78,6 +78,8 @@ import {
 } from './package-artifact-store.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import { privateProfileInstant, privateProfileSpan } from './private-profile.js'
+import { normalizePrivateRetainedProjectEvaluation } from './project-evaluation-retention.js'
+import { reviewPrivateProjectEvaluation } from './project-evaluation-review.js'
 import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import type { PrivateProjectPlanReview } from './project-plan-review.js'
 import { renderPrivateProjectPlanReview } from './project-plan-review.js'
@@ -408,6 +410,36 @@ function createSession(
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
             ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
+            reviewEvaluation: async (grant, captured) => {
+              budget.reserve(captured.digest, `${grant.recipe}/package.json`)
+              const reviewed = await reviewPrivateProjectEvaluation({
+                grant,
+                captured,
+                installedSupport: host.installedBunSupport,
+                backend: host.backend,
+                projectRoot: owner.root.requestedPath,
+                coordinator: owner.coordinator,
+                deadlineUnixMs: budget.deadlineUnixMs,
+                signal: budget.signal,
+              })
+              try {
+                budget.retain(
+                  reviewed.prepared.files,
+                  grant.recipe,
+                  Buffer.byteLength(JSON.stringify(reviewed.layout)),
+                )
+                return normalizePrivateRetainedProjectEvaluation({
+                  recipe: await publishCapturedPackage(packageStoreRoot, captured),
+                  dependencies: await publishCapturedPackage(packageStoreRoot, reviewed.prepared),
+                  layout: reviewed.layout,
+                  recipeDigest: reviewed.recipeDigest,
+                  dependencyDigest: reviewed.dependencyDigest,
+                  configuration: { recipe: reviewed.recipe, compiler: reviewed.compiler },
+                })
+              } finally {
+                await reviewed.prepared.dispose()
+              }
+            },
             dependencyFlows: (selectors) =>
               captureDependencyFlows({
                 root: owner.root,
@@ -1198,7 +1230,6 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'PACKAGE_SYMLINK',
       'PROJECT_FLOW_COLLISION',
       'PROJECT_FLOW_MODE_UNSUPPORTED',
-      'PROJECT_CHECKPOINT_ATTACHMENT',
       'PROJECT_AGENT_OVERRIDE_MODEL',
       'PROJECT_AGENT_OVERRIDE_RETENTION',
       'PROJECT_AGENT_OVERRIDE_UNUSED',

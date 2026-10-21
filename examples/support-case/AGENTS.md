@@ -18,7 +18,7 @@ eligibility and customer-facing claims.
   ordinary Agent implementation through `jig.ts`'s contract-keyed default. The
   explicit client is editable operator configuration, not a Jig default.
 - `fixtures/` contains synthetic account records and customer requests.
-- `test/` owns deterministic application checks. The public walkthrough belongs
+- `test/` owns pure policy and view checks. The public walkthrough belongs
   in `docs/jig/guide/support-case.md`.
 
 - `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
@@ -73,9 +73,11 @@ eligibility and customer-facing claims.
 
 ## Verification
 
-- `bun test examples/support-case/test` checks policy and execution decisions.
+- `bun test examples/support-case/test` checks pure policy and views.
 - The release gate repeats these tests against the freshly packed SDK.
-- Retain admitted installed-run evidence separately from Agent-substitute tests.
+- `bun test packages/jig/test/host/installed-support-case.test.ts` checks ordinary
+  installed composition with a deterministic assessment task. Native qualification,
+  live Agent judgment and untested fault windows remain separate.
 
 ## Child DOX Index
 

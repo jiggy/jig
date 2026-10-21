@@ -9,6 +9,7 @@ All selected domain requirements still apply.
 
 | Work | Required details |
 | --- | --- |
+| Application client or machine request framing | [Installed-host client](#installed-host-client) |
 | Discovery, completion, or caller creation | [CLI discovery](#src-cli-discovery) |
 | Grammar, acquisition, or review readiness | [Command grammar and review](#command-grammar-and-review) |
 | Inspect approved targets | [Approved target inspection](#approved-target-inspection) |
@@ -17,6 +18,30 @@ All selected domain requirements still apply.
 | Verify observable output | [Verification](#verification), [acceptance checks](#acceptance-checks) |
 
 ## Local Contracts
+
+### Installed-host client
+
+- `src/client.ts` and pure `src/attempt-contract.ts` own the separate
+  installed-host application client.
+  Private `src/attempt-request-identity.ts` shares canonical request hashing with the store without importing host machinery.
+  Importing the client starts no process and grants no authority.
+  It uses the installed machine boundary, never embedded native internals or private-state reads.
+
+  `src/cli-attempt-io.ts` bounds machine requests without consuming the owning submit connection.
+  Request completion differs from client closure. Duplicate observers never inherit cancellation ownership.
+  Keep execution, retained-byte availability, export and retirement facts distinct in machine and human output.
+
+  Serialize each request once and validate the exact transmitted JSON snapshot.
+  The request byte limit includes its terminating LF.
+  Bind prepared replies and acceptance receipts to that snapshot before exposing acceptance.
+  Validate lifecycle consistency and retained-output digests, not only reply field shapes.
+  Export replies retain the selected source and destination. Final artifact availability repeats its receipt exactly.
+
+  Observational machine commands may reacquire a read-only snapshot only after
+  typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command
+  allowance and preserve caller cancellation, without renewing either deadline.
+  Corruption, unrelated I/O and aggregate cleanup failures remain fatal.
+  Never apply this waiting policy to prepare, submit, cancel or export.
 
 ### src cli-discovery
 
@@ -38,6 +63,10 @@ All selected domain requirements still apply.
   leads with complete changed policy. `--details` includes unchanged policy. Run
   stdout is readable on terminals. Redirection or `--json` selects exact
   JSON/NDJSON. Elapsed status uses terminal stderr only.
+
+  An unreviewed ordinary Run reports `ADMISSION_MISSING`, not a changed approval.
+  A supplied approval pin keeps its separate stale-selection checks.
+  Never imply earlier consent when no revision was approved.
 
   Cancellation requested and cleanup confirmed are separate facts. Acquisition
   reports Jig runtime verification, operator resource configuration, and
@@ -117,6 +146,10 @@ All selected domain requirements still apply.
   Launcher failures follow the same structure. Never introduce a separate raw
   diagnostic style or route machine output through styling. Shell completion
   must work with macOS's system Bash 3.2 without installing another shell.
+
+  Authenticated Linux startup refusals are explained once by their outer owner.
+  Sandbox guidance names absolute `JIG_BWRAP_PATH` selection when ordinary host
+  locations do not contain Bubblewrap, without guessing which prerequisite failed.
   Collect replies with portable array/read operations. Major terminal sections
   need visible boundaries. Secondary metadata uses gray while consent, policy
   values, and recovery actions remain prominent.
@@ -226,8 +259,15 @@ All selected domain requirements still apply.
   for full output and checkpoint evidence, and show the nonzero delivered file
   count. Omit null checkpoints from human results.
 
-  Uncertain delivery keeps evidence visible. Input errors name the approved
-  schema without guessing source freshness. Emit the dependency network notice
+  Uncertain delivery keeps evidence visible. INVALID_INPUT alone does not prove
+  a root input-schema or channel fault. Direct operators to inspect approved
+  input and channel declarations, check --input and connect required outputs
+  with --receive.
+
+  Closed type facts remain reported constraints, not proof of
+  root-schema provenance. Never classify from message text or expose private
+  diagnostic paths. Do not infer source freshness, no effects, or safe retries.
+  Emit the dependency network notice
   once per review before preparation, retaining package progress.
 
 ## Verification
@@ -262,9 +302,9 @@ Unknown execution or failed project closure retains original source-exit
 recovery. Local closure uses only the existing presentation end.
 
 Preserve the first finalization promise, its deadline and failure, known
-execution/delivery and the primary error. `cli-delivery-retirement.test.ts`
-checks these choices with controlled host and transport faults. It does not
-qualify native retirement. Initiate forced native connection cancellation before
+execution/delivery and the primary error. Installed lifecycle suites must exercise
+actual delivery and interruption. Pure policy checks do not qualify authenticated
+retirement or native cleanup. Initiate forced native connection cancellation before
 discarding response queues and join it after disposing subscriptions and
 buffers. Blocked-stream expiry retains admission until abort/cancel
 acknowledgement. Closing inspection releases preview waiters.
@@ -332,8 +372,10 @@ belong to their package suites. See their owning `AGENTS.md` files. Jig's
 `test/portable/cli-web*.test.ts` and installed tests retain host admission,
 attribution, receipt, transport, lifetime, terminal restoration, JSON and
 immutable-capture proof. Frozen standalone package consumers and frozen
-installed Jig runs are distinct gates. Source mocks and design approval qualify
-neither installed behavior nor newcomer usability.
+installed Jig runs are distinct gates.
+
+Never use source mocks or private replacement evidence.
+Design approval qualifies neither installed behavior nor newcomer usability.
 `test/portable/cli-review-agent-setup.test.ts` and
 `test/portable/project-resource-qualification.test.ts` check bounded read-only
 setup facts, shared recipients, preserved policy, honest captured locations and
@@ -349,6 +391,9 @@ all evidence recorded, never reconstruct live views or authority, and preserve
 exact decoded JSON. Qualify partial file capture, framing/byte/path limits, link
 refusal, interruption, buffer release and output failure independently of
 recorded execution status.
+
+Both source and installed record writers await bounded output completion.
+An unwritable output descriptor cannot produce a successful inspection exit.
 
 ### Acceptance checks
 

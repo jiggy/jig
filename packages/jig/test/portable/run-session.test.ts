@@ -1,1506 +1,337 @@
 import { describe, expect, test } from 'bun:test'
-import type {
-  PrivateExecutionExit,
-  PrivateExecutionProcess,
-} from '../../src/internal/execution-process.js'
-import {
-  canonicalJson,
-  decodeJson1,
-  JSON_1_LIMITS,
-  type JsonObject,
-  type JsonValue,
-} from '../../src/json.js'
-import { ChannelBroker, type ChannelGrant, ChannelOperationError } from '../../src/run/channels.js'
-import {
-  type RunHostCall,
-  RunHostFatalOperationError,
-  type RunHostInvocation,
-  type RunHostOperationDispatcher,
-  type RunHostOperationTerminal,
-  RunHostSession,
-} from '../../src/run/session.js'
+import type { PrivateExecutionProcess } from '../../src/internal/execution-process.js'
+import { ChannelBroker } from '../../src/run/channels.js'
+import { type RunHostInvocation, RunHostSession } from '../../src/run/session.js'
+import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
-const encoder = new TextEncoder()
-function invocation(deadlineUnixMs = Date.now() + 10_000): RunHostInvocation {
+// Reaping these finite, descendant-free peers is NOT native fencing evidence.
+function launch(mode: string) {
+  const child = Bun.spawn(
+    [
+      installedBunLocation.executablePath,
+      `${import.meta.dir}/../run-session-peer.fixture.ts`,
+      mode,
+    ],
+    { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
+  )
+  const observed: Uint8Array[] = []
+  let expired = false
+  const watchdog = setTimeout(() => {
+    expired = true
+    child.kill('SIGKILL')
+  }, 4_000)
+  const completion = child.exited.then((exitCode) => {
+    clearTimeout(watchdog)
+    return { exitCode, signal: child.signalCode, fenced: false }
+  })
+  const process: PrivateExecutionProcess = {
+    stdout: (async function* () {
+      for await (const chunk of child.stdout) {
+        observed.push(chunk.slice())
+        yield chunk
+      }
+    })(),
+    stderr: child.stderr,
+    completion,
+    async write(bytes) {
+      child.stdin.write(bytes)
+      await child.stdin.flush()
+    },
+    async closeInput() {
+      await child.stdin.end()
+    },
+    async terminate() {
+      child.kill('SIGKILL')
+      await child.exited
+    },
+  }
   return {
-    input: {},
-    settings: {},
-    attachments: {},
-    scratch: '/scratch',
-    deadlineUnixMs,
+    process,
+    child,
+    async dispose() {
+      if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL')
+      await child.exited
+      clearTimeout(watchdog)
+      expect(expired).toBe(false)
+    },
+    frames() {
+      const text = Buffer.concat(observed).toString('utf8').trim()
+      return text === '' ? [] : text.split('\n').map((line) => JSON.parse(line))
+    },
   }
 }
-function request(id: string, method: string, params: JsonObject): JsonObject {
-  return { jsonrpc: '2.0', id, method, params }
+function invocation(deadlineUnixMs = Date.now() + 2_000): RunHostInvocation {
+  return { input: {}, settings: {}, attachments: {}, scratch: '/scratch', deadlineUnixMs }
 }
-function result(output: JsonValue): JsonObject {
-  return { jsonrpc: '2.0', id: 'host:1', result: { outcome: 'done', output } }
+const unfenced = {
+  status: 'failed',
+  code: 'EXECUTION_FAILED',
+  message: 'component cleanup or fencing failed',
 }
-function operationCode(value: JsonValue): string {
-  const error = (value as JsonObject).error as JsonObject
-  const data = error.data as JsonObject
-  return data.code as string
-}
-function rpcCode(value: JsonValue): number {
-  return ((value as JsonObject).error as JsonObject).code as number
-}
-class FakeProcess implements PrivateExecutionProcess {
-  readonly stdout = new BytePipe()
-  readonly stderr = new BytePipe()
-  readonly completion: Promise<PrivateExecutionExit>
-  private readonly host = new ValuePipe()
-  private readonly complete: (exit: PrivateExecutionExit) => void
-  private readonly rejectCompletion: (error: unknown) => void
-  private blocked?: Promise<void>
-  private release?: () => void
-  private writes = 0
-  private finished = false
-  private nextWriteFailure?: unknown
-
-  constructor(
-    private readonly blockAfter = Number.POSITIVE_INFINITY,
-    private readonly holdAfterDeliveryAt = Number.POSITIVE_INFINITY,
-  ) {
-    let complete!: (exit: PrivateExecutionExit) => void
-    let rejectCompletion!: (error: unknown) => void
-    this.completion = new Promise((resolve, reject) => {
-      complete = resolve
-      rejectCompletion = reject
-    })
-    this.complete = complete
-    this.rejectCompletion = rejectCompletion
-  }
-
-  async write(bytes: Uint8Array): Promise<void> {
-    if (this.finished) throw new Error('process already exited')
-    if (this.nextWriteFailure !== undefined) {
-      const failure = this.nextWriteFailure
-      this.nextWriteFailure = undefined
-      throw failure
-    }
-    if (this.writes >= this.blockAfter) {
-      this.blocked ??= new Promise<void>((resolve) => {
-        this.release = resolve
-      })
-      await this.blocked
-    }
-    this.writes += 1
-    if (bytes.at(-1) !== 0x0a) throw new Error('host write is not framed')
-    this.host.push(decodeJson1(bytes.subarray(0, -1)))
-    if (this.writes === this.holdAfterDeliveryAt) {
-      this.blocked ??= new Promise<void>((resolve) => {
-        this.release = resolve
-      })
-      await this.blocked
-    }
-  }
-
-  async closeInput(): Promise<void> {}
-
-  async terminate(): Promise<void> {
-    this.finish(null, 'SIGKILL')
-  }
-
-  async nextHost(): Promise<JsonValue> {
-    return await this.host.next()
-  }
-
-  releaseWrites(): void {
-    this.release?.()
-    this.release = undefined
-  }
-
-  failNextWrite(error: unknown): void {
-    this.nextWriteFailure = error
-  }
-
-  emit(value: JsonValue): void {
-    const bytes = canonicalJson(value)
-    const frame = new Uint8Array(bytes.byteLength + 1)
-    frame.set(bytes)
-    frame[bytes.byteLength] = 0x0a
-    this.stdout.push(frame)
-  }
-
-  emitTogether(...values: JsonValue[]): void {
-    const frames = values.map((value) => {
-      const bytes = canonicalJson(value)
-      const frame = new Uint8Array(bytes.byteLength + 1)
-      frame.set(bytes)
-      frame[bytes.byteLength] = 0x0a
-      return frame
-    })
-    const joined = new Uint8Array(frames.reduce((sum, frame) => sum + frame.byteLength, 0))
-    let offset = 0
-    for (const frame of frames) {
-      joined.set(frame, offset)
-      offset += frame.byteLength
-    }
-    this.stdout.push(joined)
-  }
-
-  emitRaw(bytes: Uint8Array): void {
-    this.stdout.push(bytes)
-  }
-
-  diagnose(bytes: Uint8Array): void {
-    this.stderr.push(bytes)
-  }
-
-  closeStdout(): void {
-    this.stdout.end()
-  }
-
-  failCompletion(error: unknown): void {
-    if (this.finished) return
-    this.finished = true
-    this.releaseWrites()
-    this.stdout.end()
-    this.stderr.end()
-    this.rejectCompletion(error)
-  }
-
-  finish(
-    exitCode: number | null,
-    signal: string | null = null,
-    stopReason?: PrivateExecutionExit['stopReason'],
-  ): void {
-    if (this.finished) return
-    this.finished = true
-    this.releaseWrites()
-    this.stdout.end()
-    this.stderr.end()
-    this.complete({
-      exitCode,
-      signal,
-      fenced: true,
-      ...(stopReason === undefined ? {} : { stopReason }),
-    })
-  }
-}
-class BytePipe implements AsyncIterable<Uint8Array> {
-  private readonly values: Uint8Array[] = []
-  private readonly waiters: Array<(value: IteratorResult<Uint8Array>) => void> = []
-  private ended = false
-
-  push(value: Uint8Array): void {
-    const waiter = this.waiters.shift()
-    if (waiter !== undefined) waiter({ done: false, value })
-    else this.values.push(value)
-  }
-
-  end(): void {
-    this.ended = true
-    for (const waiter of this.waiters.splice(0)) waiter({ done: true, value: undefined })
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<Uint8Array> {
+async function exchange(mode: string, input = invocation(), limits = {}) {
+  const peer = launch(mode)
+  try {
+    const terminal = await new RunHostSession(peer.process, input, {
+      cancellationGraceMs: 40,
+      ...limits,
+    }).run()
     return {
-      next: async () => {
-        const value = this.values.shift()
-        if (value !== undefined) return { done: false, value }
-        if (this.ended) return { done: true, value: undefined }
-        return await new Promise<IteratorResult<Uint8Array>>((resolve) =>
-          this.waiters.push(resolve),
-        )
-      },
+      terminal,
+      frames: peer.frames(),
+      exitCode: peer.child.exitCode,
+      signal: peer.child.signalCode,
     }
+  } finally {
+    await peer.dispose()
   }
 }
-class ValuePipe {
-  private readonly values: JsonValue[] = []
-  private readonly waiters: Array<(value: JsonValue) => void> = []
-
-  push(value: JsonValue): void {
-    const waiter = this.waiters.shift()
-    if (waiter !== undefined) waiter(value)
-    else this.values.push(value)
-  }
-
-  async next(): Promise<JsonValue> {
-    const value = this.values.shift()
-    if (value !== undefined) return value
-    return await Promise.race([
-      new Promise<JsonValue>((resolve) => this.waiters.push(resolve)),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('host write timeout')), 1_000),
-      ),
+describe('RunHostSession with actual bounded protocol subprocesses', () => {
+  test('SDK root result and diagnostics do not confer native fencing', async () => {
+    const run = await exchange('sdk')
+    expect(run.exitCode).toBe(0)
+    expect(run.signal).toBeNull()
+    expect(run.frames).toEqual([
+      { jsonrpc: '2.0', id: 'host:1', result: { outcome: 'done', output: { greeting: 'hello' } } },
     ])
-  }
-}
-async function tick(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 10))
-}
-function deferred<T>(): {
-  readonly promise: Promise<T>
-  readonly resolve: (value: T) => void
-} {
-  let resolve!: (value: T) => void
-  const promise = new Promise<T>((settle) => {
-    resolve = settle
-  })
-  return { promise, resolve }
-}
-
-describe('private RunHostSession', () => {
-  test('a confirmed crash explains pre-terminal EOF without fabricating its original signal', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    process.closeStdout()
-    process.finish(null, 'SIGKILL', 'core_dump')
-    expect(await running).toMatchObject({
-      status: 'failed',
-      code: 'EXECUTION_FAILED',
-      message: 'owned execution crashed and was fenced during core dumping',
+    expect(run.terminal).toMatchObject({
+      ...unfenced,
+      diagnostics: { stderr: 'ordinary diagnostic\n', stderrTruncated: false },
     })
   })
-  test('a valid result and zero launcher exit cannot conceal an owned descendant crash', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    process.emit(result({ claimed: 'done' }))
-    process.finish(0, null, 'core_dump')
-    expect(await running).toMatchObject({
-      status: 'failed',
-      code: 'EXECUTION_FAILED',
-      message: 'owned execution crashed and was fenced during core dumping',
-    })
+  test('SDK full-duplex calls catch real absent-dispatch UNAVAILABLE replies', async () => {
+    const run = await exchange('sdk-calls')
+    expect(run.exitCode).toBe(0)
+    expect(run.frames.filter((frame) => frame.method === 'flow/call')).toHaveLength(2)
+    expect(run.frames.at(-1).result.output).toEqual(['UNAVAILABLE', 'UNAVAILABLE'])
+    expect(run.terminal).toMatchObject(unfenced)
   })
-  test('a caught reply cannot conceal trusted unfinished cleanup or seal a clean interval', async () => {
-    const process = new FakeProcess()
-    const broker = new ChannelBroker()
-    const command = broker.participant('command')
-    const root = broker.participant('root')
-    const pair = await command.create()
-    const grants = command.transfer(
-      root,
-      { output: pair.send.endpoint },
-      { output: { direction: 'send' } },
-    )
-    const running = new RunHostSession(
-      process,
-      { ...invocation(), channels: grants },
-      {},
-      {
-        channels: root,
-        call: async () => {
-          throw new RunHostFatalOperationError('UNCERTAIN')
-        },
-      },
-    ).run()
-    await process.nextHost()
-    process.emit(
-      request('component:failure', 'flow/call', {
-        operationId: 'broken',
-        slot: 'child',
-        input: null,
-      }),
-    )
-    expect(operationCode(await process.nextHost())).toBe('UNCERTAIN')
-    process.emit(result({ claimed: 'recovered' }))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'failed', code: 'UNCERTAIN' })
-    await expect(command.next(pair.receive.endpoint)).rejects.toMatchObject({
-      code: 'UNCERTAIN',
-    })
-  })
-  test('admitted package result validation happens before implicit writer sealing', async () => {
-    const process = new FakeProcess()
-    const broker = new ChannelBroker()
-    const command = broker.participant('command')
-    const root = broker.participant('root')
-    const pair = await command.create()
-    const grants = command.transfer(
-      root,
-      { output: pair.send.endpoint },
-      { output: { direction: 'send' } },
-    )
-    const running = new RunHostSession(
-      process,
-      { ...invocation(), channels: grants },
-      {},
-      {
-        channels: root,
-        validateResult: () => {
-          throw new ChannelOperationError(
-            'INVALID_RESULT',
-            'declared result schema rejected output',
-          )
-        },
-      },
-    ).run()
-    await process.nextHost()
-    process.emit(result('wrong type'))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'failed', code: 'INVALID_RESULT' })
-    await expect(command.next(pair.receive.endpoint)).rejects.toMatchObject({
-      code: 'OWNER_CLOSED',
-    })
-  })
-  test('root cancellation revokes sealed command-owned outputs before receiver EOF commitment', async () => {
-    const process = new FakeProcess()
-    const broker = new ChannelBroker()
-    const command = broker.participant('command')
-    const root = broker.participant('root')
-    const pair = await command.create()
-    const grants = command.transfer(
-      root,
-      { output: pair.send.endpoint },
-      { output: { direction: 'send' } },
-    )
-    const controller = new AbortController()
-    const running = new RunHostSession(
-      process,
-      { ...invocation(), channels: grants, signal: controller.signal },
-      { cancellationGraceMs: 1 },
-      {
-        channels: root,
-        onCancellation: (code) => broker.abort(code),
-      },
-    ).run()
-    await process.nextHost()
-    root.close(pair.send.endpoint)
-    controller.abort()
-    await expect(command.next(pair.receive.endpoint)).rejects.toMatchObject({ code: 'CANCELLED' })
-    expect(await running).toMatchObject({ status: 'failed', code: 'CANCELLED' })
-  })
-  for (const [suiteCaseIndex, suiteCaseValue] of (['direct', 'broadcast'] as const).entries()) {
-    test(
-      'serves %s channel requests while an Agent operation remains active and joins without moving twice' +
-        ` (case ${suiteCaseIndex + 1})`,
-      () =>
-        Reflect.apply(
-          async (delivery) => {
-            const process = new FakeProcess()
-            const broker = new ChannelBroker()
-            const root = broker.participant('root')
-            const provider = broker.participant('agent')
-            const finishAgent = deferred<void>()
-            let dispatches = 0
-            const running = new RunHostSession(
-              process,
-              invocation(),
-              {},
-              {
-                channels: root,
-                call: async (call) => {
-                  dispatches++
-                  const grants = root.transfer(provider, call.channels!, {
-                    events: { direction: 'send' },
-                  })
-                  await provider.send(grants.events!.endpoint, { text: 'live' })
-                  await finishAgent.promise
-                  provider.finalize(true)
-                  return {
-                    status: 'succeeded',
-                    result: { outcome: 'done', output: 'actual result' },
-                  }
-                },
-              },
-            ).run()
-            await process.nextHost()
-            process.emit(request('component:create', 'channel/create', { delivery }))
-            const created = ((await process.nextHost()) as JsonObject).result as unknown as {
-              send: ChannelGrant
-              receive: ChannelGrant
-              source?: string
-            }
-            if (delivery === 'broadcast') {
-              process.emit(
-                request('component:subscribe', 'channel/subscribe', { source: created.source! }),
-              )
-              created.receive = ((await process.nextHost()) as JsonObject)
-                .result as unknown as ChannelGrant
-              expect(created.receive).toMatchObject({ delivery: 'broadcast', startSequence: 1 })
-            }
-            const call = {
-              operationId: 'agent:1',
-              slot: 'agent',
-              input: {},
-              channels: { events: created.send.endpoint },
-            }
-            process.emit(request('component:agent', 'flow/call', call))
-            process.emit(request('component:join', 'flow/call', call))
-            process.emit(
-              request('component:next', 'channel/next', { endpoint: created.receive.endpoint }),
-            )
-            expect(await process.nextHost()).toMatchObject({
-              id: 'component:next',
-              result: { item: { sequence: 1, value: { text: 'live' } } },
-            })
-            expect(dispatches).toBe(1)
-            finishAgent.resolve()
-            const terminals = [await process.nextHost(), await process.nextHost()]
-            expect(terminals).toEqual(
-              expect.arrayContaining([
-                expect.objectContaining({
-                  id: 'component:agent',
-                  result: { outcome: 'done', output: 'actual result' },
-                }),
-                expect.objectContaining({
-                  id: 'component:join',
-                  result: { outcome: 'done', output: 'actual result' },
-                }),
-              ]),
-            )
-            process.emit(
-              request('component:end', 'channel/next', { endpoint: created.receive.endpoint }),
-            )
-            expect(await process.nextHost()).toMatchObject({ result: { end: { lastSequence: 1 } } })
-            process.emit(result(null))
-            process.finish(0)
-            expect(await running).toMatchObject({ status: 'succeeded' })
+  for (const delivery of ['direct', 'broadcast'] as const) {
+    test(`actual SDK ${delivery} channels use the production broker over stdio`, async () => {
+      const peer = launch(`sdk-channel-${delivery}`)
+      const broker = new ChannelBroker()
+      const root = broker.participant('root')
+      try {
+        const terminal = await new RunHostSession(
+          peer.process,
+          invocation(),
+          {},
+          {
+            channels: root,
           },
-          undefined,
-          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-        ),
-    )
-  }
-  test('receiver cancellation settles disposal without cancelling a simultaneous Agent call', async () => {
-    const process = new FakeProcess()
-    const broker = new ChannelBroker()
-    const root = broker.participant('root')
-    const pair = await root.create()
-    const finishAgent = deferred<void>()
-    let agentCancelled = false
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        channels: root,
-        call: async (_call, signal) => {
-          signal.addEventListener('abort', () => {
-            agentCancelled = true
-          })
-          await finishAgent.promise
-          return { status: 'succeeded', result: { outcome: 'done', output: null } }
-        },
-      },
-    ).run()
-    await process.nextHost()
-    process.emit(
-      request('component:agent', 'flow/call', {
-        operationId: 'agent',
-        slot: 'agent',
-        input: null,
-      }),
-    )
-    process.emit(request('component:read', 'channel/next', { endpoint: pair.receive.endpoint }))
-    process.emit({
-      jsonrpc: '2.0',
-      method: 'request/cancel',
-      params: { requestId: 'component:read' },
-    })
-    expect(await process.nextHost()).toMatchObject({
-      id: 'component:read',
-      error: { data: { code: 'CANCELLED' } },
-    })
-    process.emit(
-      request('component:release', 'channel/release', { endpoint: pair.receive.endpoint }),
-    )
-    expect(await process.nextHost()).toMatchObject({ result: { status: 'released' } })
-    expect(agentCancelled).toBe(false)
-    finishAgent.resolve()
-    await process.nextHost()
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('host finalization rejects a retained active receiver before implicitly sealing an output', async () => {
-    const process = new FakeProcess()
-    const broker = new ChannelBroker()
-    const root = broker.participant('root')
-    const external = broker.participant('external')
-    const output = await root.create()
-    const abandoned = await root.create()
-    root.transfer(
-      external,
-      { output: output.receive.endpoint },
-      { output: { direction: 'receive' } },
-    )
-    await root.send(abandoned.send.endpoint, 'unread')
-    const running = new RunHostSession(
-      process,
-      { ...invocation(), channels: { output: output.send } },
-      {},
-      { channels: root },
-    ).run()
-    expect(await process.nextHost()).toMatchObject({
-      params: { channels: { output: output.send } },
-    })
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({
-      status: 'failed',
-      code: 'EXECUTION_FAILED',
-      message: expect.stringContaining('unfinished channel receiver'),
-    })
-    await expect(external.next(output.receive.endpoint)).rejects.toMatchObject({
-      code: 'OWNER_CLOSED',
-    })
-  })
-  test('live Flow diagnostics retain their normal bounded capture and stay off protocol stdout', async () => {
-    const process = new FakeProcess()
-    const diagnostics: Uint8Array[] = []
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      { capturedStderrBytes: 4 },
-      {
-        onDiagnostic: (bytes) => {
-          diagnostics.push(bytes)
-        },
-      },
-    ).run()
-    await process.nextHost()
-    process.diagnose(encoder.encode('visible progress'))
-    await tick()
-    expect(new TextDecoder().decode(diagnostics[0])).toBe('visible progress')
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({
-      status: 'succeeded',
-      diagnostics: { stderr: 'visi', stderrTruncated: true },
-    })
-  })
-  test('does not treat component-supplied flow/run as a child request or host authority', async () => {
-    const process = new FakeProcess()
-    let dispatched = false
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        call: async () => {
-          dispatched = true
-          return {
-            status: 'succeeded',
-            result: { outcome: 'done', output: null },
-          }
-        },
-      },
-    ).run()
-    const hostRequest = await process.nextHost()
-    process.emit({ ...hostRequest, id: 'component:wrong-direction' })
-    expect(await process.nextHost()).toMatchObject({
-      id: 'component:wrong-direction',
-      error: { code: -32601 },
-    })
-    expect(dispatched).toBe(false)
-    process.emit(
-      request('component:child', 'flow/call', {
-        operationId: 'child:1',
-        slot: 'reviewer',
-        input: null,
-      }),
-    )
-    expect(await process.nextHost()).toMatchObject({
-      id: 'component:child',
-      result: { outcome: 'done', output: null },
-    })
-    expect(dispatched).toBe(true)
-    process.emit(result(null))
-    process.finish(0)
-    expect((await running).status).toBe('succeeded')
-  })
-  test('accepts one structurally valid result only after clean exit', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    expect(await process.nextHost()).toMatchObject({ method: 'flow/run', id: 'host:1' })
-
-    process.emit(result({ greeting: 'hello' }))
-    process.finish(0)
-
-    expect(await running).toEqual({
-      status: 'succeeded',
-      result: { outcome: 'done', output: { greeting: 'hello' } },
-      diagnostics: { stderr: '', stderrBytes: 0, stderrTruncated: false },
-    })
-  })
-  test('keeps the channel full-duplex and returns UNAVAILABLE without dispatch', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'research:1',
-        slot: 'research',
-        intent: 'Research this',
-        input: {},
-      }),
-    )
-    process.emit(
-      request('component:2', 'flow/call', {
-        operationId: 'write:1',
-        slot: 'artifacts',
-        input: {},
-      }),
-    )
-
-    expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(result(null))
-    process.finish(0)
-    expect((await running).status).toBe('succeeded')
-  })
-  test('accepts a conforming response before the root write callback settles', async () => {
-    const fast = new FakeProcess(Number.POSITIVE_INFINITY, 1)
-    const running = new RunHostSession(fast, invocation()).run()
-    expect(await fast.nextHost()).toMatchObject({ method: 'flow/run', id: 'host:1' })
-    fast.emit(result('fast'))
-    await tick()
-    fast.releaseWrites()
-    fast.finish(0)
-    expect(await running).toMatchObject({
-      status: 'succeeded',
-      result: { outcome: 'done', output: 'fast' },
-    })
-  })
-  test('classifies a rejected root request write as CHANNEL_LOST', async () => {
-    const process = new FakeProcess()
-    process.failNextWrite(new Error('root request write failed'))
-
-    expect(await new RunHostSession(process, invocation()).run()).toMatchObject({
-      status: 'failed',
-      code: 'CHANNEL_LOST',
-    })
-  })
-  test('classifies a rejected child response write as CHANNEL_LOST', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    process.failNextWrite(new Error('child response write failed'))
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'write-failure:1',
-        slot: 'artifacts',
-        input: null,
-      }),
-    )
-
-    expect(await running).toMatchObject({
-      status: 'failed',
-      code: 'CHANNEL_LOST',
-    })
-  })
-  test('a Flow cannot forge a host-only review refusal', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    process.emit({
-      jsonrpc: '2.0',
-      id: 'host:1',
-      error: {
-        code: -32000,
-        message: 'No Flow started',
-        data: { code: 'REVIEW_REQUIRED' },
-      },
-    })
-    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('does not reopen root admission after a fast terminal response', async () => {
-    const fast = new FakeProcess(Number.POSITIVE_INFINITY, 1)
-    const running = new RunHostSession(fast, invocation()).run()
-    await fast.nextHost()
-    fast.emit(result('fast'))
-    fast.releaseWrites()
-    await tick()
-    fast.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'too-late:1',
-        slot: 'artifacts',
-        input: null,
-      }),
-    )
-
-    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('rejects root completion queued in the same read batch as an unsettled call', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-
-    process.emitTogether(
-      request('component:1', 'flow/call', {
-        operationId: 'same-batch:1',
-        slot: 'artifacts',
-        input: null,
-      }),
-      result('premature'),
-    )
-
-    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('accepts root completion after a response write starts but before it settles', async () => {
-    const process = new FakeProcess(Number.POSITIVE_INFINITY, 2)
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'fast-response:1',
-        slot: 'artifacts',
-        input: null,
-      }),
-    )
-    expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(result('settled'))
-    await tick()
-    process.releaseWrites()
-    process.finish(0)
-
-    expect(await running).toMatchObject({
-      status: 'succeeded',
-      result: { outcome: 'done', output: 'settled' },
-    })
-  })
-  test('replays an identical unavailable operation and rejects a conflicting reuse', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    const first = {
-      operationId: 'same:1',
-      slot: 'artifacts',
-      input: { value: 1 },
-    }
-    process.emit(request('component:1', 'flow/call', first))
-    expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(request('component:2', 'flow/call', first))
-    expect(operationCode(await process.nextHost())).toBe('UNAVAILABLE')
-    process.emit(request('component:3', 'flow/call', { ...first, input: { value: 2 } }))
-    expect(operationCode(await process.nextHost())).toBe('OPERATION_CONFLICT')
-    process.emit(result(null))
-    process.finish(0)
-    expect((await running).status).toBe('succeeded')
-  })
-  test('dispatches one flow operation and joins identical waiters', async () => {
-    const process = new FakeProcess()
-    const decision = deferred<RunHostOperationTerminal>()
-    const calls: RunHostCall[] = []
-    const dispatcher: RunHostOperationDispatcher = {
-      async call(call) {
-        calls.push(call)
-        return await decision.promise
-      },
-    }
-    const running = new RunHostSession(process, invocation(), {}, dispatcher).run()
-    await process.nextHost()
-    const params = {
-      operationId: 'research:1',
-      slot: 'research',
-      intent: 'Research this',
-      input: { subject: 'FLOW' },
-    }
-    process.emit(request('component:1', 'flow/call', params))
-    process.emit(request('component:2', 'flow/call', params))
-    await tick()
-    expect(calls).toEqual([params])
-
-    decision.resolve({
-      status: 'succeeded',
-      result: { outcome: 'done', output: { answer: 42 } },
-    })
-    expect(await process.nextHost()).toMatchObject({ result: { outcome: 'done' } })
-    expect(await process.nextHost()).toMatchObject({ result: { outcome: 'done' } })
-    process.emit(result('parent'))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  for (const [suiteCaseIndex, suiteCaseValue] of (
-    ['undefined-member', 'nonfinite-number', 'cycle'] as const
-  ).entries()) {
-    test(
-      'settles and replays INVALID_RESULT for a dispatcher output containing %s' +
-        ` (case ${suiteCaseIndex + 1})`,
-      () =>
-        Reflect.apply(
-          async (kind) => {
-            const process = new FakeProcess()
-            const output: Record<string, unknown> = {
-              value: kind === 'nonfinite-number' ? Number.POSITIVE_INFINITY : undefined,
-            }
-            if (kind === 'cycle') output.value = output
-            let calls = 0
-            const running = new RunHostSession(
-              process,
-              invocation(),
-              {},
-              {
-                async call() {
-                  calls += 1
-                  return {
-                    status: 'succeeded',
-                    result: { outcome: 'done', output: output as JsonValue },
-                  }
-                },
-              },
-            ).run()
-            await process.nextHost()
-            const params = { operationId: 'invalid:1', slot: 'child', input: null }
-            for (const id of ['component:1', 'component:2']) {
-              process.emit(request(id, 'flow/call', params))
-              expect(operationCode(await process.nextHost())).toBe('INVALID_RESULT')
-            }
-            expect(calls).toBe(1)
-            process.emit(result('recovered'))
-            process.finish(0)
-            expect(await running).toMatchObject({ status: 'succeeded' })
+        ).run()
+        expect(peer.child.exitCode).toBe(0)
+        expect(peer.child.signalCode).toBeNull()
+        const frames = peer.frames()
+        // Run/0 requires the correlated root response to be the final frame.
+        // An unfenced adapter refusal alone cannot distinguish SDK success
+        // from a root error, even when the runtime exits zero.
+        const rootFrames = frames.filter((frame) => frame.id === 'host:1')
+        const last = frames.at(-1)
+        const runCodes = new Set([
+          'CANCELLED',
+          'DEADLINE_EXCEEDED',
+          'OWNER_CLOSED',
+          'OPERATION_CONFLICT',
+          'UNAVAILABLE',
+          'PERMISSION_DENIED',
+          'RESOURCE_EXHAUSTED',
+          'INVALID_INPUT',
+          'INVALID_RESULT',
+          'UNCERTAIN',
+          'EXECUTION_FAILED',
+          'LAGGED',
+          'DISCONNECTED',
+        ])
+        const diagnostic = JSON.stringify({
+          frameCount: frames.length,
+          frames: frames.slice(0, 32).map((frame) => ({
+            rootId: frame.id === 'host:1',
+            kind:
+              frame.method !== undefined
+                ? 'method'
+                : frame.error !== undefined
+                  ? 'error'
+                  : frame.result !== undefined
+                    ? 'result'
+                    : 'other',
+            errorCode: Number.isSafeInteger(frame.error?.code) ? frame.error.code : null,
+            runCode: runCodes.has(frame.error?.data?.code) ? frame.error.data.code : null,
+          })),
+          hostCode: terminal.status === 'failed' ? terminal.code : null,
+          exitCode: peer.child.exitCode,
+          signal: peer.child.signalCode,
+        })
+        expect(
+          {
+            rootCount: rootFrames.length,
+            lastIsRoot: last?.id === 'host:1',
+            lastIsResult: last !== undefined && Object.hasOwn(last, 'result'),
+            lastHasError: last !== undefined && Object.hasOwn(last, 'error'),
           },
-          undefined,
-          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-        ),
-    )
+          diagnostic,
+        ).toEqual({
+          rootCount: 1,
+          lastIsRoot: true,
+          lastIsResult: true,
+          lastHasError: false,
+        })
+        expect(last, diagnostic).toEqual({
+          jsonrpc: '2.0',
+          id: 'host:1',
+          result: { outcome: 'done', output: { text: 'live' } },
+        })
+        expect(terminal).toMatchObject(unfenced)
+      } finally {
+        broker.abort('OWNER_CLOSED')
+        await peer.dispose()
+      }
+    })
   }
-  test('retains a bounded failure when a legal child result cannot fit every response ID', async () => {
-    const process = new FakeProcess()
-    const overhead = canonicalJson(result(['', ''])).byteLength
-    const length = Math.floor((JSON_1_LIMITS.bytes - overhead - 10) / 2)
-    const output = ['a'.repeat(length), 'b'.repeat(length)]
-    expect(canonicalJson(result(output)).byteLength).toBeLessThanOrEqual(JSON_1_LIMITS.bytes)
-    expect(() => canonicalJson({ ...result(output), id: 'c'.repeat(128) })).toThrow()
-    let calls = 0
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call() {
-          calls += 1
-          return { status: 'succeeded', result: { outcome: 'done', output } }
-        },
-      },
-    ).run()
-    await process.nextHost()
-    const params = { operationId: 'large:1', slot: 'child', input: null }
-    for (const id of ['c', 'c'.repeat(128), 'component:replay']) {
-      process.emit(request(id, 'flow/call', params))
-      expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
-    }
-    expect(calls).toBe(1)
-    process.emit(result('recovered'))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  for (const [suiteCaseIndex, suiteCaseValue] of (['succeeded', 'failed'] as const).entries()) {
-    test('snapshots %s dispatcher values before replay' + ` (case ${suiteCaseIndex + 1})`, () =>
-      Reflect.apply(
-        async (status) => {
-          const process = new FakeProcess()
-          const value = { original: true }
-          let calls = 0
-          const running = new RunHostSession(
-            process,
-            invocation(),
-            {},
-            {
-              async call() {
-                calls += 1
-                return status === 'succeeded'
-                  ? { status, result: { outcome: 'done', output: value } }
-                  : { status, code: 'INVALID_INPUT', message: 'rejected', details: value }
-              },
-            },
-          ).run()
-          await process.nextHost()
-          const params = { operationId: 'snapshot:1', slot: 'child', input: null }
-          process.emit(request('component:1', 'flow/call', params))
-          const first = (await process.nextHost()) as JsonObject
-          value.original = false
-          process.emit(request('component:2', 'flow/call', params))
-          expect(await process.nextHost()).toEqual({ ...first, id: 'component:2' })
-          expect(calls).toBe(1)
-          process.emit(result(null))
-          process.finish(0)
-          expect(await running).toMatchObject({ status: 'succeeded' })
-        },
-        undefined,
-        Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-      ),
-    )
-  }
-  test('accepts 256 call channel references and rejects the 257th as invalid params', async () => {
-    const process = new FakeProcess()
-    const calls: RunHostCall[] = []
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call(call) {
-          calls.push(call)
-          return { status: 'succeeded', result: { outcome: 'done', output: null } }
-        },
-      },
-    ).run()
-    await process.nextHost()
-    const channels = Object.fromEntries(
-      Array.from({ length: 256 }, (_, index) => [`port-${index}`, `endpoint:${index}`]),
-    )
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'channels:1',
-        slot: 'child',
-        input: null,
-        channels,
-      }),
-    )
-    expect(await process.nextHost()).toMatchObject({ result: { outcome: 'done', output: null } })
-    expect(calls[0]!.channels).toEqual(channels)
-    process.emit(
-      request('component:2', 'flow/call', {
-        operationId: 'channels:2',
-        slot: 'child',
-        input: null,
-        channels: { ...channels, extra: 'endpoint:extra' },
-      }),
-    )
-    expect(rpcCode(await process.nextHost())).toBe(-32602)
-    expect(calls).toHaveLength(1)
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('bounds retained operation results and replays the bounded failure', async () => {
-    const process = new FakeProcess()
-    let calls = 0
-    const session = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call() {
-          calls += 1
-          return { status: 'succeeded', result: { outcome: 'done', output: { answer: 42 } } }
-        },
-      },
-    )
-    ;(session as unknown as { retainedOperationBytes: number }).retainedOperationBytes =
-      32 * 1024 * 1024
-    const running = session.run()
-    await process.nextHost()
-    const params = { operationId: 'bounded:1', slot: 'child', input: null }
-    process.emit(request('component:1', 'flow/call', params))
-    expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
-    process.emit(request('component:2', 'flow/call', params))
-    expect(operationCode(await process.nextHost())).toBe('RESOURCE_EXHAUSTED')
-    expect(calls).toBe(1)
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('dispatches complete results and domain outcomes with the complete snapshotted call', async () => {
-    const process = new FakeProcess()
-    const calls: RunHostCall[] = []
-    const terminals: RunHostOperationTerminal[] = [
-      { status: 'succeeded', result: { outcome: 'done', output: { recordId: 'record-1' } } },
-      {
-        status: 'succeeded',
-        result: { outcome: 'type-denied', output: { type: 'private' } },
-      },
-    ]
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call(call) {
-          calls.push(call)
-          return terminals.shift()!
-        },
-      },
-    ).run()
-    await process.nextHost()
-
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'put:1',
-        slot: 'records',
-        input: { type: 'document-created', data: { id: 1 } },
-      }),
-    )
-    expect(await process.nextHost()).toEqual({
-      jsonrpc: '2.0',
-      id: 'component:1',
-      result: { outcome: 'done', output: { recordId: 'record-1' } },
-    })
-    process.emit(
-      request('component:2', 'flow/call', {
-        operationId: 'put:2',
-        slot: 'records',
-        input: { type: 'private', data: null },
-      }),
-    )
-    expect(await process.nextHost()).toEqual({
-      jsonrpc: '2.0',
-      id: 'component:2',
-      result: { outcome: 'type-denied', output: { type: 'private' } },
-    })
-    expect(calls).toEqual([
-      {
-        operationId: 'put:1',
-        slot: 'records',
-        input: { type: 'document-created', data: { id: 1 } },
-      },
-      {
-        operationId: 'put:2',
-        slot: 'records',
-        input: { type: 'private', data: null },
-      },
-    ])
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('rejects malformed invocation results and cross-slot operation reuse', async () => {
-    const invalid = new FakeProcess()
-    const invalidRun = new RunHostSession(
-      invalid,
-      invocation(),
-      {},
-      {
-        async call() {
-          return {
-            status: 'succeeded',
-            result: { value: null, extra: true },
-          } as unknown as RunHostOperationTerminal
-        },
-      },
-    ).run()
-    await invalid.nextHost()
-    invalid.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'put:1',
-        slot: 'records',
-        input: null,
-      }),
-    )
-    expect(operationCode(await invalid.nextHost())).toBe('INVALID_RESULT')
-    invalid.emit(result(null))
-    invalid.finish(0)
-    expect(await invalidRun).toMatchObject({ status: 'succeeded' })
-
-    const conflict = new FakeProcess()
-    const conflictRun = new RunHostSession(
-      conflict,
-      invocation(),
-      {},
-      {
-        async call(call) {
-          if (call.slot !== 'child') throw new Error('must not dispatch')
-          return { status: 'succeeded', result: { outcome: 'done', output: null } }
-        },
-      },
-    ).run()
-    await conflict.nextHost()
-    conflict.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'shared:1',
-        slot: 'child',
-        input: null,
-      }),
-    )
-    expect(await conflict.nextHost()).toMatchObject({ result: { outcome: 'done' } })
-    conflict.emit(
-      request('component:2', 'flow/call', {
-        operationId: 'shared:1',
-        slot: 'records',
-        input: null,
-      }),
-    )
-    expect(operationCode(await conflict.nextHost())).toBe('OPERATION_CONFLICT')
-    conflict.emit(result(null))
-    conflict.finish(0)
-    expect(await conflictRun).toMatchObject({ status: 'succeeded' })
-  })
-  test('does not expose rejected dispatcher diagnostics to package code', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call() {
-          throw new Error('private /host/path and coordinator detail')
-        },
-      },
-    ).run()
-    await process.nextHost()
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'private:1',
-        slot: 'child',
-        input: null,
-      }),
-    )
-    expect(await process.nextHost()).toMatchObject({
-      error: {
-        data: { code: 'EXECUTION_FAILED' },
-        message: 'the host operation failed',
-      },
-    })
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('rejects a conflicting operation while the first dispatch is pending', async () => {
-    const process = new FakeProcess()
-    const decision = deferred<RunHostOperationTerminal>()
-    let calls = 0
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call() {
-          calls += 1
-          return await decision.promise
-        },
-      },
-    ).run()
-    await process.nextHost()
-    process.emit(
-      request('component:1', 'flow/call', {
-        operationId: 'same:1',
-        slot: 'research',
-        input: { value: 1 },
-      }),
-    )
-    process.emit(
-      request('component:2', 'flow/call', {
-        operationId: 'same:1',
-        slot: 'research',
-        input: { value: 2 },
-      }),
-    )
-    expect(operationCode(await process.nextHost())).toBe('OPERATION_CONFLICT')
-    expect(calls).toBe(1)
-    decision.resolve({ status: 'succeeded', result: { outcome: 'done', output: null } })
-    expect(await process.nextHost()).toMatchObject({ id: 'component:1', result: {} })
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('cancels one waiter and aborts shared work only after the final waiter', async () => {
-    const process = new FakeProcess()
-    const aborted = deferred<void>()
-    const running = new RunHostSession(
-      process,
-      invocation(),
-      {},
-      {
-        async call(_call, signal) {
-          await new Promise<void>((resolve) => {
-            signal.addEventListener(
-              'abort',
-              () => {
-                aborted.resolve()
-                resolve()
-              },
-              { once: true },
-            )
-          })
-          return { status: 'failed', code: 'CANCELLED', message: 'child cancelled' }
-        },
-      },
-    ).run()
-    await process.nextHost()
-    const params = { operationId: 'shared:1', slot: 'research', input: null }
-    process.emit(request('component:1', 'flow/call', params))
-    process.emit(request('component:2', 'flow/call', params))
-    process.emit({
-      jsonrpc: '2.0',
-      method: 'request/cancel',
-      params: { requestId: 'component:1' },
-    })
-    expect(operationCode(await process.nextHost())).toBe('CANCELLED')
-    let observedAbort = false
-    void aborted.promise.then(() => {
-      observedAbort = true
-    })
-    await tick()
-    expect(observedAbort).toBe(false)
-
-    process.emit({
-      jsonrpc: '2.0',
-      method: 'request/cancel',
-      params: { requestId: 'component:2' },
-    })
-    expect(operationCode(await process.nextHost())).toBe('CANCELLED')
-    await aborted.promise
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'succeeded' })
-  })
-  test('treats component request-ID reuse as fatal', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    const call = request('component:1', 'flow/call', {
-      operationId: 'one:1',
-      slot: 'artifacts',
-      input: null,
-    })
-    process.emit(call)
-    await process.nextHost()
-    process.emit(call)
-    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('counts invalid method params before rejecting a 65,537th lifetime request', async () => {
-    const process = new FakeProcess()
-    const session = new RunHostSession(process, invocation())
-    const ids = (session as unknown as { componentIds: Set<string> }).componentIds
-    for (let index = 1; index <= 65_535; index += 1) ids.add(`component:${index}`)
-
-    const running = session.run()
-    await process.nextHost()
-    process.emit(request('component:65536', 'flow/call', {}))
-    expect(await process.nextHost()).toMatchObject({
-      id: 'component:65536',
-      error: { code: -32602 },
-    })
-    process.emit(
-      request('component:65537', 'flow/call', {
-        operationId: 'overflow:1',
-        slot: 'sink',
-        input: null,
-      }),
-    )
-
-    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('rejects a 65th response-pending request while writes are blocked', async () => {
-    const process = new FakeProcess(1)
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-
-    process.emitTogether(
-      ...Array.from({ length: 63 }, (_, index) =>
-        request(`component:${index + 1}`, 'unknown/request', {}),
-      ),
-      request('component:64', 'flow/call', {}),
-      request('component:65', 'flow/call', {
-        operationId: 'overflow:1',
-        slot: 'artifacts',
-        input: null,
-      }),
-    )
-    await tick()
-    process.releaseWrites()
-
-    const codes: number[] = []
-    for (let index = 0; index < 65; index += 1) {
-      codes.push(rpcCode(await process.nextHost()))
-    }
-    expect(codes.filter((code) => code === -32601)).toHaveLength(63)
-    expect(codes.filter((code) => code === -32602)).toHaveLength(1)
-    expect(codes.filter((code) => code === -32000)).toHaveLength(1)
-
-    process.emit(result(null))
-    process.finish(0)
-    expect(await running).toMatchObject({ status: 'failed', code: 'RESOURCE_EXHAUSTED' })
-  })
-  test('bounds queued response bytes before retaining another frame', async () => {
-    const process = new FakeProcess()
-    const session = new RunHostSession(process, invocation())
-    ;(session as unknown as { queuedResponseBytes: number }).queuedResponseBytes = 32 * 1024 * 1024
-    const running = session.run()
-    await process.nextHost()
-    process.emit(request('component:1', 'unknown/request', {}))
-    expect(await running).toMatchObject({ status: 'failed', code: 'RESOURCE_EXHAUSTED' })
-  })
-  test('reports parse failures and rejects trailing frames', async () => {
-    const malformed = new FakeProcess()
-    const malformedRun = new RunHostSession(malformed, invocation()).run()
-    await malformed.nextHost()
-    malformed.emitRaw(encoder.encode('{"jsonrpc":\n'))
-    expect(await malformed.nextHost()).toMatchObject({ id: null, error: { code: -32700 } })
-    expect(await malformedRun).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-
-    const trailing = new FakeProcess()
-    const trailingRun = new RunHostSession(trailing, invocation()).run()
-    await trailing.nextHost()
-    trailing.emitTogether(result(null), { jsonrpc: '2.0', method: 'ignored', params: {} })
-    trailing.finish(0)
-    expect(await trailingRun).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('treats scalar params as an invalid envelope', async () => {
-    const process = new FakeProcess()
-    const running = new RunHostSession(process, invocation()).run()
-    await process.nextHost()
-    process.emit({ jsonrpc: '2.0', id: 'component:1', method: 'unknown', params: 1 })
-    expect(await process.nextHost()).toMatchObject({ id: null, error: { code: -32600 } })
-    expect(await running).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
-  })
-  test('rejects unknown attachment members before writing flow/run', () => {
-    const process = new FakeProcess()
-    expect(
-      () =>
-        new RunHostSession(process, {
-          ...invocation(),
-          attachments: {
-            source: { path: '/source', access: 'read', extra: true },
-          } as unknown as RunHostInvocation['attachments'],
-        }),
-    ).toThrow('exactly path and access')
-  })
-  test('rejects scalar settings before writing flow/run', () => {
-    const process = new FakeProcess()
-    expect(
-      () =>
-        new RunHostSession(process, {
-          ...invocation(),
-          settings: 1,
-        } as unknown as RunHostInvocation),
-    ).toThrow('settings must be an object')
-  })
-  test('invalidates success after nonzero exit and enforces stderr bounds', async () => {
-    const nonzero = new FakeProcess()
-    const nonzeroRun = new RunHostSession(nonzero, invocation()).run()
-    await nonzero.nextHost()
-    nonzero.emit(result(null))
-    nonzero.finish(7)
-    expect(await nonzeroRun).toMatchObject({ status: 'failed', code: 'EXECUTION_FAILED' })
-
-    const signalled = new FakeProcess()
-    const signalledRun = new RunHostSession(signalled, invocation()).run()
-    await signalled.nextHost()
-    signalled.emit(result(null))
-    signalled.finish(0, 'SIGTERM')
-    expect(await signalledRun).toMatchObject({ status: 'failed', code: 'EXECUTION_FAILED' })
-
-    const noisy = new FakeProcess()
-    const noisyRun = new RunHostSession(noisy, invocation(), {
-      stderrBytes: 3,
-      capturedStderrBytes: 2,
-    }).run()
-    await noisy.nextHost()
-    noisy.diagnose(encoder.encode('noise'))
-    const terminal = await noisyRun
-    expect(terminal).toMatchObject({
-      status: 'failed',
-      code: 'RESOURCE_EXHAUSTED',
-      diagnostics: { stderr: 'no', stderrBytes: 5, stderrTruncated: true },
-    })
-  })
-  test('terminates promptly on pre-response EOF and handles completion rejection', async () => {
-    const eof = new FakeProcess()
-    const eofRun = new RunHostSession(eof, invocation()).run()
-    await eof.nextHost()
-    eof.closeStdout()
-    expect(await eofRun).toMatchObject({ status: 'failed', code: 'CHANNEL_LOST' })
-
-    const rejected = new FakeProcess()
-    const rejectedRun = new RunHostSession(rejected, invocation()).run()
-    await rejected.nextHost()
-    rejected.failCompletion(new Error('backend wait failed'))
-    expect(await rejectedRun).toMatchObject({ status: 'failed', code: 'CHANNEL_LOST' })
-  })
-  test('sends one cooperative cancellation and enforces cancellation and deadline', async () => {
-    const controller = new AbortController()
-    const cancelled = new FakeProcess()
-    const cancelledRun = new RunHostSession(
-      cancelled,
-      {
+  for (const mode of [
+    'duplicate-operation',
+    'operation-conflict',
+    'cross-method-conflict',
+    'attachment-inputs',
+    'channel-reference-limit',
+    'artifact-release',
+    'unknown-method',
+    'forged-review',
+  ] as const) {
+    test(`finite peer verifies real host replies: ${mode}`, async () => {
+      const run = await exchange(mode, {
         ...invocation(),
-        signal: controller.signal,
-      },
-      { cancellationGraceMs: 5 },
-    ).run()
-    await cancelled.nextHost()
-    controller.abort()
-    expect(await cancelled.nextHost()).toEqual({
-      jsonrpc: '2.0',
-      method: 'request/cancel',
-      params: { requestId: 'host:1' },
+        attachments: { source: { path: '/input/source', access: 'read', artifact: 'initial-1' } },
+      })
+      // Peer assertions read actual stdin, not substituted dispatcher behavior.
+      expect(run.exitCode).toBe(0)
+      expect(run.signal).toBeNull()
+      expect(run.terminal).toMatchObject(unfenced)
+      expect(run.frames.at(-1).result.output).toBe(mode)
     })
-    expect(await cancelledRun).toMatchObject({ status: 'failed', code: 'CANCELLED' })
-
-    const deadline = new FakeProcess()
-    const deadlineRun = new RunHostSession(deadline, invocation(Date.now() + 15), {
-      cancellationGraceMs: 5,
-    }).run()
-    await deadline.nextHost()
-    expect(await deadline.nextHost()).toEqual({
-      jsonrpc: '2.0',
-      method: 'request/cancel',
-      params: { requestId: 'host:1' },
-    })
-    expect(await deadlineRun).toMatchObject({ status: 'failed', code: 'DEADLINE_EXCEEDED' })
-  })
-  test('lets a root response win later cancellation but not a later deadline kill', async () => {
-    const controller = new AbortController()
-    const completed = new FakeProcess()
-    const completedRun = new RunHostSession(completed, {
+  }
+  test('read artifact metadata and final selection retain distinct envelopes', async () => {
+    const run = await exchange('artifact-result', {
       ...invocation(),
-      signal: controller.signal,
-    }).run()
-    await completed.nextHost()
-    completed.emit(result('settled'))
-    await tick()
-    controller.abort()
-    completed.finish(0)
-    expect(await completedRun).toMatchObject({ status: 'succeeded' })
-
-    const hung = new FakeProcess()
-    const hungRun = new RunHostSession(hung, invocation(Date.now() + 15), {
-      cancellationGraceMs: 5,
-    }).run()
-    await hung.nextHost()
-    hung.emit(result('settled'))
-    expect(await hungRun).toMatchObject({ status: 'failed', code: 'EXECUTION_FAILED' })
+      attachments: { source: { path: '/input/source', access: 'read', artifact: 'initial-1' } },
+    })
+    expect(run.exitCode).toBe(0)
+    expect(run.frames.at(-1).result).toEqual({
+      outcome: 'done',
+      output: null,
+      artifactResults: { final: 'initial-1' },
+    })
+    expect(run.terminal).toMatchObject(unfenced)
   })
-  test('keeps the first ordered cancellation or deadline terminal decision', async () => {
-    const cancelledController = new AbortController()
-    const cancelled = new FakeProcess()
-    const cancelledRun = new RunHostSession(
-      cancelled,
-      {
-        ...invocation(Date.now() + 1_000),
-        signal: cancelledController.signal,
-      },
-      { cancellationGraceMs: 100 },
-    ).run()
-    await cancelled.nextHost()
-    cancelledController.abort()
-    expect(await cancelled.nextHost()).toMatchObject({ method: 'request/cancel' })
-    cancelled.emit(result('too-late'))
-    cancelled.finish(0)
-    expect(await cancelledRun).toMatchObject({ status: 'failed', code: 'CANCELLED' })
-
-    const deadlineController = new AbortController()
-    const deadline = new FakeProcess()
-    const deadlineRun = new RunHostSession(
-      deadline,
-      {
-        ...invocation(Date.now() + 15),
-        signal: deadlineController.signal,
-      },
-      { cancellationGraceMs: 100 },
-    ).run()
-    await deadline.nextHost()
-    expect(await deadline.nextHost()).toMatchObject({ method: 'request/cancel' })
-    deadlineController.abort()
-    deadline.emit(result('too-late'))
-    deadline.finish(0)
-    expect(await deadlineRun).toMatchObject({ status: 'failed', code: 'DEADLINE_EXCEEDED' })
+  for (const mode of [
+    'malformed-json',
+    'invalid-utf8',
+    'scalar-params',
+    'duplicate-root',
+    'trailing-frame',
+    'request-id-reuse',
+    'invalid-result',
+    'forged-host-failure',
+    'late-call',
+    'premature-root',
+  ] as const) {
+    test(`rejects actual stdout protocol violation: ${mode}`, async () => {
+      const peer = launch(mode)
+      try {
+        expect(
+          await new RunHostSession(peer.process, invocation(), {
+            cancellationGraceMs: 40,
+          }).run(),
+        ).toMatchObject({ status: 'failed', code: 'PROTOCOL_ERROR' })
+        await peer.child.exited
+      } finally {
+        await peer.dispose()
+      }
+    })
+  }
+  test('actual pre-response EOF loses the channel and reaps the child', async () => {
+    const run = await exchange('eof')
+    expect(run.terminal).toMatchObject({ status: 'failed', code: 'CHANNEL_LOST' })
+    expect(run.exitCode).toBe(0)
   })
-  test('uses a hard-deadline receipt only before a committed root response', async () => {
-    const unanswered = new FakeProcess()
-    const unansweredRun = new RunHostSession(unanswered, invocation(Date.now() + 10_000)).run()
-    await unanswered.nextHost()
-    unanswered.closeStdout()
-    unanswered.finish(null, 'SIGKILL', 'deadline')
-    expect(await unansweredRun).toMatchObject({ status: 'failed', code: 'DEADLINE_EXCEEDED' })
-
-    const answered = new FakeProcess()
-    const answeredRun = new RunHostSession(answered, invocation(Date.now() + 10_000)).run()
-    await answered.nextHost()
-    answered.emit(result('settled'))
-    await tick()
-    answered.finish(null, 'SIGKILL', 'deadline')
-    expect(await answeredRun).toMatchObject({ status: 'failed', code: 'EXECUTION_FAILED' })
+  for (const mode of ['nonzero', 'signal'] as const) {
+    test(`actual ${mode} after a valid result cannot produce success`, async () => {
+      const run = await exchange(mode)
+      if (mode === 'nonzero') expect(run.exitCode).toBe(7)
+      else expect(run.signal).toBe('SIGTERM')
+      expect(run.frames.at(-1).result.outcome).toBe('done')
+      expect(run.terminal).toMatchObject(unfenced)
+    })
+  }
+  test('captures actual stderr with bounded prefix and no protocol contamination', async () => {
+    const run = await exchange('diagnostic', invocation(), { capturedStderrBytes: 8 })
+    expect(run.exitCode).toBe(0)
+    expect(run.terminal.diagnostics).toEqual({
+      stderr: 'diagnost',
+      stderrBytes: 32,
+      stderrTruncated: true,
+    })
+    expect(run.frames).toHaveLength(1)
+  })
+  for (const mode of [
+    'cancel-cooperative',
+    'cancel-held',
+    'deadline-cooperative',
+    'deadline-held',
+  ] as const) {
+    test(`actual cancellation notification and process settlement: ${mode}`, async () => {
+      const controller = new AbortController()
+      const peer = launch(mode)
+      const deadline = mode.startsWith('deadline') ? Date.now() + 250 : Date.now() + 2_000
+      const timer = mode.startsWith('cancel')
+        ? setTimeout(() => controller.abort(), 250)
+        : undefined
+      const start = performance.now()
+      try {
+        const terminal = await new RunHostSession(
+          peer.process,
+          {
+            ...invocation(deadline),
+            signal: controller.signal,
+          },
+          { cancellationGraceMs: 100 },
+        ).run()
+        expect(terminal).toMatchObject(unfenced)
+        expect(terminal.diagnostics.stderr).toBe('request/cancel:host:1\n')
+        expect(peer.child.signalCode).toBe(mode.endsWith('held') ? 'SIGKILL' : null)
+        if (mode.endsWith('cooperative')) expect(peer.child.exitCode).toBe(0)
+        expect(performance.now() - start).toBeLessThan(1_500)
+      } finally {
+        clearTimeout(timer)
+        await peer.dispose()
+      }
+    })
+  }
+  test('rejects scalar invocation settings before writing to a real child', async () => {
+    const peer = launch('eof')
+    try {
+      expect(
+        () =>
+          new RunHostSession(peer.process, {
+            ...invocation(),
+            settings: 1,
+          } as unknown as RunHostInvocation),
+      ).toThrow('settings must be an object')
+    } finally {
+      await peer.dispose()
+    }
+  })
+  test('rejects unknown attachment members before writing to a real child', async () => {
+    const peer = launch('eof')
+    try {
+      expect(
+        () =>
+          new RunHostSession(peer.process, {
+            ...invocation(),
+            attachments: { source: { path: '/source', access: 'read', extra: true } },
+          } as unknown as RunHostInvocation),
+      ).toThrow('path, access and optional read artifact')
+    } finally {
+      await peer.dispose()
+    }
   })
 })

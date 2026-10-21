@@ -22,9 +22,9 @@ checkpoint aggregates without adding batch behavior to the introductory example.
   prefix. Host execution uses the unchanged current helpers, never a
   maintained private implementation. The public single-project coordinator
   stays unchanged.
-- The retained monitor and wiring have deterministic channel lifecycle tests
-  in `test/repair-monitoring.test.ts`. Batch cases live in
-  `test/repair-batch.test.ts`. These are not live Agent evidence.
+- `../../portable/repair-monitoring.test.ts` checks the actual progress formatter.
+  It does not replace child dispatch or channel lifecycle.
+  Batch execution requires the installed native suite.
 - Keep this fixture private to tests. It is not a recommended example or a
   second application distribution.
 - Preserve separate worker identities, fixed acceptance cases, and checkpoints.

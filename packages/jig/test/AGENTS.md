@@ -25,10 +25,167 @@
   cleanup. The private `fixtures/incident-brief/test/` application owns
   separately registered deterministic method cases in the applications profile.
 
-Static child-attachment maps and file-import lifetimes retain portable, Linux
-and native Mac whole suites under these owners. Mac file-import and input-alias
+Reviewed child-attachment authority maps and artifact lifetimes retain portable, Linux
+and native Mac whole suites under these owners. Mac native input-alias
 cases require the native opt-in. The ordinary installed mapped-files consumer
 remains a package-smoke obligation using frozen Jig and FLOW SDK archives.
+Its ordinary producer/reader project checks distinct operation outputs, duplicate
+reference identity, immutable explicit delegation and nested final forwarding.
+
+`portable/child-artifacts.test.ts` owns immutable operation-result authority,
+explicit delegation and final forwarding. Output-retirement and delivery suites
+own sticky close uncertainty and retained original handles. No child folder-copy
+or native stage-control compatibility path remains.
+
+`portable/project-evaluation-execution.test.ts` checks pure invocation,
+descriptor, identity, output and workspace rules. Phase advancement requires
+actual installed evaluator execution in the host suites.
+
+`portable/attempt-clock.test.ts` checks cross-process native clock coordinates
+and actual elapsed timers. Reboot, suspend and clock anomalies require separate
+native evidence. Never replace the production reader.
+
+`portable/attempt-observation-contention.test.ts` uses an actual SQLite writer
+and installed public result calls. It checks read-only waiting, unchanged
+protected bytes, non-contention refusal and caller cancellation, without
+creating approval, prepared-ticket or native-execution evidence.
+
+`portable/project-evaluation-input.test.ts` checks authentic candidate authority,
+review drift, inert candidate configuration and immutable merged phase inputs.
+These deterministic checks and `captured-output.test.ts`'s manifest/selection
+cases do not qualify native enforcement, durable controller recovery or installed
+consumer behavior.
+
+`host/project-feature-admission.test.ts` uses the actual configuration evaluator.
+Feature linking and admission retain all ordinary source and native requirements.
+The portable profile must not replace that evaluator.
+
+Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
+Protected acceptance, replacement and save limits require actual SQLite ownership.
+Native command loss, independent fencing and installed recovery remain host gates.
+
+Checkpoint loss barriers must match the authoritative commit boundary.
+Delivery callbacks run after the protected save commits.
+Use a real selected-channel send followed by a hold before the next save.
+An awaited save result establishes the acknowledged boundary.
+
+Accepted-but-unobserved cases use a real Run/0 peer that never consumes the
+selected response. Readonly storage proves the accepted sequence before actual
+coordinator loss. Buffered response bytes do not establish application observation.
+Retry only genuine SQLite busy reads within the original observation deadline.
+Busy or incomplete channel frames never establish acceptance.
+
+Trusted coordinator compositions forward the CLI's actual `channelOutput`.
+Do not drop selected channels while copying file or timeout options.
+Primitive fixtures copy the complete built public SDK runtime, not a source-file shortlist.
+
+Canonicalize fixture-owned temporary roots before deriving absolute packet paths
+or private SQLite observations. Keep no-follow acquisition and publication checks
+unchanged, including on Macs whose temporary-directory spelling is a symlink.
+
+`portable/run-session.test.ts` uses actual subprocess pipes, exits and signals.
+Its ordinary process adapter reports no native fencing.
+Valid protocol exchanges must still refuse execution success without qualified fencing.
+Native lifecycle suites own successful execution and complete descendant cleanup.
+
+`portable/finite-acp-resource.test.ts` exercises production policy and frame codecs
+with actual peer process streams. It does not mint native enforcement receipts.
+The native lifecycle suites own the resource's successful execution and fencing.
+`portable/execution-output.test.ts` uses actual descriptors and captured snapshots.
+Guardian collection and recovery need genuine native owners.
+
+`fixtures/macos-exec-owner.ts` preserves the actual SIGABRT and original kernel-empty settlement allowance.
+Its inner-crash failure projection contains at most two fixed-phase coalition samples and the original signal count.
+That projection contains only bounded active/member counts, completeness and unavailable status.
+It exposes no identities and supplies no fencing evidence.
+
+Portable presentation and delivery inspection cases check pure rendering, stored
+bytes and actual elapsed completion limits. They do not prove authenticated
+capture, retirement acknowledgements or native cleanup.
+Saved-result cases use actual files, descriptors and subprocess output.
+Hardware I/O failure windows require separate evidence.
+
+`portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
+`host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
+Pins and delivery receipts must come from the production owner.
+Its consumer may enable the existing private phase trace through the public
+client environment for each result command, using a unique absolute destination.
+On failure, report only bounded fixed result phases, outcomes and timings.
+Trace observation cannot replace the original error or expose raw records,
+header identities, paths, tickets or exception payloads.
+
+`linux/file-command-snapshot.test.ts` checks real sealed descriptors and the
+independent publication process after source removal.
+Recorded packet inputs do not establish native execution or fencing.
+`host/installed-photo-organiser.test.ts` checks unchanged application Flows,
+frozen packages and a real deterministic caption task through the installed host.
+It remains separate from live Agent judgment and untested fault windows.
+
+`host/installed-contact-import.test.ts` checks ordinary code, Agent-contract and
+mixed mapping through the installed host. Its deterministic header task performs
+the declared mapping work without claiming model quality.
+`host/installed-incident-brief.test.ts` checks the private handoff application
+with an ordinary bounded conversation task. Pure application cases do not prove
+dispatch races, native session restoration or cleanup.
+`host/installed-support-case.test.ts` checks unchanged application composition
+with an ordinary deterministic assessment task. Pure support tests own policy
+and views, not dispatch or native cleanup.
+
+`host/installed-kitchen-roster.test.ts` checks the decomposed kitchen application
+with an ordinary deterministic proposal Flow. It requires real review, CSV
+artifact delivery, impossible-input refusal, unchanged inputs and native cleanup.
+Pure kitchen helpers and views do not qualify cancellation or exporter dispatch.
+
+Frozen Bun consumers bind the complete candidate closure through root
+`dependencies` and matching `overrides`. Peer edges must use those same archives.
+Do not reset caches or extend installation budgets to hide incomplete binding.
+
+`linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
+evaluator copier's regular-file restrictions and authenticated empty-directory
+restoration without changing retained source. The opted-in whole
+`linux-host/linux-rootless-run.test.ts` owns actual three-phase readonly work
+and output-aggregate containment, selected writable overlays, procfs cwd denial
+and original-collector capture after fencing. Missing qualification prerequisites
+must fail, never skip or substitute source evidence.
+
+Linux supervisor tests execute unchanged production code.
+Exact delayed-readiness, held-gate and injected setup-failure windows require
+genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
+
+Native fixtures use the official installed supervisor bundle and runtime mounts.
+`linux/linux-rootless-run.test.ts` executes the relocated bundle without adjacent
+source modules. This proves import closure, not delegated containment.
+
+`linux-host/linux-rootless-delegation-hostile.test.ts` also invokes the installed
+CLI with an actually missing Bubblewrap selection. It requires one public refusal,
+no project-state creation and unchanged scope/timer inventory.
+Its real scoped peer separately observes authenticated refusal ownership while
+the outer owner still rejects acquisition and collects the exact manager units.
+
+`portable/bun-resolution-worker.test.ts` checks ordinary acquisition refusals
+through the unmodified worker, not a replacement registry argument.
+
+The same suite executes real locked production and evaluation preparations.
+It checks metadata-only stdout and captures actual prepared directories.
+Its registry dependencies are ordinary exact-version test inputs, not provider calls.
+`portable/bun-prepared-result.test.ts` checks real descriptor capture, source/layout
+validation, metadata mismatch, link refusal and decoded preparation limits.
+These cases do not qualify native collector transfer, fencing or cleanup.
+
+`portable/private-acp-resources.test.ts` checks closed policy inputs and actual
+missing-client discovery. Never replace the native client opener or mechanism.
+Existing provider identity tests retain actual-file revalidation evidence.
+
+Native foreground identity-loss cases authenticate the exact fixture-owned
+directory before displacement. Restore that same inode before ordinary recovery.
+This does not prove every unconfirmed-fence or retry-memoization window.
+Durable sandbox state proves sealing, not native process or cgroup readiness.
+Observe actual task readiness before inspecting its process.
+
+`portable/project-evaluation-retention.test.ts` verifies descriptor-confined
+recipe capture, inert attachment authority, exact retained R/D reacquisition,
+corruption refusal, strict effective compiler/layout decoding and changed
+lock/request identities. It does not qualify native preparation or execution.
 
 ## FLOW dependencies
 
@@ -40,11 +197,25 @@ FLOW owns their canonical meaning. Coordinate snapshot changes with the adopted 
 
 ## Execution contracts
 
+Follow the maintainer guide's
+[no-mocks rule](../../../.agents/maintainer-guide.md#test-real-boundaries-never-mocks).
+Use actual stores, processes and qualified native owners for lifecycle evidence.
+Keep remaining migration gaps in `.tmp/`. Never treat replacement behavior as
+passing product evidence.
+
+Compare JSON evidence by exact keys, primitive types and values, and array order,
+not JavaScript object prototypes. This does not replace authenticity or
+object-identity checks for local owners and descriptors.
+
 `scripts/ci/test-suites.json` owns whole-file applicability. The shared suite
 inventory refuses unknown or ambiguous files. Select suites before execution.
 Selected suites must execute positively with zero skipped or filtered cases.
 Missing native flags, exact host prerequisites or live inputs fail the selected
 suite. Parameterized cases have explicit unique registration names.
+
+Attach rejection handlers with `Promise.then` before the action that settles them.
+Bun's asynchronous expectation matchers can wait synchronously.
+Run those matchers only after admission or the required process signal.
 
 Do not add name-pattern partitions or frozen line/name skip exceptions.
 
@@ -53,19 +224,11 @@ deadline for its existing duration when constructed. A plan spread from a
 completed Run must not carry that spent deadline into another fresh owner. Never
 reset a sealed or active Run deadline.
 
-The finite ACP lifecycle crash bound starts at the authenticated peer dispatch,
-immediately before its deliberate signal or exit, and ends when the CLI settles.
-Use the observer's monotonic clock and require an actual, unique dispatch for
-each fault. Admission and materialization remain inside the existing command and
-case budgets. They do not consume the separate twenty-second crash-settlement
-limit. Keep terminal failure, absence of cancellation/deadline expiry and
-residue checks.
-
-The portable pending-status controller case advances only its observed monotonic
-clock after two mocked reacquisitions, crossing the unchanged 30-second cutoff.
-It verifies the original clock function is restored before durable-state checks
-and cleanup. The executor remains mocked. Native timers and ownership receive no
-clock substitution.
+`linux-host/linux-rootless-run.test.ts` retains raw finite-resource transport
+cases through the actual backend, peer processes and enforcement receipts.
+These cases do not qualify supported native client selection or authentication.
+Native client behavior requires ordinary selected clients in the startup and live suites.
+Do not substitute the installed host's ACP resource opener.
 
 `just jig::test` selects the ordinary source profile. `just jig::check` and root
 `just preflight` add the qualified Mac regression pass. Complete hosted
@@ -88,19 +251,26 @@ experiments do not control production process decoding.
 worker. Its fresh temporary root owns consumers and failure evidence. It does
 not build a second source worker. Source-worker compilation and direct protocol
 exchanges belong to `portable/markdown-worker.test.ts`.
+The installed composition case uses a real Agent-contract decision task, code
+child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
+and template inputs without substituting a Run context.
+
+The composition requests 45 seconds before submission for its four native
+decision turns and code child. The command remains bounded at 60 seconds and
+the case at 120 seconds. Progress cannot renew any of these deadlines.
 
 Repair leaf proofs use separate successful and unsuccessful whole files. Each
 retains its original guardian observer, scenario body, fresh consumer and
 platform-specific timer. Neither shares admission, execution or cleanup with the
 other.
 
+Standalone repair packet observers include the declared root artifact name
+before the exporter's relative `review/` directory.
+
 Project Command coordinator-loss recovery keeps a fresh eight-failure batch for
-each of its two bounded reopen attempts. The test spy retains closed causes and
-at most one fixed internal source label with positive line/column from the
-innermost bounded cause chain. Stack inspection is limited to 8 KiB and 32
-frames. Raw messages, stacks, paths, tokens and owner data are never emitted.
-Diagnostic failures cannot replace the original exception or change the
-sealed-owner crash barrier, recovery, cleanup, assertions or limits.
+each of its two bounded reopen attempts. Observe real acquisition failures
+without replacing native recovery. Diagnostic failures cannot replace the original
+exception or change the sealed-owner crash barrier, recovery, cleanup or limits.
 
 The installed factory's blocked proof and coupled checked/automatic proof use
 separate fresh consumers through the registration-free
@@ -163,6 +333,13 @@ JSON:
 
 ## HTTP readonly qualification
 
+The packed HTTP Agent coordinator-loss barrier projects existing coordinator
+stderr only on failure. Emit closed phase, error-class and code allowlists,
+collection status and finite counts, never raw stderr or request contents.
+Limit input to 16 KiB, eight records, and eight causes per record.
+Projection failures preserve the assertion. Process teardown preserves both errors.
+Portable parser cases prove redaction and bounds, not native execution.
+
 The actual contained-effect fixture captures the generated HTTP intent, proves
 file-only Mac lowering and unchanged Linux lowering, and retains
 failure/cancellation cleanup and diagnostic privacy. Native scope tests require
@@ -192,9 +369,11 @@ weights only place work. They cannot change inventory or evidence.
 
 ## Child DOX Index
 
+- [fixtures/host-foundation/AGENTS.md](fixtures/host-foundation/AGENTS.md) —
+  Real installed adaptive and noncoding consumers. Native execution and
+  unfamiliar-consumer evidence remain separate from source construction.
 - [fixtures/channel-conversation/AGENTS.md](fixtures/channel-conversation/AGENTS.md)
   — Installed synthetic request/reply and cancellation peers.
 - [fixtures/repair-batch/AGENTS.md](fixtures/repair-batch/AGENTS.md) —
   Batch/checkpoint repair proof additions.
-- [fixtures/incident-brief/AGENTS.md](fixtures/incident-brief/AGENTS.md) —
-  Private conversation handoff and sibling settlement evidence.
+- [fixtures/incident-brief/AGENTS.md](fixtures/incident-brief/AGENTS.md) — Private conversation handoff and sibling settlement evidence.

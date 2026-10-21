@@ -3,15 +3,52 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
 import {
   PrivateProfileCapture,
   privateProfileInstant,
   privateProfileOperatorEnvironment,
   privateProfileSpan,
+  privateProfileSyncSpan,
 } from '../../src/internal/private-profile.js'
+import { foundationCommands } from '../fixtures/host-foundation/materialize.js'
+import { installedBunLocation } from '../fixtures/installed-bun-location.js'
+
+test('installed public result records an observational refusal without creating project state', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-result-profile-control-')))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const client = createAttemptClient({
+      executable: join(installedBunLocation.releaseRoot, 'bin/jig'),
+      cwd: directory,
+      env: { ...process.env, JIG_PRIVATE_PROFILE_FILE: destination },
+    })
+    let failure: unknown
+    try {
+      // Unissued ordinary request data, not a fabricated prepared capability.
+      await client.result({ ticket: 'not-issued' })
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(AttemptClientError)
+    expect(failure).toMatchObject({ code: 'INTERNAL', operation: 'result', uncertain: false })
+    const events = (await readFile(destination, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(events.filter((event) => event.phase)).toEqual([
+      expect.objectContaining({ kind: 'start', phase: 'result-open' }),
+      expect.objectContaining({ kind: 'end', phase: 'result-open', outcome: 'failed' }),
+    ])
+    expect(await readdir(directory)).toEqual(['trace.jsonl'])
+    expect((await stat(destination)).mode & 0o777).toBe(0o600)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test('private profile records bounded fixed-name spans without replacing its destination', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-profile-test-'))
@@ -85,6 +122,16 @@ test('inactive profiling preserves the operation result and failure behavior', a
       throw failure
     }),
   ).rejects.toBe(failure)
+  const synchronous = Object.freeze({ value: 17 })
+  expect(privateProfileSyncSpan('result-authenticate', () => synchronous)).toBe(synchronous)
+  try {
+    privateProfileSyncSpan('result-observe', () => {
+      throw failure
+    })
+    throw new Error('Synchronous failure disappeared')
+  } catch (error) {
+    expect(error).toBe(failure)
+  }
 })
 test('private profile preserves partial phases after forced process termination', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-profile-interrupted-'))
@@ -156,6 +203,7 @@ test('planning and native subphases remain bounded names understood by the insta
       'author-envelope-startup',
       'author-execution-settlement',
       'dependency-workspace-capture',
+      'project-evaluation-review',
       'finite-acp-revalidation',
       'finite-acp-containment',
       'finite-acp-launch',
@@ -172,6 +220,13 @@ test('planning and native subphases remain bounded names understood by the insta
       'macos-guardian-admission',
       'root-package-release',
       'root-owner-release',
+      'result-open',
+      'result-authenticate',
+      'result-retention',
+      'result-observe',
+      'result-checkpoint',
+      'result-finish',
+      'result-dispose',
     ] as const
     for (const phase of phases) {
       const span = profile.start(phase)
@@ -201,7 +256,7 @@ test('active native profiling preserves returned values and the exact thrown fai
       [
         process.execPath,
         '-e',
-        `import { privateProfileActivate, privateProfileFinish, privateProfileSpan } from ${JSON.stringify(module)};
+        `import { privateProfileActivate, privateProfileFinish, privateProfileSpan, privateProfileSyncSpan } from ${JSON.stringify(module)};
         privateProfileActivate();
         const value = await privateProfileSpan('finite-acp-revalidation', async () => 17);
         if (value !== 17) throw new Error('Result changed');
@@ -216,6 +271,12 @@ test('active native profiling preserves returned values and the exact thrown fai
         try {
           await privateProfileSpan('macos-guardian-admission', async () => { throw failure });
           throw new Error('Admission failure disappeared');
+        } catch (error) { if (error !== failure) throw error }
+        const observed = privateProfileSyncSpan('result-authenticate', () => guardian);
+        if (observed !== guardian) throw new Error('Synchronous value changed');
+        try {
+          privateProfileSyncSpan('result-observe', () => { throw failure });
+          throw new Error('Synchronous failure disappeared');
         } catch (error) { if (error !== failure) throw error }
         privateProfileFinish();`,
       ],
@@ -238,7 +299,267 @@ test('active native profiling preserves returned values and the exact thrown fai
       expect.objectContaining({ phase: 'finite-acp-containment', outcome: 'failed' }),
       expect.objectContaining({ phase: 'macos-guardian-preparation', outcome: 'returned' }),
       expect.objectContaining({ phase: 'macos-guardian-admission', outcome: 'failed' }),
+      expect.objectContaining({ phase: 'result-authenticate', outcome: 'returned' }),
+      expect.objectContaining({ phase: 'result-observe', outcome: 'failed' }),
     ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('foundation command failures project only bounded fixed result phase facts', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-summary-'))
+  try {
+    const command = foundationCommands(join(directory, 'commands'))
+    async function failureMessage(line: string): Promise<string> {
+      try {
+        await command(
+          [process.execPath, '-e', `console.error(${JSON.stringify(line)}); process.exit(7)`],
+          directory,
+        )
+      } catch (error) {
+        expect(error).toBeInstanceOf(Error)
+        return (error as Error).message
+      }
+      throw new Error('Nonzero child exit was not rejected')
+    }
+    const phases = [
+      'result-open',
+      'result-authenticate',
+      'result-retention',
+      'result-observe',
+      'result-checkpoint',
+      'result-finish',
+      'result-dispose',
+    ]
+    const records = phases.flatMap((phase) => [
+      { phase, kind: 'start', timeMs: 0, pid: 1234, path: '/private/trace' },
+      { phase, kind: 'end', timeMs: 1, outcome: 'failed', error: 'private exception payload' },
+    ])
+    const message = await failureMessage(`Foundation result phases: ${JSON.stringify(records)}`)
+    expect(message).toContain('Installed foundation command 1 failed')
+    expect(message).toContain('result phases: [{"phase":"result-open","kind":"start","timeMs":0}')
+    expect(message).toContain('"phase":"result-dispose","kind":"end","timeMs":1,"outcome":"failed"')
+    for (const privateValue of ['pid', '/private/trace', 'private exception payload', '"error"'])
+      expect(message).not.toContain(privateValue)
+
+    for (const invalid of [
+      [...records, records[0]],
+      [{ phase: 'private-phase', kind: 'start', timeMs: 0 }],
+      [{ phase: 'result-open', kind: 'header', timeMs: 0 }],
+      [{ phase: 'result-open', kind: 'start', timeMs: 86_400_001 }],
+      [{ phase: 'result-open', kind: 'end', timeMs: 0, outcome: 'private-outcome' }],
+      [null],
+    ]) {
+      const rejected = await failureMessage(`Foundation result phases: ${JSON.stringify(invalid)}`)
+      expect(rejected).toContain('failed')
+      expect(rejected).not.toContain('result phases:')
+    }
+    for (const invalidLine of [
+      'Foundation result phases: [not JSON]',
+      'prefix Foundation result phases: []',
+      `Foundation result phases: [${' '.repeat(4097)}]`,
+    ]) {
+      const rejected = await failureMessage(invalidLine)
+      expect(rejected).not.toContain('result phases:')
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('foundation run opt-in bridges real child profile phases without private fields', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-run-profile-summary-')))
+  try {
+    const module = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    const evidence = join(directory, 'commands')
+    const destination = join(evidence, '001.run.jsonl')
+    await writeFile(
+      join(directory, 'run-profile.ts'),
+      `import assert from 'node:assert/strict';
+      import { appendFileSync } from 'node:fs';
+      assert.equal(process.env.JIG_PRIVATE_PROFILE_FILE, undefined);
+      assert.equal(process.env.JIG_FOUNDATION_RUN_PROFILE_FILE, ${JSON.stringify(destination)});
+      const destination = process.env.JIG_FOUNDATION_RUN_PROFILE_FILE;
+      process.env.JIG_PRIVATE_PROFILE_FILE = destination;
+      const { privateProfileActivate, privateProfileFinish, privateProfileSpan } =
+        await import(${JSON.stringify(module)});
+      privateProfileActivate();
+      await privateProfileSpan('root-submission-persistence', async () => 17);
+      await privateProfileSpan('macos-guardian-preparation', async () => 17);
+      try {
+        await privateProfileSpan('flow-execution', async () => {
+          throw new Error('private run exception payload');
+        });
+      } catch {}
+      privateProfileFinish();
+      appendFileSync(destination, JSON.stringify({
+        kind: 'instant', phase: 'flow-execution', timeMs: 1,
+        pid: 12345, path: '/private/run-profile-path', error: 'private run exception payload'
+      }) + '\\n');
+      console.log('private run stdout preserved');
+      console.error('Diagnostic code: INTERNAL');
+      console.error('private run stderr preserved');
+      process.exit(7);`,
+    )
+    const command = foundationCommands(evidence)
+    let failure: unknown
+    try {
+      // Exercise the fixture bridge and genuine profiler, not native execution.
+      await command([process.execPath, 'run-profile.ts'], directory, undefined, 'run')
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toMatchObject({ actual: 7, expected: 0 })
+    const message = (failure as Error).message
+    expect(message).toContain('Installed foundation command 1 failed (INTERNAL)')
+    const projection = JSON.parse(/run phases: (\{.*\}); see /.exec(message)![1]!)
+    expect(projection).toEqual({
+      status: 'captured',
+      events: [
+        { phase: 'root-submission-persistence', kind: 'start', timeMs: expect.any(Number) },
+        {
+          phase: 'root-submission-persistence',
+          kind: 'end',
+          timeMs: expect.any(Number),
+          outcome: 'returned',
+        },
+        { phase: 'macos-guardian-preparation', kind: 'start', timeMs: expect.any(Number) },
+        {
+          phase: 'macos-guardian-preparation',
+          kind: 'end',
+          timeMs: expect.any(Number),
+          outcome: 'returned',
+        },
+        { phase: 'flow-execution', kind: 'start', timeMs: expect.any(Number) },
+        { phase: 'flow-execution', kind: 'end', timeMs: expect.any(Number), outcome: 'failed' },
+        { phase: 'flow-execution', kind: 'instant', timeMs: 1 },
+      ],
+    })
+    for (const value of [
+      '"header"',
+      'jig-startup-profile/1',
+      '"pid"',
+      '"path"',
+      '/private/run-profile-path',
+      destination,
+      'private run exception payload',
+      '"error"',
+      'private run stdout preserved',
+      'private run stderr preserved',
+    ])
+      expect(message).not.toContain(value)
+    expect((await stat(destination)).mode & 0o777).toBe(0o600)
+    const files = await readdir(evidence)
+    const transcripts = await Promise.all(
+      files
+        .filter((name) => name !== '001.run.jsonl')
+        .map((name) => readFile(join(evidence, name), 'utf8')),
+    )
+    expect(transcripts.join('\n')).toContain('private run stdout preserved')
+    expect(transcripts.join('\n')).toContain('private run stderr preserved')
+
+    const control = await command(
+      [
+        process.execPath,
+        '-e',
+        `import assert from 'node:assert/strict';
+        assert.equal(process.env.JIG_PRIVATE_PROFILE_FILE, undefined);
+        assert.equal(process.env.JIG_FOUNDATION_RUN_PROFILE_FILE, undefined);`,
+      ],
+      directory,
+    )
+    expect(control.code).toBe(0)
+    expect(await readdir(evidence)).not.toContain('002.run.jsonl')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('foundation review failures retain real child profile phases without private fields', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-review-profile-summary-')))
+  try {
+    const module = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    await writeFile(
+      join(directory, 'review'),
+      `import { appendFileSync } from 'node:fs';
+      import { privateProfileActivate, privateProfileFinish, privateProfileSpan }
+        from ${JSON.stringify(module)};
+      const destination = process.env.JIG_PRIVATE_PROFILE_FILE;
+      privateProfileActivate();
+      await privateProfileSpan('project-evaluation-review', async () =>
+        privateProfileSpan('dependency-preparation', async () => 17));
+      try {
+        await privateProfileSpan('project-planning', async () => {
+          throw new Error('private exception payload');
+        });
+      } catch {}
+      privateProfileFinish();
+      appendFileSync(destination, JSON.stringify({
+        kind: 'instant', phase: 'dependency-reuse', timeMs: 1,
+        pid: 12345, path: '/private/profile-path', error: 'private exception payload'
+      }) + '\\n');
+      console.log('private stdout preserved');
+      console.error('Diagnostic code: INTERNAL');
+      console.error('private stderr preserved');
+      process.exit(7);`,
+    )
+    const evidence = join(directory, 'commands')
+    let failure: unknown
+    try {
+      await foundationCommands(evidence)([process.execPath, 'review'], directory)
+    } catch (error) {
+      failure = error
+    }
+    expect(failure).toBeInstanceOf(Error)
+    expect(failure).toMatchObject({ actual: 7, expected: 0 })
+    const message = (failure as Error).message
+    expect(message).toContain('Installed foundation command 1 failed (INTERNAL)')
+    expect(message).toContain('review phases: {"status":"captured"')
+    const projection = JSON.parse(/review phases: (\{.*\}); see /.exec(message)![1]!)
+    expect(projection.events).toEqual([
+      { phase: 'project-evaluation-review', kind: 'start', timeMs: expect.any(Number) },
+      {
+        phase: 'dependency-preparation',
+        kind: 'start',
+        timeMs: expect.any(Number),
+      },
+      {
+        phase: 'dependency-preparation',
+        kind: 'end',
+        timeMs: expect.any(Number),
+        outcome: 'returned',
+      },
+      {
+        phase: 'project-evaluation-review',
+        kind: 'end',
+        timeMs: expect.any(Number),
+        outcome: 'returned',
+      },
+      { phase: 'project-planning', kind: 'start', timeMs: expect.any(Number) },
+      { phase: 'project-planning', kind: 'end', timeMs: expect.any(Number), outcome: 'failed' },
+      { phase: 'dependency-reuse', kind: 'instant', timeMs: 1 },
+    ])
+    for (const value of [
+      '"pid"',
+      '/private/profile-path',
+      'private exception payload',
+      '"error"',
+      'private stdout preserved',
+      'private stderr preserved',
+    ])
+      expect(message).not.toContain(value)
+    const files = await readdir(evidence)
+    expect(files).toContain('001.review.jsonl')
+    expect((await stat(join(evidence, '001.review.jsonl'))).mode & 0o777).toBe(0o600)
+    const transcripts = await Promise.all(
+      files
+        .filter((name) => name !== '001.review.jsonl')
+        .map((name) => readFile(join(evidence, name), 'utf8')),
+    )
+    expect(transcripts.join('\n')).toContain('private stdout preserved')
+    expect(transcripts.join('\n')).toContain('private stderr preserved')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

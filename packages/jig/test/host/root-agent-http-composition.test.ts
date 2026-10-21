@@ -17,6 +17,7 @@ import {
   closeServer,
   expectNoAgentOwner,
   firstLine,
+  httpCoordinatorFailureEvidence,
   rootlessCgroups,
   rootlessTemporaryEntry,
   waitForCgroups,
@@ -283,15 +284,60 @@ describe.serial('private contained Agent Run lifecycle', () => {
                 stderr: 'pipe',
               },
             )
+            // Take rejection custody before either process loss or pipe teardown.
             const diagnostics = new Response(crashed.stderr).text()
+            const exited = crashed.exited
+            void diagnostics.catch(() => undefined)
+            void exited.catch(() => undefined)
+            let lossFailure: unknown
+            let lossFailed = false
             let receipt: StartRootRunReceipt
             try {
               receipt = JSON.parse(await firstLine(crashed.stdout)) as StartRootRunReceipt
               await waitForRequest(6)
+            } catch (error) {
+              lossFailed = true
+              lossFailure = error
+              throw error
             } finally {
-              if (crashed.exitCode === null) crashed.kill('SIGKILL')
-              await crashed.exited
-              await diagnostics
+              const settled = await Promise.allSettled([
+                Promise.resolve().then(() => {
+                  if (crashed.exitCode === null) crashed.kill('SIGKILL')
+                }),
+                exited,
+                diagnostics,
+              ] as const)
+              const collected = settled[2]
+              if (lossFailed) {
+                try {
+                  console.error(
+                    'http-agent-coordinator-loss-barrier',
+                    JSON.stringify({
+                      requests: requests.length,
+                      stderr: collected.status === 'fulfilled' ? 'collected' : 'unavailable',
+                      failures:
+                        collected.status === 'fulfilled'
+                          ? httpCoordinatorFailureEvidence(collected.value)
+                          : [],
+                    }),
+                  )
+                } catch {
+                  // Optional diagnostics cannot replace the original assertion.
+                }
+              }
+              const failures = settled.flatMap((result) =>
+                result.status === 'rejected' ? [result.reason] : [],
+              )
+              if (failures.length !== 0) {
+                if (lossFailed) failures.unshift(lossFailure)
+                // biome-ignore lint/correctness/noUnsafeFinally: Keep primary, process and original stderr failures.
+                throw failures.length === 1
+                  ? failures[0]
+                  : new AggregateError(
+                      failures,
+                      'HTTP Agent loss barrier and coordinator teardown failed',
+                    )
+              }
             }
             await waitForCgroups(initialCgroups)
             session = await openPrivateProjectSession({

@@ -32,7 +32,7 @@ code; failed review keeps the previous approval.
 
 The reviewed entrypoint supplies the issue, read-only fixture and five-minute deadline.
 Jig chooses a fresh packet directory in operating-system temporary storage for
-its writable deliverables and reports it on stderr. Repeating `jig run` leaves
+its forwarded deliverables and reports it on stderr. Repeating `jig run` leaves
 earlier packets intact, but the operating system may clear temporary storage.
 Use `jig run --out ./repair-result` to choose a retained location that does not
 already exist; Jig never overwrites a packet. Explicit targets bypass the
@@ -48,7 +48,7 @@ specialist’s separate closed phase records for explicit channel consumers. Nei
 establishes acceptance.
 
 The synthetic fixture is an HTTP log reporter with defects in parsing and
-aggregation. Open `files/review/summary.txt` inside the reported destination. A passing repair produces
+aggregation. Open `files/deliverables/review/summary.txt` inside the reported destination. A passing repair produces
 `review.patch`; valid unsuccessful proposals remain `proposal-N.patch`.
 `result.json` records candidate identities, command output and termination,
 and independent acceptance results. Review the patch before applying it.
@@ -80,8 +80,8 @@ available.
 | `export-patch` | Format supplied review data and write patches without applying them. |
 
 Among the child methods, only `read-project` receives source access.
-Only `export-patch` receives a writable
-attachment; its folder is imported into `deliverables/review`. The checker and
+Only `export-patch` receives a fresh writable attachment.
+The coordinator forwards its immutable artifact as `deliverables`, retaining the exporter's `review/` subdirectory. The checker and
 repair specialist receive JSON data. The exporter formats supplied review data;
 when called independently its files are caller claims, not proof of acceptance.
 The application's checker establishes acceptance before export.

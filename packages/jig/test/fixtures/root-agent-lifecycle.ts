@@ -1,4 +1,3 @@
-import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import {
   copyFile,
@@ -19,28 +18,16 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import type { RootAdministration, StartRootRunReceipt } from '../../src/administration/root.js'
-import { main } from '../../src/cli.js'
 import type { PrivateExecutionOutput } from '../../src/internal/execution-output.js'
-import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
-import { withPrivateInstallationVerification } from '../../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import type { PrivateInstalledBunLocation } from '../../src/internal/installed-bun-support.js'
-import {
-  PrivateRunCheckpoints,
-  type RunCheckpointIdentity,
-  type RunCheckpointInput,
-} from '../../src/internal/private-run-checkpoint.js'
 import {
   closedTestErrorCauses,
   openPrivateProjectSession,
 } from '../../src/internal/project-session-controller.js'
 import { fixtureHost, MACOS_FIXTURE_SETTLEMENT_MS } from './agent-fixture-host.js'
-import {
-  openDeterministicFiniteAcpHost,
-  writeDeterministicAcpAgent,
-} from './deterministic-acp-agent.js'
+import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency.js'
 import { installedBunLocation } from './installed-bun-location.js'
-import { writeOrdinaryAcpAgent } from './ordinary-acp-agent.js'
 import { completedResponse, writeOrdinaryAgent } from './ordinary-agent.js'
 import { timeFixturePhase } from './phase-timing.js'
 
@@ -49,6 +36,79 @@ const HOSTILE =
   process.env.JIG_LINUX_ROOTLESS_HOSTILE === '1' ||
   (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1')
 const OPENROUTER_RESPONSES_TEST_BASE_URL = 'https://openrouter.ai/api/v1'
+
+/** Inert stderr projection, not execution or cleanup evidence. */
+export function httpCoordinatorFailureEvidence(stderr: string) {
+  if (Buffer.byteLength(stderr) > 16 * 1024) return []
+  const phases = new Set([
+    'planning',
+    'materialization',
+    'support',
+    'projection',
+    'sealing',
+    'channels',
+    'admission',
+    'protocol',
+    'child-settlement',
+    'fence',
+    'settlement',
+    'child-flow-allocation',
+    'child-flow-preparation',
+    'child-flow-sealing',
+    'child-flow-admission',
+    'child-flow-protocol',
+    'child-flow-settlement',
+    'child-flow-cleanup',
+  ])
+  for (const prefix of ['contained-effect', 'child-contained-effect']) {
+    for (const phase of [
+      'preparation',
+      'sealing',
+      'admission',
+      'collection',
+      'settlement',
+      'cleanup',
+    ])
+      phases.add(`${prefix}-${phase}`)
+  }
+  const names = new Set(['Error', 'AggregateError', 'TypeError', 'RangeError'])
+  const codes = new Set([
+    'RESOURCE_EXHAUSTED',
+    'DEADLINE_EXCEEDED',
+    'CANCELLED',
+    'MACOS_CONTROL_DEADLINE',
+    'MACOS_GUARDIAN_BOOTSTRAP',
+    'MACOS_GUARDIAN_CONNECTION_LOST',
+    'MACOS_GUARDIAN_BEFORE_READINESS',
+    'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED',
+    'MACOS_GUARDIAN_JOB_PRESENT',
+    'MACOS_STARTUP_CANCELLED',
+    'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE',
+    'NATIVE_OUTPUT_LOST_DURING_CLEANUP',
+    'NATIVE_OUTPUT_NOT_CAPTURED',
+    'OUTPUT_CAPTURE_DEADLINE',
+  ])
+  const failures: { phase: string; causes: string[] }[] = []
+  for (const line of stderr.split('\n')) {
+    const prefix = 'agent-coordinator-root-execution-failure '
+    if (!line.startsWith(prefix) || failures.length >= 8) continue
+    try {
+      const value = JSON.parse(line.slice(prefix.length))
+      if (!phases.has(value?.phase) || !Array.isArray(value.causes)) continue
+      const causes: string[] = []
+      for (const cause of value.causes.slice(0, 8)) {
+        if (typeof cause !== 'string') continue
+        const [name, code, extra] = cause.split(':')
+        if (!names.has(name) || extra !== undefined) continue
+        if (code === undefined || codes.has(code)) causes.push(cause)
+      }
+      failures.push({ phase: value.phase, causes })
+    } catch {
+      // Malformed or unrelated stderr is never diagnostic output.
+    }
+  }
+  return failures
+}
 
 export async function repairOutputCapture(
   ready: Extract<PrivateExecutionOutput, { kind: 'snapshot' }>['ready'],
@@ -122,7 +182,6 @@ export const EXPECTED_STRUCTURED_AGENT_RESULT = Object.freeze({
 })
 export interface DispatchEvent {
   readonly scenario: string
-  readonly keyInEnvironment?: boolean
   readonly selectedSkill: boolean
   readonly hiddenSkill: boolean
 }
@@ -757,27 +816,18 @@ export function withStore<Value>(root: string, use: (database: any) => Value): V
   }
 }
 
-export async function dispatchServer(
-  events: DispatchEvent[],
-  key: string,
-  acp: boolean,
-): Promise<Server> {
+export async function dispatchServer(events: DispatchEvent[], key: string): Promise<Server> {
   const server = createServer(async (request, response) => {
     try {
       if (
         request.method !== 'POST' ||
-        request.url !== (acp ? '/dispatch' : '/v1/responses') ||
+        request.url !== '/v1/responses' ||
         request.headers.authorization !== `Bearer ${key}`
       ) {
         response.writeHead(404).end()
         return
       }
       const text = await new Response(request as any).text()
-      if (acp) {
-        events.push(JSON.parse(text) as DispatchEvent)
-        response.writeHead(204).end()
-        return
-      }
       const body = JSON.parse(text)
       if (
         body.stream !== false ||
@@ -1004,6 +1054,11 @@ export async function firstLine(stream: ReadableStream<Uint8Array>): Promise<str
     reader.releaseLock()
   }
 }
+/** Root artifact names prefix the exporter's own review directory in a packet. */
+export function repairPacketDirectory(packet: string): string {
+  return join(packet, 'files', 'deliverables', 'review')
+}
+
 export async function qualifyRepairScenario(
   scenario: 'successful' | 'unsuccessful' | 'batch' | 'mixed-batch',
   temporaryRoot: string,
@@ -1071,8 +1126,6 @@ export async function qualifyRepairScenario(
       ),
     )
   })
-  const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
-  let checkpoints: PrivateRunCheckpoints | undefined
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -1089,79 +1142,31 @@ export async function qualifyRepairScenario(
     )
     let stdout = '',
       stderr = ''
-    const options = {
-      currentDirectory: project,
-      interactive: false,
-      writeOutput: (text: string) => {
-        stdout += text
-      },
-      writeError: (text: string) => {
-        stderr += text
-      },
-      host: {
-        acquire: async (
-          directory: string,
-          options?: {
-            runTimeoutMs?: number
-            files?: import('../../src/internal/root-run-files.js').PrivateRootRunFiles
-          },
-        ) =>
-          openPrivateProjectSession({
-            directory,
-            host: {
-              ...(await openPrivateInstalledBunHost(
-                location,
-                {
-                  METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
-                },
-                directory,
-              )),
-              ...options,
-            },
-            onOperationFailure: (evidence) =>
-              console.error('repair-operation-failure', JSON.stringify(evidence)),
-            onRootExecutionFailure: (evidence) =>
-              console.error('repair-root-execution-failure', JSON.stringify(evidence)),
-          }),
-        delivery: {
-          get checkpoint() {
-            return checkpoints?.latest ?? null
-          },
-          bindCheckpoint: async (identity: RunCheckpointIdentity) => {
-            checkpoints = new PrivateRunCheckpoints(identity)
-          },
-          saveCheckpoint: async (input: RunCheckpointInput) => checkpoints!.accept(input),
-          retire: async () => {
-            checkpoints?.close()
-            await owner.close()
-          },
-          prepare: (directory: string, roots: readonly number[]) => owner.prepare(directory, roots),
-          publish: async (
-            record: import('../../src/json.js').JsonValue,
-            output: PrivateExecutionOutput | undefined,
-          ) =>
-            owner.publish(
-              { ...(record as any), checkpoint: checkpoints?.latest ?? null },
-              output === undefined
-                ? undefined
-                : output.kind === 'linux-directory'
-                  ? { kind: 'linux-directory', fd: output.directory.fd }
-                  : { kind: 'snapshot', capture: await repairOutputCapture(output.ready) },
-              checkpoints?.latest ?? undefined,
-              true,
-            ),
-        },
-      },
-    }
-    // Match the installed entrypoint: one verification scope per command,
-    // with its cache outside the actual consumer project.
+    // Use the installed entrypoint's independent file-command owner, protected
+    // checkpoint reads, copy custody and retirement. No local delivery override.
     const runCommand = (args: readonly string[]) =>
-      timeFixturePhase(`repair-${scenario}`, args[0] === 'review' ? 'review' : 'run', () =>
-        withPrivateInstallationVerification(
-          { XDG_CACHE_HOME: join(root, 'verification-cache') },
-          () => main(args, options),
-        ),
-      )
+      timeFixturePhase(`repair-${scenario}`, args[0] === 'review' ? 'review' : 'run', async () => {
+        const result = await runInstalledJigCommand(
+          location.executablePath,
+          [
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            location.installedCliPath,
+            ...args,
+          ],
+          project,
+          {
+            ...process.env,
+            METHOD_TEST_TOKEN: 'synthetic-no-remote-credential',
+            XDG_CACHE_HOME: join(root, 'verification-cache'),
+          },
+          process.platform === 'darwin' ? 360_000 : 180_000,
+        )
+        stdout += result.stdout
+        stderr += result.stderr
+        return result.exitCode
+      })
     expect(await runCommand(['review', '--yes', '--allow-authority-changes']), stderr).toBe(0)
     stdout = ''
     stderr = ''
@@ -1188,16 +1193,16 @@ export async function qualifyRepairScenario(
         outcome: 'done',
         delivery: { status: 'written' },
       })
-      expect(await readFile(join(out, 'files/review/summary.txt'), 'utf8')).toContain(
+      expect(await readFile(join(repairPacketDirectory(out), 'summary.txt'), 'utf8')).toContain(
         'review-ready',
       )
-      expect(await readFile(join(out, 'files/review/goal.txt'), 'utf8')).toBe(
+      expect(await readFile(join(repairPacketDirectory(out), 'goal.txt'), 'utf8')).toBe(
         JSON.parse(await readFile(join(project, 'issue.json'), 'utf8')).issue + '\n',
       )
-      expect(await readFile(join(out, 'files/review/review.patch'), 'utf8')).toContain(
+      expect(await readFile(join(repairPacketDirectory(out), 'review.patch'), 'utf8')).toContain(
         '--- a/src/parse.ts',
       )
-      expect(await readFile(join(out, 'files/review/review.patch'), 'utf8')).toContain(
+      expect(await readFile(join(repairPacketDirectory(out), 'review.patch'), 'utf8')).toContain(
         '--- a/src/report.ts',
       )
       expect(record.output.baseline.acceptance.filter((c: any) => !c.passed)).toHaveLength(3)
@@ -1237,7 +1242,7 @@ export async function qualifyRepairScenario(
       expect(unsuccessful.output.attempts.every((a: any) => a.evaluation.accepted === false)).toBe(
         true,
       )
-      expect((await readdir(join(failedOut, 'files/review'))).sort()).toEqual([
+      expect((await readdir(repairPacketDirectory(failedOut))).sort()).toEqual([
         'goal.txt',
         'proposal-1.patch',
         'proposal-2.patch',
@@ -1313,15 +1318,9 @@ export async function qualifyRepairScenario(
     }
     verified = true
   } finally {
-    let cleaned = false
-    try {
-      await timeFixturePhase(`repair-${scenario}`, 'delivery-close', () => owner.close())
-      cleaned = true
-    } finally {
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-      if (verified && cleaned) await rm(root, { recursive: true, force: true })
-      else console.error(`Repair proof retained at ${root}`)
-    }
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+    if (verified) await rm(root, { recursive: true, force: true })
+    else console.error(`Repair proof retained at ${root}`)
   }
   // Each case owns one bounded Run. Leave setup/cleanup time outside its
   // execution budget. Mac uses the documented five-minute repair invocation.
@@ -1329,7 +1328,6 @@ export async function qualifyRepairScenario(
 
 export async function qualifyAgentFence(
   nested: boolean,
-  acp: boolean,
   temporaryRoot: string,
   initialCgroups: ReadonlySet<string>,
   initialTemporaryState: ReadonlySet<string>,
@@ -1338,15 +1336,10 @@ export async function qualifyAgentFence(
   const releaseRoot = await mkdtemp(join(temporaryRoot, 'jig-agent-lifecycle-release-'))
   const events: DispatchEvent[] = []
   const key = `synthetic-bearer-${basename(root)}`
-  const server = await dispatchServer(events, key, acp)
+  const server = await dispatchServer(events, key)
   const environment = { ...process.env }
   for (const name of Object.keys(environment)) {
-    if (
-      name.startsWith('OPENAI_') ||
-      name.startsWith('OPENROUTER_') ||
-      name === 'ACP_TEST_ENDPOINT'
-    )
-      delete environment[name]
+    if (name.startsWith('OPENAI_') || name.startsWith('OPENROUTER_')) delete environment[name]
   }
   let session: Awaited<ReturnType<typeof openPrivateProjectSession>> | undefined
   let primaryFailure: unknown
@@ -1366,9 +1359,7 @@ export async function qualifyAgentFence(
   const onRootExecutionFailure = (evidence: { phase: string; causes: readonly string[] }) =>
     console.error('agent-root-execution-failure', JSON.stringify(evidence))
   const openHost = (location: PrivateInstalledBunLocation) =>
-    acp
-      ? openDeterministicFiniteAcpHost(location, environment, root)
-      : openPrivateInstalledBunHost(location, environment, root)
+    openPrivateInstalledBunHost(location, environment, root)
   try {
     const address = server.address()
     if (address === null || typeof address === 'string')
@@ -1377,16 +1368,11 @@ export async function qualifyAgentFence(
     await writeProject(root)
     if (nested) await writeSpecialistParent(root)
     environment.METHOD_TEST_TOKEN = key
-    if (acp) {
-      environment.ACP_TEST_ENDPOINT = `http://127.0.0.1:${address.port}/dispatch`
-      await writeDeterministicAcpAgent(releaseRoot)
-      await writeOrdinaryAcpAgent(root, 'codex')
-    } else
-      await writeOrdinaryAgent(root, {
-        url: `http://127.0.0.1:${address.port}/v1/responses`,
-        api: 'responses',
-        default: true,
-      })
+    await writeOrdinaryAgent(root, {
+      url: `http://127.0.0.1:${address.port}/v1/responses`,
+      api: 'responses',
+      default: true,
+    })
 
     session = await openPrivateProjectSession({
       directory: root,
@@ -1417,7 +1403,6 @@ export async function qualifyAgentFence(
     expect(events).toEqual([
       {
         scenario: 'success',
-        ...(acp ? { keyInEnvironment: false } : {}),
         selectedSkill: true,
         hiddenSkill: false,
       },
@@ -1466,7 +1451,7 @@ export async function qualifyAgentFence(
           outcome: 'done',
           output: {
             status: 'failed',
-            code: acp && scenario === 'malformed' ? 'UNCERTAIN' : 'INVALID_RESULT',
+            code: 'INVALID_RESULT',
           },
         },
       })
@@ -1544,7 +1529,7 @@ export async function qualifyAgentFence(
         location.releaseRoot,
         location.executablePath,
         'agent-coordinator-loss',
-        acp ? 'acp' : nested ? 'specialist' : 'root',
+        nested ? 'specialist' : 'root',
       ],
       {
         env: environment,

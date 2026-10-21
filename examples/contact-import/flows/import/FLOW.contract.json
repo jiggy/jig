@@ -1,9 +1,9 @@
 {
   "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
   "attachments": {
-    "source": "read",
-    "preview": "read-write"
+    "source": "read"
   },
+  "artifactResults": ["preview"],
   "outcomes": {
     "blocked": "The selected method cannot complete its work.",
     "limit": "The Agent reaches its limit."

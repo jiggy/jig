@@ -1,6 +1,66 @@
 import { expect, test } from 'bun:test'
-import { PrivateCliRunPresentation } from '../../src/cli-run-presentation.js'
+import {
+  PrivateCliRunPresentation,
+  privateCliInvalidInputText,
+} from '../../src/cli-run-presentation.js'
 import { PrivateRunDiagnostics } from '../../src/internal/run-diagnostics.js'
+import { ChannelBroker, ChannelOperationError } from '../../src/run/channels.js'
+import { compileEmbeddedSchema, SchemaDiagnostic } from '../../src/schema/index.js'
+
+test('missing required channels receive honest input/request guidance, not a schema diagnosis', () => {
+  const broker = new ChannelBroker()
+  const owner = broker.participant('owner')
+  const flow = broker.participant('flow')
+  let failure: ChannelOperationError | undefined
+  try {
+    broker.transfer(owner, flow, {}, { progress: { direction: 'send', required: true } })
+  } catch (error) {
+    if (!(error instanceof ChannelOperationError)) throw error
+    failure = error
+  }
+  expect(failure?.code).toBe('INVALID_INPUT')
+  expect(failure?.message).toBe('required channel progress is not connected')
+  const output = privateCliInvalidInputText(undefined, 'flow:flows/worker')
+  expect(output).toContain('input or channel request was rejected as invalid')
+  expect(output).toContain('$ jig inspect flow:flows/worker')
+  expect(output).toContain('--input')
+  expect(output).toContain('--receive NAME')
+  expect(output).toContain('Inspect the result and any effects')
+  expect(output).not.toContain('Input does not match')
+  expect(output).not.toContain('No Flow')
+  expect(output).not.toContain('retry')
+})
+
+test('real validator facts remain reported constraints without exposing paths or rejected values', () => {
+  const compiled = compileEmbeddedSchema({ type: 'integer' }, { path: '/private/schema.json' })
+  let failure: SchemaDiagnostic | undefined
+  try {
+    compiled.validate('private rejected value', 'INVALID_INPUT')
+  } catch (error) {
+    if (!(error instanceof SchemaDiagnostic)) throw error
+    failure = error
+  }
+  if (failure === undefined) throw new Error('expected validator rejection')
+  const details = {
+    code: failure.code,
+    instancePointer: failure.instancePointer,
+    schemaPointer: failure.schemaPointer,
+    path: failure.path,
+    typeMismatch: {
+      expected: [...failure.typeMismatch!.expected],
+      received: failure.typeMismatch!.received,
+    },
+  }
+  const before = JSON.stringify(details)
+  const output = privateCliInvalidInputText(details, 'binding:worker')
+  expect(output).toContain('Reported constraint: Expected integer; received string.')
+  expect(output).toContain('This code alone does not identify which part was rejected.')
+  expect(output).toContain('$ jig inspect binding:worker')
+  expect(output).not.toContain('/private/')
+  expect(output).not.toContain('private rejected value')
+  expect(output).not.toContain('Input does not match')
+  expect(JSON.stringify(details)).toBe(before)
+})
 
 test('interleaved root and child diagnostics are summarized without mutating captured evidence', async () => {
   let output = ''

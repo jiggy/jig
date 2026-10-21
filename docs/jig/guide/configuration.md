@@ -222,9 +222,25 @@ permission gives Runs no network access.
 
 The [supported-host requirements](./index.md#supported-host) describe the
 execution prerequisites. Set `JIG_BWRAP_PATH` to an absolute path when
-Bubblewrap is outside Jig’s normal host-tool locations. An invalid explicit
-selection fails rather than falling back. This setting selects Jig’s outer
-containment tool, not a native Agent’s nested sandbox.
+Bubblewrap is outside Jig’s normal host-tool locations.
+Finding `bwrap` through your shell's `PATH` alone does not make it discoverable
+by Jig. For a shell-installed executable, first check its path:
+
+```sh
+command -v bwrap
+```
+
+If this reports an absolute executable path, export that path before review:
+
+```sh
+export JIG_BWRAP_PATH="$(command -v bwrap)"
+jig review --allow-resolution-network
+```
+
+Keep the setting in the environment used for later Jig commands.
+An invalid explicit selection fails rather than falling back.
+This setting selects Jig’s outer containment tool, not a native Agent’s
+nested sandbox. It does not supply missing namespace or cgroup support.
 
 `XDG_CACHE_HOME` relocates the installation verification cache described above.
 The cache contains no project approval or credentials.

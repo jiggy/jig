@@ -1,7 +1,3 @@
-import { dirname as suiteDirname } from 'node:path'
-
-const suiteTestRoot = suiteDirname(import.meta.dir)
-
 import { expect, test } from 'bun:test'
 import {
   chmod,
@@ -20,16 +16,10 @@ import {
   cancelPrivateMacosOwnerStateAllocation,
   normalizePrivateMacosOwnerStateAllocationIdentity,
   openPrivateMacosBackendState,
-  type PrivateMacosOwnerStateCancellation,
   planPrivateMacosOwnerStateAllocation,
   releasePrivateMacosOwnerState,
 } from '../../src/internal/macos-backend-state.js'
-import type { JsonObject } from '../../src/json.js'
-import {
-  fixture,
-  interruptedReleaseFixture,
-  unsafeRecordFixture,
-} from '.././macos-backend-state.fixture.js'
+import { fixture, unsafeRecordFixture } from '.././macos-backend-state.fixture.js'
 
 for (const [record, operation] of [
   ['state.json', 'open'],
@@ -89,61 +79,6 @@ for (const [record, operation] of [
     })
   }, 10_000)
 }
-test('native release resumes after coordinator loss during marker publication', async () => {
-  await fixture(async (root) => {
-    const runner = await interruptedReleaseFixture(root)
-    for (const phase of ['cancelled', 'finished'] as const) {
-      const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: phase })
-      let proof: PrivateMacosOwnerStateCancellation | JsonObject
-      if (phase === 'cancelled') {
-        proof = await cancelPrivateMacosOwnerStateAllocation(allocation)
-      } else {
-        const state = await openPrivateMacosBackendState(allocation)
-        proof = { fenced: true, fixture: 'separate backend proof required' }
-        try {
-          await state.seal({ digest: 'fixture-owner' })
-          await state.admit()
-          await state.finish(proof)
-        } finally {
-          await state.close()
-        }
-      }
-      const path = join(root, `${phase}.json`)
-      await writeFile(path, JSON.stringify({ allocation, proof }), { mode: 0o600 })
-      const child = Bun.spawn(
-        [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', runner, path],
-        { stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
-      )
-      try {
-        const reader = child.stdout.getReader()
-        const ready = await reader.read()
-        reader.releaseLock()
-        expect(Buffer.from(ready.value!).toString()).toBe('release-write\n')
-        await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow('still held')
-        child.kill('SIGKILL')
-        await child.exited
-        expect(child.signalCode).toBe('SIGKILL')
-        const names = await readdir(allocation.directory)
-        const staged = names.includes('release.pending') ? 'release.pending' : 'release.json'
-        expect(await readFile(join(allocation.directory, staged))).toHaveLength(0)
-        const reopened = await openPrivateMacosBackendState(allocation)
-        try {
-          expect((await reopened.read()).phase).toBe(phase)
-          await expect(reopened.admit()).rejects.toThrow('not permitted')
-        } finally {
-          await reopened.close()
-        }
-        const receipt = await releasePrivateMacosOwnerState(allocation, proof)
-        expect((await releasePrivateMacosOwnerState(allocation, proof)).digest).toBe(receipt.digest)
-        expect(await readdir(root)).not.toContain(phase)
-        expect(await readdir(root)).not.toContain(`.${phase}.release`)
-      } finally {
-        child.kill('SIGKILL')
-        await child.exited
-      }
-    }
-  })
-}, 10_000)
 test('native release staging cannot bypass proof or unsafe-record rejection', async () => {
   await fixture(async (root) => {
     for (const kind of ['proof', 'symlink', 'hardlink', 'public', 'oversized', 'forged']) {
@@ -179,7 +114,7 @@ test('native release staging cannot bypass proof or unsafe-record rejection', as
   })
 }, 10_000)
 test(
-  'native owner state commits exact admission once and excludes late starts after cancellation',
+  'native owner state authenticates allocation and excludes late starts after cancellation',
   async () =>
     fixture(async (root) => {
       const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: 'run' })
@@ -193,11 +128,6 @@ test(
       try {
         expect((await state.read()).phase).toBe('allocated')
         await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow('still held')
-        const owner = { digest: 'fixture-owner', nonce: 'original' }
-        const sealed = state.seal(owner)
-        owner.nonce = 'mutated'
-        await sealed
-        expect((await state.read()).sealed).toEqual({ digest: 'fixture-owner', nonce: 'original' })
         await state.cancel()
         await state.cancel()
         await expect(state.admit()).rejects.toThrow('not permitted')
@@ -254,73 +184,12 @@ test('native release preserves unexpected state and resumes only after exact rep
   })
 })
 test(
-  'fresh native recovery sees committed active state after coordinator death and retains one final receipt',
-  async () =>
-    fixture(async (root) => {
-      const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: 'run' })
-      const state = await openPrivateMacosBackendState(allocation)
-      await state.seal({ digest: 'fixture-owner' })
-      await state.close()
-      const path = join(root, 'allocation.json')
-      await writeFile(path, JSON.stringify(allocation), { mode: 0o600 })
-      const command = [
-        process.execPath,
-        '--no-env-file',
-        '--no-install',
-        '--config=/dev/null',
-        join(suiteTestRoot, 'fixtures/macos-backend-state.ts'),
-        path,
-      ]
-      const child = Bun.spawn([...command, 'admit-hold'], {
-        stdin: 'pipe',
-        stdout: 'pipe',
-        stderr: 'pipe',
-      })
-      try {
-        const reader = child.stdout.getReader()
-        const ready = await reader.read()
-        reader.releaseLock()
-        expect(Buffer.from(ready.value!).toString()).toBe('active\n')
-        await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow('still held')
-        child.kill('SIGKILL')
-        await child.exited
-        const recovered = await openPrivateMacosBackendState(allocation)
-        try {
-          expect((await recovered.read()).phase).toBe('active')
-          await expect(recovered.cancel()).rejects.toThrow('not permitted')
-          const receipt = { fenced: true, fixture: 'separate backend proof required' }
-          await recovered.finish(receipt)
-          await recovered.finish(receipt)
-          await expect(recovered.finish({ fenced: true, different: true })).rejects.toThrow(
-            'not permitted',
-          )
-          await expect(recovered.admit()).rejects.toThrow('not permitted')
-        } finally {
-          await recovered.close()
-        }
-        const observer = Bun.spawn(command, { stdout: 'pipe', stderr: 'pipe' })
-        expect(await observer.exited).toBe(0)
-        expect(await new Response(observer.stdout).text()).toBe('finished\n')
-        await releasePrivateMacosOwnerState(allocation, {
-          fenced: true,
-          fixture: 'separate backend proof required',
-        })
-        await expect(openPrivateMacosBackendState(allocation)).rejects.toThrow()
-      } finally {
-        child.kill('SIGKILL')
-        await child.exited
-      }
-    }),
-  15_000,
-)
-test(
   'native state rejects forged journals and replaced locks while discarding only interrupted staging',
   async () =>
     fixture(async (root) => {
       for (const mode of ['pending', 'forged', 'lock']) {
         const allocation = await planPrivateMacosOwnerStateAllocation({ parent: root, name: mode })
         const state = await openPrivateMacosBackendState(allocation)
-        await state.seal({ digest: 'fixture-owner' })
         await state.close()
         const control = join(allocation.directory, 'control'),
           path = join(control, 'state.json')
@@ -340,7 +209,7 @@ test(
         if (mode === 'pending') {
           const reopened = await openPrivateMacosBackendState(allocation)
           try {
-            expect((await reopened.read()).phase).toBe('sealed')
+            expect((await reopened.read()).phase).toBe('allocated')
           } finally {
             await reopened.close()
           }

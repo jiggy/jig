@@ -1,9 +1,13 @@
-import { posix } from 'node:path'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import type { PrivateActivationRequest } from '../project/package-resolution.js'
+import { capturePrivateOutputComposition, type PrivateCapturedOutput } from './captured-output.js'
 import { PRIVATE_OUTPUT_PATH, type PrivateExecutionIntent } from './execution-intent.js'
-import { closePrivateExecutionOutput, type PrivateExecutionOutput } from './execution-output.js'
+import {
+  closePrivateExecutionOutput,
+  type PrivateExecutionOutput,
+  privateSnapshotExecutionOutput,
+} from './execution-output.js'
 import type { PrivateDeliveryConnection } from './file-delivery.js'
 import {
   PRIVATE_FILE_LIMITS,
@@ -13,11 +17,27 @@ import {
   sha256,
 } from './file-input.js'
 import {
+  capturePrivateFlowArtifact,
   createPrivateRootFlowFileContext,
+  PrivateArtifactPermissionError,
   type PrivateFlowFileContext,
+  privateFlowFileExecutionProjection,
+  retainPrivateFlowArtifactResults,
+  selectedPrivateFlowArtifacts,
 } from './flow-file-context.js'
 import { privateDomainDigest } from './identity.js'
-import { parseRunCheckpointInput } from './private-run-checkpoint.js'
+import type {
+  RunCheckpointIdentity,
+  RunCheckpointInput,
+  RunCheckpointReceipt,
+} from './private-run-checkpoint.js'
+import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
+
+export type PrivateCheckpointCommit = (input: {
+  readonly identity: RunCheckpointIdentity
+  readonly value: RunCheckpointInput
+  readonly artifacts: Readonly<Record<string, PrivateCapturedOutput>>
+}) => Promise<RunCheckpointReceipt>
 
 export interface PrivateRunFileIdentity {
   readonly attachments: readonly {
@@ -28,11 +48,12 @@ export interface PrivateRunFileIdentity {
       readonly digest: string
     }[]
   }[]
-  readonly output: string | null
+  /** Native writable output intent, independent of any later export destination. */
+  readonly output: boolean
 }
 export const PRIVATE_EMPTY_FILE_IDENTITY: PrivateRunFileIdentity = Object.freeze({
   attachments: Object.freeze([]),
-  output: null,
+  output: false,
 })
 
 export interface PrivateRootFileMappingFailure {
@@ -80,13 +101,7 @@ export function normalizePrivateRunFileIdentity(value: unknown): PrivateRunFileI
   if (
     !Array.isArray(root.attachments) ||
     root.attachments.length > 8 ||
-    (root.output !== null &&
-      (typeof root.output !== 'string' ||
-        !root.output.startsWith('/') ||
-        posix.normalize(root.output) !== root.output ||
-        Buffer.from(root.output).toString('utf8') !== root.output ||
-        root.output.includes('\0') ||
-        root.output.length > 4096))
+    typeof root.output !== 'boolean'
   )
     throw new TypeError('invalid root file identity')
   let bytes = 0,
@@ -125,7 +140,7 @@ export function normalizePrivateRunFileIdentity(value: unknown): PrivateRunFileI
     throw new PrivateRootFileInputLimitError()
   return Object.freeze({
     attachments: Object.freeze(attachments),
-    output: root.output as string | null,
+    output: root.output,
   })
 }
 function object(value: unknown, keys: readonly string[]): Record<string, unknown> {
@@ -158,12 +173,11 @@ export function requirePrivateRootFileMapping(
       (name) => !expectedNames.has(name) && !Object.hasOwn(request.boundAttachments ?? {}, name),
     ),
     boundOverrides: supplied.filter((name) => Object.hasOwn(request.boundAttachments ?? {}, name)),
-    missingWritableDestination:
-      identity.output === null
-        ? Object.entries(request.attachments)
-            .filter(([, access]) => access === 'read-write')
-            .map(([name]) => name)
-        : [],
+    missingWritableDestination: !identity.output
+      ? Object.entries(request.attachments)
+          .filter(([, access]) => access === 'read-write')
+          .map(([name]) => name)
+      : [],
   }
   if (Object.values(failure).some((names) => names.length > 0))
     throw new PrivateRootFileMappingError(failure)
@@ -186,7 +200,13 @@ export class PrivateRootRunFiles {
   #output: PrivateExecutionOutput | undefined
   #close: Promise<void> | undefined
   #checkpointBound = false
+  #checkpointOwner: { identity: RunCheckpointIdentity; commit: PrivateCheckpointCommit } | undefined
   #outputAttachments: readonly string[] = []
+  #artifacts: Readonly<Record<string, PrivateCapturedOutput>> = Object.freeze({})
+  #artifactsRetained = false
+  #nativeArtifactsRetained = false
+  #artifactResultNames: readonly string[] = []
+  #deliveryOutput: PrivateExecutionOutput | undefined
   #method:
     | {
         readonly package: PrivateActivationRequest['package']
@@ -195,8 +215,8 @@ export class PrivateRootRunFiles {
     | undefined
 
   constructor(
-    readonly captured: readonly PrivateCapturedAttachment[],
-    output: string | null,
+    readonly captured: readonly Pick<PrivateCapturedAttachment, 'name' | 'files'>[],
+    output: boolean,
     readonly delivery?: PrivateDeliveryConnection,
   ) {
     this.identity = normalizePrivateRunFileIdentity({
@@ -214,9 +234,19 @@ export class PrivateRootRunFiles {
     bound: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[] = [],
   ): {
     readonly context: PrivateFlowFileContext
-    readonly plan: Pick<PrivateExecutionIntent, 'capturedInputs' | 'inputDirectories' | 'output'>
+    readonly plan: Pick<
+      PrivateExecutionIntent,
+      'capturedInputs' | 'inputDirectories' | 'inputEmptyDirectories' | 'output'
+    >
     readonly attachments: Readonly<
-      Record<string, { readonly path: string; readonly access: 'read' | 'read-write' }>
+      Record<
+        string,
+        {
+          readonly path: string
+          readonly access: 'read' | 'read-write'
+          readonly artifact?: string
+        }
+      >
     >
   } {
     if (this.#close) throw new Error('Run file owner retired')
@@ -234,14 +264,14 @@ export class PrivateRootRunFiles {
         name: item.name,
         files: item.files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
       })),
-      output: null,
+      output: false,
     })
     const expectedBound = normalizePrivateRunFileIdentity({
       attachments: Object.entries(request.boundAttachments ?? {}).map(([name, item]) => ({
         name,
         files: item.files,
       })),
-      output: null,
+      output: false,
     })
     if (
       !Buffer.from(canonicalJson(boundIdentity as unknown as JsonValue)).equals(
@@ -250,27 +280,23 @@ export class PrivateRootRunFiles {
     )
       throw new TypeError('retained attachment projection does not match admitted contents')
     this.identify(request)
+    const context = createPrivateRootFlowFileContext({
+      declarations: request.attachments,
+      captured: [...this.captured, ...bound],
+    })
+    const projection = privateFlowFileExecutionProjection(context)
     const attachments = Object.fromEntries(
-      Object.entries(request.attachments).map(([name, access]) => [
+      Object.entries(projection.attachments).map(([name, attachment]) => [
         name,
-        { access, path: access === 'read' ? `/jig-input/${name}` : PRIVATE_OUTPUT_PATH },
+        {
+          ...attachment,
+          path: attachment.access === 'read' ? `/jig-input/${name}` : PRIVATE_OUTPUT_PATH,
+        },
       ]),
     )
     return {
-      context: createPrivateRootFlowFileContext({
-        declarations: request.attachments,
-        captured: [...this.captured, ...bound],
-      }),
-      plan: {
-        capturedInputs: [...this.captured, ...bound].flatMap((item) =>
-          item.files.map((file) => ({
-            input: file.input,
-            destination: `/jig-input/${item.name}/${file.path}`,
-          })),
-        ),
-        inputDirectories: [...this.captured, ...bound].map((item) => `/jig-input/${item.name}`),
-        output: Object.values(request.attachments).includes('read-write'),
-      },
+      context,
+      plan: projection.plan,
       attachments,
     }
   }
@@ -308,12 +334,71 @@ export class PrivateRootRunFiles {
   get outputAttachments(): readonly string[] {
     return this.#outputAttachments
   }
+  get artifactResultNames(): readonly string[] {
+    return this.#artifactResultNames
+  }
+  /** Ordinary packet composition uses accepted final names, never a mutable broker. */
+  deliveryOutput(signal?: AbortSignal): PrivateExecutionOutput | undefined {
+    if (this.#close) throw new Error('Run file owner retired')
+    if (this.#artifactResultNames.length === 0)
+      return this.#outputAttachments.length === 0 ? undefined : this.#output
+    if (this.#deliveryOutput !== undefined) return this.#deliveryOutput
+    const native = this.#outputAttachments[0]
+    const nativeSnapshot = native === undefined ? undefined : this.#artifacts[native]
+    if (native !== undefined && nativeSnapshot === undefined)
+      throw new Error('root native output snapshot is unavailable')
+    const composed = capturePrivateOutputComposition(
+      [
+        ...(nativeSnapshot === undefined ? [] : [{ snapshot: nativeSnapshot }]),
+        ...this.#artifactResultNames.map((name) => ({
+          snapshot: this.#artifacts[name]!,
+          prefix: name,
+        })),
+      ],
+      signal,
+    )
+    this.#deliveryOutput = privateSnapshotExecutionOutput(Promise.resolve(composed))
+    return this.#deliveryOutput
+  }
+  /** Original sealed snapshots; ticket retention must consume them before close. */
+  get artifacts(): Readonly<Record<string, PrivateCapturedOutput>> {
+    return this.#artifacts
+  }
+  retainArtifacts(
+    context: PrivateFlowFileContext,
+    names: readonly string[],
+    selection: Readonly<Record<string, string>>,
+  ): void {
+    if (this.#close || this.#artifactsRetained) throw new Error('artifact owner unavailable')
+    const snapshots = selectedPrivateFlowArtifacts(context, names, selection)
+    retainPrivateFlowArtifactResults(context, snapshots)
+    this.#artifacts = Object.freeze({ ...this.#artifacts, ...snapshots })
+    this.#artifactResultNames = Object.freeze(Object.keys(snapshots).sort())
+    this.#artifactsRetained = true
+  }
+  /** Capture this root's own fenced writable ports under the same retention owner. */
+  async retainNativeArtifacts(
+    context: PrivateFlowFileContext,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    if (this.#close || this.#nativeArtifactsRetained) throw new Error('artifact owner unavailable')
+    if (this.#outputAttachments.length === 0) return
+    if (this.#output === undefined) throw new Error('root native output is unavailable')
+    const snapshot = await capturePrivateFlowArtifact(context, this.#output, signal)
+    const snapshots = Object.fromEntries(this.#outputAttachments.map((name) => [name, snapshot]))
+    if (Object.keys(snapshots).some((name) => Object.hasOwn(this.#artifacts, name)))
+      throw new TypeError('root artifact names overlap')
+    retainPrivateFlowArtifactResults(context, snapshots)
+    this.#artifacts = Object.freeze({ ...this.#artifacts, ...snapshots })
+    this.#nativeArtifactsRetained = true
+  }
   async bindCheckpoint(
     runId: string,
     request: PrivateActivationRequest,
     input: JsonValue,
     project: string,
     epoch: number,
+    commit: PrivateCheckpointCommit,
   ): Promise<void> {
     if (this.#close) throw new Error('Run file owner retired')
     if (
@@ -326,35 +411,69 @@ export class PrivateRootRunFiles {
       if (this.#runId !== runId) throw new Error('checkpoint belongs to another Run')
       return
     }
-    if (this.identity.output === null || this.delivery?.bindCheckpoint === undefined)
-      throw new Error('Run Checkpoint requires the installed output owner')
     this.identify(request)
-    await this.delivery.bindCheckpoint(
-      {
-        runId,
-        method: this.#method as unknown as JsonValue,
-        input: {
-          digest: sha256(canonicalJson(input)),
-          attachments: this.identity.attachments,
-        } as unknown as JsonValue,
-      },
-      project,
-      epoch,
-    )
+    const identity: RunCheckpointIdentity = {
+      runId,
+      method: this.#method as unknown as JsonValue,
+      input: {
+        digest: sha256(canonicalJson(input)),
+        attachments: this.identity.attachments,
+      } as unknown as JsonValue,
+    }
+    this.#checkpointOwner = { commit, identity }
+    await this.delivery?.bindCheckpoint?.(identity, project, epoch)
     this.#runId = runId
     this.#checkpointBound = true
   }
-  async saveCheckpoint(value: unknown) {
+  async saveCheckpoint(value: unknown, context: PrivateFlowFileContext) {
     if (this.#close) throw new Error('Run file owner retired')
-    if (!this.#checkpointBound || this.delivery?.saveCheckpoint === undefined)
+    if (!this.#checkpointBound || this.#checkpointOwner === undefined)
       throw new Error('checkpoint owner unavailable')
-    return await this.delivery.saveCheckpoint(parseRunCheckpointInput(value))
+    const input = parseRunCheckpointInput(value)
+    let artifacts: Readonly<Record<string, PrivateCapturedOutput>>
+    try {
+      artifacts = selectedPrivateFlowArtifacts(
+        context,
+        Object.keys(input.artifacts ?? {}),
+        input.artifacts ?? {},
+      )
+    } catch (error) {
+      if (error instanceof PrivateArtifactPermissionError || error instanceof TypeError)
+        throw new PrivateCheckpointRejected('checkpoint artifact association was rejected')
+      throw error
+    }
+    const retained = await this.#checkpointOwner.commit({
+      identity: this.#checkpointOwner.identity,
+      value: input,
+      artifacts,
+    })
+    // The protected commit is authoritative even if the publication channel disappears.
+    try {
+      await this.delivery?.saveCheckpoint?.(input)
+    } catch {}
+    return { sequence: retained.sequence, digest: retained.digest }
   }
   close(): Promise<void> {
     if (this.#close) return this.#close
     const output = this.#output
+    const deliveryOutput = this.#deliveryOutput
+    const artifacts = this.#artifacts
     this.#output = undefined
-    this.#close = closePrivateExecutionOutput(output)
+    this.#deliveryOutput = undefined
+    this.#artifacts = Object.freeze({})
+    this.#close = (async () => {
+      const results = await Promise.allSettled([
+        closePrivateExecutionOutput(output),
+        closePrivateExecutionOutput(deliveryOutput),
+        ...[...new Set(Object.values(artifacts))].map((snapshot) =>
+          closePrivateExecutionOutput({ kind: 'snapshot', ready: Promise.resolve(snapshot) }),
+        ),
+      ])
+      const errors = results.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      )
+      if (errors.length !== 0) throw new AggregateError(errors, 'Run file retirement failed')
+    })()
     return this.#close
   }
 }

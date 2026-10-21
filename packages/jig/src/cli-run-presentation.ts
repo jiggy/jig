@@ -1,6 +1,16 @@
 import { privateCliHumanText } from './cli-presentation.js'
 import { privateCliValueFields as fields } from './cli-value-presentation.js'
 import type { JsonValue } from './json.js'
+import { schemaTypeMismatchText } from './schema/types.js'
+
+/** INVALID_INPUT alone identifies neither a root schema fault nor a channel fault. */
+export function privateCliInvalidInputText(
+  details: Record<string, JsonValue> | undefined,
+  inspectCommand: string,
+): string {
+  const mismatch = schemaTypeMismatchText(details?.typeMismatch)
+  return `The input or channel request was rejected as invalid.${mismatch === undefined ? '' : `\nReported constraint: ${mismatch}`}\n\nNext step: Inspect the approved target's input schema and channel declarations:\n\n  $ jig inspect ${inspectCommand}\n\nCheck --input against that schema and connect required output channels with --receive NAME. This code alone does not identify which part was rejected.\nInspect the result and any effects before starting new work.\n\nJig runs the last approved revision. If you edited the Flow or its contract, approve those edits first:\n\n  $ jig review`
+}
 
 /** Untrusted text stays text, never terminal instructions or trusted headings. */
 function safeText(text: string): string {

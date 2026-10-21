@@ -11,6 +11,9 @@ Own this repository's Rspress configuration, assets, assembly, and direct GitHub
 - `theme/` and `landing.css` own independently copied presentation.
 - `package.json` and `bun.lock` pin site dependencies.
 - `../scripts/build-site.sh` owns fresh assembly, schema inventory, and Markdown publication checks.
+- Jig's client and evaluator references use `/spec/execution-client` and
+  `/spec/project-evaluation`. Assembly publishes the exact evaluator invocation
+  and recipe schema beside its human identity page. Downloads grant no authority.
 
 ## Local Contracts
 

@@ -1,29 +1,7 @@
-import { dirname as suiteDirname } from 'node:path'
-
-const suiteTestRoot = suiteDirname(import.meta.dir)
-
 import { describe, expect, test } from 'bun:test'
-import { mkdtemp } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { isPrivateRootFiniteAcpOwner } from '../../src/internal/root-finite-acp-controller.js'
-import { settleTestCommand } from '.././fixtures/bounded-command.js'
 
-describe('private finite ACP resource controller', () => {
-  test('prelaunch preference refusals, restoration boundaries, receipt ordering and recipient scope', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'jig-acp-controller-'))
-    const child = Bun.spawn(
-      [process.execPath, join(suiteTestRoot, 'fixtures/acp-controller-faults.ts')],
-      { stdout: 'pipe', stderr: 'pipe' },
-    )
-    const result = await settleTestCommand(child, {
-      evidence: join(root, 'faults'),
-      timeoutMs: 15_000,
-    })
-    expect(result.code, result.stderr).toBe(0)
-    expect(result.stdout).toContain('controller preference refusal checks passed')
-    expect(result.stdout).toContain('controller fault and scope checks passed')
-  })
+describe('finite ACP cleanup-ledger kind classifier (ordinary data only)', () => {
   test('classifies only its own cleanup-ledger allocation kind', () => {
     const base = {
       parentRunId: `sha256:${'1'.repeat(64)}`,

@@ -28,6 +28,9 @@ operational baselines, and public-site assembly.
   TypeScript candidate and site scripts invoke the relevant justfile, not
   package scripts. Python Just tasks expose the packaging orchestrator, which
   calls the standard Python build frontend directly.
+- `build-site.sh` includes the fixed evaluator invocation and recipe schema in
+  its exact public inventory, alongside the client and evaluator reference
+  pages. Site assembly copies canonical bytes. It never regenerates contracts.
 - `preflight.ts` owns local pre-push regression checks. `just preflight` builds
   Jig and its dependencies. It runs quick tooling and portable source checks. On
   an exact supported unprivileged Mac with qualified Bun, it then runs every
@@ -51,21 +54,25 @@ operational baselines, and public-site assembly.
   stages in one built workspace. Omitted stages perform no setup or execution.
   Selected reports bind the complete whole-file suite inventory. Its default
   runs all stages serially after shared builds and archive freezing. Jig's
-  portable build owns its complete package graph, including authoring.
-  Protocol-only execution builds authoring separately before its stage starts.
+  portable build owns its complete local package graph.
+
+  FLOW SDKs and authoring
+  use exact versioned public artifacts from `jiggy/flow`, not local builds.
 
   A failed stage stops later execution and archive-success verification. It
   includes the authored examples' deterministic application tests, the private
-  conversation-handoff fixture, and the
-  optional contract author's Node mapping/type/lifecycle checks. It also checks
-  the shared Agent method and ordinary ACP package. Refuse missing Python
-  build/test tools or separately installed Run/0 fixture dependencies before
-  builds and long tests, with the existing setup commands. CI supplies the
-  verified canonical eight-package bundle through `CI_CANDIDATE_BUNDLE`. Local
-  runs freeze complete SDK, reporting, HTTP Agent, ACP Agent, semantic model,
-  web/TUI renderer and Jig archives.
+  conversation-handoff fixture, and the external FLOW dependency boundary.
+  It also checks the shared Agent method and
+  ordinary ACP package. FLOW owns SDK, authoring, and conformance qualification.
+  Refuse missing Python build/test tools before builds and long tests.
 
-  Their owning packers place these archives under a canonical temporary root.
+  CI supplies the
+  verified canonical eight-package bundle through `CI_CANDIDATE_BUNDLE`. Local
+  runs freeze the exact public SDK archive alongside reporting, HTTP Agent, ACP
+  Agent, semantic model, web/TUI renderer and Jig archives.
+
+  Local packers and the public SDK fetch place archives under a canonical
+  temporary root.
   Source workspace builds remain separate from installed archive proof. It
   passes `FLOW_SDK_PACKAGE_ARCHIVE`, `REPORTING_PACKAGE_ARCHIVE`,
   `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE`,
@@ -87,10 +94,14 @@ operational baselines, and public-site assembly.
   Managed authoring is checked through its CLI. For application tests, it maps
   applications' declared SDK/Agent dependencies to exact frozen archives in
   disposable copies. The reconstructed application workspace includes nested
-  Flow and application-local method package manifests. This mapping uses no
-  lifecycle scripts and makes no edits to source manifests. Generated workspace
-  `node_modules` links are excluded from those copies. This permits testing an
-  SDK before its version reaches npm.
+  Flow and application-local method package manifests. Root Bun overrides bind
+  the complete frozen candidate closure across workspace members and transitive
+  dependencies.
+
+  This mapping uses no lifecycle scripts and makes no edits to source manifests.
+  Generated workspace `node_modules` links are excluded from those copies.
+  Full Jig CI fetches FLOW archives at their exact published versions.
+  Publish a newly adopted FLOW candidate before qualifying dependent Jig releases.
 
   It does not claim live Agent quality or independent consumer proof.
 - `test-installed-hostile-baseline.ts` consumes an exact archive, exercising
@@ -101,8 +112,11 @@ operational baselines, and public-site assembly.
   binds exactly one fresh memory Run to its canonical durable checkpoints,
   immutable admission and candidate generation, and exact ready target. Root
   invocation identity and admitted activation-request identity retain their
-  distinct protocol domains. Intent and plan bind that target's meaning. The
-  same proof requires a prepared Linux owner, positive `memory.events`
+  distinct protocol domains. Intent and plan bind that target's meaning.
+
+  The plan retains both closed native boot coordinates and the sealed owner's
+  matching boot identity. It never derives native coordinates from wall time.
+  The same proof requires a prepared Linux owner, positive `memory.events`
   max/oom/oom_kill counters, confirmed fence, complete release and admitted CLI
   terminal.
 
@@ -115,9 +129,14 @@ operational baselines, and public-site assembly.
   `installed-memory-proof.ts`
 
   owns pure integrity and outcome checks exercised by the quick
-  operational-baseline checks. Logged evidence contains only Run and receipt
+  operational-baseline checks. Their inert record inputs establish no native
+  execution or enforcement evidence.
+
+  Logged evidence contains only Run and receipt
   digests, counters and settlement facts, never owner tokens. Proof rejections
   name only a closed validation stage and never render private values or causes.
+  Command checks distinguish JSON parsing, terminal equality, parent terminal
+  shape, receipt disposition, exit status and stderr without changing acceptance.
   Like the operational baseline, it always checks live residue.
   `finishOperationalBaseline` removes only successful fixtures. It retains
   failed private state and the bounded memory command transcript.
@@ -158,9 +177,9 @@ operational baselines, and public-site assembly.
 - Site assembly verifies every public HTML page has indexed Markdown and
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.
-- Site assembly requires both products’ home, guide, and understanding routes,
-  plus FLOW’s authoring entrypoint, SDK/Markdown/Skill guides, and Jig’s
-  contact-import composition guide.
+- Site assembly requires Jig's home, guide, and understanding routes, plus its
+  contact-import composition guide. FLOW owns its separate site and authoring
+  guidance.
 - Site assembly requires Jig's contract identity pages and exact descriptor
   downloads together. The deployed-site check verifies their page titles, JSON
   content types, and canonical bytes. Neither operation is runtime invocation
@@ -205,6 +224,9 @@ operational baselines, and public-site assembly.
 
 ## Verification
 
+- `bun test scripts/test-release-applications.test.ts` runs the complete source
+  applications stage with real builds, frozen archives and a fresh Bun cache.
+  It verifies all six installations and source-checked application reports.
 - `bun test scripts/check-docs.test.ts` verifies documentation refusal and baseline handling.
 - `bun scripts/check-docs.ts` checks current source documentation.
 
@@ -240,7 +262,9 @@ operational baselines, and public-site assembly.
 
   It includes all quick CI checks and the protected npm publisher's controlled
   registry tests. The publisher uses Node hashing so these checks also run on
-  Mac. Every discovered Node CI test file runs once in the ordinary pool,
+  Mac. The frozen application closure regression runs actual builds, archive
+  installs and complete source-checked application tests with an isolated Bun cache.
+  Every discovered Node CI test file runs once in the ordinary pool,
   followed by the Bun tooling checks only after successful policy execution.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.

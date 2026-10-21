@@ -1,11 +1,11 @@
-import type { RunContext, RunResult } from '@jigging/flow'
+import type { RunContext, RunHandlerResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
 import { type ContactPreview, contactPreviewView, type ImportState } from './dashboard.ts'
 
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
   reporter?: Reporter,
-): Promise<RunResult> {
+): Promise<RunHandlerResult> {
   const view = reporter?.view('contacts', { title: 'Contact preview', landing: true })
   let state: ImportState = { phase: 'reading' }
   const show = (phase: ImportState['phase']) => {
@@ -64,6 +64,7 @@ export async function runMethod(
       slot: 'exporter',
       intent: 'Write the complete checked contact preview',
       input: converted.output,
+      attachments: { files: { create: true } },
     })
     run.signal.throwIfAborted()
     if (exported.outcome !== 'done') throw new TypeError('The preview exporter did not complete.')
@@ -81,7 +82,9 @@ export async function runMethod(
     ) {
       throw new TypeError('The exported preview metadata does not match the checked records.')
     }
-    state = { ...state, file: 'contacts/preview.json' }
+    const artifact = exported.artifacts?.files
+    if (!artifact) throw new TypeError('The preview exporter returned no immutable files artifact.')
+    state = { ...state, file: 'preview.json' }
     show('ready')
     if (preview.status === 'needs_mapping')
       reporter?.notice(
@@ -93,7 +96,11 @@ export async function runMethod(
         `${preview.rejected.length} records need correction. Review their reasons in the contact preview.`,
         'warning',
       )
-    return converted
+    return {
+      outcome: converted.outcome,
+      output: converted.output,
+      artifactResults: { preview: artifact },
+    }
   } catch (error) {
     state = {
       ...state,

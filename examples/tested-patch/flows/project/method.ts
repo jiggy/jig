@@ -64,9 +64,12 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
       slot: 'exporter',
       intent: 'Prepare review files from accepted repair evidence',
       input: { issue: input.issue, originals: input.files, checked: acceptance.output },
+      attachments: { files: { create: true } },
     })
     run.signal.throwIfAborted()
     if (exported.outcome !== 'done') throw new TypeError('The patch exporter did not complete.')
+    const artifact = exported.artifacts?.files
+    if (!artifact) throw new TypeError('The patch exporter did not return its immutable files.')
     const output = exported.output as { ready: boolean; files: string[] }
     const expected = [
       'goal.txt',
@@ -89,7 +92,11 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
         'No checked patch is available. The review summary retains the repair cause.',
         'error',
       )
-    return result
+    return {
+      outcome: result.outcome,
+      output: result.output,
+      artifactResults: { deliverables: artifact },
+    }
   } catch (error) {
     state = {
       ...state,

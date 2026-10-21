@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { setTimeout as delay } from 'node:timers/promises'
 import { privateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
 import {
   createPrivateCodexOpenAIApiAgentProvider,
@@ -140,25 +141,21 @@ describe('private native Codex Agent provider', () => {
   })
   test('rechecks bearer expiry immediately before launch', async () => {
     const support = await files()
-    const now = Date.now()
+    const usableUntil = Date.now() + 2_000
     const provider = await createPrivateCodexSubscriptionAgentProvider({
       ...support,
       credential: encoder.encode(
         JSON.stringify(
           credentialValue('account', 'secret', {
-            expiresAt: now + 6 * 60_000,
+            expiresAt: usableUntil + 5 * 60_000,
           }),
         ),
       ),
     })
     const runtime = privateAcpAgentRuntime(provider)
-    const originalNow = Date.now
-    try {
-      Date.now = () => now + 2 * 60_000
-      expect(() => runtime.startupInput!()).toThrow('subscription credential is invalid')
-    } finally {
-      Date.now = originalNow
-    }
+    expect(runtime.startupInput!().byteLength).toBeGreaterThan(0)
+    await delay(Math.max(0, usableUntil - Date.now() + 20))
+    expect(() => runtime.startupInput!()).toThrow('subscription credential is invalid')
   })
   test('rejects canonical, refreshable, expired, and mismatched subscription credentials', async () => {
     const support = await files()

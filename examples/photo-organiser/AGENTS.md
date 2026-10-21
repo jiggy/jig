@@ -30,8 +30,9 @@ while application checks and operator authority control file effects.
   entrypoint.
 - `fixtures/photos` owns twelve visually distinct labelled synthetic
   illustrations and caption/date sidecars. Tests construct invalid proposals.
-- `test` owns deterministic application and channel checks. `README.md` owns the
-  user walkthrough.
+- `test` owns pure acceptance checks, actual file-method checks and the
+  deterministic caption-task Flow used by installed regression tests.
+  `README.md` owns the user walkthrough.
 
 ## Local Contracts
 
@@ -50,11 +51,16 @@ while application checks and operator authority control file effects.
   rechecks every original and derived destination, and returns paths relative to
   its own `files` attachment. Each file method rejects caller assertions and
   supplied paths.
-- `bindings/organise.ts` lends `source` to each file Flow and maps its `files`
-  output into `photos/copies` or `photos/overview`. The coordinator checks both
-  complete results and adds these fixed prefixes to final paths and references.
-  Leaf paths and manifest rows remain relative to the leaf output. Independent
+- `bindings/organise.ts` lends `source` to each file Flow and authorizes fresh
+  operation-owned `files` outputs. The coordinator checks complete results and
+  forwards their sealed artifacts as `copies` and `overview`, without a writable
+  organiser attachment or copy/broker slot. Final names supply packet prefixes.
+  Leaf paths and manifest rows stay relative to the leaf output. Independent
   file methods keep the same contracts when called as standalone root Flows.
+
+  Each call explicitly requests `files: {create: true}` and requires its returned
+  artifact grant. Dashboard references name `copies` or `overview` with leaf-relative
+  paths, never a root output folder.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary
   packet. Retained `--out` paths must be new.
 - TUI and web share the exact public reporting contract and artifact
@@ -92,14 +98,18 @@ while application checks and operator authority control file effects.
 
 - `bun test examples/photo-organiser/test` includes the public Agent preparation
   validator, so substitutes cannot bypass response-schema compatibility.
-- `test/organise.test.ts` checks four-Flow application composition, exact mapped
-  prefixes, child-result acceptance and failure/cancellation without replay. Its
-  deterministic call seam executes the real leaf methods in separate temporary
-  folders and models import visibility. It does not issue native authority.
+- Verify four-Flow composition through actual protocol processes or the installed
+  host. Check final prefixes, child acceptance and failure without replay.
+  Never replace invocation, artifact grants or export with a test double.
 - `test/file-methods.test.ts` checks independent copy/sheet results, byte
   preservation, input/source rejection before writes, cancellation, exclusive
-  creation and the exact optional public views. Those application checks do not
+  creation. Pure view checks validate the optional public reporting values.
+  Those application checks do not
   establish native containment or standalone/mapped host execution.
+- `packages/jig/test/host/installed-photo-organiser.test.ts` qualifies the
+  unchanged four-Flow application with a real caption-task Flow and frozen packages.
+  It requires the actual native host and checks packet bytes and ownership residue.
+  It does not establish live Agent judgment or untested fault windows.
 - Agent response schemas declare FLOW Schema/0 and use its bounded Agent subset.
   Length and filename constraints remain in application code.
 - Reporting checks compare all four offline descriptor/license copies with the

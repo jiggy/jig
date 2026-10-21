@@ -1,4 +1,6 @@
 import type { PrivateCapturedInput } from './input-capture.js'
+import type { PrivateBootDeadline } from './native-clock.js'
+import type { PrivateProjectEvaluationWorkspace } from './project-evaluation-workspace.js'
 
 /** Inert, trusted execution requirements. This is neither admission nor a public SPI. */
 export interface PrivateExecutionIntent {
@@ -9,6 +11,7 @@ export interface PrivateExecutionIntent {
     readonly cpuQuotaMicros: number
     readonly cpuPeriodMicros: number
     readonly deadlineUnixMs: number
+    readonly bootDeadline?: PrivateBootDeadline
     readonly cancellationGraceMs: number
     readonly cleanupTimeoutMs?: number
   }
@@ -32,9 +35,12 @@ export interface PrivateExecutionIntent {
     readonly destination: string
   }[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
   readonly output?: boolean
-  /** Private same-filesystem stages for reviewed writable child routes. */
-  readonly outputImports?: true
+  /** Fixed dependency collection from fenced native work, separate from Flow output. */
+  readonly preparationOutput?: 'production' | 'evaluation'
+  /** Fixed evaluator-only read-only C/R/D/prior tree with phase-owned output roots. */
+  readonly evaluationWorkspace?: PrivateProjectEvaluationWorkspace
   readonly storageBytes: number
   /** Aggregate live stdout/stderr forwarding, separate from delivered file bytes. */
   readonly maxOutputBytes: number

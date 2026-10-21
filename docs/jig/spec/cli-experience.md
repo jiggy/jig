@@ -572,16 +572,25 @@ Do not repeat delivery and cleanup records already explained by the summary.
 Omit a null checkpoint and a zero delivered-file count from human results;
 their exact machine values remain unchanged.
 
-Input errors name the approved schema and the rejected field when known. Explain
-that source edits need `jig review`; an input mismatch alone does not prove an
-outdated review. Run does not inspect or approve live source to guess freshness.
-Native Agent setup failures identify the selected client and a closed cause,
-separately from corrective guidance. Locate the selection at its captured Binding
-declaration and resource slot when known, instead of the provider's executable
-Flow file. Never expose private exception text or invent the source location.
-When that slot is known, explain how to select another supported client in its
-inline or named ACP grant and review the change, alongside repairing the selected
-client. Never select a fallback or approve a changed execution identity implicitly.
+Invalid Run requests can involve input values or required channel connections.
+Generic `INVALID_INPUT` failures must not claim an input-schema mismatch without
+established provenance. Show only bounded reported constraints, not rejected
+values or private paths.
+
+Guide the caller to inspect the approved input and channel declarations.
+Explain `--input` and `--receive` as corrective choices, not permission to replay
+uncertain work. Source edits need `jig review`. A rejection alone does not
+establish outdated approval. Run never inspects or approves live source to guess
+freshness.
+
+Native Agent setup failures identify the selected client and a closed cause.
+Keep corrective guidance separate. Locate the selection at its captured Binding
+declaration and resource slot when known, not the provider's executable Flow.
+Never expose private exception text or invent the source location.
+
+When the slot is known, explain selection through its inline or named ACP grant.
+Explain the required review alongside repairing the selected client.
+Never select a fallback or approve a changed execution identity implicitly.
 An ineligible direct child Flow diagnostic explains that its slots or settings
 need configuration through project defaults or a selected Binding.
 
@@ -849,6 +858,33 @@ command branches supply facts. Installed-launcher errors follow the same
 hierarchy even when the application cannot start. Review policy is generated
 from the same captured records that are approved, and human Run summaries
 come from the same terminal observations as machine results.
+
+### Installed application execution
+
+`jig attempt <prepare|submit|lookup|cancel|result|export> --json` is the
+machine-only application boundary specified by
+[the execution client contract](execution-client.md). Its help remains ordinary
+human output and acquires no execution host or stdin lifetime.
+
+Machine requests contain `protocolVersion: 1`, the selected `operation`, and
+`request` in one bounded JSON line on stdin. Tickets, captured input and
+application data must not be placed in command arguments or diagnostic text.
+Validate the complete command grammar before acquiring execution support, and
+validate the request before invoking the operation. Invalid requests emit one
+closed typed error record, without rejected data or a fabricated execution
+terminal. Machine stdout contains only the operation's versioned records.
+
+Completing the request line is not closing the submit connection. The original
+submit owner retains its finite foreground connection through settlement.
+Disconnecting it requests cancellation of that Run, not detached execution.
+Duplicate observers receive the original acceptance without acquiring ownership,
+and observer disconnection cannot cancel the original Run or another root.
+
+Preparation and lookup never dispatch. Cancellation acknowledgement is not
+cleanup confirmation. Result availability and export delivery are separate
+from the immutable execution terminal. Failure advice must direct callers to
+reconcile the original ticket, never mint replacement work automatically after
+uncertainty, expiry, lost acknowledgement, or missing retained evidence.
 
 Changes to public output must update this contract when its guarantees change,
 its owning implementation, and focused acceptance tests together. Adding an

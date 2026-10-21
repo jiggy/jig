@@ -4,6 +4,8 @@ import { lstat, mkdir, mkdtemp, realpath, rmdir } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
+import type { CapturedPackage } from '../package/capture.js'
+import { requirePrivateBunPreparationOutput } from './bun-preparation-output.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
@@ -17,6 +19,11 @@ import {
   releasePrivateMacosOwnerState,
 } from './macos-backend-state.js'
 import {
+  normalizePrivateMacosEvaluationWorkspace,
+  type PrivateMacosEvaluationWorkspace,
+  requirePrivateMacosEvaluationEnvironment,
+} from './macos-evaluation-workspace.js'
+import {
   type PrivateMacosGuardian,
   type PrivateMacosGuardianCapturedInput,
   type PrivateMacosGuardianResult,
@@ -24,7 +31,10 @@ import {
   recoverPrivateMacosGuardian,
   releasePrivateMacosGuardian,
 } from './macos-guardian-client.js'
-import { retainPrivateMacosGuardianOutput } from './macos-guardian-output.js'
+import {
+  retainPrivateMacosGuardianOutput,
+  retainPrivateMacosPreparationOutput,
+} from './macos-guardian-output.js'
 import {
   type PrivateMacosGuardianStorage,
   requirePrivateMacosGuardianStorage,
@@ -51,11 +61,11 @@ import {
   type PrivateMacosStopReason,
   requirePrivateMacosScopeLimits,
 } from './macos-scope-execution.js'
+import { privateProfileSpan } from './private-profile.js'
 import {
   type PrivateReadInputAlias,
   planPrivateReadInputProjection,
 } from './read-input-projection.js'
-import { privateProfileSpan } from './private-profile.js'
 
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -96,9 +106,12 @@ export interface PrivateMacosLaunchPlan {
   readonly environment?: Readonly<Record<string, string>>
   readonly files: PrivateMacosSandboxFiles
   readonly maxOutputBytes: number
+  readonly preparationOutput?: 'production' | 'evaluation'
   readonly storage?: PrivateMacosGuardianStorage
   readonly capturedInputs?: readonly PrivateMacosCapturedInput[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
+  readonly evaluationWorkspace?: PrivateMacosEvaluationWorkspace
 }
 interface SealedInput {
   readonly path: string
@@ -111,10 +124,13 @@ interface SealedImmutablePath {
   readonly inode: string
   readonly type: 'file' | 'directory'
 }
-interface SealedPlan extends Omit<PrivateMacosLaunchPlan, 'capturedInputs' | 'environment'> {
+interface SealedPlan
+  extends Omit<PrivateMacosLaunchPlan, 'capturedInputs' | 'environment' | 'limits'> {
+  readonly limits: ReturnType<typeof requirePrivateMacosScopeLimits>
   readonly environment: Readonly<Record<string, string>>
   readonly capturedInputs: readonly SealedInput[]
   readonly inputDirectories: readonly string[]
+  readonly inputEmptyDirectories: readonly string[]
   readonly inputAliases: readonly PrivateReadInputAlias[]
   readonly immutablePaths: readonly SealedImmutablePath[]
 }
@@ -162,7 +178,7 @@ export interface PrivateMacosSealedOwner {
   ): Promise<PrivateMacosComponentProcess>
 }
 export type PrivateMacosComponentProcess = PrivateExecutionProcess & {
-  readonly outputImport?: import('./execution-file-import.js').PrivateFileImportTarget
+  readonly packageOutput?: Promise<CapturedPackage>
   readonly output?: ReturnType<typeof retainPrivateMacosGuardianOutput>['output']
   readonly owner: PrivateMacosPreparedOwnerIdentity
   readonly process: Readonly<{ pid: number; version: number }>
@@ -231,10 +247,17 @@ export class PrivateMacosBackend {
     const allocation = normalizePrivateMacosOwnerStateAllocationIdentity(ownerState)
     const retainedPlan: PrivateMacosLaunchPlan = Object.freeze({
       ...plan,
+      limits: requirePrivateMacosScopeLimits(plan.limits),
+      ...(plan.evaluationWorkspace === undefined
+        ? {}
+        : {
+            evaluationWorkspace: normalizePrivateMacosEvaluationWorkspace(plan.evaluationWorkspace),
+          }),
       capturedInputs: Object.freeze(
         (plan.capturedInputs ?? []).map(({ path, input }) => Object.freeze({ path, input })),
       ),
       inputDirectories: Object.freeze([...(plan.inputDirectories ?? [])]),
+      inputEmptyDirectories: Object.freeze([...(plan.inputEmptyDirectories ?? [])]),
     })
     const [mechanism, sealedPlan] = await Promise.all([
       this.observeMechanism(),
@@ -447,11 +470,16 @@ export class PrivateMacosBackend {
       )
       if (signal?.aborted) guardian.cancel()
       else guardian.continue()
+      const collection = data.sealedPlan.storage?.collect
       const retained =
-        data.sealedPlan.storage?.collect === 'output'
-          ? retainPrivateMacosGuardianOutput(guardian)
+        collection === 'output' || collection === 'evaluation'
+          ? retainPrivateMacosGuardianOutput(guardian, collection)
           : undefined
-      const terminal = retained?.completion ?? guardian.completion
+      const preparation =
+        data.sealedPlan.preparationOutput === undefined
+          ? undefined
+          : retainPrivateMacosPreparationOutput(guardian, data.sealedPlan.preparationOutput)
+      const terminal = preparation?.completion ?? retained?.completion ?? guardian.completion
       const enforcement = terminal
         .then(async (result) => {
           const receipt = receiptFor(data.prepared, result)
@@ -479,12 +507,35 @@ export class PrivateMacosBackend {
             stopReason: commonStopReason(receipt.stopReason),
           }),
       )
+      const evidence = enforcement.then((receipt) => receipt.evidence)
+      const terminationReason = enforcement.then((receipt) => receipt.stopReason)
+      // Consumers may use only some projections. Keep the original failures observed.
+      for (const promise of [completion, evidence, terminationReason])
+        void promise.catch(() => undefined)
       let inputClosed = false
+      const packageOutput =
+        preparation === undefined
+          ? undefined
+          : enforcement.then(
+              () => preparation.packageOutput,
+              async (error) => {
+                const cleanup = await Promise.allSettled([
+                  preparation.packageOutput.then((captured) => captured.dispose()),
+                ])
+                if (cleanup[0]!.status === 'rejected')
+                  throw new AggregateError(
+                    [error, cleanup[0]!.reason],
+                    'native preparation enforcement and retirement failed',
+                  )
+                throw error
+              },
+            )
+      void packageOutput?.catch(() => undefined)
       let terminationRequested = false
       componentReturned = true
       return Object.freeze({
-        ...(guardian.outputImport === undefined ? {} : { outputImport: guardian.outputImport }),
         ...(retained === undefined ? {} : { output: retained.output }),
+        ...(packageOutput === undefined ? {} : { packageOutput }),
         owner: data.prepared,
         process: processIdentity,
         envelope: envelopeFor(data),
@@ -492,8 +543,8 @@ export class PrivateMacosBackend {
         stderr: guardian.stderr,
         completion,
         enforcement,
-        evidence: enforcement.then((receipt) => receipt.evidence),
-        terminationReason: enforcement.then((receipt) => receipt.stopReason),
+        evidence,
+        terminationReason,
         async write(bytes: Uint8Array) {
           if (inputClosed) throw new Error('native macOS Run input is closed')
           await writeBytes(guardian!.stdin, bytes)
@@ -645,6 +696,7 @@ export function normalizePrivateMacosConfirmedEnforcementReceipt(
       'cancelled',
       'coordinator_lost',
       'deadline',
+      'clock',
       'setup_failed',
       'memory_limit',
       'process_limit',
@@ -729,6 +781,12 @@ async function sealPlan(
   value: PrivateMacosLaunchPlan,
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): Promise<SealedPlan> {
+  const preparationOutput = requirePrivateBunPreparationOutput(value.preparationOutput)
+  if (
+    preparationOutput !== undefined &&
+    (value.storage?.collect !== 'work' || value.evaluationWorkspace !== undefined)
+  )
+    throw new TypeError('invalid native preparation collection plan')
   if (value === null || typeof value !== 'object' || !RUN_ID.test(value.runId))
     throw new TypeError('invalid native macOS launch plan')
   const command = [...value.command]
@@ -764,6 +822,9 @@ async function sealPlan(
       posix.join(allocation.directory, 'control'),
     ]),
     network: value.files.network,
+    ...(value.files.evaluationWorkspace === undefined
+      ? {}
+      : { evaluationWorkspace: Object.freeze({ ...value.files.evaluationWorkspace }) }),
     ...(value.files.codexPreferenceNotifications === undefined
       ? {}
       : { codexPreferenceNotifications: value.files.codexPreferenceNotifications }),
@@ -775,10 +836,26 @@ async function sealPlan(
   if (storage === undefined && files.writableTrees.length !== 0)
     throw new TypeError('native macOS writable paths require bounded storage')
   if (storage !== undefined) requirePrivateMacosGuardianStorage(storage, files, value.cwd)
+  const evaluationWorkspace =
+    value.evaluationWorkspace === undefined
+      ? undefined
+      : normalizePrivateMacosEvaluationWorkspace(value.evaluationWorkspace)
+  if (
+    (evaluationWorkspace !== undefined) !== (files.evaluationWorkspace !== undefined) ||
+    (evaluationWorkspace !== undefined &&
+      (evaluationWorkspace.phase !== files.evaluationWorkspace?.phase ||
+        storage?.collect !== 'evaluation' ||
+        files.network !== 'isolated' ||
+        value.maxOutputBytes !== 16 * 1024 * 1024))
+  )
+    throw new TypeError('invalid native macOS evaluation workspace plan')
+  if (evaluationWorkspace !== undefined)
+    requirePrivateMacosEvaluationEnvironment(environment, storage!.mountPath)
   const inputDirectories = normalizePrivateMacosInputDirectories(value.inputDirectories ?? [])
   const projection = planPrivateReadInputProjection({
     files: value.capturedInputs ?? [],
     directories: inputDirectories,
+    emptyDirectories: value.inputEmptyDirectories ?? [],
   })
   const captures = normalizePrivateMacosInputs(
     projection.files.map(({ path, input }) => {
@@ -798,11 +875,15 @@ async function sealPlan(
   for (const [path, type] of [
     ...files.readOnlyFiles.map((path) => [path, 'file'] as const),
     ...files.readOnlyTrees.map((path) => [path, 'directory'] as const),
+    ...(evaluationWorkspace === undefined
+      ? []
+      : [[evaluationWorkspace.source, 'directory'] as const]),
   ]) {
     // The guardian creates this tree from already captured descriptors after
     // attaching the bounded volume. Its files are authenticated by digest and
     // cannot exist at coordinator-side sealing time.
     if (path === projectedInputs) continue
+    if (path === files.evaluationWorkspace?.root) continue
     if (immutablePaths.some((entry) => entry.path === path))
       throw new TypeError('native macOS immutable projection is duplicated')
     if ((await realpath(path)) !== path)
@@ -822,9 +903,12 @@ async function sealPlan(
     environment,
     files,
     maxOutputBytes: value.maxOutputBytes,
+    ...(preparationOutput === undefined ? {} : { preparationOutput }),
     ...(storage === undefined ? {} : { storage }),
+    ...(evaluationWorkspace === undefined ? {} : { evaluationWorkspace }),
     capturedInputs: Object.freeze(captures),
     inputDirectories,
+    inputEmptyDirectories: projection.emptyDirectories,
     inputAliases: projection.aliases,
     immutablePaths: Object.freeze(immutablePaths),
   })
@@ -865,11 +949,15 @@ function guardianConfiguration(
     limits: data.sealedPlan.limits,
     maxOutputBytes: data.sealedPlan.maxOutputBytes,
     ...(data.sealedPlan.storage === undefined ? {} : { storage: data.sealedPlan.storage }),
+    ...(data.sealedPlan.evaluationWorkspace === undefined
+      ? {}
+      : { evaluationWorkspace: data.sealedPlan.evaluationWorkspace }),
     ...(data.sealedPlan.inputDirectories.length === 0
       ? {}
       : {
           inputs: data.sealedPlan.capturedInputs,
           inputDirectories: data.sealedPlan.inputDirectories,
+          inputEmptyDirectories: data.sealedPlan.inputEmptyDirectories,
           inputAliases: data.sealedPlan.inputAliases,
         }),
   })
@@ -882,6 +970,7 @@ function guardianInputs(
     planPrivateReadInputProjection({
       files: plan.capturedInputs ?? [],
       directories: plan.inputDirectories ?? [],
+      emptyDirectories: plan.inputEmptyDirectories ?? [],
     }).files.map((file) => Object.freeze({ path: file.path, input: file.input })),
   )
 }

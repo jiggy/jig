@@ -57,13 +57,24 @@ export function isPrivateChildFlowAllocation(value: JsonValue): boolean {
 }
 
 /** Reserve each branch's Flow levels and largest effect before dispatch. */
-export function privateRootBranchReservation(depths: readonly number[]) {
+export function privateRootBranchReservation(
+  depths: readonly number[],
+  effectMemoryBytes: readonly number[] = depths.map(
+    () => PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes,
+  ),
+) {
   if (depths.some((depth) => !isPrivateBranchDepth(depth)))
     throw new TypeError('Invalid branch depth.')
   const flow = PRIVATE_FLOW_RESOURCE_CEILINGS
+  if (
+    effectMemoryBytes.length !== depths.length ||
+    effectMemoryBytes.some((bytes) => bytes !== flow.memoryBytes && bytes !== 2 * flow.memoryBytes)
+  )
+    throw new TypeError('Invalid reviewed effect memory allowance.')
   const flows = depths.reduce((sum, depth) => sum + depth, 0)
   return Object.freeze({
-    memoryBytes: flow.memoryBytes * (1 + flows + depths.length),
+    memoryBytes:
+      flow.memoryBytes * (1 + flows) + effectMemoryBytes.reduce((sum, bytes) => sum + bytes, 0),
     pids: flow.pids * (1 + flows) + depths.length * PRIVATE_AGENT_PROVIDER_PIDS,
     cpuQuotaMicros: flow.cpuQuotaMicros * (1 + flows + depths.length),
     cpuPeriodMicros: flow.cpuPeriodMicros,
@@ -86,7 +97,23 @@ export function canReservePrivateRootOperation(
     isPrivateChildFlowAllocation(value) ? (value as Record<string, JsonValue>).flowDepth : 1,
   )
   if (depths.some((depth) => !isPrivateBranchDepth(depth))) return false
-  const reserved = privateRootBranchReservation(depths as number[])
+  const effectMemoryBytes = allocations.map((value) =>
+    value !== null &&
+    typeof value === 'object' &&
+    !Array.isArray(value) &&
+    Object.hasOwn(value, 'effectMemoryBytes')
+      ? (value as Record<string, JsonValue>).effectMemoryBytes
+      : PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes,
+  )
+  if (
+    effectMemoryBytes.some(
+      (bytes) =>
+        bytes !== PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes &&
+        bytes !== 2 * PRIVATE_FLOW_RESOURCE_CEILINGS.memoryBytes,
+    )
+  )
+    return false
+  const reserved = privateRootBranchReservation(depths as number[], effectMemoryBytes as number[])
   return (
     reserved.memoryBytes <= PRIVATE_ROOT_RESOURCE_POLICY.memoryBytes &&
     reserved.pids <= PRIVATE_ROOT_RESOURCE_POLICY.pids &&

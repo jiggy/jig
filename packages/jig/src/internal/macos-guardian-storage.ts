@@ -9,6 +9,7 @@ import {
   privateMacosStatAt,
   privateMacosUnlinkAt,
 } from './macos-descriptor-files.js'
+import { privateMacosEvaluationWritableRoots } from './macos-evaluation-workspace.js'
 import { requirePrivateMacosOwnerDirectory } from './macos-owner-state.js'
 import type { PrivateMacosSandboxFiles } from './macos-sandbox-profile.js'
 import {
@@ -21,8 +22,7 @@ import {
 export interface PrivateMacosGuardianStorage {
   readonly mountPath: string
   readonly bytes: number
-  readonly collect: 'output' | 'work' | null
-  readonly imports?: true
+  readonly collect: 'output' | 'work' | 'evaluation' | null
 }
 const DIRECTORY = constants.O_RDONLY | constants.O_DIRECTORY | 0x20000000 | 0x01000000
 const controlPath = (owner: string) => join(owner, 'storage')
@@ -35,10 +35,7 @@ export function requirePrivateMacosGuardianStorage(
   if (
     storage === null ||
     typeof storage !== 'object' ||
-    Object.keys(storage).sort().join() !==
-      (storage.imports === undefined
-        ? 'bytes,collect,mountPath'
-        : 'bytes,collect,imports,mountPath') ||
+    Object.keys(storage).sort().join() !== 'bytes,collect,mountPath' ||
     typeof storage.mountPath !== 'string' ||
     !storage.mountPath.startsWith('/') ||
     storage.mountPath === '/' ||
@@ -47,15 +44,34 @@ export function requirePrivateMacosGuardianStorage(
     storage.bytes < 16 * 1024 * 1024 ||
     storage.bytes > 512 * 1024 * 1024 ||
     storage.bytes % (1024 * 1024) !== 0 ||
-    ![null, 'output', 'work'].includes(storage.collect) ||
-    (storage.imports !== undefined &&
-      (storage.imports !== true ||
-        storage.collect !== 'output' ||
-        !files.writableTrees.includes(join(storage.mountPath, 'output'))))
+    ![null, 'output', 'work', 'evaluation'].includes(storage.collect)
   )
     throw new TypeError('invalid macOS guardian storage')
   const roots = ['work', 'tmp', 'output'].map((name) => join(storage.mountPath, name))
   const inputs = join(storage.mountPath, 'inputs')
+  const evaluation = files.evaluationWorkspace
+  if (storage.collect === 'evaluation' || evaluation !== undefined) {
+    const root = join(storage.mountPath, 'evaluation')
+    if (
+      evaluation === undefined ||
+      storage.collect !== 'evaluation' ||
+      evaluation.root !== root ||
+      cwd !== root ||
+      storage.bytes !== 512 * 1024 * 1024 ||
+      files.writableTrees.some(
+        (path) =>
+          ![
+            join(storage.mountPath, 'tmp'),
+            join(root, 'scratch'),
+            ...privateMacosEvaluationWritableRoots(evaluation.phase).map((name) =>
+              join(root, name),
+            ),
+          ].includes(path),
+      )
+    )
+      throw new TypeError('invalid macOS evaluation storage')
+    return
+  }
   const readOnlyInputCwd =
     files.writableTrees.length === 0 &&
     storage.collect === null &&
@@ -101,7 +117,11 @@ export async function preparePrivateMacosGuardianStorage(
     const collector =
       storage.collect === null
         ? undefined
-        : await privateMacosOpenAt(volume.directory.fd, storage.collect, DIRECTORY)
+        : await privateMacosOpenAt(
+            volume.directory.fd,
+            storage.collect === 'evaluation' ? 'output' : storage.collect,
+            DIRECTORY,
+          )
     return Object.freeze({ directory: volume.directory, collector })
   } catch (error) {
     await volume.directory.close()

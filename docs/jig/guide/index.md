@@ -58,8 +58,11 @@ project instead.
 The greeting names the exact FLOW SDK revision tested with its Jig build,
 not a moving registry tag. Review resolves and retains
 its dependencies privately, so no per-Flow `bun install` is needed.
+Keep the SDK declaration in `flows/hello/package.json`.
+An application-root SDK dependency does not replace the Flow's declaration.
+
 `--allow-resolution-network` permits dependency-selected network requests
-before approval; declining cannot undo those requests. It does not give Runs
+before approval. Declining cannot undo those requests. It does not give Runs
 network access. Supplied dependency locks remain frozen. See
 [dependency review](./dependencies.md) for reusable locked packages.
 
@@ -204,9 +207,11 @@ Jig terminates the scope. See the [security boundary](https://github.com/jiggy/j
 when deciding whether this tradeoff fits your workload.
 
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
-`/run/current-system/sw/bin`. An absolute `JIG_BWRAP_PATH` selects another
-Bubblewrap installation. The host validates the selected tool; an invalid
-explicit selection fails rather than falling back.
+`/run/current-system/sw/bin`, not your shell's `PATH`.
+If Bubblewrap is installed elsewhere, configure its absolute path before review.
+See [host configuration](./configuration.md#host-configuration) for the command.
+The host validates the selected tool. An invalid explicit selection fails
+rather than falling back.
 
 On NixOS, enable `programs.nix-ld.enable` for npm's runtime binary. Jig resolves
 glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs

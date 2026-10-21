@@ -101,6 +101,13 @@ const CLEANUP_KIND = 'private-root-agent-cleanup/1'
 const CANCELLATION_GRACE_MS = 1_000
 const DIGEST = /^sha256:[0-9a-f]{64}$/
 
+import { privateInvocationBootDeadline } from './invocation-context.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootRemaining,
+} from './native-clock.js'
+
 interface AcpAllocation {
   readonly kind: typeof ALLOCATION_KIND
   readonly parentRunId: string
@@ -112,6 +119,7 @@ interface AcpAllocation {
   readonly requestDigest: string
   readonly providerDigest: string
   readonly effectiveDeadlineUnixMs: number
+  readonly effectiveBootDeadline: PrivateBootDeadline
   readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
 
@@ -251,12 +259,16 @@ async function executeOwnedProvider(
     admit(): PrivateFiniteAcpEndpoints
   },
 ): Promise<RunHostOperationTerminal> {
+  const effectiveBootDeadline = await privateInvocationBootDeadline(
+    input,
+    recipe.wallClockCeilingMs,
+  )
   const effectiveDeadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
     Date.now() + recipe.wallClockCeilingMs,
   )
-  if (Date.now() >= effectiveDeadlineUnixMs) {
+  if (privateBootRemaining(effectiveBootDeadline) <= 0) {
     return failed('DEADLINE_EXCEEDED', 'the finite ACP operation deadline elapsed before dispatch')
   }
   if (input.signal.aborted) return failed('CANCELLED', 'the finite ACP operation was cancelled')
@@ -306,6 +318,7 @@ async function executeOwnedProvider(
     requestDigest: operation.digest,
     providerDigest: provider.digest,
     effectiveDeadlineUnixMs,
+    effectiveBootDeadline,
     ownerAllocation,
   })
   let lifecycle: PrivateRootChildOwnerLifecycle
@@ -389,6 +402,7 @@ async function executeOwnedProvider(
           effectiveDeadlineUnixMs,
           identity,
           operation.session !== undefined,
+          effectiveBootDeadline,
         ),
         ownerAllocation,
       ),
@@ -483,7 +497,7 @@ async function executeOwnedProvider(
     }
     if (input.signal.aborted)
       return failed('CANCELLED', `the finite ACP operation was cancelled while ${phase}`)
-    if (Date.now() >= effectiveDeadlineUnixMs) {
+    if (privateBootRemaining(effectiveBootDeadline) <= 0) {
       return failed(
         'DEADLINE_EXCEEDED',
         `the finite ACP operation deadline elapsed while ${phase}; ${attemptedDispatch ? 'dispatch may have occurred and no result was proved' : 'dispatch was not attempted'}`,
@@ -535,7 +549,10 @@ async function executeOwnedProvider(
   if ((execution.fence.stopReason === 'cancelled' && !execution.closed) || input.signal.aborted) {
     return failed('CANCELLED', 'the finite ACP operation was cancelled')
   }
-  if (execution.fence.stopReason === 'deadline' || Date.now() >= effectiveDeadlineUnixMs) {
+  if (
+    execution.fence.stopReason === 'deadline' ||
+    privateBootRemaining(effectiveBootDeadline) <= 0
+  ) {
     return failed('DEADLINE_EXCEEDED', 'the finite ACP operation deadline elapsed')
   }
   if (
@@ -754,6 +771,7 @@ function agentExecutionIntent(
   deadlineUnixMs: number,
   identity: string,
   retainSession = false,
+  bootDeadline?: PrivateBootDeadline,
 ): PrivateExecutionIntent {
   const acp = privateAcpAgentRuntime(provider)
   const mounts = [
@@ -774,6 +792,7 @@ function agentExecutionIntent(
       ...recipe.resourceCeilings,
       pids: PRIVATE_AGENT_PROVIDER_PIDS,
       deadlineUnixMs,
+      ...(bootDeadline === undefined ? {} : { bootDeadline }),
       cancellationGraceMs: CANCELLATION_GRACE_MS,
     },
     projections: privateExecutionFileProjections(mounts),
@@ -882,6 +901,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): AcpAllocati
       'requestDigest',
       'providerDigest',
       'effectiveDeadlineUnixMs',
+      'effectiveBootDeadline',
       'ownerAllocation',
     ],
     'Agent allocation',
@@ -912,6 +932,7 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): AcpAllocati
     requestDigest: value.requestDigest,
     providerDigest: value.providerDigest,
     effectiveDeadlineUnixMs: value.effectiveDeadlineUnixMs,
+    effectiveBootDeadline: normalizePrivateBootDeadline(value.effectiveBootDeadline),
     ownerAllocation: normalizePrivateExecutionOwnerStateAllocationIdentity(value.ownerAllocation),
   })
 }

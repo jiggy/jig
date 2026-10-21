@@ -3,7 +3,7 @@
 set -eu
 
 if [ "$#" -ne 2 ]; then
-  echo "usage: scripts/build-site.sh <flow|jig> <output-directory>" >&2
+  echo "usage: scripts/build-site.sh <jig> <output-directory>" >&2
   exit 2
 fi
 
@@ -11,7 +11,7 @@ site_name=$1
 case $site_name in
   jig) ;;
   *)
-    echo "the site must be flow or jig" >&2
+    echo "the site must be jig" >&2
     exit 2
     ;;
 esac
@@ -60,7 +60,7 @@ cp -- "$repository/site/theme/fonts/"*-LICENSE.txt "$staging/font-licenses/"
 const { readFileSync, readdirSync, statSync } = require('node:fs');
 const { join, relative } = require('node:path');
 const [root, site] = process.argv.slice(2);
-const origin = site === 'jig' ? 'https://jig.md' : 'https://flow.jig.md';
+const origin = 'https://jig.md';
 const index = readFileSync(join(root, 'llms.txt'), 'utf8');
 const bundle = readFileSync(join(root, 'llms-full.txt'), 'utf8');
 if (!index.trim() || !bundle.trim()) throw new Error('Empty agent documentation');
@@ -91,7 +91,8 @@ actual=$(
     LC_ALL=C sort
 )
 expected='docs/jig/spec/machine/jig-lock-1.schema.json
-docs/jig/spec/machine/project-authoring-1.schema.json'
+docs/jig/spec/machine/project-authoring-1.schema.json
+docs/jig/spec/machine/project-evaluation-recipe-1.schema.json'
 if [ "$actual" != "$expected" ]; then
   echo "the public machine-file inventory changed; review build-site.sh" >&2
   exit 1
@@ -103,36 +104,18 @@ for route in index.html guide/index.html guide/understand.html; do
     exit 1
   fi
 done
-if [ "$site_name" = flow ] && [ ! -s "$staging/guide/start.html" ]; then
-  echo "the FLOW authoring entrypoint is missing" >&2
-  exit 1
-fi
-
 case $site_name in
-  flow)
-    for guide in python typescript markdown skills platforms runtimes; do
-      if [ ! -s "$staging/guide/$guide.html" ]; then
-        echo "the FLOW $guide guide is missing" >&2
-        exit 1
-      fi
-    done
-    schema_map='docs/flow/spec/machine/invocation-contract-0.schema.json|invocation-contract-0.schema.json|https://flow.jig.md/schemas/invocation-contract-0.schema.json
-docs/flow/spec/machine/channel-contract-0.schema.json|channel-contract-0.schema.json|https://flow.jig.md/schemas/channel-contract-0.schema.json
-docs/flow/spec/machine/run-0-errors.json|run-0-errors.json|-
-docs/flow/spec/machine/run-0.schema.json|run-0.json|https://flow.jig.md/schemas/run-0.json
-docs/flow/spec/machine/schema-0.json|schema-0.json|https://flow.jig.md/schemas/schema-0.json'
-    forbidden_page='spec/project-policy.html'
-    ;;
   jig)
     if [ ! -s "$staging/guide/contact-import.html" ]; then
       echo "the code-and-Agent composition guide is missing" >&2
       exit 1
     fi
     schema_map='docs/jig/spec/machine/jig-lock-1.schema.json|jig-lock-1.schema.json|-
-docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-'
+docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema.json|-
+docs/jig/spec/machine/project-evaluation-recipe-1.schema.json|project-evaluation-recipe-1.schema.json|https://jig.md/schemas/project-evaluation-recipe-1.schema.json'
     forbidden_page='spec/package-format.html'
     mkdir -p -- "$staging/contracts"
-    for contract in agent-run project-command http-request run-checkpoint finite-acp; do
+    for contract in agent-run project-command project-evaluation http-request run-checkpoint finite-acp; do
       if [ ! -s "$staging/contracts/$contract.html" ]; then
         echo "the $contract identity landing page is missing" >&2
         exit 1
@@ -156,6 +139,8 @@ docs/jig/spec/machine/project-authoring-1.schema.json|project-authoring-1.schema
     done
     test -s "$staging/spec/finite-acp.html"
     test -s "$staging/spec/http-request.html"
+    test -s "$staging/spec/project-evaluation.html"
+    test -s "$staging/spec/execution-client.html"
     test -s "$staging/guide/http.html"
     test -s "$staging/guide/agent-method.html"
     test -s "$staging/contracts/acp-public-updates.html"

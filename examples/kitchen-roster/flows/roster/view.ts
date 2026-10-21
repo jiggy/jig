@@ -147,7 +147,7 @@ export function rosterView(state: RosterState): ViewSnapshot {
         {
           kind: 'report',
           text: 'Inspect the complete CSV before using this roster. Jig confirms delivery separately in the run result.',
-          references: [{ kind: 'artifact', attachment: 'files', path: 'schedule/roster.csv' }],
+          references: [{ kind: 'artifact', attachment: 'schedule', path: 'roster.csv' }],
         },
       ],
     })

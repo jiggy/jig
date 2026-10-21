@@ -155,6 +155,24 @@
         {
           "type": "object",
           "properties": {
+            "kind": { "const": "evaluation" },
+            "recipe": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "attachments": {
+              "type": "object",
+              "properties": {
+                "candidate": { "const": "supplied-read" },
+                "deliverables": { "const": "operation-create" }
+              },
+              "required": ["candidate", "deliverables"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "recipe", "attachments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
             "kind": {
               "const": "acp"
             },
@@ -283,18 +301,17 @@
         {
           "type": "object",
           "properties": {
-            "into": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 64
-            },
-            "directory": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 64
-            }
+            "create": { "const": true }
           },
-          "required": ["into", "directory"],
+          "required": ["create"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "supplied": { "const": "read" }
+          },
+          "required": ["supplied"],
           "additionalProperties": false
         }
       ]
@@ -309,7 +326,7 @@
     },
     "mappedAttachmentRoute": {
       "type": "object",
-      "description": "Closed static review data for an explicit Binding route. Mapped child execution requires admitted routes and qualified native containment and cleanup support. Jig additionally validates LocalNames, ordinary target grammar, complete port interfaces and distinct destination folders.",
+      "description": "Closed reviewed policy for an explicit Binding route: fixed caller reads, call-supplied artifact reads or operation-created writable artifacts. Jig additionally validates LocalNames, ordinary target grammar and complete port interfaces.",
       "properties": {
         "target": {
           "$ref": "#/$defs/defaultSelector"

@@ -1,29 +1,8 @@
-import { expect, spyOn, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { closeSync } from 'node:fs'
-import {
-  mkdir,
-  mkdtemp,
-  open,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { capturePrivateOutput } from '../src/internal/captured-output.js'
-import {
-  PRIVATE_FILE_COMMAND_STOP_GRACE_MS,
-  privateOwnFileCommand,
-} from '../src/internal/file-command.js'
-import { PrivateFileDeliveryOwner } from '../src/internal/file-delivery.js'
-import { privateOpenFileRoot } from '../src/internal/file-input.js'
-import { PrivateRunCheckpoints } from '../src/internal/private-run-checkpoint.js'
-import { privatePresentationNow } from '../src/internal/root-run-timeout-policy.js'
+
 async function fixture(work: (root: string) => Promise<void>) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-file-delivery-')))
   try {
@@ -52,4 +31,5 @@ async function waitUntilStopped(pid: number): Promise<void> {
   }
   throw new Error('owned fixture did not stop')
 }
-export { fixture, record, fixturePid, waitUntilStopped }
+
+export { fixture, fixturePid, record, waitUntilStopped }

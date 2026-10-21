@@ -6,6 +6,7 @@ import { randomBytes } from 'node:crypto'
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { capturePrivateBunPreparationOutput } from '../../src/internal/bun-preparation-output.js'
 import { preparePrivateMacosGuardian } from '../../src/internal/macos-guardian-client.js'
 import {
   createPrivateMacosVolume,
@@ -148,23 +149,29 @@ console.log(JSON.stringify({ value: isNumber(42), platform: process.platform, ou
       'inherited',
     )
     expect(prepared.type).toBe('prepared')
-    const files = prepared.files as { path: string; content: string }[]
-    expect(files.some(({ path }) => path === 'node_modules/is-number/index.js')).toBe(true)
-    expect(
-      files.some(
-        ({ path }) => path.startsWith('node_modules/semver/') || path.endsWith('script-ran'),
-      ),
-    ).toBe(false)
-    expect(
-      Buffer.from(files.find(({ path }) => path === 'FLOW.ts')!.content, 'base64').toString(),
-    ).toBe(source['FLOW.ts'])
-    await mkdir(projected, { mode: 0o700 })
-    for (const file of files) {
-      await mkdir(dirname(join(projected, file.path)), { recursive: true, mode: 0o700 })
-      await writeFile(join(projected, file.path), Buffer.from(file.content, 'base64'), {
-        flag: 'wx',
-        mode: 0o400,
-      })
+    const captured = await capturePrivateBunPreparationOutput(volume.directory, 'production')
+    try {
+      expect(prepared.digest).toBe(captured.digest)
+      expect(prepared.fileCount).toBe(captured.files.length)
+      expect(prepared.bytes).toBe(captured.files.reduce((sum, file) => sum + file.size, 0))
+      const files = captured.files
+      expect(files.some(({ path }) => path === 'node_modules/is-number/index.js')).toBe(true)
+      expect(
+        files.some(
+          ({ path }) => path.startsWith('node_modules/semver/') || path.endsWith('script-ran'),
+        ),
+      ).toBe(false)
+      expect(Buffer.from(await captured.read('FLOW.ts')).toString()).toBe(source['FLOW.ts'])
+      await mkdir(projected, { mode: 0o700 })
+      for (const file of files) {
+        await mkdir(dirname(join(projected, file.path)), { recursive: true, mode: 0o700 })
+        await writeFile(join(projected, file.path), await captured.read(file.path), {
+          flag: 'wx',
+          mode: 0o400,
+        })
+      }
+    } finally {
+      await captured.dispose()
     }
     await chmod(projected, 0o500)
     expect(

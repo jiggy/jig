@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 import { requirePrivateBunResolutionManifest } from '../../src/internal/bun-native-lock-policy.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
-import { deterministicAcpProgram } from '../fixtures/deterministic-acp-agent.js'
 import {
   writeConversationHelperCaller,
   writeOrdinaryAcpAgent,
@@ -13,6 +12,8 @@ import { writeOrdinaryAgent } from '../fixtures/ordinary-agent.js'
 import {
   addBatchRepairFixture,
   agentMethodCallerProgram,
+  httpCoordinatorFailureEvidence,
+  repairPacketDirectory,
   writeAgentMethodProject,
   writeProject,
   writeRepairWorkspace,
@@ -22,6 +23,52 @@ import {
 
 const testRoot = join(import.meta.dir, '..')
 const temporaryRoot = await realpath(tmpdir())
+
+test('projects only closed coordinator failure facts from inert stderr input', () => {
+  const prefix = 'agent-coordinator-root-execution-failure '
+  const record = (value: unknown) => prefix + JSON.stringify(value)
+  const secret = 'PRIVATE_TOKEN_PATH_RECEIPT_REQUEST'
+  const projected = httpCoordinatorFailureEvidence(
+    [
+      secret,
+      `${prefix}{`,
+      record({ phase: secret, causes: ['Error'] }),
+      record({ phase: 'protocol', causes: secret }),
+      record({
+        phase: 'admission',
+        causes: [
+          'Error:MACOS_GUARDIAN_BEFORE_READINESS',
+          'AggregateError',
+          `Error:${secret}`,
+          `${secret}:CANCELLED`,
+          'Error:CANCELLED:extra',
+          { message: secret },
+        ],
+        message: secret,
+        args: [secret],
+      }),
+      record({ phase: 'child-settlement', causes: ['TypeError', 'Error:DEADLINE_EXCEEDED'] }),
+    ].join('\n'),
+  )
+  expect(projected).toEqual([
+    { phase: 'admission', causes: ['Error:MACOS_GUARDIAN_BEFORE_READINESS', 'AggregateError'] },
+    { phase: 'child-settlement', causes: ['TypeError', 'Error:DEADLINE_EXCEEDED'] },
+  ])
+  expect(JSON.stringify(projected)).not.toContain(secret)
+  expect(httpCoordinatorFailureEvidence('')).toEqual([])
+  expect(
+    httpCoordinatorFailureEvidence(
+      record({ phase: 'protocol', causes: ['Error'], message: secret.repeat(1_000) }),
+    ),
+  ).toEqual([])
+  expect(
+    httpCoordinatorFailureEvidence(
+      Array.from({ length: 20 }, () =>
+        record({ phase: 'fence', causes: Array(20).fill('Error') }),
+      ).join('\n'),
+    ),
+  ).toEqual(Array.from({ length: 8 }, () => ({ phase: 'fence', causes: Array(8).fill('Error') })))
+})
 
 test('contact-import variants are valid current FLOW packages', async () => {
   const root = await mkdtemp(join(temporaryRoot, 'jig-contact-packages-'))
@@ -59,11 +106,6 @@ test('constructs the Agent fixture with the complete current SDK', async () => {
   } finally {
     await rm(root, { recursive: true, force: true })
   }
-})
-
-test('constructs a deterministic ACP peer without importing a private API worker', () => {
-  const transpiler = new Bun.Transpiler({ loader: 'js', target: 'bun' })
-  expect(() => transpiler.transformSync(deterministicAcpProgram())).not.toThrow()
 })
 
 test('constructs the packed ACP Agent with an exact native grant and ordinary default', async () => {
@@ -229,6 +271,11 @@ test('constructs the repair application with unchanged sources and ordinary work
       }
       expect(await Bun.file(join(copied, 'sdk/index.js')).exists()).toBe(false)
     }
+    const projectPackage = await checkPackageDirectory(join(root, 'project/flows/project'))
+    const artifactNames = projectPackage.invocation?.artifactResults ?? []
+    expect(artifactNames).toEqual(['deliverables'])
+    const packet = join(root, 'packet')
+    expect(repairPacketDirectory(packet)).toBe(join(packet, 'files', ...artifactNames, 'review'))
     const lock = await readFile(join(root, 'bun.lock'), 'utf8')
     for (const name of [
       '@jigging/flow',

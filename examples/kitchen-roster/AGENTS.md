@@ -14,7 +14,8 @@ with focused, independently callable Flows and a visible CSV result.
 - `flows/read-roster` reads one bounded `scenario.json` from its read attachment,
   validates the scenario and reports any role with no eligible volunteer.
 - `flows/propose-roster` receives scenario data, calls one configured Agent and
-  returns a provisional proposal. It has no attachments.
+  returns a provisional proposal. Its pure `interpretProposal` checks returned
+  data and bounds stopped reasons. It has no attachments.
 - `flows/check-roster` independently validates the scenario and complete proposal,
   owns hard scheduling policy and derives rows from supplied facts.
 - `flows/export-roster` formats eight supplied rows and exclusively writes one
@@ -33,9 +34,11 @@ with focused, independently callable Flows and a visible CSV result.
   shift exactly once. Check known IDs, qualifications, full availability,
   overlaps and total minutes. Preferences are soft and cannot override hard
   constraints.
-- Source is read-only. Check complete assignments before calling the writable
-  exporter. Create `roster.csv` exclusively, imported as
-  `schedule/roster.csv`.
+- The root has only read-only `source`. Check complete assignments before calling
+  the exporter with `attachments.files.create: true`, authorized by its reviewed
+  Binding. Require the returned `artifacts.files` grant and forward it as
+  `artifactResults.schedule`. The exporter creates `roster.csv` exclusively.
+  Root views reference attachment `schedule`, path `roster.csv`.
 - Declare every nonstandard stopped outcome in the Flow contract, separately
   from its result schema. Obvious uncovered roles, Agent abstention and Agent
   limits remain explicit stopped outcomes. An invalid proposal returns
@@ -61,10 +64,15 @@ with focused, independently callable Flows and a visible CSV result.
 
 ## Verification
 
-- `bun test examples/kitchen-roster/test` checks the composed workflow and leaves,
-  bad proposals before writes, uncovered input, cancellation, exclusive output,
+- `bun test examples/kitchen-roster/test` checks real leaves, scheduling policy,
+  pure response interpretation, root view projections, exclusive output,
   reporting descriptors and actual Agent response-schema preparation.
-- The release gate repeats these tests with packed public dependencies.
+- `packages/jig/test/host/installed-kitchen-roster.test.ts` owns installed
+  composition with a deterministic public proposal Flow. Native execution
+  requires the existing whole-suite opt-in and actual host qualification.
+- Injected coordinator and channel substitutes are not qualification.
+  Cancellation after proposal, clipped coordinator stops, export failure after
+  writes and all-five publisher observations remain unproved native windows.
 - An admitted Jig Run is required for host-composition claims. Deterministic
   substitutes and a live Agent run remain distinct evidence.
 

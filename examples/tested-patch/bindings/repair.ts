@@ -8,7 +8,7 @@ export default defineBinding({
     checker: 'flow:flows/check-repair',
     exporter: {
       target: 'flow:flows/export-patch',
-      attachments: { files: { into: 'deliverables', directory: 'review' } },
+      attachments: { files: { create: true } },
     },
   },
 })

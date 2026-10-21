@@ -1,317 +1,325 @@
-import { describe, expect, test } from 'bun:test'
+import { expect, test } from 'bun:test'
 import {
-  EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-  type PrivateBunExecutionLayout,
-} from '../../src/internal/bun-execution-layout.js'
+  link,
+  mkdir,
+  mkdtemp,
+  open,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT } from '../../src/internal/bun-execution-layout.js'
 import { decodePrivateBunPreparedResult } from '../../src/internal/bun-native-preparation.js'
-import { PRIVATE_BUN_PREPARATION_LIMITS } from '../../src/internal/bun-native-preparation-protocol.js'
-import { type CapturedPackage, createCapturedPackage } from '../../src/package/capture.js'
-import { packageDigest } from '../../src/package/digest.js'
-import { comparePathBytes } from '../../src/package/paths.js'
+import {
+  PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS,
+  PRIVATE_BUN_PREPARATION_LIMITS,
+} from '../../src/internal/bun-native-preparation-protocol.js'
+import { capturePrivateBunPreparationOutput } from '../../src/internal/bun-preparation-output.js'
+import { type CapturedPackage, capturePackageDirectory } from '../../src/package/capture.js'
 
-const ordinarySource = { 'FLOW.ts': 'export {}\n', 'package.json': '{"name":"ordinary"}' }
-const workspaceSource = {
-  'package.json': '{"private":true,"workspaces":["flows/*","libs/*"]}',
-  'bun.lock': 'retained lock bytes',
-  'flows/main/package.json': '{"name":"main","dependencies":{"helper":"workspace:*"}}',
-  'flows/main/FLOW.ts': 'import "helper"\n',
-  'libs/helper/package.json': '{"name":"helper","exports":"./index.ts"}',
-  'libs/helper/index.ts': 'export const value = 42\n',
-  'libs/unselected/package.json': '{"name":"unselected"}',
-}
-const workspace = { target: 'flows/main', selected: ['flows/main', 'libs/helper'] }
-const workspaceLayout: PrivateBunExecutionLayout = {
-  flowRoot: workspace.target,
-  members: workspace.selected,
-  aliases: [{ path: 'node_modules/helper', target: 'libs/helper' }],
-}
-function records(files: Record<string, string>) {
-  return Object.entries(files)
-    .sort(([left], [right]) => comparePathBytes(left, right))
-    .map(([path, content]) => ({ path, content: Buffer.from(content).toString('base64') }))
-}
-function workspaceRecords() {
-  return records(
-    Object.fromEntries(
-      Object.entries(workspaceSource).filter(([path]) => !path.startsWith('libs/unselected/')),
-    ),
-  )
-}
-async function source(files: Record<string, string>): Promise<CapturedPackage> {
-  const values = new Map(
-    Object.entries(files).map(([path, content]) => [path, Buffer.from(content)]),
-  )
-  const entries = [...values]
-    .sort(([left], [right]) => comparePathBytes(left, right))
-    .map(([path, content]) => ({ path, size: content.byteLength }))
-  const backing = {
-    async *stream(path: string) {
-      const value = values.get(path)
-      if (value === undefined) throw new Error('missing test source')
-      yield value
-    },
-    async dispose() {
-      values.clear()
+async function fixture(source: Record<string, string>, output = source) {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-prepared-result-')))
+  for (const [tree, files] of [
+    ['source', source],
+    ['work/prepared', output],
+  ] as const)
+    for (const [path, value] of Object.entries(files)) {
+      await mkdir(dirname(join(root, tree, path)), { recursive: true })
+      await writeFile(join(root, tree, path), value)
+    }
+  await mkdir(join(root, 'source'), { recursive: true })
+  await mkdir(join(root, 'work/prepared'), { recursive: true })
+  const captured = await capturePackageDirectory(join(root, 'source'))
+  const work = await open(join(root, 'work'), 'r')
+  return {
+    root,
+    captured,
+    work,
+    async close() {
+      await work.close()
+      await captured.dispose()
+      await rm(root, { recursive: true, force: true })
     },
   }
-  return createCapturedPackage(
-    'inert prepared-result fixture',
-    entries,
-    await packageDigest(entries, (file) => backing.stream(file.path)),
-    backing,
-  )
+}
+function metadata(captured: CapturedPackage, layout: unknown = EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT) {
+  return {
+    type: 'prepared',
+    layout,
+    fileCount: captured.files.length,
+    bytes: captured.files.reduce((sum, file) => sum + file.size, 0),
+    digest: captured.digest,
+  }
 }
 
-describe('private prepared Bun result decoder', () => {
-  for (const [suiteCaseIndex, suiteCaseValue] of (
-    ['exact', 'missing', 'changed'] as const
-  ).entries()) {
-    test('requires exact retained workspace patches: %s' + ` (case ${suiteCaseIndex + 1})`, () =>
-      Reflect.apply(
-        async (mode) => {
-          const path = 'patches/dependency.patch'
-          const inputs = {
-            ...workspaceSource,
-            'package.json': JSON.stringify({
-              workspaces: ['flows/*', 'libs/*'],
-              patchedDependencies: { 'dependency@1.0.0': path },
-            }),
-            [path]: 'captured patch bytes',
-          }
-          const captured = await source(inputs)
-          const output: Record<string, string> = Object.fromEntries(
-            Object.entries(inputs).filter(([key]) => !key.startsWith('libs/unselected/')),
-          )
-          if (mode === 'missing') delete output[path]
-          if (mode === 'changed') output[path] = 'changed patch bytes'
-          try {
-            const result = decodePrivateBunPreparedResult(records(output), workspaceLayout, {
-              captured,
-              workspace,
-            })
-            if (mode === 'exact') {
-              const prepared = await result
-              await prepared.captured.dispose()
-            } else await expect(result).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
-          } finally {
-            await captured.dispose()
-          }
-        },
-        undefined,
-        Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-      ),
+test('preparation snapshot survives source and collector retirement', async () => {
+  const value = await fixture(
+    { 'package.json': '{}', 'FLOW.ts': 'export {}' },
+    {
+      'package.json': '{}',
+      'FLOW.ts': 'export {}',
+      'node_modules/dependency/empty': '',
+      'node_modules/dependency/binary': '\0\u0001\u00ff',
+    },
+  )
+  let prepared: CapturedPackage | undefined
+  try {
+    prepared = await capturePrivateBunPreparationOutput(value.work, 'production')
+    const result = await decodePrivateBunPreparedResult(prepared, metadata(prepared), {
+      captured: value.captured,
+    })
+    await rename(join(value.root, 'work'), join(value.root, 'renamed'))
+    await rm(join(value.root, 'renamed'), { recursive: true })
+    expect(await result.captured.read('node_modules/dependency/empty')).toHaveLength(0)
+    expect(Buffer.from(await result.captured.read('node_modules/dependency/binary'))).toEqual(
+      Buffer.from('\0\u0001\u00ff'),
     )
+  } finally {
+    await prepared?.dispose()
+    await value.close()
   }
-  test('retains exact ordinary source and installed bytes with an empty layout', async () => {
-    const captured = await source(ordinarySource)
+})
+
+for (const field of ['digest', 'bytes', 'fileCount', 'extra', 'layout'] as const)
+  test(`preparation metadata refuses changed ${field}`, async () => {
+    const value = await fixture({ 'package.json': '{}' })
+    let prepared: CapturedPackage | undefined
     try {
-      const result = await decodePrivateBunPreparedResult(
-        records({
-          ...ordinarySource,
-          'bun.lock': 'generated lock',
-          'node_modules/dependency/index.js': 'export default 42',
-        }),
-        EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-        { captured },
-      )
-      try {
-        expect(result.layout).toEqual(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT)
-        expect(await result.captured.read('FLOW.ts')).toEqual(
-          Buffer.from(ordinarySource['FLOW.ts']),
-        )
-        expect(await result.captured.read('node_modules/dependency/index.js')).toEqual(
-          Buffer.from('export default 42'),
-        )
-      } finally {
-        await result.captured.dispose()
-      }
-    } finally {
-      await captured.dispose()
-    }
-  })
-  test('retains selected workspace source and aliases without unselected source', async () => {
-    const captured = await source(workspaceSource)
-    try {
-      const result = await decodePrivateBunPreparedResult(workspaceRecords(), workspaceLayout, {
-        captured,
-        workspace,
-      })
-      try {
-        expect(result.layout).toEqual(workspaceLayout)
-        expect(result.captured.files.some(({ path }) => path.includes('unselected'))).toBeFalse()
-        expect(result.captured.files.some(({ path }) => path === 'node_modules/helper')).toBeFalse()
-        expect(await result.captured.read('libs/helper/index.ts')).toEqual(
-          Buffer.from(workspaceSource['libs/helper/index.ts']),
-        )
-      } finally {
-        await result.captured.dispose()
-      }
-    } finally {
-      await captured.dispose()
-    }
-  })
-  for (const [suiteCaseIndex, suiteCaseValue] of (['changed', 'missing'] as const).entries()) {
-    test('rejects %s authored source' + ` (case ${suiteCaseIndex + 1})`, () =>
-      Reflect.apply(
-        async (mode) => {
-          const captured = await source(ordinarySource)
-          try {
-            const files =
-              mode === 'changed'
-                ? records({ ...ordinarySource, 'FLOW.ts': 'changed source' })
-                : records({ 'package.json': ordinarySource['package.json'] })
-            await expect(
-              decodePrivateBunPreparedResult(files, EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT, {
-                captured,
-              }),
-            ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
-          } finally {
-            await captured.dispose()
-          }
-        },
-        undefined,
-        Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-      ),
-    )
-  }
-  for (const [suiteCaseIndex, suiteCaseValue] of (
-    ['member', 'flowRoot', 'aliasName', 'extraSource'] as const
-  ).entries()) {
-    test(
-      'rejects a worker-selected workspace expansion: %s' + ` (case ${suiteCaseIndex + 1})`,
-      () =>
-        Reflect.apply(
-          async (mode) => {
-            const captured = await source(workspaceSource)
-            try {
-              const layout =
-                mode === 'member'
-                  ? { ...workspaceLayout, members: [...workspaceLayout.members, 'libs/unselected'] }
-                  : mode === 'flowRoot'
-                    ? { ...workspaceLayout, flowRoot: 'libs/helper' }
-                    : mode === 'aliasName'
-                      ? {
-                          ...workspaceLayout,
-                          aliases: [{ path: 'node_modules/impostor', target: 'libs/helper' }],
-                        }
-                      : workspaceLayout
-              const files =
-                mode === 'extraSource'
-                  ? [
-                      ...workspaceRecords(),
-                      ...records({ 'libs/unselected/source.ts': 'unreviewed bytes' }),
-                    ].sort((left, right) => comparePathBytes(left.path, right.path))
-                  : workspaceRecords()
-              await expect(
-                decodePrivateBunPreparedResult(files, layout, { captured, workspace }),
-              ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
-            } finally {
-              await captured.dispose()
-            }
-          },
-          undefined,
-          Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-        ),
-    )
-  }
-  for (const [suiteCaseIndex, suiteCaseValue] of (
-    ['missingLayout', 'layoutField', 'fileField', 'aliasField'] as const
-  ).entries()) {
-    test('rejects missing or unknown protocol fields: %s' + ` (case ${suiteCaseIndex + 1})`, () =>
-      Reflect.apply(
-        async (mode) => {
-          const captured = await source(workspaceSource)
-          try {
-            const layout =
-              mode === 'missingLayout'
-                ? undefined
-                : mode === 'layoutField'
-                  ? { ...workspaceLayout, extra: true }
-                  : mode === 'aliasField'
-                    ? {
-                        ...workspaceLayout,
-                        aliases: [{ ...workspaceLayout.aliases[0], extra: true }],
-                      }
-                    : workspaceLayout
-            const files = workspaceRecords().map((file, index) =>
-              mode === 'fileField' && index === 0 ? { ...file, extra: true } : file,
-            )
-            await expect(
-              decodePrivateBunPreparedResult(files, layout, { captured, workspace }),
-            ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
-          } finally {
-            await captured.dispose()
-          }
-        },
-        undefined,
-        Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-      ),
-    )
-  }
-  test('counts aliases and regular files against the same prepared record ceiling', async () => {
-    const captured = await source(workspaceSource)
-    try {
-      const files = Array.from({ length: PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles }, () => ({
-        path: 'unused',
-        content: '',
-      }))
-      await expect(
-        decodePrivateBunPreparedResult(files, workspaceLayout, { captured, workspace }),
-      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
-    } finally {
-      await captured.dispose()
-    }
-  })
-  test('accepts a large valid file and counts layout bytes against the content ceiling', async () => {
-    const captured = await source({})
-    try {
-      const layoutBytes = Buffer.byteLength(JSON.stringify(EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT))
-      const maximum = PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - layoutBytes
-      const allowed = await decodePrivateBunPreparedResult(
-        records({
-          'node_modules/dependency/content': 'x'.repeat(maximum),
-        }),
-        EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-        { captured },
-      )
-      try {
-        expect(allowed.captured.files[0]!.size).toBe(maximum)
-      } finally {
-        await allowed.captured.dispose()
-      }
+      prepared = await capturePrivateBunPreparationOutput(value.work, 'production')
       await expect(
         decodePrivateBunPreparedResult(
-          records({
-            'node_modules/dependency/content': 'x'.repeat(maximum + 1),
-          }),
-          EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-          { captured },
+          prepared,
+          { ...metadata(prepared), [field]: field === 'layout' ? {} : 'wrong' },
+          { captured: value.captured },
         ),
       ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
     } finally {
-      await captured.dispose()
+      await prepared?.dispose()
+      await value.close()
     }
   })
-  for (const [suiteCaseIndex, suiteCaseValue] of ['eB==', 'eA', 'eA==\n', '!!!!'].entries()) {
-    test('rejects noncanonical prepared base64: %j' + ` (case ${suiteCaseIndex + 1})`, () =>
-      Reflect.apply(
-        async (content) => {
-          const captured = await source({})
-          try {
-            await expect(
-              decodePrivateBunPreparedResult(
-                [{ path: 'node_modules/dependency/content', content }],
-                EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
-                { captured },
-              ),
-            ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
-          } finally {
-            await captured.dispose()
-          }
-        },
-        undefined,
-        Array.isArray(suiteCaseValue) ? suiteCaseValue : [suiteCaseValue],
-      ),
+
+for (const mode of ['changed', 'missing', 'extra'] as const)
+  test(`preparation refuses ${mode} source`, async () => {
+    const value = await fixture(
+      { 'package.json': '{}', 'FLOW.ts': 'original' },
+      mode === 'changed'
+        ? { 'package.json': '{}', 'FLOW.ts': 'changed' }
+        : mode === 'missing'
+          ? { 'package.json': '{}' }
+          : { 'package.json': '{}', 'FLOW.ts': 'original', 'unselected.ts': 'extra' },
     )
+    let prepared: CapturedPackage | undefined
+    try {
+      prepared = await capturePrivateBunPreparationOutput(value.work, 'production')
+      await expect(
+        decodePrivateBunPreparedResult(prepared, metadata(prepared), { captured: value.captured }),
+      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+    } finally {
+      await prepared?.dispose()
+      await value.close()
+    }
+  })
+
+for (const kind of ['symlink', 'hardlink'] as const)
+  test(`real preparation collector rejects ${kind}`, async () => {
+    const value = await fixture({ 'package.json': '{}' })
+    try {
+      const target = join(value.root, 'work/prepared/package.json')
+      if (kind === 'symlink') await symlink(target, join(dirname(target), 'alias'))
+      else await link(target, join(dirname(target), 'alias'))
+      await expect(capturePrivateBunPreparationOutput(value.work, 'production')).rejects.toThrow()
+    } finally {
+      await value.close()
+    }
+  })
+
+test('preparation keeps 32MiB production and 128MiB evaluation decoded profiles', async () => {
+  const value = await fixture({})
+  let prepared: CapturedPackage | undefined
+  try {
+    await mkdir(join(value.root, 'work/prepared/node_modules/dependency'), { recursive: true })
+    await writeFile(
+      join(value.root, 'work/prepared/node_modules/dependency/content'),
+      Buffer.alloc(PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes + 1, 0x78),
+    )
+    await expect(capturePrivateBunPreparationOutput(value.work, 'production')).rejects.toThrow()
+    prepared = await capturePrivateBunPreparationOutput(value.work, 'evaluation')
+    const result = await decodePrivateBunPreparedResult(prepared, metadata(prepared), {
+      captured: value.captured,
+      mode: 'evaluation',
+    })
+    expect(result.captured.files[0]?.size).toBe(PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes + 1)
+  } finally {
+    await prepared?.dispose()
+    await value.close()
+  }
+})
+
+test('prepared layout retains selected workspace aliases and exact patch bytes', async () => {
+  const source = {
+    'package.json': JSON.stringify({
+      workspaces: ['flows/*', 'libs/*'],
+      patchedDependencies: { 'dependency@1.0.0': 'patches/dependency.patch' },
+    }),
+    'bun.lock': 'retained',
+    'patches/dependency.patch': 'patch',
+    'flows/main/package.json': '{"name":"main"}',
+    'flows/main/FLOW.ts': 'export {}',
+    'libs/helper/package.json': '{"name":"helper"}',
+    'libs/helper/index.ts': 'export {}',
+    'libs/unselected/package.json': '{"name":"unselected"}',
+  }
+  const output = Object.fromEntries(
+    Object.entries(source).filter(([path]) => !path.startsWith('libs/unselected')),
+  )
+  const value = await fixture(source, output)
+  let prepared: CapturedPackage | undefined
+  try {
+    prepared = await capturePrivateBunPreparationOutput(value.work, 'production')
+    const workspace = { target: 'flows/main', selected: ['flows/main', 'libs/helper'] }
+    const layout = {
+      flowRoot: workspace.target,
+      members: workspace.selected,
+      aliases: [{ path: 'node_modules/helper', target: 'libs/helper' }],
+    }
+    expect(
+      (
+        await decodePrivateBunPreparedResult(prepared, metadata(prepared, layout), {
+          captured: value.captured,
+          workspace,
+        })
+      ).layout,
+    ).toEqual(layout)
+    for (const invalid of [
+      { ...layout, flowRoot: 'libs/helper' },
+      { ...layout, members: [...layout.members, 'libs/unselected'] },
+      { ...layout, aliases: [{ path: 'node_modules/impostor', target: 'libs/helper' }] },
+    ])
+      await expect(
+        decodePrivateBunPreparedResult(prepared, metadata(prepared, invalid), {
+          captured: value.captured,
+          workspace,
+        }),
+      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+  } finally {
+    await prepared?.dispose()
+    await value.close()
+  }
+})
+
+for (const mode of ['production', 'evaluation'] as const)
+  test(`preparation ${mode} counts layout against its exact content ceiling`, async () => {
+    const value = await fixture({})
+    const limits =
+      mode === 'production'
+        ? PRIVATE_BUN_PREPARATION_LIMITS
+        : PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS
+    let prepared: CapturedPackage | undefined
+    try {
+      const path = join(value.root, 'work/prepared/node_modules/dependency/content')
+      await mkdir(dirname(path), { recursive: true })
+      const file = await open(path, 'w')
+      try {
+        await file.truncate(limits.preparedBytes)
+      } finally {
+        await file.close()
+      }
+      prepared = await capturePrivateBunPreparationOutput(value.work, mode)
+      await expect(
+        decodePrivateBunPreparedResult(prepared, metadata(prepared), {
+          captured: value.captured,
+          mode,
+        }),
+      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+      await prepared.dispose()
+      prepared = undefined
+      const oversized = await open(path, 'r+')
+      try {
+        await oversized.truncate(limits.preparedBytes + 1)
+      } finally {
+        await oversized.close()
+      }
+      await expect(capturePrivateBunPreparationOutput(value.work, mode)).rejects.toThrow()
+    } finally {
+      await prepared?.dispose()
+      await value.close()
+    }
+  })
+
+for (const alteration of ['missing', 'changed'] as const)
+  test(`prepared workspace refuses ${alteration} patch`, async () => {
+    const source = {
+      'package.json': JSON.stringify({
+        workspaces: ['flows/*'],
+        patchedDependencies: { 'dependency@1.0.0': 'patches/dependency.patch' },
+      }),
+      'bun.lock': 'lock',
+      'flows/main/package.json': '{"name":"main"}',
+      'patches/dependency.patch': 'original',
+    }
+    const output: Record<string, string> = { ...source }
+    if (alteration === 'missing') delete output['patches/dependency.patch']
+    else output['patches/dependency.patch'] = 'changed'
+    const value = await fixture(source, output)
+    let prepared: CapturedPackage | undefined
+    try {
+      prepared = await capturePrivateBunPreparationOutput(value.work, 'production')
+      const workspace = { target: 'flows/main', selected: ['flows/main'] }
+      await expect(
+        decodePrivateBunPreparedResult(
+          prepared,
+          metadata(prepared, {
+            flowRoot: workspace.target,
+            members: workspace.selected,
+            aliases: [],
+          }),
+          { captured: value.captured, workspace },
+        ),
+      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+    } finally {
+      await prepared?.dispose()
+      await value.close()
+    }
+  })
+
+test('prepared aliases share the regular-file record ceiling', async () => {
+  const output: Record<string, string> = {
+    'package.json': '{"workspaces":["flows/*"]}',
+    'bun.lock': 'lock',
+    'flows/main/package.json': '{"name":"main"}',
+  }
+  for (let i = 3; i < PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles; i++)
+    output[`node_modules/dependency/file-${i}`] = ''
+  const value = await fixture(
+    {
+      'package.json': output['package.json']!,
+      'bun.lock': 'lock',
+      'flows/main/package.json': output['flows/main/package.json']!,
+    },
+    output,
+  )
+  let prepared: CapturedPackage | undefined
+  try {
+    prepared = await capturePrivateBunPreparationOutput(value.work, 'production')
+    const workspace = { target: 'flows/main', selected: ['flows/main'] }
+    await expect(
+      decodePrivateBunPreparedResult(
+        prepared,
+        metadata(prepared, {
+          flowRoot: workspace.target,
+          members: workspace.selected,
+          aliases: [{ path: 'node_modules/main', target: 'flows/main' }],
+        }),
+        { captured: value.captured, workspace },
+      ),
+    ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+  } finally {
+    await prepared?.dispose()
+    await value.close()
   }
 })

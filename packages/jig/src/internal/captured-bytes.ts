@@ -80,15 +80,23 @@ export function capturePrivateBytes<P extends PrivateCapturePurpose>(
 export function capturePrivateOutputByteStream(
   chunks: Iterable<Uint8Array>,
 ): PrivateCapturedBytes<'output'> {
+  return capturePrivateByteStream(chunks, 'output')
+}
+
+/** Bounded streaming materialization, distinct from an operator input capture. */
+export function capturePrivateByteStream<P extends 'output' | 'artifact-input'>(
+  chunks: Iterable<Uint8Array>,
+  purpose: P,
+): PrivateCapturedBytes<P> {
   let record: Capture
   if (process.platform === 'darwin') {
     const directory = mkdtempSync('/private/tmp/jig-bytes-')
     let mac: PrivateMacosCapturedBytes | undefined
     try {
-      mac = capturePrivateMacosByteStream(directory, chunks, 'output')
-      const identity = requirePrivateMacosCapturedBytes(mac, 'output')
+      mac = capturePrivateMacosByteStream(directory, chunks, purpose)
+      const identity = requirePrivateMacosCapturedBytes(mac, purpose)
       rmdirSync(directory)
-      record = { ...identity, mac, purpose: 'output', closed: false }
+      record = { ...identity, mac, purpose, closed: false }
     } catch (error) {
       mac?.close()
       try {
@@ -99,10 +107,10 @@ export function capturePrivateOutputByteStream(
       throw error
     }
   } else {
-    const identity = privateLinuxSealedByteStream(chunks, PRIVATE_CAPTURE_LIMITS.output)
-    record = { ...identity, purpose: 'output', closed: false }
+    const identity = privateLinuxSealedByteStream(chunks, PRIVATE_CAPTURE_LIMITS[purpose])
+    record = { ...identity, purpose, closed: false }
   }
-  return mint(record, 'output')
+  return mint(record, purpose)
 }
 
 function mint<P extends PrivateCapturePurpose>(

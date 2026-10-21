@@ -65,6 +65,7 @@ preparation never becomes a consumer requirement.
   release archives. Display packages qualify through Jig's gate. The protected publication selectors are HTTP Agent, ACP Agent, and Jig.
 
   FLOW SDK archives are published dependencies frozen as qualification inputs.
+  Workspace installation selects only Jig-owned packages, never external FLOW packages.
   Installed qualifications build no source packages.
 
 They consume frozen package exports with tracked test helpers and installed
@@ -127,7 +128,7 @@ They consume frozen package exports with tracked test helpers and installed
 
   Observed paths never authorize cleanup or detachment. Its full mode remains
   the self-hosted entrypoint. Hosted `--shard` runs one isolated portion of the
-  same complete suite: three Intel or two Apple Silicon shards. Shard zero runs
+  same complete suite: four Intel or two Apple Silicon shards. Shard zero runs
   native prerequisites and the final shard runs installed consumer and
   genuine-client checks on each architecture. The full Jig package smoke
   receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY` only from the existing Mac

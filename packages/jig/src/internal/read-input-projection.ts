@@ -1,4 +1,4 @@
-import { PRIVATE_FILE_LIMITS, privateAttachmentName, privateFilePath } from './file-input-policy.js'
+import { PRIVATE_FILE_LIMITS, PRIVATE_READ_INPUT_BYTES, privateAttachmentName, privateFilePath } from './file-input-policy.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
 
 export interface PrivateReadInputFile {
@@ -9,6 +9,33 @@ export interface PrivateReadInputFile {
 export interface PrivateReadInputAlias {
   readonly name: string
   readonly target: string
+}
+
+export function normalizePrivateInputEmptyDirectories(
+  value: readonly string[],
+  roots: readonly string[],
+  paths: readonly string[],
+): readonly string[] {
+  if (!Array.isArray(value) || value.length > PRIVATE_FILE_LIMITS.entries ||
+    new Set(value).size !== value.length)
+    throw new TypeError('invalid input empty directories')
+  const allowed = new Set(normalizePrivateReadInputDirectories(roots))
+  const files = new Set(paths)
+  const directories = value.map((path) => {
+    splitPath(path, allowed)
+    if (files.has(path) || paths.some((file) => path.startsWith(`${file}/`)))
+      throw new TypeError('input directory conflicts with a file')
+    return path
+  }).sort(ordinal)
+  const entries = new Set(paths)
+  for (const path of [...paths, ...directories]) {
+    const parts = path.split('/')
+    for (let count = 2; count <= parts.length; count++)
+      entries.add(parts.slice(0, count).join('/'))
+  }
+  if (entries.size > PRIVATE_FILE_LIMITS.entries)
+    throw new TypeError('input tree exceeds its entry limit')
+  return Object.freeze(directories)
 }
 
 export function normalizePrivateReadInputDirectories(value: unknown): readonly string[] {
@@ -59,15 +86,26 @@ export function normalizePrivateReadInputAliases(
 export function planPrivateReadInputProjection(input: {
   readonly files: readonly PrivateReadInputFile[]
   readonly directories: readonly string[]
+  readonly emptyDirectories?: readonly string[]
 }): Readonly<{
   files: readonly PrivateReadInputFile[]
   directories: readonly string[]
+  emptyDirectories: readonly string[]
   aliases: readonly PrivateReadInputAlias[]
 }> {
   const directories = normalizePrivateReadInputDirectories(input.directories)
   if (!Array.isArray(input.files) || input.files.length > 8 * PRIVATE_FILE_LIMITS.files)
     throw new TypeError('input projection exceeds its view bound')
   const roots = new Set(directories)
+  const emptyDirectories = directories.flatMap((root) =>
+    normalizePrivateInputEmptyDirectories(
+      (input.emptyDirectories ?? []).filter((path) => path.startsWith(`${root}/`)),
+      [root],
+      input.files.filter((file) => file.path.startsWith(`${root}/`)).map((file) => file.path),
+    ),
+  )
+  if (emptyDirectories.length !== (input.emptyDirectories?.length ?? 0))
+    throw new TypeError('input directory is outside its declared root')
   const views = new Map(
     directories.map((root) => [root, [] as { relative: string; file: PrivateReadInputFile }[]]),
   )
@@ -95,6 +133,8 @@ export function planPrivateReadInputProjection(input: {
         ? undefined
         : canonical.find(
             (view) =>
+              JSON.stringify(emptyDirectories.filter((path) => path.startsWith(`${root}/`)).map((path) => path.slice(root.length))) ===
+              JSON.stringify(emptyDirectories.filter((path) => path.startsWith(`${view.root}/`)).map((path) => path.slice(view.root.length))) &&
               view.files.length === files.length &&
               view.files.every((entry, index) => {
                 const file = files[index]
@@ -109,6 +149,10 @@ export function planPrivateReadInputProjection(input: {
     else aliases.push(Object.freeze({ name: root, target: existing.root }))
   }
   const files = canonical.flatMap((view) => view.files.map((entry) => entry.file))
+  const physicalDirectories = normalizePrivateInputEmptyDirectories(
+    emptyDirectories.filter((path) => !aliases.some((alias) => path.startsWith(`${alias.name}/`))),
+    directories, files.map((file) => file.path),
+  )
   const bytes = files.reduce((sum, file) => {
     const original = authority.get(file.input)
     if (original === undefined) throw new TypeError('input projection lost its original authority')
@@ -120,13 +164,14 @@ export function planPrivateReadInputProjection(input: {
   )
   if (
     files.length > PRIVATE_FILE_LIMITS.files ||
-    bytes > PRIVATE_FILE_LIMITS.bytes ||
+    bytes > PRIVATE_READ_INPUT_BYTES ||
     entries > PRIVATE_FILE_LIMITS.entries
   )
     throw new TypeError('input projection exceeds its unique physical bounds')
   return Object.freeze({
     files: Object.freeze(files),
     directories,
+    emptyDirectories: physicalDirectories,
     aliases: normalizePrivateReadInputAliases(
       aliases,
       directories,

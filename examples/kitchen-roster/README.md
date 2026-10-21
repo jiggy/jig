@@ -85,10 +85,13 @@ roster
 
 Each stage has its own package, invocation contract and optional reporting view.
 The coordinator passes data across ordinary `run.call()` boundaries and handles
-stopped outcomes before advancing. Static attachment maps give the reader only
-`source: read` and the exporter only `files: read-write`. The middle stages
-receive JSON alone. Each Flow can also be called independently with its declared
-inputs and powers.
+stopped outcomes before advancing. The root and reader receive only read-only
+`source`. The reviewed Binding authorizes `attachments.files.create: true` for
+the exporter call. The exporter receives its own writable `files` attachment.
+
+The root requires its returned immutable grant and forwards it as
+`artifactResults.schedule`. Jig delivers that artifact at `files/schedule/roster.csv`.
+The middle stages receive JSON alone. Each Flow remains independently callable.
 
 The checker validates the complete proposal: known IDs, both roles exactly once
 per shift, qualifications, full availability, no overlapping assignments and
@@ -111,11 +114,19 @@ bun test examples/kitchen-roster/test
 ```
 
 Run the checks from the repository root after workspace setup. Tests exercise
-the actual public Agent preparation validator, the five composed methods,
-absence/qualification/coverage/workload/overlap failures, cancellation before
-export, the impossible fixture, safe CSV fields and exclusive creation. Their
-Agent substitute proves application behavior, rather than native execution or
-model quality; admitted runs are separate evidence.
+the public Agent preparation validator, real reader and exporter, scheduling
+policy, pure response interpretation and root view projections.
+They cover absence, qualifications, coverage, workload, overlaps, uncovered
+input, bounded stopped reasons, safe CSV fields and exclusive creation.
+
+The installed kitchen regression uses a deterministic public proposal Flow
+through a reviewed Binding. It checks CSV delivery and unchanged source, then
+uncovered input without an export. It requires a qualified native runner.
+It does not qualify model judgment.
+
+The old injected coordinator and channel tests did not prove native execution.
+Cancellation after proposal, clipped coordinator stops, export failure after
+writes and observations from all five publishers remain unqualified.
 
 This is a small cookbook task: six volunteers, four shifts, cook/serve roles,
 one Agent proposal and one CSV. It performs no retries, calendar changes,

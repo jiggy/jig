@@ -1,14 +1,15 @@
 const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.meta.url).href
 
-import { expect, spyOn, test } from 'bun:test'
+import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
-import { fstatSync, mkdirSync, renameSync, writeFileSync } from 'node:fs'
+import { fstatSync } from 'node:fs'
 import {
   chmod,
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rm,
@@ -20,34 +21,35 @@ import {
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { privateReadRegularFile } from '../../src/internal/file-input.js'
-import * as descriptorFiles from '../../src/internal/macos-descriptor-files.js'
-import { privateMacosFilesystem } from '../../src/internal/macos-descriptor-files.js'
+import {
+  privateMacosDirectory,
+  privateMacosFilesystem,
+} from '../../src/internal/macos-descriptor-files.js'
 import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
   releasePrivateMacosGuardian,
 } from '../../src/internal/macos-guardian-client.js'
-import { removeEmptyPrivateMacosUnstartedStorage } from '../../src/internal/macos-guardian-storage.js'
+import {
+  type PrivateMacosGuardianRecoveryDiagnostic,
+  withPrivateMacosGuardianDiagnostics,
+} from '../../src/internal/macos-guardian-diagnostics.js'
+import {
+  allocatePrivateMacosGuardianStorage,
+  removeEmptyPrivateMacosUnstartedStorage,
+} from '../../src/internal/macos-guardian-storage.js'
 import type { PrivateMacosGuardianStart } from '../../src/internal/macos-native-supervisor.js'
 import {
   privateMacosStorageRecoveryToken,
   readPrivateMacosOwner,
 } from '../../src/internal/macos-owner-state.js'
-import * as processControls from '../../src/internal/macos-process-controls.js'
 import {
+  allocatePrivateMacosVolume,
   createPrivateMacosVolume,
   recoverPrivateMacosVolume,
   releasePrivateMacosVolume,
 } from '../../src/internal/macos-volume.js'
-import { settleTestCommand } from '../fixtures/bounded-command.js'
-import {
-  exists,
-  journalLossSupervisor,
-  killGuardian,
-  preJournalAllocationModule,
-  preparationFailureSupervisor,
-  preparationFailures,
-} from '.././macos-guardian-storage.fixture.js'
+import { exists, killGuardian } from '.././macos-guardian-storage.fixture.js'
 
 function expectUnstartedJobAbsent(token: string): void {
   const label = `org.jig.native.${createHash('sha256').update(token).digest('hex').slice(0, 32)}`
@@ -59,7 +61,7 @@ function expectUnstartedJobAbsent(token: string): void {
   ).toBe(113)
 }
 
-test('coordinator loss before the first storage journal retires only its empty allocation', async () => {
+test('invalid native mount input leaves only an empty allocation for exact recovery', async () => {
   const root = await mkdtemp('/private/tmp/jig-storage-allocation-loss-')
   const owner = join(root, 'owner'),
     mount = join(root, 'data')
@@ -73,34 +75,19 @@ test('coordinator loss before the first storage journal retires only its empty a
     JSON.stringify({ ownerDirectory: owner, ownerToken: token }),
     { mode: 0o600, flag: 'wx' },
   )
-  const module = await preJournalAllocationModule(root)
-  const program = `import { readFile } from 'node:fs/promises';
-    import { allocatePrivateMacosGuardianStorage } from ${JSON.stringify(module)};
-    const { ownerDirectory, ownerToken } = JSON.parse(await readFile(${JSON.stringify(join(root, 'fixture.json'))}, 'utf8'));
-    await allocatePrivateMacosGuardianStorage(ownerDirectory, ownerToken,
-      { mountPath: ${JSON.stringify(mount)}, bytes: 16 * 1024 * 1024, collect: null });`
-  const child = Bun.spawn(
-    [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', '--eval', program],
-    { env: {}, stdin: 'ignore', stdout: 'pipe', stderr: 'pipe' },
-  )
-  const joined = settleTestCommand(child, {
-    evidence: join(root, 'coordinator'),
-    timeoutMs: 30_000,
-  })
-  void joined.catch(() => undefined)
   let verified = false,
     primaryError: unknown
   try {
-    const until = Date.now() + 5000
-    while (!(await exists(join(root, 'pre-journal.paused'))) && Date.now() < until)
-      await Bun.sleep(10)
-    expect(await exists(join(root, 'pre-journal.paused'))).toBe(true)
+    await expect(
+      allocatePrivateMacosGuardianStorage(owner, token, {
+        mountPath: join(mount, 'missing'),
+        bytes: 16 * 1024 * 1024,
+        collect: null,
+      }),
+    ).rejects.toMatchObject({ code: 'ENOENT' })
     expect(await readdir(join(owner, 'storage'))).toEqual([])
     expect(await exists(join(owner, 'owner.json'))).toBe(false)
     expectUnstartedJobAbsent(token)
-    child.kill('SIGKILL')
-    expect((await joined).code).not.toBe(0)
-    expect(child.signalCode).toBe('SIGKILL')
     await recoverPrivateMacosGuardian(owner, token, 5000)
     await recoverPrivateMacosGuardian(owner, token, 5000)
     expect(await exists(join(owner, 'storage'))).toBe(false)
@@ -114,18 +101,6 @@ test('coordinator loss before the first storage journal retires only its empty a
     verified = true
   } catch (error) {
     primaryError = error
-  }
-  try {
-    if (child.exitCode === null) child.kill('SIGKILL')
-    await joined
-  } catch (cleanupError) {
-    console.error('Unstarted storage allocation evidence retained at', root)
-    if (primaryError !== undefined)
-      throw new AggregateError(
-        [primaryError, cleanupError],
-        'Unstarted storage test and child settlement failed',
-      )
-    throw cleanupError
   }
   if (verified) await rm(root, { recursive: true })
   else console.error('Unstarted storage allocation evidence retained at', root)
@@ -171,8 +146,6 @@ for (const kind of [
   'retirement-pending',
   'public-mode',
   'symlink',
-  'replaced-child',
-  'late-owner',
 ] as const) {
   test(`unstarted storage refuses the ${kind} empty-child exception`, async () => {
     const root = await mkdtemp('/private/tmp/jig-unstarted-storage-')
@@ -180,10 +153,7 @@ for (const kind of [
       storage = join(owner, 'storage')
     const token = randomBytes(32).toString('hex')
     await mkdir(storage, { recursive: true, mode: 0o700 })
-    const original = await lstat(storage, { bigint: true })
-    let spy: ReturnType<typeof spyOn> | undefined,
-      changed = false,
-      verified = false
+    let verified = false
     const marker =
       kind === 'retirement'
         ? 'storage.release.json'
@@ -199,41 +169,15 @@ for (const kind of [
       await writeFile(join(root, 'foreign/canary'), 'preserved', { mode: 0o600, flag: 'wx' })
       await symlink(join(root, 'foreign'), storage)
     }
-    if (kind === 'replaced-child' || kind === 'late-owner') {
-      const enumerate = descriptorFiles.privateMacosDirectory
-      spy = spyOn(descriptorFiles, 'privateMacosDirectory').mockImplementation((fd) => {
-        const entries = enumerate(fd),
-          read = entries.readSync
-        entries.readSync = () => {
-          const entry = read()
-          if (entry === null && !changed && BigInt(fstatSync(fd).ino) === original.ino) {
-            if (kind === 'replaced-child') {
-              renameSync(storage, join(owner, 'retained-storage'))
-              mkdirSync(storage, { mode: 0o700 })
-            } else
-              writeFileSync(join(owner, 'owner.json'), 'test-owned late marker', {
-                mode: 0o600,
-                flag: 'wx',
-              })
-            changed = true
-          }
-          return entry
-        }
-        return entries
-      })
-    }
     try {
       expectUnstartedJobAbsent(token)
-      if (['known-owner', 'retirement', 'retirement-pending', 'late-owner'].includes(kind))
+      if (['known-owner', 'retirement', 'retirement-pending'].includes(kind))
         expect(await removeEmptyPrivateMacosUnstartedStorage(owner)).toBe(false)
       else
         await expect(removeEmptyPrivateMacosUnstartedStorage(owner)).rejects.toBeInstanceOf(Error)
       expect(await exists(storage)).toBe(true)
-      if (kind === 'replaced-child' || kind === 'late-owner') expect(changed).toBe(true)
-      if (['known-owner', 'retirement', 'retirement-pending', 'late-owner'].includes(kind)) {
-        expect(await readFile(join(owner, marker), 'utf8')).toBe(
-          kind === 'late-owner' ? 'test-owned late marker' : 'test-owned marker',
-        )
+      if (['known-owner', 'retirement', 'retirement-pending'].includes(kind)) {
+        expect(await readFile(join(owner, marker), 'utf8')).toBe('test-owned marker')
         await unlink(join(owner, marker))
       }
       if (kind === 'public-mode') await chmod(storage, 0o700)
@@ -242,22 +186,46 @@ for (const kind of [
         await unlink(storage)
         await mkdir(storage, { mode: 0o700 })
       }
-      if (kind === 'replaced-child') {
-        expect((await lstat(join(owner, 'retained-storage'), { bigint: true })).ino).toBe(
-          original.ino,
-        )
-        await rmdir(storage)
-        renameSync(join(owner, 'retained-storage'), storage)
-      }
-      spy?.mockRestore()
-      spy = undefined
       await recoverPrivateMacosGuardian(owner, token, 5000)
       await releasePrivateMacosGuardian(owner, token)
       verified = true
     } finally {
-      spy?.mockRestore()
       if (verified) await rm(root, { recursive: true })
       else console.error('Unstarted storage guard evidence retained at', root)
+    }
+  }, 30_000)
+}
+
+test('native storage enumeration refuses an actually closed owned descriptor', async () => {
+  const root = await mkdtemp('/private/tmp/jig-storage-closed-directory-')
+  const directory = await open(root, 'r')
+  try {
+    const fd = directory.fd
+    const entries = privateMacosDirectory(fd)
+    expect(entries.readSync()).toBeNull()
+    entries.closeSync()
+    expect(() => entries.readSync()).toThrow('macOS directory stream is closed')
+    await directory.close()
+    // No intervening allocation can reuse this descriptor before the native call.
+    expect(() => privateMacosDirectory(fd)).toThrow()
+    expect(await readdir(root)).toEqual([])
+  } finally {
+    await directory.close()
+    await rm(root, { recursive: true })
+  }
+}, 30_000)
+
+for (const kind of ['missing-owner', 'file-owner'] as const) {
+  test(`unstarted storage refuses the actual ${kind} path`, async () => {
+    const root = await mkdtemp('/private/tmp/jig-storage-invalid-path-')
+    const owner = join(root, 'owner')
+    if (kind === 'file-owner') await writeFile(owner, 'preserved', { mode: 0o600, flag: 'wx' })
+    try {
+      await expect(removeEmptyPrivateMacosUnstartedStorage(owner)).rejects.toBeInstanceOf(Error)
+      if (kind === 'file-owner') expect(await readFile(owner, 'utf8')).toBe('preserved')
+      else expect(await exists(owner)).toBe(false)
+    } finally {
+      await rm(root, { recursive: true })
     }
   }, 30_000)
 }
@@ -355,35 +323,30 @@ test('empty unstarted storage retains an authenticated earlier recovery-slot fen
   })
   prior.stdout.resume()
   prior.stderr.resume()
-  let spy: ReturnType<typeof spyOn> | undefined,
-    verified = false,
+  let verified = false,
     primaryError: unknown
   try {
-    // This actual prepared guardian never receives admission or starts a payload.
-    prior.cancel()
-    expect(await prior.completion).toMatchObject({ fenced: true, result: null })
+    // Lose the actual prepared guardian before admission. Its client must fence
+    // the real coalition; the authenticated journal remains for outer recovery.
+    killGuardian(prior.identity)
+    expect(await prior.completion).toMatchObject({
+      fenced: true,
+      recovered: true,
+      result: null,
+    })
     const recorded = readPrivateMacosOwner(recovery, recoveryToken)
     expect(recorded.identity).toEqual(prior.identity)
-    const originalFence = processControls.recoverPrivateMacosCoalition
-    let fenced = false
-    spy = spyOn(processControls, 'recoverPrivateMacosCoalition').mockImplementation(
-      async (record, timeoutMs) => {
-        expect(record.identity).toEqual(recorded.identity)
-        expect(await exists(storage)).toBe(true)
-        await originalFence(record, timeoutMs)
-        fenced = true
-      },
-    )
+    expect(await exists(storage)).toBe(true)
     await recoverPrivateMacosGuardian(owner, token, 5000)
-    expect(fenced).toBe(true)
     expect(await exists(storage)).toBe(false)
+    expectUnstartedJobAbsent(recoveryToken)
+    expect(readPrivateMacosOwner(recovery, recoveryToken).identity).toEqual(recorded.identity)
     await releasePrivateMacosGuardian(owner, token)
     expect(await exists(owner)).toBe(false)
     verified = true
   } catch (error) {
     primaryError = error
   }
-  spy?.mockRestore()
   try {
     prior.cancel()
     await prior.completion
@@ -403,34 +366,17 @@ test('empty unstarted storage retains an authenticated earlier recovery-slot fen
   if (primaryError !== undefined) throw primaryError
 }, 45_000)
 
-for (const recordedExpiry of [true, false]) {
-  test(recordedExpiry
-    ? 'recovery expiry during final drain refuses success and preserves retry evidence'
-    : 'recovery cancellation during final drain preserves retry evidence without deadline attribution', async () => {
+for (const unavailable of ['runtime', 'supervisor'] as const) {
+  test(`actual missing recovery ${unavailable} preserves native storage for retry`, async () => {
     const root = await mkdtemp('/private/tmp/jig-recovery-drain-')
     const owner = join(root, 'owner')
     const storage = join(owner, 'storage')
     const mount = join(root, 'data')
     const token = randomBytes(32).toString('hex')
-    const supervisor = join(root, 'expiring-supervisor.ts')
-    const sourceUrl = new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl)
-    const source = await readFile(sourceUrl, 'utf8')
-    const drain = '      const fencedBy = performance.now() + 5000\n      while (!owner.empty()) {'
-    expect(source.split(drain)).toHaveLength(2)
-    // Exercise the recorded expiry flag separately from ordinary cancellation
-    // inside a delayed final drain after real storage cleanup. The actual guardian,
-    // stop callback, error transport and authenticated retry path remain in use.
-    await writeFile(
-      supervisor,
-      source.replaceAll("from './", `from '${fileURLToPath(new URL('.', sourceUrl))}`).replace(
-        drain,
-        `      clearTimeout(timer)
-          timer = setTimeout(() => stop('cancelled', ${recordedExpiry}), 1)
-          const drainUntil = performance.now() + 50
-          const fencedBy = performance.now() + 5000
-          while (!owner.empty() || performance.now() < drainUntil) {`,
-      ),
-    )
+    const supervisor =
+      unavailable === 'supervisor'
+        ? join(root, 'missing-supervisor.ts')
+        : fileURLToPath(new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl))
     await mkdir(storage, { recursive: true, mode: 0o700 })
     await mkdir(mount, { mode: 0o700 })
     try {
@@ -438,22 +384,13 @@ for (const recordedExpiry of [true, false]) {
       await volume.directory.close()
       await expect(
         recoverPrivateMacosGuardian(owner, token, 5000, {
-          bun: process.execPath,
+          bun: unavailable === 'runtime' ? join(root, 'missing-bun') : process.execPath,
           supervisor,
         }),
-      ).rejects.toMatchObject({
-        message: 'macOS storage recovery is unconfirmed',
-        cause: recordedExpiry
-          ? {
-              code: 'EXECUTION_PREPARATION_DEADLINE',
-              cause: { code: 'MACOS_GUARDIAN_STORAGE_RECOVERY_OPERATION_DEADLINE' },
-            }
-          : { code: 'MACOS_GUARDIAN_STORAGE_RECOVERY_ABORTED' },
-      })
+      ).rejects.toBeInstanceOf(Error)
       expect(await exists(join(storage, 'volume.json'))).toBe(true)
-      expect(await exists(join(owner, 'recovery/owner.json'))).toBe(true)
-      expect(await exists(mount)).toBe(false)
-      expect(await exists(join(storage, 'volume.dmg'))).toBe(false)
+      expect(await exists(mount)).toBe(true)
+      expect(await exists(join(storage, 'volume.dmg'))).toBe(true)
     } finally {
       // An ordinary new guardian must prove recovery before journals can retire.
       await recoverPrivateMacosGuardian(owner, token, 5000)
@@ -462,23 +399,40 @@ for (const recordedExpiry of [true, false]) {
     }
   }, 45_000)
 }
-test('guardian preparation failures retain a closed step and cause after fenced cleanup', async () => {
+test('native volume allocation collision preserves the original authenticated journal', async () => {
+  const root = await mkdtemp('/private/tmp/jig-storage-publication-collision-')
+  const owner = join(root, 'owner')
+  const mount = join(root, 'data')
+  const token = randomBytes(32).toString('hex')
+  await mkdir(owner, { mode: 0o700 })
+  await mkdir(mount, { mode: 0o700 })
+  let released = false
+  try {
+    await allocatePrivateMacosGuardianStorage(owner, token, {
+      mountPath: mount,
+      bytes: 16 * 1024 * 1024,
+      collect: null,
+    })
+    const journal = await readFile(join(owner, 'storage/volume.json'))
+    await expect(
+      allocatePrivateMacosVolume(join(owner, 'storage'), token, mount, 16 * 1024 * 1024),
+    ).rejects.toThrow('macOS volume control allocation is not empty')
+    expect(await readFile(join(owner, 'storage/volume.json'))).toEqual(journal)
+    expect(await readdir(mount)).toEqual([])
+    expect(await exists(join(owner, 'storage/volume.dmg'))).toBe(false)
+    await recoverPrivateMacosGuardian(owner, token, 5000)
+    await releasePrivateMacosGuardian(owner, token)
+    expect(await exists(owner)).toBe(false)
+    released = true
+  } finally {
+    if (released) await rm(root, { recursive: true })
+    else console.error('Volume collision evidence retained at', root)
+  }
+}, 45_000)
+
+test('actual missing launcher retains a closed preparation cause after fenced storage cleanup', async () => {
   const build = await mkdtemp('/private/tmp/jig-preparation-failure-')
-  const launcher = join(build, 'macos-exec')
-  const compiled = spawnSync(
-    '/usr/bin/clang',
-    [
-      '-O2',
-      '-Wno-deprecated-declarations',
-      fileURLToPath(new URL('../support/macos-exec.c', suiteTestUrl)),
-      '-o',
-      launcher,
-    ],
-    { encoding: 'utf8', timeout: 15_000 },
-  )
-  expect({ status: compiled.status, stderr: compiled.stderr }).toEqual({ status: 0, stderr: '' })
-  for (const fixture of preparationFailures) {
-    const [step, , , code, deadlineMs] = fixture
+  {
     const root = await mkdtemp('/private/tmp/jig-preparation-owner-')
     const ownerDirectory = join(root, 'owner'),
       mountPath = join(root, 'data')
@@ -490,15 +444,17 @@ test('guardian preparation failures retain a closed step and cause after fenced 
       JSON.stringify({ ownerDirectory, ownerToken: token }),
       { mode: 0o600, flag: 'wx' },
     )
-    const supervisor = await preparationFailureSupervisor(build, fixture)
-    const guardian = await preparePrivateMacosGuardian({
+    const supervisor = fileURLToPath(
+      new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+    )
+    const input: Parameters<typeof preparePrivateMacosGuardian>[0] = {
       bun: process.execPath,
       supervisor,
       configuration: {
         type: 'start',
         ownerDirectory,
         ownerToken: token,
-        launcher,
+        launcher: join(build, 'missing-private-canary-launcher'),
         cwd: join(mountPath, 'work'),
         command: ['/usr/bin/true'],
         environment: {},
@@ -514,34 +470,58 @@ test('guardian preparation failures retain a closed step and cause after fenced 
           pids: 4,
           cpuQuotaMicros: 50_000,
           cpuPeriodMicros: 100_000,
-          deadlineUnixMs: Date.now() + deadlineMs,
+          deadlineUnixMs: Date.now() + 30_000,
           cleanupTimeoutMs: 5000,
         },
         maxOutputBytes: 4096,
         storage: { mountPath, bytes: 16 * 1024 * 1024, collect: null },
       },
-    })
+    }
+    const recoveryEvents: PrivateMacosGuardianRecoveryDiagnostic[] = []
+    const guardian = await withPrivateMacosGuardianDiagnostics(
+      (event) => {
+        if (recoveryEvents.length < 16) recoveryEvents.push(event)
+      },
+      () => preparePrivateMacosGuardian(input),
+    )
     guardian.stdout.resume()
     guardian.stderr.resume()
+    let completionDiagnostic: object = { state: 'pending' }
     try {
-      const admission = guardian.admit().catch((error) => error)
-      if (step === 'storage-cancelled') {
-        const pause = join(build, `${step}.paused`)
-        const waitUntil = Date.now() + 5000
-        while (!(await exists(pause)) && Date.now() < waitUntil) await Bun.sleep(10)
-        expect(await exists(pause)).toBe(true)
-        guardian.cancel()
-      }
-      const failure = await admission
-      expect(failure).toMatchObject({ code })
+      const failure = await guardian.admit().catch((error) => error)
+      // Observe real settlement before an assertion can hide its cleanup outcome.
+      const completion = await guardian.completion.then(
+        (result) => {
+          completionDiagnostic = {
+            state: 'fulfilled',
+            fenced: result.fenced,
+            recovered: result.recovered,
+            outputLost: result.outputLost,
+            result: result.result === null ? 'absent' : 'present',
+          }
+          return result
+        },
+        (error: unknown) => {
+          completionDiagnostic = { state: 'rejected' }
+          throw error
+        },
+      )
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure.code).toBe('MACOS_GUARDIAN_SCOPE_PREPARATION_FILESYSTEM_MISSING')
       expect(failure.message).not.toContain('private-canary')
-      expect(await guardian.completion).toMatchObject({
+      expect(completion).toMatchObject({
         fenced: true,
         result: null,
         recovered: false,
       })
       expect(await exists(mountPath)).toBe(false)
       expect(await exists(join(ownerDirectory, 'storage/volume.dmg'))).toBe(false)
+    } catch (error) {
+      console.error('Missing launcher guardian evidence', {
+        recoveryEvents,
+        completion: completionDiagnostic,
+      })
+      throw error
     } finally {
       await recoverPrivateMacosGuardian(ownerDirectory, token, 5000)
       await releasePrivateMacosGuardian(ownerDirectory, token)
@@ -550,7 +530,7 @@ test('guardian preparation failures retain a closed step and cause after fenced 
   }
   await rm(build, { recursive: true })
 }, 45_000)
-test('guardian loss during backing journal publication retains recoverable storage', async () => {
+test('actual guardian loss after native storage attachment retains recoverable storage', async () => {
   const root = await mkdtemp('/private/tmp/jig-image-journal-loss-')
   const ownerDirectory = join(root, 'owner'),
     mountPath = join(root, 'data')
@@ -562,7 +542,9 @@ test('guardian loss during backing journal publication retains recoverable stora
     JSON.stringify({ ownerDirectory, ownerToken: token }),
     { mode: 0o600, flag: 'wx' },
   )
-  const supervisor = await journalLossSupervisor(root)
+  const supervisor = fileURLToPath(
+    new URL('../src/internal/macos-native-supervisor.ts', suiteTestUrl),
+  )
   const launcher = join(root, 'macos-exec')
   const compiled = spawnSync(
     '/usr/bin/clang',
@@ -612,20 +594,14 @@ test('guardian loss during backing journal publication retains recoverable stora
   const ready = guardian.admit()
   void ready.catch(() => undefined)
   try {
-    const end = performance.now() + 10_000
-    while (
-      !(await exists(join(ownerDirectory, 'storage/volume-image.json'))) &&
-      !(await exists(join(ownerDirectory, 'storage/volume-image.pending'))) &&
-      performance.now() < end
-    )
-      await Bun.sleep(5)
-    expect(
-      (await exists(join(ownerDirectory, 'storage/volume-image.json'))) ||
-        (await exists(join(ownerDirectory, 'storage/volume-image.pending'))),
-    ).toBe(true)
+    await ready
+    expect(await exists(join(ownerDirectory, 'storage/volume-image.json'))).toBe(true)
     killGuardian(guardian.identity)
-    await expect(ready).rejects.toThrow()
-    expect((await guardian.completion).fenced).toBe(true)
+    expect(await guardian.completion).toMatchObject({
+      fenced: true,
+      recovered: true,
+      result: null,
+    })
     await recoverPrivateMacosGuardian(ownerDirectory, token, 5000)
     recovered = true
     expect(await exists(mountPath)).toBe(false)

@@ -9,9 +9,8 @@ export async function organisePhotos(
   updates?: Reporter,
 ): Promise<RunResult> {
   const sourceAttachment = run.attachments.source
-  const outputAttachment = run.attachments.photos
-  if (sourceAttachment?.access !== 'read' || outputAttachment?.access !== 'read-write') {
-    throw new TypeError('Supply read-only source and writable photos attachments.')
+  if (sourceAttachment?.access !== 'read') {
+    throw new TypeError('Supply a read-only source attachment.')
   }
 
   const view = updates?.view('photos', { title: 'Photo box', landing: true })
@@ -80,19 +79,24 @@ export async function organisePhotos(
     show('copying')
 
     // 4. Each file Flow rechecks the originals and assignments at its own boundary.
-    // The Binding supplies the immutable source and imports each completed folder.
+    // The Binding lends the source and permits fresh operation-owned outputs.
     updates?.activity('organise', 'Preparing checked photo copies and the manifest')
     const copyResponse = await run.call({
       operationId: 'copy-photos',
       slot: 'copy-photos',
       intent: 'Copy the originals into checked event folders without changing their bytes',
       input: { assignments },
+      attachments: { files: { create: true } },
     })
     run.signal.throwIfAborted()
     if (copyResponse.outcome !== 'done') {
       throw new TypeError('The copy Flow did not complete the checked collection.')
     }
     checkCopiedPhotos(renamedPhotos, copyResponse.output)
+    const copies = copyResponse.artifacts?.files
+    if (!copies) {
+      throw new TypeError('The copy Flow omitted its immutable files artifact.')
+    }
 
     show('contact-sheet')
     updates?.activity('organise', 'Creating the before-and-after contact sheet')
@@ -101,15 +105,19 @@ export async function organisePhotos(
       slot: 'contact-sheet',
       intent: 'Show the original collection beside its checked grouping',
       input: { assignments },
+      attachments: { files: { create: true } },
     })
     run.signal.throwIfAborted()
     if (sheetResponse.outcome !== 'done') {
       throw new TypeError('The contact-sheet Flow did not complete the overview.')
     }
     checkContactSheetOutput(renamedPhotos.length, sheetResponse.output)
+    const overview = sheetResponse.artifacts?.files
+    if (!overview) {
+      throw new TypeError('The contact-sheet Flow omitted its immutable files artifact.')
+    }
 
-    // Child results use their own output-relative paths. The application adds the
-    // fixed import prefixes declared in bindings/organise.ts for its final result.
+    // Final artifact names supply packet prefixes. Leaf paths stay relative.
     const deliveredPhotos = renamedPhotos.map((photo) => ({
       ...photo,
       destination: `copies/${photo.destination}`,
@@ -119,6 +127,7 @@ export async function organisePhotos(
     const eventGroups = [...new Set(renamedPhotos.map((photo) => photo.event))]
     return {
       outcome: 'done',
+      artifactResults: { copies, overview },
       output: {
         status: 'organised',
         count: renamedPhotos.length,

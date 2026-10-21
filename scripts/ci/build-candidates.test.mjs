@@ -45,7 +45,8 @@ async function fixture() {
     JIG_CI_BUN: join(bin, 'bun'),
   }
   for (const [kind, name] of Object.entries(CANDIDATE_PACKAGES)) {
-    const directory = join(repository, 'packages', kind)
+    const directory =
+      kind === 'flow-sdk' ? join(root, 'registry', kind) : join(repository, 'packages', kind)
     await mkdir(directory, { recursive: true })
     await writeFile(
       join(directory, 'package.json'),
@@ -113,7 +114,14 @@ async function fixture() {
     }
     if (command === join(bin, 'npm') && args[0] === 'pack') {
       const directory = args[args.indexOf('--pack-destination') + 1]
-      const sdk = join(repository, 'packages/flow-sdk')
+      assert.deepEqual(args, [
+        'pack',
+        '@jigging/flow@0.1.0-alpha.1',
+        '--ignore-scripts',
+        '--pack-destination',
+        directory,
+      ])
+      const sdk = join(root, 'registry', 'flow-sdk')
       run(join(bin, 'bun'), ['pm', 'pack', '--ignore-scripts', '--destination', directory], {
         cwd: sdk,
       })
@@ -166,7 +174,10 @@ test('build-only producer freezes one workspace build, eight archives and actual
     )
     assert.equal(f.calls.filter((call) => call.args.includes('--destination')).length, 8)
     const install = f.calls.find((call) => call.args[0] === 'install')
-    for (const name of Object.values(CANDIDATE_PACKAGES)) assert.ok(install.args.includes(name))
+    for (const [kind, name] of Object.entries(CANDIDATE_PACKAGES))
+      assert.equal(install.args.includes(name), kind !== 'flow-sdk')
+    assert.ok(!install.args.includes('@jigging/flow-authoring'))
+    assert.ok(!existsSync(join(f.repository, 'packages/flow-sdk')))
     assert.ok(
       !f.calls.some((call) => call.args.some((arg) => /package-smoke|baseline|^test$/.test(arg))),
     )

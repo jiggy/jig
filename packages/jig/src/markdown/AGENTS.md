@@ -57,15 +57,17 @@ the operator's authority and execution ownership intact.
 ## Verification
 
 - `bun test packages/jig/test/portable/markdown-parser.test.ts packages/jig/test/portable/markdown-runtime.test.ts packages/jig/test/portable/markdown-worker.test.ts`
+- Parser/runtime files validate compilation and static template inputs.
+  They do not replace Run contexts, child calls or channel endpoints.
 - Worker tests build current source, exchange ordinary FLOW/0 messages and
   validate the actual native Agent response-schema profile without a provider.
 - The installed public-CLI regression runs on the provisioned Linux proof host
   with `JIG_LINUX_ROOTLESS_HOSTILE=1`, or the qualified rootless Mac with
   `JIG_MACOS_PROCESS_TEST=1`. It reuses the canonical regular `.tgz` from
   `JIG_PACKAGE_ARCHIVE` when supplied. Otherwise build the Jig package first so
-  the regression can pack its current generated artifacts. This gate proves
-  Markdown's Agent-admission requirement and Agent-free code execution. Worker
-  peers separately test interpretation and cancellation. Neither establishes
-  live model quality.
+  the regression can pack its current generated artifacts.
+  It checks Agent admission, Agent-free code execution and installed Markdown
+  composition with a real decision task, code child and SDK channels.
+  Protocol peers and deterministic tasks do not establish live model quality.
 
 ## Child DOX Index

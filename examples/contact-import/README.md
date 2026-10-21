@@ -19,13 +19,13 @@ jig run
 The CSV parser is an ordinary declared dependency. The resolution flag permits
 fresh dependency resolution during this review; inspect and approve the result.
 The reviewed entrypoint supplies the fixture, read attachment and one-minute deadline.
-Because this Flow writes deliverables, Jig chooses a fresh packet directory in
+Because this Flow declares a forwarded preview artifact, Jig chooses a fresh packet directory in
 operating-system temporary storage and reports it on stderr. Repeating `jig run`
 leaves earlier packets intact. The operating system may clear temporary storage;
 use `jig run --out ./preview-result` to choose a retained location. That directory
 must not already exist; Jig never overwrites an earlier result.
 
-Open `files/contacts/preview.json` inside the reported destination. Ada and Mei have accepted contact
+Open `files/preview/preview.json` inside the reported destination. Ada and Mei have accepted contact
 records. Grace's invalid email appears in `rejected`, with CSV record number 3.
 `result.json` in that destination contains the execution result. These are synthetic
 contacts, and no database records are created.
@@ -83,7 +83,7 @@ you choose a new destination with `--out DIR`.
 excluded totals, source heading → contact field mapping, accepted contacts, and
 reasons for correction. Reading, mapping, checking and export update that page
 as the work advances. Lists show up to twelve records with explicit totals and
-marked excerpts; the complete output and `contacts/preview.json` preserve every
+marked excerpts; the complete output and `files/preview/preview.json` preserve every
 value. The complete preview reference opens the delivered file. Child Flow views
 remain available through Inspector and when invoked independently.
 `needs_mapping` asks for clarification; a completed preview never means contacts
@@ -112,7 +112,8 @@ implementations of `mapper` while using the same reader, converter and exporter.
 implementation combines code and an Agent Flow inside one leaf. Each method is self-contained;
 none imports another Flow's implementation.
 The reader gets read-only source access; the exporter gets only its writable output.
-`bindings/code.ts` imports the exporter’s folder into `preview/contacts`.
+`bindings/code.ts` grants the exporter a fresh output for each call.
+The coordinator forwards its immutable files artifact as the `preview` result.
 The coordinator writes no files and checks export metadata before offering the
 complete preview reference. Review changes to code or Bindings before running them.
 

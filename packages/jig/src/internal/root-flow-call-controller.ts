@@ -24,6 +24,7 @@ import {
 import { SchemaDiagnostic } from '../schema/index.js'
 import {
   findPrivateActivationCandidateTargetV5,
+  privateActivationCandidateEffectMemoryBytes,
   privateActivationCandidateFlowDepth,
 } from './activation-admission.js'
 import {
@@ -38,12 +39,7 @@ import {
   recordPrivateRootChildSandbox,
 } from './activation-admission-store.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
-import {
-  type PrivateChildFileDestination,
-  PrivateChildFileDestinationError,
-  reservePrivateChildFileDestination,
-  settlePrivateChildFileDestination,
-} from './child-file-import.js'
+import type { PrivateCapturedOutput } from './captured-output.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   type PrivateDirectRunInstalledSupport,
@@ -72,20 +68,21 @@ import {
   sealPrivateExecutionOwner,
 } from './execution-backend.js'
 import {
-  copyPrivateFileImportOutput,
-  type PrivateFileImportStage,
-  PrivateFileImportUnconfirmedError,
-} from './execution-file-import.js'
-import { closePrivateExecutionOutput } from './execution-output.js'
+  closePrivateExecutionOutput,
+  PrivateOutputRetirementUnconfirmedError,
+} from './execution-output.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
 import {
-  bindPrivateFlowFileImportTarget,
+  capturePrivateFlowArtifact,
+  commitPrivateFlowArtifacts,
   createPrivateChildFlowFileContext,
+  PrivateArtifactPermissionError,
   type PrivateChildFlowFilePlan,
   type PrivateFlowFileContext,
   planPrivateChildFlowFiles,
   privateFlowFileExecutionProjection,
-  privateFlowFileImportTarget,
+  releasePrivateFlowArtifact,
+  selectedPrivateFlowArtifacts,
 } from './flow-file-context.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
@@ -133,6 +130,13 @@ const SANDBOX_KIND = 'private-root-child-sandbox/1'
 const CLEANUP_KIND = 'private-root-child-cleanup/1'
 const CANCELLATION_GRACE_MS = 1_000
 
+import { privateInvocationBootDeadline } from './invocation-context.js'
+import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootRemaining,
+} from './native-clock.js'
+
 interface ChildAllocation {
   readonly kind: typeof ALLOCATION_KIND
   readonly parentRunId: string
@@ -140,8 +144,10 @@ interface ChildAllocation {
   readonly operationId: string
   readonly parentFlow: PrivateParentFlow | null
   readonly flowDepth: number
+  readonly effectMemoryBytes: number
   readonly requestDigest: string
   readonly effectiveDeadlineUnixMs: number
+  readonly effectiveBootDeadline: PrivateBootDeadline
   readonly packageAllocation: PrivatePackageMaterializationAllocationIdentity
   readonly ownerAllocation: PrivateExecutionOwnerStateAllocationIdentity
 }
@@ -332,12 +338,16 @@ async function executePreparedChild(
   ) {
     return failed('UNAVAILABLE', 'the admitted child recipe cannot be reproduced')
   }
+  const effectiveBootDeadline = await privateInvocationBootDeadline(
+    input,
+    recipe.wallClockCeilingMs,
+  )
   const effectiveDeadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
     Date.now() + recipe.wallClockCeilingMs,
   )
-  if (Date.now() >= effectiveDeadlineUnixMs) {
+  if (privateBootRemaining(effectiveBootDeadline) <= 0) {
     return failed('DEADLINE_EXCEEDED', 'the child Flow deadline elapsed before dispatch')
   }
   if (input.parentFlow !== undefined)
@@ -353,6 +363,7 @@ async function executePreparedChild(
         caller: input.files,
         declarations: selected.request.attachments,
         mapping: route.attachments ?? null,
+        ...(input.call.attachments === undefined ? {} : { attachments: input.call.attachments }),
       })
     } else if (
       route.attachments !== undefined ||
@@ -360,8 +371,10 @@ async function executePreparedChild(
     ) {
       return failed('UNAVAILABLE', 'the caller file owner is unavailable')
     }
-  } catch {
-    return failed('UNAVAILABLE', 'the reviewed child attachment map cannot be supplied')
+  } catch (error) {
+    return error instanceof PrivateArtifactPermissionError
+      ? failed('PERMISSION_DENIED', 'the caller does not hold the selected immutable artifact')
+      : failed('INVALID_INPUT', 'the reviewed child attachment map cannot be supplied')
   }
 
   const existing = (
@@ -400,8 +413,13 @@ async function executePreparedChild(
     operationId: input.call.operationId,
     parentFlow: input.parentFlow ?? null,
     flowDepth: privateActivationCandidateFlowDepth(input.parent.candidate, selected.request.target),
+    effectMemoryBytes: privateActivationCandidateEffectMemoryBytes(
+      input.parent.candidate,
+      selected.request.target,
+    ),
     requestDigest: selected.request.digest,
     effectiveDeadlineUnixMs,
+    effectiveBootDeadline,
     packageAllocation,
     ownerAllocation,
   })
@@ -429,25 +447,13 @@ async function executePreparedChild(
 
   let attemptedDispatch = false
   let failurePhase: ChildFailurePhase = 'preparation'
-  let destination: PrivateChildFileDestination | undefined
-  let stage: PrivateFileImportStage | undefined
+  let snapshot: PrivateCapturedOutput | undefined
   let childContext: PrivateFlowFileContext | undefined
   let component: PrivateExecutionComponentProcess | undefined
-  let commitAttempted = false
-  let committed = false
   let childCleanupConfirmed = false
   let knownResult = false
   try {
     if (filePlan !== undefined) {
-      destination = reservePrivateChildFileDestination(input.files!, filePlan)
-      if (destination !== undefined) {
-        stage = await privateFlowFileImportTarget(input.files!).stage({
-          directory: destination.directory,
-          operationId: input.call.operationId,
-          deadlineUnixMs: effectiveDeadlineUnixMs,
-          signal: input.signal,
-        })
-      }
       childContext = createPrivateChildFlowFileContext(filePlan)
     }
     const fileProjection =
@@ -465,6 +471,7 @@ async function executePreparedChild(
         CANCELLATION_GRACE_MS,
         64 * 1024 * 1024,
         fileProjection?.plan,
+        effectiveBootDeadline,
       ),
       ownerAllocation,
     )
@@ -481,7 +488,7 @@ async function executePreparedChild(
 
     if (input.signal.aborted)
       throw new ChannelOperationError('CANCELLED', 'the child Flow call was cancelled')
-    if (Date.now() >= effectiveDeadlineUnixMs)
+    if (privateBootRemaining(effectiveBootDeadline) <= 0)
       throw new ChannelOperationError(
         'DEADLINE_EXCEEDED',
         'the child Flow deadline elapsed before dispatch',
@@ -500,8 +507,6 @@ async function executePreparedChild(
     } finally {
       startup.dispose()
     }
-    if (component.outputImport !== undefined && childContext !== undefined)
-      bindPrivateFlowFileImportTarget(childContext, component.outputImport)
     failurePhase = 'protocol'
     const provisional = await new RunHostSession(
       component,
@@ -513,7 +518,7 @@ async function executePreparedChild(
             Object.entries(fileProjection?.attachments ?? {}).map(([name, attachment]) => [
               name,
               {
-                access: attachment.access,
+                ...attachment,
                 path: privateExecutionLocations(ownerAllocation).attachment(
                   name,
                   attachment.access,
@@ -538,10 +543,9 @@ async function executePreparedChild(
         onDiagnostic,
         childContext,
       ),
+      { remainingTimeMs: () => privateBootRemaining(effectiveBootDeadline) },
     ).run()
     failurePhase = 'settlement'
-    // Its nested imports have joined with RunHost. Release caller loans before native capture/cleanup.
-    await component.outputImport?.close()
     const fence = await component.enforcement
     await recoverDescendants(input, lifecycle, selected)
     const admitted = await admitOperationResult(
@@ -550,35 +554,51 @@ async function executePreparedChild(
       provisional,
     )
     knownResult = true
-    if (stage !== undefined && admitted.status === 'succeeded') {
+    const forwarded =
+      admitted.status === 'succeeded' && childContext !== undefined
+        ? selectedPrivateFlowArtifacts(
+            childContext,
+            inspected.invocation?.artifactResults ?? [],
+            admitted.result.artifactResults,
+          )
+        : {}
+    if (
+      admitted.status === 'succeeded' &&
+      Object.values(selected.request.attachments).includes('read-write')
+    ) {
       if (component.output === undefined) throw new Error('child output source is unavailable')
-      await copyPrivateFileImportOutput({
-        stage,
-        output: component.output,
-        signal: input.signal,
-        prefix: destination!.prefix,
-      })
+      snapshot = await capturePrivateFlowArtifact(input.files!, component.output, input.signal)
     }
-    await closePrivateExecutionOutput(component.output)
+    // Native snapshots transfer their retirement to the root artifact owner.
+    if (snapshot === undefined || component.output?.kind !== 'snapshot')
+      await closePrivateExecutionOutput(component.output)
     await releaseKnownChild(input, lifecycle, lease, fence)
     childCleanupConfirmed = true
-    if (stage !== undefined) {
-      if (admitted.status === 'succeeded') {
-        commitAttempted = true
-        const state = await stage.commit()
-        committed = state === 'committed'
+    if (admitted.status === 'succeeded') {
+      if (input.signal.aborted) return failed('CANCELLED', 'the child Flow call was cancelled')
+      if (privateBootRemaining(effectiveBootDeadline) <= 0)
+        return failed('DEADLINE_EXCEEDED', 'the child Flow deadline elapsed')
+      const snapshots: Record<string, PrivateCapturedOutput> = { ...forwarded }
+      if (snapshot !== undefined) {
+        const name = Object.entries(selected.request.attachments).find(
+          ([, access]) => access === 'read-write',
+        )![0]
+        if (Object.hasOwn(snapshots, name))
+          throw new TypeError('artifact result overlaps output port')
+        snapshots[name] = snapshot
       }
-      await stage.close()
-      settlePrivateChildFileDestination(destination!, committed ? 'committed' : 'absent')
-      if (admitted.status === 'succeeded' && !committed)
-        return failed(
-          input.signal.aborted
-            ? 'CANCELLED'
-            : Date.now() >= effectiveDeadlineUnixMs
-              ? 'DEADLINE_EXCEEDED'
-              : 'EXECUTION_FAILED',
-          'child files were not committed to the caller output folder',
-        )
+      const artifacts =
+        Object.keys(snapshots).length === 0
+          ? {}
+          : commitPrivateFlowArtifacts(input.files!, snapshots)
+      return {
+        status: 'succeeded',
+        result: {
+          outcome: admitted.result.outcome,
+          output: admitted.result.output,
+          ...(Object.keys(artifacts).length === 0 ? {} : { artifacts: Object.freeze(artifacts) }),
+        },
+      }
     }
     return admitted
   } catch (error) {
@@ -590,24 +610,14 @@ async function executePreparedChild(
     try {
       if (component !== undefined && !childCleanupConfirmed) {
         await component.terminate()
-        await component.outputImport?.close()
         await component.enforcement
         await closePrivateExecutionOutput(component.output)
       }
       const active = await findLifecycle(input, input.call.operationId)
       if (active !== undefined) await recoverOne(input, active)
-      await stage?.close()
-      if (destination !== undefined)
-        settlePrivateChildFileDestination(
-          destination,
-          commitAttempted || error instanceof PrivateFileImportUnconfirmedError
-            ? 'unavailable'
-            : 'absent',
-        )
-      if (commitAttempted || error instanceof PrivateFileImportUnconfirmedError)
+      if (error instanceof PrivateOutputRetirementUnconfirmedError)
         throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
     } catch (cleanupError) {
-      if (destination !== undefined) settlePrivateChildFileDestination(destination, 'unavailable')
       if (cleanupError instanceof RunHostFatalOperationError) throw cleanupError
       try {
         input.onFailure?.('cleanup', cleanupError)
@@ -616,24 +626,19 @@ async function executePreparedChild(
       }
       throw new RunHostFatalOperationError(
         isPrivateExecutionFenceUnconfirmed(cleanupError) ||
-          cleanupError instanceof PrivateFileImportUnconfirmedError
+          cleanupError instanceof PrivateOutputRetirementUnconfirmedError
           ? 'UNCERTAIN'
           : 'EXECUTION_FAILED',
         { cause: new AggregateError([error, cleanupError], 'operation cleanup failed') },
       )
     }
-    if (error instanceof PrivateChildFileDestinationError) {
-      if (error.state === 'unavailable')
-        throw new RunHostFatalOperationError('UNCERTAIN', { cause: error })
-      return failed(error.state === 'busy' ? 'RESOURCE_EXHAUSTED' : 'UNAVAILABLE', error.message)
-    }
     if (input.signal.aborted) return failed('CANCELLED', 'the child Flow call was cancelled')
-    if (Date.now() >= effectiveDeadlineUnixMs) {
+    if (privateBootRemaining(effectiveBootDeadline) <= 0) {
       return failed('DEADLINE_EXCEEDED', 'the child Flow deadline elapsed')
     }
     if (!attemptedDispatch && error instanceof ChannelOperationError)
       return failed(error.code, error.message, error.details)
-    if (knownResult) return failed('EXECUTION_FAILED', 'child files could not be imported')
+    if (knownResult) return failed('EXECUTION_FAILED', 'child artifacts could not be retained')
     return attemptedDispatch
       ? failed('UNCERTAIN', 'child dispatch may have occurred but no result was proved')
       : failed('EXECUTION_FAILED', 'child Flow execution failed before dispatch')
@@ -704,6 +709,9 @@ function specialistDispatcher(
         ...(cause === undefined ? {} : { cause }),
       }),
     ...(onDiagnostic === undefined ? {} : { onDiagnostic }),
+    ...(files === undefined
+      ? {}
+      : { releaseArtifact: (reference: string) => releasePrivateFlowArtifact(files, reference) }),
     validateResult(result) {
       const admitted = admitPrivatePackageResult(inspected, {
         status: 'succeeded',
@@ -712,6 +720,14 @@ function specialistDispatcher(
       })
       if (admitted.status === 'failed')
         throw new ChannelOperationError('INVALID_RESULT', admitted.message, admitted.details)
+      if (files !== undefined)
+        selectedPrivateFlowArtifacts(
+          files,
+          inspected.invocation?.artifactResults ?? [],
+          result.artifactResults,
+        )
+      else if (Object.keys(result.artifactResults ?? {}).length !== 0)
+        throw new ChannelOperationError('INVALID_RESULT', 'artifact result owner is unavailable')
     },
     async call(call, signal) {
       const route = selected.request.slots[call.slot]
@@ -742,11 +758,16 @@ function specialistDispatcher(
             signal,
           })
         }
-        if (route.native === 'project-command' || route.native === 'http-request') {
+        if (
+          route.native === 'project-command' ||
+          route.native === 'http-request' ||
+          route.native === 'project-evaluation'
+        ) {
           if (Object.keys(call.channels ?? {}).length !== 0)
             return failed('UNAVAILABLE', 'this invocation has no supported channels')
           return await executePrivateContainedEffect({
             ...input,
+            ...(files === undefined ? {} : { files }),
             onFailure: input.onEffectFailure,
             parentFlow: {
               operationId: input.call.operationId,
@@ -1012,8 +1033,10 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
       'operationId',
       'parentFlow',
       'flowDepth',
+      'effectMemoryBytes',
       'requestDigest',
       'effectiveDeadlineUnixMs',
+      'effectiveBootDeadline',
       'packageAllocation',
       'ownerAllocation',
     ],
@@ -1022,6 +1045,8 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
   if (
     value.kind !== ALLOCATION_KIND ||
     !isPrivateBranchDepth(value.flowDepth) ||
+    (value.effectMemoryBytes !== 256 * 1024 * 1024 &&
+      value.effectMemoryBytes !== 512 * 1024 * 1024) ||
     value.parentRunId !== lifecycle.parentRunId ||
     value.operationId !== lifecycle.operationId ||
     typeof value.coordinatorEpoch !== 'number' ||
@@ -1041,8 +1066,10 @@ function parseAllocation(lifecycle: PrivateRootChildOwnerLifecycle): ChildAlloca
     operationId: value.operationId as string,
     parentFlow: normalizeParentFlow(value.parentFlow, lifecycle.parentOperationId),
     flowDepth: value.flowDepth,
+    effectMemoryBytes: value.effectMemoryBytes,
     requestDigest: value.requestDigest,
     effectiveDeadlineUnixMs: value.effectiveDeadlineUnixMs,
+    effectiveBootDeadline: normalizePrivateBootDeadline(value.effectiveBootDeadline),
     packageAllocation: normalizePrivatePackageMaterializationAllocationIdentity(
       value.packageAllocation,
     ),
@@ -1123,7 +1150,9 @@ async function requireAllocationMatchesParent(
     selected === undefined ||
     selected.disposition.state !== 'ready' ||
     allocation.flowDepth !==
-      privateActivationCandidateFlowDepth(input.parent.candidate, selected.request.target)
+      privateActivationCandidateFlowDepth(input.parent.candidate, selected.request.target) ||
+    allocation.effectMemoryBytes !==
+      privateActivationCandidateEffectMemoryBytes(input.parent.candidate, selected.request.target)
   ) {
     throw new Error('durable child allocation differs from its admitted Flow branch')
   }

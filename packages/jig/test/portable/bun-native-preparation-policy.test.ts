@@ -15,6 +15,15 @@ import {
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   privateBunMessageFits,
 } from '../../src/internal/bun-native-preparation-protocol.js'
+import {
+  requirePrivateProjectEvaluationLock,
+  requirePrivateProjectEvaluationManifest,
+} from '../../src/internal/project-evaluation-manifest.js'
+import {
+  normalizePrivateProjectEvaluationCompiler,
+  normalizePrivateProjectEvaluationRecipe,
+  requirePrivateProjectEvaluationInput,
+} from '../../src/internal/project-evaluation-policy.js'
 import { PACKAGE_1_MAX_PATH_BYTES } from '../../src/package/paths.js'
 
 const INTEGRITY =
@@ -28,6 +37,88 @@ function lock(packages: Readonly<Record<string, unknown>>): object {
 }
 
 describe('private Bun preparation policy', () => {
+  test('evaluation recipes are a fixed family, not executable tool policy', () => {
+    const recipe = {
+      family: 'bun-typescript',
+      generate: 'tools/generate.ts',
+      test: ['test/main.test.ts'],
+    }
+    expect(normalizePrivateProjectEvaluationRecipe(recipe).collect).toEqual([
+      'generated',
+      'dist',
+      'reports',
+    ])
+    for (const extra of [
+      { shell: 'true' },
+      { env: {} },
+      { network: true },
+      { generate: '../secret.ts' },
+      { test: ['test/*.test.ts'] },
+      { test: ['test/main.spec.ts'] },
+      { collect: ['scratch'] },
+      { collect: ['dist', 'dist'] },
+    ])
+      expect(() => normalizePrivateProjectEvaluationRecipe({ ...recipe, ...extra })).toThrow()
+    expect(() => requirePrivateProjectEvaluationInput({})).not.toThrow()
+    expect(() => requirePrivateProjectEvaluationInput({ files: {} })).toThrow()
+    expect(() => requirePrivateProjectEvaluationInput([])).toThrow()
+  })
+  test('evaluation compiler policy never accepts candidate-selected executable configuration', () => {
+    const types = new Set(['bun'])
+    expect(
+      normalizePrivateProjectEvaluationCompiler(
+        { compilerOptions: { strict: true, types: ['bun'] } },
+        types,
+      ),
+    ).toMatchObject({
+      compilerOptions: { rootDir: '.', outDir: 'dist', noEmitOnError: true, strict: true },
+    })
+    for (const compilerOptions of [
+      { plugins: [] },
+      { paths: {} },
+      { rootDir: 'other' },
+      { incremental: true },
+      { jsx: 'preserve' },
+      { strict: 'yes' },
+      { types: ['unreviewed'] },
+      { lib: ['WebWorker'] },
+    ])
+      expect(() => normalizePrivateProjectEvaluationCompiler({ compilerOptions }, types)).toThrow()
+    expect(() =>
+      normalizePrivateProjectEvaluationCompiler({ extends: '../ambient' }, types),
+    ).toThrow()
+  })
+  test('evaluation dependencies stay review-only development closure with exact tools', () => {
+    const manifest = { dependencies: { zod: '3.23.8' }, devDependencies: { typescript: '5.7.3' } }
+    expect(() => requirePrivateProjectEvaluationManifest(manifest)).not.toThrow()
+    for (const extra of [
+      { scripts: {} },
+      { trustedDependencies: [] },
+      { workspaces: [] },
+      { bin: 'tool.js' },
+      { devDependencies: { typescript: '^5.7.3' } },
+      { dependencies: { zod: 'npm:zod@3.23.8' } },
+    ])
+      expect(() => requirePrivateProjectEvaluationManifest({ ...manifest, ...extra })).toThrow()
+    const locked = {
+      ...lock({
+        typescript: ['typescript@5.7.3', '', {}, INTEGRITY],
+        zod: ['zod@3.23.8', '', {}, INTEGRITY],
+      }),
+      workspaces: { '': manifest },
+    }
+    expect(() => requirePrivateProjectEvaluationLock(locked, manifest)).not.toThrow()
+    expect(() =>
+      requirePrivateProjectEvaluationLock(
+        {
+          ...locked,
+          workspaces: { '': { ...manifest, devDependencies: {} } },
+        },
+        manifest,
+      ),
+    ).toThrow()
+  })
+
   test('the current Mac runtime accepts a frozen version-1 registry lock', () => {
     expect(() =>
       requirePrivateBunLockPolicy(
@@ -340,13 +431,7 @@ describe('private Bun preparation policy', () => {
       ),
     )
     expect(PRIVATE_BUN_PREPARED_MESSAGE_BYTES).toBe(
-      maximumPrivateBunFileMessageBytes(
-        'prepared',
-        PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
-        PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
-      ) +
-        PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
-        Buffer.byteLength(',"layout":'),
+      PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes + 1024,
     )
     expect(PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes).toBe(1024 * 1024)
     const segment = '\u0001'.repeat(255)

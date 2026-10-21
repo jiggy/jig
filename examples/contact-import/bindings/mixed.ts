@@ -8,7 +8,7 @@ export default defineBinding({
     converter: 'flow:flows/convert',
     exporter: {
       target: 'flow:flows/export-preview',
-      attachments: { files: { into: 'preview', directory: 'contacts' } },
+      attachments: { files: { create: true } },
     },
   },
 })

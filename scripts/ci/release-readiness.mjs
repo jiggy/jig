@@ -18,6 +18,7 @@ import {
   validateWorkflowRun,
   verifyArtifactMetadata,
 } from './candidate-transfer.mjs'
+import { MAC_HOST_SHARDS } from './macos-host-test-shards.mjs'
 
 const WORKFLOWS = Object.freeze({
   ci: '.github/workflows/ci.yml',
@@ -54,8 +55,9 @@ export const LINUX_QUALIFICATION_JOBS = Object.freeze([
 export const MACOS_QUALIFICATION_JOBS = Object.freeze([
   'Native host qualification — x64',
   'Native host qualification — arm64',
-  ...[0, 1, 2].map((shard) => `Native host shard — x64 / ${shard}`),
-  ...[0, 1].map((shard) => `Native host shard — arm64 / ${shard}`),
+  ...Object.entries(MAC_HOST_SHARDS).flatMap(([architecture, count]) =>
+    Array.from({ length: count }, (_, shard) => `Native host shard — ${architecture} / ${shard}`),
+  ),
 ])
 
 function mainExpectation(repository, workflowPath, source) {

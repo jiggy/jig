@@ -15,7 +15,7 @@ interface Configuration {
   readonly ownerStateParent: string
   readonly uid: number
   readonly gid: number
-  readonly outputImports?: boolean
+  readonly evaluationWorkspace?: boolean
   readonly supervisorPath?: string
   readonly reportSealed?: boolean
 }
@@ -32,7 +32,12 @@ const backend = new PrivateLinuxCgroupBackend({
 })
 const plan = {
   runId: 'coordinator-loss',
-  ...(configuration.outputImports ? { output: true, outputImports: true } : {}),
+  ...(configuration.evaluationWorkspace
+    ? {
+        output: true,
+        evaluationWorkspace: { phase: 'generate' as const, emptyDirectories: [] },
+      }
+    : {}),
   limits: {
     memoryBytes: 256 * 1024 * 1024,
     pids: 64,
@@ -44,6 +49,9 @@ const plan = {
   readOnlyMounts: [
     ...configuration.mounts,
     { source: configuration.fixture, destination: '/package' },
+    ...(configuration.evaluationWorkspace
+      ? [{ source: `${configuration.fixture}/evaluation`, destination: '/jig-evaluation' }]
+      : []),
   ],
   command: [
     '/jig-runtime/bun',

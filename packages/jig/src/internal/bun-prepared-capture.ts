@@ -1,5 +1,7 @@
-import { lstat, opendir, readFile, realpath } from 'node:fs/promises'
-import { join } from 'node:path'
+import { createReadStream } from 'node:fs'
+import { lstat, mkdir, opendir, readFile, realpath, rename } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { packageDigest } from '../package/digest.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
@@ -7,7 +9,10 @@ import {
   type PrivateBunExecutionLayout,
   privateBunAliasPackageName,
 } from './bun-execution-layout.js'
-import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
+import {
+  type PrivateBunPreparationMode,
+  privateBunPreparationLimits,
+} from './bun-native-preparation-protocol.js'
 import type { PrivatePackageAlias } from './package-aliases.js'
 
 const PATH = /^(?!\/)(?!.*(?:^|\/)\.\.?(?:\/|$))(?!.*\/\/)[^\0]+$/
@@ -38,8 +43,15 @@ export async function capturePrivateBunPreparedTree(
   packageRoot: string,
   workspace?: Workspace,
   patchPaths: readonly string[] = [],
-): Promise<{ readonly files: readonly SourceFile[]; readonly layout: PrivateBunExecutionLayout }> {
-  const files: SourceFile[] = []
+  mode: PrivateBunPreparationMode = 'production',
+): Promise<{
+  readonly files: readonly { readonly path: string; readonly size: number }[]
+  readonly layout: PrivateBunExecutionLayout
+  readonly digest: string
+  readonly bytes: number
+}> {
+  const limits = privateBunPreparationLimits(mode)
+  const files: { readonly path: string; readonly size: number }[] = []
   const aliases: PrivatePackageAlias[] = []
   let total = 0
   const memberNames = new Map<string, string>()
@@ -49,7 +61,7 @@ export async function capturePrivateBunPreparedTree(
     memberNames.set(member, manifest.name)
   }
   const reserveRecord = (): void => {
-    if (files.length + aliases.length >= PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles)
+    if (files.length + aliases.length >= limits.preparedFiles)
       throw new WorkerFailure(
         'PACKAGE_BUN_OUTPUT_LIMIT',
         'prepared dependency tree has too many records',
@@ -104,18 +116,34 @@ export async function capturePrivateBunPreparedTree(
       }
       if (!information.isFile() || information.nlink !== 1)
         unsupported('prepared dependencies contain a link or special file')
+      if (
+        mode === 'evaluation' &&
+        dependencyTree &&
+        (path.endsWith('.node') || path.endsWith('/binding.gyp'))
+      )
+        unsupported('evaluation dependencies cannot require native addons or install builds')
       // Intermediate directories locate members, but their unrelated authored
       // files are not part of the selected source or installation inputs.
       if (!dependencyTree && !selectedSource(path) && prefix !== '' && !patchPaths.includes(path))
         continue
       reserveRecord()
-      if (information.size > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes - total)
+      if (information.size > limits.preparedBytes - total)
         throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
       const bytes = await readFile(physical)
+      if (mode === 'evaluation' && dependencyTree && path.endsWith('/package.json')) {
+        let manifest: Record<string, unknown>
+        try {
+          manifest = JSON.parse(bytes.toString('utf8'))
+        } catch {
+          unsupported('evaluation dependency manifest is invalid')
+        }
+        if (manifest!.gypfile === true || manifest!.binary !== undefined)
+          unsupported('evaluation dependencies cannot require native addons or install builds')
+      }
       total += bytes.byteLength
-      if (total > PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes)
+      if (total > limits.preparedBytes)
         throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
-      files.push(Object.freeze({ path, content: bytes.toString('base64') }))
+      files.push(Object.freeze({ path, size: bytes.byteLength }))
     }
   }
   await visit(packageRoot, '')
@@ -133,15 +161,29 @@ export async function capturePrivateBunPreparedTree(
   } catch {
     unsupported('prepared workspace layout is invalid')
   }
-  if (
-    total + Buffer.byteLength(JSON.stringify(layout)) >
-    PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes
-  )
+  if (total + Buffer.byteLength(JSON.stringify(layout)) > limits.preparedBytes)
     throw new WorkerFailure(
       'PACKAGE_BUN_OUTPUT_LIMIT',
       'prepared dependency tree and layout are too large',
     )
-  return Object.freeze({ files: Object.freeze(files), layout })
+  const digest = await packageDigest(files, (file) =>
+    createReadStream(join(packageRoot, file.path)),
+  )
+  return Object.freeze({ files: Object.freeze(files), layout, digest, bytes: total })
+}
+
+/** Move selected bytes without duplicating the installed closure or retaining aliases. */
+export async function stagePrivateBunPreparedTree(
+  packageRoot: string,
+  prepared: Awaited<ReturnType<typeof capturePrivateBunPreparedTree>>,
+): Promise<void> {
+  const destination = join(dirname(packageRoot), 'prepared')
+  await mkdir(destination, { mode: 0o700 })
+  for (const file of prepared.files) {
+    const target = join(destination, file.path)
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 })
+    await rename(join(packageRoot, file.path), target)
+  }
 }
 
 export function requirePath(path: string): void {

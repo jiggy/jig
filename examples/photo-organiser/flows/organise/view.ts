@@ -48,8 +48,8 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
           kind: 'report',
           text: 'Open the contact sheet to see the original photo box beside its organised copies. The manifest records every destination.',
           references: [
-            { kind: 'artifact', attachment: 'photos', path: 'overview/contact-sheet.svg' },
-            { kind: 'artifact', attachment: 'photos', path: 'copies/manifest.csv' },
+            { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+            { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
           ],
         },
       ],
@@ -112,7 +112,13 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
                   text: photo.caption,
                   references:
                     ready && checked
-                      ? [{ kind: 'artifact', attachment: 'photos', path: checked.destination }]
+                      ? [
+                          {
+                            kind: 'artifact',
+                            attachment: 'copies',
+                            path: checked.destination.slice('copies/'.length),
+                          },
+                        ]
                       : [],
                 },
               ],

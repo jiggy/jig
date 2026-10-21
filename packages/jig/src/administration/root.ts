@@ -1,3 +1,4 @@
+import type { AttemptReceipt, CanonicalRequest } from '../attempt-contract.js'
 import { JSON_1_LIMITS, type JsonValue, validateJson1 } from '../json.js'
 import { bindingRef, flowRef, type RunTargetRef } from '../project/author.js'
 
@@ -97,6 +98,10 @@ export type RootRunStatus =
  */
 export interface RootAdministration {
   startRun(request: StartRootRunRequest): Promise<StartRootRunReceipt>
+  startPreparedRun(request: {
+    readonly ticket: string
+    readonly request: CanonicalRequest
+  }): Promise<{ readonly role: 'owner' | 'observer'; readonly receipt: AttemptReceipt }>
   runStatus(request: RootRunStatusRequest): Promise<RootRunStatus>
 }
 

@@ -12,8 +12,48 @@ These links locate module rules. All selected domain requirements still apply.
 - [project-plan-review](#project-plan-review)
 - [project-resource-qualification](#project-resource-qualification)
 - [installation-verification](#installation-verification)
+- [prepared attempts and retention](#prepared-attempts-and-retention)
 
 ## Ownership
+
+### Prepared attempts and retention
+
+- `prepared-attempt-store.ts` owns protected ticket domain/key records, canonical
+  request/input blobs, acceptance quotas, retained artifacts, retirement watermark and finite export pins in admission SQLite.
+  `activation-admission-store.ts` retains descriptor custody and EXTRA-synced transactions.
+  Acceptance shares the original root allocation transaction. Missing prepared state never allocates work.
+  Retirement commits before deletion. Unresolved owners and unreleased copier pins block collection.
+
+  The store and application client share pure request identity through `../attempt-request-identity.ts`.
+  This comparison grants no authority and imports no host machinery into the client.
+
+- Prepared input, retained output, consumed metadata, outstanding reservations and row/index headroom share one 4 GiB logical budget.
+  Control consumption transactionally spends dedicated `attempt_reservations` rows of at most 1 MiB each.
+  Metadata writes never rebuild untouched control/result chunks.
+  Prepared rows retain only outstanding counters. Chunk row/index overhead counts toward the same budget.
+  New work cannot spend the protected final/fencing margin.
+
+- Terminal retention releases unused control/result allocations before inserting replacement bytes in the same transaction.
+  DELETE rollback journals still require filesystem space for original pages.
+  Reservation and page-capacity evidence do not establish durability through external filesystem exhaustion or hardware failure.
+  Failed writes retain ownership uncertainty and never authorize redispatch.
+
+- `submission-ticket.ts` authenticates opaque canonical claims only.
+  It owns no clock, persistence, expiry or authorization policy.
+  Possession grants no project access. Resetting state or keys must never revive an identity.
+  Read-only retention projection reports expiry without collection.
+
+  Across boots, use the protected new-boot anchor conservatively.
+  Clock loss makes byte availability unknown without erasing terminal or cleanup evidence.
+
+- `activation-admission-store.ts` supplies `readPrivateRootRun` through read-only/query-only SQLite.
+  Reuse complete Run/admission cross-checks without coordinator acquisition, dispatch, recovery or state repair.
+  Its private snapshot is neither a public lookup response nor proof of current execution ownership.
+  Checkpoint and export storage contracts are in [file guidance](files-guidance.md#attempt-checkpoint-and-export).
+
+  Failed state opening attempts database, directory and owned-root closure before
+  releasing its local turn. Preserve primary and cleanup errors together.
+  Cleanup uncertainty must not become a retriable contention refusal.
 
 ### contract-import
 
@@ -194,6 +234,18 @@ These links locate module rules. All selected domain requirements still apply.
 
   The subsequent install stays frozen and script-disabled.
 
+- `bun-preparation-output.ts` owns fixed native directory collection for both modes.
+  Both Bun preparation modes return metadata only on stdout: layout, file count,
+  logical bytes and canonical Package/0 digest.
+  The worker moves selected regular files into fixed `work/prepared` without
+  duplicating its closure. Workspace aliases remain separate layout metadata.
+  Native collectors retain original work descriptors and capture only after fencing.
+  Host-created immutable package bytes must match metadata, source and layout.
+
+  Production retains 4,096 records/32 MiB. Evaluation retains 8,192 records/128 MiB.
+  Layout bytes share each decoded allowance. Stream and storage limits stay separate.
+  Failed cleanup grants no prepared package. Recovery settles owners without recapture or replay.
+
 - Workspace capture supports root applications and declared ancestor members,
   reading root metadata and selected dependency source, never installed links.
   Resolve a selected package's declared workspace above the Jig application
@@ -256,10 +308,9 @@ These links locate module rules. All selected domain requirements still apply.
   locations. Never expose raw provider or worker messages. SDK missing Agent
   support affects only selected targets and their dependents. CLI review refuses
   any observed typed selected ACP prerequisite before preparing target
-  execution, unchanged success or admission. Missing root writable authority for
-  Run Checkpoint retains `PROJECT_CHECKPOINT_ATTACHMENT` as an invalid candidate
-  and directs the caller to its invocation attachment declaration. Do not hide
-  it as `INTERNAL`.
+  execution, unchanged success or admission.
+  Run Checkpoint must follow its exact declared native interface and protected attempt association.
+  Do not infer checkpoint authority from a writable attachment or optional FLOW port.
 
   Unsupported Volta selections retain the existing wrapper diagnostic, including
   Claude/Pi and Codex installations outside the supported static npm profile.

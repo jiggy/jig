@@ -3,7 +3,18 @@ const suiteTestUrl = new URL('../' + import.meta.url.split('/').at(-1), import.m
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -15,12 +26,114 @@ import {
 import { privateReadRegularFile } from '../../src/internal/file-input.js'
 import { capturePrivateInput } from '../../src/internal/input-capture.js'
 import {
+  collectPrivateMacosEvaluationWorkspace,
+  projectPrivateMacosEvaluationWorkspace,
+} from '../../src/internal/macos-evaluation-workspace.js'
+import {
   preparePrivateMacosGuardian,
   recoverPrivateMacosGuardian,
 } from '../../src/internal/macos-guardian-client.js'
 import { retainPrivateMacosGuardianOutput } from '../../src/internal/macos-guardian-output.js'
 import type { PrivateMacosGuardianStart } from '../../src/internal/macos-native-supervisor.js'
 import { exists } from '.././macos-guardian-input.fixture.js'
+
+test('evaluation descriptor copier rejects links/current outputs and collects only root-prefixed output trees', async () => {
+  const root = await mkdtemp('/private/tmp/jig-evaluation-copy-')
+  try {
+    const source = join(root, 'source'),
+      volume = join(root, 'volume')
+    await mkdir(source)
+    await mkdir(volume)
+    await mkdir(join(volume, 'output'))
+    await writeFile(join(source, 'main.ts'), 'export const answer = 42')
+    await chmod(join(source, 'main.ts'), 0o444)
+    await chmod(source, 0o555)
+    const directory = await open(volume, constants.O_RDONLY | constants.O_DIRECTORY)
+    try {
+      await projectPrivateMacosEvaluationWorkspace(
+        directory,
+        {
+          phase: 'generate',
+          source,
+          emptyDirectories: ['assets/empty/nested'],
+        },
+        new AbortController().signal,
+      )
+      expect(await readFile(join(volume, 'evaluation/main.ts'), 'utf8')).toBe(
+        'export const answer = 42',
+      )
+      expect((await stat(join(volume, 'evaluation/assets/empty/nested'))).isDirectory()).toBe(true)
+      for (const name of ['assets', 'assets/empty', 'assets/empty/nested'])
+        expect((await stat(join(volume, 'evaluation', name))).mode & 0o222).toBe(0)
+      await writeFile(join(volume, 'evaluation/generated/result'), 'generated')
+      await writeFile(join(volume, 'evaluation/reports/result'), 'reported')
+      await writeFile(join(volume, 'evaluation/scratch/private'), 'not captured')
+      const collector = await open(
+        join(volume, 'output'),
+        constants.O_RDONLY | constants.O_DIRECTORY,
+      )
+      try {
+        await collectPrivateMacosEvaluationWorkspace(
+          volume,
+          collector,
+          'generate',
+          new AbortController().signal,
+        )
+        expect(await readFile(join(volume, 'output/generated/result'), 'utf8')).toBe('generated')
+        expect(await readFile(join(volume, 'output/reports/result'), 'utf8')).toBe('reported')
+        expect(await exists(join(volume, 'output/dist'))).toBe(false)
+        expect(await exists(join(volume, 'output/main.ts'))).toBe(false)
+        expect(await exists(join(volume, 'output/scratch'))).toBe(false)
+      } finally {
+        await collector.close()
+      }
+    } finally {
+      await directory.close()
+    }
+    for (const kind of ['link', 'current-output', 'file-collision', 'byte-bound'] as const) {
+      const invalid = join(root, kind),
+        target = join(root, `${kind}-volume`)
+      await mkdir(invalid)
+      await mkdir(target)
+      if (kind === 'link') await symlink(source, join(invalid, 'dependency'))
+      else if (kind === 'current-output') await mkdir(join(invalid, 'generated'))
+      else if (kind === 'byte-bound') {
+        const oversized = await open(join(invalid, 'oversized'), 'wx')
+        try {
+          await oversized.truncate(192 * 1024 * 1024 + 1)
+        } finally {
+          await oversized.close()
+        }
+        await chmod(join(invalid, 'oversized'), 0o444)
+      } else {
+        await writeFile(join(invalid, 'main.ts'), 'file collision')
+        await chmod(join(invalid, 'main.ts'), 0o444)
+      }
+      await chmod(invalid, 0o555)
+      const held = await open(target, constants.O_RDONLY | constants.O_DIRECTORY)
+      try {
+        await expect(
+          projectPrivateMacosEvaluationWorkspace(
+            held,
+            {
+              phase: 'generate',
+              source: invalid,
+              emptyDirectories: kind === 'file-collision' ? ['main.ts/nested'] : [],
+            },
+            new AbortController().signal,
+          ),
+        ).rejects.toThrow()
+      } finally {
+        await held.close()
+      }
+    }
+  } finally {
+    // Test-owned immutable inputs and projected directories need owner writes for disposal.
+    const { spawnSync: command } = await import('node:child_process')
+    command('/bin/chmod', ['-R', 'u+w', root])
+    await rm(root, { recursive: true })
+  }
+})
 
 test('native guardian projects authenticated immutable inputs before ordinary TypeScript execution', async () => {
   const build = await mkdtemp('/private/tmp/jig-input-build-')

@@ -15,8 +15,85 @@ These links locate module rules. All selected domain requirements still apply.
 - [linux-rootless-delegation](#linux-rootless-delegation)
 - [execution-intent tests](#execution-intent-tests)
 - [root-flow-call-controller tests](#root-flow-call-controller-tests)
+- [native clocks](#native-clocks)
+- [controlled evaluation](#controlled-evaluation)
 
 ## Ownership
+
+### Native clocks
+
+- `native-clock.ts` owns closed native deadline coordinates and watchdogs.
+  `attempt-clock.ts` adds presentation/retention hints to that same source.
+  Native time includes suspend: authenticated procfs uptime and boot UUID on Linux,
+  or qualified Darwin `mach_continuous_time`, timebase and kernel boot-session UUID.
+  Presentation and wall time never grant acceptance. Wall time remains public/advisory.
+
+- The root controller independently checks protected cancellation and the once-persisted monotonic deadline, without client polling.
+  Root plans and child/effect allocations retain `effectiveBootDeadline`.
+  Evaluation phase plans retain fixed `bootDeadline`.
+  Descendants join protected root and immediate-parent budgets before allocation.
+  Native sealed plans/control require boot deadlines and recheck every 25 ms, independently of coordinator lifetime.
+
+- Convert legitimate non-ticket private absolute constraints once at trusted sealing, before setup.
+  Never accept sealed-plan or native-control deadline fallbacks.
+  Evaluation phase ceilings remain separate 15/30/15-second bounds. Recovery never restarts them.
+
+  Clock uncertainty stops work without disabling cleanup.
+  Native receipts distinguish `clock` loss from proved `deadline` expiry.
+  Guardian preparation retains the closed `NATIVE_CLOCK` cause.
+
+- Clock loss means unavailable/failed execution, not proved elapsed expiry.
+  RunHostSession receives a host-neutral remaining-budget callback, never native clock tokens on the FLOW wire.
+  Native owners still fence on control loss.
+
+### Controlled evaluation
+
+- `project-evaluation-*` owns reviewed evaluation recipes, compiler policy and development-inclusive preparation.
+  This differs from declaration evaluation in `project-evaluator-*`.
+  Evaluation never selects FLOW production dependencies or establishes independent application acceptance.
+  `project-evaluation-controller.ts` specializes common contained-effect dispatch/recovery.
+  One logical effect row retains at most three ordered phase owners.
+  Persist phase plans and native owners before admission.
+
+- Capture phase output only after fencing. Release native/workspace ownership before the next phase.
+  Recovery settles retained owners without advancing programs.
+  `project-evaluation-input.ts` streams a borrowing immutable C/R/D/prior-output package view.
+  C is the candidate, R the reviewed recipe, and D the locked development-inclusive dependencies.
+
+  Only native phase roots and fresh scratch are writable.
+  `project-evaluation-workspace.ts` defines a closed native phase discriminator, never an arbitrary workspace interface.
+
+- Evaluation custody stays on its original `root_child_owners` row: optional generate, then compile and test.
+  Retain at most twelve append-only plan/sandbox/fence/cleanup checkpoints.
+  Plans retain native allocation intent before launch. Cancellation may fence unsealed plans.
+  Each next phase and aggregate fence/cleanup/close require preceding phase cleanup.
+
+  Exact joins return inert authenticated history, never replay authority.
+  Native owners independently authenticate allocations and receipts.
+
+- Replacement coordinators append only recovery fence/cleanup, never plans or sandboxes.
+  Phase-only owners need no fabricated aggregate native records.
+  Close compares the complete final `phaseHistoryDigest`.
+  New history transactionally consumes the ticket's preallocated control reservation.
+  Preserve its final fencing/cleanup margin.
+
+- Linux copies at most 192 MiB/8448 immutable regular files into private cgroup-charged work tmpfs after delegation/envelope admission.
+  Authenticated empty-directory metadata restores at most 256 paths including implicit parents, without source edits.
+  Trusted setup retains the original backing/public collector custody handshake.
+  Freeze `/work` and public output by read-only bind remounts.
+  Overlay only selected phase outputs and scratch.
+
+- Move cwd onto frozen work, close setup descriptors, drop capabilities and reexec before the independent continuation gate.
+  The collector traverses original public backing without bind overlays.
+  Preserve no-XDEV checks and independent whole-owner fencing before capture.
+  Evaluation grants no file-import authority.
+  Mac projection belongs to [native guidance](native-guidance.md#macos-evaluation-workspace).
+
+- `project-evaluation-retention.ts` strictly decodes effective policy, exact R/D package references and dependency alias layout.
+  Reacquisition verifies both complete domain digests against retained bytes, never live source.
+  Review uses existing preparation ownership and package storage.
+  Granted slots preserve identical metadata through portable lock and native routes.
+  Source checks qualify neither native projection.
 
 - Activation planning, admission storage, project sessions, root controllers,
   and durable lifecycle state.
@@ -26,6 +103,9 @@ These links locate module rules. All selected domain requirements still apply.
 - `private-profile.ts` owns opt-in bounded phase-only diagnostics, written
   before shutdown. Partial spans are not completion or machine-crash durability
   evidence.
+  `project-evaluation-review` covers evaluation operand capture, reacquisition, review, normalization and disposal.
+  Its nested `dependency-preparation` span covers only the actual development dependency preparer.
+  Failed phases preserve original exceptions and cleanup precedence. Timings do not establish causes.
 
 - The configuration evaluator shares only finite review-envelope setup. Its
   trusted manager runs fresh declaration subprocesses sequentially. It enforces
@@ -86,6 +166,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### execution-intent
 
+- `preparationOutput` selects only production or evaluation package collection.
+  It cannot share ordinary output or an evaluation workspace.
+  Linux pins original work custody before continuation through authenticated supervisor control.
+  Its package promise captures after successful enforcement and closes that original loan.
+  Native package promises retain rejection custody without replacing their original failures.
+
 - `execution-intent.ts` owns inert execution requirements: exact command and
   explicit path arguments, read-only projections, captured input capabilities,
   network choice, resource limits, storage and output bounds. Literal arguments
@@ -139,6 +225,11 @@ These links locate module rules. All selected domain requirements still apply.
   journals live under `.jig/private-root-owners`. Prerelease hosts must not
   recreate the former Linux-named directory as a compatibility path.
 
+- Native backends observe rejections of eagerly created completion, evidence,
+  and termination-reason projections even when a consumer uses only some of them.
+  Return the original rejecting promises: observation must not replace failures
+  with success or weaken enforcement uncertainty.
+
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner rows
   and independent supervision survive coordinator loss without replay.
@@ -171,9 +262,17 @@ These links locate module rules. All selected domain requirements still apply.
   Keep that socket open for cooperative cancellation and confirmed cleanup. Its
   closure remains the independent emergency scope fence.
 
+  Before readiness, an authenticated refusal handoff gives the outer coordinator
+  sole diagnostic ownership. It never acknowledges acquisition or grants execution.
+  Without that handoff the child retains its failure diagnostic. Preserve inherited
+  terminal streams rather than filtering or buffering stderr to remove duplicates.
+  Close every accepted startup connection before joining server shutdown, including
+  refused and incomplete peers. A stopped peer must not hold cleanup open.
+
 - The optional installed-startup diagnostic accepts only a private local trace
-  destination. It activates after rootless-host acquisition. Before opening a
-  project session, it removes its selector from operator configuration. It
+  destination. It activates after rootless-host acquisition, or directly for
+  non-executing `attempt result` observation without host acquisition. Before
+  opening a project session, it removes its selector from operator configuration. It
   records fixed phase names and monotonic durations in an exclusive mode-0600
   file with bounded size. It records no source, Flow input, arguments,
   environment values, provider output, or filesystem paths. Capture failure must
@@ -196,8 +295,13 @@ These links locate module rules. All selected domain requirements still apply.
   well as contained effects.
 
   Aggregate counts identify no individual operation. No selector or trace is
-  passed to a child, and the existing 512-span/192-byte record bounds remain
+  passed to a Flow, and the existing 512-span/192-byte record bounds remain
   unchanged.
+
+  Result phases distinguish read-only opening, ticket authentication, retention,
+  Run observation, checkpoint projection, finish and disposal. Synchronous reads
+  remain synchronous. Failed spans preserve the original exception and cleanup
+  precedence. Phase timing does not establish a failure's underlying cause.
 
 - A current root Run may reacquire its exact pending fence for a bounded
   interval inside one ownership-settlement attempt. Exhaustion remains
@@ -295,7 +399,7 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### root-flow-call-controller tests
 
-- `root-flow-call-controller.test.ts` isolates injected allocation failures in a
-  subprocess. Unexpected lifecycle allocation failures report the `allocation`
+- Verify allocation failures through real subprocesses and actual bounded owner allocation.
+  Unexpected lifecycle allocation failures report the `allocation`
   phase without changing the original exception. Capacity refusal stays an
   ordinary resource-exhausted result, and observer failures cannot affect it.

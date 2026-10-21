@@ -169,12 +169,19 @@ try {
     [1],
     120_000,
   )
-  assert.match(schemaInvalid.stderr, /Input does not match the approved target input schema/)
-  assert.match(schemaInvalid.stderr, /Value: "\/name"\n  Expected string; received integer\./)
+  assert.match(schemaInvalid.stderr, /The input or channel request was rejected as invalid\./)
+  assert.match(schemaInvalid.stderr, /Reported constraint: Expected string; received integer\./)
+  assert.doesNotMatch(
+    schemaInvalid.stderr,
+    /Input does not match the approved target input schema|Value: "\/name"/,
+  )
   assert.match(
     schemaInvalid.stderr,
-    /Next step: Inspect the approved schema and correct --input:\n {2}\n {4}\$ jig inspect 'flow:flows\/hello'/,
+    /Next step: Inspect the approved target's input schema and channel declarations:\n {2}\n {4}\$ jig inspect 'flow:flows\/hello'/,
   )
+  assert.match(schemaInvalid.stderr, /Check --input against that schema/)
+  assert.match(schemaInvalid.stderr, /connect required output channels with --receive NAME/)
+  assert.match(schemaInvalid.stderr, /Inspect the result and any effects before starting new work/)
   assert.match(schemaInvalid.stderr, /Jig runs the last approved revision/)
   assert.match(schemaInvalid.stderr, /approve those edits first:\n {2}\n {4}\$ jig review/)
   assert.match(schemaInvalid.stderr, /Diagnostic code: JIG_RUN_INPUT_INVALID/)

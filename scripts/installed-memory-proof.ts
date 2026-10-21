@@ -12,7 +12,12 @@ type MemoryProofStage =
   | 'enforcement-fence'
   | 'release'
   | 'terminal-record'
-  | 'command-result'
+  | 'command-json'
+  | 'command-terminal'
+  | 'parent-terminal'
+  | 'parent-receipt'
+  | 'command-exit'
+  | 'command-stderr'
 
 export function selectFreshInstalledRun(
   beforeRunIds: readonly string[],
@@ -75,7 +80,7 @@ function validateMemoryProof(
   assert.equal(request.kind, 'private-root-run-request/1')
   assert.deepEqual(request.target, { kind: 'flow', path: 'flows/memory-pressure' })
   assert.deepEqual(request.input, {})
-  assert.deepEqual(request.files, { attachments: [], output: null })
+  assert.deepEqual(request.files, { attachments: [], output: false })
   positive(request.deadlineUnixMs)
   setStage('origin-intent')
   const origin = fact(
@@ -170,6 +175,8 @@ function validateMemoryProof(
     'observationDigest',
     'activationStartedUnixMs',
     'effectiveDeadlineUnixMs',
+    'activationStartedBoot',
+    'effectiveBootDeadline',
     'cancellationGraceMs',
     'packageAllocation',
     'ownerAllocation',
@@ -181,6 +188,10 @@ function validateMemoryProof(
   positive(plan.activationStartedUnixMs)
   positive(plan.effectiveDeadlineUnixMs)
   assert.ok((plan.effectiveDeadlineUnixMs as number) <= (request.deadlineUnixMs as number))
+  // Native coordinates are retained facts, not reconstructed from wall time.
+  const activationStartedBoot = bootDeadline(plan.activationStartedBoot)
+  const effectiveBootDeadline = bootDeadline(plan.effectiveBootDeadline)
+  assert.equal(activationStartedBoot.bootId, effectiveBootDeadline.bootId)
   assert.equal(plan.cancellationGraceMs, 1_000)
   const packageAllocation = record(plan.packageAllocation)
   exact(packageAllocation, [
@@ -209,11 +220,22 @@ function validateMemoryProof(
   exact(checkpoints.backing!, ['kind', 'lease'])
   assert.equal(checkpoints.backing!.kind, 'private-direct-root-backing/1')
   const lease = record(checkpoints.backing!.lease)
+  exact(lease, ['kind', 'allocation', 'transaction', 'package'])
   assert.equal(lease.kind, 'private-package-materialization-lease/1')
   assert.ok(
     canonical(lease.allocation) === canonical(packageAllocation),
     'backing belongs to a different package allocation',
   )
+  for (const [key, path] of [
+    ['transaction', packageAllocation.path],
+    ['package', `${packageAllocation.path}/package`],
+  ] as const) {
+    const identity = record(lease[key])
+    exact(identity, ['path', 'dev', 'ino'])
+    assert.equal(identity.path, path)
+    unsigned64(identity.dev)
+    unsigned64(identity.ino)
+  }
   setStage('prepared-owner')
   const sandbox = checkpoints.sandbox!
   exact(sandbox, ['kind', 'owner'])
@@ -248,6 +270,13 @@ function validateMemoryProof(
   const { digest: ownerDigest, ...ownerFields } = owner
   assert.equal(ownerDigest, domain('JIG-Rootless-Linux-Sealed-Owner/1', ownerFields))
   assert.equal(owner.runId, `root-${(row.run_id as string).slice(7, 50)}`)
+  digest(owner.mechanismDigest)
+  digest(owner.sealedPlanDigest)
+  assert.equal(owner.bootId, effectiveBootDeadline.bootId)
+  for (const key of ['delegatedCgroupDevice', 'ownerStateParentDevice', 'ownerStateDevice'])
+    assert.ok(typeof owner[key] === 'string' && /^(?:0|[1-9][0-9]*)$(?![\s\S])/.test(owner[key]))
+  for (const key of ['delegatedCgroupInode', 'ownerStateParentInode', 'ownerStateInode'])
+    assert.ok(typeof owner[key] === 'string' && /^[1-9][0-9]*$(?![\s\S])/.test(owner[key]))
   assert.ok(
     typeof owner.delegatedCgroup === 'string' &&
       owner.delegatedCgroup.startsWith('/sys/fs/cgroup/') &&
@@ -370,8 +399,11 @@ function validateMemoryProof(
     terminal.status === 'succeeded'
       ? { status: 'succeeded', ...record(terminal.result), diagnostics }
       : terminal
-  setStage('command-result')
-  assert.deepEqual(JSON.parse(command.stdout), publicTerminal)
+  setStage('command-json')
+  const commandTerminal: unknown = JSON.parse(command.stdout)
+  setStage('command-terminal')
+  assert.deepEqual(commandTerminal, publicTerminal)
+  setStage('parent-terminal')
   let terminalShape: 'parent-succeeded' | 'parent-sigkill'
   if (terminal.status === 'succeeded') {
     exact(terminal, ['status', 'result', 'diagnostics'])
@@ -381,9 +413,12 @@ function validateMemoryProof(
     const output = record(result.output)
     exact(output, ['exitCode'])
     positive(output.exitCode)
+    setStage('parent-receipt')
     assert.equal(receipt.exitCode, 0)
     assert.equal(receipt.signal, null)
+    setStage('command-exit')
     assert.equal(command.exitCode, 0)
+    setStage('command-stderr')
     assert.equal(command.stderr, '')
     terminalShape = 'parent-succeeded'
   } else {
@@ -393,9 +428,12 @@ function validateMemoryProof(
       message: 'component exited with code null and signal SIGKILL',
       diagnostics,
     })
+    setStage('parent-receipt')
     assert.equal(receipt.exitCode, null)
     assert.equal(receipt.signal, 'SIGKILL')
+    setStage('command-exit')
     assert.equal(command.exitCode, 1)
+    setStage('command-stderr')
     const message =
       'The Flow could not complete execution.\n\nReported cause:\n  ' +
       '"component exited with code null and signal SIGKILL"\n\n' +
@@ -627,4 +665,21 @@ function digest(value: unknown): void {
 
 function positive(value: unknown): void {
   assert.ok(Number.isSafeInteger(value) && (value as number) > 0)
+}
+
+/** Match native-clock's inert closed format without reading or simulating a clock. */
+function bootDeadline(value: unknown): { bootId: string; monotonicMs: number } {
+  const deadline = record(value)
+  exact(deadline, ['bootId', 'monotonicMs'])
+  assert.ok(
+    typeof deadline.bootId === 'string' &&
+      /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$(?![\s\S])/.test(deadline.bootId),
+  )
+  assert.ok(Number.isSafeInteger(deadline.monotonicMs) && (deadline.monotonicMs as number) >= 0)
+  return deadline as { bootId: string; monotonicMs: number }
+}
+
+function unsigned64(value: unknown): void {
+  assert.ok(typeof value === 'string' && /^(?:0|[1-9][0-9]{0,19})$(?![\s\S])/.test(value))
+  assert.ok(BigInt(value) <= (1n << 64n) - 1n)
 }

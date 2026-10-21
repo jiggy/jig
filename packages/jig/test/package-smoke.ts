@@ -464,6 +464,33 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
   if (process.platform === 'darwin' && process.env.JIG_MACOS_PROCESS_TEST === '1') {
     const project = join(consumer, 'macos-greeting')
     await run([command, 'init', project], consumer)
+    // Qualify the frozen public candidate, not cold registry adoption.
+    // Keep the generated dependency version and use ordinary workspace resolution.
+    const sdkArtifacts = join(artifacts, 'greeting-sdk')
+    await mkdir(sdkArtifacts)
+    const sdkArchive = await selectArchive(sdkArtifacts, 'flow-sdk')
+    const library = join(project, 'libs/flow')
+    await mkdir(library, { recursive: true })
+    await run(['tar', '-xzf', sdkArchive, '--strip-components=1', '-C', library], project)
+    const sdkManifest = JSON.parse(await readFile(join(library, 'package.json'), 'utf8'))
+    assert.equal(sdkManifest.name, '@jigging/flow')
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({
+        name: 'package-smoke-greeting',
+        private: true,
+        type: 'module',
+        workspaces: ['flows/*', 'libs/*'],
+      }),
+    )
+    const greetingManifestPath = join(project, 'flows/hello/package.json')
+    const greetingManifest = JSON.parse(await readFile(greetingManifestPath, 'utf8'))
+    assert.equal(greetingManifest.dependencies['@jigging/flow'], sdkManifest.version)
+    // Bun requires distinct names for standalone packages used as workspace members.
+    await writeFile(
+      greetingManifestPath,
+      JSON.stringify({ ...greetingManifest, name: 'package-smoke-greeting-hello' }),
+    )
     const greetingPath = join(project, 'flows/hello/FLOW.ts')
     const greeting = await readFile(greetingPath, 'utf8')
     const scratchGreeting = greeting.replace(
@@ -475,7 +502,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     await writeFile(greetingPath, scratchGreeting)
     const evidenceDirectory = process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY
     if (evidenceDirectory) assert(isAbsolute(evidenceDirectory))
-    // One cold review owns this exclusive, bounded trace of fixed phase names
+    // One fresh review owns this exclusive, bounded trace of fixed phase names
     // and timings. Do not inherit it across other CLI commands in this consumer.
     const reviewEnvironment = evidenceDirectory
       ? {
@@ -508,7 +535,7 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     await mkdir(child)
     await writeFile(
       join(child, 'package.json'),
-      await readFile(join(project, 'flows/hello/package.json')),
+      JSON.stringify({ ...greetingManifest, name: 'package-smoke-greeting-child' }),
     )
     await writeFile(
       join(child, 'FLOW.meta.json'),
@@ -703,7 +730,7 @@ const project = defineJig(input);
 const bindingInput: PackageBindingInput = {
   package: "./flows/router",
   settings: { profile: "fast" },
-  slots: { worker: "flow:./flows/worker", files: { target: "flow:./flows/files", attachments: { source: { from: "source" }, output: { into: "output", directory: "copies" } } }, tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
+  slots: { worker: "flow:./flows/worker", files: { target: "flow:./flows/files", attachments: { source: { from: "source" }, output: { create: true } } }, tests: { kind: "command", test: ["test/project.test.ts"] }, reference: { kind: "http", url: "https://example.org/", method: "POST", bodySchema: { type: "object", additionalProperties: false } } },
 };
 const binding = defineBinding(bindingInput);
 void project;

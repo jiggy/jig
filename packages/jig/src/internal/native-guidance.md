@@ -12,6 +12,7 @@ These links locate module rules. All selected domain requirements still apply.
 | Capture and transfer immutable files | [Capture](#capture): descriptor operations, handoff, input projection, and command files |
 | Launch, supervise, and fence payloads | [Execution](#execution): process ABI, backend, profiles, guardian control, and pre-exec boundary |
 | Allocate and retire bounded writable roots | [Storage](#storage): volumes and guardian storage |
+| Project controlled evaluation workspaces | [Evaluation workspace](#macos-evaluation-workspace) |
 | Authenticate owners and recover allocations | [Recovery](#recovery): owner state and exclusive locks |
 | Observe private host tests | [Diagnostics](#diagnostics): opt-in bounded observation |
 | Inspect native Agent installations | [Agent runtime](#macos-agent-runtime) |
@@ -141,7 +142,8 @@ These links locate module rules. All selected domain requirements still apply.
 #### macos-sandbox-profile
 
 - `macos-sandbox-profile.ts` formats only sealed host-owned file projections.
-  Reject overlap between host control, immutable inputs and writable trees. Keep
+  Reject overlap between host control, immutable inputs and writable trees.
+  The sole exception is the closed evaluation workspace at `data/evaluation`. Keep
   the narrow sysctl/process-information rules. Only explicit network authority
   enables resolver access and the DNS Mach service. Formatting paths does not
   validate their live filesystem identity or authorize execution.
@@ -166,6 +168,12 @@ These links locate module rules. All selected domain requirements still apply.
   After admission, a payload's unread stdin may close with EPIPE without
   invalidating its native exit evidence. Other stream errors still fail closed.
   Neither EPIPE nor pipe closure substitutes for the status frame or fencing.
+
+  Retain the original launcher spawn error when setup fails before readiness.
+  Expose it to the guardian only after complete fencing and existing settlement checks.
+  Missing handoffs await the actual spawn outcome within the existing cleanup budget.
+  Earlier stop causes and unconfirmed settlement retain precedence.
+  The guardian transports only its closed cause after storage cleanup.
 
 #### macos-native-supervisor
 
@@ -225,6 +233,23 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### Storage
 
+#### macos-evaluation-workspace
+
+- `macos-evaluation-workspace.ts` copies verified retained merged source through held no-link descriptors.
+  Bound the copy to 8448 regular files and 192 MiB.
+  Reject links and candidate current outputs. Freeze inputs and prior outputs.
+
+  Bind at most 256 canonical relative empty-directory paths from authentic candidate/prior snapshots.
+  Restore them through held target descriptors before freezing.
+  Reject current outputs, scratch, links, file collisions and excessive depth/entries.
+
+- This metadata selects no new roots and preserves regular-file-only Package/0 semantics.
+  The guardian creates fixed empty current output and scratch roots.
+  Only generate's generated/reports, compile's dist, or test's reports plus scratch are writable.
+  Evaluation uses isolated network and 512 MiB bounded storage.
+  Fence the whole scope before copying root-prefixed generated/dist/reports into the existing 16 MiB capture owner.
+  Cleanup still gates publication.
+
 #### macos-volume
 
 - `macos-volume.ts` owns fixed, case-sensitive native filesystem images for
@@ -254,8 +279,11 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `macos-guardian-storage.ts` records bounded volume intent before job creation
   and attaches only after admission inside the guardian. Work, temporary and
-  output roots share that fixed capacity. Their parent stays host-owned. A
-  worker without write grants or collection may use its immutable input tree as
+  output roots share that fixed capacity. Their parent stays host-owned.
+  Storage configuration selects only mount, capacity and collection root.
+  Child artifacts use immutable capture and held read delegation, never folder reservations or mutation controls.
+
+  A worker without write grants or collection may use its immutable input tree as
   its read-only working directory. After payload fencing, an authenticated
   descriptor handoff permits at most 20 seconds of collection. Close the
   borrowed collector and release it before awaiting full completion.
@@ -391,8 +419,10 @@ These links locate module rules. All selected domain requirements still apply.
 
   Failed cases retain their project and installed fixture. Recursive fixture
   removal requires the completed result and residue assertions, never swallowed
-  settlement failure. Native injected storage and scope-preparation failures
-  verify the returned diagnostic after actual fencing and storage cleanup.
+  settlement failure.
+  Verify storage and scope-preparation failures through real invalid inputs, resource pressure and process loss.
+  Then confirm actual fencing and storage cleanup.
+
   Before payload readiness, the guardian's own operation timer records expiry
   only when expiry was the first stop cause. This rule applies to both payload
   setup and the recovery-only guardian. Abort-shaped errors alone remain ABORTED
@@ -400,9 +430,8 @@ These links locate module rules. All selected domain requirements still apply.
 
   Transport the recorded closed cause after fenced cleanup. Cancellation, lost
   control and tool failure do not become deadlines. Unconfirmed cleanup still
-  overrides the preparation diagnostic. Ordinary tests compile the same injected
-  guardian constructions so source matching and import errors fail before native
-  qualification.
+  overrides the preparation diagnostic.
+  Never rewrite guardian source or replace native owners to manufacture failures.
 
 ## Local Contracts
 
@@ -432,6 +461,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Verification
 
+- Mac preparation lowers its closed mode to the existing work collector.
+  Capture the authenticated fenced descriptor before releasing the guardian collector.
+  Complete volume and owner cleanup before exposing the immutable package.
+  Missing collection, nonzero exit, recovered execution or uncertain cleanup grants no package.
+  Ordinary Flow snapshots and native stream ceilings remain unchanged.
+
 ### .. .. scripts native-support
 
 - `../../scripts/native-support.mjs` regenerates and checks both descriptor
@@ -460,16 +495,18 @@ These links locate module rules. All selected domain requirements still apply.
   user-domain launchd jobs, exact cleanup and an unrelated-process sentinel. The
   execution test compiles its native fixture with the local Apple toolchain.
   `macos-captured-bytes.test.ts` covers anonymous read-only capture on macOS.
+
   `macos-guardian.test.ts` qualifies the complete private guardian connection,
   gated native streams, cancellation, blocked output, and both coordinator and
-  guardian loss. Controlled CPU faults check recovery from transient within-read
-  and between-sample regressions, sustained uncertainty refusal and strict final
-  accounting.
+  guardian loss. CPU evidence comes from actual kernel accounting.
+  Accounting regression and sustained uncertainty claims require actual native
+  observations, never rewritten controls or invented readings.
 
   They retain real kernel ownership and authenticated cleanup. Portable framing
   cases live in `macos-control-channel.test.ts`. Buffered unread stdin must
   preserve the payload's actual nonzero exit and output after confirmed fencing.
   These checks are primitive evidence, not installed-host conformance.
+
   `macos-descriptor-files.test.ts` compiles SDK layout assertions and checks
   identity across directory replacement, raw enumeration and exclusive
   publication. `package-capture.test.ts` runs shared source-capture cases on the
@@ -520,18 +557,19 @@ These links locate module rules. All selected domain requirements still apply.
   Linux filesystem and Nix loader cases remain Linux-only and require their own
   runner. `macos-guardian-storage.test.ts` qualifies journal-before-tool
   admission, descriptor collection after detached-descendant fencing, collection
-  lifetime, interrupted creation, coordinator/guardian loss and a failed
-  recovery guardian. Expiry during the final recovery drain refuses success,
-  retains journals, and permits an ordinary fresh guardian to finish cleanup
-  before retirement. Every cleanup attempt keeps its exact journals until
-  fencing is confirmed. An actual coordinator paused inside the storage
-  allocator before intent and killed by the test proves empty pre-journal
-  recovery without moving any existing crash barrier. Whole-file native checks
-  also preserve partial/foreign entries and refuse a first or late owner
-  journal, retirement markers, public/link/replaced or mounted storage.
+  lifetime and actual guardian loss. Missing recovery executables preserve
+  authenticated storage for an ordinary retry.
+  Invalid mounts, closed descriptors and actual allocation collisions exercise
+  refusal without replacing native operations.
+  Empty authenticated allocation recovery does not prove every pre-journal crash window.
 
-  Ordinary source checks construct that exact injected allocator without native
-  execution. `macos-guardian-input.test.ts` runs ordinary TypeScript relative
+  Every cleanup attempt keeps its exact journals until fencing is confirmed.
+  Whole-file native checks also preserve partial/foreign entries and refuse
+  owner journals, retirement markers and public/link/replaced or mounted storage.
+
+  Do not replace the allocator or rewrite source for pre-journal recovery evidence.
+
+  `macos-guardian-input.test.ts` runs ordinary TypeScript relative
   imports and binary/empty reads from the immutable projection. It denies source
   writes and private data. It refuses changed/closed captures before execution.
   It recovers after source handles have already closed.
@@ -544,26 +582,29 @@ These links locate module rules. All selected domain requirements still apply.
   forged/closed snapshots, cancelled retention, collisions, parent replacement
   and complete staging cleanup. Independent command transport cases additionally
   require their platform's qualified process ownership and descriptor transfer.
-  `delivery-inspection.test.ts` covers serial excerpt/aggregate limits,
-  inherited deadline minima, preview cutoff, empty/no-publication retirement and
-  pure map release. It also covers pending operation joins, ACK loss/late
-  completion, expected versus accidental disconnect, and memoized
-  descriptor-close failure. These checks use private streams/clocks.
+  `delivery-inspection.test.ts` covers inherited deadline minima, actual elapsed
+  completion bounds, real file reads and descriptor retirement.
+  Authenticated capture, lost acknowledgements and transport retirement require
+  actual subprocess transport, not private stream or clock replacements.
 
   These portable cases do not establish actual native peer authentication,
   endpoint release, parent recovery fencing or installed browser composition.
   Those remain platform/installed qualification gates.
-  `execution-output.test.ts` verifies fencing/release/cleanup order, capture
-  refusal, missing collectors and cleanup failure. Directory and snapshot loan
-  cases require one actual close, sticky typed uncertainty and retained original
-  handles after caller references leave. Native guardian input evidence and
-  terminal cleanup recovery cover retained bytes after storage removal. The
-  latter injects transient and persistent job-retirement refusal with actual
-  bounded output collection, preserving refusal until removal is confirmed.
 
-  Session collectors validate captured empty directories too. Controller faults
-  distinguish expected snapshot-profile refusal from unexpected snapshot I/O
-  failure. The complete file-delivery suite also runs on qualified Mac. It
+  `execution-output.test.ts` uses actual output descriptors and captured snapshots.
+  Native guardian ordering and failures require genuine native lifecycle cases.
+  Directory and snapshot loans require one actual close, sticky typed uncertainty
+  and retained original handles after caller references leave.
+  Native guardian input evidence and
+  terminal cleanup recovery cover retained bytes after storage removal. The
+  latter requires actual bounded output collection and observable job-retirement races,
+  preserving refusal until removal is confirmed.
+
+  Session collectors validate captured empty directories too.
+  Real oversized and multiply linked history files exercise profile refusal.
+  Unexpected hardware I/O failures require separate evidence.
+
+  The complete file-delivery suite also runs on qualified Mac. It
   covers the independent process, authenticated parent rejection, renamed input
   roots and immutable output transfer. It also covers cooperative interruption,
   forced escalation and coordinator loss during staging. Stopped fixtures
@@ -571,19 +612,17 @@ These links locate module rules. All selected domain requirements still apply.
 
   Use exact owned fixture PIDs only. `macos-owner-lock.test.ts` checks
   independent-process exclusion, release on coordinator death and lock
-  replacement. `macos-backend-state.test.ts` checks fresh-process recovery of
-  committed state, cancelled admission, exact final receipt retention,
-  interrupted writes, atomic release recovery and authentication failures. These
-  checks include coordinator death during release-marker publication and unsafe
-  or proofless release staging. Independent subprocesses verify prompt refusal
-  of unread named pipes in final/pending state and release records, guardian
-  owner journals and authenticated socket journals. Both subprocess fixtures
-  compile in ordinary tests.
+  replacement. `macos-backend-state.test.ts` checks real allocation, cancelled
+  admission, authenticated records, and release refusal/repair.
+  Exact release-marker interruption and active/finished recovery require genuine
+  native lifecycle evidence, not rewritten code or invented final receipts.
+  Independent subprocesses verify prompt refusal of unread named pipes in
+  final/pending state and release records. They also check guardian owner
+  journals and authenticated socket journals.
 
-  Synthetic ledger receipts do not qualify backend cleanup or installed
-  execution. `macos-native-backend.test.ts` qualifies sealing, immutable-path
+  `macos-native-backend.test.ts` qualifies sealing, immutable-path
   binding, prepared and active admission, bounded output after storage removal,
-  durable final receipts, unused-owner recovery, prepared/active
+  and durable final receipts. It also checks unused-owner recovery, prepared/active
   coordinator-loss recovery and exact owner release. It is backend integration
   evidence, not installed-host conformance. The recovery fixture checks
   authenticated boot separation and keeps coalition fencing restricted to the

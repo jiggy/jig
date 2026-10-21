@@ -12,6 +12,7 @@ import {
   privateCliVerification,
   publicTerminal,
 } from './cli.js'
+import { executePrivateCliAttempt } from './cli-attempt-execution.js'
 import { privateCliStderrDiagnostic } from './cli-presentation.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import {
@@ -29,7 +30,10 @@ import {
   privateInstalledEnvironmentCheck,
 } from './internal/installed-bun-host.js'
 import { PrivateRootlessLinuxAcquisitionError } from './internal/linux-rootless-acquisition.js'
-import { acquireOrReexecutePrivateRootlessLinux } from './internal/linux-rootless-delegation.js'
+import {
+  acquireOrReexecutePrivateRootlessLinux,
+  privateRootlessLinuxDiagnosticOwnedByParent,
+} from './internal/linux-rootless-delegation.js'
 import {
   privateProfileActivate,
   privateProfileFinish,
@@ -172,6 +176,61 @@ async function runWithEnvironment(
     }
   }
   if (!privateCliRequiresHost(arguments_)) {
+    if (arguments_[0] === 'attempt') {
+      if (privateNeedsFileOwner(arguments_))
+        return await privateOwnFileCommand(
+          [executablePath, ...BUN_POLICY, installedCliPath],
+          arguments_,
+          signal,
+          privateCliCommandLifetimeMs(arguments_),
+        )
+      const profileResult = arguments_[1] === 'result'
+      const delivery = await privateConnectFileOwner()
+      const outputStop = new AbortController()
+      const stdout = new PrivateCliOutput(process.stdout, outputStop)
+      const stderr = new PrivateCliOutput(process.stderr, outputStop)
+      if (profileResult) privateProfileActivate()
+      try {
+        const code = await main(arguments_, {
+          executeAttempt: executePrivateCliAttempt,
+          ...(delivery === undefined
+            ? {}
+            : {
+                host: {
+                  delivery,
+                  acquire: async () => {
+                    throw new Error('observational commands cannot acquire an execution host')
+                  },
+                },
+              }),
+          standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
+          signal: AbortSignal.any([outputStop.signal, ...(signal === undefined ? [] : [signal])]),
+          writeRecord: async (text) => {
+            await stderr.flush()
+            await stdout.write(text)
+          },
+          writeOutput: (text) => {
+            void stdout.write(text).catch(() => undefined)
+          },
+          writeError: (text) => {
+            void stderr.write(text).catch(() => undefined)
+          },
+          writeStderr: (text) => stderr.write(text),
+        })
+        await Promise.all([stdout.flush(), stderr.flush()])
+        return exit(signal?.aborted ? 2 : outputStop.signal.aborted ? 1 : code)
+      } finally {
+        try {
+          await Promise.all([stdout.flush(), stderr.flush()])
+        } finally {
+          try {
+            delivery?.close()
+          } finally {
+            if (profileResult) privateProfileFinish()
+          }
+        }
+      }
+    }
     return exit(
       await main(arguments_, {
         standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
@@ -292,6 +351,7 @@ async function runWithEnvironment(
         return exit(
           await main(arguments_, {
             host,
+            executeAttempt: executePrivateCliAttempt,
             runArgumentsPrepared: process.env.JIG_PRIVATE_RUN_PREPARED === '1',
             presentationDeadline: privatePresentationDeadline(process.env),
             ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
@@ -322,11 +382,12 @@ async function runWithEnvironment(
       delivery?.close()
     }
   } catch (error) {
+    if (privateRootlessLinuxDiagnosticOwnedByParent(error)) return exit(2)
     if (error instanceof PrivateRootlessLinuxAcquisitionError) {
       process.stderr.write(
         privateCliStderrDiagnostic(
           'SANDBOX_UNAVAILABLE',
-          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nNext step: https://jig.md/guide/#supported-host',
+          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nIf Bubblewrap is outside the normal host-tool locations, set JIG_BWRAP_PATH to its absolute executable path; adding it to PATH alone does not select it.\nNext step: https://jig.md/guide/#supported-host',
         ),
       )
     } else {

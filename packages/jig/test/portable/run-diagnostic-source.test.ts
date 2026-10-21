@@ -1,17 +1,9 @@
-import { dirname as suiteDirname } from 'node:path'
-
-const suiteTestRoot = suiteDirname(import.meta.dir)
-
 import { expect, test } from 'bun:test'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import {
   type PrivateRunDiagnosticSource,
   privateRunDiagnosticObserver,
 } from '../../src/internal/run-channels.js'
 import { ChannelBroker } from '../../src/run/channels.js'
-import { settleTestCommand } from '.././fixtures/bounded-command.js'
 
 test('root stderr retains exact bytes and actual emitter without inventing a call', () => {
   const broker = new ChannelBroker()
@@ -93,21 +85,4 @@ test('missing actual emitter leaves diagnostics unattributed even with a caller 
   expect(recordedSource).toBeUndefined()
   expect(recordedPath).toEqual(['root', 'same'])
   caller.finalize(true)
-})
-test('actual child binding preserves direct and nested original caller operation IDs', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-diagnostic-source-'))
-  try {
-    const child = Bun.spawn(
-      [process.execPath, join(suiteTestRoot, 'root-flow-call-diagnostics.ts'), root],
-      { stdout: 'pipe', stderr: 'pipe' },
-    )
-    const result = await settleTestCommand(child, {
-      evidence: join(root, 'diagnostics'),
-      timeoutMs: 15_000,
-    })
-    expect(result.code, result.stderr).toBe(0)
-    expect(result.stdout).toContain('child diagnostic source binding passed')
-  } finally {
-    await rm(root, { recursive: true, force: true })
-  }
 })

@@ -11,15 +11,16 @@ after executed checks and independent acceptance.
 - `flows/read-project/` owns bounded source capture and reviewed check-set data.
 - `flows/check-repair/` validates evidence identities and recomputes acceptance.
 - `flows/export-patch/` formats supplied accepted review data and writes
-  patches in its own output folder, imported at `deliverables/review`.
+  patches below `review/` in its fresh operation-owned output.
+  The coordinator forwards that immutable artifact as `deliverables`.
   Independent export treats supplied verdicts as caller claims. It never
   establishes acceptance.
 - `flows/repair/` owns proposal validation, at most two Agent calls, reviewed
   command execution, and independent checks of collected output.
 - `bindings/` selects the repair leaf and fixed Bun test/CLI commands.
 - `fixtures/log-report/` contains an intentionally defective CLI and its tests.
-- `test/` owns deterministic application checks. The public guide owns the
-  walkthrough.
+- `test/` owns pure proposal/evidence validation and actual file checks.
+  The public guide owns the walkthrough.
 
 - `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
   `jig.ts` supplies that ordinary Agent through the contract-keyed default.
@@ -29,15 +30,15 @@ after executed checks and independent acceptance.
 - `jig.ts` owns the complete default invocation:
   `binding:repair --input @issue.json --attach source=fixtures/log-report --timeout 5m`.
   Ordinary `jig run` uses reviewed defaults and receives a fresh temporary
-  packet for its writable deliverables. The README and guide explain temporary
+  packet for its forwarded deliverables. The README and guide explain temporary
   cleanup and optional retained `--out` destinations without overwrite behavior.
   Explicit targets bypass defaults. Display choices remain operator options.
 
 - Complexity cap: one issue, one specialist, one final patch/evidence result.
   Batch scheduling, resident monitoring, recording, and checkpoints are outside
   this example. A separate example must justify its own lesson before adding them.
-- The root maps read-only source to `read-project` and writable output to
-  `export-patch`. Neither the specialist nor checker receives attachments.
+- The root maps read-only source to `read-project` and requests fresh output
+  from `export-patch`. Neither the specialist nor checker receives attachments.
   Accept 16 UTF-8 files totaling 64 KiB and at most eight existing editable
   JS/TS source paths.
 - The leaf takes JSON files and fixed cases. Its `agent` slot calls an ordinary
@@ -98,11 +99,13 @@ after executed checks and independent acceptance.
 
 ## Verification
 
-- `bun test examples/tested-patch/test` checks bounded proposals, independent
-  evidence, file capture, final publication, and failure propagation.
+- `bun test examples/tested-patch/test` checks bounded proposal/evidence inputs,
+  actual file capture and pure patch formatting. Recorded command data does not
+  establish executed checks or native cleanup.
 - The release gate repeats application tests against the freshly packed SDK.
-- Installed host tests exercise real contained commands with synthetic Agent
-  responses. They do not establish live model quality.
+- Jig's installed repair suites exercise real contained commands and ordinary
+  deterministic proposal tasks. Native session restoration and untested fault
+  windows require separate evidence. These suites do not establish model quality.
 
 ## Child DOX Index
 

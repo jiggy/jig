@@ -50,10 +50,10 @@ use-case and orchestration hypotheses.
   enforcement.
 - `guide/files.md` starts with a complete file-copy example and explains
   per-run files, review-pinned Binding resources, and
-  their shared read attachment interface. It covers automatic temporary packets
-  for writable targets, stdout-only result targets, explicit retained
-  destinations, actionable admitted file mappings, retention and static child
-  file mappings.
+  their shared read attachment interface. It covers temporary packets for writable
+  or declared-artifact-result targets, stdout-only non-file targets, and retained
+  destinations. Child composition covers fixed reads, fresh outputs, held
+  immutable artifacts, forwarding, and final/checkpoint export.
 - `guide/agent-method.md` starts with direct invocation and a complete caller.
   It explains the reusable method's pure library and
   published ordinary Agent Run artifact. It covers reviewed-source adoption,
@@ -90,8 +90,8 @@ use-case and orchestration hypotheses.
   checks, reveals Jig's execution boundary, and ends at a first run with visible
   prerequisites.
 - `guide/contact-import.md` owns the introductory CSV preview walkthrough: code,
-  Agent and mixed mappers share one contract, and code validates the rows. Its
-  writable target receives a fresh temporary packet. `--out` retains it.
+  Agent and mixed mappers share one contract, and code validates the rows.
+  Its declared preview artifact receives a fresh temporary packet. `--out` retains it.
 
 - `guide/support-case.md` follows contact import with a useful policy decision.
   An Agent proposes a disputed charge. Code checks supplied account records. The

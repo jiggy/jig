@@ -9,16 +9,21 @@ import {
   type StartRootRunRequest,
   snapshotRootAdministrationJson,
 } from '../administration/root.js'
+import type { CanonicalRequest } from '../attempt-contract.js'
 import { CheckError } from '../diagnostics.js'
+import { bindingRef, flowRef } from '../project/author.js'
 import {
+  isPrivateAttemptRunRevoked,
   listPrivateRootExecutionWork,
   loadPrivateRootRunForCoordinator,
   openPrivateProjectCoordinator,
   type PrivateProjectCoordinator,
   type PrivateRootRunSnapshot,
+  submitPrivateAttempt,
   submitPrivateRootRun,
 } from './activation-admission-store.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
+import { PrivateAttemptError } from './prepared-attempt-store.js'
 import { privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
 import {
@@ -116,7 +121,6 @@ export async function attachPrivateRootAdministrationController(input: {
   const created = createController(input)
   try {
     await created.recoverOlder()
-    await created.pumpCurrent()
     return created.controller
   } catch (error) {
     try {
@@ -164,6 +168,47 @@ function createController(input: {
   let disposal: Promise<void> | undefined
 
   const administration: RootAdministration = Object.freeze({
+    async startPreparedRun(value: { readonly ticket: string; readonly request: CanonicalRequest }) {
+      requireOpen(closed)
+      let markSettled!: () => void
+      const unsettled = new Promise<void>((resolve) => {
+        markSettled = resolve
+      })
+      operations.add(unsettled)
+      try {
+        const target = value.request.target.startsWith('binding:')
+          ? bindingRef(value.request.target.slice('binding:'.length))
+          : flowRef(
+              value.request.target.startsWith('flow:')
+                ? value.request.target.slice(5)
+                : value.request.target,
+            )
+        const submitted = await submitPrivateAttempt({
+          coordinator: input.coordinator,
+          projectRoot: input.projectRoot,
+          packageStoreRoot: input.packageStoreRoot,
+          ticket: value.ticket,
+          request: value.request,
+          target,
+          ...(input.files === undefined
+            ? {}
+            : {
+                files: input.files.identity,
+                identifyFiles: (request) => input.files!.identify(request),
+              }),
+        })
+        // An observer never pumps or acquires execution ownership.
+        if (submitted.role === 'owner') schedule(submitted.run.runId)
+        return { role: submitted.role, receipt: submitted.receipt }
+      } catch (error) {
+        observeFailure(error)
+        if (error instanceof PrivateAttemptError) throw error
+        throw administrationError(error, 'start prepared root Run')
+      } finally {
+        operations.delete(unsettled)
+        markSettled()
+      }
+    },
     async startRun(value: StartRootRunRequest): Promise<StartRootRunReceipt> {
       requireOpen(closed)
       let markSettled!: () => void
@@ -263,45 +308,74 @@ function createController(input: {
   }
 
   async function settleRun(runId: string): Promise<void> {
-    // A live guardian may still be finishing an exact child or root fence.
-    // Repeat only durable reacquisition, never a fresh dispatch, before
-    // reporting unresolved ownership to the caller.
-    const retryUntil = performance.now() + 30_000
-    let settled: PrivateRootExecutionDisposition
-    for (;;) {
-      try {
-        settled = await retryPrivateBusy(
-          async () => await input.execute(runId, input.coordinator, cancellation.signal),
-        )
-      } catch (error) {
-        // A pending-work snapshot may outlive the task that committed its
-        // terminal. Reacquisition then refuses execution; consume only the
-        // matching durable terminal, without dispatching again.
-        if (!(error instanceof CheckError) || error.code !== 'RUN_ALREADY_TERMINAL') throw error
-        const run = await retryPrivateBusy(() =>
-          loadPrivateRootRunForCoordinator({
-            coordinator: input.coordinator,
-            projectRoot: input.projectRoot,
-            runId,
-          }),
-        )
-        if (run.runId !== runId || run.state !== 'terminal') throw error
-        settled = { state: 'terminal', run }
-      }
-      if (settled.state !== 'pending') break
-      if (performance.now() >= retryUntil) {
-        throw new RootAdministrationError(
-          'PROJECT_BUSY',
-          'root Run cleanup has not confirmed its complete execution fence',
-        )
-      }
-      await new Promise<void>((resolve) => setTimeout(resolve, 100))
+    const scoped = new AbortController()
+    const revoke = () => scoped.abort(cancellation.signal.reason)
+    cancellation.signal.addEventListener('abort', revoke, { once: true })
+    if (cancellation.signal.aborted) revoke()
+    let polling: Promise<void> | undefined
+    let pollingFailure: unknown
+    const observeRevocation = () => {
+      polling ??= isPrivateAttemptRunRevoked({ projectRoot: input.projectRoot, runId })
+        .then((revoked) => {
+          if (revoked) scoped.abort(new Error('original Run was revoked'))
+        })
+        .catch((error) => {
+          pollingFailure = error
+          scoped.abort(new Error('protected cancellation state is unavailable'))
+        })
+        .finally(() => {
+          polling = undefined
+        })
     }
-    if (settled.run.runId !== runId || settled.run.state !== 'terminal') {
-      throw new Error('trusted root Run executor returned no matching terminal')
+    observeRevocation()
+    await polling
+    const revocationTimer = setInterval(observeRevocation, 100)
+    try {
+      // A live guardian may still be finishing an exact child or root fence.
+      // Repeat only durable reacquisition, never a fresh dispatch, before
+      // reporting unresolved ownership to the caller.
+      const retryUntil = performance.now() + 30_000
+      let settled: PrivateRootExecutionDisposition
+      for (;;) {
+        try {
+          settled = await retryPrivateBusy(
+            async () => await input.execute(runId, input.coordinator, scoped.signal),
+          )
+        } catch (error) {
+          // A pending-work snapshot may outlive the task that committed its
+          // terminal. Reacquisition then refuses execution; consume only the
+          // matching durable terminal, without dispatching again.
+          if (!(error instanceof CheckError) || error.code !== 'RUN_ALREADY_TERMINAL') throw error
+          const run = await retryPrivateBusy(() =>
+            loadPrivateRootRunForCoordinator({
+              coordinator: input.coordinator,
+              projectRoot: input.projectRoot,
+              runId,
+            }),
+          )
+          if (run.runId !== runId || run.state !== 'terminal') throw error
+          settled = { state: 'terminal', run }
+        }
+        if (settled.state !== 'pending') break
+        if (performance.now() >= retryUntil) {
+          throw new RootAdministrationError(
+            'PROJECT_BUSY',
+            'root Run cleanup has not confirmed its complete execution fence',
+          )
+        }
+        await new Promise<void>((resolve) => setTimeout(resolve, 100))
+      }
+      if (settled.run.runId !== runId || settled.run.state !== 'terminal') {
+        throw new Error('trusted root Run executor returned no matching terminal')
+      }
+      const status = projectStatus(settled.run)
+      if (status.state === 'terminal') input.onTerminal?.(status)
+      if (pollingFailure !== undefined) throw pollingFailure
+    } finally {
+      clearInterval(revocationTimer)
+      cancellation.signal.removeEventListener('abort', revoke)
+      await polling
     }
-    const status = projectStatus(settled.run)
-    if (status.state === 'terminal') input.onTerminal?.(status)
   }
 
   async function pumpCurrent(): Promise<void> {
@@ -470,7 +544,7 @@ async function retryPrivateBusy<T>(action: () => Promise<T>): Promise<T> {
   throw new Error('unreachable root administration retry state')
 }
 
-function administrationError(error: unknown, operation: string): RootAdministrationError {
+export function administrationError(error: unknown, operation: string): RootAdministrationError {
   if (error instanceof RootAdministrationError) return error
   if (error instanceof CheckError) {
     switch (error.code) {

@@ -1,4 +1,4 @@
-import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
+import type { JsonValue, RunContext, RunHandlerResult, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
 import {
   type AcceptedAssignment,
@@ -36,9 +36,9 @@ function stopped(response: RunResult): RunResult | undefined {
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
   updates?: Reporter,
-): Promise<RunResult> {
-  if (run.attachments.source?.access !== 'read' || run.attachments.files?.access !== 'read-write') {
-    throw new TypeError('Supply read-only source and writable files attachments.')
+): Promise<RunHandlerResult> {
+  if (run.attachments.source?.access !== 'read') {
+    throw new TypeError('Supply a read-only source attachment.')
   }
   const view = updates?.view('roster', { title: 'Saturday kitchen', landing: true })
   let state: RosterState = { phase: 'reading' }
@@ -107,6 +107,7 @@ export async function runMethod(
       slot: 'export-roster',
       intent: 'Write the eight accepted rows to the output packet',
       input: { rows },
+      attachments: { files: { create: true } },
     })
     run.signal.throwIfAborted()
     const exportOutput = outputObject(exported)
@@ -117,10 +118,15 @@ export async function runMethod(
     ) {
       throw new TypeError('The exporting Flow did not confirm the complete roster CSV.')
     }
+    const schedule = exported.artifacts?.files
+    if (!schedule) {
+      throw new TypeError('The exporting Flow returned no immutable files artifact.')
+    }
     present({ phase: 'ready' })
     return {
       outcome: 'done',
       output: { status: 'ready', count: 8, roster: 'schedule/roster.csv', rows },
+      artifactResults: { schedule },
     }
   } catch (error) {
     present({

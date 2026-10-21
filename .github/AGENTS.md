@@ -124,8 +124,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   rechecks the frozen archive hashes, performs zero-residue verification, and
   contributes to the aggregate `rootless-linux` check. A skipped, cancelled, or
   failed shard must prevent that aggregate from succeeding.
-- Linux package-lifecycle runs preparation, retained progress, finite ACP,
-  Markdown and public workspace-dependency proof in whole physical suite files.
+- Linux package-lifecycle runs preparation, retained progress, Markdown and public
+  workspace-dependency proof in whole physical suite files.
   The shared catalog assigns each file once across the three source shards. No
   test-name filter or skipped case supplies passing evidence. Installed-evidence
   runs complete packed CLI composition, operational and hostile baselines on a
@@ -177,9 +177,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   variables. This candidate workflow does not replace Linux publication gates or
   claim live model/API qualification.
 - `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
-  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Three Intel
-  and two Apple Silicon shards fit the observed five-slot capacity, with
-  `max-parallel: 5`. Actual runner availability still determines start times.
+  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Four Intel
+  and two Apple Silicon shards share the observed five-slot capacity, with
+  `max-parallel: 5`. The sixth job queues without increasing concurrent demand.
+  Actual runner availability still determines start times.
+
   Before full native allocation, the existing Ubuntu acquisition job waits for
   the exact canonical CI producer's current-attempt `Quick development checks`
   success. This wait permits up to 600 seconds within the job's 15-minute

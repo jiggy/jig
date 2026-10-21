@@ -17,6 +17,7 @@ import {
 } from '../../src/invocation-contract.js'
 import { canonicalJson, type JsonObject, type JsonValue } from '../../src/json.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
+import { parseRun } from '../../src/run-arguments.js'
 import { SchemaDiagnostic } from '../../src/schema/index.js'
 
 const encoder = new TextEncoder()
@@ -219,6 +220,65 @@ describe('channel declarations', () => {
   })
 })
 describe('package channel closure', () => {
+  test('keeps omitted invocation input unconstrained when a required channel has a strict item schema', async () => {
+    const channels = {
+      barrier: { direction: 'send', delivery: 'direct', contract: './barrier.json' },
+    }
+    const channel = descriptor({
+      item: {
+        type: 'object',
+        properties: { phase: { enum: ['before', 'acknowledged', 'cancel'] } },
+        required: ['phase'],
+        additionalProperties: false,
+      },
+    })
+    for (const withChannel of [false, true]) {
+      await withPackage(
+        {
+          'FLOW.ts': 'throw new Error("inspection must not execute the Flow");',
+          'FLOW.contract.json': JSON.stringify({
+            $schema: INVOCATION_CONTRACT_SCHEMA,
+            attachments: { deliverables: 'read-write' },
+            ...(withChannel ? { channels } : {}),
+          }),
+          ...(withChannel ? { 'barrier.json': JSON.stringify(channel) } : {}),
+        },
+        async (root) => {
+          const checked = await checkPackageDirectory(root)
+          expect(checked.schemas.input).toBeUndefined()
+          expect(checked.contract!.descriptor).not.toHaveProperty('input')
+          expect([...checked.contract!.schemas.keys()]).toEqual([])
+          for (const phase of ['before', 'accepted', 'acknowledged', 'replacement', 'cancel']) {
+            const input = { mode: 'deadline', phase }
+            const parsed = parseRun([
+              'run',
+              'binding:root',
+              '--input',
+              JSON.stringify(input),
+              ...(withChannel ? ['--receive', 'barrier', '--json'] : []),
+              '--out',
+              'result',
+              '--timeout',
+              '30s',
+            ])
+            expect(parsed.input).toEqual(input)
+            expect(parsed.receive).toEqual(withChannel ? ['barrier'] : [])
+            expect(() =>
+              checked.schemas.input?.validate(parsed.input, 'INVALID_INPUT'),
+            ).not.toThrow()
+          }
+          if (withChannel) {
+            const item = checked.contract!.channelContracts.get('barrier.json')!.itemSchema
+            expect(item.schemaPointer).toBe('/item')
+            expect(() => item.validate({ phase: 'before' }, 'INVALID_INPUT')).not.toThrow()
+            expect(() =>
+              item.validate({ mode: 'deadline', phase: 'before' }, 'INVALID_INPUT'),
+            ).toThrow(SchemaDiagnostic)
+          }
+        },
+      )
+    }
+  })
   test('captures explicit broadcast declarations through ordinary package inspection', async () => {
     const channels = {
       events: { direction: 'send', delivery: 'broadcast' },

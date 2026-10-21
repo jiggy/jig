@@ -11,6 +11,20 @@ export const PRIVATE_BUN_PREPARATION_LIMITS = Object.freeze({
   preparedBytes: 32 * MIB,
 })
 
+/** Review-only developer closure; never changes FLOW production selection. */
+export const PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS = Object.freeze({
+  sourceFiles: 32,
+  sourceBytes: 4 * MIB,
+  preparedFiles: 8192,
+  preparedBytes: 128 * MIB,
+})
+export type PrivateBunPreparationMode = 'production' | 'evaluation'
+export function privateBunPreparationLimits(mode: PrivateBunPreparationMode) {
+  return mode === 'evaluation'
+    ? PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS
+    : PRIVATE_BUN_PREPARATION_LIMITS
+}
+
 /**
  * A conservative bound for one JSON line containing canonical file records.
  *
@@ -20,7 +34,7 @@ export const PRIVATE_BUN_PREPARATION_LIMITS = Object.freeze({
  * over-counted so every value admitted by the raw limits fits the line bound.
  */
 export function maximumPrivateBunFileMessageBytes(
-  type: 'source' | 'prepared',
+  type: 'source',
   maximumFiles: number,
   maximumContentBytes: number,
 ): number {
@@ -44,14 +58,8 @@ export const PRIVATE_BUN_SOURCE_MESSAGE_BYTES = maximumPrivateBunFileMessageByte
   PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes,
 )
 
-export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES =
-  maximumPrivateBunFileMessageBytes(
-    'prepared',
-    PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
-    PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
-  ) +
-  PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes +
-  Buffer.byteLength(',"layout":')
+/** Success carries bounded layout/identity only. File bytes use native directory custody. */
+export const PRIVATE_BUN_PREPARED_MESSAGE_BYTES = PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.bytes + 1024
 
 export function privateBunMessageFits(bytes: number, maximum: number): boolean {
   return Number.isSafeInteger(bytes) && bytes >= 0 && bytes <= maximum

@@ -131,9 +131,9 @@
     }
   },
   "attachments": {
-    "source": "read",
-    "files": "read-write"
+    "source": "read"
   },
+  "artifactResults": ["schedule"],
   "outcomes": {
     "blocked": "The scenario is uncovered or a complete roster needs review.",
     "limit": "The Agent reaches its configured limit."

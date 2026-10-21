@@ -32,6 +32,28 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Project Authoring SDK/1 shape schema', () => {
+  test('matches operation-created, supplied and fixed read attachment route shapes', () => {
+    for (const mapping of [{ create: true }, { supplied: 'read' }, { from: 'source' }]) {
+      const value = defineBinding({
+        package: 'flows/parent',
+        slots: { child: { target: 'flow:flows/child', attachments: { files: mapping } } },
+      } as never)
+      expect(() => schema.validate(value, 'INVALID_PROJECT_AUTHORING')).not.toThrow()
+    }
+    for (const mapping of [
+      { unknown: true },
+      { create: false },
+      { supplied: 'read-write' },
+      { create: true, from: 'source' },
+    ]) {
+      const value = changed(binding, (item) => {
+        item.slots.child = { target: 'flow:flows/child', attachments: { files: mapping } }
+      })
+      expect(() => schema.validate(value, 'INVALID_PROJECT_AUTHORING')).toThrow()
+      const input = value as { package: string; slots: Record<string, never> }
+      expect(() => defineBinding({ package: input.package, slots: input.slots })).toThrow()
+    }
+  })
   test('native turn bounds agree across authoring, the published schema and host policy', () => {
     for (const maxTurns of [1, 8, 0, 9, -1, 1.5, '2', null]) {
       const value = changed(binding, (item) => {

@@ -97,3 +97,16 @@ test('a missing direct Flow is rejected instead of treated as a leaf', () => {
   ])
   expect(() => validateChildGraph(bindings, new Map())).toThrow()
 })
+
+test('root-only targets cannot become children through a memoized direct or Binding route', () => {
+  const checkpoint = { ...routed('flows/checkpoint'), rootOnly: true }
+  const flows = new Map([['flows/checkpoint', checkpoint]])
+  expect(() => validateChildGraph(new Map(), flows)).not.toThrow()
+  const caller = routed('flows/caller', { kind: 'flow', path: 'flows/checkpoint' })
+  expect(() => validateChildGraph(new Map([['caller', caller]]), flows)).toThrow('root invocation')
+  const bindings = new Map([
+    ['checkpoint', { ...node('flows/checkpoint'), rootOnly: true }],
+    ['caller', { ...node('flows/caller', 'checkpoint'), rootOnly: false }],
+  ])
+  expect(() => validateChildGraph(bindings, new Map())).toThrow('root invocation')
+})

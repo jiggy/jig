@@ -8,7 +8,13 @@ import {
   type PrivateMacosReceivedDescriptors,
   sendPrivateMacosDescriptors,
 } from './macos-descriptor-handoff.js'
-import { preparePrivateMacosImportRoots } from './macos-file-import.js'
+import {
+  collectPrivateMacosEvaluationWorkspace,
+  normalizePrivateMacosEvaluationWorkspace,
+  type PrivateMacosEvaluationWorkspace,
+  projectPrivateMacosEvaluationWorkspace,
+  requirePrivateMacosEvaluationEnvironment,
+} from './macos-evaluation-workspace.js'
 import {
   type PrivateMacosGuardianFailureStep,
   privateMacosGuardianFailure,
@@ -44,6 +50,13 @@ import {
   requirePrivateMacosScopeLimits,
 } from './macos-scope-execution.js'
 import {
+  normalizePrivateBootDeadline,
+  type PrivateBootDeadline,
+  privateBootRemaining,
+  watchPrivateBootDeadline,
+} from './native-clock.js'
+import {
+  normalizePrivateInputEmptyDirectories,
   normalizePrivateReadInputAliases,
   type PrivateReadInputAlias,
 } from './read-input-projection.js'
@@ -63,7 +76,9 @@ export interface PrivateMacosGuardianStart {
   readonly storage?: PrivateMacosGuardianStorage
   readonly inputs?: readonly PrivateMacosInputIdentity[]
   readonly inputDirectories?: readonly string[]
+  readonly inputEmptyDirectories?: readonly string[]
   readonly inputAliases?: readonly PrivateReadInputAlias[]
+  readonly evaluationWorkspace?: PrivateMacosEvaluationWorkspace
 }
 export interface PrivateMacosGuardianRecovery {
   readonly type: 'recover-storage'
@@ -72,6 +87,7 @@ export interface PrivateMacosGuardianRecovery {
   readonly targetDirectory: string
   readonly targetToken: string
   readonly deadlineUnixMs: number
+  readonly bootDeadline: PrivateBootDeadline
 }
 export type PrivateMacosGuardianConfiguration =
   | PrivateMacosGuardianStart
@@ -91,7 +107,7 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
   if ((value as { type?: unknown })?.type === 'recover-storage') {
     const record = object(
       value,
-      'type,ownerDirectory,ownerToken,targetDirectory,targetToken,deadlineUnixMs',
+      'type,ownerDirectory,ownerToken,targetDirectory,targetToken,deadlineUnixMs,bootDeadline',
     )
     if (
       typeof record.ownerDirectory !== 'string' ||
@@ -101,8 +117,7 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
       record.ownerDirectory !== join(record.targetDirectory, 'recovery') ||
       record.ownerToken !== privateMacosStorageRecoveryToken(record.targetToken) ||
       !Number.isSafeInteger(record.deadlineUnixMs) ||
-      (record.deadlineUnixMs as number) <= Date.now() ||
-      (record.deadlineUnixMs as number) > Date.now() + 30_000
+      privateBootRemaining(normalizePrivateBootDeadline(record.bootDeadline)) > 30_000
     )
       throw new Error('invalid macOS storage recovery configuration')
     requirePrivateMacosOwnerDirectory(record.targetDirectory)
@@ -114,7 +129,9 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
       'storage',
       'inputs',
       'inputDirectories',
+      'inputEmptyDirectories',
       'inputAliases',
+      'evaluationWorkspace',
     ]
       .filter((key) => value !== null && typeof value === 'object' && Object.hasOwn(value, key))
       .map((key) => `,${key}`)
@@ -139,12 +156,25 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
     throw new Error('invalid macOS guardian configuration')
   object(
     record.files,
-    `readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'codexPreferenceNotifications') ? ',codexPreferenceNotifications' : ''}`,
+    `readOnlyFiles,readOnlyTrees,writableTrees,protectedRoots,network${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'codexPreferenceNotifications') ? ',codexPreferenceNotifications' : ''}${record.files !== null && typeof record.files === 'object' && Object.hasOwn(record.files, 'evaluationWorkspace') ? ',evaluationWorkspace' : ''}`,
   )
   privateMacosSandboxProfile(record.files as unknown as PrivateMacosSandboxFiles)
+  const evaluation =
+    record.evaluationWorkspace === undefined
+      ? undefined
+      : normalizePrivateMacosEvaluationWorkspace(record.evaluationWorkspace)
+  const grants = (record.files as unknown as PrivateMacosSandboxFiles).evaluationWorkspace
+  if (
+    (evaluation === undefined) !== (grants === undefined) ||
+    (evaluation !== undefined &&
+      (evaluation.phase !== grants?.phase ||
+        record.storage === undefined ||
+        record.maxOutputBytes !== 16 * 1024 * 1024))
+  )
+    throw new Error('invalid macOS evaluation configuration')
   object(
     record.limits,
-    'memoryBytes,pids,cpuQuotaMicros,cpuPeriodMicros,deadlineUnixMs,cleanupTimeoutMs',
+    'memoryBytes,pids,cpuQuotaMicros,cpuPeriodMicros,deadlineUnixMs,bootDeadline,cleanupTimeoutMs',
   )
   requirePrivateMacosScopeLimits(record.limits as PrivateMacosScopeLimits)
   if (record.storage !== undefined)
@@ -153,6 +183,11 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
       record.files as unknown as PrivateMacosSandboxFiles,
       record.cwd,
     )
+  if (evaluation !== undefined)
+    requirePrivateMacosEvaluationEnvironment(
+      record.environment as Record<string, string>,
+      (record.storage as PrivateMacosGuardianStorage).mountPath,
+    )
   if (
     record.inputs !== undefined ||
     record.inputDirectories !== undefined ||
@@ -160,6 +195,11 @@ function startMessage(value: unknown): PrivateMacosGuardianConfiguration {
   ) {
     const roots = normalizePrivateMacosInputDirectories(record.inputDirectories)
     const files = normalizePrivateMacosInputs(record.inputs, roots, record.inputAliases)
+    normalizePrivateInputEmptyDirectories(
+      (record.inputEmptyDirectories ?? []) as string[],
+      roots,
+      files.map((file) => file.path),
+    )
     normalizePrivateReadInputAliases(
       record.inputAliases ?? [],
       roots,
@@ -215,7 +255,6 @@ async function supervise(
   let execution: PrivateMacosScopeExecution | undefined
   let collector: FileHandle | undefined
   let storageRoot: FileHandle | undefined
-  let importRoots: Awaited<ReturnType<typeof preparePrivateMacosImportRoots>> | undefined
   let inputReceiver: Awaited<ReturnType<typeof createPrivateMacosDescriptorReceiver>> | undefined
   let inputBundle: PrivateMacosReceivedDescriptors | undefined
   let configuration: PrivateMacosGuardianConfiguration | undefined
@@ -224,11 +263,7 @@ async function supervise(
   const collection = new Promise<void>((resolve) => {
     releaseCollection = resolve
   })
-  let releaseImportLoans: () => void = () => {}
-  const importLoansClosed = new Promise<void>((resolve) => {
-    releaseImportLoans = resolve
-  })
-  let stopped: 'cancelled' | 'coordinator_lost' | undefined
+  let stopped: 'cancelled' | 'coordinator_lost' | 'clock' | undefined
   let preparationDeadlineExpired = false
   let resolveAdmission: () => void = () => {}
   let rejectAdmission: (error: Error) => void = () => {}
@@ -246,21 +281,21 @@ async function supervise(
     | 'collecting'
     | 'terminal' = 'starting'
   const currentPhase = (): string => phase
-  const stop = (reason: 'cancelled' | 'coordinator_lost', deadlineExpired = false) => {
+  const stop = (reason: 'cancelled' | 'coordinator_lost' | 'clock', deadlineExpired = false) => {
     if (stopped === undefined) {
       stopped = reason
       preparationDeadlineExpired = deadlineExpired
     }
     cancellation.abort()
     releaseCollection()
-    if (reason === 'coordinator_lost') releaseImportLoans()
     rejectAdmission(new Error('macOS guardian admission stopped'))
-    execution?.stop(reason)
+    execution?.stop(preparationDeadlineExpired ? 'deadline' : reason)
   }
   control.on('close', () => {
     if (phase !== 'terminal') stop('coordinator_lost')
   })
   let timer: ReturnType<typeof setTimeout> | undefined
+  let clearOperationDeadline: (() => void) | undefined
   let failureStep: PrivateMacosGuardianFailureStep = 'configuration'
   try {
     configuration = startMessage(await privateMacosBefore(channel.receive(), 10_000))
@@ -277,44 +312,25 @@ async function supervise(
     // No child exists before the authenticated journal and explicit admission.
     phase = 'prepared'
     channel.send({ type: 'prepared', identity: owner.identity })
-    const operationDeadline =
+    const operationDeadline = normalizePrivateBootDeadline(
       configuration.type === 'start'
-        ? configuration.limits.deadlineUnixMs
-        : configuration.deadlineUnixMs
-    timer = setTimeout(
-      () => stop('cancelled', Date.now() >= operationDeadline),
-      Math.max(0, Math.min(10_000, operationDeadline - Date.now())),
+        ? configuration.limits.bootDeadline
+        : configuration.bootDeadline,
     )
+    clearOperationDeadline = watchPrivateBootDeadline(operationDeadline, (reason) =>
+      reason === 'deadline' ? stop('cancelled', true) : stop('clock'),
+    )
+    timer = setTimeout(() => stop('cancelled'), 10_000)
     const commands = (async () => {
       for (;;) {
         const message = await channel.receive()
-        if (
-          typeof message === 'object' &&
-          message !== null &&
-          typeof (message as { type?: unknown }).type === 'string' &&
-          (message as { type: string }).type.startsWith('import-')
-        ) {
-          if (importRoots === undefined) throw new Error('macOS caller has no import authority')
-          channel.send(importRoots.handle(message))
-          continue
-        }
         const next = object(message, 'type')
         if (next.type === 'cancel') stop('cancelled')
         else if (next.type === 'release' && currentPhase() === 'collecting') releaseCollection()
-        else if (
-          next.type === 'imports-closed' &&
-          currentPhase() === 'collecting' &&
-          importRoots !== undefined
-        )
-          releaseImportLoans()
         else if (next.type === 'admit' && phase === 'prepared' && stopped === undefined) {
           // The short timer bounds waiting for authority, not admitted work.
           // Storage preparation remains inside the original operation deadline.
           clearTimeout(timer)
-          timer = setTimeout(
-            () => stop('cancelled', true),
-            Math.max(0, operationDeadline - Date.now()),
-          )
           phase = 'preparing'
           resolveAdmission()
         } else if (
@@ -374,32 +390,6 @@ async function supervise(
       )
       collector = storage.collector
       storageRoot = storage.directory
-      if (configuration.storage.imports === true) {
-        importRoots = await preparePrivateMacosImportRoots(
-          storageRoot,
-          configuration.limits.deadlineUnixMs,
-          () =>
-            stopped === undefined &&
-            phase === 'running' &&
-            execution?.acceptsOutputImport() === true,
-          () =>
-            stopped !== undefined
-              ? 'stopped'
-              : phase !== 'running'
-                ? 'not-running'
-                : execution === undefined
-                  ? 'not-running'
-                  : execution.outputImportRefusal(),
-        )
-        channel.send({ type: 'import-roots' })
-        await sendPrivateMacosDescriptors(
-          join(dirname(path), 'fd-roots'),
-          { pid: coordinatorPid, version: coordinatorVersion },
-          importRoots.descriptors,
-          5000,
-          cancellation.signal,
-        )
-      }
     }
     if ((configuration.inputDirectories?.length ?? 0) > 0) {
       failureStep = 'input-projection'
@@ -410,9 +400,18 @@ async function supervise(
         inputBundle,
         cancellation.signal,
         configuration.inputAliases,
+        configuration.inputEmptyDirectories,
       )
       inputBundle?.close()
       inputBundle = undefined
+    }
+    if (configuration.evaluationWorkspace !== undefined) {
+      failureStep = 'input-projection'
+      await projectPrivateMacosEvaluationWorkspace(
+        storageRoot!,
+        configuration.evaluationWorkspace,
+        cancellation.signal,
+      )
     }
     await storageRoot?.close()
     storageRoot = undefined
@@ -427,9 +426,6 @@ async function supervise(
           ...configuration.files.protectedRoots,
           configuration.ownerDirectory,
           dirname(path),
-          ...(configuration.storage?.imports === true
-            ? [join(configuration.storage.mountPath, 'imports')]
-            : []),
         ],
       },
     })
@@ -502,7 +498,16 @@ async function supervise(
         stopped === undefined &&
         !outputLost &&
         result.reason === 'payload_exit' &&
-        result.exitCode === 0
+        result.signal === null &&
+        (result.exitCode === 0 ||
+          (configuration.evaluationWorkspace !== undefined && result.exitCode !== null))
+      if (collect && configuration.evaluationWorkspace !== undefined)
+        await collectPrivateMacosEvaluationWorkspace(
+          configuration.storage.mountPath,
+          collector!,
+          configuration.evaluationWorkspace.phase,
+          cancellation.signal,
+        )
       channel.send({ type: 'fenced', result, outputLost, collect })
       if (collect) {
         await sendPrivateMacosDescriptors(
@@ -513,19 +518,10 @@ async function supervise(
           cancellation.signal,
         )
       }
-      // Every live coordinator joins importer work and its original loans before
-      // this owner detaches storage, including cancelled and nonzero callers.
-      // One existing collection bound also settles an unresponsive coordinator.
-      await privateMacosBefore(
-        Promise.all([
-          collect ? collection : Promise.resolve(),
-          importRoots === undefined ? Promise.resolve() : importLoansClosed,
-        ]),
-        21_000,
-      )
+      // The coordinator releases the borrowed collector before storage detaches.
+      if (collect) await privateMacosBefore(collection, 21_000)
       await collector?.close()
       collector = undefined
-      await importRoots?.close()
       failureStep = 'storage-recovery'
       await recoverPrivateMacosGuardianStorage(
         configuration.ownerDirectory,
@@ -542,7 +538,9 @@ async function supervise(
       failureStep,
       execution === undefined && preparationDeadlineExpired
         ? new Error('macOS guardian operation deadline expired', { cause: error })
-        : error,
+        : execution === undefined && stopped === 'clock'
+          ? new Error('macOS guardian native clock unavailable', { cause: error })
+          : error,
     )
     cancellation.abort()
     execution?.stop('coordinator_lost')
@@ -562,7 +560,6 @@ async function supervise(
     storageRoot = undefined
     await collector?.close()
     collector = undefined
-    await importRoots?.close()
     if (configuration?.type === 'start' && configuration.storage !== undefined)
       await recoverPrivateMacosGuardianStorage(
         configuration.ownerDirectory,
@@ -579,11 +576,11 @@ async function supervise(
     if (stopped === undefined) throw error
   } finally {
     clearTimeout(timer)
+    clearOperationDeadline?.()
     inputBundle?.close()
     await inputReceiver?.close()
     await storageRoot?.close()
     await collector?.close()
-    await importRoots?.close()
     for (const socket of streams) socket.destroy()
     channel.close()
   }
