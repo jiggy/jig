@@ -291,9 +291,12 @@ test('release setup reports both token modes and rejects each incomplete App con
       assert.match(result.summary, /Using \*\*GITHUB_TOKEN\*\*/)
       assert.match(result.summary, /No App secrets are required/)
       assert.match(result.summary, /Settings → Actions → General/)
-      assert.match(
-        result.summary,
-        /https:\/\/github\.com\/jiggy\/release-fixture\/settings\/actions/,
+      assert.ok(
+        result.summary
+          .split('\n')
+          .includes(
+            'Open [Settings → Actions → General](https://github.com/jiggy/release-fixture/settings/actions).',
+          ),
       )
       assert.match(result.summary, /Workflow permissions/)
       assert.match(result.summary, /Allow GitHub Actions to create and approve pull requests/)
@@ -362,9 +365,10 @@ test('successful built-in release PRs link the actual approval and maintainer me
   assert.doesNotMatch(handoff.run, /\b(?:gh|curl|wget)\b|\$\{\{/)
   const result = await runWriterStep(handoff, { RELEASE_PR_NUMBER: '123' })
   assert.equal(result.status, 0, result.output)
-  assert.match(
-    result.summary,
-    /\[release PR #123\]\(https:\/\/github\.com\/jiggy\/release-fixture\/pull\/123\)/,
+  assert.ok(
+    result.summary
+      .split('\n')
+      .includes('Open [release PR #123](https://github.com/jiggy/release-fixture/pull/123).'),
   )
   assert.match(result.summary, /If shown, select \*\*Approve workflows to run\*\*/)
   assert.match(result.summary, /required checks and reviews, then merge it as a maintainer/)
