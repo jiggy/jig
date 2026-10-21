@@ -30,6 +30,9 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   project consumes the byte-identical SDK archive as a declared source workspace
   member. This qualifies source-workspace consumption of a frozen public artifact,
   not registry publication or standalone packaged-dependency consumption.
+  `lockFoundationWorkspace` runs the pinned Bun's ordinary lock-only install before review, within the existing 120-second authoring allowance.
+  It removes generated installation links, leaving review to prepare captured dependencies through the real native boundary.
+  Review receives no resolution permission and must preserve the authored lock bytes.
 - No private helpers, custom launchers, provider calls, source admission changes,
   runtime installation, or checkpoint assumptions enter either application.
 - Native opt-in and actual native prerequisite observation precede payloads.

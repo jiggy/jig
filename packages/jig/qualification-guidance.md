@@ -255,6 +255,9 @@ These links locate module rules. All selected domain requirements still apply.
   Mac's fresh initialized greeting uses the frozen public SDK as an ordinary
   declared workspace member. It retains scratch and child execution checks
   without claiming public registry availability.
+  The installed pinned Bun generates its workspace lock before each review, including after adding the child member.
+  Review receives no resolution-network grant and must preserve the authored lock bytes.
+  Remove generated installation links before review to require genuine captured dependency preparation.
 
   When `JIG_MACOS_TEST_TIMINGS_DIRECTORY` is configured, only its first review
   writes the existing bounded private phase trace to

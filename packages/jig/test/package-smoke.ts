@@ -1,4 +1,3 @@
-import { flowSdkDirectory } from './fixtures/flow-dependency'
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import {
@@ -17,6 +16,7 @@ import { tmpdir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 import { MACOS_FIXTURE_RUN_MS, MACOS_FIXTURE_SETTLEMENT_MS } from './fixtures/agent-fixture-host.js'
 import { settleTestCommand } from './fixtures/bounded-command.js'
+import { flowSdkDirectory } from './fixtures/flow-dependency'
 import {
   checkInstalledDisplay,
   expectedInstalledFiles,
@@ -500,6 +500,29 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
     )
     assert.notEqual(scratchGreeting, greeting)
     await writeFile(greetingPath, scratchGreeting)
+    const lockWorkspace = async () => {
+      await run(
+        [
+          runtime,
+          '--no-env-file',
+          '--config=/dev/null',
+          'install',
+          '--lockfile-only',
+          '--ignore-scripts',
+          '--no-progress',
+        ],
+        project,
+        {},
+        120_000,
+      )
+      await rm(join(project, 'node_modules'), { recursive: true, force: true })
+      const lock = await readFile(join(project, 'bun.lock'), 'utf8')
+      assert.match(lock, /@jigging\/flow@workspace:libs\/flow/)
+      return lock
+    }
+    // Freeze the ordinary workspace before review. This consumer qualifies the
+    // supplied SDK and native execution, without a cold resolution inside review.
+    const greetingLock = await lockWorkspace()
     const evidenceDirectory = process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY
     if (evidenceDirectory) assert(isAbsolute(evidenceDirectory))
     // One fresh review owns this exclusive, bounded trace of fixed phase names
@@ -512,12 +535,8 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
           ),
         }
       : {}
-    await run(
-      [command, 'review', '--allow-resolution-network', '--yes'],
-      project,
-      reviewEnvironment,
-      120_000,
-    )
+    await run([command, 'review', '--yes'], project, reviewEnvironment, 120_000)
+    assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), greetingLock)
     const result = await run(
       [command, 'run', 'flow:flows/hello', '--input', JSON.stringify('Ada')],
       project,
@@ -569,12 +588,10 @@ if (project.flows.roots[0] !== "flows" || binding.package !== "flows/review" ||
         'export default defineBinding({ package: "flows/hello", slots: { child: "flow:flows/child" } });',
       ].join('\n'),
     )
-    await run(
-      [command, 'review', '--allow-resolution-network', '--allow-authority-changes', '--yes'],
-      project,
-      {},
-      120_000,
-    )
+    // The new member changes workspace membership, so regenerate its real lock.
+    const childLock = await lockWorkspace()
+    await run([command, 'review', '--allow-authority-changes', '--yes'], project, {}, 120_000)
+    assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), childLock)
     const composed = await run(
       [command, 'run', 'binding:with-child', '--input', JSON.stringify('Ada')],
       project,

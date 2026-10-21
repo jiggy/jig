@@ -17,6 +17,7 @@ import {
   type FoundationQualification,
   foundationCommands,
   foundationResidue,
+  lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
 
 const application = resolve(import.meta.dir, 'incident-brief')
@@ -177,10 +178,9 @@ export default defineBinding({package:'flows/agent-task',settings:{refuseSuccess
   )
   const cli = join(directory, 'node_modules/.bin/jig')
   const before = await foundationResidue(qualification, command, directory)
-  await command(
-    [cli, 'review', '--yes', '--allow-authority-changes', '--allow-resolution-network'],
-    project,
-  )
+  const sourceLock = await lockFoundationWorkspace(project, command)
+  await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
+  assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   const lock = await hash(join(project, 'jig.lock'))
   // Remove all mutable methods after approval: execution must use admitted bytes.
   await rm(join(project, 'flows'), { recursive: true })

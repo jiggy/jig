@@ -7,6 +7,7 @@ import {
   type FoundationQualification,
   foundationCommands,
   foundationResidue,
+  lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
 
 /** Registration-free installed consumer. Only public archive exports enter its sources. */
@@ -126,7 +127,9 @@ export default defineBinding({package:'flows/root',slots:{
     [cli, 'import-contract', 'jig:run-checkpoint', 'flows/root/contracts/progress'],
     project,
   )
-  await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
+  const sourceLock = await lockFoundationWorkspace(project, command)
+  await command([cli, 'review', '--yes'], project)
+  assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   await put('client.ts', consumer)
   await command(
     [process.execPath, '--no-env-file', '--no-install', join(directory, 'client.ts'), cli],

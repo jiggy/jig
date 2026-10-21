@@ -1,5 +1,5 @@
-import { flowSdkRuntimeDirectory } from './../fixtures/flow-dependency'
 import { dirname as suiteDirname } from 'node:path'
+import { flowSdkRuntimeDirectory } from './../fixtures/flow-dependency'
 
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
@@ -102,7 +102,7 @@ async function fixture(validation = false, barrierChannel = false, unacknowledge
     await writeFile(
       join(path, 'FLOW.ts'),
       name === 'worker'
-        ? `import {handle} from './sdk/index.js'; await handle(async run=>{await Bun.sleep(run.input.ms);return {outcome:'done',output:{value:'settled'}}});`
+        ? `import {handle} from './sdk/index.js'; await handle(async run=>{console.error('checkpoint-worker-started:'+run.input.ms);await Bun.sleep(run.input.ms);return {outcome:'done',output:{value:'settled'}}});`
         : validation
           ? `import {handle} from './sdk/index.js'; await handle(async run=>{
         let operation=0;
@@ -369,6 +369,7 @@ describe.serial('root retained progress', () => {
         const root = await fixture(false, true, unacknowledged)
         const coordinatorStarted = join(root, 'coordinator.started')
         const transcript = join(root, 'channels.ndjson')
+        const workerDiagnostics = join(root, 'workers.stderr')
         const destination = join(root, 'result')
         let pid: number | undefined
         let stopped = false
@@ -381,8 +382,9 @@ describe.serial('root retained progress', () => {
             // Exec preserves the coordinator PID. Only its initial ordinary
             // --receive stdout is redirected; production recovery must retain
             // its original JSON pipe. Never manufacture the recovery marker.
-            'umask 077; set -C; if [ -n "$JIG_PRIVATE_FILE_RECOVERY" ]; then exec "$@"; else exec "$@" > "$0"; fi',
+            'umask 077; set -C; worker_diagnostics=$1; shift; if [ -n "$JIG_PRIVATE_FILE_RECOVERY" ]; then exec "$@"; else exec "$@" > "$0" 2> "$worker_diagnostics"; fi',
             transcript,
+            workerDiagnostics,
             installedBunLocation.executablePath,
             '--no-env-file',
             '--no-install',
@@ -411,8 +413,14 @@ describe.serial('root retained progress', () => {
         try {
           const until = Date.now() + (process.platform === 'darwin' ? 45_000 : 20_000)
           while (!finished && Date.now() < until) {
+            const diagnostics = await readFile(workerDiagnostics, 'utf8').catch((error) => {
+              if ((error as NodeJS.ErrnoException).code === 'ENOENT') return ''
+              throw error
+            })
             if (
               pid === undefined &&
+              diagnostics.includes('checkpoint-worker-started:300') &&
+              diagnostics.includes('checkpoint-worker-started:60000') &&
               (unacknowledged
                 ? await checkpointAccepted(root, phase === 'replacement' ? 2 : 1)
                 : (await readBarrierRecords(transcript, phase)).length > 0)
@@ -420,6 +428,8 @@ describe.serial('root retained progress', () => {
               // Raw-peer acceptance comes from the protected store; its unread
               // result may already be buffered. Other phases come from actual
               // public channel NDJSON, after which the Flow cannot save again.
+              // Both native children must have entered their actual handlers.
+              // A sent call or checkpoint alone can precede child allocation.
               pid = Number(await readFile(coordinatorStarted, 'utf8'))
               if (!Number.isSafeInteger(pid) || pid < 2)
                 throw new Error('invalid checkpoint coordinator PID')

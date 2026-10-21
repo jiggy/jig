@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
+import { openPrivateSourceChild } from '../internal/descriptor-files.js'
 import {
   privateMacosAnonymousBacking,
   privateMacosContainedAnonymousBacking,
   privateMacosDirectory,
   privateMacosDuplicate,
-  privateMacosOpenAt,
   privateMacosStatAt,
 } from '../internal/macos-descriptor-files.js'
 import { packageDigest } from './digest.js'
@@ -202,10 +202,11 @@ async function captureOpenedRootAttempt(
       selection,
       singlyLinked,
       maximumDirectories,
+      contained,
     )
     let verification: SourceFingerprint[]
     try {
-      verification = await fingerprintTree(root, selection, maximumDirectories)
+      verification = await fingerprintTree(root, selection, maximumDirectories, contained)
     } catch (error) {
       if (isVerificationMutation(error)) {
         sourceChanged('package source changed before verification completed', root.requestedPath)
@@ -450,6 +451,7 @@ async function captureAttempt(
   selection?: PackageCaptureSelection,
   singlyLinked = false,
   maximumDirectories = MAX_DIRECTORIES,
+  contained = false,
 ): Promise<{ records: CapturedRecord[]; fingerprints: SourceFingerprint[] }> {
   const records: CapturedRecord[] = []
   const fingerprints: SourceFingerprint[] = []
@@ -471,7 +473,7 @@ async function captureAttempt(
         logicalDirectory.length === 0 ? name : `${logicalDirectory}/${name}`,
       )
       if (selection !== undefined && !selection.includes(logicalPath)) continue
-      const entry = await openDirectoryEntry(directory, name, logicalPath)
+      const entry = await openDirectoryEntry(directory, name, logicalPath, contained)
       try {
         if (entry.information.isDirectory()) {
           const key = identityKey(entry.information)
@@ -592,6 +594,7 @@ async function fingerprintTree(
   root: OpenRoot,
   selection?: PackageCaptureSelection,
   maximumDirectories = MAX_DIRECTORIES,
+  contained = false,
 ): Promise<SourceFingerprint[]> {
   const result: SourceFingerprint[] = []
   const directories = new Set<string>([identityKey(root.information)])
@@ -606,7 +609,7 @@ async function fingerprintTree(
         logicalDirectory.length === 0 ? name : `${logicalDirectory}/${name}`,
       )
       if (selection !== undefined && !selection.includes(logicalPath)) continue
-      const entry = await openDirectoryEntry(directory, name, logicalPath)
+      const entry = await openDirectoryEntry(directory, name, logicalPath, contained)
       try {
         if (entry.information.isDirectory()) {
           const key = identityKey(entry.information)
@@ -710,6 +713,7 @@ async function openDirectoryEntry(
   directory: FileHandle,
   name: string,
   logicalPath: string,
+  contained: boolean,
 ): Promise<{ handle: FileHandle; information: BigIntStats }> {
   const descriptorPath = `/proc/self/fd/${directory.fd}/${name}`
   let observed: BigIntStats
@@ -736,10 +740,7 @@ async function openDirectoryEntry(
     (observed.isDirectory() ? constants.O_DIRECTORY : 0)
   let handle: FileHandle
   try {
-    handle =
-      process.platform === 'darwin'
-        ? await privateMacosOpenAt(directory.fd, name, flags)
-        : await open(descriptorPath, flags)
+    handle = await openPrivateSourceChild(directory, name, flags, contained)
   } catch (error) {
     if (isResourceError(error)) resourceExhausted(error, 'cannot open package entry', logicalPath)
     if (isEntryRace(error)) sourceChanged('package entry changed while it was opened', logicalPath)

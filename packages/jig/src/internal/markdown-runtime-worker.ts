@@ -1,9 +1,7 @@
-import { createHash } from 'node:crypto'
 import { basename, dirname, resolve } from 'node:path'
 import { handle } from '@jigging/flow'
-import { runMarkdown } from '../markdown/runtime.js'
 import { capturePrivateContainedPackageDirectory } from '../package/capture.js'
-import { inspectCapturedPackage, requireSupportedPackageProfile } from '../package/inspect.js'
+import { runCapturedMarkdown } from './markdown-runtime-invocation.js'
 
 // This entry runs inside the same contained FLOW/0 process as a code runner.
 // The sole argument names its immutable package; provider credentials, host
@@ -13,21 +11,7 @@ await handle(async (run) => {
     throw new TypeError('the Markdown runtime requires one FLOW.md entrypoint')
   const captured = await capturePrivateContainedPackageDirectory(dirname(resolve(process.argv[2]!)))
   try {
-    const inspected = await inspectCapturedPackage(captured)
-    requireSupportedPackageProfile(inspected)
-    if (inspected.entrypoint.path !== 'FLOW.md' || inspected.markdown === undefined)
-      throw new TypeError('the captured package has no Markdown invocation')
-    const manifest = []
-    for (const file of captured.files) {
-      run.signal.throwIfAborted()
-      const hash = createHash('sha256')
-      for await (const bytes of captured.stream(file.path, file.size)) hash.update(bytes)
-      manifest.push(Object.freeze({ ...file, digest: `sha256:${hash.digest('hex')}` }))
-    }
-    return await runMarkdown(inspected.markdown, run, {
-      manifest: Object.freeze(manifest),
-      read: (path, maximumBytes) => captured.read(path, maximumBytes),
-    })
+    return await runCapturedMarkdown(captured, run)
   } finally {
     await captured.dispose()
   }

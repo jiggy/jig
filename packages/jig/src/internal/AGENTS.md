@@ -28,6 +28,11 @@ admission and execution rules. Ticket checkpoints and export require admission
 and file rules. Controlled evaluation requires execution, admission and file rules,
 plus native rules on Mac.
 
+`markdown-runtime-invocation.ts` owns interpretation of an already captured
+Markdown package through a real FLOW SDK invocation. The installed
+`markdown-runtime-worker.ts` owns contained capture and disposal. Source protocol
+tests use genuine host capture through their own fixture entry.
+
 ## Local Contracts
 
 - Every `Private*` export remains package-private and is not an extension SPI.
@@ -50,6 +55,8 @@ plus native rules on Mac.
 - Native ACP public delivery rejects literal provider credentials before sending projected strings.
   Rejection immediately stops the root Run before exposing a catchable child failure.
   The Agent guide owns matching limits and launch-copy cleanup.
+
+- Source capture and freshness walks reject mount transitions at every descendant through the shared native source open operation.
 
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.

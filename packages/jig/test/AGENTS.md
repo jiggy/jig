@@ -68,6 +68,8 @@ Checkpoint loss barriers must match the authoritative commit boundary.
 Delivery callbacks run after the protected save commits.
 Use a real selected-channel send followed by a hold before the next save.
 An awaited save result establishes the acknowledged boundary.
+Observe both child handlers' real startup diagnostics before stopping the coordinator.
+These scenarios qualify admitted-child recovery, not interrupted allocation before the cleanup ledger commits.
 
 Accepted-but-unobserved cases use a real Run/0 peer that never consumes the
 selected response. Readonly storage proves the accepted sequence before actual
@@ -194,6 +196,11 @@ lock/request identities. It does not qualify native preparation or execution.
 Resolve SDK runtime files through the declared external package entrypoint.
 Never require a neighboring FLOW checkout or copy its private source.
 Installed artifact tests use frozen supplied archives or the installed public package.
+
+Foundation and application consumers author their frozen-library workspace locks before review through `lockFoundationWorkspace`.
+Their reviews preserve those lock bytes without resolution permission.
+Dedicated dependency-preparation suites retain unlocked-resolution coverage and its explicit permission.
+
 `fixtures/flow-conformance/` retains explicit Apache-licensed parser and authoring regression snapshots.
 FLOW owns their canonical meaning. Coordinate snapshot changes with the adopted FLOW candidate.
 
@@ -254,13 +261,24 @@ experiments do not control production process decoding.
 worker. Its fresh temporary root owns consumers and failure evidence. It does
 not build a second source worker. Source-worker compilation and direct protocol
 exchanges belong to `portable/markdown-worker.test.ts`.
+
+Its source fixture uses
+real host package capture and the shared `markdown-runtime-invocation.ts`. The
+installed entry alone selects contained capture. Neither rewrites source.
+
+`linux-host/project-source-mounts.test.ts` checks real bind, tmpfs and file
+mount refusal, including declaration reads and freshness after a new bind mount
+in the fixture-owned user and mount namespace.
+The freshness fixture maps namespace root to the unprivileged host user for util-linux mount authorization.
+Only that namespace retains `CAP_SYS_ADMIN` for the post-capture mount and unmount.
 The installed composition case uses a real Agent-contract decision task, code
 child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
 and template inputs without substituting a Run context.
 
-The composition requests 45 seconds before submission for its four native
-decision turns and code child. The command remains bounded at 60 seconds and
-the case at 120 seconds. Progress cannot renew any of these deadlines.
+The composition uses the shared five-minute Mac Run budget for its four native decision turns and code child.
+Its command retains the shared 75-second settlement reserve, with 60 seconds for case setup.
+Linux retains its 45-second Run and 60-second command bounds.
+Progress cannot renew any of these deadlines.
 
 Repair leaf proofs use separate successful and unsuccessful whole files. Each
 retains its original guardian observer, scenario body, fresh consumer and
