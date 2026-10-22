@@ -3,6 +3,10 @@ import { readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { PrivateExecutionPreparationDeadlineError } from '../../src/internal/execution-process.js'
 import {
+  privateBootDeadlineFromUnix,
+  privateBootRemaining,
+} from '../../src/internal/native-clock.js'
+import {
   collect,
   createFixture,
   hostConfiguration,
@@ -28,12 +32,21 @@ describe.serial('native Linux preparation deadline evidence', () => {
     const host = await hostConfiguration()
     const fixture = await createFixture('console.log("unexpected payload execution")')
     const requested = plan(host, fixture, 'expired-preparation', { deadlineMs: 1_000 })
+    const bootDeadline = privateBootDeadlineFromUnix(requested.limits.deadlineUnixMs)
     let component: Awaited<ReturnType<typeof host.backend.launch>> | undefined
     let failure: unknown
     try {
-      const sealed = await host.backend.seal(requested)
-      // Real elapsed time, not a substituted clock or fabricated receipt.
-      await Bun.sleep(Math.max(0, requested.limits.deadlineUnixMs - Date.now()) + 50)
+      const sealed = await host.backend.seal({
+        ...requested,
+        limits: { ...requested.limits, bootDeadline },
+      })
+      // The native watchdog includes cancellation grace before fencing.
+      const fenceDeadline = {
+        ...bootDeadline,
+        monotonicMs: bootDeadline.monotonicMs + requested.limits.cancellationGraceMs,
+      }
+      await Bun.sleep(privateBootRemaining(fenceDeadline) + 50)
+      expect(privateBootRemaining(fenceDeadline)).toBe(0)
       await sealed.admit().then(
         (value) => {
           component = value
