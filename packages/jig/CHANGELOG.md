@@ -1,5 +1,11 @@
 # @jigging/jig
 
+## 0.1.0-alpha.41
+
+### Patch Changes
+
+- acab064: Preserve cancellation requested before sealed Linux admission, even after deadline expiry, while retaining authenticated owner cleanup.
+
 ## 0.1.0-alpha.40
 
 ### Patch Changes
