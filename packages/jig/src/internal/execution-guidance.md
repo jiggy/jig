@@ -236,6 +236,11 @@ These links locate module rules. All selected domain requirements still apply.
   owner state must be released first. A failed handshake or elapsed wall time alone does
   not prove expiry. Unconfirmed cleanup retains its fatal failure.
 
+- Linux launch rejects an already-aborted signal before supervisor startup, using
+  the existing authenticated cleanup path for its sealed owner.
+  Recheck abort state after subscribing so cancellation requested during startup is not lost.
+  A later signal state must not relabel authenticated deadline or cleanup evidence.
+
 - Project commands use reviewed Binding policy, sealed candidate bytes,
   installed Bun, and a collector outside candidate execution. Command owner rows
   and independent supervision survive coordinator loss without replay.

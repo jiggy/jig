@@ -652,6 +652,7 @@ export class PrivateLinuxCgroupBackend {
     let outputDirectory: FileHandle | undefined
     try {
       await listen(server, controlPath)
+      if (signal?.aborted) throw new Error('rootless Linux Run was cancelled before startup')
       const accepted = acceptOne(server, this.#options.startupTimeoutMs)
       const inputFds: number[] = []
       try {
@@ -702,6 +703,7 @@ export class PrivateLinuxCgroupBackend {
       })
       const cancel = (): void => writeControlBestEffort(control!, { type: 'cancel' })
       signal?.addEventListener('abort', cancel, { once: true })
+      if (signal?.aborted) cancel()
       const preparedMessage = requireSupervisorMessage(
         await withTimeout(
           readPrivateSupervisorMessage(messages, closed),

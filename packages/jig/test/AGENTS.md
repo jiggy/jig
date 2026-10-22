@@ -165,7 +165,8 @@ genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
 `linux-host/linux-preparation-deadline.test.ts` uses real elapsed late admission,
 native fencing and residue checks. Late admission waits past the frozen native
 deadline and its cancellation grace, then verifies native expiry before admission.
-Pre-admission cancellation must not acquire a deadline classification.
+Cancellation requested before `admit()` starts must not acquire a deadline
+classification, even after the sealed deadline and grace expire.
 These cases do not extend configuration-evaluator or Run limits.
 
 Native fixtures use the official installed supervisor bundle and runtime mounts.
