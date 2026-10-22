@@ -101,4 +101,49 @@ describe.serial('native Linux preparation deadline evidence', () => {
       await rm(fixture, { recursive: true, force: true })
     }
   }, 30_000)
+
+  test('pre-admission cancellation takes precedence after the sealed deadline and grace', async () => {
+    const host = await hostConfiguration()
+    const fixture = await createFixture('console.log("unexpected payload execution")')
+    const requested = plan(host, fixture, 'cancelled-expired-preparation', { deadlineMs: 1_000 })
+    const bootDeadline = privateBootDeadlineFromUnix(requested.limits.deadlineUnixMs)
+    let component: Awaited<ReturnType<typeof host.backend.launch>> | undefined
+    let failure: unknown
+    try {
+      const sealed = await host.backend.seal({
+        ...requested,
+        limits: { ...requested.limits, bootDeadline },
+      })
+      const fenceDeadline = {
+        ...bootDeadline,
+        monotonicMs: bootDeadline.monotonicMs + requested.limits.cancellationGraceMs,
+      }
+      await Bun.sleep(privateBootRemaining(fenceDeadline) + 50)
+      expect(privateBootRemaining(fenceDeadline)).toBe(0)
+      const cancellation = new AbortController()
+      cancellation.abort()
+      await sealed.admit(cancellation.signal).then(
+        (value) => {
+          component = value
+        },
+        (error) => {
+          failure = error
+        },
+      )
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure).not.toBeInstanceOf(PrivateExecutionPreparationDeadlineError)
+      expect((failure as Error).message).toContain('cancelled before')
+    } finally {
+      if (component) {
+        await component.terminate()
+        await Promise.all([
+          collect(component.stdout, 4096),
+          collect(component.stderr, 4096),
+          component.completion,
+        ])
+      }
+      await waitForNoRunCgroups()
+      await rm(fixture, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
