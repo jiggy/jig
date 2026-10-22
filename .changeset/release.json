@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "baseRevision": "30f78fad44f6b32bb8604eb12f09fe675fd28f7c",
+  "sourceDigest": "57f8f3e90aa251fbe2e98548b715204cc99fe685e271d4cf8b7339e60a6f31ba",
+  "changesets": [
+    {
+      "id": "automate-independent-releases",
+      "sha256": "9a6fa2b7cf967509b5ee5ce79574a63fbceac2ff8f39bfa18398ab0378611361"
+    },
+    {
+      "id": "preserve-linux-preparation-deadline",
+      "sha256": "297af9b07478f08cf874a2fdad3d194c3ecdfd7643665ac47f6475f0075e275f"
+    },
+    {
+      "id": "settle-collected-linux-scopes",
+      "sha256": "78f32b800e5c65540b01d6843a9fcec2d62e0cc5d35bc5f88cc651164dbff940"
+    }
+  ],
+  "releases": [
+    {
+      "name": "@jigging/agent-acp",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.11",
+      "newVersion": "0.1.0-alpha.12"
+    },
+    {
+      "name": "@jigging/agent-method",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.9",
+      "newVersion": "0.1.0-alpha.10"
+    },
+    {
+      "name": "@jigging/display-model",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.1",
+      "newVersion": "0.1.0-alpha.2"
+    },
+    {
+      "name": "@jigging/display-tui",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.1",
+      "newVersion": "0.1.0-alpha.2"
+    },
+    {
+      "name": "@jigging/display-web",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.1",
+      "newVersion": "0.1.0-alpha.2"
+    },
+    {
+      "name": "@jigging/jig",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.39",
+      "newVersion": "0.1.0-alpha.40"
+    },
+    {
+      "name": "@jigging/reporting",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.1",
+      "newVersion": "0.1.0-alpha.2"
+    }
+  ]
+}

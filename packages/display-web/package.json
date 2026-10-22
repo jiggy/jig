@@ -1,6 +1,6 @@
 {
   "name": "@jigging/display-web",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "Independent browser renderer for semantic display snapshots",
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
@@ -47,8 +47,8 @@
     "THIRD_PARTY_NOTICES"
   ],
   "dependencies": {
-    "@jigging/reporting": "0.1.0-alpha.1",
-    "@jigging/display-model": "0.1.0-alpha.1"
+    "@jigging/reporting": "0.1.0-alpha.2",
+    "@jigging/display-model": "0.1.0-alpha.2"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

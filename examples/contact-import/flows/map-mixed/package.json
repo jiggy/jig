@@ -4,6 +4,6 @@
   "type": "module",
   "dependencies": {
     "@jigging/flow": "0.1.0-alpha.15",
-    "@jigging/reporting": "0.1.0-alpha.1"
+    "@jigging/reporting": "0.1.0-alpha.2"
   }
 }
