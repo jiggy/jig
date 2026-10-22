@@ -163,9 +163,10 @@ Exact delayed-readiness, held-gate and injected setup-failure windows require
 genuine process or OS boundaries. Rewritten supervisors cannot qualify them.
 
 `linux-host/linux-preparation-deadline.test.ts` uses real elapsed late admission,
-native fencing and residue checks. Pre-admission cancellation must not acquire
-a deadline classification. These cases do not extend configuration-evaluator
-or Run limits.
+native fencing and residue checks. Late admission waits past the frozen native
+deadline and its cancellation grace, then verifies native expiry before admission.
+Pre-admission cancellation must not acquire a deadline classification.
+These cases do not extend configuration-evaluator or Run limits.
 
 Native fixtures use the official installed supervisor bundle and runtime mounts.
 `linux/linux-rootless-run.test.ts` executes the relocated bundle without adjacent
