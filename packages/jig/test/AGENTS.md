@@ -137,6 +137,11 @@ the declared mapping work without claiming model quality.
 `host/installed-incident-brief.test.ts` checks the private handoff application
 with an ordinary bounded conversation task. Pure application cases do not prove
 dispatch races, native session restoration or cleanup.
+
+Its settlement assertions include bounded turn observations and allowlisted
+public operation codes through `fixtures/incident-diagnostics.ts`.
+Diagnostics exclude messages, task context and exception payloads. They do not establish host causes or cleanup.
+
 `host/installed-support-case.test.ts` checks unchanged application composition
 with an ordinary deterministic assessment task. Pure support tests own policy
 and views, not dispatch or native cleanup.
