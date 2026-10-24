@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
@@ -128,6 +128,56 @@ async function fixture(t) {
   )
   return { root, base: commit(root, 'Initial fixture') }
 }
+
+test('release Git joins real automatic maintenance before temporary repository cleanup', async (t) => {
+  const { root } = await fixture(t)
+  for (const [name, value] of [
+    ['maintenance.auto', 'true'],
+    ['maintenance.autoDetach', 'true'],
+    ['gc.autoDetach', 'true'],
+    ['maintenance.strategy', 'incremental'],
+    ['maintenance.commit-graph.enabled', 'true'],
+    ['maintenance.commit-graph.auto', '-1'],
+    ['maintenance.gc.enabled', 'false'],
+    ['maintenance.loose-objects.enabled', 'false'],
+    ['maintenance.incremental-repack.enabled', 'false'],
+    ['maintenance.prefetch.enabled', 'false'],
+  ])
+    git(root, ['config', name, value])
+  const configuration = git(root, ['config', '--local', '--list'])
+  await put(root, 'README.md', 'Exercise real automatic maintenance.\n')
+  git(root, ['add', '.'])
+  const trace = join(root, '.git', 'maintenance-trace.jsonl')
+  git(root, ['commit', '--quiet', '-m', 'Trigger automatic maintenance'], {
+    env: { ...process.env, GIT_TRACE2_EVENT: trace },
+  })
+
+  const events = (await readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse)
+  const starts = events.filter(({ event }) => event === 'start')
+  assert.ok(starts.some(({ argv }) => argv.includes('maintenance')))
+  assert.ok(starts.some(({ argv }) => argv.includes('commit-graph') && argv.includes('write')))
+  assert.equal(
+    events.some(({ category, label }) => category === 'maintenance' && label === 'detach'),
+    false,
+    'Automatic maintenance must not detach from the owning Git invocation',
+  )
+  for (const { sid } of starts) {
+    assert.ok(
+      events.some((event) => event.event === 'atexit' && event.sid === sid && event.code === 0),
+      'Every real Git child must finish successfully before the owning call returns',
+    )
+  }
+  const ownerExit = events.findIndex(
+    ({ event, sid }) => event === 'atexit' && sid === starts[0].sid,
+  )
+  assert.ok(events.slice(ownerExit + 1).every(({ event }) => event !== 'atexit'))
+  const graphs = await readdir(join(root, '.git', 'objects', 'info', 'commit-graphs'))
+  assert.ok(graphs.includes('commit-graph-chain'))
+  assert.ok(graphs.some((name) => /^graph-[a-f0-9]+\.graph$/.test(name)))
+  assert.ok(graphs.every((name) => !name.endsWith('.lock') && !name.startsWith('tmp_')))
+  git(root, ['commit-graph', 'verify'])
+  assert.equal(git(root, ['config', '--local', '--list']), configuration)
+})
 
 test('PR coverage requires a new note for each directly changed package', async (t) => {
   const { root, base } = await fixture(t)

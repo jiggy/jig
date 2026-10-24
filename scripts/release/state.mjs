@@ -12,12 +12,17 @@ const activeNote = /^\.changeset\/([A-Za-z0-9][A-Za-z0-9_-]*)\.md$/
 const guidanceNote = /^(?:AGENTS|CLAUDE|GEMINI)\.md$/i
 
 export function git(root, args, options = {}) {
-  return execFileSync('git', ['-C', root, ...args], {
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-    timeout: 120_000,
-    ...options,
-  })
+  // Temporary repositories remain owned until automatic maintenance also exits.
+  return execFileSync(
+    'git',
+    ['-c', 'maintenance.autoDetach=false', '-c', 'gc.autoDetach=false', '-C', root, ...args],
+    {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      timeout: 120_000,
+      ...options,
+    },
+  )
 }
 
 export function requireRevision(revision) {
