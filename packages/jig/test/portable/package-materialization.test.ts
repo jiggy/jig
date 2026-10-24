@@ -1,12 +1,16 @@
 import { describe, expect, setDefaultTimeout, test } from 'bun:test'
+import { constants } from 'node:fs'
 import {
   chmod,
+  type FileHandle,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   readlink,
   realpath,
+  rename,
   rm,
   stat,
   symlink,
@@ -268,6 +272,53 @@ describe('private package materialization', () => {
       await rm(protectedParent, { recursive: true, force: true })
     }
   })
+  test('verifies and reacquires a deep shared hierarchy through real held directories', async () => {
+    const source = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-deep-source-')))
+    const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-deep-')))
+    try {
+      const prefix = Array.from({ length: 12 }, (_, index) => `level-${index}`).join('/')
+      const files: Record<string, string> = Object.fromEntries(
+        Array.from({ length: 12 }, (_, index) => [
+          `${prefix}/shared/value-${index}.txt`,
+          `shared ancestor bytes ${index}\n`,
+        ]),
+      )
+      files[`${prefix}/constructor/__proto__/value.txt`] = 'ordinary logical path segments\n'
+      files['sibling/value.txt'] = 'independent branch bytes\n'
+      await writeTree(source, files)
+      const captured = await capturePackageDirectory(source)
+      let lease: PrivatePackageMaterializationLease | undefined
+      try {
+        const allocation = await allocatePrivatePackageMaterialization({
+          protectedParent,
+          name: 'run-deep-shared',
+          packageDigest: captured.digest,
+          ownerToken: 'deep:shared:materialization:owner',
+        })
+        lease = await materializePrivatePackageLease(captured, allocation)
+        for (const [path, bytes] of Object.entries(files)) {
+          expect(await readFile(join(lease.root, path), 'utf8')).toBe(bytes)
+          expect((await stat(join(lease.root, path))).mode & 0o777).toBe(0o444)
+        }
+        expect((await stat(join(lease.root, prefix, 'shared'))).mode & 0o777).toBe(0o555)
+        const reopened = await reacquirePrivatePackageMaterializationLease(
+          protectedParent,
+          JSON.parse(JSON.stringify(lease.identity)),
+        )
+        expect(reopened.packageDigest).toBe(captured.digest)
+        await reopened.dispose()
+        lease = undefined
+        expect(await readdir(protectedParent)).toEqual([])
+      } finally {
+        await captured.dispose()
+        await lease?.dispose()
+      }
+    } finally {
+      await makeFixtureRemovable(protectedParent)
+      await rm(source, { recursive: true, force: true })
+      await rm(protectedParent, { recursive: true, force: true })
+    }
+  })
   test('recovers a subprocess crash after mkdir and before open', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))
     const protectedParent = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialize-leases-')))
@@ -499,6 +550,117 @@ describe('private workspace layout materialization', () => {
         JSON.parse(JSON.stringify(lease.identity)),
       )
       await reopened.dispose()
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+  test('rejects changed regular-file, directory and alias-only parent modes', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      for (const entry of [
+        { path: 'libraries/shared/value.txt', directory: false, mode: 0o600, original: 0o444 },
+        { path: 'libraries/shared', directory: true, mode: 0o700, original: 0o555 },
+        { path: 'node_modules/@fixture', directory: true, mode: 0o755, original: 0o555 },
+      ]) {
+        const handle = await open(
+          join(lease.root, entry.path),
+          constants.O_RDONLY | constants.O_NOFOLLOW | (entry.directory ? constants.O_DIRECTORY : 0),
+        )
+        try {
+          await handle.chmod(entry.mode)
+          const error = await reacquirePrivatePackageMaterializationLease(
+            fixture.protectedParent,
+            lease.identity,
+          ).then(
+            () => undefined,
+            (failure: unknown) => failure,
+          )
+          expect(error).toBeInstanceOf(Error)
+        } finally {
+          await handle.chmod(entry.original)
+          await handle.close()
+        }
+      }
+      const restored = await reacquirePrivatePackageMaterializationLease(
+        fixture.protectedParent,
+        lease.identity,
+      )
+      expect(restored.packageDigest).toBe(fixture.captured.digest)
+      expect(
+        await readFile(join(restored.root, 'node_modules/@fixture/shared/value.txt'), 'utf8'),
+      ).toBe('shared bytes\n')
+      await restored.dispose()
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await fixture.dispose()
+    }
+  })
+  test('rejects exchanged named package directories even when their bytes and aliases match', async () => {
+    const fixture = await workspaceFixture()
+    try {
+      const first = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      const secondAllocation = await allocatePrivatePackageMaterialization({
+        protectedParent: fixture.protectedParent,
+        name: 'run-replacement',
+        packageDigest: fixture.captured.digest,
+        ownerToken: 'workspace:replacement:owner',
+        aliases: fixture.layout.aliases,
+      })
+      const second = await materializePrivatePackageLease(fixture.captured, secondAllocation)
+      expect(first.identity.package.ino).not.toBe(second.identity.package.ino)
+      const handles: FileHandle[] = []
+      try {
+        for (const path of [
+          first.identity.transaction.path,
+          second.identity.transaction.path,
+          first.root,
+          second.root,
+        ])
+          handles.push(
+            await open(path, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW),
+          )
+        const exchange = async () => {
+          for (const handle of handles) await handle.chmod(0o700)
+          const parked = join(fixture.protectedParent, 'parked-package')
+          await rename(first.root, parked)
+          await rename(second.root, first.root)
+          await rename(parked, second.root)
+          for (const handle of handles.slice(2)) await handle.chmod(0o555)
+          for (const handle of handles.slice(0, 2)) await handle.chmod(0o711)
+        }
+        let exchanged = false
+        try {
+          await exchange()
+          exchanged = true
+          for (const lease of [first, second]) {
+            const error = await reacquirePrivatePackageMaterializationLease(
+              fixture.protectedParent,
+              lease.identity,
+            ).then(
+              () => undefined,
+              (failure: unknown) => failure,
+            )
+            expect(error).toBeInstanceOf(Error)
+            expect(await readFile(join(lease.root, 'libraries/shared/value.txt'), 'utf8')).toBe(
+              'shared bytes\n',
+            )
+          }
+        } finally {
+          if (exchanged) await exchange()
+        }
+      } finally {
+        for (const handle of handles) await handle.close()
+      }
+      for (const lease of [first, second]) {
+        const restored = await reacquirePrivatePackageMaterializationLease(
+          fixture.protectedParent,
+          lease.identity,
+        )
+        expect(restored.identity).toEqual(lease.identity)
+        await restored.dispose()
+      }
       expect(await readdir(fixture.protectedParent)).toEqual([])
     } finally {
       await fixture.dispose()

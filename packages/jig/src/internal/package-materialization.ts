@@ -30,6 +30,7 @@ import {
   type PrivatePackageAlias,
   privatePackageAliasText,
 } from './package-aliases.js'
+import { privateProfileSpan } from './private-profile.js'
 
 const TEMPORARY_PREFIX = 'jig-package-'
 const ALLOCATION_KIND = 'private-package-materialization-allocation/1'
@@ -216,83 +217,92 @@ export async function materializePrivatePackageLease(
       0o700n,
     ])
     packageDirectory = openedPackage.handle
+    const transactionHandle = transaction
+    const packageHandle = packageDirectory
     const directories = new Set<string>([''])
-    for (const file of captured.files) {
-      validateLogicalPath(file.path)
-      rememberLogicalDirectories(directories, file.path)
-      const segments = file.path.split('/')
-      const directory = await openPackageDirectory(
-        packageDirectory,
-        segments.slice(0, -1).join('/'),
-        true,
-        parent.information,
-        0o700n,
-      )
-      try {
-        await copyCapturedFile(
-          captured,
-          file.path,
-          file.size,
-          childPath(directory, segments.at(-1)!),
+    await privateProfileSpan('package-materialization-copy', async () => {
+      for (const file of captured.files) {
+        validateLogicalPath(file.path)
+        rememberLogicalDirectories(directories, file.path)
+        const segments = file.path.split('/')
+        const directory = await openPackageDirectory(
+          packageHandle,
+          segments.slice(0, -1).join('/'),
+          true,
           parent.information,
+          0o700n,
         )
-      } finally {
-        await directory.close()
+        try {
+          await copyCapturedFile(
+            captured,
+            file.path,
+            file.size,
+            childPath(directory, segments.at(-1)!),
+            parent.information,
+          )
+        } finally {
+          await directory.close()
+        }
       }
-    }
-    for (const alias of allocation.aliases ?? []) {
-      rememberLogicalDirectories(directories, alias.path)
-      const segments = alias.path.split('/')
-      const directory = await openPackageDirectory(
-        packageDirectory,
-        segments.slice(0, -1).join('/'),
-        true,
-        parent.information,
-        0o700n,
-      )
-      try {
-        await symlink(privatePackageAliasText(alias), childPath(directory, segments.at(-1)!))
-        await directory.sync()
-      } finally {
-        await directory.close()
+      for (const alias of allocation.aliases ?? []) {
+        rememberLogicalDirectories(directories, alias.path)
+        const segments = alias.path.split('/')
+        const directory = await openPackageDirectory(
+          packageHandle,
+          segments.slice(0, -1).join('/'),
+          true,
+          parent.information,
+          0o700n,
+        )
+        try {
+          await symlink(privatePackageAliasText(alias), childPath(directory, segments.at(-1)!))
+        } finally {
+          await directory.close()
+        }
       }
-    }
-    for (const logicalPath of [...directories].sort(deeperLogicalPathFirst)) {
-      const directory = await openPackageDirectory(
-        packageDirectory,
-        logicalPath,
-        false,
-        parent.information,
-        0o700n,
-      )
-      try {
-        await directory.chmod(0o555)
-        await directory.sync()
-      } finally {
-        await directory.close()
+    })
+    await privateProfileSpan('package-materialization-freeze', async () => {
+      // No lease exists until every created parent, including alias parents,
+      // reaches this bottom-up barrier. Earlier partial trees remain recoverable.
+      for (const logicalPath of [...directories].sort(deeperLogicalPathFirst)) {
+        const directory = await openPackageDirectory(
+          packageHandle,
+          logicalPath,
+          false,
+          parent.information,
+          0o700n,
+        )
+        try {
+          await directory.chmod(0o555)
+          await directory.sync()
+        } finally {
+          await directory.close()
+        }
       }
-    }
-    await transaction.chmod(0o711)
-    await transaction.sync()
-    await parent.handle.sync()
+      await transactionHandle.chmod(0o711)
+      await transactionHandle.sync()
+      await parent.handle.sync()
+    })
 
-    transactionInformation = await transaction.stat({ bigint: true })
-    const packageInformation = await packageDirectory.stat({ bigint: true })
-    requireOwnedDirectory(transactionInformation, parent.information, [0o711n], 'transaction')
-    if (
-      !(await packageMatches(
-        packageDirectory,
-        packageInformation,
-        allocation.packageDigest,
-        parent.information,
-        allocation.aliases,
-      ))
-    )
-      throw new Error('new materialized package failed its digest verification')
-    await verifyVisibleParent(parent, allocation.parent)
-    await requireChildIdentity(parent.handle, allocation.name, transactionInformation)
-    await requireChildIdentity(transaction, PACKAGE_NAME, packageInformation)
-    return leaseFromObserved(allocation, transactionInformation, packageInformation)
+    return await privateProfileSpan('package-materialization-verification', async () => {
+      transactionInformation = await transactionHandle.stat({ bigint: true })
+      const packageInformation = await packageHandle.stat({ bigint: true })
+      requireOwnedDirectory(transactionInformation, parent.information, [0o711n], 'transaction')
+      if (
+        !(await packageMatches(
+          packageHandle,
+          packageInformation,
+          allocation.packageDigest,
+          parent.information,
+          allocation.aliases,
+        ))
+      )
+        throw new Error('new materialized package failed its digest verification')
+      await verifyVisibleParent(parent, allocation.parent)
+      await requireChildIdentity(parent.handle, allocation.name, transactionInformation)
+      await requireChildIdentity(transactionHandle, PACKAGE_NAME, packageInformation)
+      return leaseFromObserved(allocation, transactionInformation, packageInformation)
+    })
   } catch (error) {
     failure = error
   } finally {
@@ -788,7 +798,6 @@ async function openPackageDirectory(
       if (create) {
         try {
           await mkdirPrivateFile(path, Number(expectedMode))
-          await current.sync()
         } catch (error) {
           if (!hasCode(error, 'EEXIST')) throw error
         }
@@ -859,39 +868,45 @@ async function packageModesMatch(
   filesystem: BigIntStats,
   aliases?: readonly PrivatePackageAlias[],
 ): Promise<boolean> {
-  const directories = new Set<string>([''])
-  for (const file of files) rememberLogicalDirectories(directories, file.path)
-  for (const alias of aliases ?? []) rememberLogicalDirectories(directories, alias.path)
-  for (const path of directories) {
-    try {
-      const directory = await openPackageDirectory(
-        packageDirectory,
-        path,
-        false,
-        filesystem,
-        0o555n,
-      )
-      await directory.close()
-    } catch {
-      return false
+  interface Directory {
+    readonly files: string[]
+    readonly directories: Map<string, Directory>
+  }
+  const root: Directory = { files: [], directories: new Map() }
+  const parentFor = (segments: readonly string[]): Directory => {
+    let current = root
+    for (const name of segments) {
+      let child = current.directories.get(name)
+      if (child === undefined) {
+        child = { files: [], directories: new Map() }
+        current.directories.set(name, child)
+      }
+      current = child
     }
+    return current
   }
   for (const file of files) {
     const segments = file.path.split('/')
-    let parent: FileHandle
+    parentFor(segments.slice(0, -1)).files.push(segments.at(-1)!)
+  }
+  for (const alias of aliases ?? []) parentFor(alias.path.split('/').slice(0, -1))
+
+  // Validated Package/0 paths bound the held ancestor stack to 64 segments.
+  // Hold each directory across its descendants instead of reopening every
+  // ancestor for every file. Named identities and modes are rechecked on exit.
+  const visit = async (directory: FileHandle, node: Directory): Promise<boolean> => {
     try {
-      parent = await openPackageDirectory(
-        packageDirectory,
-        segments.slice(0, -1).join('/'),
-        false,
+      requireOwnedDirectory(
+        await directory.stat({ bigint: true }),
         filesystem,
-        0o555n,
+        [0o555n],
+        'package directory',
       )
     } catch {
       return false
     }
-    try {
-      const path = childPath(parent, segments.at(-1)!)
+    for (const name of node.files) {
+      const path = childPath(directory, name)
       const observed = await lstat(path)
       if (observed.isSymbolicLink() || !observed.isFile()) return false
       const handle = await open(
@@ -909,14 +924,38 @@ async function packageModesMatch(
           fileMode(information) !== 0o444n
         )
           return false
+        await requireChildIdentity(directory, name, information)
       } finally {
         await handle.close()
       }
-    } finally {
-      await parent.close()
     }
+    for (const [name, child] of node.directories) {
+      let opened: Awaited<ReturnType<typeof openOwnedDirectory>>
+      try {
+        opened = await openOwnedDirectory(directory, name, filesystem, [0o555n])
+      } catch {
+        return false
+      }
+      try {
+        if (!(await visit(opened.handle, child))) return false
+        await requireChildIdentity(directory, name, opened.information)
+      } finally {
+        await opened.handle.close()
+      }
+    }
+    try {
+      requireOwnedDirectory(
+        await directory.stat({ bigint: true }),
+        filesystem,
+        [0o555n],
+        'package directory',
+      )
+    } catch {
+      return false
+    }
+    return true
   }
-  return true
+  return await visit(packageDirectory, root)
 }
 
 /** Validate host-created aliases independently; regular Package/0 capture never follows them. */

@@ -648,6 +648,9 @@ test('planning and native subphases remain bounded names understood by the insta
       'contained-effect-launch',
       'contained-effect-collection',
       'contained-effect-settlement',
+      'package-materialization-copy',
+      'package-materialization-freeze',
+      'package-materialization-verification',
       'macos-guardian-preparation',
       'macos-guardian-admission',
       'root-package-release',
@@ -675,6 +678,88 @@ test('planning and native subphases remain bounded names understood by the insta
       phases,
     )
     expect(records.some((record) => record.kind === 'truncated')).toBe(false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+test('real package materialization records bounded copy, freeze and verification spans', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-materialization-profile-')))
+  try {
+    const profiler = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    const materializer = join(suiteTestRoot, '../src/internal/package-materialization.ts')
+    const fixture = join(suiteTestRoot, 'package-materialization.fixture.ts')
+    const destination = join(directory, 'trace.jsonl')
+    for (const active of [false, true]) {
+      const environment = { ...process.env }
+      delete environment.JIG_PRIVATE_PROFILE_FILE
+      if (active) environment.JIG_PRIVATE_PROFILE_FILE = destination
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `import assert from 'node:assert/strict';
+          import {readFile} from 'node:fs/promises';
+          import {join} from 'node:path';
+          import {privateProfileActivate,privateProfileFinish} from ${JSON.stringify(profiler)};
+          import {materializePrivatePackageLease} from ${JSON.stringify(materializer)};
+          import {workspaceFixture} from ${JSON.stringify(fixture)};
+          const value=await workspaceFixture();
+          try {
+            privateProfileActivate();
+            const lease=await materializePrivatePackageLease(value.captured,value.allocation);
+            try {
+              assert.equal(await readFile(join(lease.root,'libraries/shared/value.txt'),'utf8'),'shared bytes\\n');
+              assert.equal(await readFile(join(lease.root,'flows/main/node_modules/@fixture/shared/value.txt'),'utf8'),'shared bytes\\n');
+            } finally {await lease.dispose()}
+          } finally {
+            await value.dispose();
+            privateProfileFinish();
+          }
+          console.log('materialized');`,
+        ],
+        { cwd: directory, env: environment, stdout: 'pipe', stderr: 'pipe' },
+      )
+      const [code, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      expect(code, stderr).toBe(0)
+      expect(stdout).toBe('materialized\n')
+      expect(stderr).toBe('')
+      expect(await readdir(directory)).toEqual(active ? ['trace.jsonl'] : [])
+    }
+    const file = await open(destination, constants.O_RDONLY | constants.O_NOFOLLOW)
+    let text: string
+    try {
+      expect((await file.stat()).mode & 0o777).toBe(0o600)
+      text = await file.readFile('utf8')
+    } finally {
+      await file.close()
+    }
+    expect(
+      text
+        .trimEnd()
+        .split('\n')
+        .every((line) => Buffer.byteLength(line) <= 192),
+    ).toBe(true)
+    expect(text).not.toMatch(/shared bytes|value\.txt|ownerToken|packageDigest|"path"/)
+    const phases = [
+      'package-materialization-copy',
+      'package-materialization-freeze',
+      'package-materialization-verification',
+    ]
+    for (const kind of ['review', 'run'] as const) {
+      const summary = JSON.parse(await profilePhaseSummary(destination, kind))
+      expect(summary).toEqual({
+        status: 'captured',
+        events: phases.flatMap((phase) => [
+          { phase, kind: 'start', timeMs: expect.any(Number) },
+          { phase, kind: 'end', timeMs: expect.any(Number), outcome: 'returned' },
+        ]),
+      })
+      expect(JSON.stringify(summary)).not.toMatch(/"pid"|shared bytes|value\.txt|ownerToken/)
+    }
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
@@ -1067,8 +1152,14 @@ test('foundation profile summaries validate failure records within the existing 
     ])
       expect(await summarize(encode([failure, invalid]))).toEqual({ status: 'invalid', events: [] })
 
+    const timingPhases = [
+      'flow-execution',
+      'package-materialization-copy',
+      'package-materialization-freeze',
+      'package-materialization-verification',
+    ]
     const timings = Array.from({ length: 40 }, (_, timeMs) => ({
-      phase: 'flow-execution',
+      phase: timingPhases[timeMs % timingPhases.length],
       kind: 'instant',
       timeMs,
     }))
