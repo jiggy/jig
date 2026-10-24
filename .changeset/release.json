@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "acab0643a7320e4d77950819e467ea9ea2fed0b3",
-  "sourceDigest": "a6808e318d55df1ad65e51540e130910996abebcb530c01339ce70155083e52f",
+  "baseRevision": "e9c727f5eca30e1da79985a2b9dbcd7824f072bf",
+  "sourceDigest": "bf5fbea7f23ca7038e280268fb487316f15597e1d02b2d643bed346b8ff1b92c",
   "changesets": [
     {
-      "id": "preserve-sealed-linux-cancellation",
-      "sha256": "17593bdc062722da13f6a70307833d552ed0095635c6c9dd1d9dae9d1cb8b881"
+      "id": "qualify-frozen-conversations",
+      "sha256": "4f728d701af03e04570b1f671f92265baf4dd43e01376368535fdcd9988f1903"
     }
   ],
   "releases": [
     {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.40",
-      "newVersion": "0.1.0-alpha.41"
+      "oldVersion": "0.1.0-alpha.41",
+      "newVersion": "0.1.0-alpha.42"
     }
   ]
 }

@@ -1,5 +1,11 @@
 # @jigging/jig
 
+## 0.1.0-alpha.42
+
+### Patch Changes
+
+- e9c727f: Qualify native conversations against the exact release candidate packages. Retain bounded native failure classifications and independent macOS qualification failures before publication.
+
 ## 0.1.0-alpha.41
 
 ### Patch Changes
