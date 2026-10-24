@@ -261,13 +261,21 @@ test('installs the native conversation from all four unchanged canonical archive
       expect(await hash(archives[name])).toBe(hashes[name])
     }
     const caller = join(root, 'flows/conversation-helper')
+    expect(await readFile(join(caller, 'native-conversation-diagnostics.ts'), 'utf8')).toBe(
+      await readFile(join(testRoot, 'fixtures/native-conversation-diagnostics.ts'), 'utf8'),
+    )
     const consumer = Bun.spawn(
       [
         process.execPath,
         '--no-env-file',
         '--config=/dev/null',
         '-e',
-        'import {handle} from "@jigging/flow"; import {withAgentConversation} from "@jigging/agent-method/conversation"; import {FiniteAcpFrames} from "@jigging/agent-acp/transport"; if ([handle,withAgentConversation,FiniteAcpFrames].some(value=>typeof value!=="function")) throw Error("Missing candidate export");',
+        `import {handle,OperationError} from "@jigging/flow";
+import {withAgentConversation} from "@jigging/agent-method/conversation";
+import {FiniteAcpFrames} from "@jigging/agent-acp/transport";
+import {nativeConversationErrorDiagnostic} from "./native-conversation-diagnostics.js";
+if ([handle,withAgentConversation,FiniteAcpFrames].some(value=>typeof value!=="function")) throw Error("Missing candidate export");
+console.log(JSON.stringify(nativeConversationErrorDiagnostic({errors:[new OperationError("UNCERTAIN", "Finite ACP dispatch may have occurred but no result was proved while exchanging native messages. The native client reported a session failure; private details were withheld.")]})));`,
       ],
       { cwd: caller, env: environment, stdout: 'pipe', stderr: 'pipe' },
     )
@@ -277,6 +285,17 @@ test('installs the native conversation from all four unchanged canonical archive
       new Response(consumer.stderr).text(),
     ])
     expect(exit, `${stdout}\n${stderr}`).toBe(0)
+    expect(JSON.parse(stdout)).toEqual({
+      errorCount: 1,
+      errorsTruncated: false,
+      errors: [
+        {
+          kind: 'operation',
+          code: 'UNCERTAIN',
+          native: { phase: 'exchange-messages', reason: 'native-session' },
+        },
+      ],
+    })
     const version = Bun.spawn([installed.command, '--version'], {
       cwd: root,
       env: environment,

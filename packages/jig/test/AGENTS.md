@@ -360,6 +360,16 @@ The portable check consumes supplied archives or freezes already-built packages
 and the installed adopted SDK. It preserves ordinary local `just test` coverage.
 The live constructor requires every supplied archive before installation.
 
+Native conversation diagnostics preserve at most eight closed error projections
+with total count and truncation. Exact host messages identify only fixed native
+phases and reasons. Exact native-request metadata retains only allowed methods,
+safe integer codes and the managed-preference reason for its matching request.
+
+The copied `fixtures/native-conversation-diagnostics.ts` helper imports only the
+public SDK. Own data properties exclude accessors and arbitrary payloads.
+Projection or output failure preserves the original exception. Portable cases
+check privacy and installed imports, not native causes or execution.
+
 Installed package smoke commands use the shared bounded command owner. Preserve
 each command's timeout, bounded interruption/escalation and pipe drain, and
 exclusive mode-0600 private transcripts on failure. An unconfirmed exit after

@@ -278,6 +278,10 @@ export async function writeInstalledConversationHelperProject(
   await mkdir(join(flow, 'contracts'), { recursive: true })
   await mkdir(join(root, 'bindings'), { recursive: true })
   await mkdir(cliRoot, { recursive: true })
+  await cp(
+    join(import.meta.dir, 'native-conversation-diagnostics.ts'),
+    join(flow, 'native-conversation-diagnostics.ts'),
+  )
   await writeFile(
     join(root, 'package.json'),
     JSON.stringify({
@@ -341,8 +345,9 @@ export default defineBinding({
   )
   await writeFile(
     join(flow, 'FLOW.ts'),
-    `import { handle, OperationError } from '@jigging/flow'
+    `import { handle } from '@jigging/flow'
 import { AgentConversationError, withAgentConversation } from '@jigging/agent-method/conversation'
+import { nativeConversationErrorDiagnostic } from './native-conversation-diagnostics.js'
 
 await handle(async run => {
   let phase = 'conversation-start'
@@ -382,41 +387,27 @@ await handle(async run => {
       },
     }
   } catch (error) {
-    if (error instanceof AgentConversationError) {
-      console.error(
-        'agent-conversation-diagnostic ' +
-          JSON.stringify({
-            phase,
-            interruption: interruption ?? null,
-            turns: error.turns.map(turn =>
-              turn.type === 'result'
-                ? { turn: turn.turn, type: turn.type, outcome: turn.result.outcome }
-                : turn.type === 'error'
-                  ? { turn: turn.turn, type: turn.type, code: turn.code }
-                  : { turn: turn.turn, type: turn.type },
-            ),
-            settlement: error.settlement?.outcome ?? null,
-            errorCount: error.errors.length,
-            errors: error.errors.map(cause => {
-              // Closed SDK codes and exact helper-authored messages only.
-              const codes = ['CANCELLED', 'DEADLINE_EXCEEDED', 'DISCONNECTED', 'LAGGED',
-                'CHANNEL_LOST', 'PROTOCOL_ERROR', 'OWNER_CLOSED', 'EXECUTION_FAILED',
-                'UNCERTAIN', 'INVALID_INPUT', 'INVALID_RESULT', 'RESOURCE_EXHAUSTED']
-              if (cause instanceof OperationError)
-                return { kind: 'operation', code: codes.includes(cause.code) ? cause.code : 'other' }
-              const messages = [
-                'Agent replies ended before accepted conversation close',
-                'Agent reply has an unexpected turn',
-                'Agent sent an out-of-order turn result',
-                'Agent sent an unexpected control reply',
-                'Application left a live Agent turn unfinished',
-                'Agent omitted matching conversation settlement',
-              ]
-              return { kind: 'helper', cause: cause instanceof Error && messages.includes(cause.message)
-                ? cause.message : 'unclassified' }
+    try {
+      if (error instanceof AgentConversationError) {
+        console.error(
+          'agent-conversation-diagnostic ' +
+            JSON.stringify({
+              phase,
+              interruption: interruption ?? null,
+              turns: error.turns.map(turn =>
+                turn.type === 'result'
+                  ? { turn: turn.turn, type: turn.type, outcome: turn.result.outcome }
+                  : turn.type === 'error'
+                    ? { turn: turn.turn, type: turn.type, code: turn.code }
+                    : { turn: turn.turn, type: turn.type },
+              ),
+              settlement: error.settlement?.outcome ?? null,
+              ...nativeConversationErrorDiagnostic(error),
             }),
-          }),
-      )
+        )
+      }
+    } catch {
+      // Diagnostic observation and output must preserve the original failure.
     }
     throw error
   }

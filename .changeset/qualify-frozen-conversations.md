@@ -2,4 +2,4 @@
 "@jigging/jig": patch
 ---
 
-Qualify native conversations against the exact release candidate packages and retain independent macOS qualification failures before publication.
+Qualify native conversations against the exact release candidate packages. Retain bounded native failure classifications and independent macOS qualification failures before publication.

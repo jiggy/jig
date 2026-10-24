@@ -307,6 +307,11 @@ These links locate module rules. All selected domain requirements still apply.
   the actual follow-up result and host cleanup. Its resolved versions must match
   the candidate source and adopted FLOW version.
 
+  Native failure diagnostics retain bounded public codes and only exact known
+  failure stages/reasons or validated request methods/codes. They never copy
+  arbitrary error messages or details. Unknown input remains unclassified, and
+  diagnostic failure cannot replace the execution failure.
+
   The portable fixture check verifies installed exports, versions, unchanged
   manifests, workspace resolution and archive bytes. It uses supplied archives
   or freezes the built packages and installed SDK without rebuilding. This
