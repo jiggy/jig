@@ -295,16 +295,27 @@ These links locate module rules. All selected domain requirements still apply.
   `REPORTING_PACKAGE_ARCHIVE`, `AGENT_METHOD_PACKAGE_ARCHIVE` and
   `AGENT_ACP_PACKAGE_ARCHIVE` for unchanged candidate artifacts. Otherwise they
   pack already-built Jig-owned packages and the installed public SDK
-  without rebuilding during execution. The native
-  Codex immediate-interruption qualification separately installs the frozen Jig
-  candidate and published conversation dependencies in an ordinary consumer. It
-  imports the published Agent contract through the public CLI, then checks the
-  actual follow-up result and host cleanup. The test asserts and prints the
-  resolved package versions. The CLI must come from `JIG_PACKAGE_ARCHIVE`, so
-  fixes can qualify before publication.
+  without rebuilding during execution.
 
-  Published conversation dependencies remain separately identified. This is
-  installed candidate evidence, not a registry publication proof.
+  Native Codex interruption requires the frozen Jig, ACP, method and FLOW SDK
+  archives. It installs the Jig CLI from `JIG_PACKAGE_ARCHIVE`. Unchanged library
+  archives become ordinary declared workspace dependencies in its fresh consumer.
+  Missing archives fail before installation. No registry or source fallback
+  selects different conversation code.
+
+  The consumer imports the Agent contract through the public CLI, then checks
+  the actual follow-up result and host cleanup. Its resolved versions must match
+  the candidate source and adopted FLOW version.
+
+  Native failure diagnostics retain bounded public codes and only exact known
+  failure stages/reasons or validated request methods/codes. They never copy
+  arbitrary error messages or details. Unknown input remains unclassified, and
+  diagnostic failure cannot replace the execution failure.
+
+  The portable fixture check verifies installed exports, versions, unchanged
+  manifests, workspace resolution and archive bytes. It uses supplied archives
+  or freezes the built packages and installed SDK without rebuilding. This
+  portable check qualifies candidate installation, not registry publication or native execution.
   Native lifecycle qualification must use genuine selected clients with packed dependencies.
   Check two branches, predecessor settlement, one successor and residue independently of model quality.
   Existing replacement-peer lifecycle cases do not qualify native behavior and require real-boundary replacement.

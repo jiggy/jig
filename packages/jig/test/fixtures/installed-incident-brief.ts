@@ -19,6 +19,7 @@ import {
   foundationResidue,
   lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
+import { incidentWorkerDiagnostic } from './incident-diagnostics.js'
 
 const application = resolve(import.meta.dir, 'incident-brief')
 const hash = async (path: string) =>
@@ -203,19 +204,29 @@ export default defineBinding({package:'flows/agent-task',settings:{refuseSuccess
   assert.equal(result.output.results[1].role, 'independent')
   const draft = result.output.results[0].result
   const reviewer = result.output.results[1].result
-  assert.equal(reviewer.outcome, 'done')
+  const draftDiagnostic = JSON.stringify(incidentWorkerDiagnostic(draft))
+  const reviewerDiagnostic = JSON.stringify(incidentWorkerDiagnostic(reviewer))
+  assert.equal(reviewer.outcome, 'done', reviewerDiagnostic)
   assert.equal(reviewer.output.requestedTurns, 2)
   if (scenario !== 'budget') assert.equal(reviewer.output.publication.status, 'submitted')
   else assert.ok(['submitted', 'failed'].includes(reviewer.output.publication.status))
   assert.match(reviewer.output.questions, /What evidence establishes causation/)
-  assert.deepEqual(reviewer.output.settlement, { outcome: 'done', output: { turns: 2 } })
+  assert.deepEqual(
+    reviewer.output.settlement,
+    { outcome: 'done', output: { turns: 2 } },
+    reviewerDiagnostic,
+  )
   if (scenario === 'budget') {
     assert.equal(result.outcome, 'blocked')
     assert.equal(draft.output.requestedTurns, 0)
     assert.equal(draft.output.successor, null)
     assert.equal(draft.output.predecessor, null)
   } else {
-    assert.deepEqual(draft.output.predecessor, { outcome: 'done', output: { turns: 2 } })
+    assert.deepEqual(
+      draft.output.predecessor,
+      { outcome: 'done', output: { turns: 2 } },
+      draftDiagnostic,
+    )
     assert.equal(draft.output.requestedTurns, scenario === 'commentary' ? 2 : 3)
     assert.equal(draft.output.revision, scenario === 'refused-successor' ? undefined : 1)
     if (scenario === 'commentary') {

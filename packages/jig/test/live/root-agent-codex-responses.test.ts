@@ -109,7 +109,7 @@ describe.serial('private contained Agent Run lifecycle', () => {
   )
 
   test(
-    'interrupts an immediate follow-up through installed Jig and published conversation packages with a Responses-compatible endpoint',
+    'interrupts an immediate follow-up through the frozen installed candidate with a Responses-compatible endpoint',
     async () => {
       const codexPath = nativeCodexPath
       const apiKey = process.env.OPENROUTER_API_KEY
@@ -126,11 +126,17 @@ describe.serial('private contained Agent Run lifecycle', () => {
         const candidate = JSON.parse(
           await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
         )
+        const acp = JSON.parse(
+          await readFile(new URL('../../../agent-acp/package.json', import.meta.url), 'utf8'),
+        )
+        const method = JSON.parse(
+          await readFile(new URL('../../../agent-method/package.json', import.meta.url), 'utf8'),
+        )
         expect(installed.versions).toEqual({
           jig: candidate.version,
-          acp: '0.1.0-alpha.3',
-          flow: '0.1.0-alpha.12',
-          method: '0.1.0-alpha.3',
+          acp: acp.version,
+          flow: candidate.devDependencies['@jigging/flow'],
+          method: method.version,
         })
         console.info(
           `Installed native-conversation packages: ${JSON.stringify(installed.versions)}`,

@@ -127,6 +127,11 @@ describe.serial('private contained Agent Run lifecycle', () => {
           session = await timeFixturePhase(timingScope, 'project-open', async () =>
             openPrivateProjectSession({
               directory: root,
+              onOperationFailure: (evidence) =>
+                console.error(
+                  'http-agent-operation-failure',
+                  JSON.stringify({ scope: timingScope, ...evidence }),
+                ),
               host: fixtureHost(
                 await openPrivateInstalledBunHost(location, {
                   METHOD_TEST_TOKEN: 'synthetic-unused-credential',

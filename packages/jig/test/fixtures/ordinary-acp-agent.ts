@@ -1,7 +1,7 @@
-import { flowSdkRuntimeDirectory, flowSdkDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import { cp, lstat, mkdir, readdir, readFile, realpath, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
+import { flowSdkDirectory, flowSdkRuntimeDirectory } from './flow-dependency'
 
 /** Install the unchanged built Agent Flow and authorize only its selected native profile. */
 export async function writeOrdinaryAcpAgent(
@@ -219,29 +219,77 @@ await handle(async run => {
   expect(exit, `${stdout}\n${stderr}`).toBe(0)
 }
 
-/** Ordinary installed consumer: frozen Jig candidate and published conversation dependencies. */
+type ConversationArchives = Readonly<
+  Partial<Record<'jig' | 'acp' | 'flow' | 'method', string | undefined>>
+>
+
+/** Ordinary installed consumer of one frozen Jig, ACP, method and SDK candidate set. */
 export async function writeInstalledConversationHelperProject(
   root: string,
   cliRoot: string,
+  selectedArchives: ConversationArchives = {
+    jig: process.env.JIG_PACKAGE_ARCHIVE,
+    acp: process.env.AGENT_ACP_PACKAGE_ARCHIVE,
+    flow: process.env.FLOW_SDK_PACKAGE_ARCHIVE,
+    method: process.env.AGENT_METHOD_PACKAGE_ARCHIVE,
+  },
 ): Promise<{ readonly command: string; readonly versions: Readonly<Record<string, string>> }> {
-  const selectedArchive = process.env.JIG_PACKAGE_ARCHIVE
-  if (selectedArchive === undefined)
-    throw new Error('JIG_PACKAGE_ARCHIVE is required to qualify the Jig candidate')
-  const archive = await realpath(resolve(selectedArchive))
-  if (!(await lstat(archive)).isFile())
-    throw new Error('JIG_PACKAGE_ARCHIVE must be a regular file')
+  async function select(name: keyof ConversationArchives, variable: string): Promise<string> {
+    const selected = selectedArchives[name]
+    if (selected === undefined)
+      throw new Error(`${variable} is required to qualify the native conversation candidate`)
+    const archive = await realpath(resolve(selected))
+    if (!(await lstat(archive)).isFile()) throw new Error(`${variable} must be a regular file`)
+    return archive
+  }
+  const archives = {
+    jig: await select('jig', 'JIG_PACKAGE_ARCHIVE'),
+    acp: await select('acp', 'AGENT_ACP_PACKAGE_ARCHIVE'),
+    flow: await select('flow', 'FLOW_SDK_PACKAGE_ARCHIVE'),
+    method: await select('method', 'AGENT_METHOD_PACKAGE_ARCHIVE'),
+  }
+  const safeEnvironment: Record<string, string> = {}
+  for (const key of ['PATH', 'HOME', 'TMPDIR', 'XDG_CACHE_HOME']) {
+    const value = process.env[key]
+    if (value !== undefined) safeEnvironment[key] = value
+  }
+  await installWorkspaceArtifact(
+    root,
+    'flow-sdk',
+    'FLOW_SDK_PACKAGE_ARCHIVE',
+    archives.flow,
+    safeEnvironment,
+  )
+  await installWorkspaceArtifact(
+    root,
+    'agent-method',
+    'AGENT_METHOD_PACKAGE_ARCHIVE',
+    archives.method,
+    safeEnvironment,
+  )
+  await installWorkspaceArtifact(
+    root,
+    'agent-acp',
+    'AGENT_ACP_PACKAGE_ARCHIVE',
+    archives.acp,
+    safeEnvironment,
+  )
   const flow = join(root, 'flows/conversation-helper')
   await mkdir(join(flow, 'contracts'), { recursive: true })
   await mkdir(join(root, 'bindings'), { recursive: true })
   await mkdir(cliRoot, { recursive: true })
+  await cp(
+    join(import.meta.dir, 'native-conversation-diagnostics.ts'),
+    join(flow, 'native-conversation-diagnostics.ts'),
+  )
   await writeFile(
     join(root, 'package.json'),
     JSON.stringify({
-      name: 'published-conversation-consumer',
+      name: 'native-conversation-consumer',
       private: true,
       type: 'module',
-      workspaces: ['flows/*'],
-      dependencies: { '@jigging/agent-acp': '0.1.0-alpha.3' },
+      workspaces: ['flows/*', 'packages/*'],
+      dependencies: { '@jigging/agent-acp': 'workspace:*' },
     }),
   )
   await writeFile(
@@ -250,18 +298,18 @@ export async function writeInstalledConversationHelperProject(
       name: 'candidate-jig-cli-consumer',
       private: true,
       type: 'module',
-      dependencies: { '@jigging/jig': archive },
+      dependencies: { '@jigging/jig': archives.jig },
     }),
   )
   await writeFile(
     join(flow, 'package.json'),
     JSON.stringify({
-      name: 'published-conversation-flow',
+      name: 'native-conversation-flow',
       private: true,
       type: 'module',
       dependencies: {
-        '@jigging/flow': '0.1.0-alpha.12',
-        '@jigging/agent-method': '0.1.0-alpha.3',
+        '@jigging/flow': 'workspace:*',
+        '@jigging/agent-method': 'workspace:*',
       },
     }),
   )
@@ -297,8 +345,9 @@ export default defineBinding({
   )
   await writeFile(
     join(flow, 'FLOW.ts'),
-    `import { handle, OperationError } from '@jigging/flow'
+    `import { handle } from '@jigging/flow'
 import { AgentConversationError, withAgentConversation } from '@jigging/agent-method/conversation'
+import { nativeConversationErrorDiagnostic } from './native-conversation-diagnostics.js'
 
 await handle(async run => {
   let phase = 'conversation-start'
@@ -338,41 +387,27 @@ await handle(async run => {
       },
     }
   } catch (error) {
-    if (error instanceof AgentConversationError) {
-      console.error(
-        'agent-conversation-diagnostic ' +
-          JSON.stringify({
-            phase,
-            interruption: interruption ?? null,
-            turns: error.turns.map(turn =>
-              turn.type === 'result'
-                ? { turn: turn.turn, type: turn.type, outcome: turn.result.outcome }
-                : turn.type === 'error'
-                  ? { turn: turn.turn, type: turn.type, code: turn.code }
-                  : { turn: turn.turn, type: turn.type },
-            ),
-            settlement: error.settlement?.outcome ?? null,
-            errorCount: error.errors.length,
-            errors: error.errors.map(cause => {
-              // Closed SDK codes and exact helper-authored messages only.
-              const codes = ['CANCELLED', 'DEADLINE_EXCEEDED', 'DISCONNECTED', 'LAGGED',
-                'CHANNEL_LOST', 'PROTOCOL_ERROR', 'OWNER_CLOSED', 'EXECUTION_FAILED',
-                'UNCERTAIN', 'INVALID_INPUT', 'INVALID_RESULT', 'RESOURCE_EXHAUSTED']
-              if (cause instanceof OperationError)
-                return { kind: 'operation', code: codes.includes(cause.code) ? cause.code : 'other' }
-              const messages = [
-                'Agent replies ended before accepted conversation close',
-                'Agent reply has an unexpected turn',
-                'Agent sent an out-of-order turn result',
-                'Agent sent an unexpected control reply',
-                'Application left a live Agent turn unfinished',
-                'Agent omitted matching conversation settlement',
-              ]
-              return { kind: 'helper', cause: cause instanceof Error && messages.includes(cause.message)
-                ? cause.message : 'unclassified' }
+    try {
+      if (error instanceof AgentConversationError) {
+        console.error(
+          'agent-conversation-diagnostic ' +
+            JSON.stringify({
+              phase,
+              interruption: interruption ?? null,
+              turns: error.turns.map(turn =>
+                turn.type === 'result'
+                  ? { turn: turn.turn, type: turn.type, outcome: turn.result.outcome }
+                  : turn.type === 'error'
+                    ? { turn: turn.turn, type: turn.type, code: turn.code }
+                    : { turn: turn.turn, type: turn.type },
+              ),
+              settlement: error.settlement?.outcome ?? null,
+              ...nativeConversationErrorDiagnostic(error),
             }),
-          }),
-      )
+        )
+      }
+    } catch {
+      // Diagnostic observation and output must preserve the original failure.
     }
     throw error
   }
@@ -380,11 +415,6 @@ await handle(async run => {
 `,
   )
 
-  const safeEnvironment: Record<string, string> = {}
-  for (const key of ['PATH', 'HOME', 'TMPDIR', 'XDG_CACHE_HOME']) {
-    const value = process.env[key]
-    if (value !== undefined) safeEnvironment[key] = value
-  }
   // Bun's default Linux backend hardlinks registry files to its shared cache.
   // This consumer exercises npm-style extracted package contents, which Jig
   // can safely capture as a self-contained selected source tree.
@@ -429,31 +459,46 @@ await handle(async run => {
   ])
   expect(exit, `${stdout}\n${stderr}`).toBe(0)
   const [jig, acp, sdk, method] = await Promise.all([
-    packageVersion(join(cliRoot, 'node_modules/@jigging/jig/package.json')),
-    packageVersion(join(root, 'node_modules/@jigging/agent-acp/package.json')),
-    packageVersion(join(flow, 'node_modules/@jigging/flow/package.json')),
-    packageVersion(join(flow, 'node_modules/@jigging/agent-method/package.json')),
+    packageVersion(join(cliRoot, 'node_modules/@jigging/jig/package.json'), '@jigging/jig'),
+    packageVersion(
+      join(root, 'node_modules/@jigging/agent-acp/package.json'),
+      '@jigging/agent-acp',
+    ),
+    packageVersion(join(flow, 'node_modules/@jigging/flow/package.json'), '@jigging/flow'),
+    packageVersion(
+      join(flow, 'node_modules/@jigging/agent-method/package.json'),
+      '@jigging/agent-method',
+    ),
   ])
   const versions = Object.freeze({ jig, acp, flow: sdk, method })
   return { command: join(cliRoot, 'node_modules/.bin/jig'), versions }
 }
 
-async function packageVersion(path: string): Promise<string> {
-  const packageJson = JSON.parse(await readFile(path, 'utf8')) as { version?: unknown }
-  if (typeof packageJson.version !== 'string') throw new Error('Installed package omitted version')
+async function packageVersion(path: string, name: string): Promise<string> {
+  const packageJson = JSON.parse(await readFile(path, 'utf8')) as {
+    name?: unknown
+    version?: unknown
+  }
+  if (packageJson.name !== name || typeof packageJson.version !== 'string')
+    throw new Error(`Installed ${name} package has an invalid identity`)
   return packageJson.version
 }
 
 async function installWorkspaceArtifact(
   root: string,
-  name: 'flow-sdk' | 'agent-method',
-  archiveVariable: 'FLOW_SDK_PACKAGE_ARCHIVE' | 'AGENT_METHOD_PACKAGE_ARCHIVE',
+  name: 'flow-sdk' | 'agent-method' | 'agent-acp',
+  archiveVariable:
+    | 'FLOW_SDK_PACKAGE_ARCHIVE'
+    | 'AGENT_METHOD_PACKAGE_ARCHIVE'
+    | 'AGENT_ACP_PACKAGE_ARCHIVE',
+  selectedArchive?: string,
+  environment?: Record<string, string>,
 ): Promise<{ readonly name: string; readonly version: string }> {
   const destination = join(root, 'packages', name)
   const artifacts = join(root, 'artifacts', name)
   await mkdir(destination, { recursive: true })
   await mkdir(artifacts, { recursive: true })
-  let archive = process.env[archiveVariable]
+  let archive = selectedArchive ?? process.env[archiveVariable]
   if (archive === undefined) {
     const packageDirectory =
       name === 'flow-sdk' ? flowSdkDirectory : join(import.meta.dir, `../../../${name}`)
@@ -484,6 +529,7 @@ async function installWorkspaceArtifact(
   archive = await realpath(resolve(archive))
   if (!(await lstat(archive)).isFile()) throw new Error(`${archiveVariable} must be a regular file`)
   const extract = Bun.spawn(['tar', '-xzf', archive, '--strip-components=1', '-C', destination], {
+    ...(environment === undefined ? {} : { env: environment }),
     stdout: 'pipe',
     stderr: 'pipe',
   })
@@ -497,7 +543,10 @@ async function installWorkspaceArtifact(
     name?: unknown
     version?: unknown
   }
-  if (typeof manifest.name !== 'string' || typeof manifest.version !== 'string')
+  if (
+    manifest.name !== `@jigging/${name === 'flow-sdk' ? 'flow' : name}` ||
+    typeof manifest.version !== 'string'
+  )
     throw new Error(`The packed ${name} artifact omitted its package identity`)
   return { name: manifest.name, version: manifest.version }
 }
