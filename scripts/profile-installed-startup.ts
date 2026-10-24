@@ -45,6 +45,9 @@ type TracePhase =
   | 'contained-effect-launch'
   | 'contained-effect-collection'
   | 'contained-effect-settlement'
+  | 'package-materialization-copy'
+  | 'package-materialization-freeze'
+  | 'package-materialization-verification'
   | 'macos-guardian-preparation'
   | 'macos-guardian-admission'
   | 'operation-owner-settlement'
@@ -106,6 +109,9 @@ const tracePhases = new Set<TracePhase>([
   'contained-effect-launch',
   'contained-effect-collection',
   'contained-effect-settlement',
+  'package-materialization-copy',
+  'package-materialization-freeze',
+  'package-materialization-verification',
   'macos-guardian-preparation',
   'macos-guardian-admission',
   'operation-owner-settlement',

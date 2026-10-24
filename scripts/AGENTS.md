@@ -162,6 +162,9 @@ operational baselines, and public-site assembly.
   provide aggregate counts, not per-operation attribution. Nested and concurrent
   wall spans remain non-additive.
 
+  Materialization spans separate copying, directory freezing, and complete package verification.
+  They preserve existing trace limits and establish no payload or native admission duration.
+
   Retain failure records only through the private recorder's strict normalizer.
   These records contain a fixed host phase and validated cause, never raw errors.
   They do not contribute phase durations or establish successful execution.

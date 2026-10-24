@@ -46,6 +46,9 @@ export async function profilePhaseSummary(path: string, kind: 'review' | 'run'):
           'root-owner-release',
         ]),
     'project-session-close',
+    'package-materialization-copy',
+    'package-materialization-freeze',
+    'package-materialization-verification',
     'macos-guardian-preparation',
     'macos-guardian-admission',
   ])

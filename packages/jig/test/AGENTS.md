@@ -350,6 +350,10 @@ Keep failed profiles private and remove successful fixtures' profiles with their
 `fixtures/private-profile-diagnostics.ts` shares strict profile projection with the foundation fixtures.
 It preserves the 256 KiB input, 1026-record and forty-event limits.
 
+Materialization timing separates byte and alias copying, directory freezing, and complete package verification.
+Portable profile tests observe actual lease creation and disposal in fresh subprocesses, with profiling enabled and disabled.
+These timings establish neither native admission nor payload execution.
+
 Root Agent live suites select one exact client/input contract per file. Codex
 subscription requires its native executable and CODEX_HOME. Codex Responses
 requires the executable, model and OpenRouter key. Claude and Pi require their

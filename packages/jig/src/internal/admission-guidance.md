@@ -86,6 +86,18 @@ These links locate module rules. All selected domain requirements still apply.
   Changed bytes fail closed. Recorded allocation recovery may remove an
   incomplete projection without treating it as an executable lease.
 
+  Creation freezes and synchronizes every created directory and alias parent from the bottom up.
+  Transaction and protected-parent barriers follow before returning a verified lease.
+  Intermediate creation needs no additional directory barrier. Projected files remain reconstructible from retained immutable bytes.
+
+  Verification preserves complete capture, freshness fingerprints, content digest and both alias checks.
+  Its mode walk holds one descriptor chain bounded by Package/0 path depth.
+  Recheck each directory's owner, filesystem and read-only mode after its descendants, then its named inode before closing it.
+  Regular files retain their no-link, identity, owner, filesystem, link-count and mode checks.
+
+  Optional private timing separates copying, freezing and final verification.
+  These observations retain no paths or identities and change no authority, recovery or deadline.
+
 - Package artifact retention, materialization, and preparation.
 
 ### dependency-flows
