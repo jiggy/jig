@@ -344,6 +344,12 @@ Bun command for real declaration mismatches. Root name/version edits must
 review successfully without altering the authored lock. Preserve the prior
 approval on refusal and require successful review after each repair.
 
+Its review commands select unique private profile destinations outside captured consumer source.
+Only failed reviews append bounded summaries. Runs retain their original limits and cancellation behavior.
+Keep failed profiles private and remove successful fixtures' profiles with their consumers.
+`fixtures/private-profile-diagnostics.ts` shares strict profile projection with the foundation fixtures.
+It preserves the 256 KiB input, 1026-record and forty-event limits.
+
 Root Agent live suites select one exact client/input contract per file. Codex
 subscription requires its native executable and CODEX_HOME. Codex Responses
 requires the executable, model and OpenRouter key. Claude and Pi require their

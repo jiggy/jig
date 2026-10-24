@@ -59,6 +59,7 @@ import {
   requirePrivateInstalledBunSupport,
   revalidatePrivateInstalledBunSupport,
 } from './installed-bun-support.js'
+import { privateProfileFailureSink } from './private-profile.js'
 import { requirePrivateProjectEvaluationManifest } from './project-evaluation-manifest.js'
 
 const PREPARATION_WALL_MS = 60_000
@@ -78,6 +79,38 @@ const WORKER_FAILURE_CODES = new Set([
   'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
   'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
 ])
+
+const PREPARATION_STOP_CAUSES = {
+  cancelled: 'PACKAGE_BUN_STOP_CANCELLED',
+  coordinator_lost: 'PACKAGE_BUN_STOP_COORDINATOR_LOST',
+  deadline: 'PACKAGE_BUN_STOP_DEADLINE',
+  clock: 'PACKAGE_BUN_STOP_CLOCK',
+  payload_exit: 'PACKAGE_BUN_STOP_PAYLOAD_EXIT',
+  core_dump: 'PACKAGE_BUN_STOP_CORE_DUMP',
+  setup_failed: 'PACKAGE_BUN_STOP_SETUP_FAILED',
+  recovered: 'PACKAGE_BUN_STOP_RECOVERED',
+  memory_limit: 'PACKAGE_BUN_STOP_MEMORY_LIMIT',
+  process_limit: 'PACKAGE_BUN_STOP_PROCESS_LIMIT',
+  cpu_limit: 'PACKAGE_BUN_STOP_CPU_LIMIT',
+  accounting_failed: 'PACKAGE_BUN_STOP_ACCOUNTING_FAILED',
+} as const satisfies Record<PrivateExecutionConfirmedEnforcementReceipt['stopReason'], string>
+
+/** Project inert facts without creating native enforcement evidence. */
+export function privateBunPreparationFailureCauses(
+  stopReason: unknown,
+  terminalMissing: boolean,
+  exitCode: unknown,
+): readonly string[] {
+  const causes: string[] = [
+    typeof stopReason === 'string' && Object.hasOwn(PREPARATION_STOP_CAUSES, stopReason)
+      ? PREPARATION_STOP_CAUSES[stopReason as keyof typeof PREPARATION_STOP_CAUSES]
+      : 'OTHER',
+  ]
+  if (terminalMissing === true) causes.push('PACKAGE_BUN_TERMINAL_MISSING')
+  if (typeof exitCode === 'number' && Number.isSafeInteger(exitCode) && exitCode !== 0)
+    causes.push('PACKAGE_BUN_EXIT_NONZERO')
+  return Object.freeze(causes)
+}
 
 export interface PrivatePreparedBunPackage {
   readonly captured: CapturedPackage
@@ -340,6 +373,16 @@ async function interact(
       (!(terminal instanceof CheckError) && fence.exitCode !== 0) ||
       !fence.fenced
     ) {
+      const failureSink = privateProfileFailureSink()
+      if (failureSink !== undefined)
+        failureSink(
+          'project-plan',
+          privateBunPreparationFailureCauses(
+            fence.stopReason,
+            terminal === undefined && metadata === undefined,
+            fence.exitCode,
+          ),
+        )
       if (!(terminal instanceof CheckError)) await terminal?.captured.dispose()
       terminal = new CheckError(
         'unavailable',

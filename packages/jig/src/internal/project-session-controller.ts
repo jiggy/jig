@@ -465,15 +465,12 @@ function createSession(
                       }),
                     )
                   } catch (error) {
-                    if (error instanceof CheckError && error.code === 'PACKAGE_BUN_LOCK_STALE') {
-                      throw scopePrivatePackagePlanningError(
-                        error,
-                        '.',
-                        undefined,
-                        workspace?.projectRelativeRoot,
-                      )
-                    }
-                    throw error
+                    throw scopePrivatePackagePlanningError(
+                      error,
+                      '.',
+                      undefined,
+                      workspace?.projectRelativeRoot,
+                    )
                   }
                 },
                 retain: async (selector, source, prepared) => {
@@ -1154,7 +1151,7 @@ export function scopePrivatePackagePlanningError(
     error.kind,
     error.code,
     error.message,
-    `${packagePath}/${relativePath}`,
+    packagePath === '.' ? relativePath : `${packagePath}/${relativePath}`,
     error.pointer,
   )
 }

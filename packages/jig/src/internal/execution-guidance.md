@@ -60,6 +60,11 @@ These links locate module rules. All selected domain requirements still apply.
   `project-evaluation-input.ts` streams a borrowing immutable C/R/D/prior-output package view.
   C is the candidate, R the reviewed recipe, and D the locked development-inclusive dependencies.
 
+  Normal settlement joins its original lease's complete allocation identity to the retained phase plan.
+  After native release, it invokes that lease's memoized disposal.
+  Disposal still revalidates inode identity, all bytes and modes.
+  Recovery without a live lease reconstructs the retained allocation.
+
   Only native phase roots and fresh scratch are writable.
   `project-evaluation-workspace.ts` defines a closed native phase discriminator, never an arbitrary workspace interface.
 
@@ -111,6 +116,9 @@ These links locate module rules. All selected domain requirements still apply.
   At most eight failure observations share its existing 1024-record, 192-byte and 512-span bounds.
   Retain fixed host phases and allowlisted codes, never error names, messages or private fields.
   Guardian codes reuse the owning finite step/cause parser. Unknown causes become `OTHER`.
+
+  Preparation observations retain only fixed worker and budget codes, plus authenticated native stop reasons and missing-terminal or nonzero-exit facts.
+  These facts share the same failure budget and never include exit values, native identities or worker output.
   Readers use the strict failure-record normalizer and never count failures as timing or success evidence.
 
 - The configuration evaluator shares only finite review-envelope setup. Its

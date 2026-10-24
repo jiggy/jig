@@ -19,6 +19,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
+import { privateBunPreparationFailureCauses } from '../../src/internal/bun-native-preparation.js'
 import {
   normalizePrivateProfileFailure,
   PrivateProfileCapture,
@@ -31,7 +32,88 @@ import {
 } from '../../src/internal/private-profile.js'
 import { foundationCommands } from '../fixtures/host-foundation/materialize.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
+import {
+  profilePhaseSummary,
+  reviewCommandEnvironment,
+} from '../fixtures/private-profile-diagnostics.js'
 import { mappedFilesCommandEnvironment } from '../installed-mapped-files.js'
+
+test('preparation failure facts retain only the closed stop reason and finite terminal facts', () => {
+  const reasons = [
+    ['cancelled', 'PACKAGE_BUN_STOP_CANCELLED'],
+    ['coordinator_lost', 'PACKAGE_BUN_STOP_COORDINATOR_LOST'],
+    ['deadline', 'PACKAGE_BUN_STOP_DEADLINE'],
+    ['clock', 'PACKAGE_BUN_STOP_CLOCK'],
+    ['payload_exit', 'PACKAGE_BUN_STOP_PAYLOAD_EXIT'],
+    ['core_dump', 'PACKAGE_BUN_STOP_CORE_DUMP'],
+    ['setup_failed', 'PACKAGE_BUN_STOP_SETUP_FAILED'],
+    ['recovered', 'PACKAGE_BUN_STOP_RECOVERED'],
+    ['memory_limit', 'PACKAGE_BUN_STOP_MEMORY_LIMIT'],
+    ['process_limit', 'PACKAGE_BUN_STOP_PROCESS_LIMIT'],
+    ['cpu_limit', 'PACKAGE_BUN_STOP_CPU_LIMIT'],
+    ['accounting_failed', 'PACKAGE_BUN_STOP_ACCOUNTING_FAILED'],
+  ] as const
+  for (const [reason, cause] of reasons) {
+    const facts = privateBunPreparationFailureCauses(reason, false, 0)
+    expect(facts).toEqual([cause])
+    expect(Object.isFrozen(facts)).toBe(true)
+    expect(
+      normalizePrivateProfileFailure({ kind: 'failure', phase: 'project-plan', cause, timeMs: 0 }),
+    ).toEqual({ kind: 'failure', phase: 'project-plan', cause, timeMs: 0 })
+  }
+  const facts = privateBunPreparationFailureCauses('deadline', true, 17)
+  expect(facts).toEqual([
+    'PACKAGE_BUN_STOP_DEADLINE',
+    'PACKAGE_BUN_TERMINAL_MISSING',
+    'PACKAGE_BUN_EXIT_NONZERO',
+  ])
+  expect(Object.isFrozen(facts)).toBe(true)
+  for (const cause of facts)
+    expect(
+      normalizePrivateProfileFailure({ kind: 'failure', phase: 'project-plan', cause, timeMs: 0 })
+        ?.cause,
+    ).toBe(cause)
+
+  let reads = 0
+  const hostile = Object.defineProperty({}, 'valueOf', {
+    get() {
+      reads++
+      throw new Error('PRIVATE_CANARY')
+    },
+  })
+  const revoked = Proxy.revocable({}, {})
+  revoked.revoke()
+  for (const reason of [
+    undefined,
+    null,
+    [],
+    hostile,
+    revoked.proxy,
+    '__proto__',
+    'constructor',
+    'DEADLINE',
+    'deadline/PRIVATE_CANARY',
+    'deadline_PRIVATE_CANARY',
+    'PACKAGE_BUN_STOP_DEADLINE',
+  ])
+    expect(privateBunPreparationFailureCauses(reason, false, 0)).toEqual(['OTHER'])
+  for (const exit of [undefined, null, '17', hostile, revoked.proxy, NaN, Infinity, 1.5, 2 ** 53])
+    expect(privateBunPreparationFailureCauses('payload_exit', false, exit)).toEqual([
+      'PACKAGE_BUN_STOP_PAYLOAD_EXIT',
+    ])
+  for (const missing of [undefined, null, 'true', 1, hostile, revoked.proxy])
+    expect(privateBunPreparationFailureCauses('deadline', missing as boolean, 0)).toEqual([
+      'PACKAGE_BUN_STOP_DEADLINE',
+    ])
+  for (const cause of [
+    'PACKAGE_BUN_STOP_PRIVATE_CANARY',
+    'PACKAGE_BUN_STOP_DEADLINE_PRIVATE_CANARY',
+  ])
+    expect(
+      normalizePrivateProfileFailure({ kind: 'failure', phase: 'project-plan', cause, timeMs: 0 }),
+    ).toBeUndefined()
+  expect(reads).toBe(0)
+})
 
 test('private failure records accept only fixed own data and return fresh bounded records', () => {
   const record = { kind: 'failure', phase: 'child-flow-admission', cause: 'EAGAIN', timeMs: 1.25 }
@@ -48,6 +130,23 @@ test('private failure records accept only fixed own data and return fresh bounde
     'ENOMEM',
     'EXECUTION_PREPARATION_DEADLINE',
     'PROJECT_EVALUATOR_LAUNCH',
+    'PACKAGE_BUN_INPUT_LIMIT',
+    'PACKAGE_BUN_LOCK_INVALID',
+    'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
+    'PACKAGE_BUN_LOCK_STALE',
+    'PACKAGE_BUN_OUTPUT_LIMIT',
+    'PACKAGE_BUN_OUTPUT_UNSUPPORTED',
+    'PACKAGE_BUN_PREPARATION_FAILED',
+    'PACKAGE_BUN_PROTOCOL',
+    'PACKAGE_BUN_SOURCE_CHANGED',
+    'PACKAGE_BUN_SOURCE_UNSUPPORTED',
+    'PACKAGE_BUN_RESOLUTION_FAILED',
+    'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE',
+    'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED',
+    'PACKAGE_BUN_PROJECT_DEADLINE',
+    'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
+    'PACKAGE_BUN_PROJECT_OUTPUT_LIMIT',
+    'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED',
     'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
     'MACOS_GUARDIAN_STORAGE_RECOVERY_FILESYSTEM_BUSY',
     'OTHER',
@@ -67,6 +166,10 @@ test('private failure records accept only fixed own data and return fresh bounde
     { ...record, cause: 'Error:EAGAIN' },
     { ...record, cause: 'MACOS_GUARDIAN_STORAGE_PRIVATE_TOKEN' },
     { ...record, cause: 'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH/private' },
+    { ...record, cause: 'PACKAGE_BUN_PRIVATE_CANARY' },
+    { ...record, cause: 'PACKAGE_BUN_PREPARATION_FAILED_PRIVATE_CANARY' },
+    { ...record, cause: 'PACKAGE_BUN_PREPARATION_FAILED/private' },
+    { ...record, cause: 'package_bun_preparation_failed' },
     { ...record, cause: 'eagain' },
     { ...record, timeMs: -1 },
     { ...record, timeMs: Infinity },
@@ -1000,6 +1103,93 @@ test('foundation profile summaries validate failure records within the existing 
     expect(await summarize(fullInput)).toEqual({ status: 'captured', events: [failure] })
     expect(await summarize(`${fullInput} `)).toEqual({ status: 'truncated', events: [] })
     expect(await summarize('{not valid JSON}\n')).toEqual({ status: 'unavailable', events: [] })
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('workspace review capture isolates real child profiles and preserves the original failure', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-review-profile-')))
+  try {
+    const consumer = join(directory, 'consumer')
+    const evidence = join(directory, 'evidence')
+    await mkdir(consumer, { mode: 0o700 })
+    await mkdir(evidence, { mode: 0o700 })
+    const inherited = join(directory, 'inherited-profile')
+    await writeFile(inherited, 'PRIVATE_CANARY', { mode: 0o600 })
+    const profiler = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    const diagnostics = join(suiteTestRoot, '../src/diagnostics.ts')
+    const observer = join(suiteTestRoot, '../src/internal/project-session-controller.ts')
+    const execute = async (command: string, sequence: number) => {
+      const destination = join(evidence, `${sequence}.review.jsonl`)
+      const env = reviewCommandEnvironment(command, destination, {
+        ...process.env,
+        NO_COLOR: '1',
+        JIG_PRIVATE_PROFILE_FILE: inherited,
+      })
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `import assert from 'node:assert/strict';
+          import { CheckError } from ${JSON.stringify(diagnostics)};
+          import { closedTestErrorCauses } from ${JSON.stringify(observer)};
+          import { privateProfileActivate, privateProfileFailure, privateProfileFinish }
+            from ${JSON.stringify(profiler)};
+          privateProfileActivate();
+          const original = new CheckError('unavailable', 'PACKAGE_BUN_PREPARATION_FAILED', 'PRIVATE_CANARY');
+          assert.equal(original.path, undefined);
+          try { throw original } catch (error) {
+            privateProfileFailure('project-plan', closedTestErrorCauses(error));
+            assert.equal(error, original);
+          }
+          privateProfileFinish();
+          console.log('ordinary child output');
+          process.exit(7);`,
+        ],
+        { cwd: consumer, env, stdout: 'pipe', stderr: 'pipe' },
+      )
+      const [exit, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      expect(exit, stderr).toBe(7)
+      expect(stdout).toBe('ordinary child output\n')
+      expect(stderr).toBe('')
+      expect(env.NO_COLOR).toBe('1')
+      return { destination, env }
+    }
+    for (const sequence of [1, 2]) {
+      const { destination, env } = await execute('review', sequence)
+      expect(env.JIG_PRIVATE_PROFILE_FILE).toBe(destination)
+      const summary = await profilePhaseSummary(destination, 'review')
+      expect(JSON.parse(summary)).toEqual({
+        status: 'captured',
+        events: [
+          {
+            kind: 'failure',
+            phase: 'project-plan',
+            cause: 'PACKAGE_BUN_PREPARATION_FAILED',
+            timeMs: expect.any(Number),
+          },
+        ],
+      })
+      expect(summary).not.toMatch(/PRIVATE_CANARY|"path"|"message"|"pid"/)
+      const handle = await open(destination, constants.O_RDONLY | constants.O_NOFOLLOW)
+      try {
+        expect((await handle.stat()).mode & 0o777).toBe(0o600)
+      } finally {
+        await handle.close()
+      }
+    }
+    for (const command of ['run', 'inspect']) {
+      const { env } = await execute(command, 3)
+      expect(env.JIG_PRIVATE_PROFILE_FILE).toBeUndefined()
+    }
+    expect(await readdir(consumer)).toEqual([])
+    expect((await readdir(evidence)).sort()).toEqual(['1.review.jsonl', '2.review.jsonl'])
+    expect(await readFile(inherited, 'utf8')).toBe('PRIVATE_CANARY')
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
