@@ -10,6 +10,7 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 
 - `materialize.ts` constructs two independent temporary consumer repositories and
   installs exact frozen Jig/FLOW archives using the installed-test conventions.
+- `../private-profile-diagnostics.ts` owns bounded profile summaries shared with workspace review fixtures.
 - Without a supplied FLOW archive, freeze the installed public SDK package.
   Never require a neighboring SDK source checkout.
 - `adaptive/` owns deterministic candidate production, reviewed evaluation,

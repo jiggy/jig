@@ -168,6 +168,41 @@ describe('private finite project session', () => {
       })
     }
   })
+  test('root dependency preparation preserves known unavailable diagnostics without a worker path', () => {
+    const preparation = new CheckError(
+      'unavailable',
+      'PACKAGE_BUN_PREPARATION_FAILED',
+      'private worker token /private/preparation',
+    )
+    expect(preparation.path).toBeUndefined()
+    expect(projectError(preparation, 'plan').diagnostic).toBeUndefined()
+    for (const workspaceRoot of [undefined, '.', '../..']) {
+      const scoped = scopePrivatePackagePlanningError(preparation, '.', undefined, workspaceRoot)
+      const projected = projectError(scoped, 'plan').toJSON()
+      expect(projected).toEqual({
+        code: 'UNAVAILABLE',
+        message: 'plan is unavailable',
+        diagnostic: { code: 'PACKAGE_BUN_PREPARATION_FAILED', path: 'package.json' },
+      })
+      expect(JSON.stringify(projected)).not.toMatch(/private worker token|\/private\//)
+    }
+    expect(preparation.path).toBeUndefined()
+    expect(preparation.message).toBe('private worker token /private/preparation')
+    for (const [code, path] of [
+      ['PACKAGE_BUN_RESOLUTION_FAILED', 'package.json'],
+      ['PACKAGE_BUN_SOURCE_UNSUPPORTED', 'bun.lock'],
+    ] as const) {
+      const failure = new CheckError('unavailable', code, 'private worker detail', path)
+      expect(
+        projectError(scopePrivatePackagePlanningError(failure, '.'), 'plan').diagnostic,
+      ).toEqual({ code, path })
+    }
+    const protocol = new CheckError('unavailable', 'PACKAGE_BUN_PROTOCOL', 'private protocol')
+    const unrelated = new Error('private unrelated failure')
+    expect(scopePrivatePackagePlanningError(protocol, '.')).toBe(protocol)
+    expect(projectError(protocol, 'plan').diagnostic).toBeUndefined()
+    expect(scopePrivatePackagePlanningError(unrelated, '.')).toBe(unrelated)
+  })
   test('dependency lock display metadata rejects unrelated, protected and unbounded paths', () => {
     const diagnostic = {
       code: 'PACKAGE_BUN_LOCK_STALE',

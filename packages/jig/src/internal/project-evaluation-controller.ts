@@ -1,5 +1,5 @@
 import { CheckError } from '../diagnostics.js'
-import type { JsonObject, JsonValue } from '../json.js'
+import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import type { ProjectEvaluation } from '../project/evaluation.js'
 import type { RunHostCall, RunHostOperationTerminal } from '../run/session.js'
@@ -66,7 +66,9 @@ import {
   allocatePrivatePackageMaterialization,
   materializePrivatePackageLease,
   normalizePrivatePackageMaterializationAllocationIdentity,
+  normalizePrivatePackageMaterializationLeaseIdentity,
   type PrivatePackageMaterializationAllocationIdentity,
+  type PrivatePackageMaterializationLease,
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
 import { privateProfileSpan } from './private-profile.js'
@@ -411,7 +413,7 @@ export async function executePrivateProjectEvaluation(
                 await closePrivateExecutionOutput(component.output)
               activePhase = 'settlement'
               lifecycle = await privateProfileSpan('contained-effect-settlement', () =>
-                settlePhase(input, lifecycle!, request.phase, fence),
+                settlePhase(input, lifecycle!, request.phase, fence, lease),
               )
               observed = {
                 phase: request.phase,
@@ -673,6 +675,7 @@ async function settlePhase(
   row: PrivateRootChildOwnerLifecycle,
   phase: PrivateProjectEvaluationPhase,
   knownFence?: PrivateExecutionConfirmedEnforcementReceipt,
+  knownLease?: PrivatePackageMaterializationLease,
 ): Promise<PrivateRootChildOwnerLifecycle> {
   let lifecycle = row
   const facts = row.phaseHistory.filter((fact) => fact.phase === phase)
@@ -701,6 +704,8 @@ async function settlePhase(
     plan.deadlineUnixMs > (row.allocation.value as unknown as Allocation).deadlineUnixMs
   )
     throw new Error('evaluation phase owner differs from its logical operation')
+  if (knownLease !== undefined)
+    requirePrivateProjectEvaluationLeaseAllocation(knownLease, packageAllocation)
   const cleanup = facts.find((fact) => fact.checkpoint === 'cleanup')
   if (cleanup !== undefined) {
     const value = cleanup.value as JsonObject
@@ -754,8 +759,17 @@ async function settlePhase(
     })
     release = await releasePrivateExecutionOwnerState(owner, receipt)
   }
-  const recovered = await recoverPrivatePackageMaterializationAllocation(parent, packageAllocation)
-  if (recovered.state === 'complete') await recovered.lease.dispose()
+  if (knownLease !== undefined) {
+    // The original lease still verifies its complete digest and inode identity
+    // during disposal. Recovery would recapture those same bytes first.
+    await knownLease.dispose()
+  } else {
+    const recovered = await recoverPrivatePackageMaterializationAllocation(
+      parent,
+      packageAllocation,
+    )
+    if (recovered.state === 'complete') await recovered.lease.dispose()
+  }
   return recordPrivateRootChildPhase({
     ...operationKey(input, row.operationId),
     allocationDigest: lifecycle.allocation.digest,
@@ -763,6 +777,22 @@ async function settlePhase(
     checkpoint: 'cleanup',
     value: { ownerRelease: release, workspace: 'released' } as unknown as JsonValue,
   })
+}
+
+/** Bind a live phase lease to its retained allocation before releasing any owner. */
+export function requirePrivateProjectEvaluationLeaseAllocation(
+  lease: PrivatePackageMaterializationLease,
+  allocationValue: unknown,
+): void {
+  const identity = normalizePrivatePackageMaterializationLeaseIdentity(lease.identity)
+  const allocation = normalizePrivatePackageMaterializationAllocationIdentity(allocationValue)
+  if (
+    Buffer.compare(
+      canonicalJson(identity.allocation as unknown as JsonValue),
+      canonicalJson(allocation as unknown as JsonValue),
+    ) !== 0
+  )
+    throw new Error('evaluation phase materialization differs from its retained allocation')
 }
 
 async function releaseEvaluation(

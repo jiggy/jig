@@ -28,6 +28,7 @@ import {
   reacquirePrivatePackageMaterializationLease,
   recoverPrivatePackageMaterializationAllocation,
 } from '../../src/internal/package-materialization.js'
+import { requirePrivateProjectEvaluationLeaseAllocation } from '../../src/internal/project-evaluation-controller.js'
 import { capturePackageDirectory } from '../../src/package/capture.js'
 import {
   durableTree,
@@ -133,6 +134,51 @@ describe('private package materialization', () => {
       }),
     ).toThrow('ordinary data object')
     expect(nestedTrapCalls).toBe(0)
+  })
+  test('evaluation settlement joins its original live lease to the complete retained allocation', async () => {
+    const fixture = await workspaceFixture()
+    let lease: PrivatePackageMaterializationLease | undefined
+    try {
+      lease = await materializePrivatePackageLease(fixture.captured, fixture.allocation)
+      const current = lease
+      const retained = JSON.parse(JSON.stringify(fixture.allocation))
+      expect(() => requirePrivateProjectEvaluationLeaseAllocation(current, retained)).not.toThrow()
+      const foreign = await allocatePrivatePackageMaterialization({
+        protectedParent: fixture.protectedParent,
+        name: 'another-evaluation-phase',
+        packageDigest: fixture.captured.digest,
+        ownerToken: 'another:evaluation:phase',
+        aliases: fixture.layout.aliases,
+      })
+      for (const changed of [
+        foreign,
+        { ...retained, ownerToken: 'changed:evaluation:owner' },
+        { ...retained, packageDigest: `sha256:${'0'.repeat(64)}` },
+        {
+          ...retained,
+          parent: { ...retained.parent, dev: String(BigInt(retained.parent.dev) + 1n) },
+        },
+        {
+          ...retained,
+          parent: { ...retained.parent, ino: String(BigInt(retained.parent.ino) + 1n) },
+        },
+        { ...retained, aliases: retained.aliases.slice(1) },
+      ])
+        expect(() => requirePrivateProjectEvaluationLeaseAllocation(current, changed)).toThrow(
+          'evaluation phase materialization differs from its retained allocation',
+        )
+      expect(await readFile(join(current.root, 'libraries/shared/value.txt'), 'utf8')).toBe(
+        'shared bytes\n',
+      )
+      expect(await readdir(fixture.protectedParent)).toEqual([fixture.allocation.name])
+      const disposal = current.dispose()
+      expect(current.dispose()).toBe(disposal)
+      await disposal
+      expect(await readdir(fixture.protectedParent)).toEqual([])
+    } finally {
+      await lease?.dispose()
+      await fixture.dispose()
+    }
   })
   test('preserves the invocation-local materialization API', async () => {
     const source = await mkdtemp(join(tmpdir(), 'jig-materialize-source-'))

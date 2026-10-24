@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { caller, cli, contract, peer } from '../fixtures/installed-provider.js'
+import {
+  profilePhaseSummary,
+  reviewCommandEnvironment,
+} from '../fixtures/private-profile-diagnostics.js'
 
 if (
   !(
@@ -21,6 +25,8 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const rootApplication = location === 'root'
     const nested = location === 'nested'
     const directory = await mkdtemp(join(tmpdir(), 'jig-npm-consumer-'))
+    const evidence = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-review-profile-')))
+    let sequence = 0
     const put = async (path: string, value: unknown) => {
       await mkdir(dirname(join(directory, path)), { recursive: true })
       await writeFile(
@@ -32,9 +38,13 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const putApp = (path: string, value: unknown) =>
       put(rootApplication ? path : `apps/consumer/${path}`, value)
     const run = async (args: string[], interrupt = false) => {
+      const env = reviewCommandEnvironment(args[0], join(evidence, `${++sequence}.review.jsonl`), {
+        ...process.env,
+        NO_COLOR: '1',
+      })
       const child = Bun.spawn([cli, ...args], {
         cwd: project,
-        env: { ...process.env, NO_COLOR: '1' },
+        env,
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
@@ -61,7 +71,16 @@ for (const location of ['member', 'root', 'nested'] as const) {
           new Response(child.stdout).text(),
           new Response(child.stderr).text(),
         ])
-        return { exit, stdout, stderr, interruptEvidence }
+        const profile =
+          exit !== 0 && env.JIG_PRIVATE_PROFILE_FILE !== undefined
+            ? await profilePhaseSummary(env.JIG_PRIVATE_PROFILE_FILE, 'review')
+            : undefined
+        return {
+          exit,
+          stdout,
+          stderr: `${stderr}${profile === undefined ? '' : `\nReview phases: ${profile}`}`,
+          interruptEvidence,
+        }
       } finally {
         if (interruptTimer !== undefined) clearTimeout(interruptTimer)
       }
@@ -261,8 +280,10 @@ for (const location of ['member', 'root', 'nested'] as const) {
       expect(repaired.exit, repaired.stdout + repaired.stderr).toBe(0)
       passed = true
     } finally {
-      if (passed) await rm(directory, { recursive: true, force: true })
-      else console.error(`Preserved package-provider consumer: ${directory}`)
+      if (passed) {
+        await rm(directory, { recursive: true, force: true })
+        await rm(evidence, { recursive: true, force: true })
+      } else console.error(`Preserved package-provider consumer: ${directory}`)
     }
   }, 240_000)
 }

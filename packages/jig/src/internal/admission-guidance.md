@@ -309,6 +309,9 @@ These links locate module rules. All selected domain requirements still apply.
   support affects only selected targets and their dependents. CLI review refuses
   any observed typed selected ACP prerequisite before preparing target
   execution, unchanged success or admission.
+
+  Initial npm dependency adoption applies the same preparation-error scoping as later target preparation.
+  Known preparation failures without worker locations refer to the application's canonical `package.json`.
   Run Checkpoint must follow its exact declared native interface and protected attempt association.
   Do not infer checkpoint authority from a writable attachment or optional FLOW port.
 
