@@ -154,6 +154,25 @@ export function normalizePrivateMacosGuardianFailure(
   return Object.freeze({ step: record.step, cause: record.cause })
 }
 
+/** Parse only the fixed code assembled from authenticated guardian failure fields. */
+export function normalizePrivateMacosGuardianFailureCode(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  for (const step of failureSteps) {
+    const prefix = `MACOS_GUARDIAN_${step.replaceAll('-', '_').toUpperCase()}_`
+    if (!value.startsWith(prefix)) continue
+    try {
+      const failure = normalizePrivateMacosGuardianFailure({
+        step,
+        cause: value.slice(prefix.length),
+      })
+      if (failure !== null) return `${prefix}${failure.cause}`
+    } catch {
+      // A partial prefix cannot admit a new step, cause or private suffix.
+    }
+  }
+  return undefined
+}
+
 export interface PrivateMacosGuardianRecoveryDiagnostic {
   readonly phase: PrivateMacosGuardianPhase
   readonly step: PrivateMacosGuardianRecoveryStep

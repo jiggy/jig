@@ -5,11 +5,38 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   normalizePrivateMacosGuardianFailure,
+  normalizePrivateMacosGuardianFailureCode,
   type PrivateMacosGuardianRecoveryDiagnostic,
   privateMacosGuardianFailure,
   reportPrivateMacosGuardianRecovery,
   withPrivateMacosGuardianDiagnostics,
 } from '../../src/internal/macos-guardian-diagnostics.js'
+
+test('guardian failure codes use the existing exact step and cause vocabulary', () => {
+  for (const [step, message] of [
+    ['scope-preparation', 'macOS initial accounting is incomplete'],
+    ['storage', 'macOS volume attach failed'],
+    ['storage-recovery', 'macOS volume backing identity changed'],
+    ['input-projection', 'unknown private failure'],
+  ] as const) {
+    const failure = privateMacosGuardianFailure(step, new Error(message))
+    const code = `MACOS_GUARDIAN_${step.replaceAll('-', '_').toUpperCase()}_${failure.cause}`
+    expect(normalizePrivateMacosGuardianFailureCode(code)).toBe(code)
+    for (const near of [code.toLowerCase(), `${code} `, `${code}_PRIVATE_TOKEN`, `private:${code}`])
+      expect(normalizePrivateMacosGuardianFailureCode(near)).toBeUndefined()
+  }
+  for (const invalid of [
+    undefined,
+    null,
+    ['MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH'],
+    'MACOS_GUARDIAN_PRIVATE_PHASE_VOLUME_ATTACH',
+    'MACOS_GUARDIAN_STORAGE_PRIVATE_TOKEN',
+    'MACOS_GUARDIAN_STORAGE_RECOVERY_PRIVATE_TOKEN',
+    'MACOS_GUARDIAN_STORAGE_',
+    'Error:MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
+  ])
+    expect(normalizePrivateMacosGuardianFailureCode(invalid)).toBeUndefined()
+})
 
 test('actual missing launcher errors retain a closed filesystem cause without private paths', async () => {
   const root = await mkdtemp(join(tmpdir(), 'jig-launch-error-'))
