@@ -398,6 +398,9 @@ These links locate module rules. All selected domain requirements still apply.
   through the existing root host-test observer. Never forward native exception
   messages or arbitrary error codes across this channel.
 
+  The installed opt-in profile parses guardian codes against this same finite vocabulary.
+  Code spelling alone cannot admit an unknown step, cause or private suffix.
+
   Scope preparation distinguishes fixed configuration, accounting, handoff,
   fencing and readiness
   causes. Readiness reports only its closed stop reason, without raw exit evidence.

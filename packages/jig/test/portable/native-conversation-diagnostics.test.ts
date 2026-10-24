@@ -18,6 +18,15 @@ function requestError(details: unknown) {
   return error
 }
 
+function sessionError(details: unknown) {
+  const error = new OperationError(
+    'UNCERTAIN',
+    `${uncertainPrefix}exchanging native messages.${sessionFailure}`,
+  )
+  Object.defineProperty(error, 'details', { value: details, configurable: true })
+  return error
+}
+
 test('native diagnostics preserve every public operation code and fixed helper cause', () => {
   for (const code of [
     'CANCELLED',
@@ -117,6 +126,119 @@ test('near matches and other codes never acquire native phase or reason claims',
   }
   for (const code of ['EXECUTION_FAILED', 'OWNER_CLOSED', 'DEADLINE_EXCEEDED'] as const)
     expect(project(new OperationError(code, exact)).errors).toEqual([{ kind: 'operation', code }])
+})
+
+test('native session diagnostics retain only exact categories with the matching failure', () => {
+  for (const category of ['connection', 'access', 'limit', 'request', 'service', 'unknown']) {
+    const details = { nativeSession: { category } }
+    expect(project(sessionError(details)).errors).toEqual([
+      {
+        kind: 'operation',
+        code: 'UNCERTAIN',
+        native: { phase: 'exchange-messages', reason: 'native-session', category },
+      },
+    ])
+    for (const code of ['EXECUTION_FAILED', 'CANCELLED', 'DEADLINE_EXCEEDED'] as const)
+      expect(
+        project(
+          new OperationError(
+            code,
+            `${uncertainPrefix}exchanging native messages.${sessionFailure}`,
+            details,
+          ),
+        ).errors,
+      ).toEqual([{ kind: 'operation', code }])
+    for (const [message, native] of [
+      [
+        `${uncertainPrefix}exchanging native messages.${protocolFailure}`,
+        { phase: 'exchange-messages', reason: 'protocol' },
+      ],
+      [
+        `${uncertainPrefix}exchanging native messages.`,
+        { phase: 'exchange-messages', reason: 'unclassified' },
+      ],
+      [
+        'the native provider did not prove an ordinary or controlled terminal',
+        { phase: 'terminal', reason: 'unproved-terminal' },
+      ],
+    ] as const)
+      expect(project(new OperationError('UNCERTAIN', message, details)).errors).toEqual([
+        { kind: 'operation', code: 'UNCERTAIN', native },
+      ])
+    expect(project(new OperationError('UNCERTAIN', privateText, details)).errors).toEqual([
+      { kind: 'operation', code: 'UNCERTAIN' },
+    ])
+  }
+})
+
+test('native session diagnostics reject unknown fields and malformed category records', () => {
+  const session = { category: 'connection' }
+  const unexpected = [
+    undefined,
+    null,
+    [],
+    privateText,
+    {},
+    { nativeSession: session, payload: privateText },
+    { nativeSession: { ...session, title: privateText } },
+    { nativeSession: { ...session, actions: ['retry'] } },
+    ...[undefined, null, 1, {}, [], privateText, 'constructor', 'Connection', 'connection\n'].map(
+      (category) => ({ nativeSession: { category } }),
+    ),
+    Object.create({ nativeSession: session }),
+    { nativeSession: Object.create(session) },
+    { nativeSession: session, [Symbol('private')]: privateText },
+    { nativeSession: { ...session, [Symbol('private')]: privateText } },
+    Object.defineProperty({ nativeSession: session }, 'hidden', { value: privateText }),
+    { nativeSession: Object.defineProperty({ ...session }, 'hidden', { value: privateText }) },
+  ]
+  for (const details of unexpected) {
+    const diagnostic = project(sessionError(details))
+    expect(diagnostic.errors).toEqual([
+      {
+        kind: 'operation',
+        code: 'UNCERTAIN',
+        native: { phase: 'exchange-messages', reason: 'native-session' },
+      },
+    ])
+    expect(JSON.stringify(diagnostic)).not.toContain(privateText)
+  }
+})
+
+test('native category observation cannot invoke accessors or discard known failure facts', () => {
+  let reads = 0
+  const accessor = {
+    get() {
+      reads++
+      throw new Error(privateText)
+    },
+  }
+  const revoked = Proxy.revocable({}, {})
+  revoked.revoke()
+  for (const details of [
+    Object.defineProperty({}, 'nativeSession', accessor),
+    { nativeSession: Object.defineProperty({}, 'category', accessor) },
+    revoked.proxy,
+    { nativeSession: revoked.proxy },
+  ]) {
+    expect(project(sessionError(details)).errors).toEqual([
+      {
+        kind: 'operation',
+        code: 'UNCERTAIN',
+        native: { phase: 'exchange-messages', reason: 'native-session' },
+      },
+    ])
+  }
+  const error = sessionError(undefined)
+  Object.defineProperty(error, 'details', accessor)
+  expect(project(error).errors).toEqual([
+    {
+      kind: 'operation',
+      code: 'UNCERTAIN',
+      native: { phase: 'exchange-messages', reason: 'native-session' },
+    },
+  ])
+  expect(reads).toBe(0)
 })
 
 test('native request diagnostics retain exact allowed methods and safe integer codes', () => {

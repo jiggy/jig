@@ -26,6 +26,8 @@ Turn reviewed package changesets into independent alpha versions before canonica
 - Synchronize the exact Reporting version in `packages/display-model/THIRD_PARTY_NOTICES`. Preserve all other notice text.
 - Validate generated release PRs by replaying the real version command from their exact base.
 - Bind release metadata to the complete versioned source, excluding only the metadata file itself.
+- Keep automatic Git maintenance in the foreground of each release invocation.
+  Wait for its child processes before removing temporary repositories. Cleanup errors remain failures.
 - Pending intent, stale source, or malformed metadata cannot authorize publication.
 - Keep privileged publication and host qualification with their existing owners.
 - Install and execute Changesets only in the read-only generation job.
@@ -47,6 +49,7 @@ Turn reviewed package changesets into independent alpha versions before canonica
 
 - `node --test scripts/ci/release-plan.test.mjs` uses real Git repositories and the installed Changesets CLI.
 - Verify generated versions, exact pins and notices, repeated alpha releases, stale plans, and rejected manual edits.
+  Force real automatic Git maintenance and verify its completion before temporary repository cleanup.
 - `node --test scripts/ci/prepared-release.test.mjs` verifies transfer through real Git checkouts without installed writer dependencies.
   Reject unrelated source edits, malformed artifacts, stale identity, and unsafe destinations before mutation.
   Required notice updates must be present and preserve all unrelated source bytes.

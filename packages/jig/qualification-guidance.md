@@ -276,6 +276,13 @@ These links locate module rules. All selected domain requirements still apply.
   immutable source preservation, and immutable artifact handoff before each call
   returns. Final packet rules remain independent.
 
+  With `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`, the leaf and composed Runs
+  write separate exclusive mode-0600 profiles under the validated existing
+  evidence directory. These bounded phase and closed failure records use the
+  existing text upload pattern. Raw command transcripts remain beside the
+  consumer. Profile failures preserve command outcomes, Run limits, concurrent
+  siblings and packet assertions.
+
 - The same installed smoke runs `test/installed-conversation-adoption.ts` in a
   fresh ordinary project using the frozen Jig/SDK/method archives, public
   `new --use` and `import-contract`, and the unchanged public conversation
@@ -308,7 +315,7 @@ These links locate module rules. All selected domain requirements still apply.
   the candidate source and adopted FLOW version.
 
   Native failure diagnostics retain bounded public codes and only exact known
-  failure stages/reasons or validated request methods/codes. They never copy
+  failure stages/reasons, closed session categories or validated request methods/codes. They never copy
   arbitrary error messages or details. Unknown input remains unclassified, and
   diagnostic failure cannot replace the execution failure.
 

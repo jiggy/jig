@@ -5,6 +5,7 @@ import { arch, platform, release } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
+import { normalizePrivateProfileFailure } from '../packages/jig/src/internal/private-profile.js'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const fixture = join(root, 'packages/jig/test/fixtures/channel-conversation')
@@ -617,9 +618,15 @@ async function readTrace(path: string): Promise<TraceRead> {
     return {
       valid,
       truncated: records.some((record) => record.kind === 'truncated'),
-      events: records.filter(
-        (record) => record.kind === 'start' || record.kind === 'end' || record.kind === 'instant',
-      ),
+      events: records.flatMap<Record<string, unknown>>((record) => {
+        if (record.kind === 'failure') {
+          const failure = normalizePrivateProfileFailure(record)
+          return failure === undefined ? [] : [{ ...failure }]
+        }
+        return record.kind === 'start' || record.kind === 'end' || record.kind === 'instant'
+          ? [record]
+          : []
+      }),
     }
   } catch {
     return { valid: false, truncated: false, events: [] }

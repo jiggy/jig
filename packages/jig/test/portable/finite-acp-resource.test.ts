@@ -183,7 +183,9 @@ describe('finite ACP resource dependencies with actual bounded wire peers', () =
       const error = await p.next().catch((error: unknown) => error)
       expect(error).toBeInstanceOf(PrivateFiniteAcpPolicyError)
       expect((error as PrivateFiniteAcpPolicyError).reason).toBe('native-session')
+      expect((error as PrivateFiniteAcpPolicyError).nativeCategory).toBe('connection')
       expect(String(error)).not.toContain('secret-token')
+      expect(JSON.stringify(error)).not.toMatch(/secret-token|private-action/)
       expect(JSON.stringify(p.exposed)).not.toContain('secret-token')
     } finally {
       await p.dispose()
