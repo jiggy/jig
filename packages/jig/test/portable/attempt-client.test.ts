@@ -177,7 +177,12 @@ for (const mode of ['partial', 'malformed', 'oversize']) {
 }
 test('EOF after acceptance preserves uncertainty and does not retry', async () => {
   const submission = await client('accepted-eof').submit({ ticket: 'private-ticket', request })
-  await expect(submission.completion).rejects.toHaveProperty('code', 'TRANSPORT_UNCERTAIN')
+  const error = await submission.completion.then(
+    () => undefined,
+    (error: unknown) => error,
+  )
+  expect(error).toHaveProperty('code', 'TRANSPORT_UNCERTAIN')
+  expect(error).toHaveProperty('uncertain', true)
 })
 test('host uncertainty before accepted delivery remains uncertain to the application', async () => {
   try {
