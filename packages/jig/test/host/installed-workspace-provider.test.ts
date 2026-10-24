@@ -228,6 +228,28 @@ for (const location of ['member', 'root', 'nested'] as const) {
       expect(JSON.parse(pinned.stdout)).toMatchObject({ output: 'retained' })
       expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(before)
       await put('patches/is-number.patch', originalPatch)
+      // Registry preparation and patch pinning are proved above. Author and
+      // repair stale locks with local workspaces, without resolving npm again.
+      const workspaceManifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
+      delete workspaceManifest.patchedDependencies
+      await put('package.json', workspaceManifest)
+      const peerManifest = JSON.parse(
+        await readFile(join(directory, 'packages/echo/package.json'), 'utf8'),
+      )
+      delete peerManifest.dependencies
+      await put('packages/echo/package.json', peerManifest)
+      if (rootApplication) {
+        await put('packages/lock-repair-helper/package.json', {
+          name: 'lock-repair-helper',
+          version: '1.0.0',
+          type: 'module',
+          exports: './index.js',
+        })
+        await put(
+          'packages/lock-repair-helper/index.js',
+          'export const marker = "local dependency"',
+        )
+      }
       // Review retains its generated lock privately; an authored stale lock
       // must be created through Bun before changing the manifest.
       execFileSync(
@@ -251,7 +273,7 @@ for (const location of ['member', 'root', 'nested'] as const) {
         await putApp('package.json', {
           ...changedManifest,
           version: '2.0.0',
-          dependencies: { ...manifest.dependencies, 'is-number': '6.0.0' },
+          dependencies: { ...manifest.dependencies, 'lock-repair-helper': 'workspace:*' },
         })
       } else {
         await putApp('package.json', changedManifest)
