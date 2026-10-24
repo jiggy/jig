@@ -1,19 +1,31 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "acab0643a7320e4d77950819e467ea9ea2fed0b3",
-  "sourceDigest": "a6808e318d55df1ad65e51540e130910996abebcb530c01339ce70155083e52f",
+  "baseRevision": "e9cdb08c58328636cb70a4b1a8d0ac9387955b98",
+  "sourceDigest": "480a97909f86688fb3bdf7aa9c88010f214b4c245e5ef1a6579fd2459b758f42",
   "changesets": [
     {
-      "id": "preserve-sealed-linux-cancellation",
-      "sha256": "17593bdc062722da13f6a70307833d552ed0095635c6c9dd1d9dae9d1cb8b881"
+      "id": "preserve-native-failure-category",
+      "sha256": "3791975cab131b1473556e327f9699a9a426871c3ce472cb96bf63d0d3b237fd"
+    },
+    {
+      "id": "qualify-frozen-conversations",
+      "sha256": "4f728d701af03e04570b1f671f92265baf4dd43e01376368535fdcd9988f1903"
+    },
+    {
+      "id": "retain-installed-failure-cause",
+      "sha256": "4d8195f0ed4ae79f0e90064efa08a475d1bc857645e30540d6ddcd3f21e91676"
+    },
+    {
+      "id": "reuse-evaluation-phase-lease",
+      "sha256": "52fed962a21fabd509dc83d0dc1c82aa03372acaa67bcd73437bd1b9f89c103f"
     }
   ],
   "releases": [
     {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.40",
-      "newVersion": "0.1.0-alpha.41"
+      "oldVersion": "0.1.0-alpha.41",
+      "newVersion": "0.1.0-alpha.42"
     }
   ]
 }

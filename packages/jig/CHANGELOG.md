@@ -1,5 +1,14 @@
 # @jigging/jig
 
+## 0.1.0-alpha.42
+
+### Patch Changes
+
+- 35eda88: Preserve the native client's bounded failure category when an ACP conversation fails. Keep provider text private and preserve uncertainty, cancellation, and cleanup.
+- e9c727f: Qualify native conversations against the exact release candidate packages. Retain bounded native failure classifications and independent macOS qualification failures before publication.
+- d576c44: Retain bounded host failure causes, preparation outcomes, materialization and controlled-evaluation timings in the optional installed-command profile. Preserve known dependency-preparation diagnostics during initial npm Flow adoption. Keep private error content out of diagnostics and preserve execution and cleanup behavior.
+- 142e372: Avoid repeated directory walks and intermediate directory syncs during package materialization. Reuse the original materialization lease when settling a completed evaluation phase, avoiding a redundant recovery capture. Preserve full identity and content checks, durable recovery, and the original execution deadlines.
+
 ## 0.1.0-alpha.41
 
 ### Patch Changes
