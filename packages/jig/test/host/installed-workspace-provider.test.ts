@@ -283,7 +283,10 @@ for (const location of ['member', 'root', 'nested'] as const) {
       if (passed) {
         await rm(directory, { recursive: true, force: true })
         await rm(evidence, { recursive: true, force: true })
-      } else console.error(`Preserved package-provider consumer: ${directory}`)
+      } else {
+        console.error(`Preserved package-provider consumer: ${directory}`)
+        console.error(`Preserved package-provider review profiles: ${evidence}`)
+      }
     }
   }, 240_000)
 }
