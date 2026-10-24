@@ -308,7 +308,7 @@ These links locate module rules. All selected domain requirements still apply.
   the candidate source and adopted FLOW version.
 
   Native failure diagnostics retain bounded public codes and only exact known
-  failure stages/reasons or validated request methods/codes. They never copy
+  failure stages/reasons, closed session categories or validated request methods/codes. They never copy
   arbitrary error messages or details. Unknown input remains unclassified, and
   diagnostic failure cannot replace the execution failure.
 

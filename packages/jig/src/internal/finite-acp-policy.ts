@@ -36,10 +36,13 @@ export interface PrivateFiniteAcpDelivery {
   readonly toClient?: JsonObject
 }
 
+const nativeCategories = ['connection', 'access', 'limit', 'request', 'service', 'unknown'] as const
+
 export class PrivateFiniteAcpPolicyError extends Error {
   constructor(
     message: string,
     readonly reason: 'protocol' | 'native-session' = 'protocol',
+    readonly nativeCategory?: (typeof nativeCategories)[number],
   ) {
     super(message)
     this.name = 'PrivateFiniteAcpPolicyError'
@@ -517,6 +520,7 @@ export class PrivateFiniteAcpPolicy {
       throw new PrivateFiniteAcpPolicyError(
         'Native ACP reported a session failure',
         'native-session',
+        nativeCategories.find((category) => category === notice.category),
       )
     if (notice.severity !== 'warning') fail('Invalid native ACP diagnostic severity')
     return true

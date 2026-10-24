@@ -132,6 +132,76 @@ describe('finite ACP authority policy', () => {
       )
     }
   })
+  test('native session errors retain only closed categories and discard private metadata', () => {
+    for (const category of ['connection', 'access', 'limit', 'request', 'service', 'unknown']) {
+      for (const phase of ['startup', 'turn', 'result', 'late']) {
+        const policy = phase === 'startup' ? new PrivateFiniteAcpPolicy() : session()
+        if (phase === 'startup') {
+          initialize(policy)
+          policy.fromAdapter(request(2, 'session/new', { cwd: '/work', mcpServers: [] }))
+        } else {
+          prompt(policy)
+          if (phase === 'late') policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+        }
+        const metadata = diagnostic('error')
+        metadata.jetbrains.air.sessionFailure.category = category
+        let failure: unknown
+        try {
+          policy.fromClient(
+            phase === 'result'
+              ? reply(10, { stopReason: 'end_turn', _meta: metadata })
+              : update({ sessionUpdate: 'session_info_update', _meta: metadata }),
+          )
+        } catch (error) {
+          failure = error
+        }
+        expect(failure).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+        expect((failure as PrivateFiniteAcpPolicyError).reason).toBe('native-session')
+        expect((failure as PrivateFiniteAcpPolicyError).nativeCategory).toBe(category)
+        expect(JSON.stringify(failure)).not.toMatch(/private|secret-token/)
+        expect(() => policy.assertSettled()).toThrow('closed after failure')
+      }
+    }
+  })
+  test('missing and malformed native categories cannot suppress or reclassify session errors', () => {
+    for (const category of [
+      undefined,
+      null,
+      7,
+      [],
+      {},
+      'Connection',
+      'connection\n',
+      'secret-token',
+    ]) {
+      const policy = session()
+      prompt(policy)
+      const metadata = diagnostic('error')
+      let failure: unknown
+      try {
+        policy.fromClient(
+          update({
+            sessionUpdate: 'session_info_update',
+            _meta: {
+              jetbrains: {
+                air: {
+                  ...metadata.jetbrains.air,
+                  sessionFailure: { ...metadata.jetbrains.air.sessionFailure, category },
+                },
+              },
+            },
+          }),
+        )
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+      expect((failure as PrivateFiniteAcpPolicyError).reason).toBe('native-session')
+      expect((failure as PrivateFiniteAcpPolicyError).nativeCategory).toBeUndefined()
+      expect(JSON.stringify(failure)).not.toMatch(/private|secret-token/)
+      expect(() => policy.assertSettled()).toThrow('closed after failure')
+    }
+  })
   test('resume names only the claimed session, never a fallback new session', () => {
     const policy = new PrivateFiniteAcpPolicy({ restoreSessionId: 'saved-session' })
     policy.fromAdapter(request(1, 'initialize', { protocolVersion: 1 }))

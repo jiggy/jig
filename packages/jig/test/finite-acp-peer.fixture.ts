@@ -47,7 +47,12 @@ for await (const line of createInterface({ input: process.stdin })) {
               jetbrains: {
                 air: {
                   version: 1,
-                  sessionFailure: { severity: 'error', title: '/private/secret-token' },
+                  sessionFailure: {
+                    severity: 'error',
+                    category: 'connection',
+                    title: '/private/secret-token',
+                    actions: [{ private: 'secret-token' }],
+                  },
                 },
               },
             },

@@ -47,6 +47,7 @@ const nativeMethods = new Set([
   'session/set_mode',
   'session/prompt',
 ])
+const nativeCategories = new Set(['connection', 'access', 'limit', 'request', 'service', 'unknown'])
 
 function ownValue(value: unknown, key: PropertyKey): unknown {
   if (value === null || typeof value !== 'object') return undefined
@@ -113,6 +114,18 @@ function nativeRequest(details: unknown) {
   return { method, code, reason: 'managed-preferences-unavailable' }
 }
 
+function nativeSessionCategory(details: unknown) {
+  try {
+    if (!exactRecord(details, ['nativeSession'])) return undefined
+    const session = ownValue(details, 'nativeSession')
+    if (!exactRecord(session, ['category'])) return undefined
+    const category = ownValue(session, 'category')
+    return typeof category === 'string' && nativeCategories.has(category) ? category : undefined
+  } catch {
+    return undefined
+  }
+}
+
 function projectError(error: unknown) {
   try {
     if (error instanceof OperationError) {
@@ -123,7 +136,16 @@ function projectError(error: unknown) {
       try {
         if (code === 'UNCERTAIN') {
           const native = nativeFailure(ownValue(error, 'message'))
-          if (native !== undefined) return { ...projection, native }
+          if (native !== undefined) {
+            const category =
+              native.reason === 'native-session'
+                ? nativeSessionCategory(ownValue(error, 'details'))
+                : undefined
+            return {
+              ...projection,
+              native: { ...native, ...(category === undefined ? {} : { category }) },
+            }
+          }
         }
         if (code === 'EXECUTION_FAILED') {
           const request = nativeRequest(ownValue(error, 'details'))
