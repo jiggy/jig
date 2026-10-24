@@ -100,12 +100,18 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### private-profile
 
-- `private-profile.ts` owns opt-in bounded phase-only diagnostics, written
+- `private-profile.ts` owns opt-in bounded phase diagnostics and closed host failure codes, written
   before shutdown. Partial spans are not completion or machine-crash durability
   evidence.
   `project-evaluation-review` covers evaluation operand capture, reacquisition, review, normalization and disposal.
   Its nested `dependency-preparation` span covers only the actual development dependency preparer.
   Failed phases preserve original exceptions and cleanup precedence. Timings do not establish causes.
+
+  Installed plan/apply and root execution observers connect only while that sink is active.
+  At most eight failure observations share its existing 1024-record, 192-byte and 512-span bounds.
+  Retain fixed host phases and allowlisted codes, never error names, messages or private fields.
+  Guardian codes reuse the owning finite step/cause parser. Unknown causes become `OTHER`.
+  Readers use the strict failure-record normalizer and never count failures as timing or success evidence.
 
 - The configuration evaluator shares only finite review-envelope setup. Its
   trusted manager runs fresh declaration subprocesses sequentially. It enforces
@@ -289,8 +295,8 @@ These links locate module rules. All selected domain requirements still apply.
   destination. It activates after rootless-host acquisition, or directly for
   non-executing `attempt result` observation without host acquisition. Before
   opening a project session, it removes its selector from operator configuration. It
-  records fixed phase names and monotonic durations in an exclusive mode-0600
-  file with bounded size. It records no source, Flow input, arguments,
+  records fixed phase names, monotonic durations and bounded closed failure causes in an exclusive mode-0600
+  file. It records no source, Flow input, arguments,
   environment values, provider output, or filesystem paths. Capture failure must
   not change the Run outcome.
 

@@ -1,9 +1,191 @@
 import { closeSync, openSync, writeSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
+import { normalizePrivateMacosGuardianFailureCode } from './macos-guardian-diagnostics.js'
+import type { PrivateRootExecutionFailurePhase } from './root-run-controller.js'
 
 const PROFILE_ENVIRONMENT_KEY = 'JIG_PRIVATE_PROFILE_FILE'
 const MAX_SPANS = 512
 const MAX_RECORD_BYTES = 192
+const MAX_FAILURES = 8
+
+const failurePhases = {
+  planning: true,
+  materialization: true,
+  support: true,
+  projection: true,
+  sealing: true,
+  channels: true,
+  admission: true,
+  protocol: true,
+  'child-settlement': true,
+  fence: true,
+  settlement: true,
+  'child-flow-allocation': true,
+  'child-flow-preparation': true,
+  'child-flow-sealing': true,
+  'child-flow-admission': true,
+  'child-flow-protocol': true,
+  'child-flow-settlement': true,
+  'child-flow-cleanup': true,
+  'contained-effect-preparation': true,
+  'contained-effect-sealing': true,
+  'contained-effect-admission': true,
+  'contained-effect-collection': true,
+  'contained-effect-settlement': true,
+  'contained-effect-cleanup': true,
+  'child-contained-effect-preparation': true,
+  'child-contained-effect-sealing': true,
+  'child-contained-effect-admission': true,
+  'child-contained-effect-collection': true,
+  'child-contained-effect-settlement': true,
+  'child-contained-effect-cleanup': true,
+  'finite-acp-preparation': true,
+  'finite-acp-sealing': true,
+  'finite-acp-admission': true,
+  'finite-acp-protocol': true,
+  'finite-acp-settlement': true,
+  'finite-acp-cleanup': true,
+  'child-finite-acp-preparation': true,
+  'child-finite-acp-sealing': true,
+  'child-finite-acp-admission': true,
+  'child-finite-acp-protocol': true,
+  'child-finite-acp-settlement': true,
+  'child-finite-acp-cleanup': true,
+  'project-plan': true,
+  'project-apply': true,
+} as const satisfies Record<
+  PrivateRootExecutionFailurePhase | 'project-plan' | 'project-apply',
+  true
+>
+
+const failureCauses = new Set([
+  'OTHER',
+  'ENOENT',
+  'EEXIST',
+  'EBUSY',
+  'ENOTEMPTY',
+  'EIO',
+  'EACCES',
+  'EPERM',
+  'ENOSPC',
+  'EROFS',
+  'EAGAIN',
+  'EMFILE',
+  'ENFILE',
+  'ENOMEM',
+  'EBADF',
+  'EINVAL',
+  'EPIPE',
+  'ECONNRESET',
+  'ABORT_ERR',
+  'EXECUTION_PREPARATION_DEADLINE',
+  'PROJECT_EVALUATOR_SUPPORT',
+  'PROJECT_EVALUATOR_LAUNCH',
+  'PROJECT_EVALUATOR_COMPILE',
+  'PROJECT_EVALUATOR_IMPORT',
+  'PROJECT_EVALUATOR_PROTOCOL',
+  'PROJECT_EVALUATOR_DEADLINE',
+  'PROJECT_EVALUATOR_INTERRUPTED',
+  'PROJECT_EVALUATOR_CLEANUP',
+  'PROJECT_EVALUATOR_ENVELOPE',
+  'PROJECT_EVALUATOR_MEMORY_LIMIT',
+  'PROJECT_EVALUATOR_PROCESS_LIMIT',
+  'PROJECT_BUSY',
+  'PROJECT_CLOSED',
+  'PROJECT_UNSAFE',
+  'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE',
+  'NATIVE_OUTPUT_LOST_DURING_CLEANUP',
+  'NATIVE_OUTPUT_NOT_CAPTURED',
+  'OUTPUT_CAPTURE_DEADLINE',
+  'OUTPUT_FILE_PROFILE',
+  'NATIVE_OUTPUT_CLEANUP_FAILED',
+  'MACOS_CONTROL_DEADLINE',
+  'MACOS_GUARDIAN_BOOTSTRAP',
+  'MACOS_GUARDIAN_CONNECTION_LOST',
+  'MACOS_GUARDIAN_REMOVAL_UNCONFIRMED',
+  'MACOS_GUARDIAN_JOB_PRESENT',
+  'MACOS_RECOVERY_JOB_PRESENT',
+  'MACOS_STORAGE_RECOVERY_UNCONFIRMED',
+  'MACOS_VOLUME_BACKING_CHANGED',
+  'MACOS_VOLUME_INFO',
+  'MACOS_VOLUME_DETACH',
+  'MACOS_GUARDIAN_UNEXPECTED_STATE',
+  'MACOS_RECOVERY_UNEXPECTED_STATE',
+  'MACOS_PREPARED_OWNER_MISMATCH',
+  'MACOS_STARTUP_CANCELLED',
+  'MACOS_GUARDIAN_BEFORE_READINESS',
+])
+
+export interface PrivateProfileFailureRecord {
+  readonly kind: 'failure'
+  readonly phase: keyof typeof failurePhases
+  readonly cause: string
+  readonly timeMs: number
+}
+
+function failurePhase(value: unknown): value is PrivateProfileFailureRecord['phase'] {
+  return typeof value === 'string' && Object.hasOwn(failurePhases, value)
+}
+
+function failureCause(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined
+  return failureCauses.has(value) ? value : normalizePrivateMacosGuardianFailureCode(value)
+}
+
+/** Decode inert profile bytes without retaining arbitrary fields or invoking accessors. */
+export function normalizePrivateProfileFailure(
+  value: unknown,
+): PrivateProfileFailureRecord | undefined {
+  try {
+    if (value === null || typeof value !== 'object') return undefined
+    const prototype = Object.getPrototypeOf(value)
+    if (prototype !== null && prototype !== Object.prototype) return undefined
+    const keys = Reflect.ownKeys(value)
+    if (
+      keys.length !== 4 ||
+      !keys.every((key) => ['kind', 'phase', 'cause', 'timeMs'].includes(key as string))
+    )
+      return undefined
+    const values: Record<string, unknown> = Object.create(null)
+    for (const key of ['kind', 'phase', 'cause', 'timeMs']) {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key)
+      if (!descriptor?.enumerable || !('value' in descriptor)) return undefined
+      values[key] = descriptor.value
+    }
+    const cause = failureCause(values.cause)
+    if (
+      values.kind !== 'failure' ||
+      !failurePhase(values.phase) ||
+      cause === undefined ||
+      typeof values.timeMs !== 'number' ||
+      !Number.isFinite(values.timeMs) ||
+      values.timeMs < 0 ||
+      values.timeMs > 86_400_000
+    )
+      return undefined
+    const record = Object.freeze({
+      kind: 'failure' as const,
+      phase: values.phase,
+      cause,
+      timeMs: values.timeMs,
+    })
+    return Buffer.byteLength(JSON.stringify(record)) <= MAX_RECORD_BYTES ? record : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function observedFailureCause(value: unknown): string {
+  if (typeof value !== 'string') return 'OTHER'
+  const separator = value.indexOf(':')
+  const code = separator < 0 ? value : value.slice(separator + 1)
+  return failureCause(code) ?? 'OTHER'
+}
+
+function ownData(value: object, key: string): unknown {
+  const descriptor = Object.getOwnPropertyDescriptor(value, key)
+  return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined
+}
 
 export type PrivateProfilePhase =
   | 'author-configuration-evaluation'
@@ -57,13 +239,14 @@ interface PrivateProfileSpan {
 
 /**
  * Bounded local trace for maintainer diagnostics. It records fixed phase names
- * and monotonic times only, retaining partial records before shutdown. It is
+ * and monotonic times, plus closed host failure codes before shutdown. It is
  * not fsynced durability, runtime telemetry or a package API.
  */
 export class PrivateProfileCapture {
   readonly #fd: number
   readonly #startedAtMs = performance.now()
   #recordCount = 0
+  #failureCount = 0
   #nextSpanId = 1
   #truncated = false
   #closed = false
@@ -116,6 +299,44 @@ export class PrivateProfileCapture {
     if (this.#closed) return
     const timeMs = elapsed(this.#startedAtMs)
     this.#record(JSON.stringify({ kind: 'instant', phase, timeMs }))
+  }
+
+  failure(phase: unknown, causes: unknown): void {
+    if (this.#closed || !failurePhase(phase)) return
+    let count = 1
+    let observations: unknown[] | undefined
+    try {
+      if (Array.isArray(causes)) {
+        const length = ownData(causes, 'length')
+        if (typeof length === 'number' && Number.isSafeInteger(length) && length > 0) {
+          count = Math.min(length, MAX_FAILURES + 1)
+          observations = causes
+        }
+      }
+    } catch {
+      // Unreadable evidence records only the known host phase and OTHER.
+    }
+    for (let index = 0; index < count; index++) {
+      if (this.#failureCount >= MAX_FAILURES) {
+        this.#truncated = true
+        return
+      }
+      let cause = 'OTHER'
+      try {
+        if (observations !== undefined)
+          cause = observedFailureCause(ownData(observations, String(index)))
+      } catch {
+        // Optional observations cannot invoke or expose arbitrary evidence.
+      }
+      this.#failureCount++
+      const record = normalizePrivateProfileFailure({
+        kind: 'failure',
+        phase,
+        cause,
+        timeMs: elapsed(this.#startedAtMs),
+      })
+      if (record !== undefined) this.#record(JSON.stringify(record))
+    }
   }
 
   finish(): void {
@@ -249,6 +470,21 @@ export function privateProfileInstant(phase: PrivateProfilePhase): void {
   if (capture === undefined) return
   try {
     capture.instant(phase)
+  } catch {
+    discardProfileCapture(capture)
+  }
+}
+
+/** Do not install failure observers when the operator has not activated this sink. */
+export function privateProfileFailureSink(): typeof privateProfileFailure | undefined {
+  return activeCapture === undefined ? undefined : privateProfileFailure
+}
+
+export function privateProfileFailure(phase: unknown, causes: unknown): void {
+  const capture = activeCapture
+  if (capture === undefined) return
+  try {
+    capture.failure(phase, causes)
   } catch {
     discardProfileCapture(capture)
   }

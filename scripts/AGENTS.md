@@ -161,6 +161,10 @@ operational baselines, and public-site assembly.
   coordinator awaits across root and child Flows and effects. Fixed labels
   provide aggregate counts, not per-operation attribution. Nested and concurrent
   wall spans remain non-additive.
+
+  Retain failure records only through the private recorder's strict normalizer.
+  These records contain a fixed host phase and validated cause, never raw errors.
+  They do not contribute phase durations or establish successful execution.
 - `test-operational-baseline.ts` retains failed fixtures and private command
   transcripts, names their directory on failure, and checks live residue even
   after an assertion fails. Only successful fixtures are removed. Residue or

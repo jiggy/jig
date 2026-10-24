@@ -3,12 +3,26 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { mkdtemp, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  realpath,
+  rm,
+  stat,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
 import {
+  normalizePrivateProfileFailure,
   PrivateProfileCapture,
+  privateProfileFailure,
+  privateProfileFailureSink,
   privateProfileInstant,
   privateProfileOperatorEnvironment,
   privateProfileSpan,
@@ -16,6 +30,294 @@ import {
 } from '../../src/internal/private-profile.js'
 import { foundationCommands } from '../fixtures/host-foundation/materialize.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
+import { mappedFilesCommandEnvironment } from '../installed-mapped-files.js'
+
+test('private failure records accept only fixed own data and return fresh bounded records', () => {
+  const record = { kind: 'failure', phase: 'child-flow-admission', cause: 'EAGAIN', timeMs: 1.25 }
+  const normalized = normalizePrivateProfileFailure(record)
+  expect(normalized).toEqual(record)
+  expect(normalized).not.toBe(record)
+  expect(Object.isFrozen(normalized)).toBe(true)
+  expect(normalizePrivateProfileFailure(Object.assign(Object.create(null), record))).toEqual(record)
+  for (const cause of [
+    'ENOENT',
+    'EAGAIN',
+    'EMFILE',
+    'ENFILE',
+    'ENOMEM',
+    'EXECUTION_PREPARATION_DEADLINE',
+    'PROJECT_EVALUATOR_LAUNCH',
+    'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
+    'MACOS_GUARDIAN_STORAGE_RECOVERY_FILESYSTEM_BUSY',
+    'OTHER',
+  ]) {
+    const value = normalizePrivateProfileFailure({ ...record, cause })
+    expect(value?.cause).toBe(cause)
+    expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(192)
+  }
+  for (const invalid of [
+    null,
+    [],
+    'private token',
+    { ...record, kind: 'start' },
+    { ...record, phase: 'private-phase' },
+    { ...record, phase: 'child-flow-admission/private' },
+    { ...record, cause: 'SECRET_CANARY' },
+    { ...record, cause: 'Error:EAGAIN' },
+    { ...record, cause: 'MACOS_GUARDIAN_STORAGE_PRIVATE_TOKEN' },
+    { ...record, cause: 'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH/private' },
+    { ...record, cause: 'eagain' },
+    { ...record, timeMs: -1 },
+    { ...record, timeMs: Infinity },
+    { ...record, timeMs: NaN },
+    { ...record, timeMs: 86_400_001 },
+    { ...record, timeMs: '1' },
+    { ...record, message: 'private token' },
+    { ...record, [Symbol('private')]: 'private token' },
+    Object.assign(Object.create({ private: true }), record),
+    Object.create(record),
+    Object.defineProperty({ ...record }, 'cause', { value: 'EAGAIN', enumerable: false }),
+  ])
+    expect(normalizePrivateProfileFailure(invalid)).toBeUndefined()
+  let reads = 0
+  for (const key of Object.keys(record)) {
+    const input = Object.defineProperty({ ...record }, key, {
+      get() {
+        reads++
+        throw new Error('private getter')
+      },
+    })
+    expect(normalizePrivateProfileFailure(input)).toBeUndefined()
+  }
+  const revoked = Proxy.revocable(record, {})
+  revoked.revoke()
+  expect(normalizePrivateProfileFailure(revoked.proxy)).toBeUndefined()
+  expect(reads).toBe(0)
+})
+
+test('private failure observations drop names and unknown codes and share the original limits', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-profile-failure-'))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const capture = new PrivateProfileCapture(destination)
+    const unreadable = Object.defineProperty([], '0', {
+      get() {
+        throw new Error('private getter')
+      },
+    })
+    capture.failure('child-flow-admission', [
+      'PrivateCanary:MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
+      'PrivateCanary:SECRET_CANARY',
+      'PrivateCanary',
+      'Error:EAGAIN',
+    ])
+    capture.failure('private-phase', ['Error:ENOENT'])
+    capture.failure('project-plan', unreadable)
+    capture.failure('project-apply', ['CheckError:PROJECT_EVALUATOR_LAUNCH'])
+    capture.failure('child-flow-cleanup', ['Error:ENOMEM', 'Error:EMFILE', 'Error:ENFILE'])
+    const span = capture.start('root-settlement')
+    if (span === undefined) throw new Error('Failure observations exhausted span allocation')
+    capture.end(span, 'returned')
+    capture.finish()
+    const text = await readFile(destination, 'utf8')
+    const records = text
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    const failures = records.filter((record) => record.kind === 'failure')
+    expect(failures).toHaveLength(8)
+    expect(failures.map((record) => record.cause)).toEqual([
+      'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
+      'OTHER',
+      'OTHER',
+      'EAGAIN',
+      'OTHER',
+      'PROJECT_EVALUATOR_LAUNCH',
+      'ENOMEM',
+      'EMFILE',
+    ])
+    expect(failures.every((record) => normalizePrivateProfileFailure(record) !== undefined)).toBe(
+      true,
+    )
+    expect(records.some((record) => record.kind === 'end' && record.outcome === 'returned')).toBe(
+      true,
+    )
+    expect(records.at(-1)).toEqual({ kind: 'truncated', phaseLimit: 512 })
+    expect(text).not.toMatch(/PrivateCanary|SECRET_CANARY|private-phase|private getter/)
+    expect((await stat(destination)).mode & 0o777).toBe(0o600)
+    expect(
+      text
+        .trimEnd()
+        .split('\n')
+        .every((line) => Buffer.byteLength(line) <= 192),
+    ).toBe(true)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('the active sink retains a real filesystem cause without replacing the original exception', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-observed-failure-')))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const module = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    const observer = join(suiteTestRoot, '../src/internal/project-session-controller.ts')
+    const absent = join(directory, 'private-missing-canary')
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        `import assert from 'node:assert/strict';
+      import {readFile} from 'node:fs/promises';
+      import {privateProfileActivate,privateProfileFailureSink,privateProfileFinish} from ${JSON.stringify(module)};
+      import {closedTestErrorCauses} from ${JSON.stringify(observer)};
+      assert.equal(privateProfileFailureSink(),undefined);
+      privateProfileActivate();
+      const sink=privateProfileFailureSink();
+      assert.equal(typeof sink,'function');
+      assert.equal(process.env.JIG_PRIVATE_PROFILE_FILE,undefined);
+      const original=await readFile(${JSON.stringify(absent)}).then(()=>undefined,error=>error);
+      assert.equal(original.code,'ENOENT');
+      try {throw original} catch(error) {
+        sink('child-flow-admission',closedTestErrorCauses(error));
+        assert.equal(error,original);
+        assert.equal(error.code,'ENOENT');
+      }
+      privateProfileFinish();
+      assert.equal(privateProfileFailureSink(),undefined);`,
+      ],
+      {
+        env: { ...process.env, JIG_PRIVATE_PROFILE_FILE: destination },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [exit, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(exit, `${stdout}\n${stderr}`).toBe(0)
+    const text = await readFile(destination, 'utf8')
+    const records = text
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records.filter((record) => record.kind === 'failure')).toEqual([
+      {
+        kind: 'failure',
+        phase: 'child-flow-admission',
+        cause: 'ENOENT',
+        timeMs: expect.any(Number),
+      },
+    ])
+    expect(text).not.toContain(absent)
+    expect(text).not.toMatch(/private-missing-canary|"name"|"message"|"path"/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('mapped Run profile selection uses real owned destinations and the existing exclusive writer', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-mapped-profile-')))
+  try {
+    const destination = join(directory, 'evidence')
+    await mkdir(destination, { mode: 0o700 })
+    const operator = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      TMPDIR: tmpdir(),
+      JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY: destination,
+      JIG_PRIVATE_PROFILE_FILE: '/private/inherited-profile',
+      OPENROUTER_API_KEY: 'secret-canary',
+    }
+    const ordinary = await mappedFilesCommandEnvironment(undefined, operator)
+    expect(ordinary.JIG_PRIVATE_PROFILE_FILE).toBeUndefined()
+    expect(ordinary.OPENROUTER_API_KEY).toBeUndefined()
+    expect(ordinary.JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY).toBeUndefined()
+    const leaf = await mappedFilesCommandEnvironment('leaf', operator)
+    const composed = await mappedFilesCommandEnvironment('composed', operator)
+    expect(leaf.JIG_PRIVATE_PROFILE_FILE).toBe(
+      join(destination, 'installed-mapped-files-leaf-run-profile.txt'),
+    )
+    expect(composed.JIG_PRIVATE_PROFILE_FILE).toBe(
+      join(destination, 'installed-mapped-files-composed-run-profile.txt'),
+    )
+    expect(leaf.OPENROUTER_API_KEY).toBeUndefined()
+    expect(await readdir(destination)).toEqual([])
+    const module = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    const code = `import { privateProfileActivate, privateProfileFailure, privateProfileFinish } from ${JSON.stringify(module)};
+      privateProfileActivate();
+      privateProfileFailure('child-flow-admission', ['PrivateCanary:EAGAIN']);
+      privateProfileFinish();`
+    const run = async (env: NodeJS.ProcessEnv) => {
+      const child = Bun.spawn([process.execPath, '-e', code], {
+        env,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [exit, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      expect(exit, `${stdout}\n${stderr}`).toBe(0)
+      return stderr
+    }
+    for (const environment of [leaf, composed]) {
+      await run(environment)
+      const path = environment.JIG_PRIVATE_PROFILE_FILE
+      if (path === undefined) throw new Error('Mapped Run profile destination was not selected')
+      const text = await readFile(path, 'utf8')
+      const records = text
+        .trimEnd()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(records.filter((record) => record.kind === 'failure')).toEqual([
+        {
+          kind: 'failure',
+          phase: 'child-flow-admission',
+          cause: 'EAGAIN',
+          timeMs: expect.any(Number),
+        },
+      ])
+      expect((await stat(path)).mode & 0o777).toBe(0o600)
+      expect(await run(environment)).toContain('profile capture could not be opened')
+      expect(await readFile(path, 'utf8')).toBe(text)
+    }
+    const alias = join(directory, 'alias')
+    await symlink(destination, alias)
+    const unsafe = join(directory, 'unsafe')
+    await mkdir(unsafe, { mode: 0o700 })
+    const handle = await open(unsafe, 'r')
+    try {
+      await handle.chmod(0o777)
+    } finally {
+      await handle.close()
+    }
+    for (const selection of [
+      undefined,
+      'relative',
+      join(directory, 'absent'),
+      alias,
+      unsafe,
+      leaf.JIG_PRIVATE_PROFILE_FILE,
+    ]) {
+      const environment = await mappedFilesCommandEnvironment('leaf', {
+        ...operator,
+        JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY: selection,
+      })
+      expect(environment).toEqual(ordinary)
+      expect(await run(environment)).toBe('')
+    }
+    expect((await readdir(destination)).sort()).toEqual([
+      'installed-mapped-files-composed-run-profile.txt',
+      'installed-mapped-files-leaf-run-profile.txt',
+    ])
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
 
 test('installed public result records an observational refusal without creating project state', async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-result-profile-control-')))
@@ -107,6 +409,10 @@ test('private profile records bounded fixed-name spans without replacing its des
   }
 })
 test('inactive profiling preserves the operation result and failure behavior', async () => {
+  expect(privateProfileFailureSink()).toBeUndefined()
+  const revoked = Proxy.revocable([], {})
+  revoked.revoke()
+  expect(() => privateProfileFailure('child-flow-admission', revoked.proxy)).not.toThrow()
   let calls = 0
   const value = await privateProfileSpan('flow-execution', async () => {
     calls++
@@ -171,6 +477,7 @@ test('private profile bounds total records, including mixed instants and spans',
   try {
     const destination = join(directory, 'trace.jsonl')
     const capture = new PrivateProfileCapture(destination)
+    capture.failure('child-flow-admission', ['Error:EAGAIN'])
     for (let i = 0; i < 1024; i++) capture.instant('dependency-reuse')
     for (let i = 0; i < 600; i++) {
       const span = capture.start('root-owner-release')
@@ -183,6 +490,7 @@ test('private profile bounds total records, including mixed instants and spans',
       .split('\n')
       .map((line) => JSON.parse(line))
     expect(records).toHaveLength(1026)
+    expect(records.filter((record) => record.kind === 'failure')).toHaveLength(1)
     expect(records.at(-1)).toEqual({ kind: 'truncated', phaseLimit: 512 })
     expect(Buffer.byteLength(text)).toBeLessThan(1026 * 193)
   } finally {

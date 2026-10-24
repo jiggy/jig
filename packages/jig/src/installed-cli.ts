@@ -36,6 +36,7 @@ import {
 } from './internal/linux-rootless-delegation.js'
 import {
   privateProfileActivate,
+  privateProfileFailureSink,
   privateProfileFinish,
   privateProfileOperatorEnvironment,
   privateProfileSpan,
@@ -307,9 +308,22 @@ async function runWithEnvironment(
           )
 
           options?.onStage?.('Opening project state and checking recovery')
+          const failureSink = privateProfileFailureSink()
           return privateProfileSpan('project-session-opening', () =>
             openPrivateProjectSession({
               directory: project,
+              ...(failureSink === undefined
+                ? {}
+                : {
+                    onRootExecutionFailure: (evidence: {
+                      readonly phase: string
+                      readonly causes: readonly string[]
+                    }) => failureSink(evidence.phase, evidence.causes),
+                    onOperationFailure: (evidence: {
+                      readonly operation: 'plan' | 'apply'
+                      readonly causes: readonly string[]
+                    }) => failureSink(`project-${evidence.operation}`, evidence.causes),
+                  }),
               host: Object.freeze({
                 ...installedHost,
                 ...(options?.expectedAdmissionDigest === undefined
