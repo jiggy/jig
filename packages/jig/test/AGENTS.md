@@ -344,6 +344,10 @@ Bun command for real declaration mismatches. Root name/version edits must
 review successfully without altering the authored lock. Preserve the prior
 approval on refusal and require successful review after each repair.
 
+Keep initial registry preparation and patch-pinning checks intact.
+After those checks, author and repair locks using only local workspace dependencies.
+Use a new root dependency on an existing workspace member to test stale dependency declarations.
+
 Its review commands select unique private profile destinations outside captured consumer source.
 Only failed reviews append bounded summaries. Runs retain their original limits and cancellation behavior.
 Keep failed profiles private and remove successful fixtures' profiles with their consumers.
