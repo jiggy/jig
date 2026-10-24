@@ -320,6 +320,14 @@ These links locate module rules. All selected domain requirements still apply.
   passed to a Flow, and the existing 512-span/192-byte record bounds remain
   unchanged.
 
+  Controlled evaluation uses those contained-effect labels around its existing awaits.
+  Planning measures merged workspace capture and allocation measures immutable materialization.
+  Sealing and launch retain their existing native boundaries.
+
+  Collection joins streams, execution completion and enforcement, including native cleanup.
+  It is not payload-only time. Settlement measures phase cleanup, workspace disposal and final evaluation release.
+  These spans preserve phase order, errors and the original enclosing deadlines.
+
   Result phases distinguish read-only opening, ticket authentication, retention,
   Run observation, checkpoint projection, finish and disposal. Synchronous reads
   remain synchronous. Failed spans preserve the original exception and cleanup

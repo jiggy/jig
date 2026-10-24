@@ -13,6 +13,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
+import { normalizePrivateProfileFailure } from '../../../src/internal/private-profile.js'
 import { settleTestCommand } from '../bounded-command.js'
 import { flowSdkDirectory } from '../flow-dependency.js'
 
@@ -210,6 +211,12 @@ async function profilePhaseSummary(path: string, kind: 'review' | 'run'): Promis
     for (const line of lines) {
       const record = JSON.parse(line)
       if (record === null || typeof record !== 'object') return '{"status":"invalid","events":[]}'
+      if (record.kind === 'failure') {
+        const failure = normalizePrivateProfileFailure(record)
+        if (failure === undefined) return '{"status":"invalid","events":[]}'
+        events.push(failure)
+        continue
+      }
       if (record.kind === 'truncated') truncated = true
       if (!phases.has(record.phase)) continue
       if (

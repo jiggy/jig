@@ -47,12 +47,15 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   records with bounded timings and closed outcomes. Never forward raw trace
   lines, header identities, paths, arbitrary fields or exception payloads.
 - Ordinary review commands enable the existing private profile in their own evidence directory.
-  Failure summaries project at most forty existing review phase events and closed capture status.
+  Failure summaries project at most forty existing phase events or normalized closed failure records, with closed capture status.
   Read at most 256 KiB and 1026 records. Retain the final events when projection truncates.
   Trace observation never replaces command failure.
 
   Evaluation review includes operand capture, preparation, normalization and disposal.
   Its nested dependency phase observes only actual preparation.
+- Decode failure records through `normalizePrivateProfileFailure` before filtering timing phases.
+  Failure records share the event limit and retain only fixed phases, closed causes and bounded times.
+  Malformed failure records produce the existing invalid-summary status without forwarding arbitrary fields.
 - The adaptive driver's joined Run may enable the existing private phase trace.
   Only its Run client receives that environment. Observation and export clients remain unprofiled.
   The fixture selector stays out of every installed command's environment.

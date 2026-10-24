@@ -711,16 +711,20 @@ test('foundation run opt-in bridges real child profile phases without private fi
       assert.equal(process.env.JIG_FOUNDATION_RUN_PROFILE_FILE, ${JSON.stringify(destination)});
       const destination = process.env.JIG_FOUNDATION_RUN_PROFILE_FILE;
       process.env.JIG_PRIVATE_PROFILE_FILE = destination;
-      const { privateProfileActivate, privateProfileFinish, privateProfileSpan } =
+      const { privateProfileActivate, privateProfileFailure, privateProfileFinish, privateProfileSpan } =
         await import(${JSON.stringify(module)});
       privateProfileActivate();
       await privateProfileSpan('root-submission-persistence', async () => 17);
       await privateProfileSpan('macos-guardian-preparation', async () => 17);
+      const failure = new Error('private run exception payload');
       try {
         await privateProfileSpan('flow-execution', async () => {
-          throw new Error('private run exception payload');
+          throw failure;
         });
-      } catch {}
+      } catch (error) { assert.equal(error, failure) }
+      privateProfileFailure('child-flow-admission', ['Error:MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH']);
+      for (const phase of ['contained-effect-sealing', 'contained-effect-collection', 'contained-effect-settlement'])
+        privateProfileFailure(phase, ['Error:EAGAIN']);
       privateProfileFinish();
       appendFileSync(destination, JSON.stringify({
         kind: 'instant', phase: 'flow-execution', timeMs: 1,
@@ -763,6 +767,17 @@ test('foundation run opt-in bridges real child profile phases without private fi
         },
         { phase: 'flow-execution', kind: 'start', timeMs: expect.any(Number) },
         { phase: 'flow-execution', kind: 'end', timeMs: expect.any(Number), outcome: 'failed' },
+        {
+          kind: 'failure',
+          phase: 'child-flow-admission',
+          cause: 'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
+          timeMs: expect.any(Number),
+        },
+        ...[
+          'contained-effect-sealing',
+          'contained-effect-collection',
+          'contained-effect-settlement',
+        ].map((phase) => ({ kind: 'failure', phase, cause: 'EAGAIN', timeMs: expect.any(Number) })),
         { phase: 'flow-execution', kind: 'instant', timeMs: 1 },
       ],
     })
@@ -813,7 +828,7 @@ test('foundation review failures retain real child profile phases without privat
     await writeFile(
       join(directory, 'review'),
       `import { appendFileSync } from 'node:fs';
-      import { privateProfileActivate, privateProfileFinish, privateProfileSpan }
+      import { privateProfileActivate, privateProfileFailure, privateProfileFinish, privateProfileSpan }
         from ${JSON.stringify(module)};
       const destination = process.env.JIG_PRIVATE_PROFILE_FILE;
       privateProfileActivate();
@@ -824,6 +839,7 @@ test('foundation review failures retain real child profile phases without privat
           throw new Error('private exception payload');
         });
       } catch {}
+      privateProfileFailure('project-plan', ['Error:PROJECT_EVALUATOR_LAUNCH']);
       privateProfileFinish();
       appendFileSync(destination, JSON.stringify({
         kind: 'instant', phase: 'dependency-reuse', timeMs: 1,
@@ -868,6 +884,12 @@ test('foundation review failures retain real child profile phases without privat
       },
       { phase: 'project-planning', kind: 'start', timeMs: expect.any(Number) },
       { phase: 'project-planning', kind: 'end', timeMs: expect.any(Number), outcome: 'failed' },
+      {
+        kind: 'failure',
+        phase: 'project-plan',
+        cause: 'PROJECT_EVALUATOR_LAUNCH',
+        timeMs: expect.any(Number),
+      },
       { phase: 'dependency-reuse', kind: 'instant', timeMs: 1 },
     ])
     for (const value of [
@@ -889,6 +911,95 @@ test('foundation review failures retain real child profile phases without privat
     )
     expect(transcripts.join('\n')).toContain('private stdout preserved')
     expect(transcripts.join('\n')).toContain('private stderr preserved')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('foundation profile summaries validate failure records within the existing evidence bounds', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-summary-bounds-')))
+  try {
+    const command = foundationCommands(join(directory, 'commands'))
+    const summarize = async (text: string) => {
+      await writeFile(join(directory, 'input.jsonl'), text)
+      const failure = await command(
+        [
+          process.execPath,
+          '-e',
+          `import { readFileSync, writeFileSync } from 'node:fs';
+          writeFileSync(process.env.JIG_FOUNDATION_RUN_PROFILE_FILE, readFileSync('input.jsonl'), {
+            flag: 'wx', mode: 0o600
+          });
+          process.exit(7);`,
+        ],
+        directory,
+        undefined,
+        'run',
+      ).then(
+        () => undefined,
+        (error: unknown) => error,
+      )
+      expect(failure).toBeInstanceOf(Error)
+      expect(failure).toMatchObject({ actual: 7, expected: 0 })
+      const message = (failure as Error).message
+      expect(message).not.toContain('PRIVATE_CANARY')
+      const encoded = /run phases: (\{.*\}); see /.exec(message)?.[1]
+      if (encoded === undefined) throw new Error('Missing bounded profile summary')
+      return JSON.parse(encoded)
+    }
+    const failure = { kind: 'failure', phase: 'child-flow-admission', cause: 'ENOENT', timeMs: 41 }
+    const encode = (records: unknown[]) =>
+      `${records.map((record) => JSON.stringify(record)).join('\n')}\n`
+    for (const invalid of [
+      { ...failure, phase: 'PRIVATE_CANARY' },
+      { ...failure, cause: 'PRIVATE_CANARY' },
+      { ...failure, phase: 'contained-effect-sealing', cause: 'PRIVATE_CANARY' },
+      { ...failure, path: '/private/PRIVATE_CANARY' },
+      { ...failure, error: { message: 'PRIVATE_CANARY' } },
+      { ...failure, cause: { code: 'ENOENT', message: 'PRIVATE_CANARY' } },
+      { ...failure, timeMs: -1 },
+      { ...failure, timeMs: 86_400_001 },
+      { ...failure, timeMs: '1' },
+      { kind: 'failure', phase: 'child-flow-admission', timeMs: 1 },
+    ])
+      expect(await summarize(encode([failure, invalid]))).toEqual({ status: 'invalid', events: [] })
+
+    const timings = Array.from({ length: 40 }, (_, timeMs) => ({
+      phase: 'flow-execution',
+      kind: 'instant',
+      timeMs,
+    }))
+    expect(await summarize(encode([...timings.slice(0, 39), failure]))).toEqual({
+      status: 'captured',
+      events: [...timings.slice(0, 39), failure],
+    })
+    expect(await summarize(encode([...timings, failure]))).toEqual({
+      status: 'truncated',
+      events: [...timings.slice(1), failure],
+    })
+    expect(await summarize(encode([failure, { kind: 'truncated', phaseLimit: 512 }]))).toEqual({
+      status: 'truncated',
+      events: [failure],
+    })
+
+    const headers = Array.from({ length: 1025 }, () => ({ kind: 'header' }))
+    expect(await summarize(encode([...headers, failure]))).toEqual({
+      status: 'captured',
+      events: [failure],
+    })
+    expect(await summarize(encode([...headers, failure, failure]))).toEqual({
+      status: 'truncated',
+      events: [],
+    })
+
+    const padding = 'x'.repeat(
+      256 * 1024 - Buffer.byteLength(encode([{ kind: 'header', padding: '' }, failure])),
+    )
+    const fullInput = encode([{ kind: 'header', padding }, failure])
+    expect(Buffer.byteLength(fullInput)).toBe(256 * 1024)
+    expect(await summarize(fullInput)).toEqual({ status: 'captured', events: [failure] })
+    expect(await summarize(`${fullInput} `)).toEqual({ status: 'truncated', events: [] })
+    expect(await summarize('{not valid JSON}\n')).toEqual({ status: 'unavailable', events: [] })
   } finally {
     await rm(directory, { recursive: true, force: true })
   }

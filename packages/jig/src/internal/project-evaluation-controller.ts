@@ -69,6 +69,7 @@ import {
   type PrivatePackageMaterializationAllocationIdentity,
   recoverPrivatePackageMaterializationAllocation,
 } from './package-materialization.js'
+import { privateProfileSpan } from './private-profile.js'
 import { PROJECT_EVALUATION_CONTRACT_DIGEST } from './private-project-evaluation.js'
 import {
   executePrivateProjectEvaluationPhases,
@@ -273,15 +274,17 @@ export async function executePrivateProjectEvaluation(
         signal: input.signal,
         executePhase: async (request) => {
           activePhase = 'preparation'
-          const workspace = await capturePrivateProjectEvaluationWorkspace({
-            candidate,
-            reviewed: reviewed!,
-            dependencies: dependencies!,
-            compiler: configuration.compiler,
-            phase: request.phase,
-            prior: snapshots,
-            signal: input.signal,
-          })
+          const workspace = await privateProfileSpan('contained-effect-planning', () =>
+            capturePrivateProjectEvaluationWorkspace({
+              candidate,
+              reviewed: reviewed!,
+              dependencies: dependencies!,
+              compiler: configuration.compiler,
+              phase: request.phase,
+              prior: snapshots,
+              signal: input.signal,
+            }),
+          )
           try {
             const identity = phaseIdentity(input, input.call.operationId, request.index).slice(7)
             const protectedParent = await protectedOwnerRoot(input.projectRoot)
@@ -327,12 +330,16 @@ export async function executePrivateProjectEvaluation(
               }
               throw error
             }
-            const lease = await materializePrivatePackageLease(workspace, packageAllocation)
+            const lease = await privateProfileSpan('contained-effect-allocation', () =>
+              materializePrivatePackageLease(workspace, packageAllocation),
+            )
             activePhase = 'sealing'
-            const sealed = await sealPrivateExecutionOwner(
-              input.backend,
-              phaseIntent(recipe, request, lease.root, identity, workspace.emptyDirectories),
-              ownerAllocation,
+            const sealed = await privateProfileSpan('contained-effect-sealing', () =>
+              sealPrivateExecutionOwner(
+                input.backend,
+                phaseIntent(recipe, request, lease.root, identity, workspace.emptyDirectories),
+                ownerAllocation,
+              ),
             )
             lifecycle = await recordPrivateRootChildPhase({
               ...key,
@@ -346,7 +353,9 @@ export async function executePrivateProjectEvaluation(
             const started = performance.now()
             attempted = true
             terminalProved = false
-            const component = await admitPrivateExecutionOwner(sealed, input.signal)
+            const component = await privateProfileSpan('contained-effect-launch', () =>
+              admitPrivateExecutionOwner(sealed, input.signal),
+            )
             activePhase = 'collection'
             for (const promise of [
               component.completion,
@@ -374,13 +383,11 @@ export async function executePrivateProjectEvaluation(
             const send = component.closeInput()
             let observed: PrivateProjectEvaluationPhaseEvidence
             try {
-              const [out, err, fence, completion] = await Promise.all([
-                stdout,
-                stderr,
-                component.enforcement,
-                component.completion,
-                send,
-              ])
+              const [out, err, fence, completion] = await privateProfileSpan(
+                'contained-effect-collection',
+                () =>
+                  Promise.all([stdout, stderr, component.enforcement, component.completion, send]),
+              )
               if (!['payload_exit', 'cancelled', 'deadline'].includes(fence.stopReason))
                 throw new Error('evaluation has no proved process terminal')
               terminalProved = true
@@ -403,7 +410,9 @@ export async function executePrivateProjectEvaluation(
               if (component.output.kind === 'linux-directory')
                 await closePrivateExecutionOutput(component.output)
               activePhase = 'settlement'
-              lifecycle = await settlePhase(input, lifecycle!, request.phase, fence)
+              lifecycle = await privateProfileSpan('contained-effect-settlement', () =>
+                settlePhase(input, lifecycle!, request.phase, fence),
+              )
               observed = {
                 phase: request.phase,
                 status:
@@ -439,12 +448,14 @@ export async function executePrivateProjectEvaluation(
             }
             return observed
           } finally {
-            await workspace.dispose()
+            await privateProfileSpan('contained-effect-settlement', () => workspace.dispose())
           }
         },
       })
       activePhase = 'settlement'
-      await releaseEvaluation(input, lifecycle)
+      await privateProfileSpan('contained-effect-settlement', () =>
+        releaseEvaluation(input, lifecycle!),
+      )
       lifecycle = undefined
       input.signal.throwIfAborted()
       const output = capturePrivateOutputSelection(
