@@ -192,10 +192,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   successful `Linux host conformance` run, then tests one native client per
   disposable rootless host. It records resolved client versions and keeps API
   credentials out of setup, build, and archive steps. Its Codex case also
-  exercises immediate follow-up interruption through the frozen Jig CLI archive
-  in an ordinary temporary consumer with published conversation dependencies.
-  Pass `JIG_PACKAGE_ARCHIVE` through delegation. Qualifying an older registry
-  CLI would prevent source fixes from satisfying the prepublication gate.
+  exercises immediate follow-up interruption through an ordinary temporary
+  consumer of the frozen Jig, ACP, Agent method and FLOW SDK archives.
+  Pass all four archive paths through delegation and verify their installed
+  versions. Historical registry pins cannot qualify current candidate changes.
 - Linux's three source shards and Mac source-test shards build the linked
   workspace packages used by their source tests. Generated `dist` output is
   runner-local and is not created by a filtered dependency install. Linux's
@@ -267,9 +267,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   The final shard on each architecture owns installed-consumer checks and their
   startup reports. Declare Intel shards first, with installed-consumer work
-  first. Declaration order is not runner priority. Fail fast after a shard
-  fails. Cancelled shards cannot qualify. Reconstruct native scope for every PR
-  and run complete hosts for every main push.
+  first. Declaration order is not runner priority. Let independent shards finish
+  after another shard fails so each retains its own diagnostics and cleanup
+  evidence. Failed or cancelled shards cannot qualify. Reconstruct native scope
+  for every PR and run complete hosts for every main push.
 
   Manual dispatch remains available for full diagnostics. Cancel superseded
   PR/feature runs, but retain main-push qualification. PR results do not qualify

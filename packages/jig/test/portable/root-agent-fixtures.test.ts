@@ -1,11 +1,20 @@
 import { expect, test } from 'bun:test'
-import { cp, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { requirePrivateBunResolutionManifest } from '../../src/internal/bun-native-lock-policy.js'
+import {
+  requirePrivateBunLockPolicy,
+  requirePrivateBunResolutionManifest,
+} from '../../src/internal/bun-native-lock-policy.js'
 import { checkPackageDirectory } from '../../src/package/inspect.js'
 import {
+  foundationCommands,
+  freezeFoundationArchives,
+} from '../fixtures/host-foundation/materialize.js'
+import {
   writeConversationHelperCaller,
+  writeInstalledConversationHelperProject,
   writeOrdinaryAcpAgent,
 } from '../fixtures/ordinary-acp-agent.js'
 import { writeOrdinaryAgent } from '../fixtures/ordinary-agent.js'
@@ -159,6 +168,164 @@ test('constructs an ordinary workspace caller of the packed conversation helper'
     await rm(root, { recursive: true, force: true })
   }
 }, 60_000)
+
+test('installs the native conversation from all four unchanged canonical archives', async () => {
+  const proof = await mkdtemp(join(temporaryRoot, 'jig-native-conversation-candidate-'))
+  const root = join(proof, 'consumer')
+  const cli = join(proof, 'cli')
+  const selections = [
+    ['jig', 'JIG_PACKAGE_ARCHIVE', 'jig'],
+    ['acp', 'AGENT_ACP_PACKAGE_ARCHIVE', 'agent-acp'],
+    ['flow', 'FLOW_SDK_PACKAGE_ARCHIVE', 'flow-sdk'],
+    ['method', 'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-method'],
+  ] as const
+  const hashes: Record<string, string> = {}
+  const hash = async (path: string) =>
+    createHash('sha256')
+      .update(await readFile(path))
+      .digest('hex')
+  const environment: Record<string, string> = {}
+  for (const name of ['PATH', 'HOME', 'TMPDIR', 'XDG_CACHE_HOME']) {
+    const value = process.env[name]
+    if (value !== undefined) environment[name] = value
+  }
+  let clean = false
+  try {
+    await mkdir(root)
+    await mkdir(cli)
+    const setup = foundationCommands(join(proof, 'commands'))
+    const foundation = await freezeFoundationArchives(proof, setup)
+    async function freezeAgent(name: 'agent-acp' | 'agent-method', variable: string) {
+      const supplied = process.env[variable]
+      if (supplied !== undefined) return realpath(supplied)
+      const destination = join(proof, name)
+      await mkdir(destination)
+      await setup(
+        [process.execPath, 'pm', 'pack', '--ignore-scripts', '--destination', destination],
+        join(import.meta.dir, '../../..', name),
+        30_000,
+      )
+      const packed = (await readdir(destination)).filter((entry) => entry.endsWith('.tgz'))
+      expect(packed).toHaveLength(1)
+      if (packed[0] === undefined) throw new Error(`Bun did not pack ${name}`)
+      return join(destination, packed[0])
+    }
+    const archives = {
+      jig: foundation.jig,
+      flow: foundation.flow,
+      acp: await freezeAgent('agent-acp', 'AGENT_ACP_PACKAGE_ARCHIVE'),
+      method: await freezeAgent('agent-method', 'AGENT_METHOD_PACKAGE_ARCHIVE'),
+    }
+    for (const [name] of selections) hashes[name] = await hash(archives[name])
+    for (const [name, variable] of selections) {
+      const error = await writeInstalledConversationHelperProject(root, cli, {
+        ...archives,
+        [name]: undefined,
+      }).then(
+        () => undefined,
+        (cause: unknown) => cause,
+      )
+      expect(error).toBeInstanceOf(Error)
+      expect((error as Error).message).toContain(`${variable} is required`)
+      expect(await Bun.file(join(root, 'package.json')).exists()).toBeFalse()
+    }
+    const installed = await writeInstalledConversationHelperProject(root, cli, archives)
+    const jig = JSON.parse(await readFile(new URL('../../package.json', import.meta.url), 'utf8'))
+    const acp = JSON.parse(
+      await readFile(new URL('../../../agent-acp/package.json', import.meta.url), 'utf8'),
+    )
+    const method = JSON.parse(
+      await readFile(new URL('../../../agent-method/package.json', import.meta.url), 'utf8'),
+    )
+    expect(installed.versions).toEqual({
+      jig: jig.version,
+      acp: acp.version,
+      flow: jig.devDependencies['@jigging/flow'],
+      method: method.version,
+    })
+    for (const [name, , directory] of selections) {
+      const original = Bun.spawn(['tar', '-xOf', archives[name], 'package/package.json'], {
+        env: environment,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      })
+      const [exit, manifest, stderr] = await Promise.all([
+        original.exited,
+        new Response(original.stdout).text(),
+        new Response(original.stderr).text(),
+      ])
+      expect(exit, stderr).toBe(0)
+      const destination =
+        name === 'jig' ? join(cli, 'node_modules/@jigging/jig') : join(root, 'packages', directory)
+      expect(await readFile(join(destination, 'package.json'), 'utf8')).toBe(manifest)
+      expect(await hash(archives[name])).toBe(hashes[name])
+    }
+    const caller = join(root, 'flows/conversation-helper')
+    const consumer = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        '--config=/dev/null',
+        '-e',
+        'import {handle} from "@jigging/flow"; import {withAgentConversation} from "@jigging/agent-method/conversation"; import {FiniteAcpFrames} from "@jigging/agent-acp/transport"; if ([handle,withAgentConversation,FiniteAcpFrames].some(value=>typeof value!=="function")) throw Error("Missing candidate export");',
+      ],
+      { cwd: caller, env: environment, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [exit, stdout, stderr] = await Promise.all([
+      consumer.exited,
+      new Response(consumer.stdout).text(),
+      new Response(consumer.stderr).text(),
+    ])
+    expect(exit, `${stdout}\n${stderr}`).toBe(0)
+    const version = Bun.spawn([installed.command, '--version'], {
+      cwd: root,
+      env: environment,
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    const [versionExit, versionOutput, versionError] = await Promise.all([
+      version.exited,
+      new Response(version.stdout).text(),
+      new Response(version.stderr).text(),
+    ])
+    expect(versionExit, versionError).toBe(0)
+    expect(versionOutput.trim()).toBe(jig.version)
+    const members = [
+      'flows/conversation-helper',
+      ...selections.slice(1).map(([, , name]) => `packages/${name}`),
+    ]
+    for (const directory of [root, ...members.map((member) => join(root, member))]) {
+      const manifest = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'))
+      expect(() =>
+        requirePrivateBunResolutionManifest(manifest, directory === root ? 'root' : 'member'),
+      ).not.toThrow()
+    }
+    const lockCopy = join(proof, 'bun-lock.jsonc')
+    await cp(join(root, 'bun.lock'), lockCopy)
+    const lock = (await import(lockCopy)).default
+    expect(() =>
+      requirePrivateBunLockPolicy(
+        lock,
+        new Set(members),
+        process.platform === 'darwin' && process.versions.bun === '1.4.2' ? 2 : 1,
+      ),
+    ).not.toThrow()
+    for (const [name, directory] of [
+      ['@jigging/flow', 'flow-sdk'],
+      ['@jigging/agent-method', 'agent-method'],
+      ['@jigging/agent-acp', 'agent-acp'],
+    ]) {
+      const resolutions = Object.values(lock.packages).filter(
+        (resolution) => Array.isArray(resolution) && resolution[0].startsWith(`${name}@`),
+      )
+      expect(resolutions).toEqual([[`${name}@workspace:packages/${directory}`]])
+    }
+    clean = true
+  } finally {
+    if (clean) await rm(proof, { recursive: true, force: true })
+    else console.error(`Native conversation installation evidence: ${proof}`)
+  }
+}, 300_000)
 
 test('constructs a locked local workspace for root and child Skill-delivery evidence', async () => {
   const root = await mkdtemp(join(temporaryRoot, 'jig-workspace-skill-fixture-'))

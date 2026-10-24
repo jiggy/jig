@@ -350,6 +350,16 @@ requires the executable, model and OpenRouter key. Claude and Pi require their
 own executable, API model/provider and key. The protected native API workflow
 selects only its matching file. Restoration is an independent explicit opt-in.
 
+The installed native conversation requires frozen Jig, ACP, method and FLOW SDK
+archives. Its library workspace preserves extracted package bytes and uses
+ordinary declared dependencies. `portable/root-agent-fixtures.test.ts` verifies
+the four installed identities, public exports and unchanged archives without
+native execution. Live qualification retains interruption, settlement and cleanup.
+
+The portable check consumes supplied archives or freezes already-built packages
+and the installed adopted SDK. It preserves ordinary local `just test` coverage.
+The live constructor requires every supplied archive before installation.
+
 Installed package smoke commands use the shared bounded command owner. Preserve
 each command's timeout, bounded interruption/escalation and pipe drain, and
 exclusive mode-0600 private transcripts on failure. An unconfirmed exit after
@@ -371,6 +381,11 @@ JSON:
   bounded-command error object.
 
 ## HTTP readonly qualification
+
+The packed HTTP composition suite reports plan and apply failures through the
+existing session observer. Emit only the fixed scenario, operation and bounded
+class/code causes. Observer failures preserve the original operation error.
+This diagnostic does not change evaluator limits or prove a host cause.
 
 The packed HTTP Agent coordinator-loss barrier projects existing coordinator
 stderr only on failure. Emit closed phase, error-class and code allowlists,

@@ -75,7 +75,7 @@ jobs:
     runs-on: "${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}"
     timeout-minutes: "${{ matrix.installed && inputs.include_startup_profile && 65 || 35 }}"
     strategy:
-      fail-fast: true
+      fail-fast: false
       max-parallel: 5
       matrix:
         include:

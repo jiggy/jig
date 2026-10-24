@@ -154,7 +154,10 @@ test('PRs retain complete coverage and keep quick checks independent of candidat
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
+  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBeFalse()
   expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(5)
+  expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
+  expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
   const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
   const entries = mac.jobs.prerequisites.strategy.matrix.include
   expect(entries).toHaveLength(6)
