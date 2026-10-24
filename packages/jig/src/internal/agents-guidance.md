@@ -111,7 +111,13 @@ These links locate module rules. All selected domain requirements still apply.
   dispatch without exposing exception text or weakening uncertainty and cleanup.
   Failed finite ACP operations identify the last host execution phase using
   fixed text. Starting a client does not establish remote dispatch. Native error
-  text/data remain private. The authentic runtime retains its host-selected
+  text/data remain private.
+
+  Native-session failures may retain only the specified
+  closed category in `UNCERTAIN` details after successful cleanup.
+  Missing or malformed categories omit that detail without suppressing the failure.
+  Categories establish neither an underlying cause nor permission to retry.
+  The authentic runtime retains its host-selected
   client identity. Only Codex's demonstrated `session/new` managed preference
   error shape maps to the closed reason specified in `finite-acp.md`.
 

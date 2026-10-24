@@ -530,10 +530,17 @@ async function executeOwnedProvider(
           ? ' The native client reported a session failure; private details were withheld.'
           : ' The finite ACP exchange violated its validated protocol.'
         : ''
+    const nativeSession =
+      error instanceof PrivateFiniteAcpPolicyError &&
+      error.reason === 'native-session' &&
+      error.nativeCategory !== undefined
+        ? { category: error.nativeCategory }
+        : undefined
     return attemptedDispatch
       ? failed(
           'UNCERTAIN',
           `Finite ACP dispatch may have occurred but no result was proved while ${phase}.${explanation}`,
+          nativeSession === undefined ? undefined : { nativeSession },
         )
       : failed('EXECUTION_FAILED', `finite ACP execution failed before dispatch while ${phase}`)
   } finally {

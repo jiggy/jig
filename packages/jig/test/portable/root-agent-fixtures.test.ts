@@ -275,7 +275,7 @@ import {withAgentConversation} from "@jigging/agent-method/conversation";
 import {FiniteAcpFrames} from "@jigging/agent-acp/transport";
 import {nativeConversationErrorDiagnostic} from "./native-conversation-diagnostics.js";
 if ([handle,withAgentConversation,FiniteAcpFrames].some(value=>typeof value!=="function")) throw Error("Missing candidate export");
-console.log(JSON.stringify(nativeConversationErrorDiagnostic({errors:[new OperationError("UNCERTAIN", "Finite ACP dispatch may have occurred but no result was proved while exchanging native messages. The native client reported a session failure; private details were withheld.")]})));`,
+console.log(JSON.stringify(nativeConversationErrorDiagnostic({errors:[new OperationError("UNCERTAIN", "Finite ACP dispatch may have occurred but no result was proved while exchanging native messages. The native client reported a session failure; private details were withheld.", {nativeSession:{category:"connection"}})]})));`,
       ],
       { cwd: caller, env: environment, stdout: 'pipe', stderr: 'pipe' },
     )
@@ -292,7 +292,7 @@ console.log(JSON.stringify(nativeConversationErrorDiagnostic({errors:[new Operat
         {
           kind: 'operation',
           code: 'UNCERTAIN',
-          native: { phase: 'exchange-messages', reason: 'native-session' },
+          native: { phase: 'exchange-messages', reason: 'native-session', category: 'connection' },
         },
       ],
     })

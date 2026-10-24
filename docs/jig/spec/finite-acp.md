@@ -269,10 +269,19 @@ be relabelled `closed`.
 
 After possible dispatch, a recognized native session failure or finite-protocol
 rejection retains a closed explanation alongside `UNCERTAIN`. The host never
-copies an exception message or native diagnostic into that explanation.
-Unclassified failures remain unspecified; a warning alone establishes no cause.
+copies an exception message or arbitrary native diagnostic into that explanation.
+Unclassified failures remain unspecified. A warning alone establishes no cause.
 Cancellation, deadline and cleanup failure keep their existing precedence.
 An explanation neither proves whether remote work occurred nor permits retry.
+
+For a reported native session failure, error `details` may contain exactly
+`{nativeSession:{category}}`. The host accepts only `connection`, `access`,
+`limit`, `request`, `service`, or `unknown`. Missing or unrecognized categories
+omit this detail without changing the failure.
+
+The category describes the native client's report, not a proved cause.
+It supplies no native error code, HTTP status, exit evidence, or retry permission.
+Raw titles, details, and actions remain private.
 
 Response framing must finish and its writer must close before the resource
 returns. Essential channel failure cancels/fences the resource and waits for

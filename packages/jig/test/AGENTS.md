@@ -364,6 +364,8 @@ Native conversation diagnostics preserve at most eight closed error projections
 with total count and truncation. Exact host messages identify only fixed native
 phases and reasons. Exact native-request metadata retains only allowed methods,
 safe integer codes and the managed-preference reason for its matching request.
+Exact native-session metadata retains only its closed category on the matching
+`UNCERTAIN` failure. Unknown fields, accessors and malformed categories remain absent.
 
 The copied `fixtures/native-conversation-diagnostics.ts` helper imports only the
 public SDK. Own data properties exclude accessors and arbitrary payloads.
