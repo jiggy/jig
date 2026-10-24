@@ -3,6 +3,7 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
+import { constants } from 'node:fs'
 import {
   mkdir,
   mkdtemp,
@@ -264,12 +265,31 @@ test('mapped Run profile selection uses real owned destinations and the existing
       expect(exit, `${stdout}\n${stderr}`).toBe(0)
       return stderr
     }
+    const snapshot = async (path: string) => {
+      const handle = await open(
+        path,
+        constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+      )
+      try {
+        const metadata = await handle.stat({ bigint: true })
+        if (!metadata.isFile()) throw new Error('Profile destination is not a regular file')
+        return {
+          dev: metadata.dev,
+          ino: metadata.ino,
+          mode: metadata.mode,
+          bytes: await handle.readFile(),
+        }
+      } finally {
+        await handle.close()
+      }
+    }
     for (const environment of [leaf, composed]) {
       await run(environment)
       const path = environment.JIG_PRIVATE_PROFILE_FILE
       if (path === undefined) throw new Error('Mapped Run profile destination was not selected')
-      const text = await readFile(path, 'utf8')
-      const records = text
+      const original = await snapshot(path)
+      const records = original.bytes
+        .toString('utf8')
         .trimEnd()
         .split('\n')
         .map((line) => JSON.parse(line))
@@ -281,9 +301,10 @@ test('mapped Run profile selection uses real owned destinations and the existing
           timeMs: expect.any(Number),
         },
       ])
-      expect((await stat(path)).mode & 0o777).toBe(0o600)
+      expect(original.mode & 0o777n).toBe(0o600n)
       expect(await run(environment)).toContain('profile capture could not be opened')
-      expect(await readFile(path, 'utf8')).toBe(text)
+      // Reopen the path so an unchanged old descriptor cannot hide replacement.
+      expect(await snapshot(path)).toEqual(original)
     }
     const alias = join(directory, 'alias')
     await symlink(destination, alias)
