@@ -45,7 +45,9 @@ try {
       assert.deepEqual(grant.bodySchema.properties.episode.enum, ['cancel', 'death'])
       const binding = await readFile(join(project, 'bindings/root.ts'), 'utf8')
       assert.match(binding, /"barrier":"grant:barrier"/)
-      const metadata = JSON.parse(await readFile(join(project, 'flows/root/FLOW.meta.json'), 'utf8'))
+      const metadata = JSON.parse(
+        await readFile(join(project, 'flows/root/FLOW.meta.json'), 'utf8'),
+      )
       assert.equal(metadata.uses.barrier.contract, './contracts/http/contract.json')
     }
   }

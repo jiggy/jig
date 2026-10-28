@@ -493,8 +493,7 @@ export async function executePrivateProjectEvaluation(
             try {
               const [out, err, fence, completion] = await privateProfileSpan(
                 'contained-effect-collection',
-                () =>
-                  Promise.all([stdout, stderr, enforcement, completionEvidence, send]),
+                () => Promise.all([stdout, stderr, enforcement, completionEvidence, send]),
               )
               if (!['payload_exit', 'cancelled', 'deadline'].includes(fence.stopReason))
                 throw new Error('evaluation has no proved process terminal')
