@@ -16,7 +16,7 @@ import { settleTestCommand } from '../bounded-command.js'
 import { flowSdkDirectory } from '../flow-dependency.js'
 import { profilePhaseSummary } from '../private-profile-diagnostics.js'
 
-export type FoundationApplication = 'adaptive' | 'documents'
+export type FoundationApplication = 'adaptive' | 'documents' | 'evaluation-deadline'
 export interface FoundationArchives {
   jig: string
   flow: string
@@ -297,7 +297,11 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')$
 `,
   )
   const names =
-    application === 'adaptive' ? ['root', 'producer', 'checker'] : ['root', 'producer', 'validator']
+    application === 'adaptive'
+      ? ['root', 'producer', 'checker']
+      : application === 'documents'
+        ? ['root', 'producer', 'validator']
+        : ['root', 'producer']
   const entrypoints = [join(project, 'jig.ts')]
   for (const name of names) {
     await put(project, `flows/${name}/package.json`, {
@@ -310,10 +314,10 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')$
     const uses =
       name !== 'root'
         ? {}
-        : application === 'adaptive'
+        : application !== 'documents'
           ? {
               producer: {},
-              checker: {},
+              ...(application === 'adaptive' ? { checker: {} } : {}),
               evaluate: { contract: './contracts/evaluation/contract.json' },
             }
           : {
@@ -329,7 +333,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')$
     const attachments =
       name === 'root'
         ? {}
-        : application === 'adaptive'
+        : application !== 'documents'
           ? name === 'producer'
             ? { candidate: 'read-write' }
             : { candidate: 'read', generated: 'read' }
@@ -337,7 +341,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')$
     await put(project, `flows/${name}/FLOW.contract.json`, {
       $schema: schema,
       attachments,
-      ...(name === 'root'
+      ...(name === 'root' && application !== 'evaluation-deadline'
         ? { artifactResults: application === 'adaptive' ? ['candidate', 'evidence'] : ['document'] }
         : {}),
     })
@@ -350,7 +354,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')$
     entrypoints.push(join(project, path))
   }
   const slots =
-    application === 'adaptive'
+    application !== 'documents'
       ? {
           producer: { target: 'flow:flows/producer', attachments: { candidate: { create: true } } },
           evaluate: {
@@ -358,10 +362,14 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')$
             recipe: 'evaluation',
             attachments: { candidate: 'supplied-read', deliverables: 'operation-create' },
           },
-          checker: {
-            target: 'flow:flows/checker',
-            attachments: { candidate: { supplied: 'read' }, generated: { supplied: 'read' } },
-          },
+          ...(application === 'adaptive'
+            ? {
+                checker: {
+                  target: 'flow:flows/checker',
+                  attachments: { candidate: { supplied: 'read' }, generated: { supplied: 'read' } },
+                },
+              }
+            : {}),
         }
       : {
           producer: { target: 'flow:flows/producer', attachments: { document: { create: true } } },
@@ -392,7 +400,7 @@ export default defineBinding(${JSON.stringify({ package: 'flows/root', slots })}
         additionalProperties: false,
       },
     })
-  if (application === 'adaptive')
+  if (application !== 'documents')
     for (const file of ['package.json', 'bun.lock', 'tsconfig.json', 'evaluation.json'])
       await put(
         project,
@@ -581,7 +589,7 @@ async function runFoundationApplication(
     mode: 0o600,
   })
   await mkdir(join(project, 'flows/root/contracts'), { recursive: true })
-  if (application === 'adaptive')
+  if (application !== 'documents')
     await command(
       [cli, 'import-contract', 'jig:project-evaluation', 'flows/root/contracts/evaluation'],
       project,
@@ -607,7 +615,7 @@ async function runFoundationApplication(
       barrierURL,
     ],
     project,
-    application === 'documents' ? 600_000 : 300_000,
+    application === 'adaptive' ? 300_000 : 600_000,
     application === 'adaptive' ? 'run' : undefined,
   )
   assert.equal(await digest(join(project, 'jig.lock')), lock)

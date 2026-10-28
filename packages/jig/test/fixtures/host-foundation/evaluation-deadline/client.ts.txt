@@ -1,0 +1,110 @@
+import assert from 'node:assert/strict'
+import { open, writeFile } from 'node:fs/promises'
+import { join, resolve } from 'node:path'
+import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
+
+let stage = 'inspect'
+let mode: string | undefined
+process.on('uncaughtExceptionMonitor', error => {
+  console.error('Foundation client failure: ' + JSON.stringify({
+    application: 'evaluation-deadline', stage, mode,
+    ...(error instanceof AttemptClientError
+      ? { code: error.code, operation: error.operation, uncertain: error.uncertain } : {}),
+  }))
+})
+interface Stream { text: string; truncated: boolean }
+interface Phase {
+  phase: string; status: string; invocation: string[]; exitCode: number | null;
+  signal: string | null; stopReason: string; durationMs: number; stdout: Stream; stderr: Stream;
+}
+interface Evaluation {
+  candidateDigest: string | null; recipeDigest: string | null; dependencyDigest: string | null;
+  environmentDigest: string | null; phase: string | null; stage: string; limit: string | null;
+  phases: Phase[]; process: Omit<Phase, 'phase' | 'status'> | null;
+  files: unknown[] | null; cleanup: string;
+}
+const cwd = process.cwd()
+const client = createAttemptClient({ executable: resolve(process.argv[2]!), cwd, timeoutMs: 195_000 })
+const inspected = await client.inspect({ target: 'binding:root' }) as { approval: string }
+assert.match(inspected.approval, /^sha256:[a-f0-9]{64}$/)
+const runs: string[] = []
+const evidence: Evaluation[] = []
+for (const selected of ['generation', 'test'] as const) {
+  mode = selected
+  stage = 'run'
+  const execution = await client.run({
+    expectedApproval: inspected.approval, target: 'binding:root', input: { mode }, files: [],
+    constraints: { durationMs: 120_000, resultBytes: 1_048_576, artifactBytes: 8_388_608 },
+    outputIntent: { packet: false, receive: [] },
+  }, {
+    persist: async prepared => {
+      const file = await open(join(cwd, `${mode}-prepared.json`), 'wx', 0o600)
+      try { await file.writeFile(JSON.stringify(prepared)); await file.sync() }
+      finally { await file.close() }
+      const directory = await open(cwd, 'r')
+      try { await directory.sync() } finally { await directory.close() }
+    },
+  })
+  assert.equal(execution.role, 'owner')
+  assert.equal(execution.observation?.terminal?.status, 'succeeded')
+  assert.equal(execution.observation?.cleanup, 'confirmed')
+  stage = 'result'
+  const retained = await client.result({ ticket: execution.prepared.ticket })
+  const output = retained.output as {
+    mode: string; code: string; details: { evaluation: Evaluation }; remainingAfterMs: number;
+  }
+  assert.equal(output.mode, mode)
+  assert.equal(output.code, 'DEADLINE_EXCEEDED')
+  assert.ok(output.remainingAfterMs > 0)
+  const evaluation = output.details.evaluation
+  const phase = selected === 'generation' ? 'generate' : 'test'
+  assert.equal(evaluation.phase, phase)
+  assert.equal(evaluation.cleanup, 'complete')
+  assert.ok(['phase', 'evaluation'].includes(evaluation.limit!))
+  assert.ok(['preparation', 'sealing', 'admission', 'collection', 'settlement'].includes(evaluation.stage))
+  for (const key of ['candidateDigest', 'recipeDigest', 'dependencyDigest', 'environmentDigest'] as const)
+    assert.match(evaluation[key]!, /^sha256:[a-f0-9]{64}$/)
+  assert.deepEqual(evaluation.phases.map(p => p.phase),
+    selected === 'generation' ? ['generate'] : ['generate', 'compile', 'test'])
+  const stopped = evaluation.phases.at(-1)!
+  assert.equal(stopped.phase, phase)
+  assert.equal(stopped.status, 'failed')
+  assert.equal(stopped.stopReason, 'deadline')
+  assert.ok(Number.isFinite(stopped.durationMs) && stopped.durationMs > 0)
+  assert.match(stopped.stdout.text, new RegExp(`deadline-${selected}-start`))
+  assert.equal(stopped.stdout.truncated, true)
+  assert.match(stopped.stderr.text, /cwd:\/work\n/)
+  assert.match(stopped.stderr.text, new RegExp(`module:/work/${selected === 'generation' ? 'tools/generate' : 'test/answer.test'}\\.js\\n`))
+  for (const observed of [...evaluation.phases, ...(evaluation.process ? [evaluation.process] : [])])
+    for (const stream of [observed.stdout, observed.stderr]) {
+      assert.ok(Buffer.byteLength(stream.text) <= 8 * 1024)
+      assert.equal(typeof stream.truncated, 'boolean')
+    }
+  if (selected === 'generation') assert.equal(evaluation.limit, 'phase')
+  else {
+    const compile = evaluation.phases.find(p => p.phase === 'compile')!
+    assert.equal(compile.status, 'completed')
+    assert.equal(compile.exitCode, 0)
+    assert.equal(compile.stopReason, 'exited')
+    assert.match(evaluation.phases[0]!.stdout.text, /generate-complete/)
+  }
+  stage = 'repeated-result'
+  const repeated = await client.result({ ticket: execution.prepared.ticket })
+  assert.deepEqual(repeated.output, retained.output)
+  assert.equal(repeated.observation.receipt?.runId, execution.receipt.runId)
+  assert.equal(repeated.observation.cleanup, 'confirmed')
+  const lookup = await client.lookup({ ticket: execution.prepared.ticket })
+  assert.equal(lookup.cleanup, 'confirmed')
+  assert.equal(lookup.receipt?.runId, execution.receipt.runId)
+  runs.push(execution.receipt.runId)
+  evidence.push(evaluation)
+}
+assert.equal(new Set(runs).size, 2)
+assert.notEqual(evidence[0]!.candidateDigest, evidence[1]!.candidateDigest)
+for (const key of ['recipeDigest', 'dependencyDigest', 'environmentDigest'] as const)
+  assert.equal(evidence[0]![key], evidence[1]![key])
+assert.equal((await client.inspect({ target: 'binding:root' }) as { approval: string }).approval,
+  inspected.approval)
+await writeFile('verified.json', JSON.stringify({
+  application: 'evaluation-deadline', cleanup: 'confirmed', runs, phases: ['generate', 'test'],
+}), { flag: 'wx', mode: 0o600 })
