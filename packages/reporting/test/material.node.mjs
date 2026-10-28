@@ -260,3 +260,63 @@ test('real SDK view declarations own independent application instances', async (
     ['family', 'spring'],
   )
 })
+
+test('copyable publication and target identities reject hidden controls while preserving Unicode names', () => {
+  const ordinary = view(collection(0))
+  const unicode = {
+    ...ordinary,
+    target: { definitionId: 'café', instanceKey: 'álbum', subjectKey: '家族' },
+  }
+  const accepted = createDisplayBundle(
+    { generation: 'génération', heads: [] },
+    {
+      requestId: 'édition',
+      edition: 'Display label',
+      views: [{ view: unicode, completeness: 'complete' }],
+    },
+  )
+  assert.equal(accepted.requestId, 'édition')
+  assert.equal(accepted.views[0].view.target.definitionId, 'café')
+  for (const hidden of ['\0', '\u001b', '\u202e', '\u200b']) {
+    for (const field of ['definitionId', 'instanceKey', 'subjectKey'])
+      assert.throws(
+        () =>
+          validateReportingMessage({
+            ...ordinary,
+            target: { ...ordinary.target, [field]: 'unsafe' + hidden },
+          }),
+        /identity/,
+      )
+    for (const field of ['requestId', 'generation'])
+      assert.throws(
+        () => validateDisplayBundle({ ...accepted, [field]: 'unsafe' + hidden }),
+        /identity/,
+      )
+    assert.throws(
+      () =>
+        validateDisplayBundle({
+          ...accepted,
+          views: [{ ...accepted.views[0], expectedRevision: 'unsafe' + hidden }],
+        }),
+      /identity/,
+    )
+    assert.throws(
+      () =>
+        createDisplayBundle(
+          {
+            generation: 'g',
+            heads: [
+              {
+                definitionId: 'photos',
+                instanceKey: 'family',
+                revision: 'unsafe' + hidden,
+                retained: false,
+              },
+            ],
+          },
+          { requestId: 'r', edition: 'e', views: [{ view: ordinary, completeness: 'partial' }] },
+        ),
+      /identity/,
+    )
+  }
+})

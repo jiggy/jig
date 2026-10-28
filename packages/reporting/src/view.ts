@@ -91,10 +91,10 @@ export const VIEW_LIMITS = Object.freeze({
 export function validateViewTarget(input: unknown): ViewTarget {
   const target = dataRecord(input, ['definitionId', 'instanceKey', 'subjectKey'])
   return Object.freeze({
-    definitionId: scalarText(target.definitionId, 64, true),
-    instanceKey: scalarText(target.instanceKey, 64, true),
+    definitionId: identityText(target.definitionId, 64),
+    instanceKey: identityText(target.instanceKey, 64),
     ...(Object.hasOwn(target, 'subjectKey')
-      ? { subjectKey: scalarText(target.subjectKey, 64, true) }
+      ? { subjectKey: identityText(target.subjectKey, 64) }
       : {}),
   })
 }
@@ -136,6 +136,13 @@ export function scalarText(
   if (size < minimum || size > maximum || (singleLine && /[\r\n\u2028\u2029]/u.test(value)))
     throw new TypeError('Reporting message text exceeds its length or line limits')
   return value
+}
+/** Identities can be copied into local command arguments without hidden controls. */
+export function identityText(value: unknown, maximum: number): string {
+  const result = scalarText(value, maximum, true)
+  if (/[\p{Cc}\p{Cf}]/u.test(result))
+    throw new TypeError('Display identity contains control or format characters')
+  return result
 }
 export function safeCount(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)

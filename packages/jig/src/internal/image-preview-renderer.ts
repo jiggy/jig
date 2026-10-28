@@ -33,7 +33,7 @@ const IMPORTS = [
 
 /** Only the pinned sole-memory module may enter this profile. No imported,
  * shared or additional memory or host callback can bypass its ceiling. */
-function boundedModule(input: Buffer): WebAssembly.Module {
+function boundedModule(input: Buffer, raster: boolean): WebAssembly.Module {
   if (createHash('sha256').update(input).digest('hex') !== WASM_DIGEST)
     throw new Error('image module changed')
   let offset = 8
@@ -59,7 +59,15 @@ function boundedModule(input: Buffer): WebAssembly.Module {
     if (id === 5) {
       if (++memories !== 1 || leb() !== 1 || leb() !== 0 || leb() !== 23 || offset !== end)
         throw new Error('image memory changed')
-      sections.push(Buffer.from([5, 4, 1, 1, 23, PRIVATE_PREVIEW_LIMITS.wasmBytes / 65536]))
+      let pages =
+        (raster ? PRIVATE_PREVIEW_LIMITS.rasterWasmBytes : PRIVATE_PREVIEW_LIMITS.wasmBytes) / 65536
+      const maximum: number[] = []
+      do {
+        const low = pages & 127
+        pages = Math.floor(pages / 128)
+        maximum.push(low | (pages ? 128 : 0))
+      } while (pages)
+      sections.push(Buffer.from([5, 3 + maximum.length, 1, 1, 23, ...maximum]))
     } else sections.push(input.subarray(start, end))
     offset = end
   }
@@ -134,7 +142,7 @@ function inertSvg(text: string, depth: number, budget: SvgBudget): boolean {
     if (
       !Number.isSafeInteger(size) ||
       size < 0 ||
-      budget.sourceBytes + size > PRIVATE_PREVIEW_LIMITS.sourceBytes
+      budget.sourceBytes + size > PRIVATE_PREVIEW_LIMITS.svgSourceBytes
     )
       return false
     budget.sourceBytes += size
@@ -163,19 +171,22 @@ export async function privateRenderImage(
   observe?: (allocations: { copies: number; decodedText: number }) => void,
 ): Promise<Buffer | undefined> {
   if (bytes.length > PRIVATE_PREVIEW_LIMITS.sourceBytes) return undefined
-  const module = boundedModule(asset(wasmAsset))
+  const raster = rasterDimensions(bytes)
+  if (!raster && bytes.length > PRIVATE_PREVIEW_LIMITS.svgSourceBytes) return undefined
+  const module = boundedModule(asset(wasmAsset), !!raster)
   const font = asset(fontAsset)
-  const allocations = privateGuardImageAllocations()
+  const allocations = privateGuardImageAllocations(!!raster)
   const { initWasm, Resvg } = await import('@resvg/resvg-wasm')
   await initWasm(module)
-  const raster = rasterDimensions(bytes)
   let source: Uint8Array | string = bytes
   if (raster) {
     if (
       !Number.isSafeInteger(raster.width * raster.height) ||
       raster.width < 1 ||
       raster.height < 1 ||
-      raster.width * raster.height > PRIVATE_PREVIEW_LIMITS.pixels
+      raster.width * raster.height > PRIVATE_PREVIEW_LIMITS.rasterPixels ||
+      raster.width > PRIVATE_PREVIEW_LIMITS.rasterDimension ||
+      raster.height > PRIVATE_PREVIEW_LIMITS.rasterDimension
     )
       return undefined
     // Native displays receive only host-rendered PNG, never an untrusted codec.
@@ -188,23 +199,46 @@ export async function privateRenderImage(
     )
       return undefined
   }
-  const svg = new Resvg(source, {
-    font: { fontBuffers: [font], defaultFontFamily: 'DejaVu Sans', sansSerifFamily: 'DejaVu Sans' },
-    fitTo: { mode: 'width', value: PRIVATE_PREVIEW_LIMITS.width },
-  })
-  const height = Math.ceil((svg.height * PRIVATE_PREVIEW_LIMITS.width) / svg.width)
-  if (
-    !Number.isFinite(svg.width) ||
-    !Number.isFinite(svg.height) ||
-    svg.width <= 0 ||
-    svg.height <= 0 ||
-    !privatePreviewDimensions(PRIVATE_PREVIEW_LIMITS.width, height)
-  )
-    return undefined
-  const rendered = svg.render()
-  if (!privatePreviewDimensions(rendered.width, rendered.height)) return undefined
-  const png = rendered.asPng()
-  if (png.byteLength > PRIVATE_PREVIEW_LIMITS.pngBytes) return undefined
-  observe?.({ copies: allocations.copies(), decodedText: allocations.decodedText() })
-  return Buffer.from(png.buffer, png.byteOffset, png.byteLength)
+  // Fit tall and noisy inputs within the same inert-thumbnail profile.
+  let width: number = PRIVATE_PREVIEW_LIMITS.width
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const svg = new Resvg(source, {
+      font: {
+        fontBuffers: [font],
+        defaultFontFamily: 'DejaVu Sans',
+        sansSerifFamily: 'DejaVu Sans',
+      },
+      fitTo: { mode: 'width', value: width },
+    })
+    try {
+      if (
+        !Number.isFinite(svg.width) ||
+        !Number.isFinite(svg.height) ||
+        svg.width <= 0 ||
+        svg.height <= 0
+      )
+        return undefined
+      const height = Math.ceil((svg.height * width) / svg.width)
+      if (!privatePreviewDimensions(width, height)) {
+        width = Math.floor(Math.min(width - 1, (width * PRIVATE_PREVIEW_LIMITS.height) / height))
+        if (width < 1) return undefined
+        continue
+      }
+      const rendered = svg.render()
+      try {
+        if (!privatePreviewDimensions(rendered.width, rendered.height)) return undefined
+        const png = rendered.asPng()
+        if (png.byteLength <= PRIVATE_PREVIEW_LIMITS.pngBytes) {
+          observe?.({ copies: allocations.copies(), decodedText: allocations.decodedText() })
+          return Buffer.from(png)
+        }
+      } finally {
+        rendered.free()
+      }
+    } finally {
+      svg.free()
+    }
+    width = Math.max(1, Math.floor(width * 0.75))
+  }
+  return undefined
 }

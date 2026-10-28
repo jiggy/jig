@@ -419,7 +419,8 @@ export class ViewerInput {
           const publisher = this.model.record?.publisher ?? this.model.rootSourceId
           const available = this.model.resolve(publisher, reference).available
           this.#panels.pop()
-          if (reference.kind === 'artifact' && available) this.#push({ kind: 'preview', scroll: 0 })
+          if ((reference.kind === 'artifact' || reference.kind === 'input-artifact') && available)
+            this.#push({ kind: 'preview', scroll: 0 })
           else if (available) {
             if (this.#returns.length === 16) this.#returns.shift()
             this.#returns.push({

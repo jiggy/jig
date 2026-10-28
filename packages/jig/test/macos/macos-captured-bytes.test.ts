@@ -64,7 +64,7 @@ test('serialized metadata cannot mint capture authority, including for empty inp
 test('capture refuses oversized input and an owner directory readable by others', async () =>
   fixture(async (directory) => {
     expect(() =>
-      capturePrivateMacosBytes(directory, new Uint8Array(8 * 1024 * 1024 + 1), 'input'),
+      capturePrivateMacosBytes(directory, new Uint8Array(64 * 1024 * 1024 + 1), 'input'),
     ).toThrow('byte limit')
     await chmod(directory, 0o755)
     expect(() => capturePrivateMacosBytes(directory, new Uint8Array(), 'input')).toThrow(

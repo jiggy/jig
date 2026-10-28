@@ -89,7 +89,9 @@ test('navigation shares host/application groups, every retained view and exclusi
   expect(new Set(model.surfaceKeys()).size).toBe(35)
   for (const name of ['recorded-result', 'files', 'diagnostics', 'constructor', 'toString'])
     expect(
-      displayDestinations(true, [{ key: name, title: name, source: 'Authored' }]).at(-1)?.title,
+      displayDestinations('recorded-packet', [{ key: name, title: name, source: 'Authored' }]).at(
+        -1,
+      )?.title,
     ).toBe(name)
   const saved = new FixtureModel()
   saved.configureWorkspace({ target: 'packet', recorded: true })

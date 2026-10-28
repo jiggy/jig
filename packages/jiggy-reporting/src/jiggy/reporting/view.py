@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from typing import Any, Literal, Required, TypedDict
 
 
@@ -55,6 +56,14 @@ def text(value: Any, maximum: int, single: bool = False, minimum: int = 1) -> st
     return value
 
 
+
+def identity(value: Any, maximum: int) -> str:
+    normalized = text(value, maximum, True)
+    if any(unicodedata.category(char) in ('Cc', 'Cf') for char in normalized):
+        raise TypeError('Display identity must not contain control or format characters')
+    return normalized
+
+
 def count(value: Any) -> int:
     if (type(value) not in (int, float) or not math.isfinite(value)
             or not 0 <= value <= 9007199254740991 or value != int(value)):
@@ -78,9 +87,9 @@ def array(value: Any, maximum: int, minimum: int = 0) -> list[Any]:
 def target(value: Any) -> dict[str, str]:
     value = record(value, {'definitionId', 'instanceKey', 'subjectKey'})
     return {
-        'definitionId': text(value.get('definitionId'), 64, True),
-        'instanceKey': text(value.get('instanceKey'), 64, True),
-        **({'subjectKey': text(value['subjectKey'], 64, True)} if 'subjectKey' in value else {}),
+        'definitionId': identity(value.get('definitionId'), 64),
+        'instanceKey': identity(value.get('instanceKey'), 64),
+        **({'subjectKey': identity(value['subjectKey'], 64)} if 'subjectKey' in value else {}),
     }
 
 

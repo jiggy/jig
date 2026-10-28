@@ -7,6 +7,7 @@ import {
   captureBoundAttachments,
   openBoundAttachments,
 } from '../../src/internal/bound-attachments.js'
+import { PRIVATE_FILE_LIMITS } from '../../src/internal/file-input-policy.js'
 import {
   readPrivateCapturedInput,
   requirePrivateCapturedInput,
@@ -216,11 +217,15 @@ test('linked review, lock, request and projection pin the same read-only selecti
             {
               name: 'input',
               files: [
-                { path: 'large', bytes: 8 * 1024 * 1024, digest: `sha256:${'0'.repeat(64)}` },
+                {
+                  path: 'large',
+                  bytes: PRIVATE_FILE_LIMITS.bytes,
+                  digest: `sha256:${'0'.repeat(64)}`,
+                },
               ],
             },
           ],
-          output: null,
+          output: false,
         }),
       ).toThrow()
       expect(() =>

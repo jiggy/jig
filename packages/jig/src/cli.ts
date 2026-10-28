@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline'
 import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import type { WebAssets } from '@jigging/display-model'
+import { webAssets } from '@jigging/display-web/assets'
 import type { Reference } from '@jigging/reporting'
 import manifest from '../package.json' with { type: 'json' }
 import { ProjectAdministrationError, type ProjectSession } from './administration/project.js'
@@ -26,6 +27,11 @@ import {
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
+import {
+  privateExecuteViews,
+  privateRetainDisplayBundle,
+  privateViewReferences,
+} from './cli-display-archive.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -58,6 +64,7 @@ import {
   privateReadOperatorFile,
   sha256,
 } from './internal/file-input.js'
+import { PrivateInputInspectionCapture } from './internal/input-inspection.js'
 import { PrivateInstalledBundleError } from './internal/installed-bun-support.js'
 import { PrivateAttemptError } from './internal/prepared-attempt-store.js'
 import { privateProfileSpan } from './internal/private-profile.js'
@@ -104,6 +111,7 @@ Usage:
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
   jig inspect [target]       Show the approved targets or a target's interface
+  jig views [operation]      Inspect or manage retained application views
   jig attempt <operation>    Use the installed application execution boundary
   jig completion <shell>     Print shell completion for bash, zsh, or fish
   jig import-contract <jig:name|file|npm:package> <directory>  Copy an offline contract bundle
@@ -122,6 +130,17 @@ Command options and examples:
 Guide: https://jig.md/guide/`
 
 const COMMAND_HELP = {
+  views: `Usage: jig views [list|context|receipt|remove|reset] [options]
+
+  list [--definition ID [--instance KEY]] [--display plain|web] [--json]
+  context [--json]
+  receipt --request ID --generation GENERATION [--json]
+  remove --definition ID --instance KEY --expected-revision REVISION [--json]
+  reset --generation GENERATION [--json]
+
+Context creates presentation storage and returns opaque publication metadata.
+Receipt recovery returns the original acceptance without reinstalling removed material.
+Reset invalidates older contexts. Close inspection leaves retained material intact.`,
   attempt: `Usage: jig attempt <inspect|prepare|submit|lookup|cancel|result|export> --json
 
 Read one bounded JSON request envelope from stdin and write machine records to
@@ -284,6 +303,7 @@ Unavailable alternatives remain unavailable until a new review approves them.
   --receive CHANNEL  Stream a declared output channel; repeat for distinct names
   --updates off      Disable automatic Flow updates on terminal stderr
   --display MODE     Select auto (default), plain, tui or web
+  --display-bundle NAME=FILE  Retain one selected final application display bundle
   --timeout DURATION Set the execution deadline (default: 30s; maximum: 24h)
                      Units: ms, s, m, h. Cleanup still runs after the deadline.
 
@@ -456,6 +476,22 @@ async function executeCommand(
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
     if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
+    if (arguments_[0] === 'views') {
+      const code = await privateExecuteViews(arguments_, {
+        currentDirectory: runtime.currentDirectory,
+        humanOutput: runtime.humanOutput,
+        terminalError: runtime.terminalError,
+        ...(runtime.signal ? { signal: runtime.signal } : {}),
+        ...(runtime.progress.lifetime.presentationDeadline === undefined
+          ? {}
+          : { presentationDeadline: runtime.progress.lifetime.presentationDeadline }),
+        assets: options.webAssets ?? webAssets,
+        writeRecord: runtime.writeRecord,
+        writeError: runtime.writeError,
+      })
+      runtime.signal?.throwIfAborted()
+      return code
+    }
     runtime.writeError(
       renderDiagnostic(
         'JIG_UNKNOWN_COMMAND',
@@ -1266,6 +1302,8 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
 
 async function executeRun(arguments_: readonly string[], runtime: CliRuntime): Promise<number> {
   const parsed = parseRun(arguments_)
+  if (parsed.displayBundle && parsed.output === undefined)
+    usage('run', '--display-bundle requires a result destination selected with --out.')
   runtime.progress.model.configureWorkspace({
     target:
       parsed.target.kind === 'flow'
@@ -1315,12 +1353,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   // Immutable delivery capture must be selected before publication, even though
   // the screen waits for trusted root dispatch rather than prerequisite checks.
   if (
-    (webRequested || dashboardRequested) &&
-    runtime.terminalError &&
-    (webRequested ||
-      (runtime.dashboardInput &&
-        typeof runtime.dashboardInputStream.setRawMode === 'function' &&
-        process.env.TERM !== 'dumb'))
+    parsed.displayBundle ||
+    ((webRequested || dashboardRequested) &&
+      runtime.terminalError &&
+      (webRequested ||
+        (runtime.dashboardInput &&
+          typeof runtime.dashboardInputStream.setRawMode === 'function' &&
+          process.env.TERM !== 'dumb')))
   )
     runtime.host.delivery?.enableInspection?.()
   runtime.progress.note(
@@ -1520,7 +1559,52 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     capture.attachments,
     parsed.output !== undefined,
     runtime.host.delivery,
+    parsed.displayBundle?.attachment,
   )
+  let inputCapture: PrivateInputInspectionCapture | undefined
+  let inputSelection = ''
+  let inputInventory = ''
+  let unsubscribeInput: (() => void) | undefined
+  const publishInput = () => {
+    if (!inputCapture) return
+    const inventory = {
+      generation: inputCapture.generation,
+      sourcePublisher: 'root' as const,
+      provenance: 'captured-input' as const,
+      phase: inputCapture.phase,
+      files: inputCapture.files,
+    }
+    const signature = JSON.stringify(inventory)
+    if (signature === inputInventory) return
+    inputInventory = signature
+    runtime.progress.model.setInputCapture(inventory)
+  }
+  if (workspaceRequested || parsed.displayBundle) {
+    inputCapture = new PrivateInputInspectionCapture(capture.attachments, publishInput)
+    runtime.progress.model.setInputArtifacts(
+      (publisher, reference) =>
+        publisher === 'root' &&
+        inputCapture!.files.some(
+          (file) => file.attachment === reference.attachment && file.path === reference.path,
+        )
+          ? `${reference.attachment}/${reference.path}`
+          : undefined,
+      async (path) => inputCapture!.preview(path),
+      async (path) => inputCapture!.read(path),
+    )
+    unsubscribeInput = runtime.progress.model.subscribeSemantic(() => {
+      const selected = [...runtime.progress.model.views.values()]
+        .filter((view) => view.publisher === 'root')
+        .flatMap((view) => privateViewReferences(view.value))
+        .filter((reference) => reference.kind === 'input-artifact')
+      const signature = JSON.stringify(selected)
+      if (signature === inputSelection) return
+      inputSelection = signature
+      inputCapture!.select(selected)
+      publishInput()
+    })
+    publishInput()
+  }
   let inspectionCapture: PrivateDeliveryInspectionCapture | undefined
   let fileCompletionDeadline: number | undefined
   let localFileClosure: Promise<void> | undefined
@@ -1532,8 +1616,13 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
   let deliveryCleanupFailureReported = false
   let localFileClosureFailed = false
   let localFileClosureFailureReported = false
+  let publicationAttempted = false
+  let publicationFailed = false
   const closeLocalFiles = (): Promise<void> => {
     localFileClosure ??= Promise.resolve().then(async () => {
+      unsubscribeInput?.()
+      unsubscribeInput = undefined
+      inputCapture?.retireSource()
       let failed = false
       let failure: unknown
       try {
@@ -1577,7 +1666,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
       let failed = false
       let failure: unknown
       try {
-        if (dashboardEntry !== undefined) {
+        if (dashboardEntry !== undefined || parsed.displayBundle) {
           inspectionCapture = await privateCaptureDeliveryInspection(
             runtime.host.delivery,
             receipt,
@@ -1585,6 +1674,52 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
               presentationDeadline: bound.deadline,
             },
           )
+          if (parsed.displayBundle && !publicationAttempted) {
+            publicationAttempted = true
+            try {
+              if (receipt?.status !== 'written' || receipt.source !== 'final')
+                throw new CliDiagnostic(
+                  'JIG_DISPLAY_BUNDLE_UNAVAILABLE',
+                  'The selected display bundle requires verified final delivery. A checkpoint or unavailable delivery cannot publish a final edition.',
+                  1,
+                )
+              const result = await privateRetainDisplayBundle({
+                directory: runtime.currentDirectory,
+                selection: parsed.displayBundle,
+                source: { runId: selectedRunId!, sourceId: 'root' },
+                deadline: bound.deadline,
+                readOutput: (attachment, path) => {
+                  const selected = files.outputAttachments.includes(attachment)
+                    ? path
+                    : files.artifactResultNames.includes(attachment)
+                      ? `${attachment}/${path}`
+                      : undefined
+                  return selected === undefined ? undefined : inspectionCapture!.read(selected)
+                },
+                selectInput: (selected) =>
+                  inputCapture?.select([
+                    ...selected,
+                    ...[...runtime.progress.model.views.values()]
+                      .filter((view) => view.publisher === 'root')
+                      .flatMap((view) => privateViewReferences(view.value))
+                      .filter((reference) => reference.kind === 'input-artifact'),
+                  ]),
+                readInput: (attachment, path) => inputCapture?.read(`${attachment}/${path}`),
+              })
+              runtime.writeError(
+                `Display publication: ${JSON.stringify(result).replace(/[^\u0020-\u007e]/gu, (value) => asciiJsonString(value).slice(1, -1))}\n`,
+              )
+            } catch (error) {
+              publicationFailed = true
+              renderFailure(error, runtime)
+              runtime.writeError(
+                renderDiagnostic(
+                  'JIG_DISPLAY_PUBLICATION_FAILED',
+                  'The final display publication was not confirmed. The domain result is unchanged. Inspect its receipt before publishing again.',
+                ),
+              )
+            }
+          }
         } else if (runtime.host.delivery !== undefined) {
           if (runtime.host.delivery.retire === undefined)
             throw new Error('file authority retirement is unavailable')
@@ -1838,6 +1973,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
                   clipped: preview.clipped,
                 }
           },
+          read: async (path: string) => inspectionCapture!.read(path),
           capture: {
             generation: inspectionCapture.generation,
             sourcePublisher: 'root',
@@ -1905,7 +2041,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
           rootDispatched,
         ),
       )
-    if (cleanupFailed || fileFinalizationFailed) return 2
+    if (cleanupFailed || fileFinalizationFailed || publicationFailed) return 2
     if (delivery !== undefined && delivery.status !== 'written') {
       runtime.writeError(
         renderDiagnostic(
@@ -1967,6 +2103,7 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     // A repeated finally join cannot replace the primary error or renew time.
     await closeLocalFiles().catch(() => undefined)
     inspectionCapture?.close()
+    await inputCapture?.close()
   }
 }
 
@@ -2352,6 +2489,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       ...EVALUATOR_HINTS,
       AUTHORING_STALE:
         'run jig review --generate-contracts to refresh the authored contract before review',
+      DISPLAY_BUNDLE_OUTPUT_INVALID:
+        'Select a declared writable attachment or artifact result with --display-bundle NAME=FILE. Inspect the approved target interface before running again.',
       AUTHORING_INTERRUPTED:
         'run jig review --generate-contracts to finish the recorded batch; resolve edited-file conflicts first',
       AUTHORING_CONFLICT:
@@ -2622,7 +2761,7 @@ function renderFileMappingGuidance(
   if (!missing.length && !unknown.length && !bound.length && !writable.length)
     lines.push(
       fileLimitExceeded
-        ? 'Combined input attachments exceed the 64-file/8-MiB limit. Reduce the supplied files.'
+        ? 'Combined input attachments exceed the 64-file/64-MiB limit. Reduce the supplied files.'
         : 'Supply exactly the declared unbound read attachments and the required output destination; captured Binding attachments cannot be overridden.',
     )
   if (missing.length || writable.length) {

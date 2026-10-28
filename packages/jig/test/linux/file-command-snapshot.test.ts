@@ -32,6 +32,9 @@ test('Linux command owner imports a held sealed snapshot after its source tree d
       Buffer.from([0, 255, 128]),
     )
     expect(await readFile(join(destination, 'files/empty'))).toEqual(Buffer.alloc(0))
+    expect(await readFile(join(destination, 'files/large.bin'))).toEqual(
+      Buffer.from(Array.from({ length: 131079 }, (_, index) => index % 251)),
+    )
     const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
     expect(packet.status).toBe('succeeded')
     expect(packet.delivery.source).toBe('final')

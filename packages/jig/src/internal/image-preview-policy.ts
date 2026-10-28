@@ -1,15 +1,21 @@
-import { validDisplayImage, type DisplayImagePreview } from '@jigging/display-model'
+import { type DisplayImagePreview, validDisplayImage } from '@jigging/display-model'
 
 /** One closed profile for capture, renderer, transport and inspection retention. */
 export const PRIVATE_PREVIEW_LIMITS = Object.freeze({
-  sourceBytes: 64 * 1024,
+  sourceBytes: 8 * 1024 * 1024,
+  svgSourceBytes: 64 * 1024,
   textBytes: 4 * 1024,
   retainedBytes: 512 * 1024,
-  pngBytes: 64 * 1024,
+  pngBytes: 256 * 1024,
   width: 384,
   height: 1024,
   pixels: 384 * 1024,
   wasmBytes: 5 * 1024 * 1024,
+  rasterWasmBytes: 128 * 1024 * 1024,
+  rasterPixels: 24_000_000,
+  rasterDimension: 16384,
+  rasterCopyBytes: 32 * 1024 * 1024,
+  rasterDecodedTextBytes: 32 * 1024 * 1024,
   copyBytes: 1024 * 1024,
   decodedTextBytes: 1024 * 1024,
   renderMs: 5000,

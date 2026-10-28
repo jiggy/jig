@@ -1,4 +1,4 @@
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import type {
   PrivateDeliveryConnection,
   PrivateDeliveryInspectionOptions,
@@ -160,7 +160,9 @@ export interface PrivateDeliveryInspectionCapture {
     bytes: number
     state: PrivateDeliveryInspectionPreview['state']
     clipped: boolean
+    downloadable?: boolean
   }>[]
+  read(path: string): Uint8Array | undefined
   preview(path: string): PrivateDeliveryInspectionPreview | undefined
   close(): void
 }
@@ -181,6 +183,7 @@ export async function privateCaptureDeliveryInspection(
     Math.min(PRIVATE_INSPECTION_PREVIEW_MS, Math.max(0, Math.floor((deadline - started) / 2)))
   const bound = { deadline, ...(options.signal === undefined ? {} : { signal: options.signal }) }
   const previews = new Map<string, PrivateDeliveryInspectionPreview>()
+  const contents = new Map<string, Uint8Array>()
   let files: PrivateDeliveryInspectionCapture['files'] = []
   let captureFailure: unknown
   try {
@@ -201,6 +204,19 @@ export async function privateCaptureDeliveryInspection(
         Object.freeze({ state: 'unavailable', bytes: file.bytes, clipped: false }),
       )
     }
+    if (delivery?.read)
+      for (const file of manifest) {
+        const content = await privateBoundInspection(delivery.read(file.path, bound), bound)
+        if (
+          !content ||
+          content.byteLength !== file.bytes ||
+          `sha256:${createHash('sha256').update(content).digest('hex')}` !== file.digest
+        ) {
+          content?.fill(0)
+          throw new PrivateDeliveryInspectionError('INVALID_CAPTURE')
+        }
+        contents.set(file.path, new Uint8Array(content))
+      }
     let retained = 0
     for (const file of manifest) {
       if (
@@ -252,6 +268,7 @@ export async function privateCaptureDeliveryInspection(
           bytes: preview.bytes,
           state: preview.state,
           clipped: preview.clipped,
+          downloadable: contents.has(path),
         }),
       ),
     )
@@ -269,6 +286,8 @@ export async function privateCaptureDeliveryInspection(
     if (captureFailure) throw captureFailure
   } catch (error) {
     previews.clear()
+    for (const bytes of contents.values()) bytes.fill(0)
+    contents.clear()
     throw error instanceof PrivateDeliveryInspectionError
       ? error
       : new PrivateDeliveryInspectionError('RETIREMENT_FAILED')
@@ -277,12 +296,18 @@ export async function privateCaptureDeliveryInspection(
   return Object.freeze({
     generation: randomBytes(16).toString('hex'),
     files,
+    read(path: string) {
+      const bytes = closed ? undefined : contents.get(path)
+      return bytes ? new Uint8Array(bytes) : undefined
+    },
     preview(path: string) {
       return closed ? undefined : previews.get(path)
     },
     close() {
       closed = true
       previews.clear()
+      for (const bytes of contents.values()) bytes.fill(0)
+      contents.clear()
     },
   })
 }

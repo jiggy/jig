@@ -3,9 +3,18 @@ import { PRIVATE_PREVIEW_LIMITS } from './image-preview-policy.js'
 /** Install only in a disposable decoder thread before resvg's audited glue.
  * Charge external copies before allocation, cumulatively for the entire job;
  * errors and garbage collection cannot replenish either allowance. */
-export function privateGuardImageAllocations(): { copies(): number; decodedText(): number } {
+export function privateGuardImageAllocations(raster = false): {
+  copies(): number
+  decodedText(): number
+} {
   const OriginalArray = globalThis.Uint8Array
   const OriginalDecoder = globalThis.TextDecoder
+  const copyLimit = raster
+    ? PRIVATE_PREVIEW_LIMITS.rasterCopyBytes
+    : PRIVATE_PREVIEW_LIMITS.copyBytes
+  const textLimit = raster
+    ? PRIVATE_PREVIEW_LIMITS.rasterDecodedTextBytes
+    : PRIVATE_PREVIEW_LIMITS.decodedTextBytes
   let copiedBytes = 0
   let decodedBytes = 0
   globalThis.Uint8Array = new Proxy(OriginalArray, {
@@ -24,8 +33,8 @@ export function privateGuardImageAllocations(): { copies(): number; decodedText(
         if (
           !Number.isSafeInteger(length) ||
           length < 0 ||
-          length > PRIVATE_PREVIEW_LIMITS.pngBytes ||
-          copiedBytes + length > PRIVATE_PREVIEW_LIMITS.copyBytes
+          length > (raster ? copyLimit : PRIVATE_PREVIEW_LIMITS.pngBytes) ||
+          copiedBytes + length > copyLimit
         )
           throw new Error('image allocation limit')
         copiedBytes += length
@@ -36,8 +45,7 @@ export function privateGuardImageAllocations(): { copies(): number; decodedText(
   globalThis.TextDecoder = class extends OriginalDecoder {
     override decode(input?: AllowSharedBufferSource, options?: TextDecodeOptions): string {
       const charge = 2 * (input?.byteLength ?? 0)
-      if (decodedBytes + charge > PRIVATE_PREVIEW_LIMITS.decodedTextBytes)
-        throw new Error('image text limit')
+      if (decodedBytes + charge > textLimit) throw new Error('image text limit')
       decodedBytes += charge
       return super.decode(input, options)
     }

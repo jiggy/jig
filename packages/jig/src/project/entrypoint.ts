@@ -3,7 +3,15 @@ import type { InvocationOperationDescriptor } from '../invocation-contract.js'
 import { parseRun } from '../run-arguments.js'
 import { isProtectedProjectPath, normalizeProjectPath } from './paths.js'
 
-const OPTIONS = new Set(['--input', '--attach', '--select', '--out', '--receive', '--timeout'])
+const OPTIONS = new Set([
+  '--input',
+  '--attach',
+  '--select',
+  '--out',
+  '--receive',
+  '--timeout',
+  '--display-bundle',
+])
 
 /** Argument quoting only. This never invokes a shell or expands values. */
 export function entrypointWords(value: unknown): string[] {
@@ -54,7 +62,7 @@ export function parseProjectEntrypoint(value: unknown): ReturnType<typeof parseR
   for (let index = 1; index < words.length; index += 2)
     if (!OPTIONS.has(words[index]!))
       throw new TypeError(
-        'entrypoint accepts only --input, --attach, --select, --out, --receive and --timeout',
+        'entrypoint accepts only --input, --attach, --select, --out, --receive, --timeout and --display-bundle',
       )
   const parsed = parseRun(['run', ...words])
   for (const path of [
@@ -76,6 +84,14 @@ export function validateEntrypointInterface(
   invocation: InvocationOperationDescriptor,
   bound: Readonly<Record<string, unknown>> = {},
 ): void {
+  if (
+    value.displayBundle &&
+    invocation.attachments?.[value.displayBundle.attachment] !== 'read-write' &&
+    !invocation.artifactResults?.includes(value.displayBundle.attachment)
+  )
+    throw new TypeError(
+      'entrypoint --display-bundle must select a declared writable attachment or artifact result',
+    )
   for (const { name } of value.attachments)
     if (invocation.attachments?.[name] !== 'read' || Object.hasOwn(bound, name))
       throw new TypeError('entrypoint attachment must name an unbound read attachment')

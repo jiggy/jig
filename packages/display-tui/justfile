@@ -29,7 +29,7 @@ verify-build-bun:
 @test *args:
     bun test "$@"
 
-@check: build test
+@check: build test test-material
 
 [positional-arguments]
 @pack *args: build
@@ -37,3 +37,7 @@ verify-build-bun:
 
 @test-package:
     bun test/package-smoke.ts
+
+# Validate semantic material without loading native terminal support.
+@test-material:
+    node --test test/material.node.mjs

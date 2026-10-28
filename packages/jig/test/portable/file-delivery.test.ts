@@ -227,6 +227,11 @@ test('inspection retains only verified immutable bytes and closes previews with 
       expect((await owner.publish(record, { kind: 'snapshot', capture })).status).toBe('written')
       await writeFile(join(destination, 'files/review.patch'), 'Changed destination')
       expect(owner.preview('review.patch')?.text).toBe('Original checked patch\n')
+      expect(Buffer.from(owner.read('binary')!)).toEqual(Buffer.from([255, 128]))
+      expect(Buffer.from(owner.read('large.txt')!).toString('utf8')).toBe('x' + '🧭'.repeat(20000))
+      const transferred = owner.read('large.txt')!
+      transferred.fill(0)
+      expect(owner.read('large.txt')![0]).toBe(120)
       const large = owner.preview('large.txt')!
       expect(large.clipped).toBe(true)
       expect(Buffer.byteLength(large.text)).toBeLessThanOrEqual(4096)

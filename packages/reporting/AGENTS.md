@@ -46,6 +46,7 @@ runtimes.
 
 `bundle.ts` owns finite plain-data final editions and opaque publication contexts.
 Its pure helpers derive revision conditions without granting source or file authority.
+Copyable target and publication identities reject Unicode control and format characters.
 `preview.ts` selects whole collection rows and reports omitted records explicitly.
 Content and gallery roles reference selected immutable input or verified output media.
 Layout blocks and row detail blocks have separate aggregate budgets.

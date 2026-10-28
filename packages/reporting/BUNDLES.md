@@ -15,6 +15,7 @@ const document = encodeDisplayBundle(bundle)
 ```
 
 The context contains an opaque archive generation and current target heads.
+Copyable target and publication identities exclude Unicode control and format characters.
 The helper derives revision conditions, including removal fences.
 Applications choose request identities, editions, instance keys and domain revisions.
 They cannot assign trusted Run provenance or captured byte identities.

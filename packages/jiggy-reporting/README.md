@@ -72,6 +72,9 @@ Its `subjectKey` relates views about the same subject without merging their cont
 Targets, landing hints and call associations remain fixed for the handle's lifetime.
 Actual publisher identity always comes from the host.
 
+Targets, publication request identities and concurrency tokens exclude control and format characters.
+Ordinary Unicode letters remain valid.
+
 Sections contain reports, facts, progress, collections and captured content.
 A report's optional `format` is `plain`, `code` or `diff`.
 Literal formats preserve text and grant no executable markup.

@@ -30,8 +30,7 @@ import {
   privateOpenAt,
   privateOpenFileRoot,
 } from './file-input.js'
-import { PRIVATE_CAPTURE_CHUNK_BYTES } from './file-input-policy.js'
-import { privateImagePreview, privateImageSourceCandidate } from './image-preview.js'
+import { privateImagePreview } from './image-preview.js'
 import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
 import type {
   RetainedRunCheckpoint,
@@ -65,6 +64,7 @@ export interface PrivateDeliveryConnection {
     signal?: AbortSignal,
   ): Promise<import('../attempt-contract.js').AttemptResults['export']>
   enableInspection?(): void
+  read?(path: string, options?: PrivateDeliveryInspectionOptions): Promise<Uint8Array | undefined>
   preview?(path: string): Promise<{ text: string; bytes: number; clipped: boolean } | undefined>
   inspectionPreview?(
     path: string,
@@ -144,6 +144,32 @@ export class PrivateFileDeliveryOwner {
     return preview.text === undefined
       ? undefined
       : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
+  }
+  read(path: string): Uint8Array | undefined {
+    privateFilePath(path)
+    const file = this.#close ? undefined : this.#previewFiles?.get(path)
+    return file && file.contents.length === file.bytes ? new Uint8Array(file.contents) : undefined
+  }
+  inspectionRead(
+    path: string,
+    offset: number,
+    maximum: number,
+  ): { chunk: Uint8Array; bytes: number } | undefined {
+    privateFilePath(path)
+    if (
+      !Number.isSafeInteger(offset) ||
+      offset < 0 ||
+      !Number.isSafeInteger(maximum) ||
+      maximum < 1 ||
+      maximum > 65536
+    )
+      throw new TypeError('Invalid inspection slice')
+    const file = this.#close ? undefined : this.#previewFiles?.get(path)
+    if (!file || file.contents.length !== file.bytes || offset > file.bytes) return undefined
+    return {
+      chunk: new Uint8Array(file.contents.subarray(offset, offset + maximum)),
+      bytes: file.bytes,
+    }
   }
   inspectionPreview(path: string, deadline?: number): Promise<PrivateDeliveryInspectionPreview> {
     privateFilePath(path)
@@ -318,7 +344,6 @@ export class PrivateFileDeliveryOwner {
     let failure: PrivateDeliveryReceipt['code'] = 'INVALID_FILES'
     const files: DeliveryFile[] = []
     const previews = new Map<string, PreviewFile>()
-    let previewBytes = 0
     let keptPreviews = false
     try {
       checkTime()
@@ -414,10 +439,6 @@ export class PrivateFileDeliveryOwner {
       await this.onStaged?.()
       checkTime()
       let delivery: PrivateDeliveryReceipt
-      previewBytes = files.reduce(
-        (sum, file) => sum + Math.min(file.bytes, PRIVATE_PREVIEW_LIMITS.textBytes),
-        0,
-      )
       const stage = await openPrivateFile(
         location,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
@@ -438,16 +459,8 @@ export class PrivateFileDeliveryOwner {
               checkTime()
               hash.update(chunk)
               if (retainPreview && preview === undefined) {
-                const prefixBytes = Math.min(file.bytes, PRIVATE_PREVIEW_LIMITS.textBytes)
-                const extraBytes = file.bytes - prefixBytes
-                const keepImage =
-                  file.bytes <= PRIVATE_PREVIEW_LIMITS.sourceBytes &&
-                  privateImageSourceCandidate(
-                    Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength),
-                  ) &&
-                  previewBytes + extraBytes <= PRIVATE_PREVIEW_LIMITS.retainedBytes
-                preview = Buffer.alloc(prefixBytes + (keepImage ? extraBytes : 0))
-                if (keepImage) previewBytes += extraBytes
+                // Complete verified bytes have their separate 16 MiB aggregate allowance.
+                preview = Buffer.alloc(file.bytes)
               }
               if (preview && copied < preview.length)
                 preview.set(

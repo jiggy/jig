@@ -115,6 +115,18 @@ capture, retirement acknowledgements or native cleanup.
 Saved-result cases use actual files, descriptors and subprocess output.
 Hardware I/O failure windows require separate evidence.
 
+`portable/display-archive.test.ts` uses actual protected SQLite and filesystem state.
+It checks atomic editions, revision conflicts, original receipts, detached evidence, deletion fences, reset and capacity refusal.
+These store checks do not qualify native capture, authenticated handoff or installed usability.
+
+`portable/cli-display-archive.test.ts` checks closed command grammar, typed reference traversal, safe diagnostics and inherited deadline refusal.
+`portable/display-bundle-arguments.test.ts` checks relative output selection, entrypoint overrides and declared output requirements.
+These pure cases do not qualify native capture, protected acceptance or installed publication.
+
+`host/installed-display-archive.test.ts` consumes frozen Jig, reporting and public FLOW SDK archives through the installed CLI.
+It checks final delivery, exact evidence, original receipt recovery, removal fences and checkpoint-only publication refusal.
+Native residue checks remain separate from portable archive cases and unfamiliar-consumer usability qualification.
+
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.
 `host/installed-attempt-export.test.ts` exercises protected acquisition and publication.
 Pins and delivery receipts must come from the production owner.

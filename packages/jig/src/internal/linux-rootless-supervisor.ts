@@ -813,7 +813,7 @@ function bubblewrapArguments(configuration: Configuration): string[] {
   for (const mount of configuration.readOnlyMounts)
     result.push('--ro-bind', mount.source, mount.destination)
   if (configuration.inputDirectories.length > 0)
-    result.push('--size', String(32 * 1024 * 1024), '--tmpfs', '/jig-input')
+    result.push('--size', String(128 * 1024 * 1024), '--tmpfs', '/jig-input')
   const aliasNames = new Set(configuration.inputAliases.map((alias) => `/jig-input/${alias.name}`))
   for (const path of configuration.inputDirectories)
     if (!aliasNames.has(path)) result.push('--dir', path)

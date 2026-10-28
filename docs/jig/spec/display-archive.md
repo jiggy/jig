@@ -97,6 +97,7 @@ The browser cannot publish, remove, reset, rerun or modify domain work.
 
 No TUI mode is provided for this command.
 `receipt` requires both the original request identity and generation.
+Use `--request=ID` and `--generation=GEN` when an opaque identity starts with `--`.
 It returns the original receipt as JSON, or `null` with exit 1 when absent.
 An expired generation rejects lookup instead of resolving a reused identity in another generation.
 

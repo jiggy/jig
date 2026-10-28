@@ -1,8 +1,15 @@
 import type { RunContext, RunResult } from '@jigging/flow'
-import type { Reporter } from '@jigging/reporting'
+import type { Reporter, ReportingView } from '@jigging/reporting'
 import { capturePhotos } from './catalogue.ts'
 import { checkContactSheetOutput, checkCopiedPhotos, checkProposal } from './plan.ts'
-import { type PhotoBoxState, photoBoxView } from './view.ts'
+import {
+  type PhotoBoxState,
+  photoAlbumKey,
+  photoBoxView,
+  photoContactSheetView,
+  photoGalleryView,
+  photoViewOptions,
+} from './view.ts'
 
 export async function organisePhotos(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
@@ -13,11 +20,18 @@ export async function organisePhotos(
     throw new TypeError('Supply a read-only source attachment.')
   }
 
-  const view = updates?.view('photos', { title: 'Photo box', landing: true })
+  const reading = updates?.view('reading', { title: 'Reading photos' })
+  let views: Readonly<Record<'photos' | 'organise' | 'contactSheet', ReportingView>> | undefined
   let state: PhotoBoxState = { phase: 'reading' }
   const show = (phase: PhotoBoxState['phase']) => {
     state = { ...state, phase }
-    view?.update(photoBoxView(state))
+    if (views) {
+      views.photos.update(photoGalleryView(state))
+      views.organise.update(photoBoxView(state))
+      views.contactSheet.update(photoContactSheetView(state))
+    } else {
+      reading?.update(photoBoxView(state))
+    }
   }
   show('reading')
 
@@ -29,6 +43,15 @@ export async function organisePhotos(
     run.signal.throwIfAborted()
 
     state = { ...state, photos }
+    if (updates) {
+      reading?.retire()
+      const options = photoViewOptions(photoAlbumKey(photos))
+      views = {
+        photos: updates.view('photos', options.photos),
+        organise: updates.view('organise', options.organise),
+        contactSheet: updates.view('contact-sheet', options.contactSheet),
+      }
+    }
     show('grouping')
 
     // 2. Pass captions to the grouping Flow, without filenames or image bytes.

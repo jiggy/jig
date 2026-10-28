@@ -17,6 +17,7 @@ These links locate module rules. All selected domain requirements still apply.
 - [execution-output](#execution-output)
 - [file-delivery](#file-delivery)
 - [delivery-inspection](#delivery-inspection)
+- [input-inspection](#input-inspection)
 - [saved-result](#saved-result)
 - [display-archive](#display-archive)
 - [raw-directory](#raw-directory)
@@ -110,7 +111,7 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `read-input-projection.ts` derives only whole-view aliases with identical
   paths and original captured-input capabilities. Keep at most eight logical
-  roots, 64 canonical files and 8 MiB of unique projected bytes. Equal hashes
+  roots, 64 canonical files and 64 MiB of unique projected bytes. Equal hashes
   never authenticate aliases. Native owners create immutable local aliases
   before payload execution and retain the exact closed recipe at seal/admission.
   Each Linux launch reopens its held sealed memfd read-only, rechecks backing
@@ -163,7 +164,7 @@ These links locate module rules. All selected domain requirements still apply.
   Stream original authenticated slices into new immutable backing.
   Backing offsets alone never identify artifacts.
   Evaluation artifact inputs stream original held snapshot members into immutable native captures.
-  Operator inputs retain 8 MiB. Artifact inputs permit 16 MiB.
+  Operator inputs retain 64 MiB. Artifact inputs permit 16 MiB.
 
   Empty descendant directories join physical-view identity and native read-only projection under the same finite entry limit.
 
@@ -245,18 +246,20 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### delivery-inspection
 
-- `delivery-inspection.ts` transfers only verified receipt-selected excerpts to
+- `delivery-inspection.ts` transfers verified receipt-selected complete bytes and excerpts to
   a pure presentation map before indefinite live-result inspection. One total
   20-second completion bound includes serial previews, retirement ACK and spent
   channel completion, clamped by the inherited presentation deadline. At most
   the first ten seconds are for previews. Tighter constraints reserve half the
-  remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 4 KiB
-  each and 512 KiB aggregate retained content. Charge text as UTF-16 storage.
+  remaining allowance for retirement.
+
+  Keep at most 64 UTF-8 excerpts of 4 KiB
+  each and 512 KiB aggregate retained preview content. Charge text as UTF-16 storage.
+  Complete download bytes have a separate 16 MiB aggregate allowance. Verify their size and digest before transferring ownership.
 
   Text, empty, image, non-text, unavailable and clipped states remain
   distinct. `image-preview-policy.ts` owns the shared finite capture/transport
-  limits. Complete image sources add bytes only within that same retention
-  budget. `image-preview-child.ts` runs the decoder in a disposable process.
+  limits. Complete source bytes retain their separate bounded capture allowance. `image-preview-child.ts` runs the decoder in a disposable process.
 
   Before returning images, reserve every file's text fallback and charge encoded
   replies as UTF-16 storage. Repeated previews reuse the same reservation.
@@ -272,7 +275,13 @@ These links locate module rules. All selected domain requirements still apply.
   cutoffs through the private command to the decoder timer. Drain its reply
   under the separate total deadline before retirement.
 
+  PNG/JPEG sources allow eight MiB and 24 million pixels, with 128 MiB of Wasm memory.
+  SVG sources allow 64 KiB and five MiB of Wasm memory.
+
+  Raster copies and decoded text each allow 32 MiB. SVG copies and decoded text each allow one MiB.
+  Thumbnail output allows 256 KiB within 384 by 1024 pixels.
   Pinned Wasm, copy and decoded-text limits bound content, not total Bun RSS.
+
   Saved-image preparation has a ten-second aggregate limit. Worker, renderer
   and font bytes remain pinned.
 
@@ -294,6 +303,14 @@ These links locate module rules. All selected domain requirements still apply.
   Completed bounded close promises remain completed during operator-controlled
   inspection. Later exit must not reapply their already elapsed transfer
   deadline.
+
+### input-inspection
+
+- `input-inspection.ts` copies explicitly selected members from the original authenticated input set.
+  Unknown references cannot consume the selected-file allowance.
+  Detached copies preserve captured-input provenance after original input authority closes.
+  Reads return owned copies. Closing fences new work, aborts and joins the decoder, then releases retained bytes.
+  One decoder and a two MiB thumbnail cache bound on-demand image work.
 
 ### saved-result
 

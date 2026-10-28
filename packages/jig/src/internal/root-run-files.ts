@@ -91,7 +91,7 @@ export class PrivateRootFileInputLimitError extends CheckError {
     super(
       'invalid',
       'RUN_ATTACHMENTS_INVALID',
-      'combined retained and per-run inputs exceed the 64-file/8-MiB limit',
+      'combined retained and per-run inputs exceed the 64-file/64-MiB limit',
     )
   }
 }
@@ -218,7 +218,9 @@ export class PrivateRootRunFiles {
     readonly captured: readonly Pick<PrivateCapturedAttachment, 'name' | 'files'>[],
     output: boolean,
     readonly delivery?: PrivateDeliveryConnection,
+    readonly displayBundleAttachment?: string,
   ) {
+    if (displayBundleAttachment !== undefined) privateAttachmentName(displayBundleAttachment)
     this.identity = normalizePrivateRunFileIdentity({
       attachments: captured.map((item) => ({
         name: item.name,
@@ -301,6 +303,16 @@ export class PrivateRootRunFiles {
     }
   }
   identify(request: PrivateActivationRequest): void {
+    if (
+      this.displayBundleAttachment !== undefined &&
+      request.attachments[this.displayBundleAttachment] !== 'read-write' &&
+      !request.artifactResults?.includes(this.displayBundleAttachment)
+    )
+      throw new CheckError(
+        'invalid',
+        'DISPLAY_BUNDLE_OUTPUT_INVALID',
+        'The selected display bundle must name a declared writable attachment or artifact result.',
+      )
     this.#outputAttachments = Object.entries(request.attachments)
       .filter(([, access]) => access === 'read-write')
       .map(([name]) => name)

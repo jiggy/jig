@@ -9,7 +9,7 @@ test('native input manifest rejects aliases, file/directory conflicts and aggreg
   const file = { path: 'source/a', bytes: 1, digest: sha256(Buffer.from('x')) }
   expect(normalizePrivateMacosInputs([file], ['source'])).toEqual([file])
   // Native projection also accepts held artifact inputs. Operator capture
-  // retains its independent 8 MiB bound before reaching this native manifest.
+  // retains its independent 64 MiB bound before reaching this native manifest.
   const artifact = { ...file, bytes: 16 * 1024 * 1024 }
   expect(normalizePrivateMacosInputs([artifact], ['source'])).toEqual([artifact])
   for (const value of [
@@ -20,7 +20,7 @@ test('native input manifest rejects aliases, file/directory conflicts and aggreg
     [{ ...file, path: 'source' }],
     [{ ...file, path: '../outside' }],
     [{ ...file, path: '.jig/private' }],
-    [{ ...file, bytes: 16 * 1024 * 1024 + 1 }],
+    [{ ...file, bytes: 64 * 1024 * 1024 + 1 }],
     [{ ...file, bytes: -1 }],
     [{ ...file, digest: 'untrusted' }],
     [{ ...file, extra: true }],

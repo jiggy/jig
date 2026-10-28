@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal, Required, TypedDict
 
-from .view import Reference, array, record, reference, target, text
+from .view import Reference, array, identity as display_identity, record, reference, target, text
 
 
 class DisplayPublicationHead(TypedDict):
@@ -67,7 +67,7 @@ def validate_display_bundle(value: Any) -> DisplayBundle:
         view['target'] = selected
         accepted: DisplayPublicationView = {
             'view': view,
-            'expectedRevision': None if entry['expectedRevision'] is None else text(entry['expectedRevision'], 128, True),
+            'expectedRevision': None if entry['expectedRevision'] is None else display_identity(entry['expectedRevision'], 128),
             'completeness': entry['completeness'],
         }
         if 'domainRevision' in entry:
@@ -75,8 +75,8 @@ def validate_display_bundle(value: Any) -> DisplayBundle:
         views.append(accepted)
     result: DisplayBundle = {
         'kind': 'display-bundle',
-        'requestId': text(value.get('requestId'), 128, True),
-        'generation': text(value.get('generation'), 128, True),
+        'requestId': display_identity(value.get('requestId'), 128),
+        'generation': display_identity(value.get('generation'), 128),
         'edition': text(value.get('edition'), 128, True),
         'views': views,
     }
@@ -98,7 +98,7 @@ def create_display_bundle(context: DisplayPublicationContext, options: dict[str,
         identity = (selected['definitionId'], selected['instanceKey'])
         if identity in heads or type(head.get('retained')) is not bool:
             raise TypeError('Publication context requires unique heads with retained state')
-        heads[identity] = text(head.get('revision'), 128, True)
+        heads[identity] = display_identity(head.get('revision'), 128)
     views = []
     for item in array(options.get('views'), 32, 1):
         entry = record(item, {'view', 'completeness', 'domainRevision'})
@@ -110,7 +110,7 @@ def create_display_bundle(context: DisplayPublicationContext, options: dict[str,
         })
     return validate_display_bundle({
         'kind': 'display-bundle',
-        'generation': text(context_value.get('generation'), 128, True),
+        'generation': display_identity(context_value.get('generation'), 128),
         'requestId': options.get('requestId'),
         'edition': options.get('edition'),
         'views': views,

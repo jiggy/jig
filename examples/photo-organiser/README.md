@@ -44,18 +44,15 @@ That destination must be new. Jig never overwrites an earlier result.
 
 ## Follow the work
 
-Add `--display tui` or `--display web` to open **Photo box**. One page follows
-reading, grouping, assignment checks, copying and contact-sheet creation. Photos
-appear as soon as the source is captured; event names and destinations appear
-only after the complete proposal passes checks.
+Add `--display tui` or `--display web` to inspect the application's views.
+Photos shows captured originals and supplied captions after source checks.
+Organise follows grouping, validation, copying and stopped outcomes.
+Contact sheet shows the completed before-and-after comparison and manifest references.
 
-The completed page leads with **Before and after**: open its contact-sheet
-reference to compare the original box with organised copies. Select a photo for
-its caption and delivered-image reference, or open the manifest for every path.
-The shared web display previews captured images; TUI keeps readable evidence
-references and text fallback. The full SVG keeps its original resolution.
-A stopped page retains known photos and checked plans without claiming a complete
-collection. Child Flow views and execution details remain in Inspector.
+The grouping proposal stays provisional until every assignment passes application checks.
+A stopped view retains known photos and checked plans without claiming a complete collection.
+Child Flow views retain their own publishers and evidence ownership.
+The shared web display serves captured image previews, while TUI preserves readable evidence references.
 
 Each Flow uses `withReporting` from `@jigging/reporting` for its optional
 `progress` channel. Its `contracts/reporting` folder carries the complete
@@ -117,6 +114,16 @@ and cleanup settles, Jig supplies a sealed artifact. The organiser forwards the
 two artifacts as final results named `copies` and `overview`, without copying
 them into a writable organiser folder. `bindings/group.ts` selects the configured
 Agent. These declarations make each responsibility explicit.
+
+The application exposes three views for the selected collection.
+Photos shows captured original images as soon as source checks complete.
+Organise shows application progress, checked assignments and stopped causes.
+Contact sheet shows the completed visual comparison after both file methods pass their checks.
+
+All three views use one catalogue-derived instance key and shared subject key.
+The definition key identifies the view's purpose, while Jig retains the actual publisher identity separately.
+A changed catalogue identifies another finite collection in this example.
+Child Flows keep their own useful views and evidence ownership.
 
 Inside the organiser, `method.ts` coordinates calls. `catalogue.ts` checks the
 source, `plan.ts` accepts assignments and checks child result metadata, and

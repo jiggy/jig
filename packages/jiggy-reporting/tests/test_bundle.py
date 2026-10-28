@@ -64,3 +64,22 @@ class BundleTests(unittest.TestCase):
     def test_invalid_utf8_unknown_values_and_oversized_capture_reject(self):
         for encoded in [b'\xff',b'[]',b'null',b'{}',b'{' ,b' '*(4*1024*1024+2)]:
             with self.assertRaises(TypeError):decode_display_bundle(encoded)
+
+    def test_new_identity_fields_refuse_controls_and_keep_unicode_letters(self):
+        for character in ('\x00','\x1b','\x7f','\u0085','\u200b','\u202e','\u2066'):
+            for field in ('requestId','generation'):
+                value=bundle();value[field]='part'+character+'suffix'
+                with self.assertRaises(TypeError):validate_display_bundle(value)
+            value=bundle();value['views'][0]['expectedRevision']='revision'+character
+            with self.assertRaises(TypeError):validate_display_bundle(value)
+            for field in ('definitionId','instanceKey','subjectKey'):
+                value=bundle();value['views'][0]['view']['target'][field]='part'+character+'suffix'
+                with self.assertRaises(TypeError):validate_display_bundle(value)
+            context={'generation':'epoch','heads':[{'definitionId':'photos','instanceKey':'family','revision':'r'+character,'retained':False}]}
+            with self.assertRaises(TypeError):create_display_bundle(context,{'requestId':'request','edition':'Edition','views':[{'view':view(),'completeness':'complete'}]})
+        value=bundle();value['requestId']='café';value['generation']='époque';value['views'][0]['expectedRevision']='révision'
+        value['views'][0]['view']['target']={'definitionId':'photothèque','instanceKey':'été','subjectKey':'café'}
+        self.assertEqual(decode_display_bundle(encode_display_bundle(value).encode()),value)
+        # Presentation labels remain ordinary data rather than identity tokens.
+        value['edition']='Label\u200bwith format text'
+        self.assertEqual(validate_display_bundle(value)['edition'],value['edition'])

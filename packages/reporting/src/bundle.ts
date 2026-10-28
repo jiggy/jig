@@ -1,6 +1,7 @@
 import { canonicalReportingMessage, validateReportingMessage } from './validation.js'
 import {
   dataRecord,
+  identityText,
   type Reference,
   scalarText,
   type ViewItem,
@@ -78,12 +79,12 @@ export function createDisplayBundle(
     if (typeof head.retained !== 'boolean') throw new TypeError('heads.retained must be boolean')
     const key = JSON.stringify([target.definitionId, target.instanceKey])
     if (heads.has(key)) throw new TypeError('Publication context contains duplicate target heads')
-    heads.set(key, scalarText(head.revision, 128, true))
+    heads.set(key, identityText(head.revision, 128))
   }
   return validateDisplayBundle({
     kind: 'display-bundle',
     requestId: options.requestId,
-    generation: scalarText(context.generation, 128, true),
+    generation: identityText(context.generation, 128),
     edition: options.edition,
     views: items(options.views, DISPLAY_BUNDLE_LIMITS.views, 'views', 1).map((input) => {
       const entry = dataRecord(input, ['view', 'completeness', 'domainRevision'])
@@ -137,7 +138,7 @@ export function validateDisplayBundle(input: unknown): DisplayBundle {
     return Object.freeze({
       view: Object.freeze({ ...view, target }),
       expectedRevision:
-        entry.expectedRevision === null ? null : scalarText(entry.expectedRevision, 128, true),
+        entry.expectedRevision === null ? null : identityText(entry.expectedRevision, 128),
       completeness: entry.completeness,
       ...(Object.hasOwn(entry, 'domainRevision')
         ? { domainRevision: scalarText(entry.domainRevision, 128, true) }
@@ -146,8 +147,8 @@ export function validateDisplayBundle(input: unknown): DisplayBundle {
   })
   const result: DisplayBundle = Object.freeze({
     kind: 'display-bundle',
-    requestId: scalarText(bundle.requestId, 128, true),
-    generation: scalarText(bundle.generation, 128, true),
+    requestId: identityText(bundle.requestId, 128),
+    generation: identityText(bundle.generation, 128),
     edition: scalarText(bundle.edition, 128, true),
     views: Object.freeze(views),
     ...(Object.hasOwn(bundle, 'requiredEvidence')

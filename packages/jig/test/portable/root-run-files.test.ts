@@ -16,6 +16,7 @@ import {
 } from '../../src/internal/execution-output.js'
 import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
 import { privateOpenFileRoot, sha256 } from '../../src/internal/file-input.js'
+import { PRIVATE_FILE_LIMITS } from '../../src/internal/file-input-policy.js'
 import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifact,
@@ -321,7 +322,7 @@ test('empty declared input trees remain valid and ordering does not change mappi
 test('combined retained and per-run file count and byte limits remain authoritative', () => {
   for (const files of [
     Array.from({ length: 64 }, (_, index) => file(`file-${index}`)),
-    [file('large', 8 * 1024 * 1024)],
+    [file('large', PRIVATE_FILE_LIMITS.bytes)],
   ]) {
     const request = {
       attachments: { source: 'read', retained: 'read' },
@@ -335,6 +336,34 @@ test('combined retained and per-run file count and byte limits remain authoritat
       PrivateRootFileInputLimitError,
     )
   }
+})
+
+test('combined inputs permit exactly 64 MiB and 64 files before rejecting one extra member or byte', () => {
+  const request = {
+    attachments: { source: 'read', retained: 'read' },
+    boundAttachments: { retained: { files: [file('retained', 1)] } },
+  } as unknown as PrivateActivationRequest
+  const identity = (files: ReturnType<typeof file>[]) =>
+    normalizePrivateRunFileIdentity({ attachments: [{ name: 'source', files }], output: false })
+  expect(PRIVATE_FILE_LIMITS.bytes).toBe(64 * 1024 * 1024)
+  expect(() =>
+    requirePrivateRootFileMapping(
+      request,
+      identity([
+        file('large', PRIVATE_FILE_LIMITS.bytes - 1),
+        ...Array.from({ length: PRIVATE_FILE_LIMITS.files - 2 }, (_, index) =>
+          file(`empty-${index}`),
+        ),
+      ]),
+    ),
+  ).not.toThrow()
+  for (const files of [
+    [file('large', PRIVATE_FILE_LIMITS.bytes)],
+    Array.from({ length: PRIVATE_FILE_LIMITS.files }, (_, index) => file(`empty-${index}`)),
+  ])
+    expect(() => requirePrivateRootFileMapping(request, identity(files))).toThrow(
+      PrivateRootFileInputLimitError,
+    )
 })
 
 test('only bounded attachment names can enter the closed diagnostic', () => {

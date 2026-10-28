@@ -178,6 +178,7 @@ A view can declare `target: {definitionId, instanceKey, subjectKey?}` in its opt
 Definition and instance identify one application projection.
 The optional subject relates navigation across definitions.
 A view's target remains fixed for its publisher-local lifetime.
+Target fields exclude Unicode control and format characters while preserving ordinary Unicode names.
 Children retain their actual publisher identity, and applications compose child results deliberately.
 
 Use `report.format: 'plain' | 'code' | 'diff'` for literal detail text.

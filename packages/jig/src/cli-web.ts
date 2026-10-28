@@ -348,11 +348,12 @@ export class PrivateWebDisplay {
               return failure('unavailable', 404)
             }
             const bytes = new Uint8Array(value.bytes)
-            owned = false
-            return this.#binaryResponse(bytes, value.filename, generation, request, () => {
+            const reply = this.#binaryResponse(bytes, value.filename, generation, request, () => {
               this.#downloads--
               this.#requests--
             })
+            owned = false
+            return reply
           } catch {
             this.#downloads--
             return failure('unavailable', 503)
@@ -438,6 +439,10 @@ export class PrivateWebDisplay {
       offset = 0
     let controller: ReadableStreamDefaultController<Uint8Array> | undefined
     const length = bytes.byteLength
+    const encodedName = encodeURIComponent(filename).replace(
+      /[!'()*]/g,
+      (value) => `%${value.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
     const finish = () => {
       if (done) return
       done = true
@@ -475,10 +480,6 @@ export class PrivateWebDisplay {
         cancel: finish,
       },
       new ByteLengthQueuingStrategy({ highWaterMark: 65536 }),
-    )
-    const encodedName = encodeURIComponent(filename).replace(
-      /[!'()*]/g,
-      (value) => `%${value.charCodeAt(0).toString(16).toUpperCase()}`,
     )
     return new Response(stream, {
       headers: {

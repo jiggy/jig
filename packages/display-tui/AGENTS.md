@@ -58,6 +58,11 @@ and portable reporting data without a Jig host or execution owner.
 - Preview requests use opaque inventory and capture-generation identities.
   Retain one active excerpt of at most 64 KiB or a bounded model image. Fence
   selection/capture/disposal. Reuse text for expansion and literal search.
+- Content blocks retain typed captured-media references in both application and
+  detail projections. Input media uses its separate captured-input inventory.
+  Exact file source, attachment and capture generation fence preview reuse.
+- Code and diff reports retain literal whitespace. Native diff colours describe
+  lexical additions and removals, never host verdicts.
 - ImageRenderable receives decoded captured PNG/JPEG bytes only, using blocks
   within the existing frame ceiling. Colour-free/compact output retains image
   metadata. Images have no excerpt-search action. No paths, URLs, overlays or
@@ -95,6 +100,8 @@ and portable reporting data without a Jig host or execution owner.
 ## Verification
 
 - `just build` then `just test` on the qualified Bun profile.
+- `just test-material` checks pure captured-reference, generation and literal
+  projection behavior under Node. It does not qualify native rendering.
 - `just test-package` with frozen package archives exercises an ordinary
   consumer through declared exports with no Jig package. Installed Jig proof is
   separate.
