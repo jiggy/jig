@@ -83,7 +83,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
       dependencies: { '@jigging/flow': 'workspace:*', '@jigging/reporting': 'workspace:*' },
     })
     await put('flows/report/FLOW.meta.json', {
-      name: 'Retain a finite application report',
+      name: 'installed-display-report',
       description: 'Publish selected final material through ordinary declared output.',
       uses: { progress: { contract: './contracts/progress/contract.json' } },
     })

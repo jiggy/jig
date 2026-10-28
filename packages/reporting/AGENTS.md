@@ -60,6 +60,9 @@ qualification. Parameterized source cases register distinct names so whole-file
 CI reports can reject duplicate execution records without name or line exception
 tables.
 
+Real SDK protocol cases cover reading-view retirement before a targeted landing view, with observations wired and unwired.
+A landing claim remains reserved after its view retires. This does not qualify application composition or native execution.
+
 The final best-effort drain allows 4000 ms from body exit. Individual send wait
 remains 500 ms. Drained/unwired scopes add no waiting period. Neither allowance
 is a scope-return ceiling or delivery guarantee. Preserve the root deadline.

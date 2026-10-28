@@ -20,7 +20,7 @@ export async function organisePhotos(
     throw new TypeError('Supply a read-only source attachment.')
   }
 
-  const reading = updates?.view('reading', { title: 'Reading photos', landing: true })
+  const reading = updates?.view('reading', { title: 'Reading photos' })
   let views: Readonly<Record<'photos' | 'organise' | 'contactSheet', ReportingView>> | undefined
   let state: PhotoBoxState = { phase: 'reading' }
   const show = (phase: PhotoBoxState['phase']) => {

@@ -71,6 +71,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
   Use `previewCollection` for explicit whole-row previews. Keep complete selected values and report full counts.
   Stable targets identify captured source or domain requests independently of Run identity.
+  Reading views leave the publisher’s one lifetime landing hint for the targeted application page.
   Use gallery roles for images, content blocks for captured files, and literal formats for code and diffs.
 
   Preserve full results. Reports remain provisional until application checks

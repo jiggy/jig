@@ -41,7 +41,7 @@ export async function runMethod(
   if (run.attachments.source?.access !== 'read') {
     throw new TypeError('Supply a read-only source attachment.')
   }
-  let view = updates?.view('reading', { title: 'Saturday kitchen', landing: true })
+  let view = updates?.view('reading', { title: 'Saturday kitchen' })
   let state: RosterState = { phase: 'reading' }
   const present = (next: Partial<RosterState>) => {
     state = { ...state, ...next }

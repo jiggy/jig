@@ -10,7 +10,7 @@ import {
 
 export async function repairFiles(run: RunContext, reporter?: Reporter): Promise<RunResult> {
   const request = run.input as { issue: string; editPaths: string[] }
-  let view = reporter?.view('reading', { title: 'Patch review', landing: true })
+  let view = reporter?.view('reading', { title: 'Patch review' })
   let state: PatchState = { phase: 'reading', request }
   const show = (phase: PatchState['phase']) => {
     state = { ...state, phase }

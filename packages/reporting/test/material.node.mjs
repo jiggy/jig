@@ -132,7 +132,7 @@ test('finite bundles derive tombstone conditions, own values, and reject ambiguo
   )
 })
 
-async function wire(body, confirmation = false) {
+async function wire(body, confirmation = false, observations = true) {
   const script = `import {handle} from '@jigging/flow'; import {withReporting} from './dist/index.js'; await handle(run=>withReporting(run,'updates',async report=>{${body}; ${confirmation ? 'await run.channels.confirm.close();' : ''} return {outcome:'done',output:true}}));`
   const child = spawn(process.execPath, ['--input-type=module', '-e', script], {
     cwd: fileURLToPath(new URL('..', import.meta.url)),
@@ -174,12 +174,16 @@ async function wire(body, confirmation = false) {
       scratch: '/unused-reporting-scratch',
       deadlineUnixMs: Date.now() + 12000,
       channels: {
-        updates: {
-          endpoint: 'updates:1',
-          direction: 'send',
-          delivery: 'direct',
-          contract: REPORTING_CONTRACT,
-        },
+        ...(observations
+          ? {
+              updates: {
+                endpoint: 'updates:1',
+                direction: 'send',
+                delivery: 'direct',
+                contract: REPORTING_CONTRACT,
+              },
+            }
+          : {}),
         ...(confirmation
           ? {
               confirm: {
@@ -260,6 +264,32 @@ test('real SDK view declarations own independent application instances', async (
     ['family', 'spring'],
   )
 })
+
+for (const observations of [true, false]) {
+  test(`real SDK reading-to-targeted-view handoff preserves one lifetime landing hint (${observations ? 'wired' : 'unwired'})`, async () => {
+    const messages = await wire(
+      `const reading=report.view('reading',{title:'Reading CSV'});reading.update({summary:'Reading source',sections:[]});reading.retire();const contacts=report.view('contacts',{title:'Contact preview',landing:true,target:{definitionId:'contact-preview',instanceKey:'captured-csv'}});contacts.update({summary:'Whole checked records',sections:[]});contacts.retire();let rejected=false;try{report.view('another',{title:'Another landing',landing:true}).update({summary:'Invalid second landing',sections:[]})}catch(error){if(!(error instanceof TypeError)||error.message!=='Only one view may nominate a landing hint')throw error;rejected=true}if(!rejected)throw Error('Retirement released the publisher lifetime landing claim');`,
+      false,
+      observations,
+    )
+    if (!observations) {
+      assert.deepEqual(messages, [])
+      return
+    }
+    assert.deepEqual(
+      messages.map((value) => [value.kind, value.id]),
+      [
+        ['view', 'reading'],
+        ['retire-view', 'reading'],
+        ['view', 'contacts'],
+        ['retire-view', 'contacts'],
+      ],
+    )
+    assert.equal(messages[0].landing, undefined)
+    assert.equal(messages[2].landing, true)
+    assert.equal(messages[2].target.instanceKey, 'captured-csv')
+  })
+}
 
 test('copyable publication and target identities reject hidden controls while preserving Unicode names', () => {
   const ordinary = view(collection(0))

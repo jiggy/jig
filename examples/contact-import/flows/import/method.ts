@@ -11,7 +11,7 @@ export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
   reporter?: Reporter,
 ): Promise<RunResult> {
-  let view = reporter?.view('reading', { title: 'Contact preview', landing: true })
+  let view = reporter?.view('reading', { title: 'Contact preview' })
   let state: ImportState = { phase: 'reading' }
   const show = (phase: ImportState['phase']) => {
     state = { ...state, phase }
