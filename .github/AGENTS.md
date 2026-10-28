@@ -153,6 +153,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   them against the same SDK wheel on the interpreter/OS matrix. These artifacts
   are qualification inputs, not added publication candidates. Host
   installed-update checks also receive the frozen reporting npm archive.
+  The SDK version must match Python reporting's exact declared dependency.
 - After npm convergence and source tagging, create missing
   package-specific GitHub prereleases. Include exact registry version links,
   install commands, and docs. Preserve existing release notes on retries. Never

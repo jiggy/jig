@@ -261,7 +261,7 @@ python_dist=${CI_PYTHON_DISTRIBUTIONS:-"$release_tmp/python-dist"}
 python_reporting_dist=${CI_PYTHON_REPORTING_DISTRIBUTIONS:-"$release_tmp/python-reporting-dist"}
 if [ -z "${CI_PYTHON_DISTRIBUTIONS:-}" ]; then
   mkdir -p "$python_dist"
-  "$python_bin" -m pip download --no-deps jiggy-flow==0.1.0a7 --dest "$python_dist"
+  "$python_bin" -m pip download --no-deps jiggy-flow==0.1.0a8 --dest "$python_dist"
 fi
 python_run env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=packages/jiggy-reporting/src "$python_bin" scripts/ci/run-source-python.py --files "$release_tmp/source-python.files" --group packages/jiggy-reporting
 PYTHONPATH=packages/jiggy-reporting/src \

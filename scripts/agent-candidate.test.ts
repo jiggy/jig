@@ -458,7 +458,12 @@ test('Python reporting uses frozen distributions and the published FLOW dependen
   const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text())
   expect(
     ci.jobs['python-build'].steps.some((step) =>
-      step.run?.includes('pip download --no-deps jiggy-flow==0.1.0a7'),
+      step.run?.includes('pip download --no-deps jiggy-flow==0.1.0a8'),
+    ),
+  ).toBeTrue()
+  expect(
+    ci.jobs['source-tests'].steps.some((step) =>
+      step.run?.includes('mypy==1.18.2 jiggy-flow==0.1.0a8'),
     ),
   ).toBeTrue()
   expect(

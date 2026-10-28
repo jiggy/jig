@@ -25,7 +25,7 @@ def preview_collection(
     def selected(count_: int) -> dict[str, Any]:
         candidate = {**value, 'rows': rows[:count_], 'total': total}
         wrapper = {'kind': 'view', 'id': 'preview', 'title': 'Preview', 'summary': 'Collection preview', 'sections': [{'blocks': [candidate]}]}
-        return validate_reporting_message(wrapper)['sections'][0]['blocks'][0]
+        return record(validate_reporting_message(wrapper)['sections'][0]['blocks'][0])
     selected(0)
     low, high = 0, min(len(rows), limit, 1024, 8192 // len(columns))
     while low < high:

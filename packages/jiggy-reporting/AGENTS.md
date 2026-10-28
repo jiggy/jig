@@ -24,6 +24,7 @@ existing owner.
 
 Run unittest, build both distribution formats, and test an installed wheel.
 Python runtime qualification is independent of TypeScript's.
+Source checks and installed distributions use the package's exact declared SDK version.
 
 The final best-effort drain allows 4000 ms from body exit. Individual send wait
 remains 500 ms. Drained/unwired scopes add no waiting period. Neither allowance

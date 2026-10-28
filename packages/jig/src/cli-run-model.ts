@@ -737,7 +737,7 @@ export class PrivateRunModel {
       (file) =>
         (input && 'attachment' in file ? `${file.attachment}/${file.path}` : file.path) === path,
     )
-    if (!file || file.downloadable === false || file.state === 'unavailable') return undefined
+    if (!file || file.downloadable === false) return undefined
     const bytes = await (input ? this.#inputRead : this.#read)?.(path)
     if (
       !bytes ||

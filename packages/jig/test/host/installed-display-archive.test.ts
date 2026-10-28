@@ -131,6 +131,7 @@ await handle(async run=>{
       await command(['tar', '-xzf', archive, '--strip-components=1', '-C', library], root)
     }
     await command(['git', 'init', '--quiet'], project)
+    await mkdir(join(project, 'flows/report/contracts'))
     await command(
       [cli, 'import-contract', 'jig:run-checkpoint', 'flows/report/contracts/progress'],
       project,

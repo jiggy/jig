@@ -93,14 +93,17 @@ def target(value: Any) -> dict[str, str]:
     }
 
 
-def reference(value: Any) -> dict[str, Any]:
+def reference(value: Any) -> Reference:
     value = record(value, {'kind', 'viewId', 'collectionId', 'rowId', 'operationId', 'attachment', 'path'})
     kind = value.get('kind')
     if kind == 'record':
         record(value, {'kind', 'viewId', 'collectionId', 'rowId'})
-        return {'kind': kind, **{
-            key: text(value.get(key), 64, True) for key in ('viewId', 'collectionId', 'rowId')
-        }}
+        return {
+            'kind': 'record',
+            'viewId': text(value.get('viewId'), 64, True),
+            'collectionId': text(value.get('collectionId'), 64, True),
+            'rowId': text(value.get('rowId'), 64, True),
+        }
     if kind == 'call':
         record(value, {'kind', 'operationId'})
         return {'kind': kind, 'operationId': operation(value.get('operationId'))}
