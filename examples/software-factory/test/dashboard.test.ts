@@ -1,7 +1,53 @@
 import { expect, test } from 'bun:test'
 import { validateReportingMessage } from '@jigging/reporting'
-import { checksView, jobsView, type PreparedJob, patchesView } from '../flows/factory/dashboard.ts'
+import {
+  checksView,
+  factoryViewOptions,
+  jobsView,
+  type PreparedJob,
+  patchesView,
+} from '../flows/factory/dashboard.ts'
 import { input } from './fixture.ts'
+
+test('Jobs is the landing projection and the three batch views share one stable subject', () => {
+  const prepared = [{ job: { id: 'logs', directory: 'log-report', method: 'p1' }, input }]
+  const options = factoryViewOptions(prepared)
+  expect(options).toEqual(factoryViewOptions(prepared))
+  expect(options).toEqual(
+    factoryViewOptions([
+      {
+        ...prepared[0]!,
+        input: { ...input, files: Object.fromEntries(Object.entries(input.files).reverse()) },
+      },
+    ]),
+  )
+  expect(options.jobs.landing).toBe(true)
+  expect(options.checks.landing).toBeUndefined()
+  expect(options.patches.landing).toBeUndefined()
+  const targets = Object.values(options).map((option) => option.target!)
+  expect(new Set(targets.map((target) => target.definitionId)).size).toBe(3)
+  expect(new Set(targets.map((target) => target.instanceKey)).size).toBe(1)
+  expect(new Set(targets.map((target) => target.subjectKey)).size).toBe(1)
+  const changed = factoryViewOptions([
+    { ...prepared[0]!, input: { ...input, issue: 'Another request' } },
+  ])
+  expect(changed.jobs.target?.instanceKey).not.toBe(options.jobs.target?.instanceKey)
+  const changedSource = factoryViewOptions([
+    {
+      ...prepared[0]!,
+      input: { ...input, files: { ...input.files, 'src/parse.ts': 'changed source' } },
+    },
+  ])
+  expect(changedSource.jobs.target?.instanceKey).not.toBe(options.jobs.target?.instanceKey)
+  for (const [id, option] of Object.entries(options)) {
+    validateReportingMessage({
+      kind: 'view',
+      id,
+      ...option,
+      ...jobsView(prepared, new Map(), {}, new Set()),
+    })
+  }
+})
 
 test('Jobs retains a short complete goal and explicitly references the original request file', () => {
   const prepared = [{ job: { id: 'logs', directory: 'log-report', method: 'p1' }, input }]
@@ -209,7 +255,7 @@ test('a passing worker report stays provisional after independent evidence valid
 
 test('standalone repair and generic router publish ordinary bounded views without dispatch claims', async () => {
   const { repairView, checksView: repairChecks } = await import('../flows/repair/dashboard.ts')
-  const { selectionView } = await import('../flows/router/dashboard.ts')
+  const { selectionView, selectionViewOptions } = await import('../flows/router/dashboard.ts')
   const { routingInput } = await import('../flows/router/decision.ts')
   for (const view of [repairView(input), repairChecks()])
     validateReportingMessage({ kind: 'view', id: 'standalone', title: 'Standalone', ...view })
@@ -223,7 +269,7 @@ test('standalone repair and generic router publish ordinary bounded views withou
   const item = validateReportingMessage({
     kind: 'view',
     id: 'selection',
-    title: 'Selection',
+    ...selectionViewOptions(request),
     ...selectionView(request, {
       outcome: 'done',
       output: { candidateId: null, reason: 'No suitable method.' },
@@ -232,7 +278,11 @@ test('standalone repair and generic router publish ordinary bounded views withou
   expect(item.sections[0].blocks[1].rows).toHaveLength(8)
   expect(item.sections[0].blocks[1].total).toBe(16)
   expect(item.summary).toContain('No fallback or dispatch')
-  expect(item.sections[0].blocks[1].rows[0].details[0].text.length).toBeGreaterThan(
-    item.sections[0].blocks[1].rows[0].cells.description.length,
+  expect(item.sections[0].blocks[1].rows[0].details[0].text).toBe(
+    request.candidates[0]!.description,
   )
+  expect(item.sections[0].blocks[1].rows[0].cells.description).toBe(
+    request.candidates[0]!.description,
+  )
+  expect(item.target.definitionId).toBe('candidate-selection')
 })

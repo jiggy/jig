@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { assertResponseSchema, prepareAgent } from '@jigging/agent-method'
+import { validateReportingMessage } from '@jigging/reporting'
 import { runMethod as checkRosterFlow } from '../flows/check-roster/method.ts'
 import { checkRoster } from '../flows/check-roster/policy.ts'
 import { type RosterRow, rosterCsv } from '../flows/export-roster/csv.ts'
@@ -11,7 +12,7 @@ import { interpretProposal } from '../flows/propose-roster/method.ts'
 import responseSchema from '../flows/propose-roster/proposal.schema.json'
 import { runMethod as readRoster } from '../flows/read-roster/method.ts'
 import { readScenario } from '../flows/read-roster/scenario.ts'
-import { rosterView } from '../flows/roster/view.ts'
+import { rosterView, rosterViewOptions } from '../flows/roster/view.ts'
 
 const source = join(import.meta.dir, '../fixtures/feasible')
 const scenario = JSON.parse(await readFile(join(source, 'scenario.json'), 'utf8'))
@@ -378,4 +379,24 @@ test('independent contracts declare stopped outcomes and root artifact delivery'
       expect(contract.artifactResults).toEqual(['schedule'])
     }
   }
+})
+
+test('the captured scenario identifies the roster and captured CSV remains explicit', () => {
+  const options = rosterViewOptions(scenario)
+  expect(options.landing).toBe(true)
+  expect(options.target?.definitionId).toBe('kitchen-roster')
+  expect(options).toEqual(rosterViewOptions(clone(scenario)))
+  const changed = clone(scenario)
+  changed.volunteers[0]!.preference = 'Prefer the later shift.'
+  expect(rosterViewOptions(changed).target?.instanceKey).not.toBe(options.target?.instanceKey)
+  const ready = rosterView({
+    phase: 'ready',
+    scenario,
+    assignments: checkRoster(scenario, proposal) as RosterRow[],
+  })
+  const item = validateReportingMessage({ kind: 'view', id: 'roster', ...options, ...ready })
+  expect(JSON.stringify(item)).toContain('"kind":"content"')
+  expect(JSON.stringify(rosterView({ phase: 'checking', scenario }))).not.toContain(
+    '"kind":"content"',
+  )
 })

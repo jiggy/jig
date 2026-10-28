@@ -1,14 +1,18 @@
 import { expect, test } from 'bun:test'
-import { type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
+import { REPORTING_LIMITS, type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
 import { contactsView, mappingView } from '../flows/convert/dashboard.ts'
-import { type ContactPreview, contactPreviewView } from '../flows/import/dashboard.ts'
+import {
+  type ContactPreview,
+  contactPreviewOptions,
+  contactPreviewView,
+} from '../flows/import/dashboard.ts'
 import { columnsView as agent } from '../flows/map-agent/dashboard.ts'
 import { columnsView as code } from '../flows/map-code/dashboard.ts'
 import { columnsView as mixed } from '../flows/map-mixed/dashboard.ts'
 
 function checked(view: ViewSnapshot) {
   const item = validateReportingMessage({ kind: 'view', id: 'test', title: 'Domain view', ...view })
-  expect(Buffer.byteLength(JSON.stringify(item))).toBeLessThanOrEqual(32768)
+  expect(Buffer.byteLength(JSON.stringify(item))).toBeLessThanOrEqual(REPORTING_LIMITS.itemBytes)
   return item as any
 }
 
@@ -30,7 +34,7 @@ test('column methods show bounded proposals rather than import receipts', () => 
   }
 })
 
-test('the complete contact page bounds worst-case text and discloses omitted records', () => {
+test('the complete contact page previews whole records and discloses omitted records', () => {
   const preview: ContactPreview = {
     status: 'ready',
     reason: 'Review the mapping.',
@@ -59,7 +63,9 @@ test('the complete contact page bounds worst-case text and discloses omitted rec
   expect(rejected.rows).toHaveLength(12)
   expect(accepted.total).toBe(100)
   expect(rejected.total).toBe(100)
-  expect(JSON.stringify(item)).toContain('[excerpt]')
+  expect(accepted.rows[0].cells.name).toBe(preview.accepted[0]!.contact.name)
+  expect(accepted.rows[0].cells.organization).toBe(preview.accepted[0]!.contact.organization)
+  expect(rejected.rows[0].cells.reason).toBe(preview.rejected[0]!.reason)
   expect(item.sections[4].blocks[0].references).toEqual([
     { kind: 'artifact', attachment: 'preview', path: 'preview.json' },
   ])
@@ -89,4 +95,28 @@ test('stopped and clarification pages preserve their meaning without delivered-f
   )
   expect(JSON.stringify(clarification)).toContain('Needs clarification')
   expect(clarification.sections).toHaveLength(1)
+})
+
+test('captured CSV values identify a fixed application target independently of Run IDs', () => {
+  const headers = ['Name', 'Email', 'Organization']
+  const rows = [['Ada', 'ada@example.test', 'Example']]
+  const options = contactPreviewOptions(headers, rows)
+  expect(options.landing).toBe(true)
+  expect(options.target?.definitionId).toBe('contact-preview')
+  expect(options.target?.instanceKey).toMatch(/^[0-9a-f]{64}$/)
+  expect(options).toEqual(
+    contactPreviewOptions(
+      [...headers],
+      rows.map((row) => [...row]),
+    ),
+  )
+  expect(options.target?.instanceKey).not.toBe(
+    contactPreviewOptions(headers, [['Bea', 'bea@example.test', 'Example']]).target?.instanceKey,
+  )
+  validateReportingMessage({
+    kind: 'view',
+    id: 'contacts',
+    ...options,
+    ...contactPreviewView({ phase: 'mapping', headers, records: 1 }),
+  })
 })

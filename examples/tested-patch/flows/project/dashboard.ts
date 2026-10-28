@@ -1,4 +1,5 @@
-import type { Collection, Section, ViewSnapshot } from '@jigging/reporting'
+import { createHash } from 'node:crypto'
+import type { Collection, Section, ViewOptions, ViewSnapshot } from '@jigging/reporting'
 
 export type CapturedProject = {
   issue: string
@@ -25,6 +26,25 @@ export type PatchState = {
   checked?: CheckedRepair
   files?: string[]
   reason?: string
+}
+
+export function patchReviewOptions(request: CapturedProject): ViewOptions {
+  const instanceKey = createHash('sha256')
+    .update(
+      JSON.stringify({
+        issue: request.issue,
+        editPaths: request.editPaths,
+        files: Object.keys(request.files)
+          .sort()
+          .map((path) => [path, request.files[path]]),
+      }),
+    )
+    .digest('hex')
+  return {
+    title: 'Patch review',
+    landing: true,
+    target: { definitionId: 'patch-review', instanceKey, subjectKey: instanceKey },
+  }
 }
 const stages = {
   reading: ['Capturing source and fixed expectations', 0],

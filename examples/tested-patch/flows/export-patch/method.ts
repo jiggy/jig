@@ -2,6 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
+import { exportedPatchView } from './dashboard.ts'
 import { unifiedPatch } from './patch.ts'
 
 type ReviewData = {
@@ -59,26 +60,8 @@ export async function exportPatch(
     await writeFile(join(review, name), text, { flag: 'wx' })
   }
   run.signal.throwIfAborted()
-  reporter?.view('patches', { title: 'Exported review files', landing: true }).update({
-    summary:
-      'Supplied review data was exported. Acceptance belongs to the caller; source changes have not been applied.',
-    sections: [
-      {
-        blocks: [
-          {
-            kind: 'collection',
-            id: 'files',
-            title: 'Review files',
-            columns: [{ key: 'file', label: 'File', type: 'reference' }],
-            rows: Object.keys(files).map((name, index) => ({
-              id: `file-${index}`,
-              cells: { file: { kind: 'artifact', attachment: 'files', path: `review/${name}` } },
-            })),
-            total: Object.keys(files).length,
-          },
-        ],
-      },
-    ],
-  })
+  reporter
+    ?.view('patches', { title: 'Exported review files', landing: true })
+    .update(exportedPatchView(files))
   return { outcome: 'done', output: { ready: data.checked.ready, files: Object.keys(files) } }
 }

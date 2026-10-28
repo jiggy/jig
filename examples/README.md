@@ -34,19 +34,24 @@ The operating system may clear that storage. Use `jig run --out DIRECTORY` for a
 chosen retained location. The directory must be new; existing results are never
 overwritten.
 
-Each application publishes one optional, display-neutral application page through the standard
+Each application publishes optional semantic application views through the standard
 [reporting contract](../docs/jig/contracts/reporting.md). Add `--display
 tui` for terminal inspection or `--display web` for a private local browser
 display, using the invocation arguments in its README. The host supplies actual calls
-and blocking causes; application views explain the requested work and its evidence.
+and blocking causes. Application views explain the requested work and its evidence.
 
 | Application | Domain views |
 | --- | --- |
-| Photo organiser | Original filenames, event groups and checked copies |
+| Photo organiser | Photos gallery, checked organisation and before/after contact sheet |
 | Kitchen roster | Saturday shifts, checked assignments and the roster CSV |
 | Support case | Customer request, relevant charges, checked eligibility and draft reply |
 | Contact import | Source mapping, accepted contacts, correction reasons and complete preview |
 | Tested patch | Requested repair, original/candidate checks and review files |
+
+The examples keep typed application state separate from pure view projections.
+Stable targets identify captured sources or domain requests across Runs. They do not replace the actual publisher's provenance.
+Contact import uses `previewCollection` to retain complete selected rows and disclose omitted counts.
+Photo organiser uses gallery roles and captured input references. Kitchen roster offers captured CSV content, while tested patch labels literal code and diffs.
 
 Select delivered file references to read content. Completed inspection remains open
 until explicit exit. Reopen a saved packet with `jig inspect --result DIRECTORY

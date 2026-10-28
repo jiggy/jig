@@ -1,5 +1,5 @@
 import type { RunResult } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/reporting'
+import { previewCollection, type ViewSnapshot } from '@jigging/reporting'
 
 interface CaseInput {
   message: string
@@ -24,33 +24,36 @@ export function chargesView(input: CaseInput): ViewSnapshot {
     sections: [
       {
         blocks: [
-          {
-            kind: 'collection',
-            id: 'charges',
-            title: 'Supplied charges (first 12)',
-            columns: [
-              { key: 'charge', label: 'Charge', type: 'text' },
-              { key: 'invoice', label: 'Invoice', type: 'text' },
-              { key: 'cents', label: 'USD cents', type: 'number' },
-              { key: 'state', label: 'Recorded state', type: 'text' },
-            ],
-            rows: charges.slice(0, 12).map((charge, index) => ({
-              id: `charge-${index}`,
-              cells: {
-                charge: charge.id,
-                invoice: charge.invoiceId,
-                cents: charge.amountCents,
-                state: charge.status,
-              },
-              details: [
-                {
-                  kind: 'report',
-                  text: `Chronological record ${index + 1}. A later settled charge must match an earlier settled invoice and amount; a proposal alone cannot authorize a credit.`,
-                },
+          previewCollection(
+            {
+              kind: 'collection',
+              id: 'charges',
+              title: 'Supplied charges',
+              columns: [
+                { key: 'charge', label: 'Charge', type: 'text' },
+                { key: 'invoice', label: 'Invoice', type: 'text' },
+                { key: 'cents', label: 'USD cents', type: 'number' },
+                { key: 'state', label: 'Recorded state', type: 'text' },
               ],
-            })),
-            total: charges.length,
-          },
+              rows: charges.map((charge, index) => ({
+                id: `charge-${index}`,
+                cells: {
+                  charge: charge.id,
+                  invoice: charge.invoiceId,
+                  cents: charge.amountCents,
+                  state: charge.status,
+                },
+                details: [
+                  {
+                    kind: 'report',
+                    text: `Chronological record ${index + 1}. A later settled charge must match an earlier settled invoice and amount; a proposal alone cannot authorize a credit.`,
+                  },
+                ],
+              })),
+              total: charges.length,
+            },
+            { limit: 12 },
+          ).collection,
         ],
       },
     ],

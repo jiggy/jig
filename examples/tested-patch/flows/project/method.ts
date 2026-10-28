@@ -4,12 +4,13 @@ import {
   type CapturedProject,
   type CheckedRepair,
   type PatchState,
+  patchReviewOptions,
   patchReviewView,
 } from './dashboard.ts'
 
 export async function repairFiles(run: RunContext, reporter?: Reporter): Promise<RunResult> {
   const request = run.input as { issue: string; editPaths: string[] }
-  const view = reporter?.view('repair', { title: 'Patch review', landing: true })
+  let view = reporter?.view('reading', { title: 'Patch review', landing: true })
   let state: PatchState = { phase: 'reading', request }
   const show = (phase: PatchState['phase']) => {
     state = { ...state, phase }
@@ -28,6 +29,10 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
     if (captured.outcome !== 'done') throw new TypeError('The project reader did not complete.')
     const input = captured.output as CapturedProject
     state = { ...state, captured: input }
+    if (reporter) {
+      view?.retire()
+      view = reporter.view('repair', patchReviewOptions(input))
+    }
 
     show('repairing')
     const progress = run.channels.progress

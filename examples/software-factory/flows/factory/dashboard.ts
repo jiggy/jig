@@ -1,11 +1,47 @@
+import { createHash } from 'node:crypto'
 import type { JsonValue } from '@jigging/flow'
-import type { Collection, DetailBlock, Report, ViewSnapshot } from '@jigging/reporting'
+import type { Collection, DetailBlock, Report, ViewOptions, ViewSnapshot } from '@jigging/reporting'
 import type { RepairInput } from 'factory-repair-flow/policy'
 import { jobLabel } from './presentation.ts'
 
 export type DashboardJob = { id: string; label?: string; directory: string; method?: string }
 export type FactoryStage = { phase: string; attempt: number; maximum: number; detail?: string }
 export type PreparedJob = { job: DashboardJob; input: RepairInput }
+
+export function factoryViewOptions(
+  prepared: readonly PreparedJob[],
+): Readonly<Record<'jobs' | 'checks' | 'patches', ViewOptions>> {
+  const instanceKey = createHash('sha256')
+    .update(
+      JSON.stringify(
+        prepared.map(({ job, input }) => ({
+          id: job.id,
+          directory: job.directory,
+          issue: input.issue,
+          editPaths: input.editPaths,
+          files: Object.keys(input.files)
+            .sort()
+            .map((path) => [path, input.files[path]]),
+        })),
+      ),
+    )
+    .digest('hex')
+  return {
+    jobs: {
+      title: 'Jobs',
+      landing: true,
+      target: { definitionId: 'factory-jobs', instanceKey, subjectKey: instanceKey },
+    },
+    checks: {
+      title: 'Checks',
+      target: { definitionId: 'factory-checks', instanceKey, subjectKey: instanceKey },
+    },
+    patches: {
+      title: 'Patches',
+      target: { definitionId: 'factory-patches', instanceKey, subjectKey: instanceKey },
+    },
+  }
+}
 // Budget the encoded text, including controls, rather than only its length.
 // Two rows with all optional details must still fit one 32 KiB update.
 function clip(

@@ -1,13 +1,13 @@
 import { handle } from '@jigging/flow'
 import { withReporting } from '@jigging/reporting'
-import { selectionView } from './dashboard.ts'
+import { selectionView, selectionViewOptions } from './dashboard.ts'
 import { routingInput } from './decision.ts'
 import { route } from './route.ts'
 
 await handle((run) =>
   withReporting(run, 'progress', async (updates) => {
     const input = routingInput(run.input)
-    const view = updates.view('selection', { title: 'Selection', landing: true })
+    const view = updates.view('selection', selectionViewOptions(input))
     view.update(selectionView(input))
     if (input.candidates.length) updates.activity('selection', 'Judging candidate applicability')
     try {

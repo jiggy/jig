@@ -1,4 +1,5 @@
-import type { ViewSnapshot } from '@jigging/reporting'
+import { createHash } from 'node:crypto'
+import { previewCollection, type ViewOptions, type ViewSnapshot } from '@jigging/reporting'
 
 export type SupportState = {
   input: {
@@ -74,6 +75,19 @@ function visibleCharges(state: SupportState) {
     .map((index) => ({ index, charge: charges[index]! }))
 }
 
+/** One request stays the same case when its supplied account records change. */
+export function supportCaseOptions(input: SupportState['input']): ViewOptions {
+  const accountKey = createHash('sha256').update(input.account.id).digest('hex')
+  const caseKey = createHash('sha256')
+    .update(JSON.stringify([input.account.id, input.message]))
+    .digest('hex')
+  return {
+    title: 'Support case',
+    landing: true,
+    target: { definitionId: 'support-case', instanceKey: caseKey, subjectKey: accountKey },
+  }
+}
+
 export function supportCaseView(state: SupportState): ViewSnapshot {
   const { input, proposal, decision } = state
   const [label, completed] = stages[state.phase]
@@ -109,30 +123,33 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
       {
         title: 'Supplied charges',
         blocks: [
-          {
-            kind: 'collection',
-            id: 'charges',
-            title:
-              'Account records (up to 12; proposed charge and matching earlier payment included)',
-            columns: [
-              { key: 'charge', label: 'Charge', type: 'text' },
-              { key: 'invoice', label: 'Invoice', type: 'text' },
-              { key: 'amount', label: 'USD', type: 'text' },
-              { key: 'state', label: 'Recorded state', type: 'text' },
-              { key: 'proposed', label: 'Proposed charge', type: 'boolean' },
-            ],
-            rows: visibleCharges(state).map(({ charge, index }) => ({
-              id: `charge-${index}`,
-              cells: {
-                charge: charge.id,
-                invoice: charge.invoiceId,
-                amount: (charge.amountCents / 100).toFixed(2),
-                state: charge.status,
-                proposed: charge.id === proposal?.chargeId,
-              },
-            })),
-            total: input.account.charges.length,
-          },
+          previewCollection(
+            {
+              kind: 'collection',
+              id: 'charges',
+              title:
+                'Account records (up to 12; proposed charge and matching earlier payment included)',
+              columns: [
+                { key: 'charge', label: 'Charge', type: 'text' },
+                { key: 'invoice', label: 'Invoice', type: 'text' },
+                { key: 'amount', label: 'USD', type: 'text' },
+                { key: 'state', label: 'Recorded state', type: 'text' },
+                { key: 'proposed', label: 'Proposed charge', type: 'boolean' },
+              ],
+              rows: visibleCharges(state).map(({ charge, index }) => ({
+                id: `charge-${index}`,
+                cells: {
+                  charge: charge.id,
+                  invoice: charge.invoiceId,
+                  amount: (charge.amountCents / 100).toFixed(2),
+                  state: charge.status,
+                  proposed: charge.id === proposal?.chargeId,
+                },
+              })),
+              total: input.account.charges.length,
+            },
+            { limit: 12 },
+          ).collection,
         ],
       },
       {

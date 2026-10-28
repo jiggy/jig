@@ -12,6 +12,7 @@ after executed checks and independent acceptance.
 - `flows/check-repair/` validates evidence identities and recomputes acceptance.
 - `flows/export-patch/` formats supplied accepted review data and writes
   patches below `review/` in its fresh operation-owned output.
+  Its pure `dashboard.ts` presents generated diff excerpts with complete file references.
   The coordinator forwards that immutable artifact as `deliverables`.
   Independent export treats supplied verdicts as caller claims. It never
   establishes acceptance.
@@ -80,6 +81,9 @@ after executed checks and independent acceptance.
   `progress`. The repair specialist keeps provisional Repair and Checks views
   through `updates`. FLOW entrypoints own scoped publishers, activity and
   failure notices.
+
+  Request-derived target options relate Patch review, Repair and Checks through
+  one application subject. Actual publisher and Run provenance remain host facts.
 
   Pure methods retain their exact results and policy. The existing reporting
   profile serves terminal and web without display code. Tests validate

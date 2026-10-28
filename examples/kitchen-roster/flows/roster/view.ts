@@ -1,4 +1,5 @@
-import type { Section, ViewSnapshot } from '@jigging/reporting'
+import { createHash } from 'node:crypto'
+import type { Section, ViewOptions, ViewSnapshot } from '@jigging/reporting'
 
 // These types describe the declared reading and checking results. Presentation
 // consumes those results; it does not repeat the child Flows' scheduling policy.
@@ -52,6 +53,16 @@ const phases = {
   cancelled: ['Scheduling cancelled', 0],
   failed: ['Scheduling stopped', 0],
 } as const
+
+/** The checked source scenario identifies this finite roster, not its Run. */
+export function rosterViewOptions(scenario: RosterScenario): ViewOptions {
+  const scenarioKey = createHash('sha256').update(JSON.stringify(scenario)).digest('hex')
+  return {
+    title: 'Saturday kitchen',
+    landing: true,
+    target: { definitionId: 'kitchen-roster', instanceKey: scenarioKey, subjectKey: scenarioKey },
+  }
+}
 
 export function rosterView(state: RosterState): ViewSnapshot {
   const assignments = state.assignments ?? []
@@ -148,6 +159,11 @@ export function rosterView(state: RosterState): ViewSnapshot {
           kind: 'report',
           text: 'Inspect the complete CSV before using this roster. Jig confirms delivery separately in the run result.',
           references: [{ kind: 'artifact', attachment: 'schedule', path: 'roster.csv' }],
+        },
+        {
+          kind: 'content',
+          title: 'Checked roster CSV',
+          reference: { kind: 'artifact', attachment: 'schedule', path: 'roster.csv' },
         },
       ],
     })
