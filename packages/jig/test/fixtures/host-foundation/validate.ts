@@ -9,7 +9,7 @@ const root = await mkdtemp(join(tmpdir(), 'jig-foundation-source-validation-'))
 let passed = false
 try {
   let count = 0
-  for (const application of ['adaptive', 'documents'] as const) {
+  for (const application of ['adaptive', 'documents', 'evaluation-deadline'] as const) {
     const { entrypoints, project } = await materializeFoundationApplication(
       join(root, application),
       application,
@@ -26,7 +26,7 @@ try {
       assert.equal(result.success, true, result.logs.join('\n'))
       count++
     }
-    if (application === 'adaptive') {
+    if (application !== 'documents') {
       const recipe = JSON.parse(await readFile(join(project, 'evaluation/evaluation.json'), 'utf8'))
       assert.deepEqual(recipe, {
         family: 'bun-typescript',
@@ -65,7 +65,7 @@ try {
     }),
   )
   console.log(
-    `Constructed two independent applications; bundled ${count} complete consumer entrypoints and host suite. No native/installed execution.`,
+    `Constructed three independent applications; bundled ${count} complete consumer entrypoints and host suite. No native/installed execution.`,
   )
   passed = true
 } finally {

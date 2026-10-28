@@ -8,7 +8,7 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 
 ## Ownership
 
-- `materialize.ts` constructs two independent temporary consumer repositories and
+- `materialize.ts` constructs three independent temporary consumer repositories and
   installs exact frozen Jig/FLOW archives using the installed-test conventions.
 - `../private-profile-diagnostics.ts` owns bounded profile summaries shared with workspace review fixtures.
 - Without a supplied FLOW archive, freeze the installed public SDK package.
@@ -16,6 +16,7 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 - `adaptive/` owns deterministic candidate production, reviewed evaluation,
   independent acceptance, and explicit final artifact selection.
 - `documents/` owns a separate noncoding producer/validator application.
+- `evaluation-deadline/` owns separate generation and test timeout Runs through public operation errors.
 - `recipe/` owns the exact TypeScript 5.7.3 and Zod 3.23.8 development closure.
   Its generated Bun lock is retained verbatim as `bun.lock.txt` and copied to the
   ordinary `bun.lock` filename when constructing a consumer.
@@ -35,7 +36,7 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   It removes generated installation links, leaving review to prepare captured dependencies through the real native boundary.
   Review receives no resolution permission and must preserve the authored lock bytes.
 - No private helpers, custom launchers, provider calls, source admission changes,
-  runtime installation, or checkpoint assumptions enter either application.
+  runtime installation, or checkpoint assumptions enter these applications.
 - Native opt-in and actual native prerequisite observation precede payloads.
   Missing prerequisites fail the whole selected host file. There are no skips.
 - Preserve failed consumers, exact archive digests, and bounded private command
@@ -70,6 +71,9 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic
   iteration proves artifact/evaluation composition, not adaptation quality.
+- Deadline controls retain bounded phase evidence through public `OperationError.details`.
+  Each control receives a fresh Run and preserves ordinary evaluator limits.
+  Repeated public result reads must preserve the original evidence and cleanup.
 - Cancellation and client-death cases await a real reviewed HTTP request.
   They then stop the original attempt and require settlement without replay.
   Request counts, protected owner rows and native residue provide independent

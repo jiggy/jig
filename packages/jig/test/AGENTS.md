@@ -459,8 +459,8 @@ weights only place work. They cannot change inventory or evidence.
 ## Child DOX Index
 
 - [fixtures/host-foundation/AGENTS.md](fixtures/host-foundation/AGENTS.md) —
-  Real installed adaptive and noncoding consumers. Native execution and
-  unfamiliar-consumer evidence remain separate from source construction.
+  Real installed adaptive, noncoding and evaluation deadline consumers.
+  Native execution and unfamiliar-consumer evidence remain separate from source construction.
 - [fixtures/channel-conversation/AGENTS.md](fixtures/channel-conversation/AGENTS.md)
   — Installed synthetic request/reply and cancellation peers.
 - [fixtures/repair-batch/AGENTS.md](fixtures/repair-batch/AGENTS.md) —
