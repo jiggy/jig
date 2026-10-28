@@ -38,6 +38,8 @@ with their producer. This package owns readonly display data and pure meaning.
   establish ancestry. Built-in keys stay disjoint. Never replace snapshot or
   reference IDs with those renderer destination keys.
 - Pure observation intervals never infer execution durations or domain verdicts.
+  Unknown observation clocks preserve their supplied material and produce no interval.
+  Workspace elapsed time remains finite and nonnegative.
 
 ## Work Guidance
 

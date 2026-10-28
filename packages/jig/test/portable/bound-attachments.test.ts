@@ -110,7 +110,10 @@ test('review refuses source links, protected trees and aggregate excess before g
       await link(join(directory, 'tools/data.bin'), join(directory, 'tools/hard'))
       await expect(captureBoundAttachments(root, { tool: 'tools' }, store)).rejects.toThrow()
       await rm(join(directory, 'tools/hard'))
-      await writeFile(join(directory, 'tools/large'), Buffer.alloc(5 * 1024 * 1024))
+      await writeFile(
+        join(directory, 'tools/large'),
+        Buffer.alloc(Math.floor(PRIVATE_FILE_LIMITS.bytes / 2) + 1),
+      )
       await expect(
         captureBoundAttachments(root, { first: 'tools', second: 'tools' }, store),
       ).rejects.toThrow('remaining')

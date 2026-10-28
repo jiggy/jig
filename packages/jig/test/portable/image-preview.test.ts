@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
-import { Worker } from 'node:worker_threads'
 import { fileURLToPath } from 'node:url'
+import { Worker } from 'node:worker_threads'
+import { validDisplayImage } from '@jigging/display-model'
+import { createContactSheet } from '../../../../examples/photo-organiser/flows/contact-sheet/rendering.js'
 import { privateImagePreview } from '../../src/internal/image-preview.js'
 import {
   PRIVATE_PREVIEW_LIMITS,
   privateValidImagePreview,
 } from '../../src/internal/image-preview-policy.js'
-import { validDisplayImage } from '@jigging/display-model'
-import { createContactSheet } from '../../../../examples/photo-organiser/flows/contact-sheet/rendering.js'
 
 const svg = (body: string, dimensions = 'width="32" height="16"') =>
   Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" ${dimensions}>${body}</svg>`)
@@ -77,13 +77,15 @@ test('process renderer: the complete cookbook contact sheet retains all twelve b
   expect(Buffer.from(image.base64, 'base64').length).toBeLessThanOrEqual(65536)
 })
 
-test('process renderer: oversized input, unsafe fitted surfaces and malformed raster data lose only their preview', async () => {
+test('process renderer: invalid input loses its preview while tall surfaces fit the bounded profile', async () => {
   expect(
     await privateImagePreview(Buffer.alloc(PRIVATE_PREVIEW_LIMITS.sourceBytes + 1)),
   ).toBeUndefined()
   expect(await privateImagePreview(Buffer.from('ordinary text'))).toBeUndefined()
   expect(await privateImagePreview(svg('', 'width="1" height="100000"'))).toBeUndefined()
-  expect(await privateImagePreview(svg('', 'width="1024" height="4096"'))).toBeUndefined()
+  const tall = (await privateImagePreview(svg('', 'width="1024" height="4096"')))!
+  expect(privateValidImagePreview(tall)).toBeTrue()
+  expect([tall.width, tall.height]).toEqual([256, PRIVATE_PREVIEW_LIMITS.height])
   const image = (await privateImagePreview(svg('<rect width="32" height="16"/>')))!
   const bytes = Buffer.from(image.base64, 'base64')
   bytes.writeUInt32BE(100000, 16)

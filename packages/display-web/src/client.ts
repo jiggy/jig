@@ -135,6 +135,7 @@ export class PrivateBrowserClient {
   #mediaIntents: readonly PrivateBrowserPreviewIntent[] = []
   #mediaRequest: AbortController | undefined
   #mediaGeneration = 0
+  #mediaSettled = new Set<string>()
   #mediaCache = new Map<string, { reply: DisplayPreviewReply; charge: number }>()
   #mediaBytes = 0
   #downloadRequest: AbortController | undefined
@@ -445,6 +446,12 @@ export class PrivateBrowserClient {
     if (JSON.stringify(selected) === JSON.stringify(this.#mediaIntents)) return
     this.#mediaGeneration++
     this.#mediaIntents = selected
+    // Cache eviction cannot restart an intent that remains visible.
+    this.#mediaSettled = new Set(
+      selected
+        .map((intent) => this.#mediaKey(intent))
+        .filter((key) => this.#mediaSettled.has(key) || this.#mediaCache.has(key)),
+    )
     this.#mediaRequest?.abort()
     void this.#loadMedia()
   }
@@ -468,7 +475,7 @@ export class PrivateBrowserClient {
     )
       return
     const intent = this.#mediaIntents.find(
-      (item) => this.#captureFor(item) && !this.#mediaCache.has(this.#mediaKey(item)),
+      (item) => this.#captureFor(item) && !this.#mediaSettled.has(this.#mediaKey(item)),
     )
     if (!intent) return
     const controller = new AbortController()
@@ -515,6 +522,7 @@ export class PrivateBrowserClient {
           (typeof reply.text !== 'string' || new TextEncoder().encode(reply.text).length > 65536))
       )
         throw new Error('Preview unavailable')
+      this.#mediaSettled.add(this.#mediaKey(intent))
       this.#rememberMedia(intent, reply)
     } catch {
       if (
@@ -524,7 +532,8 @@ export class PrivateBrowserClient {
         selection === this.#mediaGeneration
       ) {
         const capture = this.#captureFor(intent)
-        if (capture)
+        if (capture) {
+          this.#mediaSettled.add(this.#mediaKey(intent))
           this.#rememberMedia(intent, {
             artifactId: intent.artifactId,
             captureGeneration: intent.captureGeneration,
@@ -533,6 +542,7 @@ export class PrivateBrowserClient {
             bytes: 0,
             clipped: false,
           })
+        }
       }
     } finally {
       if (this.#mediaRequest === controller) this.#mediaRequest = undefined
@@ -654,6 +664,7 @@ export class PrivateBrowserClient {
     this.#mediaRequest?.abort()
     this.#downloadRequest?.abort()
     this.#mediaIntents = []
+    this.#mediaSettled.clear()
     this.#mediaCache.clear()
     this.#mediaBytes = 0
     if (this.#retrying) this.#cancel(this.#retry)

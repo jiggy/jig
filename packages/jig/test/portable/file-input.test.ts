@@ -9,6 +9,7 @@ import {
   privateOpenFileRoot,
   privatePublishDirectory,
 } from '../../src/internal/file-input.js'
+import { PRIVATE_FILE_LIMITS } from '../../src/internal/file-input-policy.js'
 import {
   capturePrivateInput,
   readPrivateCapturedInput,
@@ -87,7 +88,7 @@ test('captures trees without retaining empty directories and bounds aggregate in
     const capture = privateCaptureAttachments([{ name: 'source', directory: root, select: [] }])
     expect(capture.attachments[0]!.files.map((file) => file.path)).toEqual(['nested/one'])
     capture.close()
-    await writeFile(join(root, 'large'), Buffer.alloc(8 * 1024 * 1024))
+    await writeFile(join(root, 'large'), Buffer.alloc(PRIVATE_FILE_LIMITS.bytes))
     expect(() =>
       privateCaptureAttachments([{ name: 'source', directory: root, select: [] }]),
     ).toThrow('remaining')

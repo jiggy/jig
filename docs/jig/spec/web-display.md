@@ -34,6 +34,11 @@ primary. Recorded-packet navigation retains its explicit host roles.
 [Retained application views](display-archive.md) show only their selected projections and captured evidence.
 They invent no execution tree, activity history or duration.
 
+An empty archive or unmatched filter remains a valid inspector.
+Show an explicit empty state without synthetic destinations.
+Keep Diagnostics, Help and Close available.
+Only an existing selected tab labels a tabpanel.
+
 The display requires terminal stderr; stdin need not be a terminal. JSON and
 explicit channel reception win before server preparation. Run stdout may be
 redirected and still receives its unchanged exact final result. Saved inspection
@@ -163,6 +168,9 @@ The browser cache retains at most 8 MiB, with at most 1 MiB per preview reply.
 Capacity responses have bounded backoff.
 Reconnect storms, stale completions and Close cannot restore disposed presentation or create an unbounded queue.
 A newer file intent must never receive older bytes beneath its title.
+
+Settled preview attempts remain settled while their exact intent stays visible, independently of cache eviction.
+Leaving and returning to a preview or replacing its capture can initiate a new attempt.
 
 ## Evidence and presentation
 

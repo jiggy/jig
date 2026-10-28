@@ -27,12 +27,9 @@ const text = (value: unknown, maximum: number, minimum = 0): string => {
 const identity = (value: unknown) => text(value, 256, 1)
 const count = (value: unknown): number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : fail()
-const number = (value: unknown): number =>
-  typeof value === 'number' &&
-  Number.isFinite(value) &&
-  (!Number.isInteger(value) || Number.isSafeInteger(value))
-    ? value
-    : fail()
+// Unavailable observation clocks remain observations, rather than invalidating
+// their material. Interval/date consumers decide whether a clock is usable.
+const number = (value: unknown): number => (typeof value === 'number' ? value : fail())
 const flag = (value: unknown) => (typeof value === 'boolean' ? value : fail())
 const choice = (value: unknown, values: readonly string[]) =>
   typeof value === 'string' && values.includes(value) ? value : fail()

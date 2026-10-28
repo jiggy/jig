@@ -1,5 +1,6 @@
 import { parentPort, workerData } from 'node:worker_threads'
 import { privateGuardImageAllocations } from '../../src/internal/image-preview-allocation.js'
+import { PRIVATE_PREVIEW_LIMITS } from '../../src/internal/image-preview-policy.js'
 
 if (!parentPort) throw new Error('private worker fixture')
 if (workerData === 'allocation') {
@@ -8,7 +9,7 @@ if (workerData === 'allocation') {
     aggregateRefused = false,
     textRefused = false
   try {
-    new Uint8Array(65537)
+    new Uint8Array(PRIVATE_PREVIEW_LIMITS.pngBytes + 1)
   } catch {
     individualRefused = true
   }

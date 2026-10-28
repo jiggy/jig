@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  callObservationSpans,
   displayDestinations,
   recordReferences,
   referenceKey,
@@ -147,4 +148,30 @@ test('retained destinations contain application material without invented execut
     },
   ]
   assert.throws(() => validateDisplaySnapshot(input))
+})
+
+test('unavailable observation clocks preserve material without inventing an interval', () => {
+  for (const time of [NaN, Infinity, -Infinity]) {
+    const input = snapshot()
+    input.views = [view('family')]
+    input.views[0].updatedAt = time
+    input.calls = [
+      {
+        id: 'call',
+        sourceId: 'root',
+        sourceLabel: 'Application',
+        operationId: 'work',
+        slot: 'work',
+        state: 'active',
+        firstObservedAt: time,
+        observedAt: time,
+      },
+    ]
+    const retained = validateDisplaySnapshot(input)
+    assert.equal(retained.views[0].value.title, 'Photos')
+    assert(Object.is(retained.views[0].updatedAt, time))
+    assert.equal(callObservationSpans(retained.calls).spans.size, 0)
+    input.workspace.elapsedMs = time
+    assert.throws(() => validateDisplaySnapshot(input))
+  }
 })

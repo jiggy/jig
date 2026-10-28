@@ -347,7 +347,10 @@ test('maximum legal escaping fits complete and independent incomplete reserve, p
   expect(fallback).not.toHaveProperty('views')
   expect(fallback.lastCompleteRevision).toBe(1)
   const corrupt = model.views.values().next().value!
-  corrupt.value = { ...corrupt.value, summary: '"\\'.repeat(300000) }
+  corrupt.value = {
+    ...corrupt.value,
+    summary: '\u0000'.repeat(Math.floor(PRIVATE_WEB_SNAPSHOT_LIMIT / 6) + 1),
+  }
   expect(() => projection.capture(3)).toThrow('allowance')
   expect(projection.incomplete(3).attention).toHaveLength(model.attention.length)
 })

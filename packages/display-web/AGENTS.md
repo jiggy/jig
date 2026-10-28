@@ -37,12 +37,18 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   trusted roles select recorded destinations. Authored names never do. Local
   destination/map keys tag view IDs through model `displayViewKey`. Semantic
   reference targets retain raw IDs. Use `browserView` to resolve selected views.
+- Empty retained snapshots show an explicit empty state without synthetic destinations.
+  Diagnostics, Help and Close remain available. Only an existing selected tab labels a tabpanel.
 - Render author/file/diagnostic data as inert text. Only typed scoped references
   navigate. Path strings never grant evidence access or assign domain success.
 - Visible captured media shares one serial request queue with evidence inspection.
   Retain at most 24 visible requests and eight MiB of cached replies.
   Complete downloads require the exact capture generation and declared availability.
   Closing the client fences previews, media and downloads.
+
+  Media requests settle independently of cache residency while their exact intent remains visible.
+  Eviction cannot requeue a settled visible intent.
+  Missing media can retry after leaving visibility or changing capture identity.
 - Captured images use validated bounded PNG/JPEG data URLs in image elements.
   Never insert SVG into the DOM or load image paths/URLs from authored text.
 - Fixed bundled Preact is build-only. Installed assets read no sibling source or

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
+import { deflateSync } from 'node:zlib'
 import { ApplicationPage, FormattedReport } from '../dist/application.js'
 import {
   BrowserClient,
@@ -360,6 +361,175 @@ test('real HTTP serializes visible media, authenticates full downloads and fence
   } finally {
     client.stop()
     for (const res of eventResponses) res.end()
+    server.closeAllConnections()
+    await new Promise((resolve) => server.close(resolve))
+  }
+})
+
+function thumbnail() {
+  const width = 384,
+    height = 170
+  const pixels = Buffer.alloc((width * 4 + 1) * height)
+  for (let row = 0; row < height; row++)
+    for (let column = 1; column <= width * 4; column++)
+      pixels[row * (width * 4 + 1) + column] = (row + column) % 251
+  const chunk = (type, bytes) => {
+    const content = Buffer.concat([Buffer.from(type), bytes])
+    let crc = 0xffffffff
+    for (const byte of content) {
+      crc ^= byte
+      for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1))
+    }
+    const result = Buffer.alloc(bytes.length + 12)
+    result.writeUInt32BE(bytes.length)
+    content.copy(result, 4)
+    result.writeUInt32BE((crc ^ 0xffffffff) >>> 0, result.length - 4)
+    return result
+  }
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8
+  header[9] = 6
+  const png = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(pixels, { level: 0 })),
+    chunk('IEND', Buffer.alloc(0)),
+  ])
+  assert(png.length <= 256 * 1024)
+  return { mime: 'image/png', width, height, base64: png.toString('base64') }
+}
+
+test('media cache pressure does not repeat settled visible requests', async () => {
+  const body = snapshot()
+  const image = thumbnail()
+  const cap = 'B'.repeat(43)
+  body.inputs = {
+    generation: 'input-1',
+    sourceId: 'root',
+    permittedAttachments: ['photos'],
+    provenance: 'captured-input',
+    phase: 'ready',
+    files: Array.from({ length: 15 }, (_, index) => ({
+      id: `file-${index}`,
+      attachment: 'photos',
+      path: `${index}.png`,
+      bytes: 256 * 1024,
+      state: 'image',
+      clipped: false,
+    })),
+  }
+  const reply = (id) => ({
+    artifactId: id,
+    captureGeneration: body.inputs.generation,
+    provenance: 'captured-input',
+    state: 'image',
+    image,
+    bytes: 256 * 1024,
+    clipped: false,
+  })
+  assert(13 * (JSON.stringify(reply('file-0')).length * 2 + 512) > 8 * 1024 * 1024)
+  const attempts = new Map()
+  const events = new Set()
+  let held,
+    requests = 0,
+    active = 0,
+    peak = 0
+  const server = createServer((req, res) => {
+    assert.equal(req.headers.authorization, `Bearer ${cap}`)
+    if (req.url === '/api/events') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' })
+      res.write('event: revision\ndata: 1\n\n')
+      events.add(res)
+      res.on('close', () => events.delete(res))
+      return
+    }
+    if (req.url === '/api/snapshot') {
+      res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(body))
+      return
+    }
+    const id = /^\/api\/artifacts\/(file-[0-9]+)\/preview$/.exec(req.url ?? '')?.[1]
+    assert(id)
+    requests++
+    attempts.set(id, (attempts.get(id) ?? 0) + 1)
+    active++
+    peak = Math.max(peak, active)
+    res.on('close', () => active--)
+    if (id === 'file-13') {
+      res.writeHead(503).end()
+      return
+    }
+    if (id === 'file-14' && attempts.get(id) === 1) {
+      held = res
+      return
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(reply(id)))
+  })
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
+  const origin = `http://127.0.0.1:${server.address().port}`
+  const client = new BrowserClient(cap, () => {}, {
+    fetch: (url, init) => fetch(new URL(url, origin), init),
+  })
+  const intents = Array.from({ length: 15 }, (_, index) => ({
+    artifactId: `file-${index}`,
+    captureGeneration: 'input-1',
+    signature: String(index),
+  }))
+  const quiet = () => new Promise((resolve) => setTimeout(resolve, 100))
+  try {
+    client.start()
+    await until(() => client.referencesEnabled)
+    client.setMedia(intents.slice(0, 13))
+    await until(() => requests >= 13 && client.mediaPreview(intents[12]))
+    await quiet()
+    assert.equal(requests, 13)
+    assert.equal(peak, 1)
+    const evicted = intents.slice(0, 13).filter((intent) => !client.mediaPreview(intent))
+    assert(evicted.length > 0)
+    client.setMedia(intents.slice(0, 13).reverse())
+    client.setMedia(intents.slice(0, 14))
+    await until(() => client.mediaPreview(intents[13])?.state === 'unavailable')
+    await quiet()
+    assert.equal(requests, 14, 'reordering and adding media must not retry settled visible entries')
+    assert.equal(attempts.get('file-13'), 1)
+    client.setMedia([])
+    client.setMedia([evicted[0]])
+    await until(() => client.mediaPreview(evicted[0]))
+    assert.equal(requests, 15, 'an evicted entry can retry after leaving visibility')
+
+    body.revision = 2
+    body.inputs.generation = 'input-2'
+    for (const res of events) res.write('event: revision\ndata: 2\n\n')
+    await until(() => client.body?.revision === 2 && client.referencesEnabled)
+    const current = { ...evicted[0], captureGeneration: 'input-2' }
+    const late = { ...intents[14], captureGeneration: 'input-2' }
+    client.setMedia([current])
+    await until(() => client.mediaPreview(current))
+    assert.equal(requests, 16, 'new capture identities receive a fresh attempt')
+    client.setMedia([late])
+    await until(() => held)
+    client.setMedia([current])
+    held
+      .writeHead(200, { 'Content-Type': 'application/json' })
+      .end(JSON.stringify(reply('file-14')))
+    await quiet()
+    assert.equal(client.mediaPreview(late), undefined)
+    client.setMedia([late])
+    await until(() => client.mediaPreview(late))
+    assert.equal(
+      attempts.get('file-14'),
+      2,
+      'an aborted intent can retry after becoming visible again',
+    )
+    client.stop()
+    await quiet()
+    assert.equal(requests, 18)
+    assert.equal(client.mediaPreview(late), undefined)
+  } finally {
+    client.stop()
+    held?.end()
+    for (const res of events) res.end()
     server.closeAllConnections()
     await new Promise((resolve) => server.close(resolve))
   }

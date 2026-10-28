@@ -121,8 +121,9 @@ function redraw(): void {
     for (const key of treeChoices.keys())
       if (!snapshot.calls.some((call) => call.id === key)) treeChoices.delete(key)
     if (!eligible.has(destinationKey)) {
-      destinationKey = tabs[0]!.id
-      feedback = `The selected view is unavailable; showing ${tabs[0]!.title}.`
+      const first = tabs[0]
+      destinationKey = first?.id ?? ''
+      feedback = first ? `The selected view is unavailable; showing ${first.title}.` : ''
     }
     if (!humanNavigation) {
       const rootViews = snapshot.views.filter(
@@ -489,7 +490,7 @@ function CapturedMedia({
               ? (target?.label ?? 'Captured content unavailable.')
               : reply
                 ? 'Image preview unavailable. Open the captured evidence for details.'
-                : 'Loading captured preview…',
+                : 'Captured preview not loaded. Open the captured evidence for details.',
         ),
     h('figcaption', {}, h(ReferenceButton, { value: reference, record })),
   )
@@ -1759,76 +1760,85 @@ function Panel({ current }: { current: DisplaySnapshotEnvelope }): ComponentChil
 
 function Tabs(): ComponentChildren {
   const tabs = privateBrowserTabs(client?.body, client?.current?.mode)
-  const focusId = tabs.some((item) => item.id === destinationKey) ? destinationKey : tabs[0]!.id
+  const focusId = tabs.some((item) => item.id === destinationKey) ? destinationKey : tabs[0]?.id
   return h(
     'aside',
     { class: 'navigation' },
-    h(
-      'nav',
-      { role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Run views' },
-      tabs.map((tab, index) =>
-        h(
-          'div',
-          { key: tab.id },
-          index === 0 || Boolean(tab.application) !== Boolean(tabs[index - 1]?.application)
-            ? h(
-                'p',
-                { class: 'nav-group', role: 'presentation' },
-                tab.application
-                  ? 'Application'
-                  : client?.current?.mode === 'recorded-packet'
-                    ? 'Recorded packet'
-                    : 'Inspector',
-              )
-            : null,
-          button(
+    tabs.length
+      ? h(
+          'nav',
+          {
+            role: 'tablist',
+            'aria-orientation': 'vertical',
+            'aria-label':
+              client?.current?.mode === 'retained-views' ? 'Application views' : 'Run views',
+          },
+          tabs.map((tab, index) =>
             h(
-              'span',
-              { class: 'nav-entry' },
-              h('span', { class: 'nav-icon', 'aria-hidden': true }, tab.icon),
-              h(
-                'span',
-                {},
-                literal(tab.title),
-                tab.source ? h('small', {}, literal(tab.source)) : null,
+              'div',
+              { key: tab.id },
+              index === 0 || Boolean(tab.application) !== Boolean(tabs[index - 1]?.application)
+                ? h(
+                    'p',
+                    { class: 'nav-group', role: 'presentation' },
+                    tab.application
+                      ? 'Application'
+                      : client?.current?.mode === 'recorded-packet'
+                        ? 'Recorded packet'
+                        : 'Inspector',
+                  )
+                : null,
+              button(
+                h(
+                  'span',
+                  { class: 'nav-entry' },
+                  h('span', { class: 'nav-icon', 'aria-hidden': true }, tab.icon),
+                  h(
+                    'span',
+                    {},
+                    literal(tab.title),
+                    tab.source ? h('small', {}, literal(tab.source)) : null,
+                  ),
+                ),
+                () => navigate(tab.id),
+                {
+                  id: `tab-${encodeURIComponent(tab.id)}`,
+                  role: 'tab',
+                  'aria-selected': tab.id === destinationKey && !panel,
+                  'aria-controls': 'view-panel',
+                  tabIndex: tab.id === focusId ? 0 : -1,
+                  title: privateBrowserLiteral(
+                    `${tab.title}${tab.source ? ` · ${tab.source}` : ''}`,
+                  ),
+                  onKeyDown: (event: KeyboardEvent) => {
+                    if (
+                      !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
+                        event.key,
+                      )
+                    )
+                      return
+                    event.preventDefault()
+                    const index = tabs.findIndex((item) => item.id === tab.id)
+                    const next =
+                      event.key === 'Home'
+                        ? tabs[0]!
+                        : event.key === 'End'
+                          ? tabs[tabs.length - 1]!
+                          : tabs[
+                              (index +
+                                (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
+                                tabs.length) %
+                                tabs.length
+                            ]!
+                    navigate(next.id)
+                    document.getElementById(`tab-${encodeURIComponent(next.id)}`)?.focus()
+                  },
+                },
               ),
             ),
-            () => navigate(tab.id),
-            {
-              id: `tab-${encodeURIComponent(tab.id)}`,
-              role: 'tab',
-              'aria-selected': tab.id === destinationKey && !panel,
-              'aria-controls': 'view-panel',
-              tabIndex: tab.id === focusId ? 0 : -1,
-              title: privateBrowserLiteral(`${tab.title}${tab.source ? ` · ${tab.source}` : ''}`),
-              onKeyDown: (event: KeyboardEvent) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return
-                event.preventDefault()
-                const index = tabs.findIndex((item) => item.id === tab.id)
-                const next =
-                  event.key === 'Home'
-                    ? tabs[0]!
-                    : event.key === 'End'
-                      ? tabs[tabs.length - 1]!
-                      : tabs[
-                          (index +
-                            (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
-                            tabs.length) %
-                            tabs.length
-                        ]!
-                navigate(next.id)
-                document.getElementById(`tab-${encodeURIComponent(next.id)}`)?.focus()
-              },
-            },
           ),
-        ),
-      ),
-    ),
+        )
+      : null,
     h(
       'div',
       { class: 'sidebar-tools' },
@@ -1938,6 +1948,9 @@ function App(): ComponentChildren {
     undefined,
   )
   const state = currentLocal()
+  const hasDestination = privateBrowserTabs(client?.body, current.mode).some(
+    (tab) => tab.id === destinationKey,
+  )
   return h(
     'div',
     { class: 'inspector' },
@@ -2106,13 +2119,16 @@ function App(): ComponentChildren {
           'main',
           {
             id: 'view-panel',
-            role: panel ? undefined : 'tabpanel',
-            'aria-labelledby': panel ? undefined : `tab-${encodeURIComponent(destinationKey)}`,
+            role: panel || !hasDestination ? undefined : 'tabpanel',
+            'aria-labelledby':
+              panel || !hasDestination ? undefined : `tab-${encodeURIComponent(destinationKey)}`,
             'aria-label': panel
               ? 'Inspection panel'
-              : destinationKey === 'files'
-                ? 'Delivered files'
-                : undefined,
+              : !hasDestination
+                ? 'Application views'
+                : destinationKey === 'files'
+                  ? 'Delivered files'
+                  : undefined,
             class: state.expanded ? 'expanded-body' : '',
           },
           panel
@@ -2124,20 +2140,27 @@ function App(): ComponentChildren {
                   h('h2', {}, 'Body unavailable'),
                   h('p', {}, 'Use current attention and Diagnostics to inspect the known causes.'),
                 )
-              : destinationKey === 'activity'
-                ? h(Activity, {})
-                : destinationKey === 'overview'
-                  ? h(Overview, {})
-                  : destinationKey === 'files'
-                    ? h(Files, {})
-                    : h(
-                        'div',
-                        {
-                          class: `${isApplicationPage() ? 'application-workspace' : 'workspace'} ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
-                        },
-                        isApplicationPage() ? h(ApplicationList, {}) : h(InspectorList, {}),
-                        state.detailOpen ? h(SelectedDetail, {}) : null,
-                      ),
+              : !hasDestination
+                ? h(
+                    'section',
+                    { class: 'single' },
+                    h('h2', {}, 'No application views'),
+                    h('p', {}, 'No retained application views match this selection.'),
+                  )
+                : destinationKey === 'activity'
+                  ? h(Activity, {})
+                  : destinationKey === 'overview'
+                    ? h(Overview, {})
+                    : destinationKey === 'files'
+                      ? h(Files, {})
+                      : h(
+                          'div',
+                          {
+                            class: `${isApplicationPage() ? 'application-workspace' : 'workspace'} ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                          },
+                          isApplicationPage() ? h(ApplicationList, {}) : h(InspectorList, {}),
+                          state.detailOpen ? h(SelectedDetail, {}) : null,
+                        ),
         ),
       ),
     ),

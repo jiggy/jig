@@ -41,25 +41,29 @@ async function publication(
   requestId = 'publish-1',
   instances = ['album'],
 ) {
-  return createDisplayBundle(await archive.state(), {
-    requestId,
-    edition: 'Selected edition',
-    views: instances.map((instanceKey) => ({
-      view: {
-        kind: 'view',
-        id: instanceKey,
-        title: 'Application report',
-        summary: instanceKey,
-        target: { definitionId: 'photos', instanceKey, subjectKey: instanceKey },
-        sections: [
-          { blocks: [{ kind: 'report', text: 'Exact evidence.', references: [reference] }] },
-        ],
-      },
-      completeness: 'complete',
-      domainRevision: 'domain-1',
-    })),
-    requiredEvidence: [reference],
-  })
+  const { generation, heads } = await archive.state()
+  return createDisplayBundle(
+    { generation, heads },
+    {
+      requestId,
+      edition: 'Selected edition',
+      views: instances.map((instanceKey) => ({
+        view: {
+          kind: 'view',
+          id: instanceKey,
+          title: 'Application report',
+          summary: instanceKey,
+          target: { definitionId: 'photos', instanceKey, subjectKey: instanceKey },
+          sections: [
+            { blocks: [{ kind: 'report', text: 'Exact evidence.', references: [reference] }] },
+          ],
+        },
+        completeness: 'complete',
+        domainRevision: 'domain-1',
+      })),
+      requiredEvidence: [reference],
+    },
+  )
 }
 function input(bundle: DisplayBundle, runId = 'run-1'): PrivateDisplayArchiveCommit {
   return {

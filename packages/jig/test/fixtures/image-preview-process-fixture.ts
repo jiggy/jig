@@ -1,13 +1,14 @@
-import { isMainThread, parentPort, workerData } from 'node:worker_threads'
 import { writeFileSync } from 'node:fs'
+import { isMainThread, parentPort, workerData } from 'node:worker_threads'
 import { privateImagePreviewChild } from '../../src/internal/image-preview-child.js'
+import { PRIVATE_PREVIEW_LIMITS } from '../../src/internal/image-preview-policy.js'
 
 if (isMainThread) {
   await privateImagePreviewChild(import.meta.url)
 } else {
   const { mode, ready } = JSON.parse(Buffer.from(workerData).toString())
   if (mode === 'oversize') {
-    parentPort!.postMessage(new ArrayBuffer(65537))
+    parentPort!.postMessage(new ArrayBuffer(PRIVATE_PREVIEW_LIMITS.pngBytes + 1))
   } else if (mode === 'crash') {
     throw new Error('injected decoder crash')
   } else {
