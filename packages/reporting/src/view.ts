@@ -1,9 +1,22 @@
+export type ArtifactReference = Readonly<{ kind: 'artifact'; attachment: string; path: string }>
+export type InputArtifactReference = Readonly<{
+  kind: 'input-artifact'
+  attachment: string
+  path: string
+}>
+export type MediaReference = ArtifactReference | InputArtifactReference
 export type Reference =
   | Readonly<{ kind: 'record'; viewId: string; collectionId: string; rowId: string }>
   | Readonly<{ kind: 'call'; operationId: string }>
-  | Readonly<{ kind: 'artifact'; attachment: string; path: string }>
+  | MediaReference
 export type Value = string | number | boolean | null | Reference
-export type Report = Readonly<{ kind: 'report'; text: string; references?: readonly Reference[] }>
+export type Report = Readonly<{
+  kind: 'report'
+  text: string
+  format?: 'plain' | 'code' | 'diff'
+  references?: readonly Reference[]
+}>
+export type Content = Readonly<{ kind: 'content'; reference: MediaReference; title?: string }>
 export type Facts = Readonly<{
   kind: 'facts'
   items: readonly Readonly<{ label: string; value: Value }>[]
@@ -15,7 +28,10 @@ export type ViewProgress = Readonly<{
   total?: number
   unit?: string
 }>
-export type DetailBlock = Report | Facts | ViewProgress
+export type DetailBlock = Report | Facts | ViewProgress | Content
+export type CollectionPresentation =
+  | Readonly<{ kind: 'table' }>
+  | Readonly<{ kind: 'gallery'; media: string; title?: string; alt?: string; description?: string }>
 export type Collection = Readonly<{
   kind: 'collection'
   id: string
@@ -31,6 +47,7 @@ export type Collection = Readonly<{
     details?: readonly DetailBlock[]
   }>[]
   total?: number
+  presentation?: CollectionPresentation
 }>
 export type Block = DetailBlock | Collection
 export type Section = Readonly<{ title?: string; blocks: readonly Block[] }>
@@ -39,7 +56,17 @@ export type ViewSnapshot = Readonly<{
   summary: string
   sections: readonly Section[]
 }>
-export type ViewOptions = Readonly<{ title: string; landing?: true; operationId?: string }>
+export type ViewTarget = Readonly<{
+  definitionId: string
+  instanceKey: string
+  subjectKey?: string
+}>
+export type ViewOptions = Readonly<{
+  title: string
+  landing?: true
+  operationId?: string
+  target?: ViewTarget
+}>
 export type ViewItem = ViewSnapshot & ViewOptions & Readonly<{ kind: 'view'; id: string }>
 export type RetireView = Readonly<{ kind: 'retire-view'; id: string }>
 
@@ -48,17 +75,29 @@ export const VIEW_LIMITS = Object.freeze({
   claimsPerCommand: 64,
   viewsPerSource: 8,
   viewsPerCommand: 32,
-  bytesPerSource: 131_072,
-  bytesPerCommand: 524_288,
-  sections: 8,
+  bytesPerSource: 4_194_304,
+  bytesPerCommand: 6_291_456,
+  sections: 32,
   blocks: 32,
-  rows: 128,
+  detailBlocks: 8192,
+  rows: 1024,
   columns: 8,
-  cells: 1024,
+  cells: 8192,
   details: 8,
   facts: 32,
   references: 8,
 })
+
+export function validateViewTarget(input: unknown): ViewTarget {
+  const target = dataRecord(input, ['definitionId', 'instanceKey', 'subjectKey'])
+  return Object.freeze({
+    definitionId: scalarText(target.definitionId, 64, true),
+    instanceKey: scalarText(target.instanceKey, 64, true),
+    ...(Object.hasOwn(target, 'subjectKey')
+      ? { subjectKey: scalarText(target.subjectKey, 64, true) }
+      : {}),
+  })
+}
 
 export function dataRecord(value: unknown, fields?: readonly string[]): Record<string, unknown> {
   if (
@@ -117,7 +156,8 @@ function array(value: unknown, maximum: number, minimum = 0): readonly unknown[]
     throw new TypeError('Reporting message arrays must contain only items')
   for (let i = 0; i < value.length; i++) {
     const p = Object.getOwnPropertyDescriptor(value, String(i))
-    if (!p || !('value' in p)) throw new TypeError('Reporting message arrays must contain data items')
+    if (!p || !('value' in p))
+      throw new TypeError('Reporting message arrays must contain data items')
   }
   return value
 }
@@ -144,7 +184,7 @@ export function validateReference(input: unknown): Reference {
     dataRecord(input, ['kind', 'operationId'])
     return Object.freeze({ kind: 'call', operationId: operationId(r.operationId) })
   }
-  if (r.kind === 'artifact') {
+  if (r.kind === 'artifact' || r.kind === 'input-artifact') {
     dataRecord(input, ['kind', 'attachment', 'path'])
     const attachment = scalarText(r.attachment, 64, true)
     const path = scalarText(r.path, 512, true)
@@ -156,8 +196,8 @@ export function validateReference(input: unknown): Reference {
       segments.some((s) => !s || s === '.' || s === '..' || s === '.jig') ||
       /[\\\p{Cc}]/u.test(path)
     )
-      throw new TypeError('Invalid output artifact reference')
-    return Object.freeze({ kind: 'artifact', attachment, path })
+      throw new TypeError('Invalid artifact reference')
+    return Object.freeze({ kind: r.kind, attachment, path })
   }
   throw new TypeError('Unknown reference kind')
 }
@@ -172,13 +212,58 @@ function validateValue(value: unknown): Value {
     return value
   return validateReference(value)
 }
-type Budget = { blocks: number; rows: number; cells: number; collections: Set<string> }
+function validatePresentation(
+  input: unknown,
+  columns: Collection['columns'],
+  rows: Collection['rows'],
+): CollectionPresentation {
+  const presentation = dataRecord(input, ['kind', 'media', 'title', 'alt', 'description'])
+  if (presentation.kind === 'table') {
+    dataRecord(input, ['kind'])
+    return Object.freeze({ kind: 'table' })
+  }
+  if (presentation.kind !== 'gallery') throw new TypeError('Unknown collection presentation')
+  const roles: Record<string, string> = Object.create(null)
+  for (const role of ['media', 'title', 'alt', 'description']) {
+    if (role !== 'media' && !Object.hasOwn(presentation, role)) continue
+    const key = scalarText(presentation[role], 64, true)
+    const column = columns.find((column) => column.key === key)
+    if (!column || column.type !== (role === 'media' ? 'reference' : 'text'))
+      throw new TypeError(`Collection presentation ${role} must name a matching declared column`)
+    if (
+      role === 'media' &&
+      rows.some((row) => {
+        const cell = row.cells[key]
+        return (
+          cell !== null &&
+          (typeof cell !== 'object' || (cell.kind !== 'artifact' && cell.kind !== 'input-artifact'))
+        )
+      })
+    )
+      throw new TypeError('Gallery presentation media requires artifact references')
+    roles[role] = key
+  }
+  return Object.freeze({ kind: 'gallery', media: roles.media!, ...roles }) as CollectionPresentation
+}
+type Budget = {
+  blocks: number
+  detailBlocks: number
+  rows: number
+  cells: number
+  collections: Set<string>
+}
 function validateBlock(input: unknown, budget: Budget, detail = false): Block {
-  if (++budget.blocks > VIEW_LIMITS.blocks) throw new TypeError('View block limit exceeded')
+  if (
+    detail ? ++budget.detailBlocks > VIEW_LIMITS.detailBlocks : ++budget.blocks > VIEW_LIMITS.blocks
+  )
+    throw new TypeError('View block limit exceeded')
   const b = dataRecord(input, [
     'kind',
     'text',
     'references',
+    'reference',
+    'format',
+    'presentation',
     'items',
     'label',
     'completed',
@@ -191,13 +276,29 @@ function validateBlock(input: unknown, budget: Budget, detail = false): Block {
   ])
   switch (b.kind) {
     case 'report': {
-      dataRecord(input, ['kind', 'text', 'references'])
+      dataRecord(input, ['kind', 'text', 'references', 'format'])
+      if (Object.hasOwn(b, 'format') && !['plain', 'code', 'diff'].includes(b.format as string))
+        throw new TypeError('Unknown report format')
       return Object.freeze({
         kind: 'report',
         text: scalarText(b.text, 4096, false, 0),
+        ...(Object.hasOwn(b, 'format')
+          ? { format: b.format as NonNullable<Report['format']> }
+          : {}),
         ...(Object.hasOwn(b, 'references')
           ? { references: Object.freeze(array(b.references, 8).map(validateReference)) }
           : {}),
+      })
+    }
+    case 'content': {
+      dataRecord(input, ['kind', 'reference', 'title'])
+      const reference = validateReference(b.reference)
+      if (reference.kind !== 'artifact' && reference.kind !== 'input-artifact')
+        throw new TypeError('Content requires an artifact reference')
+      return Object.freeze({
+        kind: 'content',
+        reference,
+        ...(Object.hasOwn(b, 'title') ? { title: scalarText(b.title, 128, true) } : {}),
       })
     }
     case 'facts': {
@@ -232,7 +333,7 @@ function validateBlock(input: unknown, budget: Budget, detail = false): Block {
     }
     case 'collection': {
       if (detail) throw new TypeError('Row details cannot contain collections')
-      dataRecord(input, ['kind', 'id', 'title', 'columns', 'rows', 'total'])
+      dataRecord(input, ['kind', 'id', 'title', 'columns', 'rows', 'total', 'presentation'])
       const id = scalarText(b.id, 64, true)
       if (budget.collections.has(id)) throw new TypeError('Duplicate collection ID')
       budget.collections.add(id)
@@ -256,14 +357,14 @@ function validateBlock(input: unknown, budget: Budget, detail = false): Block {
       )
       const ids = new Set<string>()
       const rows = Object.freeze(
-        array(b.rows, 128).map((item) => {
+        array(b.rows, VIEW_LIMITS.rows).map((item) => {
           const r = dataRecord(item, ['id', 'cells', 'details'])
           const rowId = scalarText(r.id, 64, true)
           if (ids.has(rowId)) throw new TypeError('Duplicate row ID')
           ids.add(rowId)
           budget.rows++
           budget.cells += columns.length
-          if (budget.rows > 128 || budget.cells > 1024)
+          if (budget.rows > VIEW_LIMITS.rows || budget.cells > VIEW_LIMITS.cells)
             throw new TypeError('View row or cell limit exceeded')
           const cells = dataRecord(r.cells)
           if (Object.keys(cells).length !== columns.length)
@@ -303,6 +404,9 @@ function validateBlock(input: unknown, budget: Budget, detail = false): Block {
         title: scalarText(b.title, 128, true),
         columns,
         rows,
+        ...(Object.hasOwn(b, 'presentation')
+          ? { presentation: validatePresentation(b.presentation, columns, rows) }
+          : {}),
         ...(total === undefined ? {} : { total }),
       })
     }
@@ -318,11 +422,12 @@ export function validateView(input: unknown): ViewItem {
     'summary',
     'landing',
     'operationId',
+    'target',
     'sections',
   ])
   if (v.kind !== 'view' || (Object.hasOwn(v, 'landing') && v.landing !== true))
     throw new TypeError('Invalid view kind or landing hint')
-  const budget: Budget = { blocks: 0, rows: 0, cells: 0, collections: new Set() }
+  const budget: Budget = { blocks: 0, detailBlocks: 0, rows: 0, cells: 0, collections: new Set() }
   return Object.freeze({
     kind: 'view',
     id: scalarText(v.id, 64, true),
@@ -330,8 +435,9 @@ export function validateView(input: unknown): ViewItem {
     summary: scalarText(v.summary, 1024),
     ...(Object.hasOwn(v, 'landing') ? { landing: true as const } : {}),
     ...(Object.hasOwn(v, 'operationId') ? { operationId: operationId(v.operationId) } : {}),
+    ...(Object.hasOwn(v, 'target') ? { target: validateViewTarget(v.target) } : {}),
     sections: Object.freeze(
-      array(v.sections, 8).map((item) => {
+      array(v.sections, VIEW_LIMITS.sections).map((item) => {
         const s = dataRecord(item, ['title', 'blocks'])
         return Object.freeze({
           ...(Object.hasOwn(s, 'title') ? { title: scalarText(s.title, 128, true) } : {}),

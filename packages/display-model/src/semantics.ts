@@ -1,5 +1,5 @@
 import type { Reference } from '@jigging/reporting'
-import type { DisplayReferenceRecord, RecordedViewRole } from './types.js'
+import type { DisplayReferenceRecord, DisplaySnapshot, RecordedViewRole } from './types.js'
 
 export type DisplayDestination = {
   key: string
@@ -13,7 +13,7 @@ export const displayViewKey = (id: string): string => JSON.stringify(['view', id
 
 /** Input keys are original semantic view IDs; output keys identify renderer destinations. */
 export function displayDestinations(
-  recorded: boolean,
+  mode: DisplaySnapshot['mode'],
   views: readonly {
     key: string
     title: string
@@ -25,7 +25,11 @@ export function displayDestinations(
 ): DisplayDestination[] {
   const report = views.find((view) => view.role === 'recorded-report')
   const diagnostics = views.find((view) => view.role === 'recorded-diagnostics')
-  return recorded
+  if (mode === 'retained-views')
+    return views.map((view) => ({
+      ...view, key: displayViewKey(view.key), icon: '◈', group: 'application' as const,
+    }))
+  return mode === 'recorded-packet'
     ? [
         ...(report
           ? [
@@ -129,7 +133,7 @@ export const referenceKey = (ref: Reference): string =>
       ? ['call', ref.operationId]
       : ref.kind === 'record'
         ? ['record', ref.viewId, ref.collectionId, ref.rowId]
-        : ['artifact', ref.attachment, ref.path],
+        : [ref.kind, ref.attachment, ref.path],
   )
 
 /** Includes hidden cells and supplied details without interpreting domain names. */
@@ -144,6 +148,7 @@ export function recordReferences(record: DisplayReferenceRecord | undefined): Re
     }
   }
   const block = (value: NonNullable<DisplayReferenceRecord['block']>) => {
+    if (value.kind === 'content') add(value.reference)
     if (value.kind === 'report') for (const ref of value.references ?? []) add(ref)
     if (value.kind === 'facts')
       for (const item of value.items)

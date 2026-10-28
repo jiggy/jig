@@ -31,11 +31,11 @@ export function canonicalReportingMessage(value: unknown): string {
 }
 
 export const REPORTING_LIMITS = Object.freeze({
-  itemBytes: 32_768,
+  itemBytes: 524_288,
   retainedItems: 16,
-  retainedBytes: 262_144,
-  attempts: 4096,
-  trafficBytes: 4_194_304,
+  retainedBytes: 4_194_304,
+  attempts: 18_000,
+  trafficBytes: 536_870_912,
   notices: 128,
   noticeBytes: 524_288,
   slots: 16,
@@ -98,6 +98,7 @@ export function validateReportingMessage(value: unknown): ReportingMessage {
     'summary',
     'landing',
     'sections',
+    'target',
   ])
   let result: ReportingMessage
   switch (root.kind) {
@@ -161,8 +162,38 @@ export function validateReportingMessage(value: unknown): ReportingMessage {
       throw new TypeError('Unknown reporting message kind')
   }
   if (
-    new TextEncoder().encode(canonicalReportingMessage(result)).byteLength > REPORTING_LIMITS.itemBytes
+    new TextEncoder().encode(canonicalReportingMessage(result)).byteLength >
+    REPORTING_LIMITS.itemBytes
   )
-    throw new TypeError('Encoded reporting message exceeds 32 KiB')
+    throw new TypeError('Encoded reporting message exceeds 512 KiB')
   return result
 }
+
+export type {
+  DisplayBundle,
+  DisplayBundleOptions,
+  DisplayPublicationContext,
+  DisplayPublicationView,
+} from './bundle.js'
+export {
+  createDisplayBundle,
+  DISPLAY_BUNDLE_LIMITS,
+  decodeDisplayBundle,
+  encodeDisplayBundle,
+  validateDisplayBundle,
+} from './bundle.js'
+export type {
+  Block,
+  Collection,
+  Content,
+  DetailBlock,
+  Facts,
+  MediaReference,
+  Reference,
+  Report,
+  ViewItem,
+  ViewOptions,
+  ViewSnapshot,
+  ViewTarget,
+} from './view.js'
+export { VIEW_LIMITS } from './view.js'

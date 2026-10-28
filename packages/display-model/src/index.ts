@@ -3,6 +3,7 @@ export type {
   DisplayCallState,
   DisplayFact,
   DisplayIncompleteSnapshot,
+  DisplayInputCapture,
   DisplayPreviewReply,
   DisplayImagePreview,
   DisplayReferenceRecord,

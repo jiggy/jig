@@ -92,3 +92,9 @@ Packed qualification consumes frozen archives supplied through
 for the required second runtime check. `just test-package` does not rebuild or repack those
 candidates; `just build` and `just pack` explicitly build declared workspace
 prerequisites through their owning recipes.
+
+Application targets, presentation roles and captured content retain their reporting semantics.
+`inputs` supplies a separate captured-input inventory. File IDs remain unique across both inventories.
+`retained-views` presents retained application projections without execution history.
+Per-file source and attachment bindings prevent references from borrowing another publication’s evidence.
+The complete snapshot allowance is 16 MiB.

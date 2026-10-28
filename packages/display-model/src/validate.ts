@@ -27,7 +27,8 @@ const text = (value: unknown, maximum: number, minimum = 0): string => {
 const identity = (value: unknown) => text(value, 256, 1)
 const count = (value: unknown): number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : fail()
-const number = (value: unknown): number => (typeof value === 'number' ? value : fail())
+const number = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) && (!Number.isInteger(value) || Number.isSafeInteger(value)) ? value : fail()
 const flag = (value: unknown) => (typeof value === 'boolean' ? value : fail())
 const choice = (value: unknown, values: readonly string[]) =>
   typeof value === 'string' && values.includes(value) ? value : fail()
@@ -65,7 +66,7 @@ function copy(value: unknown): { value: unknown; bytes: number } {
     return value
   }
   const visit = (value: unknown, depth: number): unknown => {
-    if (++nodes > 100000 || depth > 64) return fail()
+    if (++nodes > 1000000 || depth > 64) return fail()
     if (value === null) {
       charge(4)
       return value
@@ -175,6 +176,33 @@ function unique(values: unknown[], check: (value: unknown) => void, field = 'id'
   }
 }
 
+function capture(value: unknown, input: boolean): void {
+  const data = record(value, ['generation', 'sourceId', 'permittedAttachments', 'provenance', 'phase', 'files'])
+  identity(data.generation)
+  identity(data.sourceId)
+  const attachments = list(data.permittedAttachments, 65536)
+  for (const attachment of attachments) text(attachment, 64, 1)
+  if (new Set(attachments).size !== attachments.length) fail()
+  choice(data.provenance, input ? ['captured-input'] : ['verified-delivery', 'recorded-capture'])
+  choice(data.phase, ['pending', 'ready', 'unavailable'])
+  const joins = new Set<string>()
+  unique(list(data.files, 64), (value) => {
+    const file = record(value, ['id', 'path', 'bytes', 'state', 'clipped', 'sourceId', 'attachment', 'downloadable'])
+    identity(file.id)
+    text(file.path, 512, 1)
+    count(file.bytes)
+    choice(file.state, ['text', 'empty', 'image', 'non-text', 'unavailable'])
+    flag(file.clipped)
+    optional(file.sourceId, identity)
+    optional(file.attachment, value => text(value, 64, 1))
+    optional(file.downloadable, flag)
+    if (file.attachment !== undefined && !attachments.includes(file.attachment)) fail()
+    const join = JSON.stringify([file.sourceId ?? data.sourceId, file.attachment ?? null, file.path])
+    if (joins.has(join)) fail()
+    joins.add(join)
+  })
+}
+
 /** Validate one bounded replacement and return an owned immutable copy, never a partial body. */
 function validate(value: unknown): DisplaySnapshotEnvelope {
   const owned = copy(value)
@@ -193,13 +221,14 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
     'journal',
     'attention',
     'artifacts',
+    'inputs',
     'lastCompleteRevision',
     'reason',
     'diagnostics',
   ])
   const kind = choice(data.kind, ['snapshot', 'incomplete'])
   if (count(data.revision) < 1) fail()
-  choice(data.mode, ['live-run', 'recorded-packet'])
+  choice(data.mode, ['live-run', 'recorded-packet', 'retained-views'])
   identity(data.rootSourceId)
   const workspace = record(data.workspace, [
     'target',
@@ -239,7 +268,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
     })
     text(data.reason, 1024)
     unique(list(data.diagnostics, 32), (value) => journal(value, true))
-    for (const name of ['views', 'calls', 'activities', 'journal', 'artifacts', 'incomplete'])
+    for (const name of ['views', 'calls', 'activities', 'journal', 'artifacts', 'inputs', 'incomplete'])
       if (data[name] !== undefined) fail()
   } else {
     for (const name of ['lastCompleteRevision', 'reason', 'diagnostics'])
@@ -330,27 +359,16 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       if (validateReportingMessage(activity.value).kind !== 'activity') fail()
     })
     unique(list(data.journal, 224), (value) => journal(value))
-    const artifacts = record(data.artifacts, [
-      'generation',
-      'sourceId',
-      'permittedAttachments',
-      'provenance',
-      'phase',
-      'files',
-    ])
-    identity(artifacts.generation)
-    identity(artifacts.sourceId)
-    for (const attachment of list(artifacts.permittedAttachments, 65536)) text(attachment, 64, 1)
-    choice(artifacts.provenance, ['verified-delivery', 'recorded-capture'])
-    choice(artifacts.phase, ['pending', 'ready', 'unavailable'])
-    unique(list(artifacts.files, 64), (value) => {
-      const file = record(value, ['id', 'path', 'bytes', 'state', 'clipped'])
-      identity(file.id)
-      text(file.path, 512, 1)
-      count(file.bytes)
-      choice(file.state, ['text', 'empty', 'image', 'non-text', 'unavailable'])
-      flag(file.clipped)
-    })
+    capture(data.artifacts, false)
+    if (data.inputs !== undefined) capture(data.inputs, true)
+    const captures = [data.artifacts, data.inputs].filter(Boolean) as Data[]
+    const ids = new Set<unknown>()
+    for (const value of captures) for (const file of value.files as Data[]) {
+      if (ids.has(file.id)) fail()
+      ids.add(file.id)
+    }
+    if (data.mode === 'retained-views' && (calls.length || (data.activities as unknown[]).length || (data.journal as unknown[]).length || workspace.phase !== 'settled')) fail()
+
   }
   return owned.value as DisplaySnapshotEnvelope
 }

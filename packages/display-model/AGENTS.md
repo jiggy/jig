@@ -25,6 +25,9 @@ with their producer. This package owns readonly display data and pure meaning.
 - Import only ordinary declared dependencies. Never import Jig or a renderer.
 - No execution state, host clock, navigation, native initialization, filesystem
   or network operations belong in model source.
+- Input captures retain `captured-input` provenance separately from delivered outputs.
+  Each retained file may bind its exact source and attachment.
+  Retained application views have no invented execution or activity destinations.
 - Snapshot replacement is atomic. Validation returns an owned immutable value,
   rejects malformed/oversized data and does not claim to authenticate evidence.
 - IDs are bounded opaque values. Display labels and authored paths do not join
