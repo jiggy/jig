@@ -1,27 +1,29 @@
 # Local web display
 
 This contract governs `jig run --display web` and
-`jig inspect --result DIRECTORY --display web`. The
+`jig inspect --result DIRECTORY --display web`, and `jig views --display web`. The
 [CLI experience](cli-experience.md) owns command grammar, exact output and
-information hierarchy; [reporting](reporting.md) owns portable authored
-meaning. Browser transport is a private host adapter, not a Flow API.
+information hierarchy.
+[Reporting](reporting.md) owns portable authored meaning. Browser transport is a private host adapter, not a Flow API.
 
 ## Scope and admission
 
 One invoking CLI owns one read-only browser inspector for its finite Run or
-selected saved packet. The inspector renders the same validated semantic
+selected saved packet or retained application views. The inspector renders the same validated semantic
 reports, facts, measured progress, collections, details and references as the
 terminal. Authors cannot supply browser components, HTML, CSS, scripts or
-execution-changing callbacks. Jig supplies actual observed call relationships,
+execution-changing callbacks.
+
+Jig supplies actual observed call relationships,
 diagnostics, authenticated evidence access and lifetime. The independent
 `@jigging/display-web` package owns the browser client, rendering, local navigation
-and fixed assets; it consumes `@jigging/display-model` snapshots without importing
-Jig. Its bounded display interface grants no HTTP server or execution authority.
+and fixed assets.
+It consumes `@jigging/display-model` snapshots without importing Jig. Its bounded display interface grants no HTTP server or execution authority.
 
 Root-publisher application pages precede an Inspector group containing
 Execution, Activity, delivered files and attributed child views. Sections
 compose an authored page: reports, facts and progress appear together, and
-collections show every column in a horizontally scrollable table. Filtering,
+collections show every column in a horizontally scrollable table or an explicit gallery. Filtering,
 sorting, stable selection, full record details and typed evidence navigation
 remain available. Details open on request rather than occupying the initial
 application screen.
@@ -29,6 +31,8 @@ application screen.
 Host facts, attention, observation loss and Close remain visible across pages.
 Directly invoking a child makes that invocation the root. Its own view becomes
 primary. Recorded-packet navigation retains its explicit host roles.
+[Retained application views](display-archive.md) show only their selected projections and captured evidence.
+They invent no execution tree, activity history or duration.
 
 The display requires terminal stderr; stdin need not be a terminal. JSON and
 explicit channel reception win before server preparation. Run stdout may be
@@ -128,10 +132,12 @@ name revisions, not a replay log. Reconnect reads the latest snapshot and never
 resubmits execution. Equal current revisions can restore transport freshness;
 they cannot make an incomplete semantic body complete.
 
-The observation model retains the existing profile limits: 32 views /512 KiB
-per command, 8 views /128 KiB per publisher, 16 activities, 256 actual call nodes
-at depth 32 /256 KiB metadata, and bounded journals/attention. Encoded complete
-snapshots are at most 8 MiB. Projection/encoding failure supplies an independently
+The model retains 32 views/6 MiB per command and 8 views/4 MiB per publisher.
+It retains 16 activities and 256 actual call nodes at depth 32/256 KiB metadata.
+Journals and attention retain their existing finite bounds.
+Encoded complete snapshots are at most 16 MiB.
+
+ Projection/encoding failure supplies an independently
 bounded 2 MiB incomplete envelope with current facts, every retained cause,
 bounded diagnostics, omissions and a closed explanation. It must not prune a
 failed body heuristically or expose an exception. A previous complete browser
@@ -150,11 +156,13 @@ Native copies are an explicitly separate availability limit.
 
 A browser retains independent local selection, sorting, filtering, disclosure,
 scroll and preview intent. Tabs cannot move each other's focus or the terminal's.
-Bound client fetching to one snapshot task, highest notified revision, one retry
-timer and one preview task. Capacity responses have bounded backoff; reconnect
-storms, stale asynchronous completions and close cannot build a queue or restore
-disposed presentation. A newer file intent must never receive older bytes beneath
-its title.
+
+Bound client fetching to one snapshot task, highest notified revision, one retry timer and one active preview task.
+Visible media can select at most 24 preview identities.
+The browser cache retains at most 8 MiB, with at most 1 MiB per preview reply.
+Capacity responses have bounded backoff.
+Reconnect storms, stale completions and Close cannot restore disposed presentation or create an unbounded queue.
+A newer file intent must never receive older bytes beneath its title.
 
 ## Evidence and presentation
 
@@ -167,33 +175,47 @@ Child-only declarations remain unavailable until the parent delivers/remaps
 actual evidence. The independent host file inventory does not attribute its
 bytes to an unavailable authored reference.
 
-Capture retains at most 64 files /16 MiB under the existing confined file
-policy. Live settled inspection transfers at most 64 previews with 512 KiB
-aggregate retained content. Text excerpts remain at most 4 KiB each, charged
-as UTF-16 storage. One active browser preview contains one text excerpt or one
-validated raster image.
+Delivered capture retains at most 64 files /16 MiB under the confined file policy.
+Selected input media uses a separate detached capture of exact original members, with `captured-input` provenance.
+The root input budget remains 64 files /64 MiB, separate from the output budget.
+A filename or authored path cannot select an uncaptured member.
+Unknown references are filtered before applying the selected-file limit.
 
-A fixed disposable process accepts at most 64 KiB of PNG/JPEG or SVG source.
-It returns PNG within 384 by 1024 pixels and 64 KiB. Its main thread owns a
-five-second deadline and an open input-pipe lifetime lease, independently of
-the decoder thread. Pipe loss or cancellation kills the whole process. Its
-actual exit precedes reuse.
+Text excerpts remain at most 4 KiB each, charged as UTF-16 storage.
+A generation-fenced download returns complete captured bytes independently of preview clipping.
+Downloads use the authenticated artifact route and exact `X-Jig-Capture-Generation` header.
+One active download body retains at most 16 MiB.
+The response owns its copied bytes, and Close aborts pending delivery.
 
-The pinned renderer limits Wasm memory to 5 MiB, cumulative imported byte
-copies to 1 MiB and decoded text to 1 MiB. These are image-content limits, not
-a hard quota on the Bun runtime's total resident memory. External references
-and entities are refused. Bundled fonts supply text.
+A fixed disposable process accepts PNG/JPEG sources up to 8 MiB, 24 megapixels and 16,384 pixels per dimension.
+SVG sources remain bounded to 64 KiB.
+It returns PNG within 384 by 1,024 pixels and 256 KiB.
+Its main thread owns a five-second deadline and an open input-pipe lifetime lease.
+Pipe loss or cancellation kills the whole process, whose actual exit precedes reuse.
 
-At most one renderer runs per command, with no queue. Saved inspection spends
-at most ten seconds preparing images. Remaining files keep textual/non-text
-fallbacks. Malformed, oversized or stalled images lose only their optional
-preview, while complete saved files remain usable.
+The pinned renderer limits raster Wasm memory to 128 MiB and SVG Wasm memory to 5 MiB.
+Cumulative imported copies and decoded text each remain bounded to 32 MiB for raster and 1 MiB for SVG.
+These are image-content limits, not a hard quota on Bun's total resident memory.
+External references and entities are refused.
+Bundled fonts supply text.
+
+At most one renderer runs per command, without a decoder queue.
+Selected input thumbnails are decoded on demand and share a 2 MiB LRU cache.
+Close aborts and joins owned decoding before releasing its captured bytes.
+Saved inspection retains its ten-second aggregate image preparation limit.
+Malformed, oversized or stalled images lose only their optional preview.
+Their complete captured bytes remain independently available when retained.
 
 The browser renders validated raster data in an image element, never authored
 SVG markup, and retains no image object URL or file/network access. Empty,
 image, non-text, unavailable and clipped evidence are distinct states. Content
 is primary. Path, byte count, verified-delivery/recorded-capture provenance
 and limits are secondary.
+
+Captured-input provenance remains distinct from verified delivery and recorded capture.
+A `content` block renders that captured evidence without accepting authored markup.
+Gallery media, title, alternative text and description roles use declared collection columns.
+All supplied fields and row details remain reachable.
 
 Preserve diff whitespace with addition/removal/context roles and a plain
 fallback. Text previews detect common formats from the captured filename.
@@ -233,12 +255,14 @@ names or diagnostic path strings.
 
 Saved packets contain no retained portable views or invocation history. Render
 only fixed recorded fields, captured files and recorded diagnostics, without
-reconstructing domain views or a graph from prose or familiar keys. Manifest
-consistency is not authentication of the report.
+reconstructing domain views or a graph from prose or familiar keys.
+The separately selected application archive retains explicit display bundles under its own contract.
+Manifest consistency is not authentication of the report.
+
 Saved navigation provides one Recorded result, Captured files and Diagnostics
 surface. It shows no synthetic activity history or elapsed-run claim. Private
-host adapter roles distinguish these surfaces; authored IDs/titles never select
-host navigation. File-capture findings remain visible alongside the inventory.
+host adapter roles distinguish these surfaces.
+Authored IDs and titles never select host navigation. File-capture findings remain visible alongside the inventory.
 
 ## Lifetime and failure
 
@@ -259,14 +283,18 @@ Elapsed execution time freezes at settlement.
 Before indefinite Run inspection, complete project/execution cleanup and spend
 file/checkpoint/native delivery authority irreversibly. One total twenty-second
 completion allowance, narrowed by an inherited presentation constraint, covers
-preview transfer and authenticated retirement; ordinary previews use at most its
-first ten seconds, reserving retirement time. Include no-publication/no-preview
-paths. Fence every verb and recovery fallback before closing resources. Accept
+detached capture transfer, selected final-bundle publication and authenticated retirement.
+Include no-publication and no-preview paths.
+Publication joins its original acceptance operation through cleanup, even after the allowance expires.
+
+Fence every verb and recovery fallback before closing resources. Accept
 success only after resources close, authenticated retirement acknowledgment and
 expected spent-channel completion. Release local input/output captures before
-waiting on the inspector. Retain only bounded semantic presentation and pure
-captured previews; no project lock, execution scope, channel owner, descriptor
-endpoint or native renderer remains alive for browser inspection.
+waiting on the inspector.
+
+Retain only bounded semantic presentation, captured bytes and previews.
+No project lock, execution scope, channel owner or descriptor endpoint remains alive for browser inspection.
+On-demand preview processes own only detached bytes and finish before their presentation owner closes.
 
 The first retirement operation requires a confirmed terminal and successful
 project closure. Unknown execution or a project-close failure closes the viewer

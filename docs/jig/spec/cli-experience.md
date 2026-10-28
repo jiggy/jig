@@ -859,6 +859,38 @@ hierarchy even when the application cannot start. Review policy is generated
 from the same captured records that are approved, and human Run summaries
 come from the same terminal observations as machine results.
 
+### Retained application view commands
+
+The experimental `jig views` command inspects explicitly retained application projections without evaluating source or acquiring execution authority.
+[Retained application views](display-archive.md) owns its exact formats, evidence rules and finite profile.
+`list` is the default operation and accepts exact definition and instance filters.
+`--instance` requires `--definition`.
+`--display` accepts `plain` or `web`, while `--json` and redirected stdout take precedence.
+
+Context, receipt, remove and reset emit bounded JSON records.
+Context creates presentation storage under an existing owner-only `.jig` directory when absent.
+Receipt lookup requires the original request identity and generation.
+Removal requires the current target revision, and reset requires the current generation.
+Stale conditions reject instead of silently selecting current material.
+
+Plain listing quotes application data and shows title, instance, summary, edition and completeness.
+JSON listing returns generation, matching heads, matched and omitted counts, and bounded retained views.
+Payload scope and length checks precede loading or decoding retained data.
+A concurrent archive change rejects capture rather than producing a mixed snapshot.
+Web inspection requires terminal stderr and retains the ordinary authenticated access boundary.
+It exposes no publish, remove, reset, rerun or domain mutation control.
+
+A retained view carries actual publication attribution independently of its authored target.
+It shows no invented execution tree, activity history or elapsed execution claim.
+Missing evidence remains unavailable rather than resolving through a newer file or another publisher.
+Closing inspection preserves retained material, while external interruption retains exit 2.
+
+The Run option `--display-bundle NAME=FILE` selects one final file from a declared writable attachment or artifact result.
+An approved project entrypoint may select it explicitly, and an operator option replaces that whole selection.
+Only verified final delivery can publish the edition after confirmed settlement and project closure.
+Publication failure retains known execution and delivery facts, emits a separate actionable diagnostic, and makes command success unavailable.
+The original acceptance operation and cleanup remain joined after deadline expiry.
+
 ### Installed application execution
 
 `jig attempt <prepare|submit|lookup|cancel|result|export> --json` is the

@@ -18,6 +18,7 @@ These links locate module rules. All selected domain requirements still apply.
 - [file-delivery](#file-delivery)
 - [delivery-inspection](#delivery-inspection)
 - [saved-result](#saved-result)
+- [display-archive](#display-archive)
 - [raw-directory](#raw-directory)
 - [workspace-progress tests](#workspace-progress-tests)
 
@@ -331,6 +332,27 @@ These links locate module rules. All selected domain requirements still apply.
 - Read-only target inspection projects `boundReadAttachments` as retained names
   only. Invocation templates therefore omit captured reads without reopening
   live Binding paths or exposing private file projection handles.
+
+### display-archive
+
+- `display-archive.ts` owns presentation-only SQLite storage in an explicitly selected private directory.
+  The CLI supplies verified final bundle bytes, detached evidence and actual source attribution.
+  Bundle claims cannot grant file authority or change an application's domain state.
+
+  Atomic publication checks every selected target revision.
+  Identical request recovery returns the original receipt before stale-write checks, without reinstalling removed material.
+  Removal retains a revision fence, and explicit reset changes the archive generation.
+  Capacity exhaustion refuses new publication instead of evicting replay fences.
+
+  Reads apply SQL selection and length limits before loading payloads.
+  Persisted receipts, views and evidence require closed canonical data.
+  Evidence reads verify exact content sizes and digests before returning owned copies.
+  Acquisition rejects unexpected noninternal schema objects and changed protected filesystem identities.
+
+  Publication uses the inherited epoch-referenced presentation deadline.
+  Check that deadline before queued starts, writes and commit admission.
+  Join the original operation and memoized cleanup rather than abandoning an unresolved transaction.
+  Logical storage accounting includes receipts and removed target metadata, without claiming a filesystem quota.
 
 ## Local Contracts
 

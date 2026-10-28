@@ -27,7 +27,10 @@ export function displayDestinations(
   const diagnostics = views.find((view) => view.role === 'recorded-diagnostics')
   if (mode === 'retained-views')
     return views.map((view) => ({
-      ...view, key: displayViewKey(view.key), icon: '◈', group: 'application' as const,
+      ...view,
+      key: displayViewKey(view.key),
+      icon: '◈',
+      group: 'application' as const,
     }))
   return mode === 'recorded-packet'
     ? [

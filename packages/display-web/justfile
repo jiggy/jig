@@ -20,7 +20,7 @@ clean:
 @test *args:
     bun test "$@"
 
-check: build test
+check: build test test-material
 
 [positional-arguments]
 @pack *args: build
@@ -28,3 +28,7 @@ check: build test
 
 @test-package:
     bun test/package-smoke.ts
+
+# Exercise material boundaries through compiled public exports and real HTTP.
+@test-material:
+    node --test test/material.node.mjs

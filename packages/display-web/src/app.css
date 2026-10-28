@@ -1330,3 +1330,54 @@ footer {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.application-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+}
+.application-gallery-card {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.application-gallery-card h5 {
+  font-size: 15px;
+  margin: 12px 0 8px;
+}
+.application-gallery-card .fields,
+.application-gallery-card dd {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.captured-media {
+  margin: 0;
+}
+.captured-media img {
+  max-width: 100%;
+  width: 100%;
+  height: 190px;
+  object-fit: contain;
+  border-radius: 5px;
+}
+.media-placeholder {
+  display: grid;
+  place-items: center;
+  min-height: 140px;
+  padding: 12px;
+  text-align: center;
+  color: var(--secondary);
+  border: 1px dashed var(--line);
+}
+.literal-report {
+  white-space: pre-wrap;
+  overflow: auto;
+  font-family: ui-monospace, monospace;
+}
+.related-views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 14px;
+}

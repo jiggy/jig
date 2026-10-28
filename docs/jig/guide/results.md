@@ -211,6 +211,40 @@ incomplete file verification, or output failure. Exit 2 means external
 interruption. Always examine the recorded execution and application outcome
 before deciding what to do.
 
+## Reopen application views
+
+An application can explicitly deliver a final display bundle for local retention.
+This is separate from a saved Run packet and optional live observation.
+The source candidate uses ordinary semantic views with stable definition and instance keys.
+See [final bundle authoring](../spec/display-archive.md#select-final-material) before selecting publication.
+
+```sh
+jig views context --json
+jig run --display-bundle files=display.json
+jig views list --definition photos --instance family-2025 --display web
+```
+
+Pass the context to your application through its ordinary declared input or read attachment.
+Its helper derives revision checks rather than asking authors to assign concurrency tokens.
+The operator selects one declared output file, which requires verified final delivery.
+Checkpoint-only output and the last live snapshot cannot publish a final edition.
+
+Retained views contain application-selected material and exact captured evidence when available.
+They show no invented call history, activity or execution duration.
+Completeness and domain revision remain application claims.
+Currency is unknown without a current application revision.
+Closing inspection releases presentation captures while keeping the retained edition.
+
+When publication is unconfirmed, recover its original receipt before deciding to publish again:
+
+```sh
+jig views receipt --request PUBLICATION_ID --generation ARCHIVE_GENERATION --json
+```
+
+An accepted duplicate returns its original receipt and provenance without reinstalling removed views.
+Generation-checked removal and reset require explicit current conditions.
+The [archive contract](../spec/display-archive.md) defines capacity, evidence and recovery limits.
+
 ## If retained state cannot be opened
 
 `PROJECT_STATE_INVALID` means `.jig` is incompatible with the current build or

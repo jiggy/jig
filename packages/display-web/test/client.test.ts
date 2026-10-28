@@ -327,7 +327,7 @@ test('snapshot bounds refuse before JSON acceptance and terminal responses relea
   const owner = harness()
   owner.client.start()
   owner.take('/api/events').resolve(events().response)
-  owner.take('/api/snapshot').resolve(new Response(' '.repeat(8 * 1024 * 1024 + 1)))
+  owner.take('/api/snapshot').resolve(new Response(' '.repeat(16 * 1024 * 1024 + 1)))
   await flush()
   expect(owner.client.body).toBeUndefined()
   expect(owner.client.connection).toBe('disconnected')

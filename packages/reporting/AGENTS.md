@@ -52,7 +52,7 @@ Layout blocks and row detail blocks have separate aggregate budgets.
 
 ## Verification
 
-`just build`, `bun test`, packed Node consumer, and the matching Python
+`just build`, `bun test`, `just test-node`, packed Node consumer, and the matching Python
 publisher must establish lifecycle, identity and boundedness separately. Public
 availability must state the tested runtimes. Approval of a design is not
 qualification. Parameterized source cases register distinct names so whole-file

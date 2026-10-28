@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { REPORTING_CONTRACT } from '@jigging/reporting'
+import { REPORTING_CONTRACT, REPORTING_LIMITS } from '@jigging/reporting'
 
 import { canonicalJson, decodeJson1, type JsonObject, type JsonValue } from '../json.js'
 import { compileEmbeddedSchema } from '../schema/index.js'
@@ -21,12 +21,12 @@ export const CHANNEL_LIMITS = Object.freeze({
 export const PRESENTATION_CHANNEL_LIMITS = Object.freeze({
   sources: 1,
   receivers: 1,
-  itemBytes: 32 * 1024,
-  sourceBytes: 4 * 1024 * 1024,
-  bufferedItems: 16,
-  bufferedBytes: 256 * 1024,
+  itemBytes: REPORTING_LIMITS.itemBytes,
+  sourceBytes: REPORTING_LIMITS.trafficBytes,
+  bufferedItems: REPORTING_LIMITS.retainedItems,
+  bufferedBytes: REPORTING_LIMITS.retainedBytes,
   pendingSends: 1,
-  pendingBytes: 32 * 1024,
+  pendingBytes: REPORTING_LIMITS.itemBytes,
 })
 interface ChannelPool {
   readonly limits: typeof CHANNEL_LIMITS | typeof PRESENTATION_CHANNEL_LIMITS

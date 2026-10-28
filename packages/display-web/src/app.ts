@@ -10,9 +10,10 @@ import {
   displayTextTokens,
   displayViewKey,
 } from '@jigging/display-model'
-import type { DetailBlock, Reference, Value } from '@jigging/reporting'
+import type { DetailBlock, MediaReference, Reference, Value } from '@jigging/reporting'
 import { type ComponentChildren, h, render } from 'preact'
-import { ApplicationPage } from './application.js'
+import { useEffect, useRef } from 'preact/hooks'
+import { ApplicationPage, FormattedReport } from './application.js'
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
 import {
   PrivateBrowserClock,
@@ -23,6 +24,7 @@ import {
   privateBrowserPeek,
   privateBrowserRecords,
   privateBrowserReferences,
+  privateBrowserRelatedViews,
   privateBrowserResolve,
   privateBrowserRowKey,
   privateBrowserSurvivingSelection,
@@ -219,7 +221,11 @@ function redraw(): void {
       ? {
           artifactId:
             file?.id ?? (target as Extract<typeof target, { kind: 'artifact' }>).artifactId,
-          captureGeneration: snapshot.artifacts.generation,
+          captureGeneration: file
+            ? snapshot.artifacts.generation
+            : target?.kind === 'artifact'
+              ? target.captureGeneration
+              : snapshot.artifacts.generation,
           signature: JSON.stringify([
             signature,
             privateBrowserReferences(record),
@@ -408,6 +414,87 @@ function Field({
     ),
   )
 }
+const visibleMedia = new Map<
+  HTMLElement,
+  { artifactId: string; captureGeneration: string; signature: string }
+>()
+const mediaTargets = new Map<
+  HTMLElement,
+  { artifactId: string; captureGeneration: string; signature: string }
+>()
+const mediaObserver = new IntersectionObserver(
+  (entries) => {
+    for (const entry of entries) {
+      const intent = mediaTargets.get(entry.target as HTMLElement)
+      if (entry.isIntersecting && intent) visibleMedia.set(entry.target as HTMLElement, intent)
+      else visibleMedia.delete(entry.target as HTMLElement)
+    }
+    client?.setMedia([...visibleMedia.values()])
+  },
+  { rootMargin: '120px' },
+)
+
+function CapturedMedia({
+  reference,
+  record,
+  alt,
+}: {
+  reference: MediaReference
+  record: PrivateBrowserRecord
+  alt: string
+}): ComponentChildren {
+  const element = useRef<HTMLElement>(null)
+  const target = client?.body
+    ? privateBrowserResolve(client.body, record.sourceId, reference)
+    : undefined
+  const intent =
+    target?.kind === 'artifact'
+      ? {
+          artifactId: target.artifactId,
+          captureGeneration: target.captureGeneration,
+          signature: JSON.stringify([record.sourceId, reference]),
+        }
+      : undefined
+  const signature = JSON.stringify(intent)
+  useEffect(() => {
+    const node = element.current
+    if (!node || !intent) return
+    mediaTargets.set(node, intent)
+    mediaObserver.observe(node)
+    return () => {
+      mediaObserver.unobserve(node)
+      mediaTargets.delete(node)
+      visibleMedia.delete(node)
+      client?.setMedia([...visibleMedia.values()])
+    }
+  }, [signature])
+  const reply = intent ? client?.mediaPreview(intent) : undefined
+  return h(
+    'figure',
+    { ref: element, class: 'captured-media' },
+    reply?.state === 'image' && reply.image
+      ? h('img', {
+          src: `data:${reply.image.mime};base64,${reply.image.base64}`,
+          alt: privateBrowserLiteral(alt),
+          width: reply.image.width,
+          height: reply.image.height,
+          loading: 'lazy',
+        })
+      : h(
+          'div',
+          { class: 'media-placeholder' },
+          !client?.referencesEnabled
+            ? 'Capture unavailable while observation is stale.'
+            : target?.kind !== 'artifact'
+              ? (target?.label ?? 'Captured content unavailable.')
+              : reply
+                ? 'Image preview unavailable. Open the captured evidence for details.'
+                : 'Loading captured preview…',
+        ),
+    h('figcaption', {}, h(ReferenceButton, { value: reference, record })),
+  )
+}
+
 function Block({
   block,
   record,
@@ -419,9 +506,15 @@ function Block({
     return h(
       'div',
       {},
-      h('p', { class: 'report' }, literal(block.text || '(Empty report)')),
+      h(FormattedReport, { block }),
       block.references?.map((value, index) => h(ReferenceButton, { key: index, value, record })),
     )
+  if (block.kind === 'content')
+    return h(CapturedMedia, {
+      reference: block.reference,
+      record,
+      alt: block.title ?? block.reference.path,
+    })
   if (block.kind === 'progress') return h(Progress, { block })
   return h(
     'dl',
@@ -469,7 +562,7 @@ function InspectorList(): ComponentChildren {
       ' · ',
       selected.ended ? literal(selected.ended) : 'Observed view',
       ' · ',
-      observationTime(selected.updatedAt),
+      client?.body?.mode === 'retained-views' ? null : observationTime(selected.updatedAt),
     ),
     supplied.flatMap((record) => {
       const first = record.collection && !collectionKeys.has(record.collection.id)
@@ -606,36 +699,51 @@ function ApplicationList(): ComponentChildren {
   const selected = view()
   if (!selected) return null
   const state = currentLocal()
-  return h(ApplicationPage, {
-    view: selected,
-    local: state,
-    records: records(),
-    onSelect: select,
-    onRecordKeyDown: recordKeyDown,
-    onFilter: (collection, query) => {
-      humanNavigation = true
-      state.filters.set(collection, query)
-      const next = records().map((record) => record.key)
-      state.selected = privateBrowserSurvivingSelection(
-        previousKeys.get(destinationKey) ?? [],
-        state.selected,
-        next,
-      )
-      previousKeys.set(destinationKey, next)
-      redraw()
-    },
-    onSort: (collection, key, descending) => {
-      humanNavigation = true
-      if (key) state.sorts.set(collection, { key, descending })
-      else state.sorts.delete(collection)
-      redraw()
-    },
-    renderBlock: (block, record) => h(Block, { block, record }),
-    renderValue: (value, record) =>
-      value !== null && typeof value === 'object'
-        ? h(ReferenceButton, { value, record })
-        : literal(privateBrowserValue(value)),
-  })
+  const related = client?.body ? privateBrowserRelatedViews(client.body, selected) : []
+  return h(
+    'div',
+    {},
+    related.length
+      ? h(
+          'nav',
+          { class: 'related-views', 'aria-label': 'Related application views' },
+          related.map((item) =>
+            button(literal(item.value.title), () => navigate(displayViewKey(item.id))),
+          ),
+        )
+      : null,
+    h(ApplicationPage, {
+      view: selected,
+      local: state,
+      records: records(),
+      onSelect: select,
+      onRecordKeyDown: recordKeyDown,
+      onFilter: (collection, query) => {
+        humanNavigation = true
+        state.filters.set(collection, query)
+        const next = records().map((record) => record.key)
+        state.selected = privateBrowserSurvivingSelection(
+          previousKeys.get(destinationKey) ?? [],
+          state.selected,
+          next,
+        )
+        previousKeys.set(destinationKey, next)
+        redraw()
+      },
+      onSort: (collection, key, descending) => {
+        humanNavigation = true
+        if (key) state.sorts.set(collection, { key, descending })
+        else state.sorts.delete(collection)
+        redraw()
+      },
+      renderMedia: (reference, record, alt) => h(CapturedMedia, { reference, record, alt }),
+      renderBlock: (block, record) => h(Block, { block, record }),
+      renderValue: (value, record) =>
+        value !== null && typeof value === 'object'
+          ? h(ReferenceButton, { value, record })
+          : literal(privateBrowserValue(value)),
+    }),
+  )
 }
 
 function recordKeyDown(event: KeyboardEvent): void {
@@ -714,6 +822,31 @@ function Preview({ path }: { path: string }): ComponentChildren {
     'section',
     { class: 'file-preview', 'aria-label': 'File content' },
     h('h2', {}, literal(path)),
+    client?.preview?.intent
+      ? button(
+          'Download captured file',
+          () => {
+            const intent = client?.preview?.intent
+            if (!intent) return
+            void client?.download(intent).then((bytes) => {
+              if (!bytes) {
+                feedback = 'Captured download unavailable.'
+                redraw()
+                return
+              }
+              const url = URL.createObjectURL(
+                new Blob([Uint8Array.from(bytes).buffer], { type: 'application/octet-stream' }),
+              )
+              const anchor = document.createElement('a')
+              anchor.href = url
+              anchor.download = path.split('/').at(-1) ?? 'artifact'
+              anchor.click()
+              setTimeout(() => URL.revokeObjectURL(url), 0)
+            })
+          },
+          { disabled: !client.referencesEnabled },
+        )
+      : null,
     !client?.referencesEnabled
       ? h(
           'p',
@@ -907,7 +1040,7 @@ function SelectedDetail(): ComponentChildren {
         { 'aria-expanded': state.expanded },
       ),
     ),
-    reference?.kind === 'artifact'
+    reference?.kind === 'artifact' || reference?.kind === 'input-artifact'
       ? target?.kind === 'artifact'
         ? h(Preview, { path: reference.path })
         : h(
@@ -1817,7 +1950,11 @@ function App(): ComponentChildren {
         h(
           'small',
           {},
-          current.mode === 'recorded-packet' ? 'JIG / RECORDED RESULT' : 'JIG / LOCAL RUN',
+          current.mode === 'retained-views'
+            ? 'JIG / APPLICATION VIEWS'
+            : current.mode === 'recorded-packet'
+              ? 'JIG / RECORDED RESULT'
+              : 'JIG / LOCAL RUN',
         ),
         h('h1', {}, literal(current.workspace.target)),
         current.context
@@ -1831,18 +1968,20 @@ function App(): ComponentChildren {
         h(
           'p',
           { class: 'host-stage' },
-          current.mode === 'recorded-packet'
-            ? 'Recorded claims · nothing is running'
-            : live
-              ? literal(current.workspace.hostStage)
-              : 'Settled inspection · nothing is running',
+          current.mode === 'retained-views'
+            ? 'Retained application projections · currency unknown'
+            : current.mode === 'recorded-packet'
+              ? 'Recorded claims · nothing is running'
+              : live
+                ? literal(current.workspace.hostStage)
+                : 'Settled inspection · nothing is running',
         ),
       ),
       h(
         'div',
         { class: 'shell-actions' },
         h('strong', {}, live ? 'Execution running' : 'Read-only inspection'),
-        current.mode === 'recorded-packet'
+        current.mode !== 'live-run'
           ? null
           : h(
               'span',
@@ -1873,7 +2012,9 @@ function App(): ComponentChildren {
           {},
           live
             ? 'Closes all viewers; work continues in the terminal.'
-            : 'Closes all viewers; preserves the admitted outcome.',
+            : current.mode === 'retained-views'
+              ? 'Closes all viewers; preserves retained material.'
+              : 'Closes all viewers; preserves the admitted outcome.',
         ),
       ),
     ),

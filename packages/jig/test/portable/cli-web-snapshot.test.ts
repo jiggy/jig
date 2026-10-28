@@ -418,3 +418,87 @@ test('an omitted own call never falls back to a different retained parent call',
   })
   expect(attribution).not.toHaveProperty('callId')
 })
+
+test('input captures stay source-scoped and generation-fence full bytes independently of output evidence', async () => {
+  const model = new PrivateRunModel()
+  const projection = new PrivateDisplayProjection(model)
+  const input = { kind: 'input-artifact' as const, attachment: 'source', path: 'same.txt' }
+  model.setInputArtifacts(
+    (publisher, ref) =>
+      publisher === 'root' && ref.attachment === 'source' && ref.path === 'same.txt'
+        ? 'source/same.txt'
+        : undefined,
+    async () => ({ text: 'Input', bytes: 5, clipped: false }),
+    async () => new TextEncoder().encode('Input'),
+  )
+  model.setInputCapture({
+    generation: 'input-generation',
+    sourcePublisher: 'root',
+    provenance: 'captured-input',
+    phase: 'ready',
+    files: [
+      {
+        attachment: 'source',
+        path: 'same.txt',
+        bytes: 5,
+        state: 'text',
+        clipped: false,
+        downloadable: true,
+      },
+    ],
+  })
+  model.setArtifacts(
+    (publisher, ref) =>
+      publisher === 'root' && ref.attachment === 'files' ? 'same.txt' : undefined,
+    async () => ({ text: 'Output', bytes: 6, clipped: false }),
+    async () => new TextEncoder().encode('Output'),
+  )
+  model.setArtifactCapture({
+    generation: 'output-generation',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [{ path: 'same.txt', bytes: 6, state: 'text', clipped: false, downloadable: true }],
+  })
+  model.acceptView(
+    'root',
+    validateReportingMessage({
+      kind: 'view',
+      id: 'one',
+      title: 'One',
+      summary: 'Captured evidence',
+      target: { definitionId: 'report', instanceKey: 'first' },
+      sections: [{ blocks: [{ kind: 'report', text: 'Evidence', references: [input] }] }],
+    }) as ViewItem,
+  )
+  const snapshot = projection.capture(1)
+  const file = snapshot.inputs!.files[0]!
+  expect(file.id).not.toBe(snapshot.artifacts.files[0]!.id)
+  expect(model.resolve('root', input).available).toBe(true)
+  expect(model.resolve('child', input).available).toBe(false)
+  expect(await projection.preview(file.id, snapshot.inputs!.generation)).toMatchObject({
+    provenance: 'captured-input',
+    text: 'Input',
+  })
+  const download = await projection.download(file.id, snapshot.inputs!.generation)
+  expect(new TextDecoder().decode(download!.bytes)).toBe('Input')
+  expect(await projection.download(file.id, snapshot.artifacts.generation)).toBeUndefined()
+  expect(() =>
+    model.acceptView(
+      'root',
+      validateReportingMessage({
+        ...view('one'),
+        target: { definitionId: 'report', instanceKey: 'second' },
+      }) as ViewItem,
+    ),
+  ).toThrow('association changed')
+  model.setInputCapture({
+    generation: 'later',
+    sourcePublisher: 'root',
+    provenance: 'captured-input',
+    phase: 'ready',
+    files: [],
+  })
+  expect(await projection.download(file.id, snapshot.inputs!.generation)).toBeUndefined()
+  model.close()
+})

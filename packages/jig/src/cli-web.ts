@@ -1,12 +1,13 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
-import type { WebAssets } from '@jigging/display-model'
 import type {
   DisplayIncompleteSnapshot,
   DisplayPreviewReply,
   DisplaySnapshotEnvelope,
+  WebAssets,
 } from '@jigging/display-model'
+import { DISPLAY_SNAPSHOT_LIMIT } from '@jigging/display-model'
 
-const SNAPSHOT_BYTES = 8 * 1024 * 1024
+const SNAPSHOT_BYTES = DISPLAY_SNAPSHOT_LIMIT
 const INCOMPLETE_BYTES = 2 * 1024 * 1024
 const PREVIEW_BYTES = 2 * 1024 * 1024
 const REFRESH_MS = 200
@@ -51,6 +52,12 @@ type Projection = {
     lastCompleteRevision?: number,
   ): DisplayIncompleteSnapshot
   preview(id: string): Promise<DisplayPreviewReply | undefined>
+  download?(
+    id: string,
+    generation: string,
+  ): Promise<
+    Readonly<{ bytes: Uint8Array; filename: string; captureGeneration: string }> | undefined
+  >
 }
 export type PrivateWebDisplayOptions = {
   assets: WebAssets
@@ -103,6 +110,7 @@ export class PrivateWebDisplay {
   #requests = 0
   #snapshots = 0
   #previews = 0
+  #downloads = 0
   #resolveClosed!: () => void
   readonly #closed = new Promise<void>((resolve) => (this.#resolveClosed = resolve))
 
@@ -319,6 +327,37 @@ export class PrivateWebDisplay {
             this.#requests--
           })
         }
+        const download = /^\/api\/artifacts\/([a-f0-9]{64})\/download$/.exec(url.pathname)
+        if (download) {
+          const generation = request.headers.get('X-Jig-Capture-Generation')
+          if (!generation || generation.length > 256) return failure('unavailable', 400)
+          if (this.#downloads >= 1) return failure('capacity', 429)
+          this.#downloads++
+          try {
+            const value = await this.#download(download[1]!, generation)
+            if (!this.active) {
+              this.#downloads--
+              return failure('closed', 410)
+            }
+            if (
+              !value ||
+              value.captureGeneration !== generation ||
+              value.bytes.byteLength > 16 * 1024 * 1024
+            ) {
+              this.#downloads--
+              return failure('unavailable', 404)
+            }
+            const bytes = new Uint8Array(value.bytes)
+            owned = false
+            return this.#binaryResponse(bytes, value.filename, generation, request, () => {
+              this.#downloads--
+              this.#requests--
+            })
+          } catch {
+            this.#downloads--
+            return failure('unavailable', 503)
+          }
+        }
         const match = /^\/api\/artifacts\/([a-f0-9]{64})\/preview$/.exec(url.pathname)
         if (!match) return failure('unavailable', 404)
         if (this.#previews >= 1) return failure('capacity', 429)
@@ -365,6 +404,92 @@ export class PrivateWebDisplay {
     })
   }
 
+  #download(id: string, generation: string) {
+    return new Promise<Awaited<ReturnType<NonNullable<Projection['download']>>>>(
+      (resolve, reject) => {
+        let settled = false
+        const finish = (work: () => void) => {
+          if (settled) return
+          settled = true
+          this.#shutdown.signal.removeEventListener('abort', abort)
+          work()
+        }
+        const abort = () => finish(() => resolve(undefined))
+        this.#shutdown.signal.addEventListener('abort', abort, { once: true })
+        if (this.#shutdown.signal.aborted) abort()
+        else
+          Promise.resolve()
+            .then(() => this.options.projection.download?.(id, generation))
+            .then(
+              (value) => finish(() => resolve(value)),
+              (error) => finish(() => reject(error)),
+            )
+      },
+    )
+  }
+  #binaryResponse(
+    bytes: Uint8Array,
+    filename: string,
+    generation: string,
+    request: Request,
+    release: () => void,
+  ): Response {
+    let done = false,
+      offset = 0
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+    const length = bytes.byteLength
+    const finish = () => {
+      if (done) return
+      done = true
+      bytes.fill(0)
+      request.signal.removeEventListener('abort', abort)
+      this.#responses.delete(abort)
+      release()
+    }
+    const abort = () => {
+      if (done) return
+      finish()
+      try {
+        controller?.error()
+      } catch {}
+    }
+    const stream = new ReadableStream<Uint8Array>(
+      {
+        start: (value) => {
+          controller = value
+          this.#responses.add(abort)
+          request.signal.addEventListener('abort', abort, { once: true })
+          if (request.signal.aborted) abort()
+        },
+        pull(value) {
+          if (done) return
+          if (offset >= bytes.length) {
+            finish()
+            value.close()
+            return
+          }
+          const end = Math.min(bytes.length, offset + 65536)
+          value.enqueue(new Uint8Array(bytes.subarray(offset, end)))
+          offset = end
+        },
+        cancel: finish,
+      },
+      new ByteLengthQueuingStrategy({ highWaterMark: 65536 }),
+    )
+    const encodedName = encodeURIComponent(filename).replace(
+      /[!'()*]/g,
+      (value) => `%${value.charCodeAt(0).toString(16).toUpperCase()}`,
+    )
+    return new Response(stream, {
+      headers: {
+        ...policy,
+        'Content-Type': 'application/octet-stream',
+        'Content-Length': String(length),
+        'Content-Disposition': `attachment; filename="artifact"; filename*=UTF-8''${encodedName}`,
+        'X-Jig-Capture-Generation': generation,
+      },
+    })
+  }
   #snapshotResponse(
     body: string,
     request: Request,

@@ -66,8 +66,8 @@ use-case and orchestration hypotheses.
   `spec/contract-authoring.md` owns its exact host boundaries.
 - `guide/markdown.md` teaches one-file methods, supported Skill authoring, exact
   recipes and the installed sequential interpreter's limits.
-- `guide/channels.md` teaches application-owned live progress and subprocess
-  consumption. `contracts/` also explains named channel agreements. Root and
+- `guide/channels.md` teaches application-owned live progress, semantic views,
+  captured media, final display bundles and subprocess consumption. `contracts/` also explains named channel agreements. Root and
   package READMEs introduce the product and link to these owners.
 - `guide/*.diagram.json` and matching SVGs own explanatory diagrams alongside
   their guides. The shared diagram workflow is in `docs/AGENTS.md`.
@@ -80,8 +80,8 @@ use-case and orchestration hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
 - `guide/results.md` owns execution, application outcome, delivery, cleanup,
-  failure diagnosis, and retained-state recovery. Saved inspection starts no
-  execution. Agent setup recovery belongs in `guide/agents.md`. Settings and
+  failure diagnosis, and retained-state recovery. It distinguishes saved packets
+  from explicitly retained application views. Neither inspection starts execution. Agent setup recovery belongs in `guide/agents.md`. Settings and
   appearance belong in `guide/configuration.md`. The quickstart links to results
   after the first outcome.
 - `index.md` and `guide/understand.md` introduce Agent work inside applications

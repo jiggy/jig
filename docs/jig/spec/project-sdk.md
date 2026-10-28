@@ -88,21 +88,30 @@ removed. Unclosed quotes, unfinished escapes, NUL and unquoted shell operators
 Quoted values are literal: no environment, tilde, wildcard or command expansion.
 TypeScript string escaping still applies before this argument parsing.
 
-Allowed options are `--input`, `--attach`, `--select`, `--out`, `--receive` and
-`--timeout`, with the ordinary Run grammar. Operator controls such as
+Allowed options are `--input`, `--attach`, `--select`, `--out`, `--receive`,
+`--timeout` and `--display-bundle`, with the ordinary Run grammar. Operator controls such as
 `--verification` and `--json` remain CLI options. Review validates the target,
 supplied inline input, unbound read-attachment names and outgoing channel names.
+
+A selected display bundle must name a declared writable attachment or artifact result.
+Its relative file path remains inside that output rather than becoming a project path.
+[Retained application views](display-archive.md) define acceptance and receipt recovery.
+
 Omitted required input or files can still be supplied by the caller. File
-arguments are project-relative slash paths; traversal, absolute paths and `.jig`
-are rejected. Review does not read those job files.
+arguments are project-relative slash paths.
+Traversal, absolute paths and `.jig` are rejected. Review does not read those job files.
 
 `jig run` without a target uses the approved entrypoint in terminals and scripts.
 Explicit options replace corresponding defaults: `--input` replaces the entire
-JSON value or file reference, `--receive` replaces the channel set, and file
-mappings replace by attachment name. `--select` replaces that attachment's whole
-selection set. Replacing `--attach` clears its default selections unless explicit
+JSON value or file reference, and `--receive` replaces the channel set.
+File mappings replace by attachment name.
+`--display-bundle` replaces the whole final-bundle selection.
+
+`--select` replaces that attachment's whole selection set. Replacing `--attach` clears its default selections unless explicit
 selections are also supplied. An explicit `--out` replaces the declared output
-destination; duplicates within either source remain errors. An explicit target
+destination. Duplicates within either source remain errors.
+
+An explicit target
 bypasses all entrypoint defaults, even when it names
 the same target. Without an entrypoint, terminals offer a chooser and scripts
 require an exact target. An invalid or unavailable entrypoint never falls back.

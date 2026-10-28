@@ -202,7 +202,10 @@ See the [local access and lifetime contract](../spec/web-display.md).
 One declaration and one full snapshot are enough:
 
 ```ts
-const matters = reporter.view('matters', {title: 'Document review', landing: true})
+const matters = reporter.view('matters', {
+  title: 'Document review', landing: true,
+  target: {definitionId: 'document-review', instanceKey: 'case-42', subjectKey: 'case-42'},
+})
 matters.update({
   summary: 'Review the supplied documents and retain findings for a person to check.',
   sections: [{blocks: [{
@@ -215,30 +218,94 @@ matters.update({
 })
 ```
 
-Use `report`, `facts`, explicit count `progress`, and typed `collection` blocks.
-Compose your domain helper from these ordinary records; no terminal code or host
-adapter is needed. Python exposes the same `reporter.view(id, options)` handle
+Use `report`, `facts`, explicit count `progress`, captured `content` and typed `collection` blocks.
+Compose your domain helper from ordinary records and pure projection functions.
+No terminal code or host adapter is needed. Python exposes the same `reporter.view(id, options)` handle
 with `update(snapshot)` and `retire()`.
 
 Every update replaces the whole view atomically. Stable collection/row IDs preserve
 selection. Keep essential conclusions in the result and files: optional updates
-can stop, and frozen views show when their observation ended. A handle owns its
-ID for the scope; retired IDs cannot be reused. At most eight views per publisher
-are retained. Only one view may offer a landing hint; the root hint selects the
-initial surface until the operator chooses.
+can stop, and frozen views show when their observation ended.
+A handle owns its ID for the scope, and retired IDs cannot be reused.
+At most eight views per publisher are retained.
 
-Typed references address a current same-publisher record, an actual own call, or
-a declared output file. For example, `{kind: 'call', operationId: 'check-lease'}`
-or `{kind: 'artifact', attachment: 'deliverables', path: 'draft.txt'}`. Missing
-targets remain visibly unavailable. Artifact references resolve only after Jig
-verifies delivery; a preview reads the immutable admitted capture, even if the
-destination later changes. Text/diff previews are limited to 64 KiB. References
-never execute work, apply a patch, open an external program, or grant authority.
+Only one view may offer a landing hint.
+The root hint selects the initial surface until the operator chooses.
+
+A target separates the reusable definition from its application instance.
+For another document set, keep `definitionId: 'document-review'` and choose another stable `instanceKey`.
+Use a shared `subjectKey` when different view definitions describe the same application subject.
+These keys help navigation without merging views or changing the actual publisher's identity.
+Target, landing hint and call association remain fixed during a view's lifetime.
+
+Authors offer complete snapshots as state changes.
+The publisher coalesces superseded updates across views and activities while preserving notice, clear and retirement boundaries.
+A view supports up to 1,024 rows and 8,192 cells within its encoded byte bound.
+Use `previewCollection` when an explicit bounded excerpt better serves the task.
+Its whole rows and shown, total and omitted counts preserve the distinction between retained data and complete data.
+
+Typed references address a current same-publisher record, an actual own call, or a declared file.
+For example, `{kind: 'call', operationId: 'check-lease'}` names this publisher's operation.
+`{kind: 'artifact', attachment: 'deliverables', path: 'draft.txt'}` names verified delivered output.
+`{kind: 'input-artifact', attachment: 'source', path: 'scan.jpg'}` instead names an exact captured input member.
+Missing targets remain visibly unavailable, and child-only files require explicit remapping through the parent.
+References never execute work, apply a patch, open an external program or grant authority.
+
+Previews and full downloads read immutable captured bytes even if original inputs or delivered destinations later change.
+Captured input remains distinct from verified delivery and recorded captures.
+A clipped preview never substitutes for a complete file download.
+[The web display contract](../spec/web-display.md) defines media bounds, generation checks and Close behavior.
+
+### Show captured media and literal detail
+
+A gallery gives ordinary columns explicit presentation roles:
+
+```ts
+const photos = reporter.view('photos', {
+  title: 'Photos',
+  target: {definitionId: 'photos', instanceKey: 'family-2025', subjectKey: 'family-2025'},
+})
+photos.update({
+  summary: 'Inspect the supplied photographs and their captions.',
+  sections: [{blocks: [{
+    kind: 'collection', id: 'photographs', title: 'Supplied photographs',
+    presentation: {kind: 'gallery', media: 'image', title: 'name', alt: 'caption'},
+    columns: [
+      {key: 'image', label: 'Image', type: 'reference'},
+      {key: 'name', label: 'Name', type: 'text'},
+      {key: 'caption', label: 'Caption', type: 'text'},
+    ],
+    rows: [{id: 'one', cells: {
+      image: {kind: 'input-artifact', attachment: 'source', path: 'one.jpg'},
+      name: 'Family photograph', caption: 'The supplied group by the lake.',
+    }}],
+  }]}],
+})
+```
+
+Every field and supplied row detail remains inspectable.
+A content block can feature one captured item with `{kind: 'content', reference, title}`.
+Reports accept `format: 'plain'`, `format: 'code'` or `format: 'diff'` to preserve intended literal reading.
+These declarations add no markup, browser component or execution callback.
+A view may simply present information when its application needs no action.
+
+### Retain an explicit final edition
+
+Live updates remain optional observations.
+Use the same application projections in a [final display bundle](../spec/display-archive.md) when the application needs retained views.
+The TypeScript and Python helpers derive target revision checks from supplied publication context.
+Write the encoded bundle through an ordinary declared output.
+The operator selects it with `--display-bundle NAME=FILE`.
+
+Jig accepts the selected edition atomically after verified final delivery.
+It never substitutes the last live snapshot or publishes checkpoint-only material as final.
+The application owns aggregation and domain state, while each child publisher keeps its original attribution.
+Retained views can be read with `jig views` independently of execution history.
 
 For software consumers, use `--receive updates --json`, parse complete stdout
 lines as JSON, and keep stderr separate. Read `begin`, ordered `data`, `end`, then
 `terminal`. Only `terminal.result` reports the Run outcome. A disconnected stream
-or missing terminal is incomplete delivery. There is no retention or replay.
+or missing terminal is incomplete delivery. Live reporting has no retention or replay.
 [Run Checkpoint](../spec/run-checkpoint.md) separately retains settled artifacts.
 
 A simpler string channel with explicit reception remains useful when messages

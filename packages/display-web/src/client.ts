@@ -1,13 +1,12 @@
-import { validDisplayImage } from '@jigging/display-model'
-import { validateDisplaySnapshot } from '@jigging/display-model'
 import type {
   DisplayPreviewReply,
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
 } from '@jigging/display-model'
+import { validateDisplaySnapshot, validDisplayImage } from '@jigging/display-model'
 
-const SNAPSHOT_BYTES = 8 * 1024 * 1024
-const PREVIEW_BYTES = 2 * 1024 * 1024
+const SNAPSHOT_BYTES = 16 * 1024 * 1024
+const PREVIEW_BYTES = 1 * 1024 * 1024
 export type PrivateBrowserConnection =
   | 'connecting'
   | 'current'
@@ -133,6 +132,12 @@ export class PrivateBrowserClient {
   #snapshot: AbortController | undefined
   #previewRequest: AbortController | undefined
   #intent: PrivateBrowserPreviewIntent | undefined
+  #mediaIntents: readonly PrivateBrowserPreviewIntent[] = []
+  #mediaRequest: AbortController | undefined
+  #mediaGeneration = 0
+  #mediaCache = new Map<string, { reply: DisplayPreviewReply; charge: number }>()
+  #mediaBytes = 0
+  #downloadRequest: AbortController | undefined
   #retry: unknown
   #retrying = false
   #attempt = 0
@@ -167,7 +172,7 @@ export class PrivateBrowserClient {
     void this.#connect()
     void this.#capture()
   }
-  #headers(): HeadersInit {
+  #headers(): Record<string, string> {
     return { Authorization: `Bearer ${this.#capability}` }
   }
   #retryLater(retryAfter?: string | null): void {
@@ -189,6 +194,7 @@ export class PrivateBrowserClient {
       void this.#connect()
       void this.#capture()
       void this.#loadPreview()
+      void this.#loadMedia()
     }, delay)
   }
   #terminal(status: number): boolean {
@@ -202,6 +208,8 @@ export class PrivateBrowserClient {
     this.#generation++
     this.#snapshot?.abort()
     this.#previewRequest?.abort()
+    this.#mediaRequest?.abort()
+    this.#downloadRequest?.abort()
     if (this.#intent) this.preview = { intent: this.#intent, phase: 'loading' }
     this.connection = 'disconnected'
     this.#changed()
@@ -298,6 +306,12 @@ export class PrivateBrowserClient {
         this.#attempt = 0
       }
       if (this.bodyStale) this.setPreview(undefined)
+      const captures = new Set([this.body?.artifacts.generation, this.body?.inputs?.generation])
+      for (const [key, entry] of this.#mediaCache)
+        if (!captures.has(entry.reply.captureGeneration)) {
+          this.#mediaCache.delete(key)
+          this.#mediaBytes -= entry.charge
+        }
       this.#changed()
     } catch {
       if (!this.#closed && !controller.signal.aborted && generation === this.#generation) {
@@ -307,17 +321,21 @@ export class PrivateBrowserClient {
       }
     } finally {
       if (this.#snapshot === controller) this.#snapshot = undefined
-      if (!this.#closed && !this.#retrying && this.connection === 'current')
+      if (!this.#closed && !this.#retrying && this.connection === 'current') {
         void this.#loadPreview()
+        void this.#loadMedia()
+      }
       if (!this.#closed && !this.#retrying && (this.current?.revision ?? 0) < this.#highest)
         void this.#capture()
     }
   }
   setPreview(intent: PrivateBrowserPreviewIntent | undefined): void {
+    if (this.#closed) return
     if (JSON.stringify(intent) === JSON.stringify(this.#intent)) return
     this.#selectionGeneration++
     this.#intent = intent
     this.#previewRequest?.abort()
+    this.#mediaRequest?.abort()
     this.preview = intent ? { intent, phase: 'loading' } : undefined
     this.#changed()
     void this.#loadPreview()
@@ -329,6 +347,7 @@ export class PrivateBrowserClient {
       !intent ||
       !this.referencesEnabled ||
       this.#previewRequest ||
+      this.#mediaRequest ||
       this.#retrying ||
       this.preview?.phase !== 'loading'
     )
@@ -380,8 +399,7 @@ export class PrivateBrowserClient {
       if (
         reply.artifactId !== intent.artifactId ||
         reply.captureGeneration !== intent.captureGeneration ||
-        !['verified-delivery', 'recorded-capture'].includes(reply.provenance) ||
-        reply.provenance !== this.body?.artifacts.provenance ||
+        reply.provenance !== this.#captureFor(intent)?.provenance ||
         !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(reply.state) ||
         !Number.isSafeInteger(reply.bytes) ||
         reply.bytes < 0 ||
@@ -407,6 +425,201 @@ export class PrivateBrowserClient {
     } finally {
       if (this.#previewRequest === controller) this.#previewRequest = undefined
       if (!this.#closed && selection !== this.#selectionGeneration) void this.#loadPreview()
+      void this.#loadMedia()
+    }
+  }
+  #mediaKey(intent: PrivateBrowserPreviewIntent): string {
+    return JSON.stringify([intent.captureGeneration, intent.artifactId, intent.signature])
+  }
+  #captureFor(intent: PrivateBrowserPreviewIntent) {
+    return [this.body?.artifacts, this.body?.inputs].find(
+      (capture) =>
+        capture?.generation === intent.captureGeneration &&
+        capture.files.some((file) => file.id === intent.artifactId),
+    )
+  }
+  /** The viewer supplies only currently visible media. One transport request runs at a time. */
+  setMedia(intents: readonly PrivateBrowserPreviewIntent[]): void {
+    if (this.#closed) return
+    const selected = intents.slice(0, 24)
+    if (JSON.stringify(selected) === JSON.stringify(this.#mediaIntents)) return
+    this.#mediaGeneration++
+    this.#mediaIntents = selected
+    this.#mediaRequest?.abort()
+    void this.#loadMedia()
+  }
+  mediaPreview(intent: PrivateBrowserPreviewIntent): DisplayPreviewReply | undefined {
+    if (!this.referencesEnabled || !this.#captureFor(intent)) return undefined
+    const key = this.#mediaKey(intent)
+    const entry = this.#mediaCache.get(key)
+    if (!entry) return undefined
+    this.#mediaCache.delete(key)
+    this.#mediaCache.set(key, entry)
+    return entry.reply
+  }
+  async #loadMedia(): Promise<void> {
+    if (
+      this.#closed ||
+      !this.referencesEnabled ||
+      this.#retrying ||
+      this.#previewRequest ||
+      this.#mediaRequest ||
+      this.preview?.phase === 'loading'
+    )
+      return
+    const intent = this.#mediaIntents.find(
+      (item) => this.#captureFor(item) && !this.#mediaCache.has(this.#mediaKey(item)),
+    )
+    if (!intent) return
+    const controller = new AbortController()
+    this.#mediaRequest = controller
+    const generation = this.#generation
+    const selection = this.#mediaGeneration
+    try {
+      const response = await this.#fetch(
+        `/api/artifacts/${encodeURIComponent(intent.artifactId)}/preview`,
+        {
+          headers: this.#headers(),
+          signal: controller.signal,
+          credentials: 'omit',
+          cache: 'no-store',
+        },
+      )
+      if (this.#closed || this.#terminal(response.status)) return
+      if (response.status === 429) {
+        this.#retryLater(response.headers.get('Retry-After'))
+        return
+      }
+      if (!response.ok) throw new Error('Preview unavailable')
+      const reply = (await boundedJson(response, PREVIEW_BYTES, controller.signal))
+        .value as DisplayPreviewReply
+      if (
+        controller.signal.aborted ||
+        this.#closed ||
+        generation !== this.#generation ||
+        selection !== this.#mediaGeneration ||
+        !this.referencesEnabled
+      )
+        return
+      if (
+        reply.artifactId !== intent.artifactId ||
+        reply.captureGeneration !== intent.captureGeneration ||
+        reply.provenance !== this.#captureFor(intent)?.provenance ||
+        !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(reply.state) ||
+        !Number.isSafeInteger(reply.bytes) ||
+        reply.bytes < 0 ||
+        typeof reply.clipped !== 'boolean' ||
+        (reply.state === 'image' ? !validDisplayImage(reply.image) : reply.image !== undefined) ||
+        (reply.state === 'text' && typeof reply.text !== 'string') ||
+        (reply.text !== undefined &&
+          (typeof reply.text !== 'string' || new TextEncoder().encode(reply.text).length > 65536))
+      )
+        throw new Error('Preview unavailable')
+      this.#rememberMedia(intent, reply)
+    } catch {
+      if (
+        !controller.signal.aborted &&
+        !this.#closed &&
+        generation === this.#generation &&
+        selection === this.#mediaGeneration
+      ) {
+        const capture = this.#captureFor(intent)
+        if (capture)
+          this.#rememberMedia(intent, {
+            artifactId: intent.artifactId,
+            captureGeneration: intent.captureGeneration,
+            provenance: capture.provenance,
+            state: 'unavailable',
+            bytes: 0,
+            clipped: false,
+          })
+      }
+    } finally {
+      if (this.#mediaRequest === controller) this.#mediaRequest = undefined
+      void this.#loadPreview()
+      void this.#loadMedia()
+    }
+  }
+  #rememberMedia(intent: PrivateBrowserPreviewIntent, reply: DisplayPreviewReply): void {
+    const charge = JSON.stringify(reply).length * 2 + 512
+    if (charge > PREVIEW_BYTES * 2 + 512) return
+    const key = this.#mediaKey(intent)
+    const previous = this.#mediaCache.get(key)
+    if (previous) {
+      this.#mediaCache.delete(key)
+      this.#mediaBytes -= previous.charge
+    }
+    while (
+      (this.#mediaBytes + charge > 8 * 1024 * 1024 || this.#mediaCache.size >= 64) &&
+      this.#mediaCache.size
+    ) {
+      const [oldKey, old] = this.#mediaCache.entries().next().value!
+      this.#mediaCache.delete(oldKey)
+      this.#mediaBytes -= old.charge
+    }
+    this.#mediaCache.set(key, { reply, charge })
+    this.#mediaBytes += charge
+    this.#changed()
+  }
+  /** Return complete captured bytes. Clipped previews never provide download content. */
+  async download(intent: PrivateBrowserPreviewIntent): Promise<Uint8Array | undefined> {
+    const capture = this.#captureFor(intent)
+    const file = capture?.files.find((file) => file.id === intent.artifactId)
+    if (this.#closed || !this.referencesEnabled || this.#downloadRequest || !file?.downloadable)
+      return undefined
+    const controller = new AbortController()
+    this.#downloadRequest = controller
+    const generation = this.#generation
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    const chunks: Uint8Array[] = []
+    try {
+      const response = await this.#fetch(
+        `/api/artifacts/${encodeURIComponent(intent.artifactId)}/download`,
+        {
+          headers: { ...this.#headers(), 'X-Jig-Capture-Generation': intent.captureGeneration },
+          signal: controller.signal,
+          credentials: 'omit',
+          cache: 'no-store',
+        },
+      )
+      if (
+        this.#terminal(response.status) ||
+        !response.ok ||
+        response.headers.get('X-Jig-Capture-Generation') !== intent.captureGeneration
+      )
+        return undefined
+      reader = response.body?.getReader()
+      if (!reader) return undefined
+      let length = 0
+      while (true) {
+        const item = await reader.read()
+        if (
+          controller.signal.aborted ||
+          this.#closed ||
+          generation !== this.#generation ||
+          !this.referencesEnabled ||
+          !this.#captureFor(intent)
+        )
+          return undefined
+        if (item.done) break
+        length += item.value.length
+        if (length > 16 * 1024 * 1024 || length > file.bytes) return undefined
+        chunks.push(item.value)
+      }
+      if (length !== file.bytes) return undefined
+      const result = new Uint8Array(length)
+      let offset = 0
+      for (const chunk of chunks) {
+        result.set(chunk, offset)
+        offset += chunk.length
+      }
+      return result
+    } catch {
+      return undefined
+    } finally {
+      await reader?.cancel().catch(() => {})
+      reader?.releaseLock()
+      if (this.#downloadRequest === controller) this.#downloadRequest = undefined
     }
   }
   async closeInspection(): Promise<boolean> {
@@ -438,6 +651,11 @@ export class PrivateBrowserClient {
     this.#stream?.abort()
     this.#snapshot?.abort()
     this.#previewRequest?.abort()
+    this.#mediaRequest?.abort()
+    this.#downloadRequest?.abort()
+    this.#mediaIntents = []
+    this.#mediaCache.clear()
+    this.#mediaBytes = 0
     if (this.#retrying) this.#cancel(this.#retry)
     this.#retrying = false
     this.#retry = undefined

@@ -713,10 +713,11 @@ not the current admission; deleting an original does not invalidate its retained
 copy. Missing or corrupt retained bytes fail without recapture or substitution.
 
 Only that root Binding receives the captured bytes through ordinary
-`run.attachments`. Other read attachments require `--attach`; supplying an
-already-bound name fails rather than overriding it. Bound and per-run inputs
-share the 64-file/8-MiB execution budget. Both use sealed descriptors and the
+`run.attachments`. Other read attachments require `--attach`.
+Supplying an already-bound name fails rather than overriding it. Bound and per-run inputs
+share the 64-file/64-MiB execution budget. Both use sealed descriptors and the
 same read-only input projection, without source modes or live host paths.
+
 Children receive a selected immutable read view only through an explicit
 reviewed mapping from their immediate caller. Native Agent/command scopes
 receive no attachment authority.
@@ -1164,11 +1165,12 @@ support. Qualified Macs use descriptor-relative no-follow acquisition and
 no-replace publication; unsupported semantics have no fallback. These checks exclude a malicious host
 administrator or same-user process, as specified in the security boundary.
 
-Limits are aggregate across input attachments: eight declared attachments
-including any writable one, 64 regular files, 8 MiB content, 256 enumerated
-entries, 16 path components, and 512 UTF-8 bytes per relative path. Exact
-selection never enumerates unselected subtrees. A detected file mutation fails
-capture; the captured set is not an atomic repository revision or a secret scan.
+Input limits aggregate across attachments, including any writable one.
+They permit eight attachments, 64 regular files, 64 MiB content and 256 enumerated entries.
+Relative paths permit 16 components and 512 UTF-8 bytes.
+Exact selection never enumerates unselected subtrees.
+A detected file mutation fails capture.
+The captured set is not an atomic repository revision or a secret scan.
 
 `@FILE` is operator-selected data, not an execution attachment. Jig opens its
 non-symbolic-link regular-file leaf once, bounds and snapshots its bytes, checks

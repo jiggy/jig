@@ -28,7 +28,11 @@ const identity = (value: unknown) => text(value, 256, 1)
 const count = (value: unknown): number =>
   typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : fail()
 const number = (value: unknown): number =>
-  typeof value === 'number' && Number.isFinite(value) && (!Number.isInteger(value) || Number.isSafeInteger(value)) ? value : fail()
+  typeof value === 'number' &&
+  Number.isFinite(value) &&
+  (!Number.isInteger(value) || Number.isSafeInteger(value))
+    ? value
+    : fail()
 const flag = (value: unknown) => (typeof value === 'boolean' ? value : fail())
 const choice = (value: unknown, values: readonly string[]) =>
   typeof value === 'string' && values.includes(value) ? value : fail()
@@ -177,7 +181,14 @@ function unique(values: unknown[], check: (value: unknown) => void, field = 'id'
 }
 
 function capture(value: unknown, input: boolean): void {
-  const data = record(value, ['generation', 'sourceId', 'permittedAttachments', 'provenance', 'phase', 'files'])
+  const data = record(value, [
+    'generation',
+    'sourceId',
+    'permittedAttachments',
+    'provenance',
+    'phase',
+    'files',
+  ])
   identity(data.generation)
   identity(data.sourceId)
   const attachments = list(data.permittedAttachments, 65536)
@@ -186,18 +197,37 @@ function capture(value: unknown, input: boolean): void {
   choice(data.provenance, input ? ['captured-input'] : ['verified-delivery', 'recorded-capture'])
   choice(data.phase, ['pending', 'ready', 'unavailable'])
   const joins = new Set<string>()
+  const paths = new Map<string, Set<unknown>>()
   unique(list(data.files, 64), (value) => {
-    const file = record(value, ['id', 'path', 'bytes', 'state', 'clipped', 'sourceId', 'attachment', 'downloadable'])
+    const file = record(value, [
+      'id',
+      'path',
+      'bytes',
+      'state',
+      'clipped',
+      'sourceId',
+      'attachment',
+      'downloadable',
+    ])
     identity(file.id)
     text(file.path, 512, 1)
     count(file.bytes)
     choice(file.state, ['text', 'empty', 'image', 'non-text', 'unavailable'])
     flag(file.clipped)
     optional(file.sourceId, identity)
-    optional(file.attachment, value => text(value, 64, 1))
+    optional(file.attachment, (value) => text(value, 64, 1))
     optional(file.downloadable, flag)
     if (file.attachment !== undefined && !attachments.includes(file.attachment)) fail()
-    const join = JSON.stringify([file.sourceId ?? data.sourceId, file.attachment ?? null, file.path])
+    const path = JSON.stringify([file.sourceId ?? data.sourceId, file.path])
+    const bindings = paths.get(path) ?? new Set<unknown>()
+    if ((file.attachment === undefined && bindings.size) || bindings.has(undefined)) fail()
+    bindings.add(file.attachment)
+    paths.set(path, bindings)
+    const join = JSON.stringify([
+      file.sourceId ?? data.sourceId,
+      file.attachment ?? null,
+      file.path,
+    ])
     if (joins.has(join)) fail()
     joins.add(join)
   })
@@ -268,7 +298,15 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
     })
     text(data.reason, 1024)
     unique(list(data.diagnostics, 32), (value) => journal(value, true))
-    for (const name of ['views', 'calls', 'activities', 'journal', 'artifacts', 'inputs', 'incomplete'])
+    for (const name of [
+      'views',
+      'calls',
+      'activities',
+      'journal',
+      'artifacts',
+      'inputs',
+      'incomplete',
+    ])
       if (data[name] !== undefined) fail()
   } else {
     for (const name of ['lastCompleteRevision', 'reason', 'diagnostics'])
@@ -363,12 +401,19 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
     if (data.inputs !== undefined) capture(data.inputs, true)
     const captures = [data.artifacts, data.inputs].filter(Boolean) as Data[]
     const ids = new Set<unknown>()
-    for (const value of captures) for (const file of value.files as Data[]) {
-      if (ids.has(file.id)) fail()
-      ids.add(file.id)
-    }
-    if (data.mode === 'retained-views' && (calls.length || (data.activities as unknown[]).length || (data.journal as unknown[]).length || workspace.phase !== 'settled')) fail()
-
+    for (const value of captures)
+      for (const file of value.files as Data[]) {
+        if (ids.has(file.id)) fail()
+        ids.add(file.id)
+      }
+    if (
+      data.mode === 'retained-views' &&
+      (calls.length ||
+        (data.activities as unknown[]).length ||
+        (data.journal as unknown[]).length ||
+        workspace.phase !== 'settled')
+    )
+      fail()
   }
   return owned.value as DisplaySnapshotEnvelope
 }

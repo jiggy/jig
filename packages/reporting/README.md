@@ -160,8 +160,8 @@ Reported total cannot be less than supplied rows.
 The exported types describe these records.
 `validateReportingMessage` additionally enforces cross-field rules and aggregate limits.
 
-Source EOF removes activities and freezes views with observation-ended context;
-lost or invalid observation marks them incomplete. Ending observation, a count,
+Source EOF removes activities and freezes views with observation-ended context.
+Lost or invalid observation marks them incomplete. Ending observation, a count,
 a status string or a returned call never establishes application success.
 Important blocking causes belong in notices and final evidence, even if a view
 also contains them. Unsent replacements coalesce across keys within an epoch.

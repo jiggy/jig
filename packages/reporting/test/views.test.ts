@@ -65,7 +65,7 @@ test('views are complete immutable snapshots with closed structure and typed exa
       (v.sections[0].blocks[0].rows[0].details[0].references = [
         { kind: 'call', operationId: 'a b' },
       ]),
-    (v: any) => (v.sections = Array.from({ length: 9 }, () => ({ blocks: [] }))),
+    (v: any) => (v.sections = Array.from({ length: 33 }, () => ({ blocks: [] }))),
     (v: any) =>
       (v.sections = [{ blocks: Array.from({ length: 33 }, () => ({ kind: 'report', text: '' })) }]),
   ]
@@ -156,31 +156,41 @@ test('tail view replacements coalesce but notice/retirement and in-flight snapsh
   expect(values[0].title).toBe('New title')
 })
 
-test('view numbers obey JSON/0 and the shared exact 32 KiB boundary', () => {
+test('view numbers obey JSON/0 and the shared exact 512 KiB boundary', () => {
+  const rows = Array.from({ length: 128 }, (_, index) => ({
+    id: String(index),
+    cells: { text: '' },
+  }))
   const value = {
     kind: 'view',
     id: 'numbers',
     title: 'Numbers',
-    summary: 'Check canonical byte accounting',
+    summary: 'Canonical byte accounting',
     sections: [
       {
         blocks: [
           {
-            kind: 'facts',
-            items: Array.from({ length: 32 }, (_, i) => ({ label: 'N' + i, value: 1e-7 })),
+            kind: 'collection',
+            id: 'records',
+            title: 'Records',
+            columns: [{ key: 'text', label: 'Text', type: 'text' }],
+            rows,
           },
-          ...Array.from({ length: 8 }, (_, i) => ({
-            kind: 'report',
-            text: 'x'.repeat(i < 7 ? 4096 : 2809),
-          })),
         ],
       },
     ],
   }
-  expect(Buffer.byteLength(JSON.stringify(value))).toBe(32768)
+  let remaining = 524288 - Buffer.byteLength(JSON.stringify(value))
+  for (const row of rows) {
+    const count = Math.min(remaining, 4096)
+    row.cells.text = 'x'.repeat(count)
+    remaining -= count
+  }
+  expect(remaining).toBe(0)
+  expect(Buffer.byteLength(JSON.stringify(value))).toBe(524288)
   expect(() => validateReportingMessage(value)).not.toThrow()
-  value.sections[0]!.blocks[8]!.text += 'x'
-  expect(() => validateReportingMessage(value)).toThrow('32 KiB')
+  rows.find((row) => row.cells.text.length < 4096)!.cells.text += 'x'
+  expect(() => validateReportingMessage(value)).toThrow('512 KiB')
   for (const number of [1e20, -1e20, 2 ** 53, NaN, Infinity, -Infinity]) {
     expect(() =>
       validateReportingMessage({

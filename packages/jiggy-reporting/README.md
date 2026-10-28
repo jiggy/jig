@@ -1,106 +1,161 @@
 # Python reporting
 
-Report progress, messages and application views from a Flow. The same declarations
-work in terminal and web displays:
+Report progress, messages and application views from a Flow.
+The same declarations work in terminal and web displays.
+Install `jiggy-reporting` with its exact `jiggy-flow` peer.
 
 ```python
-from jiggy.flow import handle, RunResult
+from jiggy.flow import handle
 from jiggy.reporting import reporting
 
 async def run(context):
-    async with reporting(context, "updates") as reporter:
-        reporter.activity("files", "Checking files", {"completed": 0, "total": 3, "unit": "files"})
+    async with reporting(context, 'updates') as reporter:
+        reporter.activity('files', 'Checking files', {'completed': 0, 'total': 3, 'unit': 'files'})
         # Perform the application's checks here.
-        reporter.notice("The file checks have ended.")
-        reporter.clear("files")
-        return RunResult(outcome="done", output={"files": 3})
+        reporter.notice('The file checks have ended.')
+        reporter.clear('files')
+        return {'outcome': 'done', 'output': {'files': 3}}
 
 handle(run)
 ```
 
-Create the `contracts` parent directory, import the agreement with `jig import-contract jig:reporting
-contracts/reporting`, then declare an optional send channel:
-`{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/reporting/reporting.json"}}}`
-in `FLOW.contract.json` (create this descriptor if absent).
-Use `--receive updates` for explicit observation. The exact same provisional
-`0.1.0` agreement is also bundled as `jiggy.reporting/reporting.json`;
-share its MPL-2.0 license when copying it to other hosts. Identity is derived
-from the descriptor, with no runtime network fetch.
+Create the `contracts` parent directory.
+Import the agreement with `jig import-contract jig:reporting contracts/reporting`.
+Declare an optional send channel in `FLOW.contract.json`:
 
-Offers validate and snapshot even without an observer. The scope exclusively
-owns its writer; do not send, close, transfer or wrap it independently. Adjacent
-unsent activities may coalesce; notices and clears preserve order. Activity fully
-replaces the label and optional count, which may decrease or change units. Clear
-and source ending remove transient state. Notices, counts and even 100% never
-establish execution success. Keep essential evidence in results or artifacts.
+```json
+{"$schema":"https://flow.jig.md/schemas/invocation-contract-0.schema.json","channels":{"updates":{"direction":"send","required":false,"contract":"./contracts/reporting/reporting.json"}}}
+```
 
-The publisher bounds retained messages (16/256 KiB), active IDs (16), notices
-(128/512 KiB), attempts/traffic (4096/4 MiB), item size (32 KiB) and rate (5/s).
-Local send wait is 500 ms; aggregate best-effort drain allows 4000 ms from body
-exit. Drained or unwired scopes add no waiting period. Prompt acknowledgements
-allow a full backlog to drain; slower receivers may still lose updates. The Run
-deadline remains authoritative and can expire during drain. Local overflow or timeout
-stops observation; original sends and close still settle before scope exit,
-which may therefore take longer. Observer LAGGED/DISCONNECTED may degrade.
-Unexpected publication errors remain errors; application exceptions remain
-primary with a bounded secondary diagnostic. Cancellation stops publication and
-joins owned operations while the SDK keeps ownership of retained wire requests.
+Use `--receive updates` for explicit observation.
+The provisional `0.1.0` agreement is bundled as `jiggy.reporting/reporting.json`.
+Share its MPL-2.0 license when copying it to another host.
+Identity is derived from that descriptor without a runtime network fetch.
 
-Parents explicitly validate/summarize child observations and own their receivers.
-Give each child occurrence fresh IDs and fence relays before ordered clears.
-Shared budgets can stop healthy siblings. ACP fragments and plans have a
-separate contract; this helper does not convert them.
+## Whole application views
 
-`reporter.notice(text, severity="error")` reports an important application error.
-Severity is info (default), warning or error. It changes prominence, not ordering,
-limits, delivery or cancellation. Keep essential failure reasons in results too.
-
-## Read-only views
-
-Use the same scope for domain views:
+Use a small application state and pure projection functions.
+The scope owns view handles and publishes complete immutable snapshots of supplied values.
+Valid offers remain harmless when no observer is connected.
+Invalid offers still raise errors.
 
 ```python
-jobs = reporter.view('jobs', {'title': 'Jobs', 'landing': True})
-jobs.update({
-    'summary': 'Checking the supplied matters; human review is required.',
+photos = reporter.view('family-photos', {
+    'title': 'Photos', 'landing': True,
+    'target': {'definitionId': 'photos', 'instanceKey': 'family', 'subjectKey': 'family'},
+})
+photos.update({
+    'summary': 'Browse the supplied collection.',
     'sections': [{'blocks': [{
-        'kind': 'collection', 'id': 'matters', 'title': 'Matters',
-        'columns': [{'key': 'name', 'label': 'Matter', 'type': 'text'}],
-        'rows': [{'id': 'm1', 'cells': {'name': 'Document review'},
-                  'details': [{'kind': 'report', 'text': 'Compare the supplied documents.'}]}],
+        'kind': 'collection', 'id': 'photos', 'title': 'Originals',
+        'presentation': {'kind': 'gallery', 'media': 'image', 'title': 'name', 'alt': 'name'},
+        'columns': [
+            {'key': 'name', 'label': 'Name', 'type': 'text'},
+            {'key': 'image', 'label': 'Image', 'type': 'reference'},
+        ],
+        'rows': [{'id': 'one', 'cells': {
+            'name': 'Lake picnic',
+            'image': {'kind': 'input-artifact', 'attachment': 'source', 'path': 'picnic.jpg'},
+        }, 'details': [{'kind': 'report', 'text': 'The supplied caption.'}]}],
     }]}],
 })
 ```
 
-`view(id, options)` claims one local handle; it sends nothing until `update`.
-Updates replace the complete snapshot; optional `title` changes its title.
-`retire()` removes an offered view once. Repeated retirement is harmless;
-updates after retirement/draining and ID reuse throw. At most 16 handles belong
-to one scope. Valid disabled offers are no-ops; invalid offers still throw.
+`view(id, options)` claims one publisher-local handle without sending a message.
+`update(snapshot)` replaces its complete snapshot and may change its title.
+`retire()` removes an offered view once.
+Repeated retirement is harmless, but retired identifiers never revive.
+Each scope can claim sixteen view handles.
 
-Sections contain reports (`text`, optional `references`), facts (`items` of
-`label`/`value`), progress (`label`, `completed`, optional `total`/`unit`) and
-collections (`id`, `title`, typed `columns`, `rows`, optional reported `total`).
-Rows have stable `id`, exact column keys in `cells`, optional non-collection
-`details`. Column types are text, number, boolean and reference; null is unknown.
-References are closed record (`viewId`, `collectionId`, `rowId`), call
-(`operationId`) or artifact (`attachment`, safe relative `path`) objects with
-`kind`. All resolve only in the actual publisher namespace. A missing target
-stays unavailable; previews require immutable verified delivery evidence.
+The optional target separates a view definition from an application instance.
+Its `subjectKey` relates views about the same subject without merging their content.
+Targets, landing hints and call associations remain fixed for the handle's lifetime.
+Actual publisher identity always comes from the host.
 
-`jig run --display tui` opens the read-only keyboard inspector;
-`--display plain` emits complete changed summaries. Automatic display yields to
-`--json` and effective `--receive`. Source EOF freezes views with ended context,
-while abnormal endings mark them incomplete. Domain statuses do not establish
-host execution or application success. Report blocking causes as notices and
-retain them in final evidence too.
+Sections contain reports, facts, progress, collections and captured content.
+A report's optional `format` is `plain`, `code` or `diff`.
+Literal formats preserve text and grant no executable markup.
+A content block contains an artifact reference and optional title.
 
-The same descriptor limits apply in both languages: 32 KiB per item; 8 sections,
-32 total blocks including details, 128 rows, 8 columns per collection, 1024
-cells, 8 details per row, 32 facts per block and 8 references per report. IDs and
-keys have 1–64 Unicode scalars, titles/labels 1–128, summaries 1–1024, report/text
-values 0–4096, units 1–32. IDs, titles, keys, labels and units are single-line.
-Counts are safe nonnegative integers with completed <= total; collection total
-never undercounts supplied rows. Only consecutive unsent replacements of the
-same view/activity coalesce; notices and removals are barriers. No executable
-content or execution-changing action crosses this contract.
+Collections contain exact typed columns, whole rows and optional row details.
+The default presentation is a table.
+An explicit gallery names its media column and optional text columns for title, alternative text and description.
+Every field remains inspectable, including fields without a visual role.
+
+References identify a record, call, delivered artifact or captured input artifact.
+`artifact` and `input-artifact` keep separate provenance and inventories.
+References resolve only against their actual publisher's verified captured material.
+Unavailable targets remain unavailable instead of resolving against newer or unrelated files.
+
+For larger collections, use `preview_collection(collection, limit=15, complete=reference)`.
+It retains whole values within the semantic and byte budgets.
+The result includes `collection`, `shown`, `total`, `omitted` and an optional complete-artifact reference.
+It never modifies the supplied collection or clips individual cell text.
+
+## Final display bundles
+
+Live reporting is optional observation.
+A final bundle explicitly selects a finite edition for retained presentation.
+Use the same pure projections for both paths.
+
+```python
+from jiggy.reporting import create_display_bundle, encode_display_bundle
+
+bundle = create_display_bundle(context, {
+    'requestId': publication_id,
+    'edition': album_edition,
+    'views': [{'view': final_view, 'completeness': 'complete', 'domainRevision': revision}],
+})
+document = encode_display_bundle(bundle)
+```
+
+The application receives opaque publication context through its ordinary declared input or read attachment.
+The helper derives revision conditions, including removed targets' revision fences.
+It performs no filesystem operation and assigns no trusted Run provenance.
+Write the encoded document through an ordinary declared output.
+The operator explicitly selects that output with `--display-bundle NAME=FILE`.
+
+Bundles permit thirty-two views within four MiB of canonical JSON, plus one framing LF.
+Every retained view requires a target and application-reported `complete` or `partial` completeness.
+`domainRevision` is an opaque application claim, separate from archive concurrency revisions.
+`requiredEvidence` optionally requires retention of selected typed references.
+The host binds exact captured bytes and returns an acceptance receipt.
+
+Identical request recovery returns the original receipt without reinstalling removed material.
+Changed material under that identity rejects.
+A reset expires the old archive generation.
+Receipts establish acceptance-time facts, not continuing evidence availability, application correctness or current domain state.
+
+## Ownership and finite limits
+
+The scope exclusively owns its writer, sends, timers and close operation.
+Do not send, close, transfer or wrap that writer independently.
+Pending view and activity snapshots coalesce across identifiers within one publication epoch.
+Notices, clears, retirements and an already sending item preserve their boundaries.
+
+The finite profile allows 512 KiB per item and five sends per second.
+It retains at most sixteen queued or sending items within four MiB.
+It allows sixteen active activity identifiers and 128 notices within 512 KiB.
+Traffic is bounded by 18,000 attempts and 512 MiB per publisher.
+
+Views permit thirty-two sections, thirty-two layout blocks, 8,192 detail blocks, 1,024 rows and 8,192 cells.
+Each collection has at most eight columns, and each row has at most eight detail blocks.
+Facts and report references retain their thirty-two-item and eight-item limits.
+Identifiers use 1–64 Unicode scalars, titles use 1–128, and summaries use 1–1,024.
+Report text and text cells use 0–4,096 scalars.
+Counts remain safe nonnegative integers, and collection totals never undercount supplied rows.
+
+Local send waiting allows 500 ms.
+The aggregate best-effort drain allows 4,000 ms from body exit.
+Drained or unwired scopes add no waiting period.
+The original Run deadline remains authoritative.
+
+Overflow or local timeout stops observation while original sends and close still settle before scope exit.
+Cancellation also joins those owned operations.
+Observer `LAGGED` and `DISCONNECTED` may degrade optional observation.
+Unexpected publication errors remain errors, while application exceptions remain primary.
+
+Notices, counts and 100% progress never establish execution success.
+Keep essential evidence in application results or artifacts.
+Parents explicitly compose child results into root projections while children retain their own useful views and source identities.
+The host's actual captured media service serves images and downloads without granting browser execution authority.

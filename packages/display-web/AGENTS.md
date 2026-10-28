@@ -39,6 +39,10 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   reference targets retain raw IDs. Use `browserView` to resolve selected views.
 - Render author/file/diagnostic data as inert text. Only typed scoped references
   navigate. Path strings never grant evidence access or assign domain success.
+- Visible captured media shares one serial request queue with evidence inspection.
+  Retain at most 24 visible requests and eight MiB of cached replies.
+  Complete downloads require the exact capture generation and declared availability.
+  Closing the client fences previews, media and downloads.
 - Captured images use validated bounded PNG/JPEG data URLs in image elements.
   Never insert SVG into the DOM or load image paths/URLs from authored text.
 - Fixed bundled Preact is build-only. Installed assets read no sibling source or
