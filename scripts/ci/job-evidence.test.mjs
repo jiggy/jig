@@ -374,6 +374,61 @@ test('per-command Bun manifests require complete distinct whole files without sk
   await assert.rejects(() => observedCount({ transcriptManifest }), /skipped/)
 })
 
+test('native Node commands count real file-bound JUnit and refuse relabeled, filtered or repeated proof', async (t) => {
+  const f = await fixture(t)
+  const file = 'checks/material.node.mjs'
+  await f.put(
+    file,
+    "import {test} from 'node:test'; import assert from 'node:assert/strict'; test('native material',()=>assert.equal(2+2,4));\n",
+  )
+  await f.put('logs/node.txt', '')
+  const childEnvironment = { ...process.env }
+  delete childEnvironment.NODE_TEST_CONTEXT
+  const output = execFileSync(
+    process.execPath,
+    [
+      '--test',
+      '--test-reporter=tap',
+      '--test-reporter-destination=stdout',
+      `--test-reporter=${resolve(import.meta.dirname, 'source-node-reporter.mjs')}`,
+      `--test-reporter-destination=${join(f.root, 'logs/node.xml')}`,
+      `./${file}`,
+    ],
+    { cwd: f.root, env: childEnvironment, encoding: 'utf8' },
+  )
+  await f.put('logs/node.txt', output)
+  const command = {
+    transcript: 'node.txt',
+    files: [file],
+    commandKind: 'node-test',
+    junit: 'node.xml',
+  }
+  const transcriptManifest = await f.put('logs/manifest.json', {
+    schemaVersion: 1,
+    commands: [command],
+  })
+  assert.equal((await observedCount({ transcriptManifest })).count, 1)
+  for (const changed of [
+    { ...command, files: ['checks/foreign.node.mjs'] },
+    { ...command, files: ['checks/foreign.test.ts'] },
+    { ...command, filter: '^native' },
+    { ...command, junit: '../checks/material.node.mjs' },
+  ]) {
+    await f.put('logs/manifest.json', { schemaVersion: 1, commands: [changed] })
+    await assert.rejects(() => observedCount({ transcriptManifest }))
+  }
+  await f.put('logs/manifest.json', {
+    schemaVersion: 1,
+    commands: [command, { ...command, transcript: 'also.txt' }],
+  })
+  await f.put('logs/also.txt', output)
+  await assert.rejects(() => observedCount({ transcriptManifest }), /Repeated/)
+  await f.put('logs/manifest.json', { schemaVersion: 1, commands: [command] })
+  const report = await readFile(join(f.root, 'logs/node.xml'), 'utf8')
+  await f.put('logs/node.xml', report.replace('</testcase>', '<skipped/></testcase>'))
+  await assert.rejects(() => observedCount({ transcriptManifest }))
+})
+
 test('transcript manifests refuse path escape, links and relabeling tests as installed scripts', async (t) => {
   const f = await fixture(t)
   await f.put('outside.txt', bunReport)

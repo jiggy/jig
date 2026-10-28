@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -37,17 +38,23 @@ function fixture(t, targets = 'source-portable,source-protocol') {
   )
   executable(
     'npm',
-    `#!${process.execPath}
-const fs=require('node:fs'),path=require('node:path'),args=process.argv.slice(2);
+    `#!/usr/bin/env node
+import fs from 'node:fs';import path from 'node:path';const args=process.argv.slice(2);
 const out=args[args.indexOf('--pack-destination')+1];fs.writeFileSync(path.join(out,'fixture.tgz'),'frozen fixture');fs.appendFileSync(process.env.FIXTURE_EVENTS,'pack\\n');
 `,
   )
   executable('uname', '#!/bin/sh\nprintf "Linux\\n"\n')
   executable('git', '#!/bin/sh\nprintf "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\n"\n')
-  const python = executable(
-    'python',
-    '#!/bin/sh\nif [ "$1" = scripts/ci/merge-source-junit.py ]; then printf "<testsuites/>\\n" > "$2"; fi\n',
-  )
+  const python = executable('python', '#!/bin/sh\nexec python3 "$@"\n')
+  mkdirSync(join(root, 'scripts/ci'), { recursive: true })
+  for (const name of ['source-node-reporter.mjs', 'merge-source-junit.py'])
+    copyFileSync(new URL(name, import.meta.url), join(root, 'scripts/ci', name))
+  mkdirSync(join(root, 'fixtures'))
+  for (const stage of ['portable', 'protocol'])
+    writeFileSync(
+      join(root, 'fixtures', `source-${stage}.node.mjs`),
+      `import{test}from'node:test';import assert from'node:assert/strict';test('actual ${stage} Node fixture',()=>{assert.notEqual(process.env.FIXTURE_FAIL,'${stage}-node')});`,
+    )
   const node = executable(
     'qualified-node',
     `#!/bin/sh
@@ -56,18 +63,21 @@ case "$1" in
   --input-type=module) case "$3" in *createHash*) printf 'archive-hash\\n' >> "$FIXTURE_EVENTS" ;; esac; exit 0 ;;
   scripts/ci/suite-inventory.mjs)
     printf 'fixtures/%s.test.ts\\n' "$3"
-    if [ "$3" = source-protocol ]; then printf 'fixtures/author.node.mjs\\n'; fi; exit 0 ;;
+    printf 'fixtures/%s.node.mjs\\n' "$3"; exit 0 ;;
   --test)
-    for arg in "$@"; do case "$arg" in --test-reporter-destination=*) printf '<testsuites/>\\n' > "\${arg#*=}" ;; esac; done
-    printf 'authoring-done\\n' >> "$FIXTURE_EVENTS"; exit 0 ;;
+    case "$*" in *source-portable.node.mjs*) stage=portable ;; *) stage=protocol ;; esac
+    printf '%s-node-start\\n' "$stage" >> "$FIXTURE_EVENTS"
+    "$FIXTURE_REAL_NODE" "$@"; status=$?
+    if [ "$status" -eq 0 ]; then printf '%s-node-done\\n' "$stage" >> "$FIXTURE_EVENTS"; fi
+    exit "$status" ;;
 esac
 exec "$FIXTURE_REAL_NODE" "$@"
 `,
   )
   executable(
     'bun',
-    `#!${process.execPath}
-const fs=require('node:fs'),path=require('node:path'),a=process.argv.slice(2);
+    `#!/usr/bin/env node
+import fs from 'node:fs';import path from 'node:path';const a=process.argv.slice(2);
 const event=s=>fs.appendFileSync(process.env.FIXTURE_EVENTS,s+'\\n');
 if(a.includes('--destination')) {
  const destination=a[a.indexOf('--destination')+1];
@@ -75,7 +85,8 @@ if(a.includes('--destination')) {
 } else if(a[0]==='test') {
  const stage=a.includes('./fixtures/source-portable.test.ts')?'portable':'protocol';event(stage+'-start');
  if(process.env.FIXTURE_FAIL===stage)process.exit(7);
- for(const arg of a)if(arg.startsWith('--reporter-outfile='))fs.writeFileSync(arg.slice(19),'<testsuites/>');
+ if(a.some(arg=>arg.endsWith('.node.mjs')))throw Error('Node files must not execute under Bun');
+ for(const arg of a)if(arg.startsWith('--reporter-outfile='))fs.writeFileSync(arg.slice(19),'<testsuites tests="1"><testcase file="fixtures/source-'+stage+'.test.ts" name="'+stage+' controller fixture"/></testsuites>');
  event(stage+'-done');
 } else event('consumer:'+a.join(' '));
 `,
@@ -91,6 +102,7 @@ if(a.includes('--destination')) {
     FIXTURE_EVENTS: events,
     FIXTURE_REAL_NODE: process.execPath,
   }
+  delete env.NODE_TEST_CONTEXT
   delete env.CI_CANDIDATE_BUNDLE
   const run = (shell = '/bin/sh', extra = {}) =>
     spawnSync(
@@ -98,7 +110,14 @@ if(a.includes('--destination')) {
       [script, '--targets', targets, '--profile', 'portable-linux', '--report-directory', reports],
       { cwd: root, env: { ...env, ...extra }, encoding: 'utf8', timeout: 10000 },
     )
-  return { root, temp, reports, run, events: () => readFileSync(events, 'utf8').trim().split('\n') }
+  return {
+    root,
+    temp,
+    reports,
+    run,
+    env,
+    events: () => readFileSync(events, 'utf8').trim().split('\n'),
+  }
 }
 
 test('source stages run serially after one shared build on both supported shells', (t) => {
@@ -112,9 +131,16 @@ test('source stages run serially after one shared build on both supported shells
       ['build:jig::build'],
     )
     assert.ok(events.indexOf('build:jig::build') < events.indexOf('portable-start'))
-    assert.ok(events.indexOf('portable-done') < events.indexOf('protocol-start'))
-    for (const file of ['source-portable.xml', 'source-protocol.xml'])
+    assert.ok(events.indexOf('portable-done') < events.indexOf('portable-node-start'))
+    assert.ok(events.indexOf('portable-node-done') < events.indexOf('protocol-start'))
+    assert.ok(events.indexOf('protocol-done') < events.indexOf('protocol-node-start'))
+    for (const file of ['source-portable.xml', 'source-protocol.xml']) {
       assert.ok(existsSync(join(f.reports, file)))
+      const report = readFileSync(join(f.reports, file), 'utf8')
+      assert.match(report, /tests="2"/)
+      assert.ok(report.includes(file.replace('.xml', '.node.mjs')))
+      assert.ok(report.includes(file.replace('.xml', '.test.ts')))
+    }
     for (const name of ['jig', 'display-model', 'display-web', 'display-tui'])
       assert.ok(events.includes(`consumer:packages/${name}/test/package-smoke.ts`))
     assert.deepEqual(readdirSync(f.temp), [])
@@ -173,4 +199,40 @@ test('protocol-only execution builds Jig methods and consumes the external SDK w
   )
   assert.ok(!events.includes('portable-start'))
   assert.deepEqual(readdirSync(f.temp), [])
+})
+
+test('a failed actual Node source case stops later stages and leaves no successful merged report', (t) => {
+  const f = fixture(t),
+    result = f.run('/bin/sh', { FIXTURE_FAIL: 'portable-node' })
+  assert.notEqual(result.status, 0)
+  const events = f.events()
+  assert.ok(events.includes('portable-node-start'))
+  assert.ok(!events.includes('portable-node-done'))
+  assert.ok(!events.includes('protocol-start'))
+  assert.ok(!existsSync(join(f.reports, 'source-portable.xml')))
+  assert.equal(events.filter((event) => event === 'archive-hash').length, 1)
+})
+
+test('the actual root test recipe partitions Node files from both source inventories', (t) => {
+  const f = fixture(t)
+  const justfile = readFileSync(new URL('../../justfile', import.meta.url), 'utf8')
+  const recipe = /^@test \*args:\n([\s\S]*?)(?=\n# Run the installed)/m.exec(justfile)?.[1]
+  assert.ok(recipe, 'Root test recipe must remain available')
+  const script = join(f.root, 'root-test.sh')
+  writeFileSync(
+    script,
+    recipe
+      .split('\n')
+      .map((line) => line.replace(/^ {4}/, ''))
+      .join('\n'),
+  )
+  const result = spawnSync('/bin/bash', [script], {
+    cwd: f.root,
+    env: f.env,
+    encoding: 'utf8',
+    timeout: 10000,
+  })
+  assert.equal(result.status, 0, result.stderr)
+  assert.match(result.stdout, /tests 2/)
+  assert.ok(f.events().includes('portable-node-done'))
 })

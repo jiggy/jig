@@ -245,7 +245,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   ordinary build, frozen archive identity and ownership residue. The
   deterministic test plan covers every discovered Jig and display test file. It
   balances physical lifecycle/provider suites with all other applicable files.
-  Tests run in fresh, sequential per-group Bun processes inside each host.
+
+  Tests run in fresh, sequential processes inside each host.
+  Node material files use verified Node. Other files use Bun.
+  Both runtimes retain complete per-file JUnit evidence.
 
   One shard per architecture additionally checks genuine pinned clients offline,
   ordinary npm installation and packed consumer execution. On 24G830, it

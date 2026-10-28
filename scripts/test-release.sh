@@ -100,22 +100,38 @@ set --
 for package in $archive_packages; do for archive in "$release_tmp/artifacts/$package/"*.tgz; do set -- "$@" "$archive"; done; done
 archive_digests "$@" > "$release_tmp/archive-digests"
 
-run_bun_stage() {
+run_source_stage() {
   stage_id=$1
   set -- --target "$stage_id" --profile "$source_profile"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "${GITHUB_SHA:?Missing tested source}"; fi
   "$FLOW_NODE" scripts/ci/suite-inventory.mjs "$@" > "$release_tmp/$stage_id.files"
-  set --
   : > "$release_tmp/$stage_id.bun.files"
+  : > "$release_tmp/$stage_id.node.files"
   while IFS= read -r test_file; do
-    case "$test_file" in *.node.mjs) ;; *) set -- "$@" "./$test_file"; printf '%s\n' "$test_file" >> "$release_tmp/$stage_id.bun.files" ;; esac
+    case "$test_file" in
+      *.node.mjs) printf '%s\n' "$test_file" >> "$release_tmp/$stage_id.node.files" ;;
+      *) printf '%s\n' "$test_file" >> "$release_tmp/$stage_id.bun.files" ;;
+    esac
   done < "$release_tmp/$stage_id.files"
-  [ "$#" -gt 0 ] || { echo "Selected Bun source stage is empty" >&2; exit 1; }
-  bun test "$@" --reporter=junit "--reporter-outfile=$report_directory/$stage_id.xml"
-  "$python_bin" scripts/ci/merge-source-junit.py "$release_tmp/validated-$stage_id.xml" "$report_directory/$stage_id.xml" --files "$release_tmp/$stage_id.bun.files"
+  if [ -s "$release_tmp/$stage_id.bun.files" ]; then
+    set --
+    while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.bun.files"
+    bun test "$@" --reporter=junit "--reporter-outfile=$release_tmp/$stage_id.bun.xml"
+  fi
+  if [ -s "$release_tmp/$stage_id.node.files" ]; then
+    set --
+    while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.node.files"
+    "$FLOW_NODE" --test --test-reporter ./scripts/ci/source-node-reporter.mjs \
+      "--test-reporter-destination=$release_tmp/$stage_id.node.xml" "$@"
+  fi
+  set --
+  if [ -s "$release_tmp/$stage_id.bun.files" ]; then set -- "$@" "$release_tmp/$stage_id.bun.xml"; fi
+  if [ -s "$release_tmp/$stage_id.node.files" ]; then set -- "$@" "$release_tmp/$stage_id.node.xml"; fi
+  [ "$#" -gt 0 ] || { echo "Selected source stage is empty" >&2; exit 1; }
+  "$python_bin" scripts/ci/merge-source-junit.py "$report_directory/$stage_id.xml" "$@" --files "$release_tmp/$stage_id.files"
 }
 source_portable_stage() {
-  run_bun_stage source-portable
+  run_source_stage source-portable
   if [ -z "${CI_CANDIDATE_BUNDLE:-}" ]; then
     bun packages/jig/test/package-smoke.ts
     bun packages/display-model/test/package-smoke.ts
@@ -124,7 +140,7 @@ source_portable_stage() {
   fi
 }
 source_protocol_stage() {
-  run_bun_stage source-protocol
+  run_source_stage source-protocol
   bun scripts/test-flow-dependency.ts
   bun packages/reporting/test/package-smoke.ts
 }

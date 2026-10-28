@@ -24,6 +24,9 @@ async function linuxCommandFixture(workflow: any) {
     'packages/display-model/test/one.test.ts',
     'packages/display-web/test/one.test.ts',
     'packages/display-tui/test/one.test.ts',
+    'packages/display-model/test/material.node.mjs',
+    'packages/display-web/test/material.node.mjs',
+    'packages/display-tui/test/material.node.mjs',
   ]
   try {
     for (const file of files) {
@@ -605,6 +608,10 @@ test('Linux host scope preserves complete qualification and always reports its f
     expect(
       sourceCommands.every((command: any) => command.files.length === 1 && !command.filter),
     ).toBeTrue()
+    for (const command of sourceCommands) {
+      expect(command.commandKind === 'node-test').toBe(command.files[0].endsWith('.node.mjs'))
+      expect(typeof command.junit === 'string').toBe(command.files[0].endsWith('.node.mjs'))
+    }
     for (const [index, file] of fixture.files.entries()) {
       const suite = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'][index % 3]
       expect(fixture.commands[suite].some((command: any) => command.files[0] === file)).toBeTrue()
@@ -693,11 +700,17 @@ for (const scenario of linuxAggregateScenarios) {
           join(shard, 'linux-command-evidence/manifest.json'),
           JSON.stringify({ schemaVersion: 1, commands: commands[suite] }),
         )
-        for (const command of commands[suite])
+        for (const command of commands[suite]) {
           await writeFile(
             join(shard, 'linux-command-evidence', command.transcript),
             'Owning transcript retained.\n',
           )
+          if (command.commandKind === 'node-test')
+            await writeFile(
+              join(shard, 'linux-command-evidence', command.junit),
+              `<testsuites tests="1"><testcase file="${command.files[0]}" classname="node" name="executes whole file"/></testsuites>`,
+            )
+        }
       }
       if (scenario.command) {
         await writeFile(

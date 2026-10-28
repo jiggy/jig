@@ -60,6 +60,10 @@ operational baselines, and public-site assembly.
   runs all stages serially after shared builds and archive freezing. Jig's
   portable build owns its complete local package graph.
 
+  Both portable and protocol stages run `.node.mjs` files with the verified
+  `FLOW_NODE` executable. Other selected files run with Bun. The stages merge
+  actual reports and require exact coverage of their complete selected files.
+
   FLOW SDKs and authoring
   use exact versioned public artifacts from `jiggy/flow`, not local builds.
 

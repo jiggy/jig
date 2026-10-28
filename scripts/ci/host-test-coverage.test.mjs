@@ -64,7 +64,12 @@ test('current full Mac role assignment owns every selected file once without nam
       )
     for (const shard of shards)
       for (const [index, command] of commandsForShard(shard).entries()) {
-        assert.equal(command[2], `./${shard.groups[index].file}`)
+        const file = shard.groups[index].file
+        assert.deepEqual(
+          command.slice(0, 2),
+          file.endsWith('.node.mjs') ? ['node', '--test'] : ['bun', 'test'],
+        )
+        assert.ok(command.includes(`./${file}`))
         assert.equal(command.includes('--test-name-pattern'), false)
         assert.deepEqual(Object.keys(shard.groups[index]).sort(), ['estimatedSeconds', 'file'])
       }
@@ -187,7 +192,7 @@ test('the Mac group runner preserves the first child failure and starts no later
     const bun = resolve(root, 'failing-bun')
     await writeFile(
       bun,
-      `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(process.env.CALLS, JSON.stringify(process.argv.slice(2))+'\\n'); process.exit(42);\n`,
+      `#!/usr/bin/env node\nimport {appendFileSync} from 'node:fs'; appendFileSync(process.env.CALLS, JSON.stringify(process.argv.slice(2))+'\\n'); process.exit(42);\n`,
       { mode: 0o700 },
     )
     const child = spawnSync(
@@ -198,6 +203,9 @@ test('the Mac group runner preserves the first child failure and starts no later
         env: {
           ...process.env,
           JIG_CI_BUN: bun,
+          FLOW_NODE: spawnSync('/bin/sh', ['-c', 'command -v node'], {
+            encoding: 'utf8',
+          }).stdout.trim(),
           CALLS: calls,
           JIG_MACOS_TEST_TIMINGS_DIRECTORY: root,
         },
@@ -231,6 +239,14 @@ test('the Mac group runner preserves the first child failure and starts no later
   } finally {
     await rm(root, { recursive: true, force: true })
   }
+})
+
+test('Node material suites retain their runtime, whole file and timeout in native command plans', () => {
+  const file = 'packages/display-web/test/material.node.mjs'
+  assert.equal(isHostTestFile(file), true)
+  assert.deepEqual(commandsForShard({ groups: [{ file }] }, '/tools/bun', '/tools/node'), [
+    ['/tools/node', '--test', '--test-timeout=420000', `./${file}`],
+  ])
 })
 
 test('four Intel and two Apple Silicon shards cover identical work', async () => {
@@ -277,7 +293,7 @@ test('installed startup reporting works with and without a timing directory on s
     const bun = resolve(root, 'bun')
     await writeFile(
       bun,
-      '#!/usr/bin/env node\nrequire("node:fs").appendFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION})+"\\n");\n',
+      '#!/usr/bin/env node\nimport {appendFileSync} from "node:fs"; appendFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION})+"\\n");\n',
       { mode: 0o700 },
     )
     for (const [directory, expectation] of [

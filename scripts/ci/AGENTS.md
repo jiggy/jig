@@ -48,8 +48,10 @@ preparation never becomes a consumer requirement.
   including Jig's three standalone display gates. Local source execution retains
   those consumers. Source-only Python stages do not build Jig.
 
-  Actual Node authoring events retain file identities through
-  `source-node-reporter.mjs`. Python executes every selected file, including
+  Both portable and protocol stages run `.node.mjs` files under verified Node.
+  Actual Node events retain file identities through `source-node-reporter.mjs`.
+  The report merger requires complete selected-file coverage across Node and Bun.
+  Python executes every selected file, including
   nested additions, and emits exact completed-file markers only after successful
   zero-skip groups. Disposable application reports normalize file paths only
   after source bytes are verified.
@@ -170,7 +172,10 @@ They consume frozen package exports with tracked test helpers and installed
   catalog, retaining portable files until a separate audit proves host
   neutrality. Eight native prerequisite files run once on shard zero and genuine
   installed startup runs separately on the final shard. Every other selected
-  file runs once in a fresh sequential Bun process, without name filters.
+  file runs once in a fresh sequential process, without name filters.
+  `.node.mjs` files use verified Node. Other files use Bun. Both runtimes retain
+  exact file identities in their JUnit reports.
+
   Advisory architecture timings affect placement, never membership. Balance
   includes installed tail work. After balancing, each shard runs its
   `macos-native` whole files before long application scenarios, preserving order
@@ -182,8 +187,11 @@ They consume frozen package exports with tracked test helpers and installed
   and Mac reports. It rejects empty, failed, skipped, incomplete or
   duplicate-case reports. Each consumer enforces its owning file inventory. The
   Mac validator reconstructs the complete source-pinned shard plan and reads
-  every owning report and completion marker once. Linux whole-file commands
-  retain their stdout parser and installed-script completion markers.
+  every owning report and completion marker once.
+
+  Linux Bun commands retain their stdout parser. Linux Node commands retain
+  exact single-file JUnit reports
+  beside their transcripts. Installed scripts retain completion markers.
   `macos-host-summary.py` projects validated Mac counts and optional job timing.
 
   It does not implement another XML or plan validator. Timing cannot grant or
@@ -279,6 +287,8 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
   propagation, canonical-input reuse and protocol-only prerequisites through the
   actual source shell with controlled tools on Bash and POSIX sh.
+  It executes actual Node tests through the owning reporter and Python merger.
+  It also checks both source inventories through the root test recipe.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive Mac

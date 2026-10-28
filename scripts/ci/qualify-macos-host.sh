@@ -155,11 +155,14 @@ else
   mapfile_path="$scratch/full-suite-files.txt"
   node scripts/ci/suite-inventory.mjs --profile "$([[ "$codex_startup_expectation" == startup ]] && echo macos-23E224 || echo macos-24G830)" --format lines > "$mapfile_path"
   full_files=()
+  node_files=()
   while IFS= read -r file; do
-    [[ "$file" == packages/jig/test/startup/native-agent-startup.test.ts ]] || full_files+=("./$file")
+    if [[ "$file" == *.node.mjs ]]; then node_files+=("./$file")
+    elif [[ "$file" != packages/jig/test/startup/native-agent-startup.test.ts ]]; then full_files+=("./$file"); fi
   done < "$mapfile_path"
   [[ ${#full_files[@]} -gt 0 ]] || { echo 'Full Mac inventory is empty.' >&2; exit 1; }
   bun test "${full_files[@]}" --timeout 420000
+  if [[ ${#node_files[@]} -gt 0 ]]; then "$FLOW_NODE" --test --test-timeout=420000 "${node_files[@]}"; fi
 fi
 if [[ "$mode" == full || "$shard" == "$installed_shard" ]]; then
   startup_options=(--timeout 120000)
