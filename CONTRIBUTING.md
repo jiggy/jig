@@ -174,6 +174,7 @@ just jig::test                 # Jig tests
 just jig::check                # Build, package tests, and local native Mac regressions
 just test-tooling              # Shell and recipe wiring
 just preflight                 # Build, tooling, portable tests, and native Mac regressions
+just test-source               # All four CI source stages with resolved local tools
 just test-release              # Full unprivileged gate; needs FLOW_NODE and Python
 just jig::pack --destination /tmp/jig-artifacts
 ```
@@ -192,6 +193,31 @@ Unsupported Macs refuse before building; other hosts report portable-only
 coverage. Complete Linux and Intel/Apple Silicon qualification remains in CI.
 Run this pass while other Jig work on the same host is idle so the residue
 comparison describes this test run.
+
+Use `just test-source` to reproduce the CI source stage that failed before
+pushing another revision. It resolves the real Node compiler and excludes
+ambient Agent credentials and live-client opt-ins. It forwards the source
+runner's options and preserves an explicit `PYTHON` interpreter:
+
+```sh
+just test-source --targets source-applications --report-directory .tmp/applications-1
+PYTHON=/path/to/python3 just test-source --targets source-python --report-directory .tmp/python-1
+just test-source --targets source-portable,source-protocol --report-directory .tmp/source-1
+```
+
+Each target runs its complete CI inventory, builds the packages it needs, and
+checks its frozen archives. The applications target installs disposable consumer
+projects. The Python target requires `build==1.3.0`, `twine==6.2.0`, and
+`mypy==1.18.2`. Every target needs Python 3 for report validation. Install tools
+and repository dependencies first. Use a fresh report directory for each run;
+reports remain there after failure. Omit `--targets` to run all four stages.
+
+The default profile follows the local OS (`portable-linux` on Linux and
+`portable` elsewhere). `--profile` selects either explicitly. These checks use
+the source runner's existing stage limits. They do not allocate a native host,
+so they also work on Macs outside the native preflight profiles. Complete Linux
+and both Mac architecture qualifications remain separate CI checks. The ordinary
+`just preflight` still runs the local regression pass described above.
 
 ## Package release changes
 

@@ -101,6 +101,20 @@ test('preflight is available from the root and package check includes native reg
   )
 })
 
+test('the local source task forwards explicit CI targets from outside the checkout', async () => {
+  const result = await run([
+    '--justfile',
+    join(repository, 'justfile'),
+    'test-source',
+    '--targets',
+    'not-a-source-stage',
+  ])
+  expect(result.code).toBe(1)
+  expect(result.stdout).toBe('')
+  expect(result.stderr).toContain('Unknown source target')
+  expect(result.stderr).not.toContain('Native preflight requires')
+})
+
 test('root build delegates the complete package graph to Jig exactly once', async () => {
   const root = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'build'])
   const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
