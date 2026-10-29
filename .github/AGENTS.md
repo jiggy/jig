@@ -56,6 +56,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   build their platform's source workspace separately. Protected publishers
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
+- Installed Python consumer checks use supported, explicit GitHub runner labels,
+  including `macos-15`. Their matrix must exactly match the source catalog's
+  evidence profiles. This package check does not qualify Jig's native Mac host.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
   tested PR merge's verified first parent, previous main revision, or manual
@@ -75,6 +78,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Preserve `test` as a fail-closed aggregate of every CI job and its observed
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual runs require complete host coverage.
+  Retain required job results before rejecting failures or cancellations, even
+  after evidence download fails. Optional current-attempt runner observations
+  explain allocation failures without granting execution or cleanup evidence.
 - npm publication covers HTTP Agent, ACP Agent and Jig, in that dependency
   order, after same-revision CI, host and native gates. FLOW releases from its
   own repository. First publication requires each package's npm setup.

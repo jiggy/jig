@@ -252,6 +252,12 @@ These links locate module rules. All selected domain requirements still apply.
   remaining allowance for retirement. Keep at most 64 UTF-8 excerpts of 4 KiB
   each and 512 KiB aggregate retained content. Charge text as UTF-16 storage.
 
+  Completion and inspection callbacks recheck their captured absolute
+  presentation deadline. An early callback reschedules only the remaining allowance.
+  Tightening pending joins keeps the minimum deadline and completed joins remain
+  immutable. These bounds observe completion without cancelling underlying file
+  work or proving native retirement.
+
   Text, empty, image, non-text, unavailable and clipped states remain
   distinct. `image-preview-policy.ts` owns the shared finite capture/transport
   limits. Complete image sources add bytes only within that same retention
