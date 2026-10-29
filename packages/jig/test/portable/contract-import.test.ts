@@ -141,7 +141,7 @@ test('an altered installed agreement is rejected before writing a destination', 
   await expect(
     importContract('jig:reporting', join(root, 'copied'), undefined, join(root, 'standard')),
   ).rejects.toMatchObject({ code: 'CONTRACT_IMPORT_SOURCE' })
-  expect(await readdir(root)).toEqual(['source', 'standard'])
+  expect((await readdir(root)).sort()).toEqual(['source', 'standard'])
 })
 test('new wires selected complete contract closures as ordinary source without evaluating code', async () => {
   const root = await fixture()
