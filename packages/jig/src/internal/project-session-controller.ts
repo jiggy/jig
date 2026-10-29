@@ -325,6 +325,22 @@ function closedNativeTestCause(error: Error): string | undefined {
     return undefined
   }
   switch (message) {
+    case 'Bun preparation exchange and cleanup failed':
+      return 'PACKAGE_BUN_EXCHANGE_CLEANUP'
+    case 'Bun preparation and cleanup did not both complete':
+      return 'PACKAGE_BUN_OWNER_CLEANUP'
+    case 'native preparation collection is unavailable':
+      return 'PACKAGE_BUN_COLLECTION_UNAVAILABLE'
+    case 'native preparation capture and collector retirement failed':
+      return 'PACKAGE_BUN_COLLECTOR_RETIREMENT'
+    case 'native preparation collection and cleanup failed':
+      return 'PACKAGE_BUN_NATIVE_CLEANUP'
+    case 'native preparation bytes lack successful cleanup':
+      return 'PACKAGE_BUN_OUTPUT_UNCONFIRMED'
+    case 'native preparation refusal and retirement failed':
+      return 'PACKAGE_BUN_REFUSAL_RETIREMENT'
+    case 'Bun preparation capture and retirement failed':
+      return 'PACKAGE_BUN_CAPTURE_RETIREMENT'
     case 'native output collection is unavailable':
       return 'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE'
     case 'native output was lost during cleanup':

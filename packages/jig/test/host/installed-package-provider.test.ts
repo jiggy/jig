@@ -352,7 +352,8 @@ for await(const line of createInterface({input:process.stdin})) {
         const observedBytes = (stderr: string) => {
           const match = /Observed: at least ([0-9]+) bytes/.exec(stderr)
           expect(match).not.toBeNull()
-          return Number(match![1])
+          if (match === null) throw new Error('observed dependency byte count is missing')
+          return Number(match[1])
         }
         expect(observedBytes(refused.stderr)).toBeGreaterThan(defaultBytes)
 
@@ -381,7 +382,7 @@ for await(const line of createInterface({input:process.stdin})) {
           ...baseEnvironment,
           [bytesVariable]: String(defaultBytes),
         })
-        expect(constrained.exit).toBe(1)
+        expect(constrained.exit, constrained.stdout + constrained.stderr).toBe(1)
         expect(constrained.stderr).toContain('PACKAGE_BUN_OUTPUT_LIMIT')
         expect(constrained.stderr).toContain(`Effective limit: ${defaultBytes}`)
         expect(constrained.stderr).toContain(`Limit source: ${bytesVariable}`)

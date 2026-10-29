@@ -150,7 +150,7 @@ export async function assemblePrivateBunExecution(input: {
       'invalid',
       'PACKAGE_BUN_OUTPUT_LIMIT',
       'assembled Bun execution exceeds its bounded output limits',
-      undefined,
+      'package.json',
       undefined,
       undefined,
       undefined,

@@ -64,7 +64,9 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   Run failure summaries reuse the review trace's input, record and event bounds.
 
   Project only existing host, containment, execution and settlement phases.
-  Preserve both candidate cycles within one original 120-second root Run.
+  Keep both candidate cycles within one finite 180-second root Run.
+  Its allowance covers two 60-second evaluations and 60 seconds for producers, independent checking, and orchestration.
+  Keep the existing 75-second client transport margin and all evaluation phase limits.
   Phase ceilings do not establish measured payload time or the deadline's underlying cause.
   Existing aggregate spans do not isolate every evaluator substep.
 - Exact repeated exports reconcile their original delivery. Collision checks use
