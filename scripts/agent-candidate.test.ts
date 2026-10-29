@@ -163,10 +163,10 @@ test('PRs retain complete coverage and keep quick checks independent of candidat
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
   const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
   const entries = mac.jobs.prerequisites.strategy.matrix.include
-  expect(entries).toHaveLength(6)
-  expect(mac.jobs.prerequisites['timeout-minutes']).toBe(
-    '${{ matrix.installed && inputs.include_startup_profile && 65 || 35 }}',
+  expect(entries).toHaveLength(
+    Object.values(MAC_HOST_SHARDS).reduce((sum, count) => sum + count, 0),
   )
+  // host-test-coverage.test.mjs evaluates allocation and timeout semantics.
   for (const [arch, count] of Object.entries(MAC_HOST_SHARDS)) {
     const selected = entries.filter((e: any) => e.arch === arch)
     expect(selected.map((e: any) => e.shard).sort()).toEqual(

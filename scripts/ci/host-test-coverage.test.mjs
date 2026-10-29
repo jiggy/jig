@@ -519,6 +519,11 @@ test('one complete ARM runner owns native and installed proof within the former 
     const minutes = evaluate(job['timeout-minutes'], arm[0], profile)
     assert.equal(minutes, profile ? 90 : 60)
     assert.ok(minutes < (profile ? 100 : 70))
+    for (const role of matrix.filter((role) => role.arch === 'x64'))
+      assert.equal(
+        evaluate(job['timeout-minutes'], role, profile),
+        profile && role.installed ? 65 : 35,
+      )
     const total = matrix.reduce(
       (sum, role) => sum + evaluate(job['timeout-minutes'], role, profile),
       0,
