@@ -1,5 +1,11 @@
 # @jigging/jig
 
+## 0.1.0-alpha.43
+
+### Patch Changes
+
+- 84f51c2: Preserve bounded phase and process evidence in Project Evaluation operation errors when evaluation stops at a deadline or is cancelled, while retaining cleanup and failure guarantees.
+
 ## 0.1.0-alpha.42
 
 ### Patch Changes
