@@ -256,7 +256,8 @@ test('PRs retain complete coverage and keep quick checks independent of candidat
   expect(
     source.steps.find((step: any) => step.name === 'Record each completed source stage').run,
   ).toContain('writeJobEvidence')
-  expect(aggregate.run).toContain("job.result !== 'success'")
+  expect(aggregate.run).toContain('ci-job-results.mjs')
+  expect(aggregate.if).toBe('always()')
 })
 
 test('the actual source evidence program records every stage and refuses unsuccessful aggregate jobs', async () => {
@@ -313,11 +314,16 @@ test('the actual source evidence program records every stage and refuses unsucce
       .join('\n')
     for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
       await rm(join(directory, 'results.json'), { force: true })
+      await rm(join(directory, 'job-results.json'), { force: true })
       const mapped = spawnSync('/bin/bash', ['-c', program], {
         cwd: root,
         env: {
           ...process.env,
           RUNNER_TEMP: directory,
+          GITHUB_STEP_SUMMARY: join(directory, 'summary.md'),
+          GITHUB_REPOSITORY: '',
+          GITHUB_RUN_ID: '',
+          GITHUB_RUN_ATTEMPT: '',
           JOB_RESULTS: JSON.stringify({
             'candidate-build': { result: 'success' },
             'source-tests': { result },
@@ -331,7 +337,12 @@ test('the actual source evidence program records every stage and refuses unsucce
         for (const id of stages) expect(actual[id]).toBe('success')
       } else {
         expect(mapped.status).not.toBe(0)
-        expect(await Bun.file(join(directory, 'results.json')).exists()).toBeFalse()
+        expect(mapped.stderr).toContain(`Required CI jobs did not succeed: source-tests=${result}`)
+        const actual = await Bun.file(join(directory, 'results.json')).json()
+        expect(actual['source-tests']).toBe(result)
+        for (const id of stages) expect(actual[id]).toBe(result)
+        const diagnostics = await Bun.file(join(directory, 'job-results.json')).json()
+        expect(diagnostics.failures).toEqual([{ id: 'source-tests', result }])
       }
     }
   } finally {

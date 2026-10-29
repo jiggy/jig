@@ -351,6 +351,10 @@ Use a new root dependency on an existing workspace member to test stale dependen
 Its review commands select unique private profile destinations outside captured consumer source.
 Only failed reviews append bounded summaries. Runs retain their original limits and cancellation behavior.
 Keep failed profiles private and remove successful fixtures' profiles with their consumers.
+
+Every CLI command uses the shared bounded command owner and a unique private
+transcript prefix. Its command deadline reserves settlement inside the existing
+240-second case allowance. The original timed SIGTERM cancellation remains.
 `fixtures/private-profile-diagnostics.ts` shares strict profile projection with the foundation fixtures.
 It preserves the 256 KiB input, 1026-record and forty-event limits.
 

@@ -60,6 +60,13 @@ preparation never becomes a consumer requirement.
   native-residue attestations for their owners. Source inventory comes from the
   checkout, never a supplied selection plan. Installed completion markers carry
   no test-case credit.
+- `ci-job-results.mjs` writes required job outcomes and source-stage aliases
+  before refusing an unsuccessful CI aggregate. Its separate diagnostic report
+  preserves failed job identities and optional current-attempt GitHub job
+  observations. A cancelled job with an explicitly empty runner and step list
+  is reported as unassigned. Missing observations never establish that cause.
+  Observations cannot qualify execution, bypass evidence validation or change
+  required job outcomes. API unavailability leaves them absent.
 - `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry

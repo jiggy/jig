@@ -78,6 +78,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Preserve `test` as a fail-closed aggregate of every CI job and its observed
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual runs require complete host coverage.
+  Retain required job results before rejecting failures or cancellations, even
+  after evidence download fails. Optional current-attempt runner observations
+  explain allocation failures without granting execution or cleanup evidence.
 - npm publication covers HTTP Agent, ACP Agent and Jig, in that dependency
   order, after same-revision CI, host and native gates. FLOW releases from its
   own repository. First publication requires each package's npm setup.

@@ -431,20 +431,19 @@ jobs:
           pattern: ci-evidence-*-${{ github.sha }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/evidence
       - name: Require successful jobs and complete execution evidence
+        if: always()
         env:
           JOB_RESULTS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          node --input-type=module <<'JS'
-          import { writeFileSync } from 'node:fs'
-          const jobs = JSON.parse(process.env.JOB_RESULTS)
-          if (Object.values(jobs).some(job => job.result !== 'success'))
-            throw new Error('Every CI job must succeed')
-          const results = Object.fromEntries(Object.entries(jobs).map(([id, job]) => [id, job.result]))
-          for (const id of ['source-portable', 'source-protocol', 'source-applications', 'source-python'])
-            results[id] = jobs['source-tests'].result
-          writeFileSync(`${process.env.RUNNER_TEMP}/results.json`, JSON.stringify(results))
-          JS
+          if [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_RUN_ATTEMPT:-}" ]; then
+            timeout --kill-after=2s 10s gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq '.jobs' > "$RUNNER_TEMP/ci-jobs.json" || {
+              rm -f "$RUNNER_TEMP/ci-jobs.json"
+              echo 'Job observations unavailable; required results and evidence remain mandatory' >&2
+            }
+          fi
+          node scripts/ci/ci-job-results.mjs --output "$RUNNER_TEMP/results.json" --diagnostics "$RUNNER_TEMP/job-results.json" --jobs "$RUNNER_TEMP/ci-jobs.json"
           node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/evidence" --results "$RUNNER_TEMP/results.json" --scope ci --output "$RUNNER_TEMP/combined.json"
       - name: Retain complete execution evidence
         if: always()
@@ -453,6 +452,7 @@ jobs:
           name: ci-execution-evidence-${{ github.sha }}-a${{ github.run_attempt }}
           path: |
             ${{ runner.temp }}/results.json
+            ${{ runner.temp }}/job-results.json
             ${{ runner.temp }}/combined.json
           retention-days: 7
           if-no-files-found: error
