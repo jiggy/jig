@@ -25,14 +25,23 @@ export class PrivateInputInspectionCapture {
   #pending: Promise<PrivatePreview | undefined> | undefined
   readonly #cancel = new AbortController()
   #closed = false
+  #sourceRetired = false
   #close: Promise<void> | undefined
 
   constructor(
-    attachments: readonly PrivateCapturedAttachment[],
+    attachments: readonly Pick<PrivateCapturedAttachment, 'name' | 'files'>[],
     readonly changed = () => {},
   ) {
-    for (const attachment of attachments)
-      for (const file of attachment.files) this.#source.set(`${attachment.name}/${file.path}`, file)
+    this.setSource(attachments)
+  }
+  /** Use the complete admitted root input set without reopening source paths. */
+  setSource(attachments: readonly Pick<PrivateCapturedAttachment, 'name' | 'files'>[]): void {
+    if (this.#closed || this.#sourceRetired) return
+    this.#source = new Map(
+      attachments.flatMap((attachment) =>
+        attachment.files.map((file) => [`${attachment.name}/${file.path}`, file] as const),
+      ),
+    )
   }
   get generation(): string {
     return this.#generation
@@ -172,6 +181,7 @@ export class PrivateInputInspectionCapture {
     return this.#pending?.then(() => undefined) ?? Promise.resolve()
   }
   retireSource(): void {
+    this.#sourceRetired = true
     this.#source.clear()
   }
   close(): Promise<void> {

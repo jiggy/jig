@@ -24,6 +24,7 @@ test('selected input copies survive source retirement and close without borrowin
       capture.select([{ attachment: 'source', path: 'first.txt' }])
       expect(capture.generation).toBe(generation)
       capture.retireSource()
+      capture.setSource(source.attachments)
       source.close()
       await writeFile(join(root, 'first.txt'), 'Edited destination')
       const bytes = capture.read('source/first.txt')!

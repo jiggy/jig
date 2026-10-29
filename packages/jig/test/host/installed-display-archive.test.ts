@@ -19,7 +19,7 @@ requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
 const digest = (bytes: Uint8Array) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`
 
-test('installed final display publication preserves evidence and original receipts without restoring removed views or publishing checkpoints', async () => {
+test('installed final display publication preserves Binding and per-run inputs and original receipts without restoring removed views or publishing checkpoints', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-installed-display-archive-')))
   let passed = false
   try {
@@ -75,6 +75,11 @@ test('installed final display publication preserves evidence and original receip
 export default defineJig({flows:discover('flows'),bindings:discover('bindings')});`,
     )
     await mkdir(join(project, 'bindings'))
+    await put(
+      'bindings/report.ts',
+      `import {defineBinding} from '@jigging/jig';
+export default defineBinding({package:'flows/report',attachments:{source:'source'}});`,
+    )
     await put('flows/report/package.json', {
       name: 'installed-display-report',
       version: '0.0.0',
@@ -89,11 +94,14 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
     })
     await put('flows/report/FLOW.contract.json', {
       $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
-      attachments: { source: 'read', files: 'read-write' },
+      attachments: { source: 'read', current: 'read', files: 'read-write' },
     })
     const report = 'Original delivered evidence.\n'
     const source = 'Original captured input.\n'
+    const current = 'Per-run captured input.\n'
+    const editedSource = 'Binding input edited after review.\n'
     await put('source/seed.txt', source)
+    await put('current/note.txt', current)
     await put(
       'flows/report/FLOW.ts',
       `import {handle} from '@jigging/flow';
@@ -101,16 +109,18 @@ import {createDisplayBundle,encodeDisplayBundle,type DisplayPublicationContext} 
 import {readFile,writeFile} from 'node:fs/promises';
 await handle(async run=>{
   const task=run.input as unknown as {context:DisplayPublicationContext;requestId:string;checkpoint?:boolean};
-  const sourcePort=run.attachments.source, filesPort=run.attachments.files;
-  if(!sourcePort||!filesPort) throw Error('Required file ports are missing');
+  const sourcePort=run.attachments.source, currentPort=run.attachments.current, filesPort=run.attachments.files;
+  if(!sourcePort||!currentPort||!filesPort) throw Error('Required file ports are missing');
   const original=await readFile(sourcePort.path+'/seed.txt','utf8');
+  const current=await readFile(currentPort.path+'/note.txt','utf8');
   const output={kind:'artifact',attachment:'files',path:'report.txt'} as const;
   const input={kind:'input-artifact',attachment:'source',path:'seed.txt'} as const;
-  const view={kind:'view',id:'summary',title:'Application report',summary:original,
+  const currentInput={kind:'input-artifact',attachment:'current',path:'note.txt'} as const;
+  const view={kind:'view',id:'summary',title:'Application report',summary:original+current,
     target:{definitionId:'report',instanceKey:'example',subjectKey:'example'},
-    sections:[{blocks:[{kind:'report',text:'Inspect exact captured evidence.',references:[output,input]}]}]} as const;
+    sections:[{blocks:[{kind:'report',text:'Inspect exact captured evidence.',references:[output,input,currentInput]}]}]} as const;
   const bundle=createDisplayBundle(task.context,{requestId:task.requestId,edition:'Accepted edition',
-    views:[{view,completeness:'complete',domainRevision:'domain-1'}],requiredEvidence:[output,input]});
+    views:[{view,completeness:'complete',domainRevision:'domain-1'}],requiredEvidence:[output,input,currentInput]});
   const encoded=encodeDisplayBundle(bundle);
   if(task.checkpoint){
     await run.call({operationId:'checkpoint',slot:'progress',input:{sequence:1,evidence:{saved:true},
@@ -141,17 +151,18 @@ await handle(async run=>{
     await command([cli, 'review', '--yes'], project)
     assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
     const approval = await readFile(join(project, 'jig.lock'), 'utf8')
+    await writeFile(join(project, 'source/seed.txt'), editedSource)
     const context = JSON.parse((await command([cli, 'views', 'context', '--json'], project)).stdout)
     assert.deepEqual(context.heads, [])
     const task = { context, requestId: 'first-publication' }
     const runArguments = (input: object, packet: string) => [
       cli,
       'run',
-      'flow:flows/report',
+      'binding:report',
       '--input',
       JSON.stringify(input),
       '--attach',
-      'source=source',
+      'current=current',
       '--out',
       join(root, packet),
       '--display-bundle',
@@ -194,6 +205,7 @@ await handle(async run=>{
     for (const [kind, attachment, path, text] of [
       ['artifact', 'files', 'report.txt', report],
       ['input-artifact', 'source', 'seed.txt', source],
+      ['input-artifact', 'current', 'note.txt', current],
     ] as const) {
       const evidence = receipt.evidence.find(
         (item: { reference: { kind: string; attachment?: string; path?: string } }) =>
@@ -218,7 +230,7 @@ await handle(async run=>{
     const retained = await list()
     assert.equal(retained.matched, 1)
     assert.equal(retained.omitted, 0)
-    assert.equal(retained.views[0].publication.view.summary, source)
+    assert.equal(retained.views[0].publication.view.summary, source + current)
     assert.deepEqual(retained.views[0].source, receipt.source)
     assert.equal(retained.views[0].revision, receipt.targets[0].revision)
     assert.equal((await list('report', 'absent')).matched, 0)
@@ -320,7 +332,8 @@ await handle(async run=>{
     assert.equal(JSON.parse(absent.stdout), null)
     assert.equal((await list()).matched, 0)
     assert.equal(await readFile(join(project, 'jig.lock'), 'utf8'), approval)
-    assert.equal(await readFile(join(project, 'source/seed.txt'), 'utf8'), source)
+    assert.equal(await readFile(join(project, 'source/seed.txt'), 'utf8'), editedSource)
+    assert.equal(await readFile(join(project, 'current/note.txt'), 'utf8'), current)
     assert.deepEqual(await foundationResidue(qualification, command, root), before)
     assert.deepEqual(
       await Promise.all(frozen.map(async (path) => digest(await readFile(path)))),

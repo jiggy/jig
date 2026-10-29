@@ -27,11 +27,7 @@ import {
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
-import {
-  privateExecuteViews,
-  privateRetainDisplayBundle,
-  privateViewReferences,
-} from './cli-display-archive.js'
+import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import {
   privateCliHumanText,
   privateCliStyleEnabled,
@@ -57,6 +53,7 @@ import {
   privateBoundInspection,
   privateCaptureDeliveryInspection,
 } from './internal/delivery-inspection.js'
+import { privateViewReferences } from './internal/display-archive.js'
 import type { PrivateDeliveryConnection, PrivateDeliveryReceipt } from './internal/file-delivery.js'
 import {
   PrivateFileInputError,
@@ -1560,6 +1557,9 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     parsed.output !== undefined,
     runtime.host.delivery,
     parsed.displayBundle?.attachment,
+    workspaceRequested || parsed.displayBundle
+      ? (attachments) => inputCapture?.setSource(attachments)
+      : undefined,
   )
   let inputCapture: PrivateInputInspectionCapture | undefined
   let inputSelection = ''

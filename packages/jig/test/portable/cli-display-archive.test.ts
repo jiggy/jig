@@ -6,10 +6,12 @@ import {
   privateDisplayArchiveFailure,
   privateParseViews,
   privateRetainDisplayBundle,
-  privateViewReferences,
 } from '../../src/cli-display-archive.js'
 import { CliDiagnostic } from '../../src/cli-usage.js'
-import { PrivateDisplayArchiveError } from '../../src/internal/display-archive.js'
+import {
+  PrivateDisplayArchiveError,
+  privateViewReferences,
+} from '../../src/internal/display-archive.js'
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 
 test('copyable receipt operands survive shell quoting, Unicode and an option-like identity', () => {

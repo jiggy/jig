@@ -63,6 +63,11 @@ export interface PrivateRootFileMappingFailure {
   readonly missingWritableDestination: readonly string[]
 }
 
+interface PrivateRootBoundInputOwner {
+  readonly attachments: readonly Pick<PrivateCapturedAttachment, 'name' | 'files'>[]
+  close(): void
+}
+
 /** Closed admitted-interface facts, without source paths or arbitrary exception text. */
 export class PrivateRootFileMappingError extends CheckError {
   readonly fileMapping: PrivateRootFileMappingFailure
@@ -207,6 +212,7 @@ export class PrivateRootRunFiles {
   #nativeArtifactsRetained = false
   #artifactResultNames: readonly string[] = []
   #deliveryOutput: PrivateExecutionOutput | undefined
+  #boundInputs: PrivateRootBoundInputOwner | undefined
   #method:
     | {
         readonly package: PrivateActivationRequest['package']
@@ -219,6 +225,9 @@ export class PrivateRootRunFiles {
     output: boolean,
     readonly delivery?: PrivateDeliveryConnection,
     readonly displayBundleAttachment?: string,
+    readonly onInputs?: (
+      attachments: readonly Pick<PrivateCapturedAttachment, 'name' | 'files'>[],
+    ) => void,
   ) {
     if (displayBundleAttachment !== undefined) privateAttachmentName(displayBundleAttachment)
     this.identity = normalizePrivateRunFileIdentity({
@@ -233,7 +242,7 @@ export class PrivateRootRunFiles {
     runId: string,
     request: PrivateActivationRequest,
     identity: PrivateRunFileIdentity,
-    bound: readonly Omit<PrivateCapturedAttachment, 'rootFd'>[] = [],
+    bound?: PrivateRootBoundInputOwner,
   ): {
     readonly context: PrivateFlowFileContext
     readonly plan: Pick<
@@ -250,6 +259,8 @@ export class PrivateRootRunFiles {
         }
       >
     >
+    /** The caller must leave bound input retirement to this file owner. */
+    readonly retainedInputs: boolean
   } {
     if (this.#close) throw new Error('Run file owner retired')
     if (
@@ -262,7 +273,7 @@ export class PrivateRootRunFiles {
     this.#runId = runId
     requirePrivateRootFileMapping(request, identity)
     const boundIdentity = normalizePrivateRunFileIdentity({
-      attachments: bound.map((item) => ({
+      attachments: (bound?.attachments ?? []).map((item) => ({
         name: item.name,
         files: item.files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
       })),
@@ -284,7 +295,7 @@ export class PrivateRootRunFiles {
     this.identify(request)
     const context = createPrivateRootFlowFileContext({
       declarations: request.attachments,
-      captured: [...this.captured, ...bound],
+      captured: [...this.captured, ...(bound?.attachments ?? [])],
     })
     const projection = privateFlowFileExecutionProjection(context)
     const attachments = Object.fromEntries(
@@ -296,10 +307,25 @@ export class PrivateRootRunFiles {
         },
       ]),
     )
+    let retainedInputs = false
+    if (this.onInputs && !this.#boundInputs) {
+      try {
+        this.onInputs([...this.captured, ...(bound?.attachments ?? [])])
+        if (this.#close) throw new Error('Run file owner retired')
+      } catch (error) {
+        context.close()
+        throw error
+      }
+      if (bound) {
+        this.#boundInputs = bound
+        retainedInputs = true
+      }
+    }
     return {
       context,
       plan: projection.plan,
       attachments,
+      retainedInputs,
     }
   }
   identify(request: PrivateActivationRequest): void {
@@ -470,11 +496,14 @@ export class PrivateRootRunFiles {
     const output = this.#output
     const deliveryOutput = this.#deliveryOutput
     const artifacts = this.#artifacts
+    const boundInputs = this.#boundInputs
     this.#output = undefined
     this.#deliveryOutput = undefined
     this.#artifacts = Object.freeze({})
+    this.#boundInputs = undefined
     this.#close = (async () => {
       const results = await Promise.allSettled([
+        Promise.resolve().then(() => boundInputs?.close()),
         closePrivateExecutionOutput(output),
         closePrivateExecutionOutput(deliveryOutput),
         ...[...new Set(Object.values(artifacts))].map((snapshot) =>

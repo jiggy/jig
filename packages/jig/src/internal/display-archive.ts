@@ -3,7 +3,7 @@ import { type BigIntStats, constants } from 'node:fs'
 import { type FileHandle, realpath } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { join, resolve } from 'node:path'
-import type { Reference } from '@jigging/reporting'
+import type { Block, Reference, Value, ViewItem } from '@jigging/reporting'
 import {
   canonicalReportingMessage,
   type DisplayBundle,
@@ -127,6 +127,28 @@ export interface PrivateDisplayArchive {
   remove(definitionId: string, instanceKey: string, expectedRevision: string): Promise<void>
   reset(expectedGeneration: string): Promise<string>
   close(): Promise<void>
+}
+
+/** Walk typed reference positions in an already validated semantic view. */
+export function privateViewReferences(view: ViewItem): readonly Reference[] {
+  const references = new Map<string, Reference>()
+  const add = (value: Value) => {
+    if (value !== null && typeof value === 'object')
+      references.set(canonicalReportingMessage(value), value)
+  }
+  const block = (value: Block) => {
+    if (value.kind === 'report') for (const reference of value.references ?? []) add(reference)
+    else if (value.kind === 'facts') for (const item of value.items) add(item.value)
+    else if (value.kind === 'content') add(value.reference)
+    else if (value.kind === 'collection') {
+      for (const row of value.rows) {
+        for (const cell of Object.values(row.cells)) add(cell)
+        for (const detail of row.details ?? []) block(detail)
+      }
+    }
+  }
+  for (const section of view.sections) for (const value of section.blocks) block(value)
+  return [...references.values()]
 }
 
 interface SqliteDatabase {
@@ -578,9 +600,8 @@ function normalizeCommit(input: PrivateDisplayArchiveCommit): NormalizedCommit {
   const source = readSource(input.source)
   const references = new Map<string, Reference>()
   for (const publication of bundle.views)
-    walkReferences(publication.view, (reference) =>
-      references.set(canonicalReportingMessage(reference), reference),
-    )
+    for (const reference of privateViewReferences(publication.view))
+      references.set(canonicalReportingMessage(reference), reference)
   if (references.size > PRIVATE_DISPLAY_ARCHIVE_LIMITS.evidenceItems)
     fail('CAPACITY', 'Display reference count exceeds its limit.')
   for (const required of bundle.requiredEvidence ?? [])
@@ -1069,15 +1090,6 @@ function storageBytes(database: SqliteDatabase): number {
   )[0]?.bytes
   if (!Number.isSafeInteger(value) || value === undefined || value < 0) unsafe()
   return value
-}
-function walkReferences(value: unknown, visit: (reference: Reference) => void): void {
-  if (Array.isArray(value)) for (const item of value) walkReferences(item, visit)
-  else if (value !== null && typeof value === 'object') {
-    const object = value as Record<string, unknown>
-    if (['artifact', 'input-artifact', 'call', 'record'].includes(String(object.kind)))
-      visit(value as Reference)
-    else for (const item of Object.values(object)) walkReferences(item, visit)
-  }
 }
 function closedRecord(value: unknown, fields: readonly string[]): Record<string, unknown> {
   if (

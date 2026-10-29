@@ -125,6 +125,7 @@ These pure cases do not qualify native capture, protected acceptance or installe
 
 `host/installed-display-archive.test.ts` consumes frozen Jig, reporting and public FLOW SDK archives through the installed CLI.
 It checks final delivery, exact evidence, original receipt recovery, removal fences and checkpoint-only publication refusal.
+Its Binding uses retained inputs after visible edits, alongside per-run inputs, and requires both exact captures in the final edition.
 Native residue checks remain separate from portable archive cases and unfamiliar-consumer usability qualification.
 
 `portable/attempt-export.test.ts` checks parser inputs and actual copy-process identity.

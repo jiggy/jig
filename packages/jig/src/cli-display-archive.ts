@@ -3,7 +3,7 @@ import { lstat } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import type { DisplayPreviewReply, DisplaySnapshot, WebAssets } from '@jigging/display-model'
 import { validateDisplaySnapshot } from '@jigging/display-model'
-import type { Block, Reference, ViewItem } from '@jigging/reporting'
+import type { Reference } from '@jigging/reporting'
 import { canonicalReportingMessage, decodeDisplayBundle } from '@jigging/reporting/validation'
 import { cliShellWord } from './cli-discovery.js'
 import { asciiJsonString, CliDiagnostic, usage } from './cli-usage.js'
@@ -14,6 +14,7 @@ import {
   PrivateDisplayArchiveError,
   type PrivateDisplayBinding,
   type PrivateRetainedDisplayView,
+  privateViewReferences,
 } from './internal/display-archive.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 
@@ -23,30 +24,6 @@ const MAX_PRESENTED_BYTES = 6 * 1024 * 1024
 const MAX_EVIDENCE_BYTES = 64 * 1024 * 1024
 const MAX_EVIDENCE_FILES = 64
 export type PrivateDisplayBundleSelection = Readonly<{ attachment: string; path: string }>
-
-/** Walk typed reference positions in an already validated semantic view. */
-export function privateViewReferences(view: ViewItem): readonly Reference[] {
-  const references = new Map<string, Reference>()
-  const add = (value: unknown) => {
-    if (value !== null && typeof value === 'object' && 'kind' in value) {
-      const reference = value as Reference
-      references.set(canonicalReportingMessage(reference), reference)
-    }
-  }
-  const block = (value: Block) => {
-    if (value.kind === 'report') for (const reference of value.references ?? []) add(reference)
-    else if (value.kind === 'facts') for (const item of value.items) add(item.value)
-    else if (value.kind === 'content') add(value.reference)
-    else if (value.kind === 'collection') {
-      for (const row of value.rows) {
-        for (const cell of Object.values(row.cells)) add(cell)
-        for (const detail of row.details ?? []) block(detail)
-      }
-    }
-  }
-  for (const section of view.sections) for (const value of section.blocks) block(value)
-  return [...references.values()]
-}
 
 /** Suppliers transfer detached verified copies. Optional reporting is never final material. */
 export async function privateRetainDisplayBundle(

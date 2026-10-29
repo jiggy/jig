@@ -307,6 +307,9 @@ These links locate module rules. All selected domain requirements still apply.
 ### input-inspection
 
 - `input-inspection.ts` copies explicitly selected members from the original authenticated input set.
+  This set includes per-run attachments and the admitted Binding's retained read members.
+  During inspection, `root-run-files.ts` owns retained Binding inputs until command completion detaches selected bytes and closes their original handles.
+
   Unknown references cannot consume the selected-file allowance.
   Detached copies preserve captured-input provenance after original input authority closes.
   Reads return owned copies. Closing fences new work, aborts and joins the decoder, then releases retained bytes.
@@ -363,6 +366,8 @@ These links locate module rules. All selected domain requirements still apply.
 
   Reads apply SQL selection and length limits before loading payloads.
   Persisted receipts, views and evidence require closed canonical data.
+  Evidence selection walks only typed reference positions in validated views, including collection cells and details.
+  Cell maps and prose cannot become references through a matching `kind` value.
   Evidence reads verify exact content sizes and digests before returning owned copies.
   Acquisition rejects unexpected noninternal schema objects and changed protected filesystem identities.
 

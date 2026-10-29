@@ -590,6 +590,7 @@ export class PrivateCliProgress {
         files: packet.files.map((file) => ({
           path: file.path,
           bytes: file.bytes,
+          downloadable: file.available,
           state:
             !file.available || omittedPreviews.has(file.path)
               ? 'unavailable'

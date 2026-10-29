@@ -120,6 +120,133 @@ test('one edition atomically retains selected instances and detached exact evide
     }
   }))
 
+for (const kind of ['artifact', 'input-artifact', 'call', 'record'])
+  test(`a collection text cell named kind containing ${kind} cannot fabricate retained evidence`, async () =>
+    fixture(async (archive, directory) => {
+      const { generation, heads } = await archive.state()
+      const bundle = createDisplayBundle(
+        { generation, heads },
+        {
+          requestId: 'literal-kind',
+          edition: 'Literal cell',
+          views: [
+            {
+              view: {
+                kind: 'view',
+                id: 'literals',
+                title: 'Literal cells',
+                summary: 'A kind column contains ordinary text.',
+                target: { definitionId: 'literals', instanceKey: 'one' },
+                sections: [
+                  {
+                    blocks: [
+                      {
+                        kind: 'collection',
+                        id: 'values',
+                        title: 'Values',
+                        columns: [{ key: 'kind', label: 'Kind', type: 'text' }],
+                        rows: [{ id: 'one', cells: { kind } }],
+                      },
+                    ],
+                  },
+                ],
+              },
+              completeness: 'complete',
+            },
+          ],
+        },
+      )
+      const accepted = await archive.commit({ ...input(bundle), bindings: [] })
+      expect(accepted.evidence).toEqual([])
+      expect(await archive.receipt(bundle.requestId, generation)).toEqual(accepted)
+      await archive.close()
+      const reopened = await openPrivateDisplayArchive(directory)
+      try {
+        expect(await reopened.receipt(bundle.requestId, generation)).toEqual(accepted)
+        expect((await reopened.views())[0]?.publication.view).toEqual(bundle.views[0]?.view)
+      } finally {
+        await reopened.close()
+      }
+    }))
+
+test('archive evidence follows every typed view position without interpreting collection cell maps', async () =>
+  fixture(async (archive, directory) => {
+    const references = [
+      { kind: 'artifact', attachment: 'files', path: 'report.txt' },
+      { kind: 'input-artifact', attachment: 'source', path: 'fact.txt' },
+      { kind: 'artifact', attachment: 'files', path: 'content.txt' },
+      { kind: 'record', viewId: 'records', collectionId: 'items', rowId: 'one' },
+      { kind: 'call', operationId: 'related' },
+      { kind: 'artifact', attachment: 'files', path: 'detail-fact.txt' },
+      { kind: 'input-artifact', attachment: 'source', path: 'detail-content.txt' },
+    ] as const satisfies readonly Reference[]
+    const [report, fact, content, cell, detailReport, detailFact, detailContent] = references
+    const { generation, heads } = await archive.state()
+    const bundle = createDisplayBundle(
+      { generation, heads },
+      {
+        requestId: 'typed-positions',
+        edition: 'Typed positions',
+        views: [
+          {
+            view: {
+              kind: 'view',
+              id: 'records',
+              title: 'Typed evidence',
+              summary: 'Only reference positions select evidence.',
+              target: { definitionId: 'records', instanceKey: 'one' },
+              sections: [
+                {
+                  blocks: [
+                    { kind: 'report', text: 'Report', references: [report] },
+                    { kind: 'facts', items: [{ label: 'Fact', value: fact }] },
+                    { kind: 'content', reference: content },
+                    {
+                      kind: 'collection',
+                      id: 'items',
+                      title: 'Items',
+                      columns: [
+                        { key: 'kind', label: 'Kind', type: 'text' },
+                        { key: 'related', label: 'Related', type: 'reference' },
+                      ],
+                      rows: [
+                        {
+                          id: 'one',
+                          cells: { kind: 'artifact', related: cell },
+                          details: [
+                            { kind: 'report', text: 'Detail', references: [detailReport, report] },
+                            { kind: 'facts', items: [{ label: 'Detail fact', value: detailFact }] },
+                            { kind: 'content', reference: detailContent },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+            completeness: 'complete',
+          },
+        ],
+      },
+    )
+    const accepted = await archive.commit({ ...input(bundle), bindings: [] })
+    expect(accepted.evidence.map((item) => item.reference)).toEqual(
+      [...references].sort((a, b) =>
+        canonicalReportingMessage(a) < canonicalReportingMessage(b) ? -1 : 1,
+      ),
+    )
+    expect(accepted.evidence.every((item) => item.state === 'unavailable')).toBe(true)
+    expect(await archive.receipt(bundle.requestId, generation)).toEqual(accepted)
+    await archive.close()
+    const reopened = await openPrivateDisplayArchive(directory)
+    try {
+      expect(await reopened.receipt(bundle.requestId, generation)).toEqual(accepted)
+    } finally {
+      await reopened.close()
+    }
+  }))
+
 test('request recovery returns original provenance before stale revision checks and never reinstalls removed views', async () =>
   fixture(async (archive) => {
     const bundle = await publication(archive)
