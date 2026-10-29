@@ -99,6 +99,10 @@ function env(event) {
   }
 }
 
+function buildJob(current, overrides = {}) {
+  return quickJob(current, { id: current.id * 100 + 1, name: 'candidate-build', ...overrides })
+}
+
 function quickJob(current, overrides = {}) {
   return {
     id: current.id * 100,
@@ -703,10 +707,268 @@ test('the actual Mac acquisition step waits for Quick before complete native all
       source,
       '--after-quick',
       'true',
+      '--producer-timeout-seconds',
+      '1800',
       '--timeout-seconds',
       '600',
     ])
   } finally {
     await rm(temporary, { recursive: true, force: true })
   }
+})
+
+test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    fixture.jobsByRun.set(100, [buildJob(ci, { status: 'queued', conclusion: null })])
+    const artifact = fixture.byRun.get(100).artifact
+    const name = artifact.name
+    artifact.name = `candidates-${source}-r100-a0`
+    let clock = 0
+    const acquired = await acquireAfterQuick(fixture, {
+      afterQuick: false,
+      producerTimeoutSeconds: 1800,
+      timeoutSeconds: 300,
+      now: () => clock,
+      sleep: async (milliseconds) => {
+        assert.deepEqual(fixture.downloaded, [])
+        if (clock < 330_000) {
+          assert.deepEqual(fixture.requestedArtifacts, [])
+          assert.equal(milliseconds, 30_000)
+        } else {
+          assert.equal(milliseconds, 10_000)
+        }
+        clock += milliseconds
+        if (clock >= 330_000) fixture.jobsByRun.set(100, [buildJob(ci)])
+        if (clock >= 570_000) artifact.name = name
+      },
+    })
+    assert.equal(clock, 570_000)
+    assert.equal(acquired.runId, 100)
+    assert.equal(acquired.runAttempt, 1)
+    assert.deepEqual(fixture.downloaded, [1000])
+    assert.deepEqual(
+      fixture.requestedJobs,
+      Array.from({ length: 12 }, () => ({ runId: 100, attempt: 1 })),
+    )
+  })
+})
+
+test('pending candidate production expires at its absolute bound without reading artifacts', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    fixture.jobsByRun.set(100, [buildJob(ci, { status: 'in_progress', conclusion: null })])
+    let clock = 0
+    await assert.rejects(
+      acquireAfterQuick(fixture, {
+        afterQuick: false,
+        producerTimeoutSeconds: 65,
+        timeoutSeconds: 300,
+        now: () => clock,
+        sleep: async (milliseconds) => {
+          clock += milliseconds
+        },
+      }),
+      /producer deadline/,
+    )
+    assert.equal(clock, 65_000)
+    assert.deepEqual(fixture.requestedArtifacts, [])
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('candidate production refuses failed, ambiguous and foreign jobs before artifact transfer', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    const invalid = [
+      ['duplicate', [buildJob(ci), buildJob(ci, { id: 10001 })], /Ambiguous/],
+      ['stale attempt', [buildJob(ci, { run_attempt: 0 })], /identity mismatch/],
+      ['foreign run', [buildJob(ci, { run_id: 101 })], /identity mismatch/],
+      ['foreign head', [buildJob(ci, { head_sha: prHead })], /identity mismatch/],
+      ...['failure', 'cancelled', 'skipped', 'timed_out'].map((conclusion) => [
+        conclusion,
+        [buildJob(ci, { conclusion })],
+        /did not succeed/,
+      ]),
+    ]
+    for (const [label, jobs, pattern] of invalid) {
+      fixture.jobsByRun.set(100, jobs)
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          afterQuick: false,
+          producerTimeoutSeconds: 1800,
+        }),
+        pattern,
+        label,
+      )
+      assert.deepEqual(fixture.requestedArtifacts, [], label)
+      assert.deepEqual(fixture.downloaded, [], label)
+    }
+  })
+})
+
+test('completed producers cannot retain a missing or unfinished candidate build', async () => {
+  const ci = run(100, 'push', { status: 'completed', conclusion: 'failure' })
+  await withFixture([ci], async (fixture) => {
+    for (const jobs of [[], [buildJob(ci, { status: 'queued', conclusion: null })]]) {
+      fixture.jobsByRun.set(100, jobs)
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          afterQuick: false,
+          producerTimeoutSeconds: 1800,
+        }),
+        /Completed CI producer/,
+      )
+    }
+    assert.deepEqual(fixture.requestedArtifacts, [])
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('a successful producer with no artifact uses only the unchanged transfer bound', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    fixture.jobsByRun.set(100, [buildJob(ci)])
+    fixture.byRun.get(100).artifact.name = `candidates-${source}-r100-a0`
+    let clock = 0
+    await assert.rejects(
+      acquireAfterQuick(fixture, {
+        afterQuick: false,
+        producerTimeoutSeconds: 1800,
+        timeoutSeconds: 25,
+        now: () => clock,
+        sleep: async (milliseconds) => {
+          clock += milliseconds
+        },
+      }),
+      /acquisition deadline/,
+    )
+    assert.equal(clock, 25_000)
+    assert.deepEqual(fixture.requestedJobs, [{ runId: 100, attempt: 1 }])
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('a ready producer attempt cannot change while its artifact is pending', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    fixture.jobsByRun.set(100, [buildJob(ci)])
+    fixture.byRun.get(100).artifact.name = `candidates-${source}-r100-a0`
+    let clock = 0
+    await assert.rejects(
+      acquireAfterQuick(fixture, {
+        afterQuick: false,
+        producerTimeoutSeconds: 1800,
+        timeoutSeconds: 300,
+        now: () => clock,
+        sleep: async (milliseconds) => {
+          clock += milliseconds
+          ci.run_attempt = 2
+        },
+      }),
+      /producer changed after readiness/,
+    )
+    assert.equal(clock, 10_000)
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('producer waiting refuses invalid or excessive budgets before GitHub requests', async () => {
+  await withFixture([run(100)], async (fixture) => {
+    for (const producerTimeoutSeconds of [-1, 1801, NaN, Infinity, 0.5])
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          producerTimeoutSeconds,
+        }),
+        /producer timeout.*0–1800/,
+      )
+    assert.deepEqual(fixture.requestedEvents, [])
+    assert.deepEqual(fixture.requestedJobs, [])
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('host readiness retains the Quick gate before any native artifact transfer', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    fixture.jobsByRun.set(100, [buildJob(ci), quickJob(ci, { status: 'queued', conclusion: null })])
+    let clock = 0
+    const acquired = await acquireAfterQuick(fixture, {
+      producerTimeoutSeconds: 60,
+      timeoutSeconds: 0,
+      now: () => clock,
+      sleep: async (milliseconds) => {
+        assert.deepEqual(fixture.requestedArtifacts, [])
+        clock += milliseconds
+        fixture.jobsByRun.set(100, [buildJob(ci), quickJob(ci)])
+      },
+    })
+    assert.equal(clock, 30_000)
+    assert.equal(acquired.artifactId, 1000)
+  })
+})
+
+test('a slow readiness response cannot start transfer after the producer deadline', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    fixture.jobsByRun.set(100, [buildJob(ci)])
+    const api = fixture.client.api
+    let clock = 0
+    fixture.client.api = async (path) => {
+      const response = await api(path)
+      if (path.includes('/jobs?')) clock = 1_801_000
+      return response
+    }
+    await assert.rejects(
+      acquireAfterQuick(fixture, {
+        afterQuick: false,
+        producerTimeoutSeconds: 1800,
+        timeoutSeconds: 300,
+        now: () => clock,
+      }),
+      /producer deadline/,
+    )
+    assert.deepEqual(fixture.requestedArtifacts, [])
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('either failed prerequisite refuses while the other producer job is pending', async () => {
+  const ci = run(100)
+  await withFixture([ci], async (fixture) => {
+    for (const jobs of [
+      [
+        buildJob(ci, { status: 'queued', conclusion: null }),
+        quickJob(ci, { conclusion: 'failure' }),
+      ],
+      [
+        buildJob(ci, { conclusion: 'failure' }),
+        quickJob(ci, { status: 'queued', conclusion: null }),
+      ],
+    ]) {
+      fixture.jobsByRun.set(100, jobs)
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          producerTimeoutSeconds: 1800,
+        }),
+        /did not succeed/,
+      )
+    }
+    assert.deepEqual(fixture.requestedArtifacts, [])
+    assert.deepEqual(fixture.downloaded, [])
+  })
+})
+
+test('Linux acquisition separates producer readiness from transfer within its outer job bound', async () => {
+  const workflow = await readFile(
+    new URL('../../.github/workflows/linux-host-conformance.yml', import.meta.url),
+    'utf8',
+  )
+  const acquisition = workflow.slice(
+    workflow.indexOf('  host-artifacts:\n'),
+    workflow.indexOf('  host-suite:\n'),
+  )
+  assert.match(acquisition, /timeout-minutes: 40/)
+  assert.match(acquisition, /--producer-timeout-seconds 1800 --timeout-seconds 300/)
+  assert.doesNotMatch(acquisition, /--after-quick/)
 })
