@@ -73,6 +73,7 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   iteration proves artifact/evaluation composition, not adaptation quality.
 - Deadline controls retain bounded phase evidence through public `OperationError.details`.
   Each control receives a fresh Run and preserves ordinary evaluator limits.
+  Stopped-phase snapshots require actual collection. Unavailable snapshots retain process evidence and an explicit null file manifest.
   Repeated public result reads must preserve the original evidence and cleanup.
 - Cancellation and client-death cases await a real reviewed HTTP request.
   They then stop the original attempt and require settlement without replay.

@@ -140,6 +140,45 @@ describe('project evaluation failure evidence projection', () => {
     expect(evidence.limit).toBeNull()
   })
 
+  test('retains prior phases and stopped process when output files are unavailable', () => {
+    const generation: PrivateProjectEvaluationPhaseEvidence = {
+      ...phaseRecord(),
+      phase: 'generate',
+      status: 'skipped',
+      invocation: [],
+      exitCode: null,
+      stopReason: 'not-configured',
+      durationMs: 0,
+      files: [],
+    }
+    const compile = phaseRecord()
+    compile.stdout.text = 'compilation completed'
+    const stopped = {
+      invocation: ['bun', 'test', 'test/value.test.ts'],
+      exitCode: null,
+      signal: 'SIGKILL',
+      stopReason: 'deadline' as const,
+      durationMs: 15_000,
+      stdout: { text: 'test started', truncated: false },
+      stderr: { text: 'cwd:/work\n', truncated: false },
+    }
+    const evidence = project({
+      ...base(),
+      environmentDigest: digest,
+      phase: 'test',
+      stage: 'collection',
+      limit: 'phase',
+      phases: [generation, compile],
+      process: stopped,
+      files: null,
+    })
+    expect(evidence.phases).toEqual([generation, compile])
+    expect(evidence.phases.map((phase) => phase.phase)).toEqual(['generate', 'compile'])
+    expect(evidence.process).toEqual(stopped)
+    expect(evidence.phase).toBe('test')
+    expect(evidence.files).toBeNull()
+  })
+
   test('clips failure streams without changing successful source evidence or prior flags', () => {
     const phase = phaseRecord()
     phase.stdout.text = 'a'.repeat(64 * 1024)

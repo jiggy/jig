@@ -13,15 +13,30 @@ process.on('uncaughtExceptionMonitor', error => {
   }))
 })
 interface Stream { text: string; truncated: boolean }
-interface Phase {
-  phase: string; status: string; invocation: string[]; exitCode: number | null;
-  signal: string | null; stopReason: string; durationMs: number; stdout: Stream; stderr: Stream;
+interface File { path: string; bytes: number; digest: string }
+interface Process {
+  invocation: string[]; exitCode: number | null; signal: string | null;
+  stopReason: string | null; durationMs: number | null; stdout: Stream | null; stderr: Stream | null;
+}
+interface Phase extends Process {
+  phase: string; status: string; stopReason: string; durationMs: number;
+  stdout: Stream; stderr: Stream; files: File[];
 }
 interface Evaluation {
   candidateDigest: string | null; recipeDigest: string | null; dependencyDigest: string | null;
   environmentDigest: string | null; phase: string | null; stage: string; limit: string | null;
-  phases: Phase[]; process: Omit<Phase, 'phase' | 'status'> | null;
-  files: unknown[] | null; cleanup: string;
+  phases: Phase[]; process: Process | null;
+  files: File[] | null; cleanup: string;
+}
+function manifest(files: File[]) {
+  assert.ok(Array.isArray(files) && files.length <= 64)
+  for (const file of files) {
+    assert.deepEqual(Object.keys(file).sort(), ['bytes', 'digest', 'path'])
+    assert.match(file.path, /^(generated|dist|reports)\/[A-Za-z0-9_@./-]+$/)
+    assert.ok(Number.isSafeInteger(file.bytes) && file.bytes >= 0 && file.bytes <= 2 * 1024 * 1024)
+    assert.match(file.digest, /^sha256:[a-f0-9]{64}$/)
+  }
+  return files.map(file => [file.path, file.bytes, file.digest])
 }
 const cwd = process.cwd()
 const client = createAttemptClient({ executable: resolve(process.argv[2]!), cwd, timeoutMs: 195_000 })
@@ -45,6 +60,7 @@ for (const selected of ['generation', 'test'] as const) {
       try { await directory.sync() } finally { await directory.close() }
     },
   })
+  stage = 'run-terminal'
   assert.equal(execution.role, 'owner')
   assert.equal(execution.observation?.terminal?.status, 'succeeded')
   assert.equal(execution.observation?.cleanup, 'confirmed')
@@ -53,6 +69,7 @@ for (const selected of ['generation', 'test'] as const) {
   const output = retained.output as {
     mode: string; code: string; details: { evaluation: Evaluation }; remainingAfterMs: number;
   }
+  stage = 'result-header'
   assert.equal(output.mode, mode)
   assert.equal(output.code, 'DEADLINE_EXCEEDED')
   assert.ok(output.remainingAfterMs > 0)
@@ -64,22 +81,59 @@ for (const selected of ['generation', 'test'] as const) {
   assert.ok(['preparation', 'sealing', 'admission', 'collection', 'settlement'].includes(evaluation.stage))
   for (const key of ['candidateDigest', 'recipeDigest', 'dependencyDigest', 'environmentDigest'] as const)
     assert.match(evaluation[key]!, /^sha256:[a-f0-9]{64}$/)
-  assert.deepEqual(evaluation.phases.map(p => p.phase),
-    selected === 'generation' ? ['generate'] : ['generate', 'compile', 'test'])
-  const stopped = evaluation.phases.at(-1)!
-  assert.equal(stopped.phase, phase)
-  assert.equal(stopped.status, 'failed')
-  assert.equal(stopped.stopReason, 'deadline')
-  assert.ok(Number.isFinite(stopped.durationMs) && stopped.durationMs > 0)
-  assert.match(stopped.stdout.text, new RegExp(`deadline-${selected}-start`))
-  assert.equal(stopped.stdout.truncated, true)
-  assert.match(stopped.stderr.text, /cwd:\/work\n/)
-  assert.match(stopped.stderr.text, new RegExp(`module:/work/${selected === 'generation' ? 'tools/generate' : 'test/answer.test'}\\.js\\n`))
-  for (const observed of [...evaluation.phases, ...(evaluation.process ? [evaluation.process] : [])])
+  stage = 'phase-evidence'
+  const priorPhases = selected === 'generation' ? [] : ['generate', 'compile']
+  assert.ok(evaluation.phases.length === priorPhases.length ||
+    evaluation.phases.length === priorPhases.length + 1)
+  const prior = evaluation.phases.slice(0, priorPhases.length)
+  assert.deepEqual(prior.map(p => p.phase), priorPhases)
+  for (const completed of prior) {
+    assert.equal(completed.status, 'completed')
+    assert.equal(completed.exitCode, 0)
+    assert.equal(completed.signal, null)
+    assert.equal(completed.stopReason, 'exited')
+    manifest(completed.files)
+  }
+  const stopped = evaluation.phases[priorPhases.length]
+  if (stopped === undefined) assert.equal(evaluation.files, null)
+  else {
+    assert.equal(stopped.phase, phase)
+    assert.equal(stopped.status, 'failed')
+    assert.equal(stopped.stopReason, 'deadline')
+    assert.ok(Number.isFinite(stopped.durationMs) && stopped.durationMs > 0)
+    assert.ok(evaluation.files !== null)
+    assert.deepEqual(manifest(evaluation.files), manifest(stopped.files))
+  }
+  stage = 'process-evidence'
+  const process = evaluation.process
+  assert.ok(process !== null)
+  assert.equal(process.stopReason, 'deadline')
+  assert.ok(typeof process.durationMs === 'number' &&
+    Number.isFinite(process.durationMs) && process.durationMs > 0)
+  assert.deepEqual(process.invocation, selected === 'generation'
+    ? ['bun', 'tools/generate.js'] : ['bun', 'test', 'test/answer.test.js'])
+  assert.ok(process.stdout !== null && process.stderr !== null)
+  if (stopped !== undefined) {
+    assert.equal(stopped.exitCode, process.exitCode)
+    assert.equal(stopped.signal, process.signal)
+    assert.deepEqual([stopped.stdout.text, stopped.stdout.truncated],
+      [process.stdout.text, process.stdout.truncated])
+    assert.deepEqual([stopped.stderr.text, stopped.stderr.truncated],
+      [process.stderr.text, process.stderr.truncated])
+  }
+  stage = 'process-logs'
+  assert.match(process.stdout.text, new RegExp(`deadline-${selected}-start`))
+  assert.equal(process.stdout.truncated, true)
+  assert.match(process.stderr.text, /cwd:\/work\n/)
+  assert.match(process.stderr.text, new RegExp(`module:/work/${selected === 'generation' ? 'tools/generate' : 'test/answer.test'}\\.js\\n`))
+  stage = 'log-bounds'
+  for (const observed of [...evaluation.phases, process])
     for (const stream of [observed.stdout, observed.stderr]) {
+      assert.ok(stream !== null)
       assert.ok(Buffer.byteLength(stream.text) <= 8 * 1024)
       assert.equal(typeof stream.truncated, 'boolean')
     }
+  stage = 'prior-compile'
   if (selected === 'generation') assert.equal(evaluation.limit, 'phase')
   else {
     const compile = evaluation.phases.find(p => p.phase === 'compile')!
@@ -93,18 +147,22 @@ for (const selected of ['generation', 'test'] as const) {
   assert.deepEqual(repeated.output, retained.output)
   assert.equal(repeated.observation.receipt?.runId, execution.receipt.runId)
   assert.equal(repeated.observation.cleanup, 'confirmed')
+  stage = 'lookup-cleanup'
   const lookup = await client.lookup({ ticket: execution.prepared.ticket })
   assert.equal(lookup.cleanup, 'confirmed')
   assert.equal(lookup.receipt?.runId, execution.receipt.runId)
   runs.push(execution.receipt.runId)
   evidence.push(evaluation)
 }
+stage = 'run-identities'
 assert.equal(new Set(runs).size, 2)
 assert.notEqual(evidence[0]!.candidateDigest, evidence[1]!.candidateDigest)
 for (const key of ['recipeDigest', 'dependencyDigest', 'environmentDigest'] as const)
   assert.equal(evidence[0]![key], evidence[1]![key])
+stage = 'approval'
 assert.equal((await client.inspect({ target: 'binding:root' }) as { approval: string }).approval,
   inspected.approval)
+stage = 'save-verification'
 await writeFile('verified.json', JSON.stringify({
   application: 'evaluation-deadline', cleanup: 'confirmed', runs, phases: ['generate', 'test'],
 }), { flag: 'wx', mode: 0o600 })
