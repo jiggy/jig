@@ -65,6 +65,7 @@ export function testEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     'DBUS_SESSION_BUS_ADDRESS',
     'FLOW_NODE',
     'JIG_AUTHORING_NODE_PATH',
+    'PYTHON',
     'NO_COLOR',
     'TERM',
   ]) {
@@ -196,12 +197,17 @@ export function macosOwnershipSnapshot(read = capture) {
     .join('\n')
 }
 
-function execute(command: string, args: string[], environment: NodeJS.ProcessEnv) {
+function execute(
+  command: string,
+  args: string[],
+  environment: NodeJS.ProcessEnv,
+  commandTimeoutMs = timeoutMs,
+) {
   const result = spawnSync(command, args, {
     cwd: repository,
     env: environment,
     stdio: 'inherit',
-    timeout: timeoutMs,
+    timeout: commandTimeoutMs,
   })
   if (result.error) console.error(`Preflight could not finish ${command}: ${result.error.message}`)
   return result.status ?? 1
@@ -209,8 +215,25 @@ function execute(command: string, args: string[], environment: NodeJS.ProcessEnv
 
 async function main() {
   const mode = process.argv[2] ?? 'all'
+  if (mode === 'source') {
+    // Preserve the source runner's stage limits; a shell-only timeout cannot
+    // establish that its active build or test child has stopped.
+    const status = execute(
+      '/bin/bash',
+      [resolve(repository, 'scripts/test-release.sh'), ...process.argv.slice(3)],
+      compilerEnvironment(process.env),
+      0,
+    )
+    if (status === 0)
+      console.log(
+        'Selected source stages passed. Complete native host qualification remains in CI.',
+      )
+    return status
+  }
   if (!['all', 'native'].includes(mode) || process.argv.length > 3)
-    throw Error('Usage: just preflight (or package-local just check)')
+    throw Error(
+      'Usage: just preflight, just test-source [source-stage options], or package-local just check',
+    )
   const mac = platform() === 'darwin'
   if (mac) {
     requireMacHost({
