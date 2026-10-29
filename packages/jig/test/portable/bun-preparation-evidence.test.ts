@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'bun:test'
+import { CheckError } from '../../src/diagnostics.js'
 import {
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
   normalizePrivateBunExecutionArtifact,
@@ -8,6 +9,10 @@ import {
   capturePrivateBunDependencies,
   privateBunPreparationInputs,
 } from '../../src/internal/bun-preparation-evidence.js'
+import {
+  projectError,
+  scopePrivatePackagePlanningError,
+} from '../../src/internal/project-session-controller.js'
 import { type CapturedPackage, createCapturedPackage } from '../../src/package/capture.js'
 import { packageDigest } from '../../src/package/digest.js'
 import { comparePathBytes } from '../../src/package/paths.js'
@@ -222,24 +227,51 @@ describe('private Bun dependency evidence', () => {
       layout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
     }
     try {
-      await expect(
-        assemblePrivateBunExecution({
+      for (const [dimension, dependencyLimits] of [
+        ['files', { maxPreparedFiles: 2, maxPreparedBytes: 1024 }],
+        ['bytes', { maxPreparedFiles: 3, maxPreparedBytes: 1 }],
+      ] as const) {
+        const failure = await assemblePrivateBunExecution({
           ...input,
-          dependencyLimits: { maxPreparedFiles: 2, maxPreparedBytes: 1024 },
-        }),
-      ).rejects.toMatchObject({
-        code: 'PACKAGE_BUN_OUTPUT_LIMIT',
-        preparationLimit: { dimension: 'files', observed: 3, maximum: 2 },
-      })
-      await expect(
-        assemblePrivateBunExecution({
-          ...input,
-          dependencyLimits: { maxPreparedFiles: 3, maxPreparedBytes: 1 },
-        }),
-      ).rejects.toMatchObject({
-        code: 'PACKAGE_BUN_OUTPUT_LIMIT',
-        preparationLimit: { dimension: 'bytes', maximum: 1 },
-      })
+          dependencyLimits,
+        }).then(
+          async (assembled) => {
+            await assembled.dispose()
+            throw new Error('reassembly unexpectedly accepted output over its selected limit')
+          },
+          (error: unknown) => error,
+        )
+        expect(failure).toBeInstanceOf(CheckError)
+        if (!(failure instanceof CheckError)) throw failure
+        expect(failure).toMatchObject({
+          kind: 'invalid',
+          code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+          path: 'package.json',
+          preparationLimit: {
+            dimension,
+            maximum: dimension === 'files' ? 2 : 1,
+          },
+        })
+        const preparationLimit = failure.preparationLimit
+        if (preparationLimit === undefined) throw new Error('output limit facts are missing')
+        expect(preparationLimit.observed).toBeGreaterThan(preparationLimit.maximum)
+        if (dimension === 'files') expect(preparationLimit.observed).toBe(3)
+        // Reuse must preserve the same public candidate refusal as fresh
+        // preparation, including the package location and bounded limit facts.
+        const projected = projectError(
+          scopePrivatePackagePlanningError(failure, 'flows/demo'),
+          'plan',
+        ).toJSON()
+        expect(projected).toEqual({
+          code: 'INVALID_CANDIDATE',
+          message: 'project candidate is invalid',
+          diagnostic: {
+            code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+            path: 'flows/demo/package.json',
+            preparationLimit: failure.preparationLimit,
+          },
+        })
+      }
       const assembled = await assemblePrivateBunExecution({
         ...input,
         dependencyLimits: { maxPreparedFiles: 3, maxPreparedBytes: 1024 },

@@ -142,7 +142,10 @@ These links locate module rules. All selected domain requirements still apply.
   Retain fixed host phases and allowlisted codes, never error names, messages or private fields.
   Guardian codes reuse the owning finite step/cause parser. Unknown causes become `OTHER`.
 
-  Preparation observations retain only fixed worker and budget codes, plus authenticated native stop reasons and missing-terminal or nonzero-exit facts.
+  Preparation observations retain fixed worker and budget codes, exact exchange
+  and collection cleanup wrappers, authenticated native stop reasons, and
+  missing-terminal or nonzero-exit facts. Wrapper projections identify host
+  failure boundaries without establishing their underlying cause.
   These facts share the same failure budget and never include exit values, native identities or worker output.
   Readers use the strict failure-record normalizer and never count failures as timing or success evidence.
 

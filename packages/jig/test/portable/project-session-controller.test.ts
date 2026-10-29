@@ -23,6 +23,17 @@ setDefaultTimeout(30_000)
 describe('private finite project session', () => {
   test('retains a closed cleanup cause behind an unconfirmed native fence', () => {
     const nativeOutputCauses = [
+      ['Bun preparation exchange and cleanup failed', 'PACKAGE_BUN_EXCHANGE_CLEANUP'],
+      ['Bun preparation and cleanup did not both complete', 'PACKAGE_BUN_OWNER_CLEANUP'],
+      ['native preparation collection is unavailable', 'PACKAGE_BUN_COLLECTION_UNAVAILABLE'],
+      [
+        'native preparation capture and collector retirement failed',
+        'PACKAGE_BUN_COLLECTOR_RETIREMENT',
+      ],
+      ['native preparation collection and cleanup failed', 'PACKAGE_BUN_NATIVE_CLEANUP'],
+      ['native preparation bytes lack successful cleanup', 'PACKAGE_BUN_OUTPUT_UNCONFIRMED'],
+      ['native preparation refusal and retirement failed', 'PACKAGE_BUN_REFUSAL_RETIREMENT'],
+      ['Bun preparation capture and retirement failed', 'PACKAGE_BUN_CAPTURE_RETIREMENT'],
       ['native output collection is unavailable', 'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE'],
       ['native output was lost during cleanup', 'NATIVE_OUTPUT_LOST_DURING_CLEANUP'],
       ['native output was not captured', 'NATIVE_OUTPUT_NOT_CAPTURED'],
@@ -86,6 +97,27 @@ describe('private finite project session', () => {
     ])
     expect(JSON.stringify(captureCauses)).not.toContain('synthetic bearer secret')
     expect(JSON.stringify(captureCauses)).not.toContain('/private/')
+    const preparationFailure = new AggregateError(
+      [
+        new AggregateError(
+          [
+            new Error('native preparation collection is unavailable'),
+            new Error('synthetic bearer secret /private/prepared'),
+          ],
+          'native preparation collection and cleanup failed',
+        ),
+      ],
+      'Bun preparation exchange and cleanup failed',
+    )
+    const preparationCauses = closedTestErrorCauses(preparationFailure)
+    expect(preparationCauses).toEqual([
+      'AggregateError:PACKAGE_BUN_EXCHANGE_CLEANUP',
+      'AggregateError:PACKAGE_BUN_NATIVE_CLEANUP',
+      'Error:PACKAGE_BUN_COLLECTION_UNAVAILABLE',
+      'Error',
+    ])
+    expect(JSON.stringify(preparationCauses)).not.toMatch(/synthetic bearer secret|\/private\//)
+    expect(projectError(preparationFailure, 'plan').code).toBe('INTERNAL')
     const nativeFailure = Object.assign(new Error('private owner path'), {
       name: 'PrivateMacosFenceUnconfirmedError',
       cause: new AggregateError(
