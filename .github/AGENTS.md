@@ -239,10 +239,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `max-parallel: 5`. The sixth job queues without increasing concurrent demand.
   Actual runner availability still determines start times.
 
-  Before full native allocation, the existing Ubuntu acquisition job waits for
-  the exact canonical CI producer's current-attempt `Quick development checks`
-  success. This wait permits up to 600 seconds within the job's 15-minute
-  budget. Keep every test and profile.
+  Linux and hosted Mac acquisition wait for the exact current-attempt
+  `candidate-build` job before starting the artifact transfer bound. Producer
+  readiness permits 1,800 seconds, including runner queues. Failed or invalid
+  producer jobs refuse immediately. Hosted Mac also requires the same
+  producer's `Quick development checks` success before native allocation.
+
+  Transfer then permits the existing 300 seconds on Linux or 600 seconds on
+  Mac. Acquisition jobs allow 40 and 45 minutes respectively, including setup
+  and settlement. Native test budgets, complete profiles and byte verification
+  remain mandatory.
 
 
   Measure queue effects separately. This head start does not guarantee Python

@@ -132,17 +132,20 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
   }
 }
 
-async function quickChecksReady(client, expected, run) {
+async function producerJobReady(client, expected, run, name) {
   const jobs = await paginated(
     client,
     `repos/${expected.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
     'jobs',
   )
-  const matching = jobs.filter((job) => job.name === 'Quick development checks')
-  if (matching.length > 1) throw new Error('Ambiguous current-attempt Quick development checks')
+  const matching = jobs.filter((job) => job.name === name)
+  if (matching.length > 1) throw new Error(`Ambiguous current-attempt ${name}`)
   if (!matching.length) {
     if (run.status === 'completed')
-      throw new Error('Completed CI producer has no current-attempt Quick development checks')
+      throw new Error(`Completed CI producer has no current-attempt ${name}`)
+    console.error(
+      `Waiting for ${name} in CI run ${run.id}, attempt ${run.run_attempt}: job not observed yet`,
+    )
     return false
   }
   const job = matching[0]
@@ -153,16 +156,20 @@ async function quickChecksReady(client, expected, run) {
     job.run_attempt !== run.run_attempt ||
     job.head_sha !== run.head_sha
   )
-    throw new Error('Quick development checks producer identity mismatch')
+    throw new Error(`${name} producer identity mismatch`)
   if (job.status === 'completed') {
     if (job.conclusion !== 'success')
-      throw new Error('Current-attempt Quick development checks did not succeed')
+      throw new Error(
+        `Current-attempt ${name} did not succeed (${job.conclusion ?? 'missing conclusion'}, run ${run.id}, attempt ${run.run_attempt})`,
+      )
     return true
   }
   if (!['queued', 'in_progress'].includes(job.status) || job.conclusion !== null)
-    throw new Error('Invalid pending Quick development checks status')
-  if (run.status === 'completed')
-    throw new Error('Completed CI producer has unfinished Quick development checks')
+    throw new Error(`Invalid pending ${name} status`)
+  if (run.status === 'completed') throw new Error(`Completed CI producer has unfinished ${name}`)
+  console.error(
+    `Waiting for ${name} in CI run ${run.id}, attempt ${run.run_attempt}: ${job.status}`,
+  )
   return false
 }
 
@@ -173,6 +180,7 @@ export async function acquireCandidate({
   expected,
   client,
   timeoutSeconds = 90,
+  producerTimeoutSeconds = 0,
   afterQuick = false,
   now = () => Date.now(),
   sleep = (ms) => new Promise((done) => setTimeout(done, ms)),
@@ -183,9 +191,17 @@ export async function acquireCandidate({
   const maximumTimeout = afterQuick ? 600 : 300
   if (!Number.isFinite(timeoutSeconds) || timeoutSeconds < 0 || timeoutSeconds > maximumTimeout)
     throw new Error(`Candidate acquisition timeout must be 0–${maximumTimeout} seconds`)
+  if (
+    !Number.isSafeInteger(producerTimeoutSeconds) ||
+    producerTimeoutSeconds < 0 ||
+    producerTimeoutSeconds > 1800
+  )
+    throw new Error('Candidate producer timeout must be 0–1800 whole seconds')
   if (producerRunId !== undefined && (!Number.isSafeInteger(producerRunId) || producerRunId <= 0))
     throw new Error('Invalid producer run ID')
-  const deadline = now() + timeoutSeconds * 1000
+  const producerDeadline = now() + producerTimeoutSeconds * 1000
+  let deadline = producerTimeoutSeconds ? undefined : now() + timeoutSeconds * 1000
+  let readyProducer
   while (true) {
     let runs
     if (producerRunId)
@@ -222,7 +238,30 @@ export async function acquireCandidate({
     }
     for (const run of runs) {
       validateWorkflowRun(run, expected)
-      if (afterQuick && !(await quickChecksReady(client, expected, run))) continue
+      if (
+        readyProducer &&
+        (run.id !== readyProducer.id || run.run_attempt !== readyProducer.attempt)
+      )
+        throw new Error('Canonical CI producer changed after readiness')
+      if (!readyProducer) {
+        const buildReady =
+          !producerTimeoutSeconds ||
+          (await producerJobReady(client, expected, run, 'candidate-build'))
+        const quickReady =
+          !afterQuick || (await producerJobReady(client, expected, run, 'Quick development checks'))
+        if (!buildReady || !quickReady) continue
+        if (producerTimeoutSeconds) {
+          if (now() >= producerDeadline)
+            throw new Error(
+              'Canonical CI candidate producer was not ready before the producer deadline',
+            )
+          readyProducer = { id: run.id, attempt: run.run_attempt }
+          deadline = now() + timeoutSeconds * 1000
+          console.error(
+            `Canonical CI producer ready: run ${run.id}, attempt ${run.run_attempt}; artifact wait allows ${timeoutSeconds} seconds`,
+          )
+        }
+      }
       const name = `candidates-${sourceRevision}-r${run.id}-a${run.run_attempt}`
       const artifacts = await paginated(
         client,
@@ -269,9 +308,16 @@ export async function acquireCandidate({
       )
       return envelope
     }
-    if (now() >= deadline)
-      throw new Error('Canonical CI candidate was not available before the acquisition deadline')
-    await sleep(Math.min(10000, Math.max(1, deadline - now())))
+    const phaseDeadline = deadline ?? producerDeadline
+    if (now() >= phaseDeadline)
+      throw new Error(
+        deadline === undefined
+          ? 'Canonical CI candidate producer was not ready before the producer deadline'
+          : 'Canonical CI candidate was not available before the acquisition deadline',
+      )
+    await sleep(
+      Math.min(deadline === undefined ? 30000 : 10000, Math.max(1, phaseDeadline - now())),
+    )
   }
 }
 
@@ -390,11 +436,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       !options.source
     )
       throw new Error(
-        'Use acquire OUTPUT --source SHA [--producer-run ID] [--after-quick true|false] [--timeout-seconds N] or acquire-linux OUTPUT --source SHA --qualification-output DIR [--linux-run ID]',
+        'Use acquire OUTPUT --source SHA [--producer-run ID] [--after-quick true|false] [--producer-timeout-seconds N] [--timeout-seconds N] or acquire-linux OUTPUT --source SHA --qualification-output DIR [--linux-run ID]',
       )
     if (options['after-quick'] !== undefined && !['true', 'false'].includes(options['after-quick']))
       throw new Error('--after-quick must be true or false')
     const afterQuick = options['after-quick'] === 'true'
+    if (positional[0] === 'acquire-linux' && options['producer-timeout-seconds'] !== undefined)
+      throw new Error('--producer-timeout-seconds applies only to canonical candidate acquisition')
     if (positional[0] === 'acquire-linux' && afterQuick)
       throw new Error('--after-quick applies only to canonical candidate acquisition')
     const expected = await acquisitionExpectation(options.source)
@@ -420,6 +468,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         expected,
         client,
         timeoutSeconds: Number(options['timeout-seconds'] ?? 90),
+        producerTimeoutSeconds: Number(options['producer-timeout-seconds'] ?? 0),
         afterQuick,
       })
     if (options['github-output'])

@@ -88,7 +88,7 @@ jobs:
     needs: "scope"
     if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: 10
+    timeout-minutes: 40
     permissions:
       contents: "read"
       actions: "read"
@@ -105,7 +105,7 @@ jobs:
         name: "Acquire the exact canonical CI candidates"
         env:
           GH_TOKEN: "${{ github.token }}"
-        run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/linux-host-artifacts\" --source \"$GITHUB_SHA\" --timeout-seconds 300"
+        run: "node scripts/ci/candidate-transfer.mjs acquire \"$RUNNER_TEMP/linux-host-artifacts\" --source \"$GITHUB_SHA\" --producer-timeout-seconds 1800 --timeout-seconds 300"
       -
         name: "Retain exact linux host artifacts"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"

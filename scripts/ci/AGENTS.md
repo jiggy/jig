@@ -112,16 +112,22 @@ They consume frozen package exports with tracked test helpers and installed
   Feature-branch producers are not accepted.
 
   Release readiness and native Linux lineage require full main-push producers.
-  Missing current-attempt artifacts never fall back to older candidates. Full
-  hosted Mac acquisition alone opts into `--after-quick true`. Before allocating
-  native shards, the existing loop waits for one successful
-  `Quick development checks` job. That job must match the exact producer run,
-  attempt and head. Pending or missing work waits within 600 seconds.
+  Missing current-attempt artifacts never fall back to older candidates.
+  Linux and hosted Mac acquisition use `--producer-timeout-seconds 1800` to
+  await the exact current-attempt `candidate-build` job. Its run, attempt and
+  head must match the selected producer.
 
-  Failed, skipped, duplicate, stale or completed-but-missing proof refuses.
-  Other acquisition uses the existing 300-second maximum without this
-  prerequisite. This scheduling pilot does not change FLOW/Python readiness or
-  prove that their Mac jobs have finished.
+  Producer readiness has one absolute deadline, including runner queues.
+  Missing, queued or running jobs poll every 30 seconds. Failed, skipped,
+  duplicate, stale or completed-but-missing proof refuses immediately. Hosted
+  Mac also requires `Quick development checks` success through
+  `--after-quick true`.
+
+  Readiness pins the producer run and attempt before artifact transfer.
+  Transfer retains its separate 300-second Linux or 600-second Mac maximum
+  and 10-second polling. Other acquisition callers retain their existing
+  bounds without producer waiting. These prerequisites grant no qualification
+  and do not wait for unrelated source or Python work.
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
   native obligations after completion events. Qualification receipts bind the
   original CI candidate. Native receipts additionally bind the exact full Linux
