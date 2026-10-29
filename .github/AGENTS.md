@@ -56,6 +56,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   build their platform's source workspace separately. Protected publishers
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
+- Installed Python consumer checks use supported, explicit GitHub runner labels,
+  including `macos-15`. Their matrix must exactly match the source catalog's
+  evidence profiles. This package check does not qualify Jig's native Mac host.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
   tested PR merge's verified first parent, previous main revision, or manual
