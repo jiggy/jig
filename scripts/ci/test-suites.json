@@ -328,7 +328,7 @@
         "ubuntu-24.04/python-3.12",
         "ubuntu-24.04/python-3.13",
         "ubuntu-24.04/python-3.14",
-        "macos-14/python-3.14",
+        "macos-15/python-3.14",
         "windows-2022/python-3.13"
       ],
       "suiteIds": [],

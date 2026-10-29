@@ -64,6 +64,18 @@ test('release readiness requires the current CI job names and matrix', async () 
     assert.ok(names.includes(required), `Missing required CI job: ${required}`)
 })
 
+test('installed Python jobs exactly cover the declared evidence profiles', async () => {
+  const workflow = parse(await readFile(new URL('ci.yml', workflows), 'utf8'))
+  const catalog = JSON.parse(await readFile(new URL('./test-suites.json', import.meta.url), 'utf8'))
+  const profiles = workflow.jobs['python-installed'].strategy.matrix.include.map(
+    ({ os, python }) => `${os}/python-${python}`,
+  )
+  assert.deepEqual(
+    profiles.sort(),
+    [...catalog.targets.find(({ id }) => id === 'python-installed').profiles].sort(),
+  )
+})
+
 test('every workflow declares GitHub triggers using YAML 1.2 keys', async () => {
   for (const file of await readdir(workflows)) {
     if (!/\.ya?ml$/.test(file)) continue
