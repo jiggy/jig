@@ -24,11 +24,21 @@ const host = {
   bunRevision: '744846f844374847c902b5e7fd59b4342a51ef99',
 }
 
-test('native preflight accepts only the existing unprivileged Mac qualification profiles', () => {
+test('native preflight accepts only exact unprivileged Mac qualification candidates', () => {
   expect(() => requireMacHost(host)).not.toThrow()
   for (const arch of ['x64', 'arm64']) {
     expect(() => requireMacHost({ ...host, arch, kernel: '24.6.0', build: '24G830' })).not.toThrow()
   }
+  expect(() =>
+    requireMacHost({ ...host, arch: 'arm64', kernel: '24.6.0', build: '24H232' }),
+  ).not.toThrow()
+  for (const candidate of [
+    { arch: 'x64', kernel: '24.6.0', build: '24H232' },
+    { arch: 'arm64', kernel: '24.6.1', build: '24H232' },
+    { arch: 'arm64', kernel: '24.6.0', build: '24H233' },
+    { arch: 'arm64', kernel: '24.6.0', build: '24H232\n' },
+  ])
+    expect(() => requireMacHost({ ...host, ...candidate })).toThrow()
   for (const change of [
     { arch: 'arm64' },
     { arch: 'ia32' },
@@ -59,6 +69,7 @@ test('native inventory includes every discovered Mac file once, prerequisites fi
   expect(nativeTestFiles(files, '24G830')).not.toContain(
     'packages/jig/test/macos-23E224/macos-preferences-observer.test.ts',
   )
+  expect(nativeTestFiles(files, '24H232')).toEqual(nativeTestFiles(files, '24G830'))
   expect(() => nativeTestFiles([...files, 'packages/jig/test/unowned.test.ts'])).toThrow('Unowned')
 })
 

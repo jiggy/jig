@@ -132,7 +132,7 @@ jobs:
           sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
           xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
           bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
-          bun scripts/ci/probe-macos-host.ts | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+          bun scripts/ci/probe-macos-host.ts --hosted | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
       -
         name: "Compile the native launcher and validate SDK descriptor layouts"
         run: |

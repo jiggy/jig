@@ -91,15 +91,11 @@ export function isHostTestFile(file) {
   )
 }
 
-export async function discoverHostTests(root) {
-  // Both 24G architectures share the same full-role inventory. Preserve portable
+export async function discoverHostTests(root, architecture = 'x64') {
+  macHostShardCount(architecture)
+  // Each architecture selects its exact full-role inventory. Preserve portable
   // cases on Mac until a separate classification audit proves host neutrality.
-  return filesForTarget(
-    discoverRepositoryTests(root, manifest),
-    'macos-x64',
-    manifest,
-    'macos-24G830',
-  )
+  return filesForTarget(discoverRepositoryTests(root, manifest), `macos-${architecture}`, manifest)
 }
 
 export function planMacHostTests(
@@ -148,7 +144,10 @@ export function planMacHostTests(
   }
   // Expose primitive failures before long application scenarios without changing
   // LPT membership, weights or the order within either partition.
-  const primitives = new Set(suiteTestFiles(files, ['macos-native'], manifest, 'macos-24G830'))
+  const profile = manifest.targets.find(
+    (target) => target.id === `macos-${architecture}`,
+  ).inventoryProfile
+  const primitives = new Set(suiteTestFiles(files, ['macos-native'], manifest, profile))
   for (const shard of shards)
     shard.groups = [
       ...shard.groups.filter(({ file }) => primitives.has(file)),
@@ -190,7 +189,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     )
     process.exit(2)
   }
-  const shards = planMacHostTests(await discoverHostTests(process.cwd()), architecture)
+  const shards = planMacHostTests(
+    await discoverHostTests(process.cwd(), architecture),
+    architecture,
+  )
   const shard = shards[index]
   const node = process.env.FLOW_NODE
   if (

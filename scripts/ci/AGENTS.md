@@ -143,8 +143,11 @@ They consume frozen package exports with tracked test helpers and installed
   pagination.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
-- `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
-  Intel/Apple Silicon 24G830 profiles. It owns Bun 1.4.2 and real Node 22+
+- `qualify-macos-host.sh` owns the exact selected Intel 23E224, Intel/Apple
+  Silicon 24G830, and Apple Silicon 24H232 profiles. Hosted targets select Intel
+  24G830 and Apple Silicon 24H232.
+
+  It owns Bun 1.4.2 and real Node 22+
   preflight, and frozen same-revision host/model/renderer archives with digest
   rechecks. It owns ordinary native npm installation through the same fresh full
   Jig package-smoke consumer. That consumer verifies the matching optional
@@ -187,7 +190,9 @@ They consume frozen package exports with tracked test helpers and installed
   and Mac reports. It rejects empty, failed, skipped, incomplete or
   duplicate-case reports. Each consumer enforces its owning file inventory. The
   Mac validator reconstructs the complete source-pinned shard plan and reads
-  every owning report and completion marker once.
+  every owning report and completion marker once. Every shard's retained
+  prerequisites must match its exact architecture, kernel, build and Bun target.
+  Mixed builds refuse qualification even when every test report passed.
 
   Linux Bun commands retain their stdout parser. Linux Node commands retain
   exact single-file JUnit reports
@@ -206,10 +211,12 @@ They consume frozen package exports with tracked test helpers and installed
   versions retain the complete registry check. Only an explicit registry E404
   means unpublished. It executes no package code, publishes nothing, and cannot
   replace the protected publisher's later group and channel reconciliation.
+- `macos-host-profiles.mjs` declares the exact hosted kernel, build and Bun
+  targets. The suite catalog retains each target's complete file inventory.
 - `probe-macos-host.ts` observes native process identity and coalition
-  accounting prerequisites on hosted Intel and Apple Silicon candidates. It
-  starts no package work and does not bypass the backend's qualified-platform
-  checks.
+  accounting prerequisites. Hosted mode rejects target drift before native
+  compilation and source builds. Failed target checks retain the observed tuple.
+  Prerequisites start no package work and never establish backend qualification.
 - `install-macos-test-clients.ts` extracts digest-pinned native Codex, Claude
   and Pi archives into a fresh runner-owned directory for offline startup
   qualification. It neither executes clients nor provisions consumer machines.
@@ -239,7 +246,7 @@ They consume frozen package exports with tracked test helpers and installed
   three genuine native client paths for full qualification and the installed
   consumer shard. Missing prerequisites fail explicitly. Claude and Pi must
   complete offline startup. Codex must complete offline startup on Intel 23E224
-  and return the explicit unsupported-preferences refusal on hosted 24G830
+  and return the explicit unsupported-preferences refusal on 24G830 and 24H232
   profiles. The selected path remains genuine and the case never skips.
 
   Qualification passes that expected outcome through

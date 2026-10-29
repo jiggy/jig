@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
+import { parse } from 'yaml'
 import {
   digest,
   PACKAGE_LAYOUT,
@@ -30,6 +31,19 @@ const testcase = (file, name, child = '') =>
 // Bun emits nested suites. Count actual cases, never their parent totals.
 const junit = (cases) =>
   `<testsuites tests="${(cases.match(/<testcase\b/g) ?? []).length}"><testsuite><testsuite>${cases}</testsuite></testsuite></testsuites>`
+const prerequisites = (arch) => ({
+  kind: 'macos-host-prerequisites/1',
+  arch,
+  kernel: '24.6.0',
+  build: arch === 'arm64' ? '24H232' : '24G830',
+  bun: '1.4.2',
+  revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+  processIdentityBytes: 56,
+  coalitionIdentityBytes: 40,
+  coalitionUsageBytes: 296,
+  pidVersion: 1,
+  backendQualified: false,
+})
 
 async function fixture(architecture, run) {
   const root = await mkdtemp(resolve(tmpdir(), 'jig-mac-summary-'))
@@ -54,6 +68,10 @@ async function fixture(architecture, run) {
       const directory = resolve(root, `macos-prerequisites-${architecture}-${shard}-${revision}`)
       await mkdir(directory)
       directories.push(directory)
+      await writeFile(
+        resolve(directory, 'prerequisites.json'),
+        JSON.stringify(prerequisites(architecture)),
+      )
       await writeFile(resolve(directory, 'test-plan.json'), JSON.stringify(plan))
       await writeFile(
         resolve(directory, `shard-${shard}.complete`),
@@ -143,27 +161,55 @@ test('summary projects the single complete validator and optional timings on bot
       assert.equal(result.report.qualified, true)
       assert.equal(result.report.timing_available, false)
       const lastShard = f.count - 1
-      await rm(resolve(f.directories[lastShard], `shard-${lastShard}.complete`))
+      const marker = resolve(f.directories[lastShard], `shard-${lastShard}.complete`)
+      await rm(marker)
+      await assert.rejects(readFile(marker), { code: 'ENOENT' })
+      const missing = spawnSync(
+        'node',
+        ['-e', 'require("node:fs").readFileSync(process.argv[1])', marker],
+        {
+          encoding: 'utf8',
+        },
+      )
+      assert.equal(missing.status, 1, missing.stderr)
+      assert.match(missing.stderr, /ENOENT/)
       result = await f.summarize()
-      assert.equal(result.status, 1)
+      assert.equal(result.status, 1, `${arch}: ${result.stdout}${result.stderr}`)
       assert.equal(result.report.qualified, false)
       assert.match(result.stdout, /Qualification: \*\*failed\*\*/)
     })
 })
 
+test('summary refuses missing or mixed kernel prerequisites despite complete reports', async () => {
+  for (const architecture of ['x64', 'arm64'])
+    await fixture(architecture, async (f) => {
+      const path = resolve(f.directories.at(-1), 'prerequisites.json')
+      await writeFile(
+        path,
+        JSON.stringify({
+          ...prerequisites(architecture),
+          build: architecture === 'arm64' ? '24G830' : '24H232',
+        }),
+      )
+      let result = await f.summarize()
+      assert.equal(result.status, 1)
+      assert.equal(result.report.qualified, false)
+      assert.equal(result.report.executed, 0)
+      await rm(path)
+      result = await f.summarize()
+      assert.equal(result.status, 1)
+      assert.equal(result.report.qualified, false)
+    })
+})
+
 test('the actual workflow summary step consumes exact shard evidence and refuses an incomplete run', async () => {
   await fixture('arm64', async (f) => {
-    const parsed = spawnSync(
-      'bun',
-      [
-        '-e',
-        'const workflow=Bun.YAML.parse(await Bun.file(process.argv[1]).text()); console.log(JSON.stringify(workflow.jobs["qualified-architecture"].steps.find(step=>step.name==="Require complete exact-revision proof and summarize coverage").run));',
-        resolve(repository, '.github/workflows/macos-hosted-candidates.yml'),
-      ],
-      { encoding: 'utf8' },
+    const workflow = parse(
+      await readFile(resolve(repository, '.github/workflows/macos-hosted-candidates.yml'), 'utf8'),
     )
-    assert.equal(parsed.status, 0, parsed.stderr)
-    const script = JSON.parse(parsed.stdout)
+    const script = workflow.jobs['qualified-architecture'].steps.find(
+      (step) => step.name === 'Require complete exact-revision proof and summarize coverage',
+    ).run
     const canonical = resolve(f.root, 'macos-host-artifacts')
     await mkdir(canonical)
     for (const [kind, name] of Object.entries(PACKAGE_LAYOUT)) {

@@ -478,10 +478,11 @@ These links locate module rules. All selected domain requirements still apply.
   `../../support/AGENTS.md` owns the canonical rebuild and exact-toolchain byte
   comparison. Never refresh only one pin.
 
-- Native Mac profiles are closed to Intel Darwin 23.4.0 build 23E224 and hosted
-  Intel/Apple Silicon Darwin 24.6.0 build 24G830. Select architecture-native Bun
-  and Mach-O slices. Never treat Rosetta execution as Apple Silicon
-  qualification.
+- Native Mac profiles select Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
+  Each new profile requires complete native and installed qualification before release.
+  Hosted qualification binds every shard to its architecture's exact selected build.
+  A shared Darwin version or prerequisite structure sizes never establish qualification.
+  Select architecture-native Bun and Mach-O slices. Never treat Rosetta execution as Apple Silicon qualification.
 
 - The SDK-compiled descriptor bridge selects Intel and Apple Silicon's native
   stat and directory ABIs. Coalition CPU ledger values are Mach ticks: convert

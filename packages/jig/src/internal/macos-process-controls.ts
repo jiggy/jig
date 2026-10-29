@@ -72,7 +72,7 @@ function calls(): Native {
     timeNumerator: BigInt(timebase.readUInt32LE(0)),
     timeDenominator: BigInt(timebase.readUInt32LE(4)),
   }
-  if (!platformFor(kernelString(opened, 'kern.osversion')))
+  if (!privateMacosPlatformFor(process.arch, release(), kernelString(opened, 'kern.osversion')))
     throw new Error('macOS process controls are not qualified on this kernel build')
   native = opened
   return native
@@ -405,17 +405,30 @@ export type PrivateMacosPlatform =
   | 'darwin-x64-23.4.0-23E224'
   | 'darwin-x64-24.6.0-24G830'
   | 'darwin-arm64-24.6.0-24G830'
-function platformFor(build: string): PrivateMacosPlatform | undefined {
-  if (process.arch === 'x64' && release() === '23.4.0' && build === '23E224')
+  | 'darwin-arm64-24.6.0-24H232'
+
+/** Exact candidate tuples only; matching a Darwin release never proves qualification. */
+export function privateMacosPlatformFor(
+  architecture: string,
+  kernel: string,
+  build: string,
+): PrivateMacosPlatform | undefined {
+  if (architecture === 'x64' && kernel === '23.4.0' && build === '23E224')
     return 'darwin-x64-23.4.0-23E224'
-  if (release() === '24.6.0' && build === '24G830') {
-    if (process.arch === 'x64') return 'darwin-x64-24.6.0-24G830'
-    if (process.arch === 'arm64') return 'darwin-arm64-24.6.0-24G830'
+  if (kernel === '24.6.0' && build === '24G830') {
+    if (architecture === 'x64') return 'darwin-x64-24.6.0-24G830'
+    if (architecture === 'arm64') return 'darwin-arm64-24.6.0-24G830'
   }
+  if (architecture === 'arm64' && kernel === '24.6.0' && build === '24H232')
+    return 'darwin-arm64-24.6.0-24H232'
 }
 /** Exact observed candidate identity, not a support-promotion claim. */
 export function privateMacosKernelPlatform(): PrivateMacosPlatform {
-  const platform = platformFor(kernelString(calls(), 'kern.osversion'))
+  const platform = privateMacosPlatformFor(
+    process.arch,
+    release(),
+    kernelString(calls(), 'kern.osversion'),
+  )
   if (!platform) throw new Error('native macOS platform is unavailable')
   return platform
 }

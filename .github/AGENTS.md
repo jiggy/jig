@@ -236,6 +236,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `max-parallel: 5`. The sixth job queues without increasing concurrent demand.
   Actual runner availability still determines start times.
 
+  Intel shards require Darwin 24.6.0 build 24G830.
+  Apple Silicon shards require Darwin 24.6.0 build 24H232.
+  The prerequisite probe rejects another build before compilation or dependency installation.
+  Aggregate evidence validates each shard's retained architecture, kernel, build and exact Bun revision.
+  Mixed builds cannot establish a profile's qualification.
+
   Before full native allocation, the existing Ubuntu acquisition job waits for
   the exact canonical CI producer's current-attempt `Quick development checks`
   success. This wait permits up to 600 seconds within the job's 15-minute
@@ -254,7 +260,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Both runtimes retain complete per-file JUnit evidence.
 
   One shard per architecture additionally checks genuine pinned clients offline,
-  ordinary npm installation and packed consumer execution. On 24G830, it
+  ordinary npm installation and packed consumer execution. On hosted profiles, it
   requires Codex preference-profile refusal while Claude and Pi start. Native
   containment/recovery and descriptor-handoff probes run once in a dedicated
   step on shard zero. Per-architecture aggregate checks require exact-revision

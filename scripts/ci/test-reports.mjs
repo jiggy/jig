@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { requireMacHostPrerequisites } from './macos-host-profiles.mjs'
 import {
   INSTALLED_STARTUP_TEST,
   macHostShardCount,
@@ -171,15 +172,22 @@ export function readMacReports({
   const architecture = targetId.slice(6)
   const files = filesForTarget(gitRepositoryTests(repository, source), targetId, manifest)
   const shards = planMacHostTests(files, architecture)
-  const identities = new Set()
-  let count = 0
-  const rows = []
-  for (const shard of shards) {
-    const initialCount = count
+  const shardEvidence = shards.map((shard) => {
     const directory = join(
       evidenceDirectory,
       `macos-prerequisites-${architecture}-${shard.index}-${source}`,
     )
+    requireMacHostPrerequisites(
+      JSON.parse(readFileSync(inertPath(directory, 'prerequisites.json'), 'utf8')),
+      architecture,
+    )
+    return { shard, directory }
+  })
+  const identities = new Set()
+  let count = 0
+  const rows = []
+  for (const { shard, directory } of shardEvidence) {
+    const initialCount = count
     if (
       readFileSync(inertPath(directory, `shard-${shard.index}.complete`), 'utf8').trim() !==
       `${source} ${architecture} ${shard.index}`

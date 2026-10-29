@@ -76,6 +76,8 @@ test('whole-file profile ownership excludes inapplicable roles and gives compact
   assert.ok(filesFor('macos-x64', 'macos-23E224').includes(files[4]))
   assert.ok(!filesFor('macos-x64').includes(files[6]))
   assert.ok(filesFor('macos-x64').includes(files[7]))
+  assert.deepEqual(filesFor('macos-arm64'), filesFor('macos-x64'))
+  assert.deepEqual(filesFor('macos-arm64', 'macos-24H232'), filesFor('macos-x64', 'macos-24G830'))
   assert.ok(filesFor('linux').includes(files[5]))
   assert.ok(filesFor('macos-x64').includes(files[5]))
   for (const target of ['source-portable', 'source-protocol', 'linux', 'macos-x64', 'macos-arm64'])

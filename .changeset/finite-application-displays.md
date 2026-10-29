@@ -14,3 +14,6 @@ Retain explicitly selected final display bundles as atomic application editions.
 Add revision checks, original receipt recovery, exact captured evidence, and
 read-only CLI and web inspection. Keep retained presentation independent of Run
 execution and application freshness.
+
+Select the exact Apple Silicon Darwin 24.6.0 build 24H232 profile. Bind hosted
+qualification to each architecture's selected kernel, build, and native runtime.

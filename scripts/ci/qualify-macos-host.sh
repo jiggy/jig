@@ -19,10 +19,14 @@ case "$#" in
   *) echo 'Unexpected qualification arguments' >&2; exit 2 ;;
 esac
 case "$(uname -s):$(uname -m):$(uname -r):$(sw_vers -buildVersion)" in
-  Darwin:x86_64:23.4.0:23E224) codex_startup_expectation=startup ;;
-  Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) codex_startup_expectation=unsupported ;;
+  Darwin:x86_64:23.4.0:23E224) codex_startup_expectation=startup; inventory_profile=macos-23E224 ;;
+  Darwin:x86_64:24.6.0:24G830|Darwin:arm64:24.6.0:24G830) codex_startup_expectation=unsupported; inventory_profile=macos-24G830 ;;
+  Darwin:arm64:24.6.0:24H232) codex_startup_expectation=unsupported; inventory_profile=macos-24H232 ;;
   *) echo 'Qualification requires an exact selected native Mac candidate.' >&2; exit 2 ;;
 esac
+if [[ "$mode" == shard ]]; then
+  bun scripts/ci/probe-macos-host.ts --hosted > /dev/null
+fi
 if [[ "$EUID" == 0 ]]; then
   echo 'Qualification requires an unprivileged operator.' >&2
   exit 2
@@ -153,7 +157,7 @@ if [[ "$mode" == shard ]]; then
   node scripts/ci/macos-host-test-shards.mjs run "$architecture" "$shard"
 else
   mapfile_path="$scratch/full-suite-files.txt"
-  node scripts/ci/suite-inventory.mjs --profile "$([[ "$codex_startup_expectation" == startup ]] && echo macos-23E224 || echo macos-24G830)" --format lines > "$mapfile_path"
+  node scripts/ci/suite-inventory.mjs --profile "$inventory_profile" --format lines > "$mapfile_path"
   full_files=()
   node_files=()
   while IFS= read -r file; do

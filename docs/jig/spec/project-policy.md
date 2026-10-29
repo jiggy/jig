@@ -1383,14 +1383,15 @@ On qualified Macs, a private launchd guardian establishes an exclusive
 resource coalition and a restrictive sandbox before package bytes execute.
 The operator needs no `sudo`, helper installation, or managed execution
 account. Each scope receives only its projected read-only files, private
-writable storage, selected network policy, and its authenticated Run channel;
-unselected file descriptors and Mach rights are closed before execution.
+writable storage, selected network policy, and its authenticated Run channel.
+Unselected file descriptors and Mach rights are closed before execution.
 Cancellation, deadline, coordinator loss, and recovery fence the complete
 owned coalition and confirm storage cleanup before reporting settlement.
 CPU, memory, and process limits use supervised sampling and termination rather
-than Linux cgroup hard quotas, so short overshoot is possible. The qualified
-profiles are Intel Darwin 23.4.0 build 23E224 and Intel or Apple Silicon
-Darwin 24.6.0 build 24G830; other builds fail closed until qualified.
+than Linux cgroup hard quotas, so short overshoot is possible.
+
+The selected profiles are Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
+Each profile requires complete native qualification before release. Other builds fail closed.
 
 Containment and system-management executables default to `/usr/bin`, `/bin`, and the NixOS system profile
 `/run/current-system/sw/bin`. The operator may select Bubblewrap through an
