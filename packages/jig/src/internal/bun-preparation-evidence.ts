@@ -7,12 +7,16 @@ import {
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes } from '../package/paths.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   type PrivateBunExecutionLayout,
 } from './bun-execution-layout.js'
 import { privateBunNativeInputs } from './bun-native-inputs.js'
-import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
+import {
+  PRIVATE_BUN_PREPARATION_LIMITS,
+  privateBunPreparationLimits,
+} from './bun-native-preparation-protocol.js'
 import { privateDomainDigest } from './identity.js'
 
 export interface PrivateBunPreparationWorkspace {
@@ -102,6 +106,7 @@ export async function capturePrivateBunDependencies(
 /** Assemble a new immutable image, never an execution-time overlay onto mutable source. */
 export async function assemblePrivateBunExecution(input: {
   readonly source: CapturedPackage
+  readonly dependencyLimits?: ProjectDependencyLimits
   readonly sourcePaths: ReadonlySet<string>
   readonly dependencies: CapturedPackage
   readonly layout: PrivateBunExecutionLayout
@@ -128,14 +133,28 @@ export async function assemblePrivateBunExecution(input: {
       'fresh source conflicts with the retained dependency layout',
     )
   }
-  if (
-    files.length + input.layout.aliases.length > PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles ||
-    files.reduce((sum, file) => sum + file.size, Buffer.byteLength(JSON.stringify(input.layout))) >
-      PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes
+  const limits = privateBunPreparationLimits('production', input.dependencyLimits)
+  const count = files.length + input.layout.aliases.length
+  const bytes = files.reduce(
+    (sum, file) => sum + file.size,
+    Buffer.byteLength(JSON.stringify(input.layout)),
   )
-    throw failure(
+  const preparationLimit =
+    count > limits.preparedFiles
+      ? { dimension: 'files' as const, observed: count, maximum: limits.preparedFiles }
+      : bytes > limits.preparedBytes
+        ? { dimension: 'bytes' as const, observed: bytes, maximum: limits.preparedBytes }
+        : undefined
+  if (preparationLimit !== undefined)
+    throw new CheckError(
+      'invalid',
       'PACKAGE_BUN_OUTPUT_LIMIT',
       'assembled Bun execution exceeds its bounded output limits',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      preparationLimit,
     )
   return captureView('fresh Bun execution image', files, (path) =>
     sourcePaths.has(path) ? input.source : input.dependencies,

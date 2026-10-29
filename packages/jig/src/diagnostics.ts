@@ -1,5 +1,14 @@
 export type DiagnosticKind = 'invalid' | 'unavailable'
 
+/** Bounded resource facts, without worker messages or private filesystem names. */
+export interface DependencyPreparationLimitDiagnostic {
+  readonly dimension: 'files' | 'bytes'
+  readonly observed: number
+  readonly maximum: number
+  readonly origin?: 'default' | 'project' | 'environment'
+  readonly profile?: 'evaluation'
+}
+
 export class CheckError extends Error {
   readonly kind: DiagnosticKind
   readonly code: string
@@ -7,6 +16,7 @@ export class CheckError extends Error {
   readonly pointer?: string
   readonly typeMismatch?: import('./schema/types.js').SchemaTypeMismatch
   readonly lockPath?: string
+  readonly preparationLimit?: DependencyPreparationLimitDiagnostic
 
   constructor(
     kind: DiagnosticKind,
@@ -16,6 +26,7 @@ export class CheckError extends Error {
     pointer?: string,
     typeMismatch?: import('./schema/types.js').SchemaTypeMismatch,
     lockPath?: string,
+    preparationLimit?: DependencyPreparationLimitDiagnostic,
   ) {
     super(message)
     this.name = 'CheckError'
@@ -25,6 +36,7 @@ export class CheckError extends Error {
     if (pointer !== undefined) this.pointer = pointer
     if (typeMismatch !== undefined) this.typeMismatch = typeMismatch
     if (lockPath !== undefined) this.lockPath = lockPath
+    if (preparationLimit !== undefined) this.preparationLimit = preparationLimit
   }
 }
 

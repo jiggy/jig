@@ -458,6 +458,18 @@ available in TUI/web. Final evidence remains independent of optional updates.
     policy, and no premature success. An unfamiliar reader must be able to
     identify the outcome and next action from the transcript alone.
 
+### Preparation limit diagnostics
+
+`PACKAGE_BUN_OUTPUT_LIMIT` identifies the complete prepared execution tree, including source and production dependencies.
+When bounded numeric evidence exists, report the exhausted dimension, observed lower bound, effective cap, and policy source.
+Identify the corresponding project field and environment variable. Explain environment precedence and link to [limits and defaults](../guide/limits.md).
+Do not expose worker messages or assume production dependencies are misplaced development tools.
+
+The SDK diagnostic retains these facts in optional `preparationLimit` with `dimension`, `observed`, `maximum`, and optional `origin`.
+Dimensions are `bytes` or `files`. Origins are `default`, `project`, or `environment`.
+The fixed evaluation profile additionally carries `profile: "evaluation"`. Its diagnostics never suggest production overrides.
+Unknown or malformed evidence cannot become a limit diagnosis.
+
 ### Installation verification help
 
 Help for review, Run and inspection exposes the operator's

@@ -1,5 +1,6 @@
 import type { FileHandle } from 'node:fs/promises'
 import type { CapturedPackage } from '../package/capture.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import type { PrivateBunPreparationMode } from './bun-native-preparation-protocol.js'
 import { capturePrivateBunPreparationOutput } from './bun-preparation-output.js'
 import { capturePrivateOutput, type PrivateCapturedOutput } from './captured-output.js'
@@ -15,6 +16,7 @@ import type { PrivateMacosGuardian } from './macos-guardian-client.js'
 export function retainPrivateMacosPreparationOutput(
   guardian: PrivateMacosGuardian,
   mode: PrivateBunPreparationMode,
+  dependencyLimits?: ProjectDependencyLimits,
 ) {
   let captured: CapturedPackage | undefined
   let captureError: unknown
@@ -32,7 +34,7 @@ export function retainPrivateMacosPreparationOutput(
       )
         throw new Error('native preparation collection is unavailable')
       directory = await privateMacosDuplicate(result.outputFd)
-      captured = await capturePrivateBunPreparationOutput(directory, mode)
+      captured = await capturePrivateBunPreparationOutput(directory, mode, dependencyLimits)
     } catch (error) {
       captureError = error
       failures.push(error)

@@ -4,6 +4,7 @@ import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { assertNoPathCollisions, comparePathBytes } from '../package/paths.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import {
   type PrivateBunPreparationOwnerFact,
   type PrivateProjectCoordinator,
@@ -23,12 +24,14 @@ import {
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   type PrivateBunPreparationMode,
   privateBunMessageFits,
+  privateBunPreparationLimitFailure,
   privateBunPreparationLimits,
 } from './bun-native-preparation-protocol.js'
 import {
   inspectPrivateBunPackageInput,
   requirePrivateBunResolutionPermission,
 } from './bun-package-input.js'
+import { requirePrivateBunPreparationLimits } from './bun-preparation-output.js'
 import {
   admitPrivateExecutionOwner,
   cancelPrivateExecutionOwnerStateAllocation,
@@ -126,6 +129,7 @@ export interface PrivatePreparedBunPackage {
 export async function preparePrivateBunPackage(input: {
   readonly captured: CapturedPackage
   readonly mode?: PrivateBunPreparationMode
+  readonly dependencyLimits?: ProjectDependencyLimits
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateExecutionBackend
   readonly projectRoot: string
@@ -139,6 +143,10 @@ export async function preparePrivateBunPackage(input: {
     readonly selected: readonly string[]
   }
 }): Promise<PrivatePreparedBunPackage> {
+  const dependencyLimits = requirePrivateBunPreparationLimits(
+    input.dependencyLimits,
+    input.mode ?? 'production',
+  )
   if (input.mode === 'evaluation') {
     if (
       input.workspace !== undefined ||
@@ -174,6 +182,7 @@ export async function preparePrivateBunPackage(input: {
   const source = {
     ...(await sourceMessage(input.captured, input.mode)),
     ...(input.mode === 'evaluation' ? { mode: 'evaluation' } : {}),
+    ...(dependencyLimits === undefined ? {} : { dependencyLimits }),
     ...(input.workspace === undefined
       ? {}
       : {
@@ -205,6 +214,7 @@ export async function preparePrivateBunPackage(input: {
     now,
     input.deadlineUnixMs,
     input.mode,
+    dependencyLimits,
   )
   let fact = await replacePrivateBunPreparationOwner({
     projectRoot: input.projectRoot,
@@ -227,7 +237,10 @@ export async function preparePrivateBunPackage(input: {
       }),
     )
     component = await admitPrivateExecutionOwner(sealed, input.signal)
-    const interaction = await interact(component, sourceBytes, input)
+    const interaction = await interact(component, sourceBytes, {
+      ...input,
+      ...(dependencyLimits === undefined ? {} : { dependencyLimits }),
+    })
     terminal = interaction.terminal
     fact = await requireFact(
       replacePrivateBunPreparationOwner({
@@ -271,6 +284,7 @@ async function interact(
   input: {
     readonly captured: CapturedPackage
     readonly mode?: PrivateBunPreparationMode
+    readonly dependencyLimits?: ProjectDependencyLimits
     readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
   },
 ): Promise<{
@@ -328,6 +342,18 @@ async function interact(
             throw protocolFailure()
           location = { path: value.path, pointer: value.pointer }
         }
+        let preparationLimit: ReturnType<typeof privateBunPreparationLimitFailure> | undefined
+        if (message.preparationLimit !== undefined) {
+          if (message.code !== 'PACKAGE_BUN_OUTPUT_LIMIT') throw protocolFailure()
+          try {
+            preparationLimit = privateBunPreparationLimitFailure(
+              message.preparationLimit,
+              privateBunPreparationLimits(input.mode ?? 'production', input.dependencyLimits),
+            )
+          } catch {
+            throw protocolFailure()
+          }
+        }
         terminal = new CheckError(
           message.code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
             message.code === 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED' ||
@@ -349,6 +375,14 @@ async function interact(
                 ? 'bun.lock'
                 : undefined),
           location?.pointer,
+          undefined,
+          undefined,
+          preparationLimit === undefined
+            ? undefined
+            : {
+                ...preparationLimit,
+                ...(input.mode === 'evaluation' ? { profile: 'evaluation' as const } : {}),
+              },
         )
       } else {
         throw protocolFailure()
@@ -452,6 +486,7 @@ function preparationPlan(
   now: number,
   requestedDeadlineUnixMs: number | undefined,
   mode: PrivateBunPreparationMode = 'production',
+  dependencyLimits?: ProjectDependencyLimits,
 ): PrivateExecutionIntent {
   const deadlineUnixMs = Math.min(
     now + (mode === 'evaluation' ? 120_000 : PREPARATION_WALL_MS),
@@ -481,6 +516,7 @@ function preparationPlan(
     network: 'inherited',
     maxOutputBytes: PRIVATE_BUN_PREPARED_MESSAGE_BYTES + 64 * 1024,
     preparationOutput: mode,
+    ...(dependencyLimits === undefined ? {} : { preparationLimits: dependencyLimits }),
     storageBytes: 512 * 1024 * 1024,
   }
 }
@@ -603,10 +639,11 @@ export async function decodePrivateBunPreparedResult(
   input: {
     readonly captured: CapturedPackage
     readonly mode?: PrivateBunPreparationMode
+    readonly dependencyLimits?: ProjectDependencyLimits
     readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
   },
 ): Promise<PrivatePreparedBunPackage> {
-  const limits = privateBunPreparationLimits(input.mode ?? 'production')
+  const limits = privateBunPreparationLimits(input.mode ?? 'production', input.dependencyLimits)
   let layout: PrivateBunExecutionLayout
   try {
     layout = normalizePrivateBunExecutionLayout(metadata.layout)

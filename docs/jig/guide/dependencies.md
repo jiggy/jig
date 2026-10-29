@@ -79,7 +79,7 @@ change the code or dependencies.
 | `PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED` | Use a [supported lock format](#lock-formats). Changing dependency sources cannot fix the format. |
 | `PACKAGE_BUN_MANIFEST_SOURCE` | Replace unsupported sources with default-registry versions or [declared workspace members](#local-workspace-packages). A `file:` archive is not supported. |
 | A workspace member or build output is missing | Correct the declaration or build the library. Jig does not fall back to npm. |
-| The prepared tree exceeds its limit | Inspect the reported manifest and runtime dependencies. Jig does not silently omit dependencies. |
+| `PACKAGE_BUN_OUTPUT_LIMIT` | Inspect the reported manifest and runtime dependencies. Increase the documented [dependency preparation limits](limits.md#override-dependency-preparation-limits) when the complete tree is necessary. |
 | Approved bytes are missing or corrupt | Preserve the reported evidence. Jig refuses instead of resolving packages again. |
 
 ## Fresh resolution and network access
@@ -259,9 +259,13 @@ dependency versions or its declared workspace.
 
 ## Limits and other package files
 
-Prepared trees are limited to 32 MiB and 4,096 file/alias records. A package
-with no external dependencies needs neither a dependency manifest nor a lock for
-execution. Relative imports of its own source files remain supported.
+Prepared production trees default to 32 MiB and 4,096 file/alias records per
+package. Set `limits.dependencies.maxPreparedBytes` and `maxPreparedFiles` in
+`jig.ts`, or use their environment overrides. The [limits reference](limits.md)
+owns supported ranges, precedence, shared budgets, and fixed constraints.
+
+A package with no external dependencies needs neither a dependency manifest nor
+a lock for execution. Relative imports of its own source files remain supported.
 
 A `FLOW.md` package uses the bundled interpreter and needs no SDK dependency or
 installation. Its resources do not trigger dependency preparation.

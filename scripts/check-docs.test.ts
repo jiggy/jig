@@ -1,23 +1,25 @@
 import { afterEach, expect, test } from 'bun:test'
+import { execFileSync, spawnSync } from 'node:child_process'
 import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  rmSync,
   copyFileSync,
+  mkdirSync,
+  mkdtempSync,
   readFileSync,
   renameSync,
+  rmSync,
+  writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { execFileSync, spawnSync } from 'node:child_process'
 import {
   headingIds,
+  limitReferenceFindings,
   linkFindings,
   metadataFindings,
   renderedFindings,
   styleFindings,
 } from './check-docs'
+import { limitReferenceCurrent, updateLimitReference } from './limit-reference'
 
 const roots: string[] = []
 function fixture() {
@@ -98,6 +100,41 @@ test('rendered checks verify cross-site routes, assets and actual emitted IDs', 
 })
 test('a missing built site cannot silently pass', () => {
   expect(() => renderedFindings(fixture())).toThrow('Missing built jig site')
+})
+test('limits reference preserves prose and refuses stale policy values and broken markers', () => {
+  const source =
+    '# Limits\n\nAuthored explanation.\n\n<!-- limit-reference:start -->\n\n<!-- limit-reference:end -->\n'
+  const generated = updateLimitReference(source)
+  expect(generated).toContain('Authored explanation.')
+  expect(limitReferenceCurrent(generated)).toBeTrue()
+  expect(limitReferenceCurrent(generated.replace('Default 32 MiB', 'Default 33 MiB'))).toBeFalse()
+  expect(() => updateLimitReference(source.replace('limit-reference:end', 'missing'))).toThrow(
+    'marker pair',
+  )
+  expect(() => updateLimitReference(source + '<!-- limit-reference:start -->')).toThrow(
+    'marker pair',
+  )
+})
+test('actual limits checker rejects drift and repairs only its generated region', () => {
+  const root = fixture()
+  const path = join(root, 'limits.md')
+  const source =
+    '# Limits\n\nKeep this explanation.\n\n<!-- limit-reference:start -->\nold values\n<!-- limit-reference:end -->\n'
+  put(root, 'limits.md', source)
+  const script = resolve(import.meta.dirname, 'limit-reference.ts')
+  const run = (mode: string) =>
+    spawnSync(process.execPath, [script, mode, path], { encoding: 'utf8' })
+  expect(run('--check').status).toBe(1)
+  expect(run('--write').status).toBe(0)
+  expect(readFileSync(path, 'utf8')).toContain('Keep this explanation.')
+  expect(run('--check').status).toBe(0)
+  writeFileSync(path, readFileSync(path, 'utf8').replace('Default 32 MiB', 'Default 33 MiB'))
+  expect(run('--check').status).toBe(1)
+})
+test('documentation checks require the limits checker whenever its public page is present', () => {
+  const root = fixture()
+  put(root, 'docs/jig/guide/limits.md', '# Limits\n')
+  expect(limitReferenceFindings(root)).toHaveLength(1)
 })
 test('the actual CLI rejects invalid baselines and checks new files against Git', () => {
   const root = fixture()

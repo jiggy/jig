@@ -316,8 +316,8 @@ are retained as bounded private layout metadata, not Package/0 file records.
 This preserves nested versions and canonical module identity, including cyclic
 imports. Unselected member links are omitted. Unknown links, aliases
 traversing aliases, and source-path collisions fail closed. Preparation
-permits at most 4,096 combined file/alias records and 32 MiB of file content
-plus layout JSON.
+defaults to 4,096 combined file/alias records and 32 MiB of file content
+plus layout JSON. [Dependency preparation limits](project-sdk.md#dependency-preparation-limits) can change these two production budgets.
 
 Layout JSON has its own 1 MiB ceiling. Existing project-wide preparation
 bounds also apply. The target entrypoint runs from its retained member path
@@ -395,8 +395,14 @@ After bounded project capture, the alpha's dependency-planning phase permits
 one 180-second cancellation deadline. Each contained preparation has the
 earlier 60-second hard deadline. Reused admitted execution packages consume
 none of the preparation count or output budget. One package accepts at most
-4,096 source files and 16 MiB before installation and at most 4,096 files and
-32 MiB after installation.
+4,096 source files and 16 MiB before installation.
+
+Production output defaults to 4,096 combined file/alias records and 32 MiB, including layout metadata.
+Project `limits.dependencies` and corresponding operator environment variables can change these output budgets.
+The [authoring contract](project-sdk.md#dependency-preparation-limits) defines supported ranges, precedence, and combined artifact capacity.
+Fresh preparation and assembly with reused dependencies enforce the same resolved values.
+
+Review rejects incompatible limits before installation. Increasing these budgets does not change source, evaluation, project aggregate, or storage limits.
 
 Source, author-closure, and prepared Package/0 artifacts share one protected
 content-addressed store. Its fixed limits are 192 MiB per canonical artifact

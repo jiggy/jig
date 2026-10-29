@@ -2,6 +2,7 @@ import { createReadStream } from 'node:fs'
 import { lstat, mkdir, opendir, readFile, realpath, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { packageDigest } from '../package/digest.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
@@ -10,6 +11,7 @@ import {
   privateBunAliasPackageName,
 } from './bun-execution-layout.js'
 import {
+  type PrivateBunPreparationLimitFailure,
   type PrivateBunPreparationMode,
   privateBunPreparationLimits,
 } from './bun-native-preparation-protocol.js'
@@ -33,6 +35,7 @@ export class WorkerFailure extends Error {
     readonly code: string,
     message: string,
     readonly location?: { readonly path: string; readonly pointer: string },
+    readonly preparationLimit?: PrivateBunPreparationLimitFailure,
   ) {
     super(message)
   }
@@ -44,13 +47,14 @@ export async function capturePrivateBunPreparedTree(
   workspace?: Workspace,
   patchPaths: readonly string[] = [],
   mode: PrivateBunPreparationMode = 'production',
+  dependencyLimits?: ProjectDependencyLimits,
 ): Promise<{
   readonly files: readonly { readonly path: string; readonly size: number }[]
   readonly layout: PrivateBunExecutionLayout
   readonly digest: string
   readonly bytes: number
 }> {
-  const limits = privateBunPreparationLimits(mode)
+  const limits = privateBunPreparationLimits(mode, dependencyLimits)
   const files: { readonly path: string; readonly size: number }[] = []
   const aliases: PrivatePackageAlias[] = []
   let total = 0
@@ -65,6 +69,12 @@ export async function capturePrivateBunPreparedTree(
       throw new WorkerFailure(
         'PACKAGE_BUN_OUTPUT_LIMIT',
         'prepared dependency tree has too many records',
+        undefined,
+        {
+          dimension: 'files',
+          observed: files.length + aliases.length + 1,
+          maximum: limits.preparedFiles,
+        },
       )
   }
   const selectedSource = (path: string): boolean =>
@@ -128,7 +138,12 @@ export async function capturePrivateBunPreparedTree(
         continue
       reserveRecord()
       if (information.size > limits.preparedBytes - total)
-        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
+        throw new WorkerFailure(
+          'PACKAGE_BUN_OUTPUT_LIMIT',
+          'prepared dependency tree is too large',
+          undefined,
+          { dimension: 'bytes', observed: total + information.size, maximum: limits.preparedBytes },
+        )
       const bytes = await readFile(physical)
       if (mode === 'evaluation' && dependencyTree && path.endsWith('/package.json')) {
         let manifest: Record<string, unknown>
@@ -142,7 +157,12 @@ export async function capturePrivateBunPreparedTree(
       }
       total += bytes.byteLength
       if (total > limits.preparedBytes)
-        throw new WorkerFailure('PACKAGE_BUN_OUTPUT_LIMIT', 'prepared dependency tree is too large')
+        throw new WorkerFailure(
+          'PACKAGE_BUN_OUTPUT_LIMIT',
+          'prepared dependency tree is too large',
+          undefined,
+          { dimension: 'bytes', observed: total, maximum: limits.preparedBytes },
+        )
       files.push(Object.freeze({ path, size: bytes.byteLength }))
     }
   }
@@ -165,6 +185,12 @@ export async function capturePrivateBunPreparedTree(
     throw new WorkerFailure(
       'PACKAGE_BUN_OUTPUT_LIMIT',
       'prepared dependency tree and layout are too large',
+      undefined,
+      {
+        dimension: 'bytes',
+        observed: total + Buffer.byteLength(JSON.stringify(layout)),
+        maximum: limits.preparedBytes,
+      },
     )
   const digest = await packageDigest(files, (file) =>
     createReadStream(join(packageRoot, file.path)),

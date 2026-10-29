@@ -5,7 +5,11 @@ import { constants as osConstants } from 'node:os'
 import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
-import { requirePrivateBunPreparationOutput } from './bun-preparation-output.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
+import {
+  requirePrivateBunPreparationLimits,
+  requirePrivateBunPreparationOutput,
+} from './bun-preparation-output.js'
 import type { PrivateExecutionExit, PrivateExecutionProcess } from './execution-process.js'
 import { privateDomainDigest } from './identity.js'
 import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-capture.js'
@@ -107,6 +111,7 @@ export interface PrivateMacosLaunchPlan {
   readonly files: PrivateMacosSandboxFiles
   readonly maxOutputBytes: number
   readonly preparationOutput?: 'production' | 'evaluation'
+  readonly preparationLimits?: ProjectDependencyLimits
   readonly storage?: PrivateMacosGuardianStorage
   readonly capturedInputs?: readonly PrivateMacosCapturedInput[]
   readonly inputDirectories?: readonly string[]
@@ -478,7 +483,11 @@ export class PrivateMacosBackend {
       const preparation =
         data.sealedPlan.preparationOutput === undefined
           ? undefined
-          : retainPrivateMacosPreparationOutput(guardian, data.sealedPlan.preparationOutput)
+          : retainPrivateMacosPreparationOutput(
+              guardian,
+              data.sealedPlan.preparationOutput,
+              data.sealedPlan.preparationLimits,
+            )
       const terminal = preparation?.completion ?? retained?.completion ?? guardian.completion
       const enforcement = terminal
         .then(async (result) => {
@@ -782,6 +791,10 @@ async function sealPlan(
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): Promise<SealedPlan> {
   const preparationOutput = requirePrivateBunPreparationOutput(value.preparationOutput)
+  const preparationLimits = requirePrivateBunPreparationLimits(
+    value.preparationLimits,
+    preparationOutput,
+  )
   if (
     preparationOutput !== undefined &&
     (value.storage?.collect !== 'work' || value.evaluationWorkspace !== undefined)
@@ -904,6 +917,7 @@ async function sealPlan(
     files,
     maxOutputBytes: value.maxOutputBytes,
     ...(preparationOutput === undefined ? {} : { preparationOutput }),
+    ...(preparationLimits === undefined ? {} : { preparationLimits }),
     ...(storage === undefined ? {} : { storage }),
     ...(evaluationWorkspace === undefined ? {} : { evaluationWorkspace }),
     capturedInputs: Object.freeze(captures),

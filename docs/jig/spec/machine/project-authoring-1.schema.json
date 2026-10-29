@@ -102,6 +102,21 @@
           "minLength": 1,
           "maxLength": 16384,
           "description": "An exact Run target followed by optional Jig run invocation arguments. Jig validates quoting, permitted options, project-relative paths and target membership. No shell execution or expansion."
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "dependencies": {
+              "type": "object",
+              "description": "Production preparation output budgets. Jig additionally validates their combined canonical artifact capacity.",
+              "properties": {
+                "maxPreparedBytes": { "type": "integer", "minimum": 1, "maximum": 134217728 },
+                "maxPreparedFiles": { "type": "integer", "minimum": 1, "maximum": 65536 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

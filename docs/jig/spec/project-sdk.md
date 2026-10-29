@@ -64,6 +64,43 @@ An exact source is the fail-closed alternative:
 flows: ["./flows/build", "./flows/review"]
 ```
 
+### Dependency preparation limits
+
+`limits.dependencies` optionally configures production dependency preparation during review:
+
+```ts
+limits: {
+  dependencies: {
+    maxPreparedBytes: 64 * 1024 * 1024,
+    maxPreparedFiles: 8192,
+  },
+},
+```
+
+Both fields accept positive integer values. Omitted fields use their individual defaults.
+`maxPreparedBytes` defaults to 33,554,432 bytes and accepts at most 134,217,728 bytes.
+`maxPreparedFiles` defaults to 4,096 combined file/alias records and accepts at most 65,536 records.
+The complete prepared tree includes selected source, production dependencies, lock bytes, and layout JSON.
+
+The combined budgets must fit a 192 MiB canonical artifact, including headers and maximum-length paths.
+Jig rejects incompatible combinations before preparation. Project-wide preparation and storage budgets still apply.
+Source capture and evaluation preparation retain their separate limits.
+
+The operator can override each field through its corresponding exported environment variable:
+
+| Field | Environment variable |
+| --- | --- |
+| `maxPreparedBytes` | `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` |
+| `maxPreparedFiles` | `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES` |
+
+Environment values must be positive decimal integers. They take precedence over project values, followed by built-in defaults.
+Jig snapshots these variables before project evaluation. It resolves the effective limits once from the captured declaration.
+Workers receive explicit validated values. They do not read the operator environment.
+
+These settings govern review preparation, including assembly with reused dependencies. They grant no execution authority or resolution-network permission.
+Run consumes admitted bytes without preparing dependencies again. Later environment changes cannot replace those bytes or enlarge reviewed resource grants.
+See [limits and defaults](../guide/limits.md) for related constraints and override policies.
+
 ### Project entrypoint
 
 `entrypoint` optionally declares how `jig run` starts the application. It is one

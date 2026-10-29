@@ -1,18 +1,12 @@
 import { createHash } from 'node:crypto'
 
 import { invalid } from '../diagnostics.js'
+import { PACKAGE_1_HEADER_TEXT, PACKAGE_1_LIMITS } from './capacity.js'
 import { assertNoPathCollisions, comparePathBytes } from './paths.js'
 
-const MAX_FILES = 65_536
-const MAX_FILE_BYTES = 1_073_741_824
-const MAX_TOTAL_BYTES = 4_294_967_296
-const PACKAGE_1_HEADER = Buffer.from('FLOW-Package/0\0', 'ascii')
+const PACKAGE_1_HEADER = Buffer.from(PACKAGE_1_HEADER_TEXT, 'ascii')
 
-export const PACKAGE_1_LIMITS = Object.freeze({
-  files: MAX_FILES,
-  fileBytes: MAX_FILE_BYTES,
-  totalBytes: MAX_TOTAL_BYTES,
-})
+export { PACKAGE_1_LIMITS } from './capacity.js'
 
 export interface PackageDigestFile {
   readonly path: string
@@ -33,19 +27,24 @@ export async function* encodePackage1(
   files: readonly PackageDigestFile[],
   contents: (file: PackageDigestFile) => AsyncIterable<Uint8Array>,
 ): AsyncIterable<Uint8Array> {
-  if (files.length > MAX_FILES) invalid('PACKAGE_LIMIT', `package exceeds ${MAX_FILES} files`)
+  if (files.length > PACKAGE_1_LIMITS.files)
+    invalid('PACKAGE_LIMIT', `package exceeds ${PACKAGE_1_LIMITS.files} files`)
   assertNoPathCollisions(files.map((file) => file.path))
   const ordered = files
     .map((file) => Object.freeze({ path: file.path, size: file.size }))
     .sort((left, right) => comparePathBytes(left.path, right.path))
   let totalBytes = 0
   for (const file of ordered) {
-    if (!Number.isSafeInteger(file.size) || file.size < 0 || file.size > MAX_FILE_BYTES) {
+    if (
+      !Number.isSafeInteger(file.size) ||
+      file.size < 0 ||
+      file.size > PACKAGE_1_LIMITS.fileBytes
+    ) {
       invalid('PACKAGE_LIMIT', `invalid content size for ${file.path}`, file.path)
     }
     totalBytes += file.size
-    if (totalBytes > MAX_TOTAL_BYTES)
-      invalid('PACKAGE_LIMIT', `package exceeds ${MAX_TOTAL_BYTES} bytes`)
+    if (totalBytes > PACKAGE_1_LIMITS.totalBytes)
+      invalid('PACKAGE_LIMIT', `package exceeds ${PACKAGE_1_LIMITS.totalBytes} bytes`)
   }
   // Do not expose the mutable module-owned Buffer to a consumer.
   yield Uint8Array.from(PACKAGE_1_HEADER)

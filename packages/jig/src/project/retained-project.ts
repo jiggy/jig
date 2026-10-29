@@ -41,6 +41,7 @@ import {
 } from './flow-source.js'
 import { captureGrantSource } from './grant-source.js'
 import type { AcpGrant, GrantPolicy } from './grants.js'
+import type { JigLimits } from './limits.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
 import { npmPackageName } from './package-selector.js'
 import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
@@ -61,6 +62,7 @@ export interface PrivateRetainedProjectOptions {
 }
 
 export interface PrivateRetainedOpenedProjectOptions {
+  readonly onProjectLimits?: (limits: JigLimits | undefined) => void
   readonly projectRoot: PrivateProjectRoot
   readonly storeRoot: PrivateFileLocation
   readonly evaluator: PrivateAuthorEvaluatorOptions
@@ -183,6 +185,7 @@ export async function retainOpenedPackageProject(
       )
     }
 
+    options.onProjectLimits?.(project.value.limits)
     const grantSource = await captureGrantSource(root, project.value.grants)
     const reviewedEvaluations = new Map<string, PrivateRetainedProjectEvaluation>()
     const reviewEvaluation = async (

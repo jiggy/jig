@@ -207,6 +207,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `preparationOutput` selects only production or evaluation package collection.
   It cannot share ordinary output or an evaluation workspace.
+
+  Optional `preparationLimits` carries the snapshotted production collection bounds
+  through both native plans. Validate and freeze that pair before sealing. Reject
+  it for evaluation or ordinary execution. It selects no collection path and
+  changes no execution resources, lifecycle or cleanup allowance.
+
   Linux pins original work custody before continuation through authenticated supervisor control.
   Its package promise captures after successful enforcement and closes that original loan.
   Native package promises retain rejection custody without replacing their original failures.

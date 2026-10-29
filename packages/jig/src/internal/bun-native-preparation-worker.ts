@@ -1,6 +1,10 @@
 import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import {
+  normalizeProjectDependencyLimits,
+  type ProjectDependencyLimits,
+} from '../project/limits.js'
 import { privateBunNativeInputs } from './bun-native-inputs.js'
 import {
   PrivateBunLockVersionError,
@@ -38,6 +42,7 @@ const CHILD_ENVIRONMENT: Readonly<Record<string, string>> = Object.freeze(
 
 let workspace: Workspace | undefined
 let mode: PrivateBunPreparationMode = 'production'
+let dependencyLimits: ProjectDependencyLimits | undefined
 
 let outputQueue = Promise.resolve()
 const allowResolutionNetwork =
@@ -52,6 +57,7 @@ try {
   const source = requireSource(first.value)
   workspace = source.workspace
   mode = source.mode
+  dependencyLimits = source.dependencyLimits
   if (mode === 'evaluation') {
     if (workspace !== undefined || allowResolutionNetwork)
       throw new WorkerFailure(
@@ -105,6 +111,7 @@ try {
     workspace,
     Object.values(patches),
     mode,
+    dependencyLimits,
   )
   await stagePrivateBunPreparedTree(PACKAGE_ROOT, prepared)
   await sendPrepared(prepared)
@@ -122,6 +129,9 @@ try {
     code: failure.code,
     message: failure.message,
     ...(failure.location === undefined ? {} : { location: failure.location }),
+    ...(failure.preparationLimit === undefined
+      ? {}
+      : { preparationLimit: failure.preparationLimit }),
   }).catch(() => undefined)
   await outputQueue.catch(() => undefined)
   process.exitCode = 1
@@ -388,12 +398,23 @@ function requireSource(value: unknown): {
   readonly files: readonly SourceFile[]
   readonly workspace?: Workspace
   readonly mode: PrivateBunPreparationMode
+  readonly dependencyLimits?: ProjectDependencyLimits
 } {
   const root = ordinaryRecord(value)
   if (root?.mode !== undefined && root.mode !== 'evaluation')
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'unsupported preparation mode')
   const selectedMode = root?.mode === 'evaluation' ? 'evaluation' : 'production'
-  const limits = privateBunPreparationLimits(selectedMode)
+  let selectedLimits: ProjectDependencyLimits | undefined
+  try {
+    selectedLimits =
+      root?.dependencyLimits === undefined
+        ? undefined
+        : normalizeProjectDependencyLimits(root.dependencyLimits)
+    privateBunPreparationLimits(selectedMode, selectedLimits)
+  } catch {
+    throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'invalid preparation limits')
+  }
+  const limits = privateBunPreparationLimits(selectedMode, selectedLimits)
   if (
     root?.type !== 'source' ||
     !Array.isArray(root.files) ||
@@ -470,6 +491,7 @@ function requireSource(value: unknown): {
   return Object.freeze({
     files: Object.freeze(files),
     mode: selectedMode,
+    ...(selectedLimits === undefined ? {} : { dependencyLimits: selectedLimits }),
     ...(selectedWorkspace === undefined ? {} : { workspace: selectedWorkspace }),
   })
 }
