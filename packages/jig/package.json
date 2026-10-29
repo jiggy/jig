@@ -48,6 +48,7 @@
     "dist/client.d.ts",
     "dist/attempt-contract.d.ts",
     "dist/project/author.d.ts",
+    "dist/project/limits.d.ts",
     "dist/project/commands.d.ts",
     "dist/project/evaluation.d.ts",
     "dist/project/grants.d.ts",

@@ -19,6 +19,10 @@ operational baselines, and public-site assembly.
   New technical paragraphs receive all mechanical style checks.
   `docs/jig/AGENTS.md` owns the temporary software-factory style exclusion.
   It makes no network requests and does not certify ASD-STE100 compliance.
+- `limit-reference.ts` owns typed documentation metadata for user-facing limits.
+  Import values from implementation policy owners instead of defining runtime
+  policy here. Its `--write` command refreshes the marked tables in
+  `docs/jig/guide/limits.md`. `check-docs.ts` runs its `--check` drift guard.
 - `new-worktree.sh` owns sibling development-checkout creation. It inherits
   existing ignored `../<same-name>` links from the primary checkout to real
   workspace entries. Tracked source stays local to each checkout. Parent links

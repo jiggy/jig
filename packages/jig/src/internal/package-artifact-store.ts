@@ -5,6 +5,10 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { CheckError, invalid, unavailable } from '../diagnostics.js'
 import {
+  PACKAGE_1_HEADER_TEXT,
+  PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS,
+} from '../package/capacity.js'
+import {
   type CapturedFile,
   type CapturedPackage,
   type CapturedPackageBacking,
@@ -32,16 +36,12 @@ import { privateMacosAnonymousBacking } from './macos-descriptor-files.js'
 
 const ARTIFACT_KIND = 'flow-package/0'
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/
-const HEADER = Buffer.from('FLOW-Package/0\0', 'ascii')
+const HEADER = Buffer.from(PACKAGE_1_HEADER_TEXT, 'ascii')
 const COPY_CHUNK_BYTES = 1024 * 1024
-const MIB = 1024 * 1024
 // Linux O_TMPFILE is __O_TMPFILE | O_DIRECTORY; Node does not expose it.
 const O_TMPFILE = 0o20000000 | constants.O_DIRECTORY
 
-export const PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS = Object.freeze({
-  artifactBytes: 192 * MIB,
-  storeBytes: 1024 * MIB,
-})
+export { PRIVATE_PACKAGE_ARTIFACT_STORE_LIMITS } from '../package/capacity.js'
 
 const snapshotReaders = new WeakMap<FileHandle, FileHandle>()
 

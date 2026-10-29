@@ -3,6 +3,7 @@ import { JSON_1_LIMITS, validateJson1 } from '../json.js'
 import { normalizeBindingAttachmentMap } from './attachment-routes.js'
 import { expectJsonObject, snapshotJson, snapshotJsonObject } from './author-value.js'
 import { type GrantInput, type GrantPolicy, grantName, normalizeGrant } from './grants.js'
+import { type JigLimits, type JigLimitsInput, normalizeJigLimits } from './limits.js'
 import { flowSelector, normalizeFlowPackage, npmPackageName } from './package-selector.js'
 import {
   assertNoProjectPathCollisions,
@@ -27,6 +28,7 @@ export type ProjectSource = DiscoverySource | MembersSource
 export type ProjectSourceInput = DiscoverySource | readonly string[]
 
 export interface JigDefinition {
+  readonly limits?: JigLimits
   readonly flows?: ProjectSource
   readonly bindings?: ProjectSource
   readonly grants?: ProjectSource
@@ -35,6 +37,7 @@ export interface JigDefinition {
 }
 
 export interface JigDefinitionInput {
+  readonly limits?: JigLimitsInput
   readonly flows?: ProjectSourceInput
   readonly bindings?: ProjectSourceInput
   readonly grants?: ProjectSourceInput
@@ -105,16 +108,18 @@ function normalizeJig(input: JigDefinitionInput, canonical: boolean): JigDefinit
   const captured = snapshotJsonObject(input, 'Jig definition')
   assertClosedObject(
     captured,
-    ['flows', 'bindings', 'grants', 'defaultProviders', 'entrypoint'],
+    ['flows', 'bindings', 'grants', 'defaultProviders', 'entrypoint', 'limits'],
     'Jig definition',
   )
   const output: {
+    limits?: JigLimits
     flows?: ProjectSource
     bindings?: ProjectSource
     grants?: ProjectSource
     defaultProviders?: Readonly<Record<string, string>>
     entrypoint?: string
   } = {}
+  if (Object.hasOwn(captured, 'limits')) output.limits = normalizeJigLimits(captured.limits)
   if (Object.hasOwn(captured, 'flows')) {
     output.flows = normalizeSource(
       captured.flows as unknown as ProjectSourceInput,

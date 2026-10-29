@@ -1,10 +1,11 @@
-import { CASE_FOLD_15_1 } from './case-fold-15.1.js'
 import { invalid } from '../diagnostics.js'
+import { PACKAGE_1_MAX_PATH_BYTES } from './capacity.js'
+import { CASE_FOLD_15_1 } from './case-fold-15.1.js'
 import { normalizeNfc15_1 } from './normalization-15.1.js'
 
 const encoder = new TextEncoder()
 
-export const PACKAGE_1_MAX_PATH_BYTES = 1_024
+export { PACKAGE_1_MAX_PATH_BYTES } from './capacity.js'
 
 /** Test NFC with the exact Unicode database fixed by Package/0. */
 export function isNfc15_1(value: string): boolean {

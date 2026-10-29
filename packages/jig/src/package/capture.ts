@@ -12,13 +12,16 @@ import {
   privateMacosDuplicate,
   privateMacosStatAt,
 } from '../internal/macos-descriptor-files.js'
+import { PACKAGE_1_LIMITS } from './capacity.js'
 import { packageDigest } from './digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from './paths.js'
 
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
-const MAX_FILES = 65_536
-const MAX_FILE_BYTES = 1_073_741_824
-const MAX_TOTAL_BYTES = 4_294_967_296
+const {
+  files: MAX_FILES,
+  fileBytes: MAX_FILE_BYTES,
+  totalBytes: MAX_TOTAL_BYTES,
+} = PACKAGE_1_LIMITS
 const COPY_CHUNK_BYTES = 1024 * 1024
 const CAPTURE_ATTEMPTS = 3
 const MAX_DIRECTORIES = 65_536
@@ -252,7 +255,7 @@ export function createCapturedPackage(
     sourceLabel,
     files,
     digest,
-    async read(path: string, maximumBytes = MAX_FILE_BYTES): Promise<Uint8Array> {
+    async read(path: string, maximumBytes: number = MAX_FILE_BYTES): Promise<Uint8Array> {
       const file = requireCapturedFile(byPath, path)
       validateReadLimit(maximumBytes)
       if (file.size > maximumBytes) {
@@ -282,7 +285,7 @@ export function createCapturedPackage(
         invalid('PACKAGE_STAGE_CHANGED', `captured file ${path} became short`, path)
       return bytes
     },
-    stream(path: string, maximumBytes = MAX_FILE_BYTES): AsyncIterable<Uint8Array> {
+    stream(path: string, maximumBytes: number = MAX_FILE_BYTES): AsyncIterable<Uint8Array> {
       const file = requireCapturedFile(byPath, path)
       validateReadLimit(maximumBytes)
       if (file.size > maximumBytes) {
@@ -552,7 +555,7 @@ async function copyToBacking(
   priorTotal: number,
   logicalPath: string,
   buffer: Uint8Array,
-  maximumBytes = MAX_TOTAL_BYTES,
+  maximumBytes: number = MAX_TOTAL_BYTES,
 ): Promise<number> {
   let sourceOffset = 0
   while (true) {

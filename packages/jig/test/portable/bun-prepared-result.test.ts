@@ -154,6 +154,28 @@ test('preparation keeps 32MiB production and 128MiB evaluation decoded profiles'
       mode: 'evaluation',
     })
     expect(result.captured.files[0]?.size).toBe(PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes + 1)
+    await prepared.dispose()
+    const dependencyLimits = {
+      maxPreparedFiles: PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
+      maxPreparedBytes: PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes + 1024,
+    }
+    prepared = await capturePrivateBunPreparationOutput(value.work, 'production', dependencyLimits)
+    await expect(
+      decodePrivateBunPreparedResult(prepared, metadata(prepared), {
+        captured: value.captured,
+      }),
+    ).rejects.toMatchObject({ code: 'PACKAGE_BUN_PROTOCOL' })
+    expect(
+      (
+        await decodePrivateBunPreparedResult(prepared, metadata(prepared), {
+          captured: value.captured,
+          dependencyLimits,
+        })
+      ).captured.digest,
+    ).toBe(prepared.digest)
+    await expect(
+      capturePrivateBunPreparationOutput(value.work, 'evaluation', dependencyLimits),
+    ).rejects.toThrow('evaluation preparation limits are fixed')
   } finally {
     await prepared?.dispose()
     await value.close()

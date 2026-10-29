@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
-import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 
 export type Finding = { file: string; line: number; message: string }
 const root = resolve(import.meta.dirname, '..')
@@ -200,8 +200,8 @@ export function styleFindings(
           ? 20
           : 25
       const words =
-        sentence.replace(/\bCODE\b/g, '').match(/[\p{L}\p{N}]+(?:['’\-][\p{L}\p{N}]+)*/gu)
-          ?.length ?? 0
+        sentence.replace(/\bCODE\b/g, '').match(/[\p{L}\p{N}]+(?:['’-][\p{L}\p{N}]+)*/gu)?.length ??
+        0
       if (words > limit)
         findings.push({
           file,
@@ -277,6 +277,31 @@ export function renderedFindings(sites: string): Finding[] {
   return findings
 }
 
+export function limitReferenceFindings(repository = root): Finding[] {
+  const file = 'docs/jig/guide/limits.md'
+  if (!existsSync(resolve(repository, file))) return []
+  const script = resolve(repository, 'scripts/limit-reference.ts')
+  if (!existsSync(script))
+    return [{ file, line: 1, message: 'The limits reference requires scripts/limit-reference.ts.' }]
+  try {
+    execFileSync(process.execPath, [script, '--check'], {
+      cwd: repository,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 1024 * 1024,
+    })
+    return []
+  } catch {
+    return [
+      {
+        file,
+        line: 1,
+        message:
+          'Limits reference check failed. Run bun scripts/limit-reference.ts --check for details, or --write to refresh its policy values.',
+      },
+    ]
+  }
+}
+
 export function main(args = process.argv.slice(2)): number {
   let sites: string | undefined
   let base = process.env.DOCS_BASE_REVISION || (process.env.GITHUB_ACTIONS ? 'HEAD^' : 'HEAD')
@@ -335,7 +360,7 @@ export function main(args = process.argv.slice(2)): number {
       inherited.set(key, (inherited.get(key) ?? 0) + 1)
     }
   }
-  const findings: Finding[] = []
+  const findings: Finding[] = limitReferenceFindings()
   for (const file of docs) {
     if (!existsSync(join(root, file))) continue
     const text = readFileSync(join(root, file), 'utf8')

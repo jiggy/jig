@@ -212,6 +212,50 @@ describe('private Bun dependency evidence', () => {
       }),
     ).rejects.toMatchObject({ code: 'PACKAGE_BUN_SOURCE_UNSUPPORTED' })
   })
+  test('reassembly enforces the current dependency limits even for already retained bytes', async () => {
+    const source = await capture({ 'package.json': '{}', 'FLOW.ts': 'export {}' })
+    const dependencies = await capture({ 'node_modules/example/index.js': 'installed' })
+    const input = {
+      source,
+      sourcePaths: new Set(source.files.map((file) => file.path)),
+      dependencies,
+      layout: EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
+    }
+    try {
+      await expect(
+        assemblePrivateBunExecution({
+          ...input,
+          dependencyLimits: { maxPreparedFiles: 2, maxPreparedBytes: 1024 },
+        }),
+      ).rejects.toMatchObject({
+        code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+        preparationLimit: { dimension: 'files', observed: 3, maximum: 2 },
+      })
+      await expect(
+        assemblePrivateBunExecution({
+          ...input,
+          dependencyLimits: { maxPreparedFiles: 3, maxPreparedBytes: 1 },
+        }),
+      ).rejects.toMatchObject({
+        code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+        preparationLimit: { dimension: 'bytes', maximum: 1 },
+      })
+      const assembled = await assemblePrivateBunExecution({
+        ...input,
+        dependencyLimits: { maxPreparedFiles: 3, maxPreparedBytes: 1024 },
+      })
+      try {
+        expect(assembled.files).toHaveLength(3)
+        expect(
+          new TextDecoder().decode(await assembled.read('node_modules/example/index.js')),
+        ).toBe('installed')
+      } finally {
+        await assembled.dispose()
+      }
+    } finally {
+      await Promise.all([source.dispose(), dependencies.dispose()])
+    }
+  })
   test('evidence is immutable and rejects the superseded whole-source fingerprint', () => {
     const artifact = { kind: 'flow-package/0', digest: supportDigest }
     const value = {

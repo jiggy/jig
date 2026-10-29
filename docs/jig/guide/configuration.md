@@ -36,6 +36,7 @@ they appear. Unsupported or unreadable approval produces no suggestions.
 | Agent client, model, and credentials | Inline policy in an ordinary Agent Binding and operator credentials. See [Agent settings](#agent-settings) |
 | ACP client for one reviewed proposal | `review --agent codex\|claude\|pi`. Source stays unchanged and later reviews start from source again |
 | Flows, Bindings, and application settings | `jig.ts`. See [Project settings](#project-settings) |
+| Prepared runtime dependency capacity | `limits.dependencies` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` and `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES`. See [Limits and defaults](limits.md) |
 | Application starting point and default Run arguments | `entrypoint` in `jig.ts`. See [Project entrypoint](#project-entrypoint) |
 | Input, deadline, and output for one Run | Command arguments. See [Per-command options](#per-command-options) |
 | Bubblewrap executable | Absolute `JIG_BWRAP_PATH`. See [Host configuration](#host-configuration) |
@@ -43,6 +44,11 @@ they appear. Unsupported or unreadable approval produces no suggestions.
 Operator preferences are separate from reviewed project policy. Jig does not
 automatically load project `.env` files. Export environment variables in your
 shell or supply them through your process launcher.
+
+The [limits reference](limits.md) lists supported overrides, fixed constraints,
+defaults, units, and policy owners. Dependency preparation resolves each field
+from its environment variable, then `jig.ts`, then its built-in default.
+Invalid explicit values fail instead of falling back.
 
 ## Project entrypoint
 
@@ -179,7 +185,7 @@ They do not select the operator’s credentials, terminal theme, or startup
 verification preference.
 
 See [project authoring](../spec/project-sdk.md) for the supported fields and
-examples, and [execution policy](../spec/project-policy.md) for enforced limits.
+examples, and [Limits and defaults](limits.md) for enforced limits and overrides.
 
 ### Reading review changes
 

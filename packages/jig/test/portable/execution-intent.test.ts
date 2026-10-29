@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { requirePrivateBunPreparationLimits } from '../../src/internal/bun-preparation-output.js'
 import { privateExecutionLocations } from '../../src/internal/execution-backend.js'
 import {
   type PrivateExecutionIntent,
@@ -77,6 +78,28 @@ for (const mode of ['production', 'evaluation'] as const)
     expect(mac.maxOutputBytes).toBe(intent.maxOutputBytes)
     expect(() => privateMacosExecutionPlan({ ...supplied, output: true }, allocation)).toThrow()
   })
+
+test('production preparation forwards explicit bounds while evaluation and ordinary work reject them', () => {
+  const preparationLimits = { maxPreparedFiles: 8192, maxPreparedBytes: 64 * 1024 * 1024 }
+  const supplied = { ...intent, preparationOutput: 'production' as const, preparationLimits }
+  expect(privateLinuxExecutionPlan(supplied).preparationLimits).toEqual(preparationLimits)
+  const mac = privateMacosExecutionPlan(supplied, allocation)
+  expect(mac.preparationLimits).toEqual(preparationLimits)
+  expect(Object.isFrozen(mac.preparationLimits)).toBeTrue()
+  expect(requirePrivateBunPreparationLimits(preparationLimits, 'production')).toEqual(
+    preparationLimits,
+  )
+  expect(() => requirePrivateBunPreparationLimits(preparationLimits, 'evaluation')).toThrow()
+  expect(() => requirePrivateBunPreparationLimits(preparationLimits, undefined)).toThrow()
+  expect(() =>
+    privateMacosExecutionPlan({ ...supplied, preparationOutput: 'evaluation' }, allocation),
+  ).toThrow()
+  expect(() => privateMacosExecutionPlan({ ...intent, preparationLimits }, allocation)).toThrow()
+  expect(() =>
+    privateLinuxExecutionPlan({ ...supplied, preparationOutput: 'evaluation' }),
+  ).toThrow()
+  expect(() => privateLinuxExecutionPlan({ ...intent, preparationLimits })).toThrow()
+})
 
 test('both native plans preserve a frozen boot cutoff instead of deriving authority from Unix', () => {
   const bootDeadline = { bootId: '11111111-1111-1111-1111-111111111111', monotonicMs: 1234 }

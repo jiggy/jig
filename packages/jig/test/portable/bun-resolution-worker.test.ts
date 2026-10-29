@@ -186,3 +186,125 @@ for (const mode of ['denied', 'unsupported-root'] as const) {
     }
   }, 30_000)
 }
+
+test('real preparation worker uses explicit production limits instead of ambient overrides', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-preparation-limits-'))
+  try {
+    const source = join(root, 'source')
+    await mkdir(source)
+    await writeFile(
+      join(source, 'package.json'),
+      JSON.stringify({
+        name: 'preparation-consumer',
+        private: true,
+        workspaces: ['libs/*'],
+        dependencies: { helper: 'workspace:*' },
+      }),
+    )
+    await mkdir(join(source, 'libs/helper'), { recursive: true })
+    await writeFile(
+      join(source, 'libs/helper/package.json'),
+      '{"name":"helper","version":"1.0.0","main":"index.js"}',
+    )
+    await writeFile(join(source, 'libs/helper/index.js'), 'export default 1')
+    const workspace = { target: '', members: ['libs/helper'], selected: ['libs/helper'] }
+    const author = Bun.spawn(
+      [
+        process.execPath,
+        '--no-env-file',
+        '--config=/dev/null',
+        'install',
+        '--lockfile-only',
+        '--ignore-scripts',
+        '--no-progress',
+      ],
+      { cwd: source, env: {}, stdout: 'pipe', stderr: 'pipe' },
+    )
+    const [authorExit, authorOut, authorError] = await Promise.all([
+      author.exited,
+      new Response(author.stdout).text(),
+      new Response(author.stderr).text(),
+    ])
+    expect(authorExit, authorOut + authorError).toBe(0)
+    const captured = await capturePackageDirectory(source)
+    try {
+      const files = []
+      for (const file of captured.files)
+        files.push({
+          path: file.path,
+          content: Buffer.from(await captured.read(file.path)).toString('base64'),
+        })
+      for (const maxPreparedFiles of [1, 8]) {
+        const work = join(root, `work-${maxPreparedFiles}`)
+        await mkdir(work)
+        const dependencyLimits = { maxPreparedFiles, maxPreparedBytes: 1024 * 1024 }
+        const worker = Bun.spawn(
+          [
+            process.execPath,
+            '--no-env-file',
+            '--no-install',
+            '--config=/dev/null',
+            join(import.meta.dir, '../../src/internal/bun-native-preparation-worker.ts'),
+          ],
+          {
+            cwd: work,
+            env: { JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES: '65536' },
+            stdin: 'pipe',
+            stdout: 'pipe',
+            stderr: 'pipe',
+          },
+        )
+        worker.stdin.write(
+          `${JSON.stringify({ type: 'source', files, dependencyLimits, workspace })}\n`,
+        )
+        worker.stdin.end()
+        const [exit, stdout, stderr] = await Promise.all([
+          worker.exited,
+          new Response(worker.stdout).text(),
+          new Response(worker.stderr).text(),
+        ])
+        expect(stderr).toBe('')
+        const message = JSON.parse(stdout)
+        if (maxPreparedFiles === 1) {
+          expect(exit).toBe(1)
+          expect(message).toMatchObject({
+            type: 'failure',
+            code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+            preparationLimit: { dimension: 'files', observed: 2, maximum: 1 },
+          })
+        } else {
+          expect(exit, stdout).toBe(0)
+          const directory = await open(work, 'r')
+          try {
+            const prepared = await capturePrivateBunPreparationOutput(
+              directory,
+              'production',
+              dependencyLimits,
+            )
+            try {
+              const result = await decodePrivateBunPreparedResult(prepared, message, {
+                captured,
+                dependencyLimits,
+                workspace,
+              })
+              expect(result.captured.files.map((file) => file.path)).toEqual([
+                'bun.lock',
+                'libs/helper/index.js',
+                'libs/helper/package.json',
+                'package.json',
+              ])
+            } finally {
+              await prepared.dispose()
+            }
+          } finally {
+            await directory.close()
+          }
+        }
+      }
+    } finally {
+      await captured.dispose()
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})

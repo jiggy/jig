@@ -258,7 +258,31 @@ test(
           members: ['flows/work', 'libs/helper'],
           selected: ['flows/work', 'libs/helper'],
         }),
-      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_OUTPUT_LIMIT' })
+      ).rejects.toMatchObject({
+        code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+        preparationLimit: {
+          dimension: 'files',
+          observed: PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles + 1,
+          maximum: PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles,
+        },
+      })
+      const raised = await capturePrivateBunPreparedTree(
+        value.root,
+        {
+          target: 'flows/work',
+          members: ['flows/work', 'libs/helper'],
+          selected: ['flows/work', 'libs/helper'],
+        },
+        [],
+        'production',
+        {
+          maxPreparedFiles: PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles + 1,
+          maxPreparedBytes: PRIVATE_BUN_PREPARATION_LIMITS.preparedBytes,
+        },
+      )
+      expect(raised.files.length + raised.layout.aliases.length).toBe(
+        PRIVATE_BUN_PREPARATION_LIMITS.preparedFiles + 1,
+      )
     } finally {
       await value.dispose()
     }

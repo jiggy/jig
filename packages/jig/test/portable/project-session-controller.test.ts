@@ -240,6 +240,109 @@ describe('private finite project session', () => {
       'project diagnostic is invalid',
     )
   })
+  test('dependency preparation limit facts survive scoping without worker text', () => {
+    for (const dimension of ['bytes', 'files'] as const) {
+      for (const origin of [undefined, 'default', 'project', 'environment'] as const) {
+        const maximum = dimension === 'bytes' ? 32 * 1024 * 1024 : 4096
+        const preparationLimit = {
+          dimension,
+          observed: maximum + 1,
+          maximum,
+          ...(origin === undefined ? {} : { origin }),
+        }
+        const original = new CheckError(
+          'invalid',
+          'PACKAGE_BUN_OUTPUT_LIMIT',
+          'private worker token /private/preparation',
+          'package.json',
+          undefined,
+          undefined,
+          undefined,
+          preparationLimit,
+        )
+        const scoped = scopePrivatePackagePlanningError(original, 'flows/demo')
+        const projected = projectError(scoped, 'plan').toJSON()
+        expect(projected).toEqual({
+          code: 'INVALID_CANDIDATE',
+          message: 'project candidate is invalid',
+          diagnostic: {
+            code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+            path: 'flows/demo/package.json',
+            preparationLimit,
+          },
+        })
+        expect(Object.isFrozen(projected.diagnostic)).toBeTrue()
+        expect(Object.isFrozen(projected.diagnostic!.preparationLimit)).toBeTrue()
+        expect(JSON.stringify(projected)).not.toMatch(/private worker token|\/private\//)
+        preparationLimit.observed += 1
+        expect(projected.diagnostic!.preparationLimit!.observed).toBe(maximum + 1)
+      }
+    }
+  })
+  test('dependency preparation diagnostics reject unbounded or untrusted detail fields', () => {
+    const preparationLimit = { dimension: 'bytes' as const, observed: 33554433, maximum: 33554432 }
+    for (const detail of [
+      null,
+      [],
+      { ...preparationLimit, dimension: 'private-worker-message' },
+      { ...preparationLimit, observed: Infinity },
+      { ...preparationLimit, observed: Number.MAX_SAFE_INTEGER + 1 },
+      { ...preparationLimit, observed: preparationLimit.maximum },
+      { ...preparationLimit, maximum: 0 },
+      { ...preparationLimit, maximum: 0.5 },
+      { ...preparationLimit, origin: '/private/operator-token' },
+      { ...preparationLimit, workerMessage: 'synthetic bearer secret' },
+      { ...preparationLimit, [Symbol('private-field')]: 'synthetic bearer secret' },
+    ]) {
+      expect(
+        () =>
+          new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+            code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+            path: 'package.json',
+            preparationLimit: detail as never,
+          }),
+      ).toThrow()
+    }
+    let accessorReads = 0
+    const accessor = Object.defineProperty({ ...preparationLimit }, 'observed', {
+      enumerable: true,
+      get() {
+        accessorReads += 1
+        throw new Error('synthetic bearer secret')
+      },
+    })
+    let proxyReads = 0
+    const proxy = new Proxy(preparationLimit, {
+      getOwnPropertyDescriptor() {
+        proxyReads += 1
+        throw new Error('synthetic bearer secret')
+      },
+      ownKeys() {
+        proxyReads += 1
+        throw new Error('synthetic bearer secret')
+      },
+    })
+    for (const detail of [accessor, proxy]) {
+      expect(
+        () =>
+          new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+            code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+            path: 'package.json',
+            preparationLimit: detail,
+          }),
+      ).toThrow()
+    }
+    expect(accessorReads).toBe(0)
+    expect(proxyReads).toBe(0)
+    expect(
+      () =>
+        new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+          code: 'PACKAGE_BUN_PROTOCOL',
+          path: 'package.json',
+          preparationLimit,
+        }),
+    ).toThrow('project diagnostic preparation limit is invalid')
+  })
   test('preserves missing default diagnostics without exposing source error text', () => {
     const failure = projectError(
       new CheckError(

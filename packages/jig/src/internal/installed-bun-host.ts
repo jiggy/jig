@@ -1,4 +1,5 @@
 import type { AcpGrant } from '../project/grants.js'
+import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from '../project/limits.js'
 import type { PrivateInspectionEnvironmentCheck } from './activation-admission-store.js'
 import { inspectPrivateBunDirectIdentity } from './bun-direct-run.js'
 import {
@@ -88,6 +89,14 @@ export async function openPrivateInstalledBunHost(
   return Object.freeze({
     backend,
     installedBunSupport,
+    dependencyLimitEnvironment: Object.freeze(
+      Object.fromEntries(
+        Object.values(DEPENDENCY_PREPARATION_LIMIT_POLICY.environment).map((name) => [
+          name,
+          operatorEnvironment[name],
+        ]),
+      ),
+    ),
     runTimeoutMs: PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
     detectAgentAlternatives: (selected: readonly AcpGrant['client'][]) =>
       privateDetectedAgentAlternatives(operatorEnvironment, projectDirectory, selected),

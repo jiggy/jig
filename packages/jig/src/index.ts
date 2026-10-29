@@ -10,3 +10,4 @@ export {
 } from './project/author.js'
 
 export type { GrantInput, GrantPolicy } from './project/grants.js'
+export type { JigLimits, JigLimitsInput, ProjectDependencyLimits } from './project/limits.js'

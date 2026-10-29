@@ -1,5 +1,8 @@
 import { join } from 'node:path'
-import { requirePrivateBunPreparationOutput } from './bun-preparation-output.js'
+import {
+  requirePrivateBunPreparationLimits,
+  requirePrivateBunPreparationOutput,
+} from './bun-preparation-output.js'
 import type { PrivateExecutionIntent } from './execution-intent.js'
 import type { PrivateLinuxLaunchPlan } from './linux-rootless-backend.js'
 import type { PrivateMacosOwnerStateAllocationIdentity } from './macos-backend-state.js'
@@ -12,6 +15,16 @@ import {
 
 /** Pure lowering only. Backends still authenticate, validate and seal all authority. */
 export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): PrivateLinuxLaunchPlan {
+  const preparationOutput = requirePrivateBunPreparationOutput(intent.preparationOutput)
+  const preparationLimits = requirePrivateBunPreparationLimits(
+    intent.preparationLimits,
+    preparationOutput,
+  )
+  if (
+    preparationOutput !== undefined &&
+    (intent.output || intent.evaluationWorkspace !== undefined)
+  )
+    throw new TypeError('Bun preparation collection cannot share another output profile')
   return {
     runId: intent.runId,
     limits: intent.limits,
@@ -29,9 +42,8 @@ export function privateLinuxExecutionPlan(intent: PrivateExecutionIntent): Priva
     ...(intent.network === undefined ? {} : { network: intent.network }),
     ...(intent.nestedUserNamespaces ? { nestedUserNamespaces: true } : {}),
     ...(intent.output === undefined ? {} : { output: intent.output }),
-    ...(intent.preparationOutput === undefined
-      ? {}
-      : { preparationOutput: intent.preparationOutput }),
+    ...(preparationOutput === undefined ? {} : { preparationOutput }),
+    ...(preparationLimits === undefined ? {} : { preparationLimits }),
     ...(intent.capturedInputs === undefined ? {} : { capturedInputs: intent.capturedInputs }),
     ...(intent.inputDirectories === undefined ? {} : { inputDirectories: intent.inputDirectories }),
     ...(intent.inputEmptyDirectories === undefined
@@ -52,6 +64,10 @@ export function privateMacosExecutionPlan(
   allocation: PrivateMacosOwnerStateAllocationIdentity,
 ): PrivateMacosLaunchPlan {
   const preparationOutput = requirePrivateBunPreparationOutput(intent.preparationOutput)
+  const preparationLimits = requirePrivateBunPreparationLimits(
+    intent.preparationLimits,
+    preparationOutput,
+  )
   if (
     preparationOutput !== undefined &&
     (intent.output || intent.evaluationWorkspace !== undefined)
@@ -187,6 +203,7 @@ export function privateMacosExecutionPlan(
     },
     maxOutputBytes: intent.maxOutputBytes,
     ...(preparationOutput === undefined ? {} : { preparationOutput }),
+    ...(preparationLimits === undefined ? {} : { preparationLimits }),
     ...(intent.readOnlyCwd === undefined || (intent.inputDirectories?.length ?? 0) > 0
       ? {
           storage: {

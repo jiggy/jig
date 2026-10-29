@@ -58,6 +58,7 @@ const sidebar = [
     collapsible: true,
     items: [
       { text: 'Settings and configuration', link: '/guide/configuration' },
+      { text: 'Limits and defaults', link: '/guide/limits' },
       { text: 'Project authoring', link: '/spec/project-sdk' },
       { text: 'Execution policy', link: '/spec/project-policy' },
       { text: 'Application client', link: '/spec/execution-client' },

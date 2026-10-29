@@ -1,4 +1,5 @@
 import { types as utilTypes } from 'node:util'
+import type { DependencyPreparationLimitDiagnostic } from '../diagnostics.js'
 
 import { validateJson1 } from '../json.js'
 import { isProtectedProjectPath, validateProjectPath } from '../project/paths.js'
@@ -32,6 +33,7 @@ export interface ProjectAdministrationErrorValue {
 }
 
 export interface ProjectAdministrationDiagnostic {
+  readonly preparationLimit?: DependencyPreparationLimitDiagnostic
   readonly code: string
   readonly path: string
   readonly pointer?: string
@@ -224,7 +226,7 @@ function normalizeProjectAdministrationDiagnostic(
     throw new TypeError('project diagnostic is invalid')
   }
   const actual = Reflect.ownKeys(value)
-  const allowed = ['code', 'path', 'pointer', 'typeMismatch', 'lockPath']
+  const allowed = ['code', 'path', 'pointer', 'typeMismatch', 'lockPath', 'preparationLimit']
   if (
     actual.some((key) => typeof key !== 'string' || !allowed.includes(key)) ||
     !actual.includes('code') ||
@@ -299,12 +301,55 @@ function normalizeProjectAdministrationDiagnostic(
       received: detail.received as string,
     })
   }
+  let preparationLimit: DependencyPreparationLimitDiagnostic | undefined
+  if (actual.includes('preparationLimit')) {
+    if (code !== 'PACKAGE_BUN_OUTPUT_LIMIT')
+      throw new TypeError('project diagnostic preparation limit is invalid')
+    const raw = fields.preparationLimit
+    if (raw === null || typeof raw !== 'object' || utilTypes.isProxy(raw))
+      throw new TypeError('project diagnostic preparation limit is invalid')
+    const withOrigin = Object.hasOwn(raw, 'origin')
+    const withProfile = Object.hasOwn(raw, 'profile')
+    const detail = exactRecord(
+      raw,
+      [
+        'dimension',
+        'observed',
+        'maximum',
+        ...(withOrigin ? ['origin'] : []),
+        ...(withProfile ? ['profile'] : []),
+      ],
+      'preparation limit',
+    )
+    if (
+      (detail.dimension !== 'bytes' && detail.dimension !== 'files') ||
+      !Number.isSafeInteger(detail.observed) ||
+      !Number.isSafeInteger(detail.maximum) ||
+      (detail.maximum as number) < 1 ||
+      (detail.observed as number) <= (detail.maximum as number) ||
+      (withOrigin && !['default', 'project', 'environment'].includes(detail.origin as string))
+    )
+      throw new TypeError('project diagnostic preparation limit is invalid')
+    if (
+      withProfile &&
+      (detail.profile !== 'evaluation' || (withOrigin && detail.origin !== 'default'))
+    )
+      throw new TypeError('project diagnostic preparation profile is invalid')
+    preparationLimit = Object.freeze({
+      dimension: detail.dimension,
+      observed: detail.observed as number,
+      maximum: detail.maximum as number,
+      ...(withOrigin ? { origin: detail.origin as 'default' | 'project' | 'environment' } : {}),
+      ...(withProfile ? { profile: 'evaluation' as const } : {}),
+    })
+  }
   return Object.freeze({
     code,
     path,
     ...(pointer === undefined ? {} : { pointer }),
     ...(typeMismatch === undefined ? {} : { typeMismatch }),
     ...(lockPath === undefined ? {} : { lockPath }),
+    ...(preparationLimit === undefined ? {} : { preparationLimit }),
   })
 }
 
