@@ -309,6 +309,9 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/macos-host-summary.test.mjs` exercises both
   architecture aggregates, nested reports, installed-client evidence, duplicate
   execution, missing/cancelled/stale proof and optional timing failures.
+- `node --test scripts/ci/macos-candidate-archives.test.mjs` executes the
+  qualifier's actual archive staging and revalidation sections with real tools.
+  It checks isolated copies, ambiguous archives and changed bytes without native qualification claims.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
   and identical versions, immutable collisions, registry errors and changed
   candidate evidence without credentials or registry mutations. It also checks

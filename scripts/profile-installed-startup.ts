@@ -875,7 +875,7 @@ function requireProfileEnvironment() {
     process.execPath !== process.env.JIG_CI_BUN
   ) {
     throw new Error(
-      'installed startup profiling requires an exact selected Linux or Mac host and Bun',
+      'installed startup profiling requires an exact supported Linux or Mac host and Bun',
     )
   }
   const runnerTemp = requiredAbsolute('RUNNER_TEMP')
