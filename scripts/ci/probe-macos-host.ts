@@ -40,13 +40,15 @@ try {
   if (process.argv[2] === '--hosted') {
     const expected = MAC_HOST_PROFILES[process.arch as keyof typeof MAC_HOST_PROFILES]
     if (
-      Object.entries(expected).some(
-        ([key, value]) => identity[key as keyof typeof identity] !== value,
+      !expected.some((profile) =>
+        Object.entries(profile).every(
+          ([key, value]) => identity[key as keyof typeof identity] === value,
+        ),
       )
     ) {
       console.log(JSON.stringify(identity, null, 2))
       throw new Error(
-        `Hosted Mac runner drift: require ${process.arch} Darwin ${expected.kernel} build ${expected.build} and Bun ${expected.bun} (${expected.revision}); observed Darwin ${identity.kernel} build ${identity.build} and Bun ${identity.bun} (${identity.revision}).`,
+        `Hosted Mac runner drift: require ${process.arch} ${expected.map((profile) => `Darwin ${profile.kernel} build ${profile.build} and Bun ${profile.bun} (${profile.revision})`).join(' or ')}; observed Darwin ${identity.kernel} build ${identity.build} and Bun ${identity.bun} (${identity.revision}).`,
       )
     }
   }

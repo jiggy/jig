@@ -5,7 +5,9 @@ import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
-export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 2 })
+// Keep the complete ARM role on one runner during hosted image rollouts.
+// Different kernel builds cannot supply parts of one profile's qualification.
+export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 1 })
 export function macHostShardCount(architecture) {
   if (!Object.hasOwn(MAC_HOST_SHARDS, architecture))
     throw new Error('Mac qualification requires x64 or arm64')

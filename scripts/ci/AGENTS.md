@@ -144,8 +144,8 @@ They consume frozen package exports with tracked test helpers and installed
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224, Intel/Apple
-  Silicon 24G830, and Apple Silicon 24H232 profiles. Hosted targets select Intel
-  24G830 and Apple Silicon 24H232.
+  Silicon 24G830, and Apple Silicon 24H232 profiles. The hosted pool admits Intel
+  24G830 and either exact Apple Silicon 24G830 or 24H232 tuple.
 
   It owns Bun 1.4.2 and real Node 22+
   preflight, and frozen same-revision host/model/renderer archives with digest
@@ -158,9 +158,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   Observed paths never authorize cleanup or detachment. Its full mode remains
   the self-hosted entrypoint. Hosted `--shard` runs one isolated portion of the
-  same complete suite: four Intel or two Apple Silicon shards. Shard zero runs
-  native prerequisites and the final shard runs installed consumer and
-  genuine-client checks on each architecture. The full Jig package smoke
+  same complete suite: four Intel shards or one complete Apple Silicon host.
+  Shard zero runs native prerequisites and the final shard runs installed
+  consumer and genuine-client checks on each architecture. Both roles run once
+  on the single Apple Silicon host.
+
+  The full Jig package smoke
   receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY` only from the existing Mac
   evidence directory. Its flat exclusive mode-0600 JSON retains closed
   failed-command metadata.
@@ -171,6 +174,11 @@ They consume frozen package exports with tracked test helpers and installed
   `JIG_CI_CANDIDATE_DIRECTORY` after verifying provenance and copies its exact
   archives. Ordinary platform source builds remain separate. Full self-hosted
   local mode uses the owning local packers.
+
+  The workflow reallocates the former two Apple Silicon jobs' allowance to one
+  complete host, with a smaller aggregate allowance and shared setup. Per-test
+  and product deadlines stay unchanged. The exact allocations belong to
+  `.github/AGENTS.md` and the workflow.
 - `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
   catalog, retaining portable files until a separate audit proves host
   neutrality. Eight native prerequisite files run once on shard zero and genuine
@@ -190,9 +198,12 @@ They consume frozen package exports with tracked test helpers and installed
   and Mac reports. It rejects empty, failed, skipped, incomplete or
   duplicate-case reports. Each consumer enforces its owning file inventory. The
   Mac validator reconstructs the complete source-pinned shard plan and reads
-  every owning report and completion marker once. Every shard's retained
-  prerequisites must match its exact architecture, kernel, build and Bun target.
-  Mixed builds refuse qualification even when every test report passed.
+  every owning report and completion marker once.
+
+  Every shard's retained prerequisites must match an exact admitted architecture,
+  kernel, build and Bun tuple. A complete architecture plan must use one observed
+  tuple. Its summary and retained qualification artifact name that tuple, without
+  extending qualification to another admitted build.
 
   Linux Bun commands retain their stdout parser. Linux Node commands retain
   exact single-file JUnit reports
@@ -211,8 +222,15 @@ They consume frozen package exports with tracked test helpers and installed
   versions retain the complete registry check. Only an explicit registry E404
   means unpublished. It executes no package code, publishes nothing, and cannot
   replace the protected publisher's later group and channel reconciliation.
-- `macos-host-profiles.mjs` declares the exact hosted kernel, build and Bun
-  targets. The suite catalog retains each target's complete file inventory.
+- `macos-host-profiles.mjs` declares each architecture's finite pool of exact
+  hosted kernel, build and Bun tuples. The suite catalog retains each target's
+  complete file inventory. The Apple Silicon pool includes both builds observed
+  during GitHub's image rollout. One complete host executes its full plan, so a
+  mixed pool cannot combine partial results from different builds.
+
+  The Apple Silicon execution profile names its architecture and pinned Bun,
+  rather than one configured build. Its canonical G/H inventory is identical.
+  Complete evidence establishes only the observed build's qualification.
 - `probe-macos-host.ts` observes native process identity and coalition
   accounting prerequisites. Hosted mode rejects target drift before native
   compilation and source builds. Failed target checks retain the observed tuple.
@@ -309,6 +327,9 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/macos-host-summary.test.mjs` exercises both
   architecture aggregates, nested reports, installed-client evidence, duplicate
   execution, missing/cancelled/stale proof and optional timing failures.
+- `node --test scripts/ci/macos-host-profiles.test.mjs` checks the exact admitted
+  tuples, neighboring kernel and toolchain refusal, and complete prerequisite
+  evidence. Ordinary input records establish no native qualification.
 - `node --test scripts/ci/macos-candidate-archives.test.mjs` executes the
   qualifier's actual archive staging and revalidation sections with real tools.
   It checks isolated copies, ambiguous archives and changed bytes without native qualification claims.

@@ -232,15 +232,28 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   claim live model/API qualification.
 - `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
   Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Four Intel
-  and two Apple Silicon shards share the observed five-slot capacity, with
-  `max-parallel: 5`. The sixth job queues without increasing concurrent demand.
+  shards and one complete Apple Silicon host share the observed five-slot
+  capacity, with `max-parallel: 5`.
   Actual runner availability still determines start times.
 
   Intel shards require Darwin 24.6.0 build 24G830.
-  Apple Silicon shards require Darwin 24.6.0 build 24H232.
-  The prerequisite probe rejects another build before compilation or dependency installation.
-  Aggregate evidence validates each shard's retained architecture, kernel, build and exact Bun revision.
-  Mixed builds cannot establish a profile's qualification.
+  The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
+  GitHub's standard image label can assign either build during rollout. Its full
+  plan runs on one host, without combining partial results from different builds.
+
+  The prerequisite probe rejects other tuples before compilation or dependency
+  installation. Aggregate evidence validates each retained architecture, kernel,
+  build and exact Bun revision. Summaries name the observed tuple only.
+
+  An admitted candidate still needs complete native and installed qualification
+  on that build before support expands.
+
+  The complete Apple Silicon job has 60 minutes instead of two 35-minute jobs.
+  Optional startup profiling has 90 minutes instead of 35 plus 65 minutes.
+  These allocations reduce the aggregate allowance, execute each file once,
+  and share host setup. Test and product deadlines remain unchanged. This trades
+  parallel ARM execution for a complete result on one observed build. It makes
+  no faster-execution claim.
 
   Before full native allocation, the existing Ubuntu acquisition job waits for
   the exact canonical CI producer's current-attempt `Quick development checks`

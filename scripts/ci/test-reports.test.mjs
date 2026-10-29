@@ -205,7 +205,7 @@ test('full Mac reports require the exact current host prerequisites from every s
       { kind: 'macos-host-prerequisites/2' },
       { arch: architecture === 'x64' ? 'arm64' : 'x64' },
       { kernel: '24.7.0' },
-      { build: architecture === 'arm64' ? '24G830' : '24H232' },
+      { build: architecture === 'arm64' ? '24H233' : '24H232' },
       { bun: '1.4.3' },
       { revision: 'different' },
       { backendQualified: true },
@@ -224,6 +224,67 @@ test('full Mac reports require the exact current host prerequisites from every s
     rmSync(path)
     assert.throws(read, /ENOENT/)
   }
+})
+test('one complete ARM host qualifies only its observed admitted build', () => {
+  for (const build of ['24G830', '24H232']) {
+    const f = fixture('arm64')
+    assert.equal(f.directories.length, 1)
+    writeFileSync(
+      join(f.directories[0], 'prerequisites.json'),
+      JSON.stringify({ ...prerequisites('arm64'), build }),
+    )
+    const result = readMacReports({
+      repository: f.root,
+      source: f.source,
+      targetId: 'macos-arm64',
+      evidenceDirectory: f.evidence,
+      detailed: true,
+    })
+    assert.equal(result.executed, f.files.length)
+    assert.equal(result.shards.length, 1)
+    assert.deepEqual(result.hostProfile, {
+      arch: 'arm64',
+      kernel: '24.6.0',
+      build,
+      bun: '1.4.2',
+      revision: prerequisites('arm64').revision,
+    })
+  }
+})
+test('the complete ARM role requires both native and installed reports on its single host', () => {
+  for (const missing of ['native-tests.xml', 'installed-startup.xml']) {
+    const f = fixture('arm64')
+    rmSync(join(f.directories[0], missing))
+    assert.throws(
+      () =>
+        readMacReports({
+          repository: f.root,
+          source: f.source,
+          targetId: 'macos-arm64',
+          evidenceDirectory: f.evidence,
+        }),
+      /ENOENT/,
+    )
+  }
+})
+test('a partial ARM shard plan cannot qualify the complete single-host role', () => {
+  const f = fixture('arm64')
+  const path = join(f.directories[0], 'test-plan.json')
+  const plan = JSON.parse(readFileSync(path, 'utf8'))
+  plan.shardCount = 2
+  plan.installed = false
+  plan.groups = plan.groups.slice(0, Math.ceil(plan.groups.length / 2))
+  writeFileSync(path, JSON.stringify(plan))
+  assert.throws(
+    () =>
+      readMacReports({
+        repository: f.root,
+        source: f.source,
+        targetId: 'macos-arm64',
+        evidenceDirectory: f.evidence,
+      }),
+    /Mac command plan differs from its pinned source inventory/,
+  )
 })
 test('full Mac reader rejects reordered plans even when every matching report remains complete', () => {
   for (const architecture of ['x64', 'arm64']) {

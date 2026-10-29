@@ -61,9 +61,13 @@ def summarize(architecture, revision, count, evidence, jobs):
 
 def markdown(report):
     lines = [f"### Mac host proof — {report['architecture']}", "",
-             f"Revision: `{report['revision']}`. Qualification: **{'passed' if report['qualified'] else 'failed'}**.", "",
+             f"Revision: `{report['revision']}`. Qualification: **{'passed' if report['qualified'] else 'failed'}**.", ""]
+    if report.get("hostProfile"):
+        host = report["hostProfile"]
+        lines.extend([f"Tested host: `{host['arch']}` Darwin `{host['kernel']}` build `{host['build']}`, Bun `{host['bun']}` (`{host['revision']}`).", ""])
+    lines.extend([
              "| Shard | Runner wait | Job execution | Executed cases | Skipped reports | Failed cases |",
-             "| --- | --- | --- | --- | --- | --- |"]
+             "| --- | --- | --- | --- | --- | --- |"])
     for row in report["shards"]:
         timing = row["timing"]
         wait = f"{timing['wait_seconds']:.0f}s" if timing else "unavailable"

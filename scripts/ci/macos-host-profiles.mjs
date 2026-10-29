@@ -1,17 +1,27 @@
 // Exact hosted candidates. Prerequisites never establish native qualification.
 export const MAC_HOST_PROFILES = Object.freeze({
-  x64: Object.freeze({
-    kernel: '24.6.0',
-    build: '24G830',
-    bun: '1.4.2',
-    revision: '744846f844374847c902b5e7fd59b4342a51ef99',
-  }),
-  arm64: Object.freeze({
-    kernel: '24.6.0',
-    build: '24H232',
-    bun: '1.4.2',
-    revision: '744846f844374847c902b5e7fd59b4342a51ef99',
-  }),
+  x64: Object.freeze([
+    Object.freeze({
+      kernel: '24.6.0',
+      build: '24G830',
+      bun: '1.4.2',
+      revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+    }),
+  ]),
+  arm64: Object.freeze([
+    Object.freeze({
+      kernel: '24.6.0',
+      build: '24G830',
+      bun: '1.4.2',
+      revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+    }),
+    Object.freeze({
+      kernel: '24.6.0',
+      build: '24H232',
+      bun: '1.4.2',
+      revision: '744846f844374847c902b5e7fd59b4342a51ef99',
+    }),
+  ]),
 })
 
 export function requireMacHostPrerequisites(evidence, architecture) {
@@ -20,7 +30,9 @@ export function requireMacHostPrerequisites(evidence, architecture) {
     !Object.hasOwn(MAC_HOST_PROFILES, architecture) ||
     evidence?.kind !== 'macos-host-prerequisites/1' ||
     evidence.arch !== architecture ||
-    Object.entries(expected).some(([key, value]) => evidence[key] !== value) ||
+    !expected.some((profile) =>
+      Object.entries(profile).every(([key, value]) => evidence[key] === value),
+    ) ||
     evidence.processIdentityBytes !== 56 ||
     evidence.coalitionIdentityBytes !== 40 ||
     evidence.coalitionUsageBytes !== 296 ||

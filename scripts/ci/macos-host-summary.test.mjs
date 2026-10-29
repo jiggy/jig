@@ -180,7 +180,33 @@ test('summary projects the single complete validator and optional timings on bot
     })
 })
 
-test('summary refuses missing or mixed kernel prerequisites despite complete reports', async () => {
+test('summary names only the build tested by the complete ARM host', async () => {
+  await fixture('arm64', async (f) => {
+    assert.equal(f.count, 1)
+    for (const build of ['24G830', '24H232']) {
+      await writeFile(
+        resolve(f.directories[0], 'prerequisites.json'),
+        JSON.stringify({ ...prerequisites('arm64'), build }),
+      )
+      const result = await f.summarize()
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(result.report.executed, f.expectedCount)
+      assert.deepEqual(result.report.hostProfile, {
+        arch: 'arm64',
+        kernel: '24.6.0',
+        build,
+        bun: '1.4.2',
+        revision: prerequisites('arm64').revision,
+      })
+      assert.ok(
+        result.stdout.includes(`Tested host: \`arm64\` Darwin \`24.6.0\` build \`${build}\``),
+      )
+      assert.ok(!result.stdout.includes(build === '24G830' ? '24H232' : '24G830'))
+    }
+  })
+})
+
+test('summary refuses missing or unsupported kernel prerequisites despite complete reports', async () => {
   for (const architecture of ['x64', 'arm64'])
     await fixture(architecture, async (f) => {
       const path = resolve(f.directories.at(-1), 'prerequisites.json')
@@ -188,7 +214,7 @@ test('summary refuses missing or mixed kernel prerequisites despite complete rep
         path,
         JSON.stringify({
           ...prerequisites(architecture),
-          build: architecture === 'arm64' ? '24G830' : '24H232',
+          build: architecture === 'arm64' ? '24H233' : '24H232',
         }),
       )
       let result = await f.summarize()
@@ -321,10 +347,11 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     assert.match(await readFile(markdown, 'utf8'), /Qualification: \*\*passed\*\*/)
     const jsonPath = resolve(f.root, 'mac-summary.json')
     assert.equal(JSON.parse(await readFile(jsonPath, 'utf8')).qualified, true)
-    await rm(resolve(f.directories.at(-1), 'shard-1.complete'))
+    const marker = resolve(f.directories[0], 'shard-0.complete')
+    await rm(marker)
     assert.equal((await run()).status, 1)
     assert.equal(JSON.parse(await readFile(jsonPath, 'utf8')).qualified, false)
-    await writeFile(resolve(f.directories.at(-1), 'shard-1.complete'), `${revision} arm64 1\n`)
+    await writeFile(marker, `${revision} arm64 0\n`)
     await writeFile(resolve(f.directories[0], 'CANDIDATE.json'), 'another candidate')
     const wrongCandidate = await run()
     assert.equal(wrongCandidate.status, 1)

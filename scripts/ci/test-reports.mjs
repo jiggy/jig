@@ -177,12 +177,18 @@ export function readMacReports({
       evidenceDirectory,
       `macos-prerequisites-${architecture}-${shard.index}-${source}`,
     )
-    requireMacHostPrerequisites(
+    const prerequisites = requireMacHostPrerequisites(
       JSON.parse(readFileSync(inertPath(directory, 'prerequisites.json'), 'utf8')),
       architecture,
     )
-    return { shard, directory }
+    const { arch, kernel, build, bun, revision } = prerequisites
+    return { shard, directory, hostProfile: { arch, kernel, build, bun, revision } }
   })
+  const hostProfile = shardEvidence[0].hostProfile
+  if (
+    shardEvidence.some((evidence) => stableJson(evidence.hostProfile) !== stableJson(hostProfile))
+  )
+    throw new Error('Mac qualification cannot combine different host profiles')
   const identities = new Set()
   let count = 0
   const rows = []
@@ -238,6 +244,7 @@ export function readMacReports({
   if (detailed)
     return {
       architecture,
+      hostProfile,
       revision: source,
       qualified: true,
       executed: count,
