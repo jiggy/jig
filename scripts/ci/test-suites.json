@@ -379,7 +379,7 @@
     },
     {
       "id": "macos-x64",
-      "scope": "macos",
+      "scope": "macos-intel",
       "kind": "native-and-installed",
       "profiles": [
         "macos-24G830/x64/bun-1.4.2"

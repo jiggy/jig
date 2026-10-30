@@ -54,10 +54,10 @@ export const LINUX_QUALIFICATION_JOBS = Object.freeze([
   ),
 ])
 export const MACOS_QUALIFICATION_JOBS = Object.freeze([
-  'Native host qualification — x64',
   'Native host qualification — arm64',
-  ...Object.entries(MAC_HOST_SHARDS).flatMap(([architecture, count]) =>
-    Array.from({ length: count }, (_, shard) => `Native host shard — ${architecture} / ${shard}`),
+  ...Array.from(
+    { length: MAC_HOST_SHARDS.arm64 },
+    (_, shard) => `Native host shard — arm64 / ${shard}`,
   ),
 ])
 
@@ -431,7 +431,7 @@ export async function releaseReadiness({
     result.obligations.push(
       ...(await requireJobs(client, repository, mac, MACOS_QUALIFICATION_JOBS)),
     )
-    for (const profile of ['x64', 'arm64']) {
+    for (const profile of ['arm64']) {
       const artifact = await artifactFor(
         client,
         repository,

@@ -302,7 +302,8 @@ export function executionInventory({ repository = process.cwd(), scope } = {}) {
     timeout: 10000,
   }).trim()
   if (!/^[0-9a-f]{40}$/.test(source)) throw new Error('Missing exact execution source')
-  if (scope && !['ci', 'linux', 'macos'].includes(scope)) throw new Error('Unknown execution scope')
+  if (scope && !['ci', 'linux', 'macos', 'macos-intel'].includes(scope))
+    throw new Error('Unknown execution scope')
   const files = gitRepositoryTests(repository, source)
   const targets = catalog.targets
     .filter((target) => !scope || target.scope === scope)

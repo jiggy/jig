@@ -20,6 +20,8 @@ use-case and orchestration hypotheses.
 - `index.md` and `guide/` teach implemented behavior and recommended practice,
   with installation prerequisites centralized in `guide/index.md`. Describe
   current behavior, not comparisons with superseded alpha releases.
+  Its platform guidance distinguishes required Linux/Apple Silicon release
+  checks from complete nightly Intel compatibility and its regression window.
 - `guide/agents.md` owns API and native setup, operator selection, resource
   configuration, installation recovery, review checks, and current adapter
   limits. Setup instructions belong here. Other guides link to the relevant

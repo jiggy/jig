@@ -51,7 +51,11 @@ After the feature PR merges:
 3. Review the generated changes and merge after required checks pass.
    With the default token, a maintainer must merge so the main-push workflows start.
 
-The merged release must pass CI, Linux, both Mac architectures, and native Agent qualification.
+The merged release must pass CI, complete Linux and Apple Silicon qualification,
+and native Agent qualification. Intel Mac compatibility runs nightly and on
+manual request. An Intel regression can reach a release before the next nightly
+check. It does not block publication.
+
 The publisher then publishes the exact tested archives, followed by source tags and GitHub prereleases.
 Current releases use `alpha`. Installation uses `@alpha`, not `@latest`.
 Reporting, display, and Python artifacts remain qualification inputs.
@@ -64,6 +68,32 @@ git fetch origin main
 just release-plan
 just release-check "$(git merge-base origin/main HEAD)"
 ```
+
+## Intel Mac compatibility
+
+**Intel Mac compatibility** runs daily at 02:23 UTC from `main`. It selects the
+current public Jig `alpha` version first, then the workflow's exact
+`main` source if different. Each source retains all four Intel shards, native
+containment and recovery, installed consumers, genuine offline clients and
+zero-residue checks. At most two Intel runners execute concurrently.
+
+Published checks require the exact public npm archive, verified against its
+registry integrity, and its source-bound canonical bundle. The workflow retains
+verified input mirrors for 14 days and refreshes them after acquisition. It never
+rebuilds a release to claim published-byte compatibility. A release without
+retained canonical evidence, including a version from before this qualification
+pipeline, reports incomplete compatibility until
+exact retained inputs become available or a newer release is published.
+
+The run summary separates each tested version and source from the last recorded
+passing published version. Failures make this workflow red but cannot qualify or
+block a release. Missing evidence is a failure, not an Intel pass. Use the
+workflow's manual `pull_request` input to check an open PR's exact merge source.
+Leave it empty to check the published version and `main`.
+
+The self-hosted Intel 23E224 workflow remains manual and protected. Hosted Intel
+results do not qualify that distinct native profile. Performance profiling stays
+manual and outside release readiness.
 
 ## If a release stops
 

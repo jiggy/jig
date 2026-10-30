@@ -23,13 +23,25 @@ preparation never becomes a consumer requirement.
   files, non-specification documentation, Python SDK/reporting files, or
   reviewed root/agent guidance. The shared Reporting descriptor remains a native
   input. Source, build, workflow, specification, mixed, unknown or unverifiable
-  inputs require complete Linux and both Mac architectures. Main and manual
+  inputs require complete Linux and Apple Silicon. Main and manual
   execution are always full. Final `affected-linux` and `affected-macos` checks
   independently reconstruct this decision and require either every native job's
   success or every job's explicit omission.
 
   An omitted PR creates no host qualification receipt. No selection modes,
-  result reuse, compact witnesses or recurring audit jobs exist.
+  result reuse or compact witnesses exist. Intel has separate nightly
+  compatibility coverage.
+- `intel-nightly.mjs` selects published Jig and distinct main sources, or an
+  explicitly requested open PR merge. It acquires canonical inputs with their
+  original producer identities and immutable transport checks. Only scheduled
+  main runs may supply verified mirrors. Manual PR runs cannot seed trusted
+  inputs. Published archive bytes
+  additionally match exact-version npm integrity.
+
+  Intel retains its full whole-file inventory under the `macos-intel` evidence
+  scope. The required `macos` scope owns Apple Silicon only. Nightly health
+  names the tested version/source and last recorded passing published version.
+  Missing, stale or foreign proof fails. Health never grants release readiness.
 - `release-base.mjs` selects the required release check's comparison commit.
   It verifies the workflow source and both parents of a PR merge.
   The second parent must equal the event head. The event base must be an
@@ -139,7 +151,7 @@ They consume frozen package exports with tracked test helpers and installed
   Canonical source must be an eligible generated release with no pending
   changesets. Feature source and stale release plans cannot receive readiness,
   even when all execution evidence passed. Every protected publication retains
-  complete CI, Linux, both Mac architectures and native-client qualification.
+  complete CI, Linux, Apple Silicon and native-client qualification.
 
   Required CI job names match the current workflow, including Python reporting.
   Candidate acquisition imports readiness validators statically so the CLI cannot deadlock on a circular dynamic import.

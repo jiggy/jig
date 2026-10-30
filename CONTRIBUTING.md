@@ -216,7 +216,8 @@ The default profile follows the local OS (`portable-linux` on Linux and
 `portable` elsewhere). `--profile` selects either explicitly. These checks use
 the source runner's existing stage limits. They do not allocate a native host,
 so they also work on Macs outside the native preflight profiles. Complete Linux
-and both Mac architecture qualifications remain separate CI checks. The ordinary
+and Apple Silicon qualifications remain required CI checks. Complete Intel
+qualification runs nightly and can be requested manually for a PR. The ordinary
 `just preflight` still runs the local regression pass described above.
 
 ## Package release changes

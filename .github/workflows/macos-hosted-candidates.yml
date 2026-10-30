@@ -5,7 +5,7 @@ name: "macOS hosted candidates"
   workflow_dispatch:
     inputs:
       include_startup_profile:
-        description: "Profile installed startup on both Mac architectures (optional, up to 30 minutes)"
+        description: "Profile installed startup on Apple Silicon (optional, up to 30 minutes)"
         type: "boolean"
         default: false
   push:
@@ -72,31 +72,15 @@ jobs:
           if-no-files-found: "error"
   prerequisites:
     name: "Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}"
-    runs-on: "${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}"
+    runs-on: "macos-15"
     # ARM consolidates two former jobs: 60 < 2*35 minutes, or 90 < 35+65
     # with the optional 30-minute profile. Individual test limits stay unchanged.
     timeout-minutes: "${{ matrix.arch == 'arm64' && (inputs.include_startup_profile && 90 || 60) || (matrix.installed && inputs.include_startup_profile && 65 || 35) }}"
     strategy:
       fail-fast: false
-      max-parallel: 5
+      max-parallel: 1
       matrix:
         include:
-          -
-            arch: "x64"
-            shard: 3
-            installed: true
-          -
-            arch: "x64"
-            shard: 0
-            installed: false
-          -
-            arch: "x64"
-            shard: 1
-            installed: false
-          -
-            arch: "x64"
-            shard: 2
-            installed: false
           -
             arch: "arm64"
             shard: 0
@@ -238,9 +222,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          -
-            arch: "x64"
-            count: 4
           -
             arch: "arm64"
             count: 1
@@ -390,7 +371,7 @@ jobs:
           JOB_RESULTS: "${{ toJSON(needs) }}"
         run: |
           set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"macos-x64":jobs["qualified-architecture"].result,"macos-arm64":jobs["qualified-architecture"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
+          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"macos-arm64":jobs["qualified-architecture"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
           node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
       -
         name: "Retain host scope and complete qualification reconciliation"

@@ -445,30 +445,32 @@ printf '%s\\n' "$codex_startup_expectation"
   )
 })
 
-test('every hosted Mac shard checks its exact target before compilation and builds', async () => {
+test('every required and nightly hosted Mac shard checks its exact target before compilation and builds', async () => {
   const workflow = parse(
     await readFile(
       resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
       'utf8',
     ),
   )
-  const job = workflow.jobs.prerequisites
-  assert.deepEqual([...new Set(job.strategy.matrix.include.map(({ arch }) => arch))].sort(), [
-    'arm64',
-    'x64',
-  ])
-  const probes = job.steps.filter((step) =>
-    /bun scripts\/ci\/probe-macos-host\.ts --hosted/.test(step.run ?? ''),
-  )
-  assert.equal(probes.length, 1)
-  const probe = probes[0]
-  assert.equal(probe.if, undefined)
-  assert.match(probe.env.EXPECTED_ARCH, /^\$\{\{ matrix\.arch \}\}$/)
-  assert.match(probe.run, /set -o pipefail/)
-  assert.match(probe.run, /tee "\$RUNNER_TEMP\/mac-evidence\/prerequisites\.json"/)
-  const setup = job.steps.filter((step) => /clang |just --justfile/.test(step.run ?? ''))
-  assert.ok(setup.length >= 2)
-  assert.ok(setup.every((step) => job.steps.indexOf(probe) < job.steps.indexOf(step)))
+  assert.deepEqual([...new Set(workflow.jobs.prerequisites.strategy.matrix.include.map(({ arch }) => arch))], ['arm64'])
+  const nightly = parse(await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'), 'utf8',
+  ))
+  assert.equal(nightly.jobs.prerequisites['runs-on'], 'macos-15-intel')
+  for (const job of [workflow.jobs.prerequisites, nightly.jobs.prerequisites]) {
+    const probes = job.steps.filter((step) =>
+      /bun scripts\/ci\/probe-macos-host\.ts --hosted/.test(step.run ?? ''),
+    )
+    assert.equal(probes.length, 1)
+    const probe = probes[0]
+    assert.equal(probe.if, undefined)
+    assert.match(probe.env.EXPECTED_ARCH, /^\$\{\{ matrix\.arch \}\}$/)
+    assert.match(probe.run, /set -o pipefail/)
+    assert.match(probe.run, /tee "\$RUNNER_TEMP\/mac-evidence\/prerequisites\.json"/)
+    const setup = job.steps.filter((step) => /clang |just --justfile/.test(step.run ?? ''))
+    assert.ok(setup.length >= 2)
+    assert.ok(setup.every((step) => job.steps.indexOf(probe) < job.steps.indexOf(step)))
+  }
 })
 
 test('one complete ARM runner owns native and installed proof within the former combined allowance', async () => {
@@ -480,7 +482,7 @@ test('one complete ARM runner owns native and installed proof within the former 
   )
   const job = workflow.jobs.prerequisites
   const matrix = job.strategy.matrix.include
-  for (const [arch, count] of Object.entries(MAC_HOST_SHARDS)) {
+  for (const [arch, count] of Object.entries({ arm64: MAC_HOST_SHARDS.arm64 })) {
     const roles = matrix.filter((role) => role.arch === arch)
     assert.deepEqual(
       roles.map((role) => role.shard).sort(),
@@ -499,6 +501,12 @@ test('one complete ARM runner owns native and installed proof within the former 
   }
   const arm = matrix.filter((role) => role.arch === 'arm64')
   assert.deepEqual(arm, [{ arch: 'arm64', shard: 0, installed: true }])
+  const nightly = parse(await readFile(
+    resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'), 'utf8',
+  ))
+  const intel = Array.from({ length: MAC_HOST_SHARDS.x64 }, (_, shard) => ({
+    arch: 'x64', shard, installed: shard === MAC_HOST_SHARDS.x64 - 1,
+  }))
   const evaluate = (expression, role, profile = false) =>
     runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ''), {
       matrix: role,
@@ -519,13 +527,13 @@ test('one complete ARM runner owns native and installed proof within the former 
     const minutes = evaluate(job['timeout-minutes'], arm[0], profile)
     assert.equal(minutes, profile ? 90 : 60)
     assert.ok(minutes < (profile ? 100 : 70))
-    for (const role of matrix.filter((role) => role.arch === 'x64'))
+    for (const role of intel)
       assert.equal(
-        evaluate(job['timeout-minutes'], role, profile),
+        evaluate(nightly.jobs.prerequisites['timeout-minutes'], role, profile),
         profile && role.installed ? 65 : 35,
       )
-    const total = matrix.reduce(
-      (sum, role) => sum + evaluate(job['timeout-minutes'], role, profile),
+    const total = minutes + intel.reduce(
+      (sum, role) => sum + evaluate(nightly.jobs.prerequisites['timeout-minutes'], role, profile),
       0,
     )
     assert.ok(total < (profile ? 270 : 210))

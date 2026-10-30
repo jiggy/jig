@@ -76,6 +76,56 @@ test('installed Python jobs exactly cover the declared evidence profiles', async
   )
 })
 
+test('required Mac checks allocate complete ARM only and keep Intel on nightly/manual coverage', async () => {
+  const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
+  const intel = parse(await readFile(new URL('macos-intel-nightly.yml', workflows), 'utf8'))
+  const { MAC_HOST_SHARDS } = await import('./macos-host-test-shards.mjs')
+  assert.deepEqual(mac.jobs.prerequisites.strategy.matrix.include,
+    Array.from({ length: MAC_HOST_SHARDS.arm64 }, (_, shard) => ({
+      arch: 'arm64', shard, installed: shard === MAC_HOST_SHARDS.arm64 - 1,
+    })),
+  )
+  assert.deepEqual(mac.jobs['qualified-architecture'].strategy.matrix.include, [
+    { arch: 'arm64', count: MAC_HOST_SHARDS.arm64 },
+  ])
+  assert.doesNotMatch(JSON.stringify(mac.jobs['affected-macos']), /macos-x64/)
+  assert.deepEqual(Object.keys(intel.on).sort(), ['schedule', 'workflow_dispatch'])
+  assert.equal(intel.on.schedule[0].cron, '23 2 * * *')
+  assert.equal(intel.jobs.select.if, "github.ref == 'refs/heads/main'")
+  assert.equal(intel.permissions.contents, 'read')
+  assert.equal(intel.permissions.actions, 'read')
+  assert.equal(intel.jobs.prerequisites['runs-on'], 'macos-15-intel')
+  assert.equal(intel.jobs.prerequisites.strategy['max-parallel'], 2)
+  assert.equal(intel.jobs.prerequisites.strategy['fail-fast'], false)
+  assert.match(intel.jobs.prerequisites.strategy.matrix, /outputs\.shards/)
+  const health = intel.jobs.health
+  assert.match(health.if, /always\(\)/)
+  assert.ok(health.needs.includes('qualified-architecture'))
+  assert.equal(health.steps.at(-1).if, 'always()')
+  for (const job of Object.values(intel.jobs)) {
+    assert.equal(job['continue-on-error'], undefined)
+    assert.equal(job.environment, undefined)
+    for (const step of job.steps) {
+      if (step.uses) assert.match(step.uses, /@[a-f0-9]{40}$/)
+      assert.doesNotMatch(JSON.stringify(step), /secrets\./)
+    }
+  }
+  // Both architectures execute the same complete native and installed commands.
+  for (const name of [
+    'Test native containment and recovery',
+    'Qualify the complete rootless host and installed consumer',
+  ]) {
+    const required = mac.jobs.prerequisites.steps.find((step) => step.name === name)
+    const nightly = intel.jobs.prerequisites.steps.find((step) => step.name === name)
+    assert.equal(nightly.run, required.run)
+    assert.equal(nightly.if, required.if)
+    assert.equal(nightly['continue-on-error'], undefined)
+  }
+  const manual = parse(await readFile(new URL('macos-host-conformance.yml', workflows), 'utf8'))
+  assert.deepEqual(Object.keys(manual.on), ['workflow_dispatch'])
+  assert.equal(manual.jobs.qualify.environment, 'macos-host-conformance')
+})
+
 test('every workflow declares GitHub triggers using YAML 1.2 keys', async () => {
   for (const file of await readdir(workflows)) {
     if (!/\.ya?ml$/.test(file)) continue
