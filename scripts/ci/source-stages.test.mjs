@@ -216,7 +216,7 @@ test('a failed actual Node source case stops later stages and leaves no successf
 test('the actual root test recipe partitions Node files from both source inventories', (t) => {
   const f = fixture(t)
   const justfile = readFileSync(new URL('../../justfile', import.meta.url), 'utf8')
-  const recipe = /^@test \*args:\n([\s\S]*?)(?=\n# Run the installed)/m.exec(justfile)?.[1]
+  const recipe = /^@test \*args:\n((?:[ \t][^\n]*\n|\n)*)/m.exec(justfile)?.[1]
   assert.ok(recipe, 'Root test recipe must remain available')
   const script = join(f.root, 'root-test.sh')
   writeFileSync(
