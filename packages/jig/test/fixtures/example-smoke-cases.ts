@@ -560,7 +560,7 @@ export const EXAMPLE_SMOKE_CASES: readonly ExampleSmokeCase[] = [
       )
       await checkedPatch(files, prefix, checked.paths)
       const issue = object(JSON.parse(await readFile(join(project, 'issue.json'), 'utf8')))
-      assert.equal(await readFile(join(files, prefix, 'goal.txt'), 'utf8'), issue.issue)
+      assert.equal(await readFile(join(files, prefix, 'goal.txt'), 'utf8'), `${issue.issue}\n`)
     },
   },
   {
