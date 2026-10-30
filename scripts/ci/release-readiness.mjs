@@ -316,14 +316,18 @@ async function latestNativeRun(client, repository, source, ciRuns) {
       `repos/${repository}/actions/runs/${run.id}/artifacts`,
       'artifacts',
     )
-    const suffix = new RegExp(`-${source}-r${run.id}-a[1-9][0-9]*$`)
+    const suffix = /-([0-9a-f]{40})-r([1-9][0-9]*)-a[1-9][0-9]*$/
     if (
       !(run.event === 'workflow_dispatch' && run.head_sha === source) &&
-      !artifacts.some(
-        (artifact) =>
-          /^native-(qualification|inputs)-/.test(artifact.name ?? '') &&
-          suffix.test(artifact.name),
-      )
+      !artifacts.some((artifact) => {
+        const name = artifact.name ?? ''
+        const identity = suffix.exec(name)
+        return (
+          /^native-(qualification|inputs)-/.test(name) &&
+          identity?.[1] === source &&
+          identity[2] === String(run.id)
+        )
+      })
     )
       continue
     return run
