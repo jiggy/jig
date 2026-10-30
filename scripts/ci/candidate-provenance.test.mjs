@@ -26,9 +26,9 @@ import {
   CI_QUALIFICATION_JOBS,
   LINUX_QUALIFICATION_JOBS,
   MACOS_QUALIFICATION_JOBS,
-  reportReleaseReadiness,
-  releaseSummary,
   releaseReadiness,
+  releaseSummary,
+  reportReleaseReadiness,
   resolveTriggerSource,
 } from './release-readiness.mjs'
 
@@ -1113,8 +1113,16 @@ test('release reporting exposes failed native qualification while Mac is still r
   const summary = releaseSummary(result, repository)
   assert.match(summary, /npm release: Blocked/)
   assert.ok(summary.includes('@jigging/jig | 0.1.0-alpha.1'))
-  assert.ok(summary.includes('macOS hosted candidates | [in_progress](https://github.com/jiggy/jig/actions/runs/300/attempts/1)'))
-  assert.ok(summary.includes('Native Agent API qualification | [failure](https://github.com/jiggy/jig/actions/runs/400/attempts/1)'))
+  assert.ok(
+    summary.includes(
+      'macOS hosted candidates | [in_progress](https://github.com/jiggy/jig/actions/runs/300/attempts/1)',
+    ),
+  )
+  assert.ok(
+    summary.includes(
+      'Native Agent API qualification | [failure](https://github.com/jiggy/jig/actions/runs/400/attempts/1)',
+    ),
+  )
   assert.match(summary, /No packages were published by this readiness check/)
   assert.match(summary, /Re-run all jobs/)
 })
@@ -1132,7 +1140,12 @@ test('waiting release checks never authorize publication and manual reconciliati
     const output = join(temporary, 'outputs')
     const summary = join(temporary, 'summary.md')
     assert.equal(
-      await reportReleaseReadiness(result, { repository, output, summary, eventName: 'workflow_run' }),
+      await reportReleaseReadiness(result, {
+        repository,
+        output,
+        summary,
+        eventName: 'workflow_run',
+      }),
       0,
     )
     assert.match(await readFile(output, 'utf8'), /^ready_host=false$/m)
@@ -1168,14 +1181,66 @@ test('unverified evidence blocks reporting even when every workflow is green', a
   const result = await fixture.check()
   assert.equal(result.state, 'blocked')
   assert.equal(result.readyHost, false)
-  assert.equal(
-    await reportReleaseReadiness(result, { repository, eventName: 'workflow_run' }),
-    1,
-  )
-  result.reasons.push('<script>bad</script> | [link](https://example.com)\n## forged heading')
-  const summary = releaseSummary(result, repository)
-  assert.doesNotMatch(summary, /<script>|\n## forged heading|\[link\]/)
-  assert.match(summary, /&lt;script&gt;/)
+  assert.equal(await reportReleaseReadiness(result, { repository, eventName: 'workflow_run' }), 1)
+  for (const payload of [
+    '<script>bad</script>',
+    '<SCRIPT>bad</SCRIPT>',
+    '<ScRiPt>bad</sCrIpT>',
+    '<img src=x onerror=bad()>',
+    '<script>&bad</script>',
+  ]) {
+    const summary = releaseSummary(
+      {
+        ...result,
+        reasons: [...result.reasons, `${payload} | [link](https://example.com)\n## forged heading`],
+      },
+      repository,
+    )
+    assert.equal(summary.includes('<'), false)
+    assert.equal(summary.includes('>'), false)
+    assert.equal(summary.includes('\n## forged heading'), false)
+    assert.equal(summary.includes('[link]'), false)
+    assert.ok(
+      summary.includes(
+        payload.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;'),
+      ),
+    )
+  }
+})
+
+test('native discovery matches literal source and run identities with positive attempts', async () => {
+  const valid = [1, 2, 11].map((attempt) => `native-inputs-codex-${source}-r401-a${attempt}`)
+  const unrelated = [
+    `native-inputs-codex-${workflowHead}-r401-a1`,
+    `native-inputs-codex-${source}-r4010-a1`,
+    `native-inputs-codex-${source}-r0401-a1`,
+    `native-inputs-codex-${source}-r401-a0`,
+    `native-inputs-codex-${source}-r401-a01`,
+    `native-inputs-codex-${source}-r401-a1-extra`,
+  ]
+  for (const name of [...valid, ...unrelated]) {
+    const fixture = readinessFixture()
+    const newer = run(401, '.github/workflows/native-agent-api-qualification.yml', {
+      headSha: workflowHead,
+      event: 'workflow_run',
+    })
+    newer.conclusion = 'failure'
+    fixture.runs.set(401, newer)
+    fixture.artifacts.set(401, [artifact(4100, name, newer)])
+    const result = await fixture.check()
+    assert.equal(result.readyHost, !valid.includes(name), name)
+    assert.equal(result.state, valid.includes(name) ? 'blocked' : 'ready', name)
+  }
+})
+
+test('release source arguments containing regexp syntax are rejected before discovery', async () => {
+  const fixture = readinessFixture()
+  for (const value of ['.*', '(a+)+', '[a-f]{40}', `${source.slice(1)}.`, `${source}|.*`])
+    await assert.rejects(
+      resolveTriggerSource({ client: fixture.client, repository, sourceRevision: value }),
+      /Expected one full source revision/,
+    )
+  assert.equal(fixture.requests.length, 0)
 })
 
 test('missing native qualification is reported as waiting without borrowing a different source', async () => {
