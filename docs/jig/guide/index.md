@@ -206,6 +206,12 @@ CPU, memory, and process use can briefly exceed the requested ceiling before
 Jig terminates the scope. See the [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
 when deciding whether this tradeoff fits your workload.
 
+Linux and Apple Silicon checks must pass before a release is published. Intel
+Mac support has complete nightly compatibility checks, so a new release can
+contain an Intel regression before the next check. See the
+[Intel compatibility policy](https://github.com/jiggy/jig/blob/main/RELEASING.md#intel-mac-compatibility)
+for the tested versions, results and manual checks.
+
 Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
 `/run/current-system/sw/bin`, not your shell's `PATH`.
 If Bubblewrap is installed elsewhere, configure its absolute path before review.

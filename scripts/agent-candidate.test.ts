@@ -119,10 +119,12 @@ test('the source gate refuses missing prerequisites before starting builds', asy
   }
 })
 
-test('PRs retain complete coverage and keep quick checks independent of candidate qualification', async () => {
+test('PRs retain complete ARM coverage with separate Intel compatibility and independent quick checks', async () => {
   const load = async (file: string) =>
     Bun.YAML.parse(await Bun.file(join(root, '.github/workflows', file)).text()) as any
   const mac = await load('macos-hosted-candidates.yml')
+  const intel = await load('macos-intel-nightly.yml')
+  const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
   const ci = await load('ci.yml')
   expect(Object.hasOwn(workflowTriggers(mac), 'pull_request')).toBeTrue()
   expect(workflowTriggers(mac).pull_request?.paths).toBeUndefined()
@@ -158,24 +160,41 @@ test('PRs retain complete coverage and keep quick checks independent of candidat
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
   expect(mac.jobs.prerequisites.strategy['fail-fast']).toBeFalse()
-  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(5)
+  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(MAC_HOST_SHARDS.arm64)
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
-  const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
   const entries = mac.jobs.prerequisites.strategy.matrix.include
-  expect(entries).toHaveLength(
-    Object.values(MAC_HOST_SHARDS).reduce((sum, count) => sum + count, 0),
-  )
+  expect(entries).toHaveLength(MAC_HOST_SHARDS.arm64)
+  expect(entries.every((entry: any) => entry.arch === 'arm64')).toBeTrue()
   // host-test-coverage.test.mjs evaluates allocation and timeout semantics.
-  for (const [arch, count] of Object.entries(MAC_HOST_SHARDS)) {
+  for (const [arch, count] of Object.entries({ arm64: MAC_HOST_SHARDS.arm64 })) {
     const selected = entries.filter((e: any) => e.arch === arch)
     expect(selected.map((e: any) => e.shard).sort()).toEqual(
       Array.from({ length: count }, (_, i) => i),
     )
     expect(selected.filter((e: any) => e.installed).map((e: any) => e.shard)).toEqual([count - 1])
   }
+  expect(Object.hasOwn(workflowTriggers(intel), 'pull_request')).toBeFalse()
+  expect(Object.hasOwn(workflowTriggers(intel), 'push')).toBeFalse()
+  expect(workflowTriggers(intel).schedule).toEqual([{ cron: '23 2 * * *' }])
+  expect(workflowTriggers(intel).workflow_dispatch.inputs.pull_request.type).toBe('string')
+  expect(intel.jobs.prerequisites['runs-on']).toBe('macos-15-intel')
+  expect(intel.jobs.prerequisites.strategy['max-parallel']).toBe(2)
+  expect(intel.jobs.prerequisites.strategy['fail-fast']).toBeFalse()
+  expect(intel.jobs.prerequisites.strategy.matrix).toBe(
+    '${{ fromJSON(needs.select.outputs.shards) }}',
+  )
+  for (const name of [
+    'Test native containment and recovery',
+    'Qualify the complete rootless host and installed consumer',
+  ]) {
+    const required = mac.jobs.prerequisites.steps.find((step: any) => step.name === name)
+    const nightly = intel.jobs.prerequisites.steps.find((step: any) => step.name === name)
+    expect(nightly.run).toBe(required.run)
+    expect(nightly.if).toBe(required.if)
+    expect(nightly['continue-on-error']).toBeUndefined()
+  }
   expect(mac.jobs['qualified-architecture'].strategy.matrix.include).toEqual([
-    { arch: 'x64', count: MAC_HOST_SHARDS.x64 },
     { arch: 'arm64', count: MAC_HOST_SHARDS.arm64 },
   ])
   expect(mac.jobs['qualified-architecture'].permissions).toEqual({

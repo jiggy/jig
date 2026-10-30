@@ -703,7 +703,7 @@ test('readiness accepts complete canonical qualification even when native descen
     [100, 200, 300, 400],
   )
   assert.equal(result.flowSnapshot.artifacts.length, 1)
-  assert.equal(result.hostSnapshot.artifacts.length, 7)
+  assert.equal(result.hostSnapshot.artifacts.length, 6)
   for (const retained of result.hostSnapshot.runs)
     assert.ok(
       retained.jobs.every(
@@ -735,6 +735,18 @@ test('complete qualification cannot publish feature, pending or stale versioned 
       result.reasons.some((message) => message.includes(`not a versioned release: ${reason}`)),
     )
   }
+})
+
+test('Intel health is separate from publication and cannot replace required ARM qualification', async () => {
+  const fixture = readinessFixture()
+  fixture.receipts.delete(3000)
+  fixture.artifacts.set(300, fixture.artifacts.get(300).filter((entry) => entry.id !== 3000))
+  assert.equal((await fixture.check()).readyHost, true)
+  fixture.receipts.get(3001).consumer.workflowPath = '.github/workflows/macos-intel-nightly.yml'
+  const changed = await fixture.check()
+  assert.equal(changed.readyFlow, true)
+  assert.equal(changed.readyHost, false)
+  assert.ok(changed.reasons.some((message) => /consumer run or attempt mismatch/.test(message)))
 })
 
 test('duplicate and out-of-order completion events re-evaluate the same full prerequisite set', async () => {
@@ -897,16 +909,16 @@ test('failed, cancelled, skipped, missing or stale host evidence blocks Jig whil
       f.jobs.get(200)[1].run_attempt = 0
     },
     (f) => {
-      f.jobs.get(300).find((job) => job.name === 'Native host shard — x64 / 3').run_attempt = 0
+      f.jobs.get(300).find((job) => job.name === 'Native host shard — arm64 / 1').run_attempt = 0
     },
     (f) => {
       f.jobs.set(
         300,
-        f.jobs.get(300).filter((job) => job.name !== 'Native host shard — x64 / 3'),
+        f.jobs.get(300).filter((job) => job.name !== 'Native host shard — arm64 / 1'),
       )
     },
     (f) => {
-      f.receipts.get(3000).candidate.artifactId = 99
+      f.receipts.get(3001).candidate.artifactId = 99
     },
     (f) => {
       f.receipts.get(3001).consumer.runAttempt = 0

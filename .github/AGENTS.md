@@ -77,7 +77,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Preserve `test` as a fail-closed aggregate of every CI job and its observed
   full inventory. Each job must finish successfully with nonempty proof and
-  complete profiles. Main and manual runs require complete host coverage.
+  complete profiles. Main and manual release runs require complete Linux and
+  Apple Silicon coverage.
   Retain required job results before rejecting failures or cancellations, even
   after evidence download fails. Optional current-attempt runner observations
   explain allocation failures without granting execution or cleanup evidence.
@@ -98,7 +99,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   ordered mutation.
 - Publish Agent/Jig npm candidates only after all required gates succeed for the
   exact source revision. These gates are CI, complete Linux Host Conformance,
-  complete hosted Intel and Apple Silicon Mac conformance, and Native Agent API
+  complete hosted Apple Silicon Mac conformance, and Native Agent API
   Qualification. The canonical candidate must also contain eligible generated
   release metadata bound to that source. Preflight every selected host archive
   before mutation.
@@ -146,8 +147,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Final gates reconstruct scope and reject any missing, failed or cancelled
   required job.
 
-  Keep these checks and `test` in merge policy. There are no selection modes,
-  temporary benchmark predicates, compact witness jobs or scheduled audit runs.
+  Keep these checks and `test` in merge policy. There are no test-name selection
+  modes, temporary benchmark predicates or
+  compact witnesses. Intel compatibility has its own nightly and manual workflow.
 
 - Model and web/TUI display packages enter dependency ownership, source and host
   test inventories, and frozen standalone artifact gates. Their
@@ -159,9 +161,6 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   them against the same SDK wheel on the interpreter/OS matrix. These artifacts
   are qualification inputs, not added publication candidates. Host
   installed-update checks also receive the frozen reporting npm archive.
-  The SDK version must match Python reporting's exact declared dependency.
-  The Python matrix uses `macos-15` and records that same image in its required evidence profile.
-  This package check does not qualify Jig's native host profiles.
 - After npm convergence and source tagging, create missing
   package-specific GitHub prereleases. Include exact registry version links,
   install commands, and docs. Preserve existing release notes on retries. Never
@@ -236,86 +235,43 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
   variables. This candidate workflow does not replace Linux publication gates or
   claim live model/API qualification.
-- `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
-  Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Four Intel
-  shards and one complete Apple Silicon host share the observed five-slot
-  capacity, with `max-parallel: 5`.
-  Actual runner availability still determines start times.
+- `workflows/macos-hosted-candidates.yml` requires one complete Apple Silicon
+  host on `macos-15` for applicable PRs and all main pushes. `affected-macos`
+  reconciles only this architecture. Linux and Apple Silicon remain release
+  gates. Intel evidence never grants publication readiness.
 
-  Intel shards require Darwin 24.6.0 build 24G830.
+  Canonical acquisition retains its 1,800-second producer wait and separate
+  600-second transfer bound. Exact profiles, frozen archive identities, complete
+  source and installed coverage, and zero-residue checks stay mandatory.
+  Manual startup profiling remains optional and non-gating.
+
   The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
-  GitHub's standard image label can assign either build during rollout. Its full
-  plan runs on one host, without combining partial results from different builds.
+  The hosted probe rejects other tuples before compilation or dependency setup.
+  One host executes the complete native, source and installed plan, so results
+  from different kernel builds cannot be combined. Aggregate evidence names the
+  observed architecture, kernel, build and pinned Bun revision.
 
-  The prerequisite probe rejects other tuples before compilation or dependency
-  installation. Aggregate evidence validates each retained architecture, kernel,
-  build and exact Bun revision. Summaries name the observed tuple only.
+  The complete ARM job retains main's 60-minute allocation, or 90 minutes with
+  optional profiling. Individual test and product deadlines stay unchanged.
+  Node material files run under verified Node, with complete per-file JUnit
+  evidence alongside Bun files.
+- `workflows/macos-intel-nightly.yml` checks the published Jig `alpha` source and
+  exact archives, then distinct main source, daily at 02:23 UTC. Its four Intel
+  shards retain the complete suite and native/installed/client obligations.
+  Two Intel jobs run concurrently to leave capacity for feature checks.
 
-  An admitted candidate still needs complete native and installed qualification
-  on that build before support expands.
+  Dispatch this workflow from main with an optional open PR number. Hosted PR
+  execution has no protected model credentials. The self-hosted Intel workflow
+  remains manual and never executes arbitrary PR source.
 
-  The complete Apple Silicon job has 60 minutes instead of two 35-minute jobs.
-  Optional startup profiling has 90 minutes instead of 35 plus 65 minutes.
-  These allocations reduce the aggregate allowance, execute each file once,
-  and share host setup. Test and product deadlines remain unchanged. This trades
-  parallel ARM execution for a complete result on one observed build. It makes
-  no faster-execution claim.
+  Verified scheduled-main input mirrors retain exact bytes across CI artifact
+  expiry. Manual PR runs cannot supply these mirrors.
+  Published Jig archive bytes must match npm integrity. Missing or mismatched
+  inputs fail. Rebuilding does not establish published compatibility.
 
-  Before full native allocation, the existing Ubuntu acquisition job waits for
-  the exact canonical CI producer's current-attempt `Quick development checks`
-  success. This wait permits up to 600 seconds within the job's 15-minute
-  budget. Keep every test and profile.
-  Linux and hosted Mac acquisition wait for the exact current-attempt
-  `candidate-build` job before starting the artifact transfer bound. Producer
-  readiness permits 1,800 seconds, including runner queues. Failed or invalid
-  producer jobs refuse immediately. Hosted Mac also requires the same
-  producer's `Quick development checks` success before native allocation.
-
-  Transfer then permits the existing 300 seconds on Linux or 600 seconds on
-  Mac. Acquisition jobs allow 40 and 45 minutes respectively, including setup
-  and settlement. Native test budgets, complete profiles and byte verification
-  remain mandatory.
-
-
-  Measure queue effects separately. This head start does not guarantee Python
-  Mac work has completed or establish faster native execution. Each isolated
-  shard checks the exact kernel/build, native Bun, process prerequisites,
-  ordinary build, frozen archive identity and ownership residue. The
-  deterministic test plan covers every discovered Jig and display test file. It
-  balances physical lifecycle/provider suites with all other applicable files.
-
-  Tests run in fresh, sequential processes inside each host.
-  Node material files use verified Node. Other files use Bun.
-  Both runtimes retain complete per-file JUnit evidence.
-
-  One shard per architecture additionally checks genuine pinned clients offline,
-  ordinary npm installation and packed consumer execution. On hosted profiles, it
-  requires Codex preference-profile refusal while Claude and Pi start. Native
-  containment/recovery and descriptor-handoff probes run once in a dedicated
-  step on shard zero. Per-architecture aggregate checks require exact-revision
-  success markers, matching retained test plans and complete successful JUnit
-  reports from every selected shard. Prerequisite success alone is insufficient.
-  Their retained summaries separate executed cases with zero skipped or filtered
-  registrations, and runner wait from job execution.
-
-  Read-only acquisition and aggregate jobs receive `actions: read` to verify
-  provenance or retrieve current-attempt timing. Unavailable timing cannot
-  qualify or reject proof. Hosted setup installs no privileged helper and uses
-  no model credentials. Each shard retains per-test timing evidence. Optional
-  manual dispatch profiles installed startup on both architectures with the same
-  fixed conversation used by Linux. The profile is non-gating, bounded, and
-  leaves archive identity and zero-residue checks mandatory.
-
-  The final shard on each architecture owns installed-consumer checks and their
-  startup reports. Declare Intel shards first, with installed-consumer work
-  first. Declaration order is not runner priority. Let independent shards finish
-  after another shard fails so each retains its own diagnostics and cleanup
-  evidence. Failed or cancelled shards cannot qualify. Reconstruct native scope
-  for every PR and run complete hosts for every main push.
-
-  Manual dispatch remains available for full diagnostics. Cancel superseded
-  PR/feature runs, but retain main-push qualification. PR results do not qualify
-  a different merged revision.
+  Nightly failures and last passing published versions remain visible separately
+  from
+  release readiness. Qualified nightly receipts cannot replace main-push proof.
 - Release completion events from CI, Linux, hosted Mac and native Agent
   workflows each run a short read-only readiness check. Duplicate and
   out-of-order events converge. Ignore PR completions, foreign repositories,
@@ -323,8 +279,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Manual reconciliation accepts a full main-push
   source revision. FLOW uses complete CI evidence independently of host
-  readiness. Agent/Jig also require all current-attempt Linux shards, both Mac
-  architectures and all three native clients against the same canonical
+  readiness. Agent/Jig also require all current-attempt Linux shards, Apple Silicon
+  and all three native clients against the same canonical
   candidate and verified Linux lineage. Native descendant workflow SHA is
   metadata, not the tested source revision.
 
