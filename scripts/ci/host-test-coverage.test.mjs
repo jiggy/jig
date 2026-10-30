@@ -183,6 +183,28 @@ test('synthetic costs balance whole files and fixed overhead before prioritizing
   }
 })
 
+test('every incident conversation scenario remains an independent complete host obligation', async () => {
+  const root = resolve(import.meta.dirname, '../..')
+  const files = discoverRepositoryTests(root, affectedManifest)
+  const expected = ['replacement', 'commentary', 'budget', 'refused-successor']
+    .map((scenario) => `packages/jig/test/host/installed-incident-brief-${scenario}.test.ts`)
+    .sort()
+  for (const target of ['linux', 'macos-x64', 'macos-arm64']) {
+    const selected = filesForTarget(files, target, affectedManifest)
+    assert.deepEqual(
+      selected.filter((file) => file.startsWith('packages/jig/test/host/installed-incident-brief')),
+      expected,
+      target,
+    )
+  }
+  const mac = await discoverHostTests(root)
+  for (const arch of ['x64', 'arm64']) {
+    const groups = planMacHostTests(mac, arch).flatMap((shard) => shard.groups)
+    for (const file of expected)
+      assert.equal(groups.filter((group) => group.file === file).length, 1, `${arch}: ${file}`)
+  }
+})
+
 test('future whole-file suites inherit explicit roles while hidden, dependency and neighboring files stay inert', async () => {
   const root = await mkdtemp(resolve(tmpdir(), 'jig-host-discovery-'))
   try {

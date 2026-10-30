@@ -119,7 +119,9 @@ function fixture(architecture) {
     'packages/jig/test/host/root-agent-composition.test.ts',
     // Exercise all four Intel shards despite the installed-consumer reservation.
     'packages/jig/test/host/root-agent-fences-specialist.test.ts',
-    'packages/jig/test/host/installed-incident-brief.test.ts',
+    ...['replacement', 'commentary', 'budget', 'refused-successor'].map(
+      (scenario) => `packages/jig/test/host/installed-incident-brief-${scenario}.test.ts`,
+    ),
     'packages/jig/test/host/installed-host-foundation.test.ts',
     'packages/jig/test/host/root-agent-repair-batch.test.ts',
     'packages/jig/test/host/installed-workspace-provider.test.ts',

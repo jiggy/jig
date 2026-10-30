@@ -5,18 +5,21 @@ import {
   cp,
   lstat,
   mkdir,
+  mkdtemp,
   readdir,
   readFile,
   realpath,
   rm,
   writeFile,
 } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { basename, join, resolve } from 'node:path'
 import {
   type FoundationArchives,
   type FoundationQualification,
   foundationCommands,
   foundationResidue,
+  freezeFoundationArchives,
   lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
 import { incidentBranchDiagnostic, incidentWorkerDiagnostic } from './incident-diagnostics.js'
@@ -42,6 +45,31 @@ async function tree(directory: string, prefix = ''): Promise<Record<string, stri
 }
 
 export type IncidentScenario = 'replacement' | 'commentary' | 'budget' | 'refused-successor'
+
+/** Each whole-file scenario owns a fresh consumer, archives, native Runs and cleanup. */
+export async function runInstalledIncidentScenario(
+  scenario: IncidentScenario,
+  qualification: FoundationQualification,
+) {
+  const root = await mkdtemp(join(tmpdir(), 'jig-installed-incident-'))
+  let passed = false
+  try {
+    const command = foundationCommands(join(root, 'archive-commands'))
+    const archives = await freezeFoundationArchives(root, command)
+    const libraries = await freezeIncidentLibraries(root, command)
+    await runInstalledIncident({
+      directory: join(root, 'consumer'),
+      archives,
+      libraries,
+      qualification,
+      scenario,
+    })
+    passed = true
+  } finally {
+    if (passed) await rm(root, { recursive: true, force: true })
+    else console.error(`Incident consumer and bounded transcripts retained at ${root}`)
+  }
+}
 
 /** Ordinary archive input, never a rewritten runtime or native session fixture. */
 export async function freezeIncidentLibraries(
