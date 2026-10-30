@@ -1,7 +1,7 @@
 THIRD-PARTY MATERIAL USED BY DISPLAY-MODEL
 ========================================
 
-@jigging/reporting 0.1.0-alpha.2 is an exact external dependency under
+@jigging/reporting 0.1.0-alpha.3 is an exact external dependency under
 MPL-2.0. Its package supplies its license and source is available at
 https://github.com/jiggy/jig/tree/main/packages/reporting.
 The display-model JavaScript does not bundle its external dependencies.
