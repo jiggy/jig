@@ -195,10 +195,10 @@ provisioned Ubuntu 24.04 x86_64. This host needs:
 - A systemd user manager supporting transient scopes with `Delegate=yes`.
 - Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
 
-On Mac, the qualified profiles are Intel Darwin 23.4.0 build 23E224 and
-Intel or Apple Silicon Darwin 24.6.0 build 24G830. These are exact kernel
-profiles, not a promise for every macOS release. Install through the same npm
-command above; npm selects the matching pinned Bun runtime. No privileged
+On Mac, Jig selects Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
+Each released profile requires complete native qualification. Other kernel builds are unsupported.
+
+Install through the same npm command above. npm selects the matching pinned Bun runtime. No privileged
 helper, managed execution account, separate Bun installation, or `sudo` is
 required. Jig uses a private native sandbox and an owned process coalition to
 contain and stop work. Resource limits are supervised and sampled on Mac, so

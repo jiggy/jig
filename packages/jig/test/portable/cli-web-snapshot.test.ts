@@ -1,4 +1,8 @@
 import { expect, test } from 'bun:test'
+import { closeSync } from 'node:fs'
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { type ViewItem, validateReportingMessage } from '@jigging/reporting'
 import {
   PRIVATE_WEB_INCOMPLETE_LIMIT,
@@ -6,6 +10,10 @@ import {
   PrivateDisplayProjection,
 } from '../../src/cli-display-projection.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
+import { capturePrivateOutput } from '../../src/internal/captured-output.js'
+import { privateCaptureDeliveryInspection } from '../../src/internal/delivery-inspection.js'
+import { PrivateFileDeliveryOwner } from '../../src/internal/file-delivery.js'
+import { privateOpenFileRoot } from '../../src/internal/file-input.js'
 
 const view = (id = 'same', text = 'Literal report'): ViewItem =>
   validateReportingMessage({
@@ -347,7 +355,10 @@ test('maximum legal escaping fits complete and independent incomplete reserve, p
   expect(fallback).not.toHaveProperty('views')
   expect(fallback.lastCompleteRevision).toBe(1)
   const corrupt = model.views.values().next().value!
-  corrupt.value = { ...corrupt.value, summary: '"\\'.repeat(300000) }
+  corrupt.value = {
+    ...corrupt.value,
+    summary: '\u0000'.repeat(Math.floor(PRIVATE_WEB_SNAPSHOT_LIMIT / 6) + 1),
+  }
   expect(() => projection.capture(3)).toThrow('allowance')
   expect(projection.incomplete(3).attention).toHaveLength(model.attention.length)
 })
@@ -417,4 +428,205 @@ test('an omitted own call never falls back to a different retained parent call',
     ancestryIncomplete: true,
   })
   expect(attribution).not.toHaveProperty('callId')
+})
+
+test('input captures stay source-scoped and generation-fence full bytes independently of output evidence', async () => {
+  const model = new PrivateRunModel()
+  const projection = new PrivateDisplayProjection(model)
+  const input = { kind: 'input-artifact' as const, attachment: 'source', path: 'same.txt' }
+  model.setInputArtifacts(
+    (publisher, ref) =>
+      publisher === 'root' && ref.attachment === 'source' && ref.path === 'same.txt'
+        ? 'source/same.txt'
+        : undefined,
+    async () => ({ text: 'Input', bytes: 5, clipped: false }),
+    async () => new TextEncoder().encode('Input'),
+  )
+  model.setInputCapture({
+    generation: 'input-generation',
+    sourcePublisher: 'root',
+    provenance: 'captured-input',
+    phase: 'ready',
+    files: [
+      {
+        attachment: 'source',
+        path: 'same.txt',
+        bytes: 5,
+        state: 'text',
+        clipped: false,
+        downloadable: true,
+      },
+    ],
+  })
+  model.setArtifacts(
+    (publisher, ref) =>
+      publisher === 'root' && ref.attachment === 'files' ? 'same.txt' : undefined,
+    async () => ({ text: 'Output', bytes: 6, clipped: false }),
+    async () => new TextEncoder().encode('Output'),
+  )
+  model.setArtifactCapture({
+    generation: 'output-generation',
+    sourcePublisher: 'root',
+    provenance: 'verified-delivery',
+    phase: 'ready',
+    files: [{ path: 'same.txt', bytes: 6, state: 'text', clipped: false, downloadable: true }],
+  })
+  model.acceptView(
+    'root',
+    validateReportingMessage({
+      kind: 'view',
+      id: 'one',
+      title: 'One',
+      summary: 'Captured evidence',
+      target: { definitionId: 'report', instanceKey: 'first' },
+      sections: [{ blocks: [{ kind: 'report', text: 'Evidence', references: [input] }] }],
+    }) as ViewItem,
+  )
+  const snapshot = projection.capture(1)
+  const file = snapshot.inputs!.files[0]!
+  expect(file.id).not.toBe(snapshot.artifacts.files[0]!.id)
+  expect(model.resolve('root', input).available).toBe(true)
+  expect(model.resolve('child', input).available).toBe(false)
+  expect(await projection.preview(file.id, snapshot.inputs!.generation)).toMatchObject({
+    provenance: 'captured-input',
+    text: 'Input',
+  })
+  const download = await projection.download(file.id, snapshot.inputs!.generation)
+  expect(new TextDecoder().decode(download!.bytes)).toBe('Input')
+  expect(await projection.download(file.id, snapshot.artifacts.generation)).toBeUndefined()
+  expect(() =>
+    model.acceptView(
+      'root',
+      validateReportingMessage({
+        ...view('one'),
+        target: { definitionId: 'report', instanceKey: 'second' },
+      }) as ViewItem,
+    ),
+  ).toThrow('association changed')
+  model.setInputCapture({
+    generation: 'later',
+    sourcePublisher: 'root',
+    provenance: 'captured-input',
+    phase: 'ready',
+    files: [],
+  })
+  expect(await projection.download(file.id, snapshot.inputs!.generation)).toBeUndefined()
+  model.close()
+})
+
+test('verified detached bytes remain downloadable when no optional preview was retained', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-unavailable-preview-')))
+  const source = join(root, 'source')
+  const original = Buffer.from([0, 255, 128, 10])
+  let output: ReturnType<typeof capturePrivateOutput> | undefined
+  const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
+  owner.enableInspection()
+  const model = new PrivateRunModel()
+  const projection = new PrivateDisplayProjection(model)
+  let retained: Awaited<ReturnType<typeof privateCaptureDeliveryInspection>> | undefined
+  try {
+    await mkdir(source)
+    await writeFile(join(source, 'binary.dat'), original)
+    const descriptor = privateOpenFileRoot(source)
+    try {
+      output = capturePrivateOutput(descriptor)
+    } finally {
+      closeSync(descriptor)
+    }
+    const destination = join(root, 'packet')
+    await owner.prepare(destination, [])
+    const receipt = await owner.publish(
+      { status: 'succeeded', outcome: 'done', output: null },
+      { kind: 'snapshot', capture: output },
+    )
+    expect(receipt.status).toBe('written')
+    // The optional preview supplier is absent. All byte reads and retirement
+    // still use the actual publisher and production digest-verified capture.
+    retained = await privateCaptureDeliveryInspection(
+      {
+        prepare: owner.prepare.bind(owner),
+        publish: (record) => owner.publish(record, undefined),
+        read: async (path) => owner.read(path),
+        retire: () => owner.close(),
+      },
+      receipt,
+    )
+    expect(retained.files).toEqual([
+      {
+        path: 'binary.dat',
+        bytes: original.length,
+        state: 'unavailable',
+        clipped: false,
+        downloadable: true,
+      },
+    ])
+    expect(owner.read('binary.dat')).toBeUndefined()
+    await rm(source, { recursive: true })
+    await writeFile(join(destination, 'files/binary.dat'), 'Changed mutable destination')
+    const capture = retained
+    const resolve = (publisher: string, ref: { attachment: string; path: string }) =>
+      publisher === 'root' && ref.attachment === 'files' && ref.path === 'binary.dat'
+        ? ref.path
+        : undefined
+    const preview = async (path: string) => {
+      const value = capture.preview(path)
+      return typeof value?.text === 'string'
+        ? { text: value.text, bytes: value.bytes, clipped: value.clipped }
+        : undefined
+    }
+    const read = async (path: string) => capture.read(path)
+    model.setArtifacts(resolve, preview, read)
+    const inventory = {
+      generation: capture.generation,
+      sourcePublisher: 'root',
+      provenance: 'verified-delivery' as const,
+      phase: 'ready' as const,
+      files: capture.files,
+    }
+    model.setArtifactCapture(inventory)
+    const first = projection.capture(1)
+    const file = first.artifacts.files[0]!
+    expect(file).toMatchObject({ state: 'unavailable', downloadable: true })
+    expect(await projection.preview(file.id, first.artifacts.generation)).toMatchObject({
+      state: 'unavailable',
+    })
+    const downloaded = await projection.download(file.id, first.artifacts.generation)
+    expect(downloaded?.bytes).toEqual(new Uint8Array(original))
+    downloaded!.bytes.fill(7)
+    expect((await projection.download(file.id, first.artifacts.generation))?.bytes).toEqual(
+      new Uint8Array(original),
+    )
+    expect(await projection.download(file.id, 'other-generation')).toBeUndefined()
+    expect(await projection.download('0'.repeat(64), first.artifacts.generation)).toBeUndefined()
+
+    model.setArtifacts(resolve, preview)
+    expect(await projection.download(file.id, first.artifacts.generation)).toBeUndefined()
+    model.setArtifacts(resolve, preview, read)
+    model.setArtifactCapture({
+      ...inventory,
+      files: capture.files.map((item) => ({ ...item, downloadable: false })),
+    })
+    const denied = projection.capture(2)
+    expect(
+      await projection.download(denied.artifacts.files[0]!.id, denied.artifacts.generation),
+    ).toBeUndefined()
+    model.setArtifactCapture(inventory)
+    const current = projection.capture(3)
+    expect(await projection.download(file.id, first.artifacts.generation)).toBeUndefined()
+    const late = projection.download(current.artifacts.files[0]!.id, current.artifacts.generation)
+    model.close()
+    expect(await late).toBeUndefined()
+    expect(
+      await projection.download(current.artifacts.files[0]!.id, current.artifacts.generation),
+    ).toBeUndefined()
+  } finally {
+    model.close()
+    retained?.close()
+    output?.close()
+    try {
+      await owner.close()
+    } finally {
+      await rm(root, { recursive: true, force: true })
+    }
+  }
 })

@@ -29,6 +29,7 @@
   "files": [
     "dist",
     "README.md",
+    "BUNDLES.md",
     "LICENSE"
   ],
   "peerDependencies": {

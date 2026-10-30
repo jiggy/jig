@@ -1,10 +1,11 @@
-import type { JsonValue, RunContext, RunHandlerResult, RunResult } from '@jigging/flow'
+import type { JsonValue, RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
 import {
   type AcceptedAssignment,
   type RosterScenario,
   type RosterState,
   rosterView,
+  rosterViewOptions,
 } from './view.ts'
 
 function outputObject(response: RunResult): Record<string, JsonValue> {
@@ -36,11 +37,11 @@ function stopped(response: RunResult): RunResult | undefined {
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
   updates?: Reporter,
-): Promise<RunHandlerResult> {
+): Promise<RunResult> {
   if (run.attachments.source?.access !== 'read') {
     throw new TypeError('Supply a read-only source attachment.')
   }
-  const view = updates?.view('roster', { title: 'Saturday kitchen', landing: true })
+  let view = updates?.view('reading', { title: 'Saturday kitchen' })
   let state: RosterState = { phase: 'reading' }
   const present = (next: Partial<RosterState>) => {
     state = { ...state, ...next }
@@ -71,7 +72,10 @@ export async function runMethod(
       throw new TypeError('The reading Flow omitted its scenario.')
     }
 
-    present({ phase: 'proposing', scenario: scenario as unknown as RosterScenario })
+    const capturedScenario = scenario as unknown as RosterScenario
+    view?.retire()
+    view = updates?.view('roster', rosterViewOptions(capturedScenario))
+    present({ phase: 'proposing', scenario: capturedScenario })
     updates?.activity('roster', 'Asking for a complete roster proposal')
     const proposed = await run.call({
       operationId: 'propose-assignments',

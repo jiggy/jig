@@ -1,5 +1,5 @@
 import type { RunResult } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/reporting'
+import { previewCollection, type ViewSnapshot } from '@jigging/reporting'
 
 type Preview = {
   status?: string
@@ -90,45 +90,46 @@ export function contactsView(
       ? 'Row checks have not finished; no contacts have been imported.'
       : !available
         ? 'No completed contact preview is available. Review Mapping for the reported cause or required column choice.'
-        : `${rows.length} ${accepted ? 'accepted' : 'rejected'} records. Lists show up to 12 records and bounded text; the complete output retains every record.`,
+        : `${rows.length} ${accepted ? 'accepted' : 'rejected'} records. Lists show up to 12 complete records; the complete output retains every record.`,
     sections: [
       {
         blocks: [
-          {
-            kind: 'collection',
-            id: 'records',
-            title: accepted ? 'Accepted contact preview (first 12)' : 'Rejected records (first 12)',
-            columns: accepted
-              ? [
-                  { key: 'record', label: 'CSV record', type: 'number' },
-                  { key: 'name', label: 'Name', type: 'text' },
-                  { key: 'email', label: 'Email', type: 'text' },
-                  { key: 'organization', label: 'Organization', type: 'text' },
-                ]
-              : [
-                  { key: 'record', label: 'CSV record', type: 'number' },
-                  { key: 'reason', label: 'Reason', type: 'text' },
+          previewCollection(
+            {
+              kind: 'collection',
+              id: 'records',
+              title: accepted ? 'Accepted contact preview' : 'Rejected records',
+              columns: accepted
+                ? [
+                    { key: 'record', label: 'CSV record', type: 'number' },
+                    { key: 'name', label: 'Name', type: 'text' },
+                    { key: 'email', label: 'Email', type: 'text' },
+                    { key: 'organization', label: 'Organization', type: 'text' },
+                  ]
+                : [
+                    { key: 'record', label: 'CSV record', type: 'number' },
+                    { key: 'reason', label: 'Reason', type: 'text' },
+                  ],
+              rows: rows.map((row) => ({
+                id: `record-${row.record}`,
+                cells:
+                  'contact' in row
+                    ? {
+                        record: row.record,
+                        ...row.contact,
+                      }
+                    : { record: row.record, reason: row.reason },
+                details: [
+                  {
+                    kind: 'report',
+                    text: `CSV record ${row.record} includes the header in its numbering. ${'contact' in row ? 'Passed this example’s name, organization, email-format and column-count rules; semantic column correspondence still needs human review.' : 'Excluded by the code-owned row rules; correct the source before a new preview.'}`,
+                  },
                 ],
-            rows: rows.slice(0, 12).map((row) => ({
-              id: `record-${row.record}`,
-              cells:
-                'contact' in row
-                  ? {
-                      record: row.record,
-                      name: excerpt(row.contact.name),
-                      email: excerpt(row.contact.email),
-                      organization: excerpt(row.contact.organization),
-                    }
-                  : { record: row.record, reason: excerpt(row.reason, 256) },
-              details: [
-                {
-                  kind: 'report',
-                  text: `CSV record ${row.record} includes the header in its numbering. ${'contact' in row ? 'Passed this example’s name, organization, email-format and column-count rules; semantic column correspondence still needs human review.' : 'Excluded by the code-owned row rules; correct the source before a new preview.'}`,
-                },
-              ],
-            })),
-            total: rows.length,
-          },
+              })),
+              total: rows.length,
+            },
+            { limit: 12 },
+          ).collection,
           {
             kind: 'report',
             text:

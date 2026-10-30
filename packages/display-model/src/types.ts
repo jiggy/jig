@@ -51,7 +51,7 @@ export type DisplayImagePreview = Readonly<{
 export type DisplayPreviewReply = Readonly<{
   artifactId: string
   captureGeneration: string
-  provenance: 'verified-delivery' | 'recorded-capture'
+  provenance: 'verified-delivery' | 'recorded-capture' | 'captured-input'
   state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   text?: string
   image?: DisplayImagePreview
@@ -63,7 +63,7 @@ export type DisplayPreviewReply = Readonly<{
 export type DisplaySnapshot = Immutable<{
   kind: 'snapshot'
   revision: number
-  mode: 'live-run' | 'recorded-packet'
+  mode: 'live-run' | 'recorded-packet' | 'retained-views'
   rootSourceId: string
   workspace: {
     target: string
@@ -129,6 +129,7 @@ export type DisplaySnapshot = Immutable<{
     text: string
     transcriptCommitted: boolean
   }[]
+  inputs?: DisplayInputCapture
   artifacts: {
     generation: string
     sourceId: string
@@ -141,9 +142,21 @@ export type DisplaySnapshot = Immutable<{
       bytes: number
       state: DisplayPreviewReply['state']
       clipped: boolean
+      sourceId?: string
+      attachment?: string
+      downloadable?: boolean
     }[]
   }
 }>
+export type DisplayInputCapture = Readonly<{
+  generation: string
+  sourceId: string
+  permittedAttachments: readonly string[]
+  provenance: 'captured-input'
+  phase: 'pending' | 'ready' | 'unavailable'
+  files: DisplaySnapshot['artifacts']['files']
+}>
+
 export type DisplayIncompleteSnapshot = Readonly<{
   kind: 'incomplete'
   revision: number
@@ -160,7 +173,7 @@ export type DisplayIncompleteSnapshot = Readonly<{
 export type DisplaySnapshotEnvelope = DisplaySnapshot | DisplayIncompleteSnapshot
 export type WebAssets = Readonly<Record<string, Readonly<{ body: string; contentType: string }>>>
 
-export const DISPLAY_SNAPSHOT_LIMIT = 8 * 1024 * 1024
+export const DISPLAY_SNAPSHOT_LIMIT = 16 * 1024 * 1024
 export const DISPLAY_INCOMPLETE_LIMIT = 2 * 1024 * 1024
 
 /** Portable selected content accepted by reference inspection, without viewer state. */

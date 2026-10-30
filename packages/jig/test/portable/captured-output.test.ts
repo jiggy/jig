@@ -194,7 +194,13 @@ test('output capture preserves bytes and empty directory evidence after the sour
 test('output and invocation captures have separate authority and byte bounds', async () =>
   fixture(async (root, fd) => {
     const bytes = Buffer.alloc(8 * 1024 * 1024 + 1, 42)
-    expect(() => capturePrivateInput(bytes)).toThrow('byte limit')
+    const input = capturePrivateInput(bytes)
+    try {
+      expect(requirePrivateCapturedInput(input).bytes).toBe(bytes.length)
+    } finally {
+      input.close()
+    }
+    expect(() => capturePrivateInput(Buffer.alloc(64 * 1024 * 1024 + 1))).toThrow('byte limit')
     const output = capturePrivateBytes(bytes, 'output')
     try {
       expect(() => requirePrivateCapturedInput(output as any)).toThrow('purpose')

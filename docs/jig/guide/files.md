@@ -125,7 +125,7 @@ attachments, including any writable one, and these aggregate bounds:
 | Limit | Maximum |
 | --- | --- |
 | Files | 64 |
-| Bytes | 8 MiB |
+| Bytes | 64 MiB |
 | Tree entries | 256 |
 | Path components | 16 |
 | Relative path length | 512 UTF-8 bytes |
@@ -159,7 +159,7 @@ Later edits or deletion of the source directory do not change approved Runs.
 Review again to propose new contents.
 
 A bound name cannot be overridden with `--attach`. Other read attachments still
-need per-run mappings. Combined inputs share the same 64-file/8-MiB limit. Only
+need per-run mappings. Combined inputs share the same 64-file/64-MiB limit. Only
 the selected root Binding receives its resources automatically.
 
 Direct `flow:` calls do not borrow them. Children need explicit mappings.

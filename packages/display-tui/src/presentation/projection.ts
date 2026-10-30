@@ -1,4 +1,4 @@
-import type { DisplayFact } from '@jigging/display-model'
+import { type DisplayFact, referenceKey } from '@jigging/display-model'
 import type { Block, DetailBlock, Reference, Value } from '@jigging/reporting'
 import { heading, secondary, selection } from './style.js'
 import {
@@ -136,7 +136,11 @@ function privateInlineFrame(
   groups.push({
     lines: [
       heading(
-        line(`${model.workspace.target} · ${phase} · ${elapsed} · ${model.workspace.hostStage}`),
+        line(
+          model.mode === 'retained-views'
+            ? `${model.workspace.target} · Retained · ${model.workspace.hostStage}`
+            : `${model.workspace.target} · ${phase} · ${elapsed} · ${model.workspace.hostStage}`,
+        ),
         'info',
         color,
       ),
@@ -157,7 +161,12 @@ function privateInlineFrame(
   const root = roots.find((view) => view.value.landing) ?? roots[0]
   if (root) {
     add(`${model.sourceLabel(root.publisher)} / ${root.value.title}: ${root.value.summary}`, 2)
-    if (root.ended) add(`${root.ended}; last update ${observedTime(root.updated)}`)
+    if (root.ended)
+      add(
+        model.mode === 'retained-views'
+          ? root.ended
+          : `${root.ended}; last update ${observedTime(root.updated)}`,
+      )
   }
 
   // Handoff retains focus and local choices; the inline excerpt never expands
@@ -391,14 +400,7 @@ export type ViewerPanel =
   | { kind: 'filter'; draft: string; collection: string }
   | { kind: 'help'; scroll: number }
 export type ViewerState = { readonly panels: readonly ViewerPanel[] }
-const referenceKey = (ref: Reference): string =>
-  JSON.stringify(
-    ref.kind === 'call'
-      ? ['call', ref.operationId]
-      : ref.kind === 'record'
-        ? ['record', ref.viewId, ref.collectionId, ref.rowId]
-        : ['artifact', ref.attachment, ref.path],
-  )
+
 const cell = (value: Value): string =>
   value === null
     ? 'null'
@@ -440,6 +442,7 @@ export function viewerPreviewState(model: ViewerModel): string {
 export type ViewerDetailPart =
   | { kind: 'heading' | 'text' | 'note' | 'value'; text: string }
   | { kind: 'field'; label: string; value: Value }
+  | { kind: 'literal'; text: string; format: 'code' | 'diff' }
 
 /** Application blocks are read in place; collection rows retain inspectable detail. */
 export function viewerApplicationParts(record: ViewerRecord): ViewerDetailPart[] | undefined {
@@ -448,8 +451,12 @@ export function viewerApplicationParts(record: ViewerRecord): ViewerDetailPart[]
   if (!block) return undefined
   if (block.kind === 'facts') return block.items.map((item) => ({ kind: 'field', ...item }))
   if (block.kind === 'progress') return [{ kind: 'text', text: progressText(block, 80) }]
+  if (block.kind === 'content')
+    return [{ kind: 'field', label: block.title ?? 'Captured content', value: block.reference }]
   return [
-    { kind: 'text', text: block.text },
+    block.format === 'code' || block.format === 'diff'
+      ? { kind: 'literal', text: block.text, format: block.format }
+      : { kind: 'text', text: block.text },
     ...(block.references ?? []).map((value) => ({
       kind: 'field' as const,
       label: 'Evidence · r to inspect',
@@ -472,11 +479,16 @@ export function viewerDetailParts(
   const field = (label: string, value: Value) => parts.push({ kind: 'field', label, value })
   const block = (b: DetailBlock) => {
     if (b.kind === 'report') {
-      text(
-        b.text,
-        model.workspace.recorded && model.selected?.role === 'recorded-report' ? 'value' : 'text',
-      )
+      if (b.format === 'code' || b.format === 'diff')
+        parts.push({ kind: 'literal', text: b.text, format: b.format })
+      else
+        text(
+          b.text,
+          model.workspace.recorded && model.selected?.role === 'recorded-report' ? 'value' : 'text',
+        )
       for (const ref of b.references ?? []) field('Evidence', ref)
+    } else if (b.kind === 'content') {
+      field(b.title ?? 'Captured content', b.reference)
     } else if (b.kind === 'facts') {
       for (const item of b.items) field(item.label, item.value)
     } else {
@@ -505,7 +517,9 @@ export function viewerDetailParts(
     includeArtifactContent &&
     model.previewState &&
     record.key === model.record?.key &&
-    (record.file || (artifact.length === 1 && artifact[0]?.kind === 'artifact'))
+    (record.file ||
+      (artifact.length === 1 &&
+        (artifact[0]?.kind === 'artifact' || artifact[0]?.kind === 'input-artifact')))
   ) {
     heading(model.previewTitle ?? 'Immutable captured content')
     text(
@@ -514,7 +528,7 @@ export function viewerDetailParts(
         : (model.preview?.text ?? viewerPreviewState(model)),
     )
     text(
-      `${model.artifactCapture.provenance === 'recorded-capture' ? 'Recorded capture' : 'Verified delivery'}${model.preview ? ` · ${model.preview.bytes} bytes${model.preview.clipped ? ' · excerpt clipped at 64 KiB' : ''}` : ''}`,
+      `${model.previewProvenance === 'captured-input' ? 'Captured input' : model.previewProvenance === 'recorded-capture' ? 'Recorded capture' : 'Verified delivery'}${model.preview ? ` · ${model.preview.bytes} bytes${model.preview.clipped ? ' · excerpt clipped at 64 KiB' : ''}` : ''}`,
       'note',
     )
   }
@@ -537,9 +551,12 @@ export function viewerDetailParts(
     for (const entry of record.journalGroup) text(entry.text)
   }
   if (record.block?.kind === 'report') {
-    remainder(record.block.text)
+    if (record.block.format === 'code' || record.block.format === 'diff')
+      parts.push({ kind: 'literal', text: record.block.text, format: record.block.format })
+    else remainder(record.block.text)
     for (const ref of record.block.references ?? []) field('Evidence', ref)
-  } else if (record.block?.kind === 'facts') block(record.block)
+  } else if (record.block?.kind === 'content') block(record.block)
+  else if (record.block?.kind === 'facts') block(record.block)
   else if (record.block?.kind === 'progress')
     text(
       'These are publisher-reported counts. Reaching the total does not establish the application outcome.',
@@ -670,7 +687,7 @@ export function* viewerDetailLines(
       part.kind === 'field'
         ? `${part.label}: ${typeof part.value === 'object' && part.value !== null ? model.resolve(record.publisher ?? model.rootSourceId, part.value).label : String(part.value)}`
         : part.text
-    yield* wrapTerminalText(text, width, true)
+    yield* wrapTerminalText(text, width, part.kind !== 'literal')
   }
 }
 
@@ -839,12 +856,17 @@ export function viewerFrame(
   }
   const target = `Jig · ${escapeTerminalText(model.workspace.target)}`
   const phase =
-    model.workspace.phase === 'settled'
-      ? model.workspace.recorded
-        ? 'Saved result · read-only'
-        : 'Settled · read-only'
-      : escapeTerminalText(model.workspace.hostStage)
-  const time = `elapsed ${duration(model.workspace.elapsedMs)} · execution limit ${model.workspace.limitMs === undefined ? 'unspecified' : duration(model.workspace.limitMs)}`
+    model.mode === 'retained-views'
+      ? 'Retained views · read-only'
+      : model.workspace.phase === 'settled'
+        ? model.workspace.recorded
+          ? 'Saved result · read-only'
+          : 'Settled · read-only'
+        : escapeTerminalText(model.workspace.hostStage)
+  const time =
+    model.mode === 'retained-views'
+      ? model.context
+      : `elapsed ${duration(model.workspace.elapsedMs)} · execution limit ${model.workspace.limitMs === undefined ? 'unspecified' : duration(model.workspace.limitMs)}`
   const sticky = model.sticky
   const diagnostics = model.journal.filter((entry) => entry.kind === 'diagnostic')
   const omittedDiagnostics = model.journalOmitted.diagnostic
@@ -1098,7 +1120,9 @@ export function viewerFrame(
       const sideBySide =
           (!applicationPage ||
             Boolean(model.record?.row) ||
-            viewerReferences(model.record).some((ref) => ref.kind === 'artifact')) &&
+            viewerReferences(model.record).some(
+              (ref) => ref.kind === 'artifact' || ref.kind === 'input-artifact',
+            )) &&
           width >= 118 &&
           bodyRoom >= 10 &&
           viewerHasContext(model, model.record),
@@ -1182,6 +1206,10 @@ export function viewerFrame(
         else if (record.block?.kind === 'report') {
           const report = record.block
           text = () => `Report ▸ ${escapeTerminalText(report.text).split('\n')[0]}`
+        } else if (record.block?.kind === 'content') {
+          const content = record.block
+          text = () =>
+            model.resolve(record.publisher ?? model.rootSourceId, content.reference).label
         } else if (record.block?.kind === 'facts') {
           const facts = record.block
           text = () =>

@@ -143,7 +143,7 @@ export async function addBatchRepairFixture(project: string) {
   for (const [method, files] of [
     ['read-project', ['capture.ts', 'checks.ts', 'logs-cases.json']],
     ['check-repair', ['evidence.ts', 'identity.ts', 'commands.ts', 'types.ts']],
-    ['export-patch', ['method.ts', 'patch.ts']],
+    ['export-patch', ['method.ts', 'patch.ts', 'dashboard.ts']],
   ] as const) {
     const destination = join(project, 'flows/project', method)
     await mkdir(destination, { recursive: true })

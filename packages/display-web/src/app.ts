@@ -10,9 +10,10 @@ import {
   displayTextTokens,
   displayViewKey,
 } from '@jigging/display-model'
-import type { DetailBlock, Reference, Value } from '@jigging/reporting'
+import type { DetailBlock, MediaReference, Reference, Value } from '@jigging/reporting'
 import { type ComponentChildren, h, render } from 'preact'
-import { ApplicationPage } from './application.js'
+import { useEffect, useRef } from 'preact/hooks'
+import { ApplicationPage, FormattedReport } from './application.js'
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
 import {
   PrivateBrowserClock,
@@ -23,6 +24,7 @@ import {
   privateBrowserPeek,
   privateBrowserRecords,
   privateBrowserReferences,
+  privateBrowserRelatedViews,
   privateBrowserResolve,
   privateBrowserRowKey,
   privateBrowserSurvivingSelection,
@@ -119,8 +121,9 @@ function redraw(): void {
     for (const key of treeChoices.keys())
       if (!snapshot.calls.some((call) => call.id === key)) treeChoices.delete(key)
     if (!eligible.has(destinationKey)) {
-      destinationKey = tabs[0]!.id
-      feedback = `The selected view is unavailable; showing ${tabs[0]!.title}.`
+      const first = tabs[0]
+      destinationKey = first?.id ?? ''
+      feedback = first ? `The selected view is unavailable; showing ${first.title}.` : ''
     }
     if (!humanNavigation) {
       const rootViews = snapshot.views.filter(
@@ -219,7 +222,11 @@ function redraw(): void {
       ? {
           artifactId:
             file?.id ?? (target as Extract<typeof target, { kind: 'artifact' }>).artifactId,
-          captureGeneration: snapshot.artifacts.generation,
+          captureGeneration: file
+            ? snapshot.artifacts.generation
+            : target?.kind === 'artifact'
+              ? target.captureGeneration
+              : snapshot.artifacts.generation,
           signature: JSON.stringify([
             signature,
             privateBrowserReferences(record),
@@ -408,6 +415,87 @@ function Field({
     ),
   )
 }
+const visibleMedia = new Map<
+  HTMLElement,
+  { artifactId: string; captureGeneration: string; signature: string }
+>()
+const mediaTargets = new Map<
+  HTMLElement,
+  { artifactId: string; captureGeneration: string; signature: string }
+>()
+const mediaObserver = new IntersectionObserver(
+  (entries) => {
+    for (const entry of entries) {
+      const intent = mediaTargets.get(entry.target as HTMLElement)
+      if (entry.isIntersecting && intent) visibleMedia.set(entry.target as HTMLElement, intent)
+      else visibleMedia.delete(entry.target as HTMLElement)
+    }
+    client?.setMedia([...visibleMedia.values()])
+  },
+  { rootMargin: '120px' },
+)
+
+function CapturedMedia({
+  reference,
+  record,
+  alt,
+}: {
+  reference: MediaReference
+  record: PrivateBrowserRecord
+  alt: string
+}): ComponentChildren {
+  const element = useRef<HTMLElement>(null)
+  const target = client?.body
+    ? privateBrowserResolve(client.body, record.sourceId, reference)
+    : undefined
+  const intent =
+    target?.kind === 'artifact'
+      ? {
+          artifactId: target.artifactId,
+          captureGeneration: target.captureGeneration,
+          signature: JSON.stringify([record.sourceId, reference]),
+        }
+      : undefined
+  const signature = JSON.stringify(intent)
+  useEffect(() => {
+    const node = element.current
+    if (!node || !intent) return
+    mediaTargets.set(node, intent)
+    mediaObserver.observe(node)
+    return () => {
+      mediaObserver.unobserve(node)
+      mediaTargets.delete(node)
+      visibleMedia.delete(node)
+      client?.setMedia([...visibleMedia.values()])
+    }
+  }, [signature])
+  const reply = intent ? client?.mediaPreview(intent) : undefined
+  return h(
+    'figure',
+    { ref: element, class: 'captured-media' },
+    reply?.state === 'image' && reply.image
+      ? h('img', {
+          src: `data:${reply.image.mime};base64,${reply.image.base64}`,
+          alt: privateBrowserLiteral(alt),
+          width: reply.image.width,
+          height: reply.image.height,
+          loading: 'lazy',
+        })
+      : h(
+          'div',
+          { class: 'media-placeholder' },
+          !client?.referencesEnabled
+            ? 'Capture unavailable while observation is stale.'
+            : target?.kind !== 'artifact'
+              ? (target?.label ?? 'Captured content unavailable.')
+              : reply
+                ? 'Image preview unavailable. Open the captured evidence for details.'
+                : 'Captured preview not loaded. Open the captured evidence for details.',
+        ),
+    h('figcaption', {}, h(ReferenceButton, { value: reference, record })),
+  )
+}
+
 function Block({
   block,
   record,
@@ -419,9 +507,15 @@ function Block({
     return h(
       'div',
       {},
-      h('p', { class: 'report' }, literal(block.text || '(Empty report)')),
+      h(FormattedReport, { block }),
       block.references?.map((value, index) => h(ReferenceButton, { key: index, value, record })),
     )
+  if (block.kind === 'content')
+    return h(CapturedMedia, {
+      reference: block.reference,
+      record,
+      alt: block.title ?? block.reference.path,
+    })
   if (block.kind === 'progress') return h(Progress, { block })
   return h(
     'dl',
@@ -469,7 +563,7 @@ function InspectorList(): ComponentChildren {
       ' · ',
       selected.ended ? literal(selected.ended) : 'Observed view',
       ' · ',
-      observationTime(selected.updatedAt),
+      client?.body?.mode === 'retained-views' ? null : observationTime(selected.updatedAt),
     ),
     supplied.flatMap((record) => {
       const first = record.collection && !collectionKeys.has(record.collection.id)
@@ -606,36 +700,51 @@ function ApplicationList(): ComponentChildren {
   const selected = view()
   if (!selected) return null
   const state = currentLocal()
-  return h(ApplicationPage, {
-    view: selected,
-    local: state,
-    records: records(),
-    onSelect: select,
-    onRecordKeyDown: recordKeyDown,
-    onFilter: (collection, query) => {
-      humanNavigation = true
-      state.filters.set(collection, query)
-      const next = records().map((record) => record.key)
-      state.selected = privateBrowserSurvivingSelection(
-        previousKeys.get(destinationKey) ?? [],
-        state.selected,
-        next,
-      )
-      previousKeys.set(destinationKey, next)
-      redraw()
-    },
-    onSort: (collection, key, descending) => {
-      humanNavigation = true
-      if (key) state.sorts.set(collection, { key, descending })
-      else state.sorts.delete(collection)
-      redraw()
-    },
-    renderBlock: (block, record) => h(Block, { block, record }),
-    renderValue: (value, record) =>
-      value !== null && typeof value === 'object'
-        ? h(ReferenceButton, { value, record })
-        : literal(privateBrowserValue(value)),
-  })
+  const related = client?.body ? privateBrowserRelatedViews(client.body, selected) : []
+  return h(
+    'div',
+    {},
+    related.length
+      ? h(
+          'nav',
+          { class: 'related-views', 'aria-label': 'Related application views' },
+          related.map((item) =>
+            button(literal(item.value.title), () => navigate(displayViewKey(item.id))),
+          ),
+        )
+      : null,
+    h(ApplicationPage, {
+      view: selected,
+      local: state,
+      records: records(),
+      onSelect: select,
+      onRecordKeyDown: recordKeyDown,
+      onFilter: (collection, query) => {
+        humanNavigation = true
+        state.filters.set(collection, query)
+        const next = records().map((record) => record.key)
+        state.selected = privateBrowserSurvivingSelection(
+          previousKeys.get(destinationKey) ?? [],
+          state.selected,
+          next,
+        )
+        previousKeys.set(destinationKey, next)
+        redraw()
+      },
+      onSort: (collection, key, descending) => {
+        humanNavigation = true
+        if (key) state.sorts.set(collection, { key, descending })
+        else state.sorts.delete(collection)
+        redraw()
+      },
+      renderMedia: (reference, record, alt) => h(CapturedMedia, { reference, record, alt }),
+      renderBlock: (block, record) => h(Block, { block, record }),
+      renderValue: (value, record) =>
+        value !== null && typeof value === 'object'
+          ? h(ReferenceButton, { value, record })
+          : literal(privateBrowserValue(value)),
+    }),
+  )
 }
 
 function recordKeyDown(event: KeyboardEvent): void {
@@ -714,6 +823,31 @@ function Preview({ path }: { path: string }): ComponentChildren {
     'section',
     { class: 'file-preview', 'aria-label': 'File content' },
     h('h2', {}, literal(path)),
+    client?.preview?.intent
+      ? button(
+          'Download captured file',
+          () => {
+            const intent = client?.preview?.intent
+            if (!intent) return
+            void client?.download(intent).then((bytes) => {
+              if (!bytes) {
+                feedback = 'Captured download unavailable.'
+                redraw()
+                return
+              }
+              const url = URL.createObjectURL(
+                new Blob([Uint8Array.from(bytes).buffer], { type: 'application/octet-stream' }),
+              )
+              const anchor = document.createElement('a')
+              anchor.href = url
+              anchor.download = path.split('/').at(-1) ?? 'artifact'
+              anchor.click()
+              setTimeout(() => URL.revokeObjectURL(url), 0)
+            })
+          },
+          { disabled: !client.referencesEnabled },
+        )
+      : null,
     !client?.referencesEnabled
       ? h(
           'p',
@@ -907,7 +1041,7 @@ function SelectedDetail(): ComponentChildren {
         { 'aria-expanded': state.expanded },
       ),
     ),
-    reference?.kind === 'artifact'
+    reference?.kind === 'artifact' || reference?.kind === 'input-artifact'
       ? target?.kind === 'artifact'
         ? h(Preview, { path: reference.path })
         : h(
@@ -1626,76 +1760,85 @@ function Panel({ current }: { current: DisplaySnapshotEnvelope }): ComponentChil
 
 function Tabs(): ComponentChildren {
   const tabs = privateBrowserTabs(client?.body, client?.current?.mode)
-  const focusId = tabs.some((item) => item.id === destinationKey) ? destinationKey : tabs[0]!.id
+  const focusId = tabs.some((item) => item.id === destinationKey) ? destinationKey : tabs[0]?.id
   return h(
     'aside',
     { class: 'navigation' },
-    h(
-      'nav',
-      { role: 'tablist', 'aria-orientation': 'vertical', 'aria-label': 'Run views' },
-      tabs.map((tab, index) =>
-        h(
-          'div',
-          { key: tab.id },
-          index === 0 || Boolean(tab.application) !== Boolean(tabs[index - 1]?.application)
-            ? h(
-                'p',
-                { class: 'nav-group', role: 'presentation' },
-                tab.application
-                  ? 'Application'
-                  : client?.current?.mode === 'recorded-packet'
-                    ? 'Recorded packet'
-                    : 'Inspector',
-              )
-            : null,
-          button(
+    tabs.length
+      ? h(
+          'nav',
+          {
+            role: 'tablist',
+            'aria-orientation': 'vertical',
+            'aria-label':
+              client?.current?.mode === 'retained-views' ? 'Application views' : 'Run views',
+          },
+          tabs.map((tab, index) =>
             h(
-              'span',
-              { class: 'nav-entry' },
-              h('span', { class: 'nav-icon', 'aria-hidden': true }, tab.icon),
-              h(
-                'span',
-                {},
-                literal(tab.title),
-                tab.source ? h('small', {}, literal(tab.source)) : null,
+              'div',
+              { key: tab.id },
+              index === 0 || Boolean(tab.application) !== Boolean(tabs[index - 1]?.application)
+                ? h(
+                    'p',
+                    { class: 'nav-group', role: 'presentation' },
+                    tab.application
+                      ? 'Application'
+                      : client?.current?.mode === 'recorded-packet'
+                        ? 'Recorded packet'
+                        : 'Inspector',
+                  )
+                : null,
+              button(
+                h(
+                  'span',
+                  { class: 'nav-entry' },
+                  h('span', { class: 'nav-icon', 'aria-hidden': true }, tab.icon),
+                  h(
+                    'span',
+                    {},
+                    literal(tab.title),
+                    tab.source ? h('small', {}, literal(tab.source)) : null,
+                  ),
+                ),
+                () => navigate(tab.id),
+                {
+                  id: `tab-${encodeURIComponent(tab.id)}`,
+                  role: 'tab',
+                  'aria-selected': tab.id === destinationKey && !panel,
+                  'aria-controls': 'view-panel',
+                  tabIndex: tab.id === focusId ? 0 : -1,
+                  title: privateBrowserLiteral(
+                    `${tab.title}${tab.source ? ` · ${tab.source}` : ''}`,
+                  ),
+                  onKeyDown: (event: KeyboardEvent) => {
+                    if (
+                      !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
+                        event.key,
+                      )
+                    )
+                      return
+                    event.preventDefault()
+                    const index = tabs.findIndex((item) => item.id === tab.id)
+                    const next =
+                      event.key === 'Home'
+                        ? tabs[0]!
+                        : event.key === 'End'
+                          ? tabs[tabs.length - 1]!
+                          : tabs[
+                              (index +
+                                (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
+                                tabs.length) %
+                                tabs.length
+                            ]!
+                    navigate(next.id)
+                    document.getElementById(`tab-${encodeURIComponent(next.id)}`)?.focus()
+                  },
+                },
               ),
             ),
-            () => navigate(tab.id),
-            {
-              id: `tab-${encodeURIComponent(tab.id)}`,
-              role: 'tab',
-              'aria-selected': tab.id === destinationKey && !panel,
-              'aria-controls': 'view-panel',
-              tabIndex: tab.id === focusId ? 0 : -1,
-              title: privateBrowserLiteral(`${tab.title}${tab.source ? ` · ${tab.source}` : ''}`),
-              onKeyDown: (event: KeyboardEvent) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return
-                event.preventDefault()
-                const index = tabs.findIndex((item) => item.id === tab.id)
-                const next =
-                  event.key === 'Home'
-                    ? tabs[0]!
-                    : event.key === 'End'
-                      ? tabs[tabs.length - 1]!
-                      : tabs[
-                          (index +
-                            (['ArrowRight', 'ArrowDown'].includes(event.key) ? 1 : -1) +
-                            tabs.length) %
-                            tabs.length
-                        ]!
-                navigate(next.id)
-                document.getElementById(`tab-${encodeURIComponent(next.id)}`)?.focus()
-              },
-            },
           ),
-        ),
-      ),
-    ),
+        )
+      : null,
     h(
       'div',
       { class: 'sidebar-tools' },
@@ -1805,6 +1948,9 @@ function App(): ComponentChildren {
     undefined,
   )
   const state = currentLocal()
+  const hasDestination = privateBrowserTabs(client?.body, current.mode).some(
+    (tab) => tab.id === destinationKey,
+  )
   return h(
     'div',
     { class: 'inspector' },
@@ -1817,7 +1963,11 @@ function App(): ComponentChildren {
         h(
           'small',
           {},
-          current.mode === 'recorded-packet' ? 'JIG / RECORDED RESULT' : 'JIG / LOCAL RUN',
+          current.mode === 'retained-views'
+            ? 'JIG / APPLICATION VIEWS'
+            : current.mode === 'recorded-packet'
+              ? 'JIG / RECORDED RESULT'
+              : 'JIG / LOCAL RUN',
         ),
         h('h1', {}, literal(current.workspace.target)),
         current.context
@@ -1831,18 +1981,20 @@ function App(): ComponentChildren {
         h(
           'p',
           { class: 'host-stage' },
-          current.mode === 'recorded-packet'
-            ? 'Recorded claims · nothing is running'
-            : live
-              ? literal(current.workspace.hostStage)
-              : 'Settled inspection · nothing is running',
+          current.mode === 'retained-views'
+            ? 'Retained application projections · currency unknown'
+            : current.mode === 'recorded-packet'
+              ? 'Recorded claims · nothing is running'
+              : live
+                ? literal(current.workspace.hostStage)
+                : 'Settled inspection · nothing is running',
         ),
       ),
       h(
         'div',
         { class: 'shell-actions' },
         h('strong', {}, live ? 'Execution running' : 'Read-only inspection'),
-        current.mode === 'recorded-packet'
+        current.mode !== 'live-run'
           ? null
           : h(
               'span',
@@ -1873,7 +2025,9 @@ function App(): ComponentChildren {
           {},
           live
             ? 'Closes all viewers; work continues in the terminal.'
-            : 'Closes all viewers; preserves the admitted outcome.',
+            : current.mode === 'retained-views'
+              ? 'Closes all viewers; preserves retained material.'
+              : 'Closes all viewers; preserves the admitted outcome.',
         ),
       ),
     ),
@@ -1965,13 +2119,16 @@ function App(): ComponentChildren {
           'main',
           {
             id: 'view-panel',
-            role: panel ? undefined : 'tabpanel',
-            'aria-labelledby': panel ? undefined : `tab-${encodeURIComponent(destinationKey)}`,
+            role: panel || !hasDestination ? undefined : 'tabpanel',
+            'aria-labelledby':
+              panel || !hasDestination ? undefined : `tab-${encodeURIComponent(destinationKey)}`,
             'aria-label': panel
               ? 'Inspection panel'
-              : destinationKey === 'files'
-                ? 'Delivered files'
-                : undefined,
+              : !hasDestination
+                ? 'Application views'
+                : destinationKey === 'files'
+                  ? 'Delivered files'
+                  : undefined,
             class: state.expanded ? 'expanded-body' : '',
           },
           panel
@@ -1983,20 +2140,27 @@ function App(): ComponentChildren {
                   h('h2', {}, 'Body unavailable'),
                   h('p', {}, 'Use current attention and Diagnostics to inspect the known causes.'),
                 )
-              : destinationKey === 'activity'
-                ? h(Activity, {})
-                : destinationKey === 'overview'
-                  ? h(Overview, {})
-                  : destinationKey === 'files'
-                    ? h(Files, {})
-                    : h(
-                        'div',
-                        {
-                          class: `${isApplicationPage() ? 'application-workspace' : 'workspace'} ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
-                        },
-                        isApplicationPage() ? h(ApplicationList, {}) : h(InspectorList, {}),
-                        state.detailOpen ? h(SelectedDetail, {}) : null,
-                      ),
+              : !hasDestination
+                ? h(
+                    'section',
+                    { class: 'single' },
+                    h('h2', {}, 'No application views'),
+                    h('p', {}, 'No retained application views match this selection.'),
+                  )
+                : destinationKey === 'activity'
+                  ? h(Activity, {})
+                  : destinationKey === 'overview'
+                    ? h(Overview, {})
+                    : destinationKey === 'files'
+                      ? h(Files, {})
+                      : h(
+                          'div',
+                          {
+                            class: `${isApplicationPage() ? 'application-workspace' : 'workspace'} ${state.detailOpen ? 'show-detail' : ''} ${state.expanded ? 'expanded' : ''}`,
+                          },
+                          isApplicationPage() ? h(ApplicationList, {}) : h(InspectorList, {}),
+                          state.detailOpen ? h(SelectedDetail, {}) : null,
+                        ),
         ),
       ),
     ),

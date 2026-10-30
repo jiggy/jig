@@ -28,6 +28,7 @@ export function parseRun(
   readonly inputFile?: string
   readonly attachments: readonly { name: string; directory: string; select: readonly string[] }[]
   readonly output?: string
+  readonly displayBundle?: Readonly<{ attachment: string; path: string }>
   readonly timeoutMs: number
   readonly receive: readonly string[]
   readonly json: boolean
@@ -40,6 +41,7 @@ export function parseRun(
   const target = parseTarget(arguments_[1]!)
   let input: JsonValue = {}
   let inputFile: string | undefined, output: string | undefined
+  let displayBundle: Readonly<{ attachment: string; path: string }> | undefined
   const attachments = new Map<string, string>(),
     selectors = new Map<string, string[]>()
   let timeoutMs = PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS
@@ -72,6 +74,7 @@ export function parseRun(
         '--verification',
         '--updates',
         '--display',
+        '--display-bundle',
       ].includes(option!)
     )
       usage(
@@ -79,6 +82,20 @@ export function parseRun(
         `Unknown run option ${asciiJsonString(option!.slice(0, 128))}.${spellingHint(option!, ['--input', '--attach', '--select', '--out', '--receive', '--timeout', '--verification', '--json'])}`,
       )
     if (value === undefined || value.startsWith('--')) usage('run', `${option} needs a value.`)
+    if (option === '--display-bundle') {
+      if (displayBundle) usage('run', '--display-bundle may only be supplied once.')
+      const split = value.indexOf('=')
+      try {
+        if (split < 1 || split === value.length - 1) throw new TypeError('Invalid bundle selection')
+        displayBundle = {
+          attachment: privateAttachmentName(value.slice(0, split)),
+          path: privateFilePath(value.slice(split + 1)),
+        }
+      } catch {
+        usage('run', '--display-bundle requires ATTACHMENT=RELATIVE_FILE.')
+      }
+      continue
+    }
     if (option === '--display') {
       if (sawDisplay || !['auto', 'plain', 'tui', 'web'].includes(value))
         usage('run', '--display accepts auto, plain, tui or web once.')
@@ -190,6 +207,7 @@ export function parseRun(
     })),
     ...(inputFile === undefined ? {} : { inputFile }),
     ...(output === undefined ? {} : { output }),
+    ...(displayBundle === undefined ? {} : { displayBundle }),
   }
 }
 

@@ -10,7 +10,8 @@ with focused, independently callable Flows and a visible CSV result.
 - `flows/roster` coordinates reading, proposing, checking and exporting. It owns
   the continuously updated application page and checks each child result before
   continuing. `view.ts` projects coordinator state into portable sections, four
-  shift summaries, volunteer workload and the exported CSV reference.
+  shift summaries, volunteer workload and captured CSV content.
+  Its target identifies the captured scenario, independently of Run identity.
 - `flows/read-roster` reads one bounded `scenario.json` from its read attachment,
   validates the scenario and reports any role with no eligible volunteer.
 - `flows/propose-roster` receives scenario data, calls one configured Agent and

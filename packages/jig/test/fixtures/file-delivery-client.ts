@@ -57,6 +57,7 @@ try {
       await rm(source, { recursive: true })
     }
   } else if (stopAt === 'snapshot') {
+    owner.enableInspection?.()
     const source = await mkdtemp(join(dirname(pidFile), 'source-'))
     const input = join(source, 'input')
     await mkdir(input)
@@ -71,6 +72,8 @@ try {
     await mkdir(join(output, 'nested'), { recursive: true })
     await writeFile(join(output, 'nested/binary'), Buffer.from([0, 255, 128]))
     await writeFile(join(output, 'empty'), '')
+    const large = Buffer.from(Array.from({ length: 131079 }, (_, index) => index % 251))
+    await writeFile(join(output, 'large.bin'), large)
     const directory = privateOpenFileRoot(output)
     const capture = capturePrivateOutput(directory)
     closeSync(directory)
@@ -82,6 +85,21 @@ try {
       )
       if (receipt.status !== 'written')
         throw new Error(`fixture publication failed: ${receipt.code}`)
+      const binary = await owner.read?.('nested/binary')
+      const empty = await owner.read?.('empty')
+      const full = await owner.read?.('large.bin')
+      if (!full || !Buffer.from(full).equals(large))
+        throw new Error('Chunked inspection changed binary bytes')
+      if (
+        !binary ||
+        Buffer.from(binary).toString('hex') !== '00ff80' ||
+        !empty ||
+        empty.length !== 0
+      )
+        throw new Error('Full captured bytes were not retained')
+      binary.fill(7)
+      if (Buffer.from((await owner.read?.('nested/binary')) ?? []).toString('hex') !== '00ff80')
+        throw new Error('Inspection returned a borrowed buffer')
     } finally {
       capture.close()
     }

@@ -9,6 +9,7 @@ export const SUITE_PROFILES = Object.freeze([
   'portable-linux',
   'linux',
   'macos-24G830',
+  'macos-24H232',
   'macos-23E224',
   'live',
   'experimental',

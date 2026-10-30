@@ -33,6 +33,7 @@ assert files('jiggy.reporting').joinpath('py.typed').is_file()
 assert files('jiggy.reporting').joinpath('reporting.json').read_bytes() == open(__import__('sys').argv[1], 'rb').read()
 assert metadata('jiggy-reporting')['License-Expression'] == 'MPL-2.0'
 assert metadata('jiggy-reporting')['Requires-Dist'] == 'jiggy-flow==0.1.0a8'
+assert metadata('jiggy-reporting')['Requires-Dist'] == 'jiggy-flow==' + metadata('jiggy-flow')['Version']
 assert REPORTING_CONTRACT['id'] == 'https://jig.md/contracts/reporting'
 """, str(Path(__file__).resolve().parents[1] / "src/jiggy/reporting/reporting.json")], check=True, env=environment, cwd=consumer, timeout=30)
             subprocess.run([python, "-I", "-m", "unittest", "discover", "-s", consumer, "-p", "test_*.py", "-v"], check=True, cwd=consumer, env=environment, timeout=120)

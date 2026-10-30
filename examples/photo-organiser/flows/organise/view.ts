@@ -1,4 +1,5 @@
-import type { Section, ViewSnapshot } from '@jigging/reporting'
+import { createHash } from 'node:crypto'
+import type { Section, ViewOptions, ViewSnapshot } from '@jigging/reporting'
 import type { Photo } from './catalogue.ts'
 import type { RenamedPhoto } from './plan.ts'
 
@@ -90,6 +91,7 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
           kind: 'collection',
           id: 'photos',
           title: 'Original → organised copy',
+          presentation: { kind: 'table' },
           columns: [
             { key: 'original', label: 'Original', type: 'text' },
             { key: 'date', label: 'Date', type: 'text' },
@@ -107,6 +109,11 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
                 copy: checked?.destination ?? null,
               },
               details: [
+                {
+                  kind: 'content',
+                  title: 'Original photo',
+                  reference: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+                },
                 {
                   kind: 'report',
                   text: photo.caption,
@@ -134,5 +141,122 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
     summary:
       'Turn a photo box into event folders, preserving the originals and preparing a visual before-and-after comparison.',
     sections,
+  }
+}
+
+/** A catalogue identifies this example's finite collection, independently of Run IDs. */
+export function photoAlbumKey(photos: readonly Photo[]): string {
+  return createHash('sha256').update(JSON.stringify(photos)).digest('hex')
+}
+
+export function photoViewOptions(
+  albumKey: string,
+): Readonly<Record<'photos' | 'organise' | 'contactSheet', ViewOptions>> {
+  return {
+    photos: {
+      title: 'Photos',
+      landing: true,
+      target: { definitionId: 'photos', instanceKey: albumKey, subjectKey: albumKey },
+    },
+    organise: {
+      title: 'Organise',
+      target: { definitionId: 'organise', instanceKey: albumKey, subjectKey: albumKey },
+    },
+    contactSheet: {
+      title: 'Contact sheet',
+      target: { definitionId: 'contact-sheet', instanceKey: albumKey, subjectKey: albumKey },
+    },
+  }
+}
+
+export function photoGalleryView(state: PhotoBoxState): ViewSnapshot {
+  const photos = state.photos ?? []
+  return {
+    summary: `${photos.length} captured originals. Inspect the supplied captions and dates before reviewing the suggested organisation.`,
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'collection',
+            id: 'photos',
+            title: 'Original photos',
+            presentation: {
+              kind: 'gallery',
+              media: 'image',
+              title: 'name',
+              alt: 'caption',
+              description: 'date',
+            },
+            columns: [
+              { key: 'name', label: 'Original', type: 'text' },
+              { key: 'image', label: 'Image', type: 'reference' },
+              { key: 'date', label: 'Date', type: 'text' },
+              { key: 'caption', label: 'Caption', type: 'text' },
+            ],
+            rows: photos.map((photo) => ({
+              id: photo.id,
+              cells: {
+                name: photo.file,
+                image: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+                date: photo.date,
+                caption: photo.caption,
+              },
+              details: [
+                { kind: 'report', text: photo.caption, format: 'plain' },
+                {
+                  kind: 'facts',
+                  items: [
+                    { label: 'Date', value: photo.date },
+                    { label: 'Photo ID', value: photo.id },
+                  ],
+                },
+              ],
+            })),
+            total: photos.length,
+          },
+        ],
+      },
+    ],
+  }
+}
+
+export function photoContactSheetView(state: PhotoBoxState): ViewSnapshot {
+  if (state.phase === 'ready') {
+    return {
+      summary: 'Compare the captured originals with their checked event grouping.',
+      sections: [
+        {
+          title: 'Before and after',
+          blocks: [
+            {
+              kind: 'content',
+              title: 'Before-and-after contact sheet',
+              reference: { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+            },
+            {
+              kind: 'report',
+              text: 'The manifest records every checked destination. Grouping quality still needs your review.',
+              references: [{ kind: 'artifact', attachment: 'copies', path: 'manifest.csv' }],
+            },
+          ],
+        },
+      ],
+    }
+  }
+  return {
+    summary:
+      'The contact sheet becomes available after both file methods complete and their results pass the application checks.',
+    sections: [
+      {
+        blocks: [
+          {
+            kind: 'report',
+            text:
+              state.reason ??
+              'The captured originals remain available in Photos while organisation proceeds.',
+          },
+        ],
+      },
+    ],
   }
 }

@@ -11,8 +11,12 @@
 @test *args:
     bun test "$@"
 
-check: build test
+check: build test test-node
 
 [positional-arguments]
 @pack *args: build
     bun pm pack --ignore-scripts "$@"
+
+# Exercise actual public SDK protocol pipes and material snapshots under Node.
+test-node: build
+    node --test test/*.node.mjs

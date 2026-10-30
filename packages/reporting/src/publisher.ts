@@ -93,7 +93,7 @@ class Publisher implements Reporter {
     const declaration = validateView({
       kind: 'view',
       id,
-      ...dataRecord(options, ['title', 'landing', 'operationId']),
+      ...dataRecord(options, ['title', 'landing', 'operationId', 'target']),
       summary: 'Declaration',
       sections: [],
     })
@@ -133,12 +133,19 @@ class Publisher implements Reporter {
     if (this.#phase !== 'accepting')
       throw new Error('Reporting scope is no longer accepting offers')
     if (!this.#enabled) return
-    const tail = this.#queue.at(-1)
-    const replace =
-      (value.kind === 'activity' || value.kind === 'view') &&
-      tail?.value.kind === value.kind &&
-      tail.value.id === value.id
-    const previousBytes = replace ? tail.bytes : 0
+    let replaceIndex = -1
+    if (value.kind === 'activity' || value.kind === 'view') {
+      for (let index = this.#queue.length - 1; index >= 0; index--) {
+        const pending = this.#queue[index]!.value
+        if (pending.kind !== 'activity' && pending.kind !== 'view') break
+        if (pending.kind === value.kind && pending.id === value.id) {
+          replaceIndex = index
+          break
+        }
+      }
+    }
+    const replace = replaceIndex !== -1
+    const previousBytes = replace ? this.#queue[replaceIndex]!.bytes : 0
     if (value.kind === 'notice') {
       this.#notices++
       this.#noticeBytes += bytes
@@ -162,7 +169,7 @@ class Publisher implements Reporter {
       return
     }
     const item = { value, bytes }
-    if (replace) this.#queue[this.#queue.length - 1] = item
+    if (replace) this.#queue[replaceIndex] = item
     else {
       this.#queue.push(item)
       this.#retained++

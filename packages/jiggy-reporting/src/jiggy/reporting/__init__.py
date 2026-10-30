@@ -12,7 +12,7 @@ from types import MappingProxyType
 from typing import Any, Literal, Mapping, Required, TypedDict
 
 from jiggy.flow import ChannelSender, OperationError, RunContext
-from .view import ViewOptions, ViewSnapshot, Reference, validate_view, operation, record
+from .view import ViewOptions, ViewSnapshot, ViewTarget, Reference, validate_view, operation, record
 
 
 class Progress(TypedDict, total=False):
@@ -74,7 +74,7 @@ def _count(value: Any) -> int:
 
 def validate_reporting_message(value: Any) -> dict[str, Any]:
     """Validate unknown input and return a private JSON snapshot."""
-    root = _record(value, {"kind", "text", "severity", "id", "label", "progress", "detail", "operationId", "title", "summary", "landing", "sections"})
+    root = _record(value, {"kind", "text", "severity", "id", "label", "progress", "detail", "operationId", "title", "summary", "landing", "sections", "target"})
     kind = root.get("kind")
     if type(kind) is not str:
         raise TypeError("Unknown reporting message kind")
@@ -112,8 +112,8 @@ def validate_reporting_message(value: Any) -> dict[str, Any]:
         result = {'kind':kind,'id':_text(root.get('id'),64,True)}
     else:
         raise TypeError("Unknown reporting message kind")
-    if len(_canonical(result)) > 32768:
-        raise TypeError("Encoded reporting message exceeds 32 KiB")
+    if len(_canonical(result)) > 524288:
+        raise TypeError("Encoded reporting message exceeds 512 KiB")
     return result
 
 
@@ -179,7 +179,7 @@ class Reporter:
         self._activity_calls.pop(id, None)
 
     def view(self, id: str, options: ViewOptions) -> ReportingView:
-        declaration = validate_view({'kind':'view','id':id,**record(options,{'title','landing','operationId'}),'summary':'Declaration','sections':[]})
+        declaration = validate_view({'kind':'view','id':id,**record(options,{'title','landing','operationId','target'}),'summary':'Declaration','sections':[]})
         if self._phase != 'accepting': raise RuntimeError('Reporting scope is no longer accepting offers')
         if id in self._view_ids: raise RuntimeError('View ID already has a scope owner')
         if len(self._view_ids) >= 16: raise RuntimeError('View ID claim limit exceeded')
@@ -195,9 +195,17 @@ class Reporter:
             raise RuntimeError("Reporting scope is no longer accepting offers")
         if not self._enabled:
             return
-        tail = self._queue[-1] if self._queue else None
-        replace = tail is not None and value["kind"] in ('activity','view') and tail[0]["kind"] == value["kind"] and tail[0]["id"] == value["id"]
-        prior = tail[1] if replace and tail is not None else 0
+        replace_index: int | None = None
+        if value["kind"] in ('activity', 'view'):
+            for index in range(len(self._queue) - 1, -1, -1):
+                queued = self._queue[index][0]
+                if queued['kind'] not in ('activity', 'view'):
+                    break
+                if queued['kind'] == value['kind'] and queued['id'] == value['id']:
+                    replace_index = index
+                    break
+        replace = replace_index is not None
+        prior = self._queue[replace_index][1] if replace_index is not None else 0
         if value["kind"] == "notice":
             self._notices += 1
             self._notice_bytes += size
@@ -211,11 +219,12 @@ class Reporter:
                 return
         elif value["kind"] == "clear":
             self._keys.discard(value["id"])
-        if self._retained + (0 if replace else 1) > 16 or self._bytes - prior + size > 262144:
+        if self._retained + (0 if replace else 1) > 16 or self._bytes - prior + size > 4194304:
             self._stop()
             return
         if replace:
-            self._queue[-1] = (value, size)
+            assert replace_index is not None
+            self._queue[replace_index] = (value, size)
         else:
             self._queue.append((value, size))
             self._retained += 1
@@ -259,7 +268,7 @@ class Reporter:
                 value, size = self._queue.pop(0)
                 self._attempts += 1
                 self._traffic += size
-                if self._attempts > 4096 or self._traffic > 4194304:
+                if self._attempts > 18000 or self._traffic > 536870912:
                     self._retained -= 1
                     self._bytes -= size
                     self._stop()
@@ -355,3 +364,22 @@ class reporting:
 
 
 __all__ = ["Progress", "REPORTING_CONTRACT", "Reporter", "reporting", "validate_reporting_message"]
+
+from .bundle import (
+    DisplayBundle as DisplayBundle,
+    DisplayPublicationContext as DisplayPublicationContext,
+    DisplayPublicationHead as DisplayPublicationHead,
+    DisplayPublicationView as DisplayPublicationView,
+    create_display_bundle as create_display_bundle,
+    decode_display_bundle as decode_display_bundle,
+    encode_display_bundle as encode_display_bundle,
+    validate_display_bundle as validate_display_bundle,
+)
+from .preview import preview_collection as preview_collection
+
+__all__ += [
+    'Reference', 'ViewOptions', 'ViewSnapshot', 'ViewTarget', 'ReportingView',
+    'DisplayBundle', 'DisplayPublicationContext', 'DisplayPublicationHead', 'DisplayPublicationView',
+    'create_display_bundle', 'decode_display_bundle', 'encode_display_bundle',
+    'validate_display_bundle', 'preview_collection',
+]

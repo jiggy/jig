@@ -40,8 +40,9 @@ abstain, without acquiring authority to execute the candidate.
 
 - `dashboard.ts` offers Selection on optional canonical `progress`: task,
   bounded eligible candidates and validated selection/abstention. Candidate
-  details expand descriptions. Membership and UI selection cannot grant dispatch
-  authority.
+  previews use `previewCollection` without clipping selected descriptions.
+  Fixed target options identify the supplied selection request.
+  Membership and UI selection cannot grant dispatch authority.
 
 ## Work Guidance
 

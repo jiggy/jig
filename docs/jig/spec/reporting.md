@@ -20,7 +20,7 @@ browser observation adds no operation or authority to this agreement.
 ## Message semantics
 
 All messages are closed JSON/0 objects. No canonical encoded item exceeds
-32 KiB. Strings contain Unicode scalars; lengths below count scalars, not bytes
+512 KiB. Strings contain Unicode scalars. Lengths below count scalars, not bytes
 or UTF-16 units. Publishers and consumers enforce semantic rules beyond schema.
 
 | Kind | Fields | Meaning |
@@ -28,7 +28,7 @@ or UTF-16 units. Publishers and consumers enforce semantic rules beyond schema.
 | `notice` | `text`: 1–4096 scalars, multiline allowed; optional `severity`: `info`, `warning`, `error` | Append one complete attributed message; never a fragment. |
 | `activity` | `id`: 1–64 single-line scalars; `label`: 1–256; optional `progress`, `detail`, own-call `operationId` | Fully replace transient state for this connected source instance and opaque ID. |
 | `clear` | `id`: 1–64 single-line scalars | Remove the slot idempotently. Unknown IDs do nothing. |
-| `view` | `id`, `title`, `summary`, `sections`; optional `landing: true`, own-call `operationId` | Replace one complete attributed workspace view; see dashboard semantics below. |
+| `view` | `id`, `title`, `summary`, `sections`, optional `target`, `landing: true`, own-call `operationId` | Replace one complete attributed workspace view. |
 | `retire-view` | `id` | Remove a view and claim its ID against reuse. |
 
 Notice severity defaults to info. It classifies author-reported importance, never
@@ -47,11 +47,12 @@ progress. Replacement retains first-appearance order; clearing and reusing an ID
 creates a new appearance. IDs are presentation slots, not durable tasks, native
 paths or host-attested provenance.
 
-Only consecutive unsent tail replacements of the same activity or view may coalesce. Notices,
-clears, view retirements and the immutable in-flight snapshot are barriers. Accepted transport order
-is not an application revision counter or exhaustive history. No count, exact
-100%, clear, or EOF establishes execution success. No rate, ETA or overall-run
-percentage is promised; incomplete counts must never round to 100%.
+Unsent replacements coalesce by activity or view identity within one publication epoch.
+Rotating among several views does not force intermediate snapshots into the queue.
+Notices, clears, view retirements and the immutable in-flight snapshot are barriers.
+Accepted transport order is not an application revision counter or exhaustive history.
+No count, exact 100%, clear or EOF establishes execution success.
+Incomplete counts must never round to 100%.
 
 ## Scoped publishers
 
@@ -67,8 +68,8 @@ after draining begins are lifecycle errors. Disabled valid offers are no-ops.
 | Publisher resource | Bound per scope |
 | --- | --- |
 | Serialized sends | 1 |
-| Retained items including in-flight | 16 / 256 KiB |
-| Send attempts / canonical traffic | 4096 / 4 MiB |
+| Retained items including in-flight | 16 / 4 MiB |
+| Send attempts / canonical traffic | 18,000 / 512 MiB |
 | Notices / canonical notice payload | 128 / 512 KiB |
 | Active keys | 16 |
 | Dispatch rate | At most 5/s |
@@ -171,12 +172,12 @@ Resize, notice completion, update and retirement redraw current retained state.
 Obsolete queued transient projections are superseded before dispatch; output already
 dispatched follows normal settlement and is followed by current state when usable.
 
-Consumer bounds are 4096 records/4 MiB input, 128 notices/512 KiB notice payload,
-16 slots, and 16 pending presentation writes/256 KiB encoded output, including
-in-flight output. Observation quota or semantic failure retires/disposes the
-observer and emits one bounded unavailable explanation when output is usable.
-Malformed data is a contract violation, not lag. Clean EOF returns to host waiting;
-abnormal EOF reports incomplete observation without success decoration.
+Consumers bound input to 18,000 records/512 MiB and notices to 128/512 KiB.
+They retain 16 slots and 16 pending presentation writes/256 KiB encoded output, including in-flight output.
+Observation quota or semantic failure retires the observer and emits one bounded unavailable explanation when output is usable.
+Malformed data is a contract violation, not lag.
+Clean EOF returns to host waiting.
+Abnormal EOF reports incomplete observation without success decoration.
 
 ## Separate presentation pool
 
@@ -186,12 +187,12 @@ presentation allocation is made per Run; disposal never replenishes it. There is
 no late reallocation, replay or Flow creator-subscription right. Generic channel
 creation and explicit reception retain normal limits and their closed wire schemas.
 
-Presentation allows a 32 KiB item, 4 MiB source traffic, receiver buffer of
-16 items/256 KiB and one pending send/32 KiB, isolated from ordinary pending-send
-capacity. Both pools and limits participate in reviewed logical launch identity.
-Descriptor cache and connection wire ceilings remain unchanged. Publication still
-uses finite request capacity, CPU and deadline; this preserves application channel
-allocation capacity without promising zero overhead or outcome invariance.
+Presentation allows a 512 KiB item, 512 MiB source traffic and a receiver buffer of 16 items/4 MiB.
+One pending 512 KiB send remains isolated from ordinary pending-send capacity.
+Both pools and limits participate in reviewed logical launch identity.
+Descriptor cache and connection wire ceilings remain unchanged.
+Publication still uses finite request capacity, CPU and deadline.
+These bounds preserve application channel allocation capacity without promising zero overhead or outcome invariance.
 
 Installed stdout/stderr blockage or disconnection continues to request root
 cancellation. Stderr flush failure can prevent final stdout. No notices or final
@@ -231,31 +232,69 @@ tools. The same child invoked directly can provide its own primary page.
 Presentation never changes the invocation result, host status or evidence
 access.
 
-`view` contains `id`, `title`, `summary`, `sections`, optional `landing: true`
-and optional own-call `operationId`. `retire-view` contains `id`. A section has
-optional title and blocks. Blocks are literal reports with optional references,
-label/value facts, explicit completed/total progress, or typed collections with
-stable row IDs, exact cells and optional non-collection row details. The canonical
-descriptor owns the closed field schema; semantic validation additionally checks
-column types, duplicate IDs, counts, aggregate bounds and safe references.
+`view` contains `id`, `title`, `summary`, `sections`, optional `target`,
+optional `landing: true` and optional own-call `operationId`.
+`retire-view` contains `id`.
+A section contains an optional title and ordered blocks.
+Blocks are literal reports, facts, explicit count progress, captured content or typed collections.
+Collections retain stable row IDs, exact cells and optional non-collection row details.
 
-Full view replacement is atomic after validation and capacity reservation. A
-rejected replacement preserves the last complete snapshot and marks the source
-incomplete. Source, landing and call association stay fixed for a view lifetime;
-title, summary and content may change. Omission removes optional old content.
-Unknown raw retirement claims and retires its ID once. Retired IDs never revive.
-Clean EOF removes activities but freezes views with ended context and last update;
-loss, invalid data and quota freeze them incomplete. Host stopping permanently
-fences callbacks. No observation ending or domain status establishes success.
+A report accepts optional `format: 'plain' | 'code' | 'diff'` and typed references.
+Formatting changes reading presentation, never interpretation or execution.
+A content block contains `reference` and optional `title`.
+Its reference must name an artifact or captured input artifact.
+The canonical descriptor owns the closed schema.
+Semantic validation additionally checks column types, duplicate IDs, counts, bounds and safe references.
 
-Per publisher, at most 16 lifetime view IDs and 8 retained live/frozen views /128
-KiB; per command, 64 lifetime IDs and 32 retained views /512 KiB. Each view has
-8 sections, 32 total blocks including row details, 128 total rows, 8 columns per
-collection, 1024 cells, 8 details per row, 32 facts per block, 8 references per
-report. IDs/keys use 1–64 scalars; titles/labels 1–128; summary 1–1024;
-report/text values 0–4096; units 1–32. IDs, keys, titles, labels and units are
-single-line. Activity's existing 64/256/32 bounds remain; optional `detail` is
-1–4096 multiline scalars and own-call `operationId` stays fixed until clear.
+Collections accept `presentation: {kind: 'table'}` or a gallery declaration.
+A gallery contains `kind: 'gallery'`, required `media` and optional `title`, `alt` and `description` roles.
+Roles name existing column keys rather than duplicating row values.
+Every gallery media cell must contain an artifact or input-artifact reference.
+All columns and supplied details remain inspectable regardless of the presentation choice.
+
+An optional target contains `definitionId`, `instanceKey` and optional `subjectKey`.
+The first two fields identify an application projection and its instance.
+A subject key relates views across definitions without aggregating their contents or changing actual publisher attribution.
+Definitions and instances remain application identities, separate from the publishing Run.
+A child keeps its own useful views while the root application deliberately projects child results into root views.
+
+Full view replacement is atomic after validation and capacity reservation.
+A rejected replacement preserves the last complete snapshot and marks the source incomplete.
+Source, target, landing and call association stay fixed for a view lifetime.
+Title, summary and content may change.
+Omission removes optional old content.
+Retired IDs never revive.
+
+Unknown raw retirement claims and retires its ID once.
+Clean EOF removes activities but freezes views with ended context and last update.
+Loss, invalid data and quota freeze them incomplete.
+Host stopping permanently fences callbacks.
+No observation ending or domain status establishes success.
+
+| Semantic resource | Bound |
+| --- | --- |
+| Lifetime IDs / retained views per publisher | 16 / 8 |
+| Retained view bytes per publisher | 4 MiB |
+| Lifetime IDs / retained views per command | 64 / 32 |
+| Retained view bytes per command | 6 MiB |
+| Sections / layout blocks per view | 32 / 32 |
+| Row detail blocks per view | 8,192 |
+| Rows / cells per view | 1,024 / 8,192 |
+| Columns per collection / details per row | 8 / 8 |
+| Facts per block / references per report | 32 / 8 |
+
+Layout and detail blocks have separate budgets.
+One thousand detailed records therefore do not consume the page layout allowance.
+Publishers own pacing and coalescing, so authors offer whole snapshots without manual throttling.
+`previewCollection` and Python's `preview_collection` explicitly retain a bounded set of whole rows.
+They return shown, total and omitted counts alongside an optional complete artifact reference.
+They never truncate a cell silently or imply that a partial collection is complete.
+
+IDs and keys use 1–64 scalars, titles and labels 1–128, and summary 1–1024.
+Report and text values allow 0–4096 scalars, and units allow 1–32.
+IDs, keys, titles, labels and units are single-line.
+Activity retains its existing 64/256/32 text bounds.
+Its optional `detail` allows 1–4096 multiline scalars, while own-call association stays fixed until clear.
 
 Actual accepted-send participant provenance is private sideband, including pending
 sends and writer transfer. Creator or owner identity and public IDs never prove
@@ -266,17 +305,22 @@ need fresh IDs. Bounded dynamic reference lookup uses only current retained view
 actual own calls and verified delivered-file evidence, with no pending join map,
 speculative node, URI lookup or implicit descendant subscription.
 
-Record references name same-publisher view/collection/row. Call references name
-the publisher's own operation ID, using the Run/0 ASCII identifier rule. Artifact
-references name a declared output attachment and a safe relative file path (512
-UTF-8 bytes, 16 segments, no absolute/dot/dot-dot/backslash/control/protected .jig
-segments). A child-only file is unavailable unless its parent remaps and delivers
-it. Pending delivery and missing targets remain explicit and may resolve later.
-Previews use the exact immutable verified bytes retained by the delivery owner,
-never reopen destination paths. One explicit inspector retains at most one output
-snapshot /16 MiB /64 files and one active UTF-8 text/diff preview /64 KiB. Binary
-or unavailable capture stays unavailable; clipping is explicit and character-safe.
+Record references name same-publisher view, collection and row.
+Call references name the publisher's own operation ID, using Run/0's ASCII identifier rule.
+Artifact references name a declared output attachment and safe relative path.
+An `input-artifact` reference instead names an exact selected member of the immutable captured input set.
+The two kinds retain separate identities and provenance.
+
+Paths allow 512 UTF-8 bytes and 16 segments.
+Absolute paths, dot segments, backslashes, controls and protected `.jig` segments are refused.
+A child-only file remains unavailable until its parent explicitly remaps and delivers it.
+Pending delivery and missing targets remain explicit and may resolve later.
+Previews and downloads use exact immutable captured bytes, never mutable destination paths.
 Every command exit closes preview and presentation owners.
+
+A final [display bundle](display-archive.md) can retain explicitly selected application views independently of optional live observation.
+It uses these same semantic snapshots and pure application projections.
+The host never interprets live reporting as final publication or automatically replays it into retained state.
 
 The host tree retains 256 nodes, depth 32 and 256 KiB metadata. It projects only
 parent identity, reviewed slot, bounded caller intent, time, lifecycle state and

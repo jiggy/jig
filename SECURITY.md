@@ -299,7 +299,7 @@ requires closing Jig and intentionally removing the project's protected
 ## File capture and delivery
 
 Root read attachments contain immutable captured bytes, not live host mounts.
-Capture accepts at most 8 MiB across 64 files; selectors avoid enumerating
+Capture accepts at most 64 MiB across 64 files. Selectors avoid enumerating
 unselected subtrees. Linux descriptor-relative operations reject symlinks,
 multiply linked files, nested mounts and protected host-state aliases. Source
 and destination-parent filesystems must be ext4, XFS, Btrfs or tmpfs. This does
@@ -309,7 +309,8 @@ Bindings may select read-only project-relative resource trees for capture during
 review. Their bytes and manifests are retained under the existing Package/0
 store cap, including after declined review. They are not secret storage or live
 host mounts. Each Run revalidates and projects only its selected Binding's
-retained bytes, combined with per-run input under the same 64-file/8-MiB limit.
+retained bytes, combined with per-run input under the same 64-file/64-MiB limit.
+
 Children borrow complete immutable read views only through reviewed maps from
 their immediate caller. Native provider scopes receive no attachment authority. Tool code receives no
 additional execution privilege: all of its behavior is available within the
@@ -338,17 +339,19 @@ a caller-owned folder. Unconfirmed descriptor retirement stays fatal and
 uncertain even after native fencing; recovery never resumes the program.
 
 Finite caps bound hostile allocation and trusted capture/export work. The
-8 MiB input and 16 MiB output values are conservative host policy for small
+64 MiB input and 16 MiB output values are conservative host policy for bounded
 file jobs, not portable FLOW limits or benchmark-derived optimums. Changing
 them requires reviewing the complete retained-storage budget and runtime
-policy together; removing them is not a usability fallback.
+policy together. Removing them is not a usability fallback.
 
 At most six Flow envelopes coexist under the unchanged root reservation: one
 root and five children, with one effect allowance. A two-branch shape reserves
 an effect per branch and therefore admits fewer Flows. Whole immutable read
-aliases share the root's original <=64 captures/8 MiB; equal content alone does
-not authenticate a shared view. Each Flow materializes at most 8 MiB of unique
-read bytes (Linux input tmpfs ceiling 16 MiB). Linux's six output backings sum
+aliases share the root's original <=64 captures/64 MiB. Equal content alone does
+not authenticate a shared view.
+
+Each Flow materializes at most 64 MiB of unique
+read bytes (Linux input tmpfs ceiling 128 MiB). Linux's six output backings sum
 to at most 96 MiB. Mac's six 512 MiB images sum to at most 3 GiB allocated
 storage, including scratch, input and output. Immutable artifact retention is
 separately root-bounded to sixteen snapshots and 256 MiB of snapshots plus
@@ -358,16 +361,28 @@ Existing Mac output collection may retain one <=16 MiB anonymous snapshot per
 Flow while its source volume retires, conservatively <=96 MiB across six
 Flows. Streaming capture borrows <=64 KiB per active stream rather
 than retaining whole-tree buffers. A root final packet may add <=16 MiB of
-file staging; accepted and replacing checkpoint aggregates can overlap, each with <=1 MiB
-of files and <=2 MiB canonical JSON under the existing checkpoint policy.
-The original <=8 MiB input captures, bounded capture buffers, protocol records,
+file staging. Accepted and replacing checkpoint aggregates can overlap.
+Each retains <=1 MiB of files and <=2 MiB canonical JSON under the existing checkpoint policy.
+
+The original <=64 MiB input captures, bounded capture buffers, protocol records,
 checkpoint JSON and existing command/provider evidence have their separate
 caps. These trusted coordinator/collector allocations are outside payload
-cgroups; the root payload ceiling is not combined host utilization accounting.
-No per-invocation source tree enters the retained Package/0 store. Only bounded
-request and terminal evidence survives command cleanup; the requested final
-packet is intentionally retained. An accepted root terminal, checkpoint or
-already published packet does not depend on a new child storage journal.
+cgroups. The root payload ceiling is not combined host utilization accounting.
+
+Command inspection can add <=64 MiB of selected-input copies and <=16 MiB of verified delivered bytes.
+The authenticated publication owner can overlap one separate <=16 MiB capture until retirement.
+Byte suppliers return owned file copies within the same per-file bounds.
+Thumbnail caches and decoder profiles have separate bounds.
+
+No per-invocation source tree enters the retained Package/0 store.
+Command cleanup preserves bounded request and terminal evidence and the intentionally retained result packet.
+An accepted root terminal, checkpoint or already published packet does not depend on a new child storage journal.
+
+Explicit final display selection can also retain application projections and detached evidence in the protected project-local `.jig/display` archive.
+The application delivers the finite bundle through an ordinary declared output.
+Verified final delivery binds its actual originating Run and exact captured evidence.
+The archive grants no execution or file authority and does not establish current application state.
+Its bounded acceptance receipts remain distinct from continuing evidence availability and application correctness.
 
 A project command accepts at most 256 KiB of text across 64 files, 16 KiB of
 stdin, and 32 arguments. Its collector retains the first 64 KiB of each pipe

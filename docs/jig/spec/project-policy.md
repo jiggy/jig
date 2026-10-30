@@ -719,10 +719,11 @@ not the current admission; deleting an original does not invalidate its retained
 copy. Missing or corrupt retained bytes fail without recapture or substitution.
 
 Only that root Binding receives the captured bytes through ordinary
-`run.attachments`. Other read attachments require `--attach`; supplying an
-already-bound name fails rather than overriding it. Bound and per-run inputs
-share the 64-file/8-MiB execution budget. Both use sealed descriptors and the
+`run.attachments`. Other read attachments require `--attach`.
+Supplying an already-bound name fails rather than overriding it. Bound and per-run inputs
+share the 64-file/64-MiB execution budget. Both use sealed descriptors and the
 same read-only input projection, without source modes or live host paths.
+
 Children receive a selected immutable read view only through an explicit
 reviewed mapping from their immediate caller. Native Agent/command scopes
 receive no attachment authority.
@@ -1170,11 +1171,12 @@ support. Qualified Macs use descriptor-relative no-follow acquisition and
 no-replace publication; unsupported semantics have no fallback. These checks exclude a malicious host
 administrator or same-user process, as specified in the security boundary.
 
-Limits are aggregate across input attachments: eight declared attachments
-including any writable one, 64 regular files, 8 MiB content, 256 enumerated
-entries, 16 path components, and 512 UTF-8 bytes per relative path. Exact
-selection never enumerates unselected subtrees. A detected file mutation fails
-capture; the captured set is not an atomic repository revision or a secret scan.
+Input limits aggregate across attachments, including any writable one.
+They permit eight attachments, 64 regular files, 64 MiB content and 256 enumerated entries.
+Relative paths permit 16 components and 512 UTF-8 bytes.
+Exact selection never enumerates unselected subtrees.
+A detected file mutation fails capture.
+The captured set is not an atomic repository revision or a secret scan.
 
 `@FILE` is operator-selected data, not an execution attachment. Jig opens its
 non-symbolic-link regular-file leaf once, bounds and snapshots its bytes, checks
@@ -1387,14 +1389,15 @@ On qualified Macs, a private launchd guardian establishes an exclusive
 resource coalition and a restrictive sandbox before package bytes execute.
 The operator needs no `sudo`, helper installation, or managed execution
 account. Each scope receives only its projected read-only files, private
-writable storage, selected network policy, and its authenticated Run channel;
-unselected file descriptors and Mach rights are closed before execution.
+writable storage, selected network policy, and its authenticated Run channel.
+Unselected file descriptors and Mach rights are closed before execution.
 Cancellation, deadline, coordinator loss, and recovery fence the complete
 owned coalition and confirm storage cleanup before reporting settlement.
 CPU, memory, and process limits use supervised sampling and termination rather
-than Linux cgroup hard quotas, so short overshoot is possible. The qualified
-profiles are Intel Darwin 23.4.0 build 23E224 and Intel or Apple Silicon
-Darwin 24.6.0 build 24G830; other builds fail closed until qualified.
+than Linux cgroup hard quotas, so short overshoot is possible.
+
+The selected profiles are Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
+Each profile requires complete native qualification before release. Other builds fail closed.
 
 Containment and system-management executables default to `/usr/bin`, `/bin`, and the NixOS system profile
 `/run/current-system/sw/bin`. The operator may select Bubblewrap through an

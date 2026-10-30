@@ -7,10 +7,12 @@ import {
   captureBoundAttachments,
   openBoundAttachments,
 } from '../../src/internal/bound-attachments.js'
+import { PRIVATE_FILE_LIMITS } from '../../src/internal/file-input-policy.js'
 import {
   readPrivateCapturedInput,
   requirePrivateCapturedInput,
 } from '../../src/internal/input-capture.js'
+import { PrivateInputInspectionCapture } from '../../src/internal/input-inspection.js'
 import {
   createPrivateProjectLocalLock,
   decodePrivateProjectLocalLock,
@@ -109,7 +111,10 @@ test('review refuses source links, protected trees and aggregate excess before g
       await link(join(directory, 'tools/data.bin'), join(directory, 'tools/hard'))
       await expect(captureBoundAttachments(root, { tool: 'tools' }, store)).rejects.toThrow()
       await rm(join(directory, 'tools/hard'))
-      await writeFile(join(directory, 'tools/large'), Buffer.alloc(5 * 1024 * 1024))
+      await writeFile(
+        join(directory, 'tools/large'),
+        Buffer.alloc(Math.floor(PRIVATE_FILE_LIMITS.bytes / 2) + 1),
+      )
       await expect(
         captureBoundAttachments(root, { first: 'tools', second: 'tools' }, store),
       ).rejects.toThrow('remaining')
@@ -168,26 +173,51 @@ test('linked review, lock, request and projection pin the same read-only selecti
       )!
       expect(direct.boundAttachments).toBeUndefined()
       expect(() => requirePrivateRootFileMapping(direct, PRIVATE_EMPTY_FILE_IDENTITY)).toThrow()
-      const files = new PrivateRootRunFiles([], false)
-      const opened = await openBoundAttachments(store, capturedAttachments)
+      const inspection = new PrivateInputInspectionCapture([])
+      const files = new PrivateRootRunFiles([], false, undefined, undefined, (inputs) =>
+        inspection.setSource(inputs),
+      )
+      let opened: Awaited<ReturnType<typeof openBoundAttachments>> | undefined =
+        await openBoundAttachments(store, capturedAttachments)
+      const heldInput = opened.attachments[0]!.files[0]!.input
       try {
         expect(() => files.projection('one', request, PRIVATE_EMPTY_FILE_IDENTITY)).toThrow(
           'projection',
         )
-        const projection = files.projection(
-          'one',
-          request,
-          PRIVATE_EMPTY_FILE_IDENTITY,
-          opened.attachments,
-        )
+        const projection = files.projection('one', request, PRIVATE_EMPTY_FILE_IDENTITY, opened)
+        expect(projection.retainedInputs).toBe(true)
+        opened = undefined
         expect(projection.attachments).toEqual({
           tool: { path: '/jig-input/tool', access: 'read', artifact: expect.any(String) },
         })
         expect(projection.attachments.tool!.artifact!.length).toBeGreaterThan(0)
         expect(projection.plan.capturedInputs).toHaveLength(2)
+        projection.context.close()
+        const reopened = await openBoundAttachments(store, capturedAttachments)
+        try {
+          const repeated = files.projection('one', request, PRIVATE_EMPTY_FILE_IDENTITY, reopened)
+          try {
+            expect(repeated.retainedInputs).toBe(false)
+          } finally {
+            repeated.context.close()
+          }
+        } finally {
+          reopened.close()
+        }
+        await writeFile(join(directory, 'tools/data.bin'), 'edited after review')
+        inspection.select([{ attachment: 'tool', path: 'data.bin' }])
+        expect([...inspection.read('tool/data.bin')!]).toEqual([0, 255, 128, 10])
+        expect(requirePrivateCapturedInput(heldInput).fd).toBeGreaterThan(0)
+        inspection.retireSource()
+        const close = files.close()
+        expect(files.close()).toBe(close)
+        await close
+        expect(() => requirePrivateCapturedInput(heldInput)).toThrow()
+        expect([...inspection.read('tool/data.bin')!]).toEqual([0, 255, 128, 10])
       } finally {
-        opened.close()
+        opened?.close()
         await files.close()
+        await inspection.close()
       }
       expect(() =>
         linkPackageProject({ flows, bindings: [{ ...binding, capturedAttachments: {} }] }),
@@ -216,11 +246,15 @@ test('linked review, lock, request and projection pin the same read-only selecti
             {
               name: 'input',
               files: [
-                { path: 'large', bytes: 8 * 1024 * 1024, digest: `sha256:${'0'.repeat(64)}` },
+                {
+                  path: 'large',
+                  bytes: PRIVATE_FILE_LIMITS.bytes,
+                  digest: `sha256:${'0'.repeat(64)}`,
+                },
               ],
             },
           ],
-          output: null,
+          output: false,
         }),
       ).toThrow()
       expect(() =>

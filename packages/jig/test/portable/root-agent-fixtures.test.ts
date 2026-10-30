@@ -388,6 +388,12 @@ test('assembles the batch host fixture over the current repair application', asy
       filter: (path) => basename(path) !== 'node_modules',
     })
     await addBatchRepairFixture(project)
+    expect(await readFile(join(project, 'flows/project/export-patch/dashboard.ts'), 'utf8')).toBe(
+      await readFile(
+        join(testRoot, '../../../examples/tested-patch/flows/export-patch/dashboard.ts'),
+        'utf8',
+      ),
+    )
     const built = await Bun.build({
       entrypoints: [join(project, 'flows/project/FLOW.ts')],
       target: 'bun',

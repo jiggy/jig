@@ -146,10 +146,10 @@ export function invocationGuide(snapshot: JsonValue): string {
 
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
-  const commands = 'init new review run inspect completion import-contract'
+  const commands = 'init new review run inspect views completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
-    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display'
+    '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle'
   if (shell === 'bash')
     return `_jig() {
   local cur="\${COMP_WORDS[COMP_CWORD]}" command="\${COMP_WORDS[1]}" prev="\${COMP_WORDS[COMP_CWORD-1]}"
@@ -178,6 +178,7 @@ export function completionScript(shell: string): string | undefined {
       run) opts='${runOptions}';;
       review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
       inspect) opts='--help --json --verification --result --display';;
+      views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
       import-contract) opts='--help --list';;
     esac
@@ -218,6 +219,7 @@ _jig() {
       run) choices=(${runOptions});;
       review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
       inspect) choices=(--help --json --verification --result --display);;
+      views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
       import-contract) choices=(--help --list);;
       *) choices=(--help);;

@@ -14,6 +14,7 @@ import {
   privateBrowserSurvivingSelection,
   privateBrowserTabs,
   privateBrowserValue,
+  privateBrowserView,
 } from '../src/navigation.js'
 
 const ref: Reference = { kind: 'artifact', attachment: 'output', path: 'notes.txt' }
@@ -142,6 +143,20 @@ test('saved navigation exposes one report, file inventory and diagnostics withou
   expect(privateBrowserTabs(data)[0]?.application).toBe(true)
 })
 
+test('retained navigation permits empty selections without inventing execution destinations', () => {
+  expect(privateBrowserTabs(undefined, 'retained-views')).toEqual([])
+  const data = snapshot()
+  data.mode = 'retained-views'
+  data.calls = []
+  const selected = displayViewKey(view.id)
+  expect(privateBrowserTabs(data).map((tab) => tab.id)).toEqual([selected])
+  expect(privateBrowserView(data, selected)).toBe(view)
+  data.views = []
+  data.revision++
+  expect(privateBrowserTabs(data)).toEqual([])
+  expect(privateBrowserView(data, selected)).toBeUndefined()
+})
+
 test('peek counts hidden cells and detail references and deduplicates complete typed identities', () => {
   const record = privateBrowserRecords(view, privateBrowserLocal())[4]!
   expect(privateBrowserReferences(record)).toEqual([ref])
@@ -187,7 +202,7 @@ test('artifact access requires matching publisher, attachment and manifest path 
   body.artifacts.phase = 'pending'
   expect(privateBrowserResolve(body, 'root', ref)).toEqual({
     kind: 'unavailable',
-    label: 'Artifact pending verified delivery',
+    label: 'Evidence pending immutable capture',
   })
   body.artifacts.phase = 'unavailable'
   expect(privateBrowserResolve(body, 'root', ref).kind).toBe('unavailable')

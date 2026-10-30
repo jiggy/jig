@@ -82,12 +82,13 @@ you choose a new destination with `--out DIR`.
 **Contact preview** is one application page: source record count, accepted and
 excluded totals, source heading → contact field mapping, accepted contacts, and
 reasons for correction. Reading, mapping, checking and export update that page
-as the work advances. Lists show up to twelve records with explicit totals and
-marked excerpts; the complete output and `files/preview/preview.json` preserve every
-value. The complete preview reference opens the delivered file. Child Flow views
+as the work advances. Lists show up to twelve whole records with explicit totals.
+Selected records keep their complete values. The complete output and
+`files/preview/preview.json` preserve every record.
+
+The complete preview reference opens the delivered file. Child Flow views
 remain available through Inspector and when invoked independently.
-`needs_mapping` asks for clarification; a completed preview never means contacts
-were imported into a database.
+`needs_mapping` asks for clarification. A completed preview never means contacts were imported into a database.
 
 Add `--display tui` for a terminal workspace or `--display web` for the same
 views in a browser. Open the private link printed after execution starts. The completed inspector
@@ -158,6 +159,11 @@ jig run binding:code --input '{}' --attach source=fixtures/malformed
   are delivered; the example does not save checkpoints.
 
 ## Make it your own
+
+`flows/import/dashboard.ts` projects typed application state through the public reporting API.
+Its source-derived target identifies the captured CSV independently of a Run.
+`previewCollection` selects whole rows without clipping field values. It preserves each list's total when the page omits records.
+
 
 Change the destination fields, mapping instructions, and conversion rules for
 one import task. Keep mapping and row validation separate. Database writes,

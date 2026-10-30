@@ -55,9 +55,17 @@ test('application sections compose a full page with all columns and working insp
               rows: [
                 {
                   id: 'alex',
+                  details: [{ kind: 'report', text: 'Additional supplied context' }],
                   cells: Object.fromEntries(
                     Array.from({ length: 8 }, (_, index) => [`field-${index}`, `Value ${index}`]),
                   ),
+                },
+                {
+                  id: 'blair',
+                  cells: Object.fromEntries(
+                    Array.from({ length: 8 }, (_, index) => [`field-${index}`, `Other ${index}`]),
+                  ),
+                  details: [{ kind: 'report', text: 'Other supplied context' }],
                 },
               ],
               total: 6,

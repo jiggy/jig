@@ -2,7 +2,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
-import { rosterCsv, type RosterRow } from './csv.ts'
+import { type RosterRow, rosterCsv } from './csv.ts'
 
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal'>,
@@ -27,6 +27,11 @@ export async function runMethod(
             kind: 'report',
             text: 'Open the CSV to inspect the shifts.',
             references: [{ kind: 'artifact', attachment: 'files', path: 'roster.csv' }],
+          },
+          {
+            kind: 'content',
+            title: 'Checked roster CSV',
+            reference: { kind: 'artifact', attachment: 'files', path: 'roster.csv' },
           },
         ],
       },

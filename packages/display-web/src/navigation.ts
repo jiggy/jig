@@ -48,7 +48,7 @@ export function privateBrowserTabs(
   application?: boolean
 }[] {
   return displayDestinations(
-    mode === 'recorded-packet',
+    mode,
     (snapshot?.views ?? []).map((view) => ({
       key: view.id,
       title: view.value.title,
@@ -86,7 +86,8 @@ export function privateBrowserLiteral(value: string): string {
 export function privateBrowserValue(value: Value): string {
   if (value === null) return 'null'
   if (typeof value !== 'object') return privateBrowserLiteral(String(value))
-  if (value.kind === 'artifact') return privateBrowserLiteral(value.path)
+  if (value.kind === 'artifact' || value.kind === 'input-artifact')
+    return privateBrowserLiteral(value.path)
   if (value.kind === 'call') return `Call: ${privateBrowserLiteral(value.operationId)}`
   return `Record: ${privateBrowserLiteral(value.rowId)}`
 }
@@ -99,7 +100,9 @@ export function privateBrowserPeek(
   record: PrivateBrowserRecord | undefined,
 ): Reference | undefined {
   const refs = privateBrowserReferences(record)
-  return refs.length === 1 && refs[0]!.kind === 'artifact' ? refs[0] : undefined
+  return refs.length === 1 && (refs[0]!.kind === 'artifact' || refs[0]!.kind === 'input-artifact')
+    ? refs[0]
+    : undefined
 }
 
 export function privateBrowserResolve(
@@ -134,15 +137,18 @@ export function privateBrowserResolve(
         }
       : { kind: 'unavailable', label: 'Referenced record unavailable' }
   }
-  const capture = snapshot.artifacts
-  if (sourceId !== capture.sourceId || !capture.permittedAttachments.includes(ref.attachment))
-    return {
-      kind: 'unavailable',
-      label: 'Artifact unavailable in this publisher’s verified output',
-    }
+  const capture = ref.kind === 'input-artifact' ? snapshot.inputs : snapshot.artifacts
+  if (!capture || !capture.permittedAttachments.includes(ref.attachment))
+    return { kind: 'unavailable', label: 'Evidence unavailable in this selected capture' }
   if (capture.phase === 'pending')
-    return { kind: 'unavailable', label: 'Artifact pending verified delivery' }
-  const file = capture.files.find((item) => item.path === ref.path)
+    return { kind: 'unavailable', label: 'Evidence pending immutable capture' }
+  const files = capture.files.filter(
+    (item) =>
+      item.path === ref.path &&
+      (item.sourceId ?? capture.sourceId) === sourceId &&
+      (item.attachment === undefined || item.attachment === ref.attachment),
+  )
+  const file = files.length === 1 ? files[0] : undefined
   return capture.phase === 'ready' && file
     ? {
         kind: 'artifact',
@@ -150,7 +156,7 @@ export function privateBrowserResolve(
         artifactId: file.id,
         captureGeneration: capture.generation,
       }
-    : { kind: 'unavailable', label: 'Artifact unavailable in the immutable capture' }
+    : { kind: 'unavailable', label: 'Evidence unavailable in this publisher’s immutable capture' }
 }
 
 export function privateBrowserRows(
@@ -215,7 +221,13 @@ export function privateBrowserRecords(
             ...base,
             key: privateBrowserRowKey(block.id, row.id),
             signature: JSON.stringify([block.columns, row]),
-            title: privateBrowserValue(row.cells[block.columns[0]!.key] ?? null),
+            title: privateBrowserValue(
+              row.cells[
+                block.presentation?.kind === 'gallery' && block.presentation.title
+                  ? block.presentation.title
+                  : block.columns[0]!.key
+              ] ?? null,
+            ),
             collection: block,
             row,
           })
@@ -225,7 +237,13 @@ export function privateBrowserRecords(
           key: JSON.stringify(['block', sectionIndex, blockIndex]),
           signature: JSON.stringify(block),
           title:
-            block.kind === 'progress' ? block.label : block.kind === 'facts' ? 'Facts' : 'Report',
+            block.kind === 'progress'
+              ? block.label
+              : block.kind === 'facts'
+                ? 'Facts'
+                : block.kind === 'content'
+                  ? (block.title ?? 'Content')
+                  : 'Report',
           block,
         })
     })
@@ -276,4 +294,20 @@ export class PrivateBrowserClock {
     this.#at = now
     this.#running = live && fresh
   }
+}
+
+/** Related navigation preserves the current source and explicit application subject. */
+export function privateBrowserRelatedViews(
+  snapshot: DisplaySnapshot,
+  view: DisplaySnapshot['views'][number],
+): readonly DisplaySnapshot['views'][number][] {
+  const subject = view.value.target?.subjectKey
+  return subject === undefined
+    ? []
+    : snapshot.views.filter(
+        (item) =>
+          item.id !== view.id &&
+          item.sourceId === view.sourceId &&
+          item.value.target?.subjectKey === subject,
+      )
 }

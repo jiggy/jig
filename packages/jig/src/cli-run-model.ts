@@ -1,4 +1,6 @@
 import type { DisplayImagePreview } from '@jigging/display-model'
+import { attentionImportance as privateAttentionImportance } from '@jigging/display-model'
+import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
 import {
   type Collection,
   type NoticeSeverity,
@@ -7,10 +9,8 @@ import {
   VIEW_LIMITS,
   type ViewItem,
 } from '@jigging/reporting'
-import { attentionImportance as privateAttentionImportance } from '@jigging/display-model'
 import { privateCliHeading } from './cli-presentation.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
-import { escapeTerminalText as privateUpdateText } from '@jigging/display-tui/text'
 
 export type PrivateCallState =
   | 'requested'
@@ -60,6 +60,7 @@ export type PrivateArtifactFile = Readonly<{
   bytes: number
   state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   clipped: boolean
+  downloadable?: boolean
 }>
 export type PrivateArtifactCapture = Readonly<{
   generation: string
@@ -67,6 +68,13 @@ export type PrivateArtifactCapture = Readonly<{
   provenance: 'verified-delivery' | 'recorded-capture'
   phase: 'pending' | 'ready' | 'unavailable'
   files: readonly PrivateArtifactFile[]
+}>
+export type PrivateInputCapture = Readonly<{
+  generation: string
+  sourcePublisher: string
+  provenance: 'captured-input'
+  phase: 'pending' | 'ready' | 'unavailable'
+  files: readonly (PrivateArtifactFile & Readonly<{ attachment: string }>)[]
 }>
 export type PrivateAttention = {
   readonly admissionId: number
@@ -187,6 +195,22 @@ export class PrivateRunModel {
     | ((publisher: string, ref: Extract<Reference, { kind: 'artifact' }>) => string | undefined)
     | undefined
   #preview: ((path: string) => Promise<PrivatePreview | undefined>) | undefined
+  #read: ((path: string) => Promise<Uint8Array | undefined>) | undefined
+  #inputArtifact:
+    | ((
+        publisher: string,
+        ref: Extract<Reference, { kind: 'input-artifact' }>,
+      ) => string | undefined)
+    | undefined
+  #inputPreview: ((path: string) => Promise<PrivatePreview | undefined>) | undefined
+  #inputRead: ((path: string) => Promise<Uint8Array | undefined>) | undefined
+  #inputCapture: PrivateInputCapture = {
+    generation: 'pending',
+    sourcePublisher: 'root',
+    provenance: 'captured-input',
+    phase: 'pending',
+    files: [],
+  }
   #captureSequence = 0
   #capture: PrivateArtifactCapture = {
     generation: 'pending',
@@ -242,6 +266,9 @@ export class PrivateRunModel {
   }
   get artifactCapture(): PrivateArtifactCapture {
     return this.#capture
+  }
+  get inputCapture(): PrivateInputCapture {
+    return this.#inputCapture
   }
   sourceParent(publisher: string): string | undefined {
     return this.#parents.get(publisher)
@@ -501,7 +528,12 @@ export class PrivateRunModel {
     }
     if (source.retired.has(value.id)) throw new Error('Retired view ID reused')
     const old = source.views.get(value.id)
-    if (old && (old.value.operationId !== value.operationId || old.value.landing !== value.landing))
+    if (
+      old &&
+      (old.value.operationId !== value.operationId ||
+        old.value.landing !== value.landing ||
+        JSON.stringify(old.value.target) !== JSON.stringify(value.target))
+    )
       throw new Error('View association changed')
     if (value.landing && source.landing !== undefined && source.landing !== value.id)
       throw new Error('Multiple landing hints in one publisher')
@@ -509,8 +541,8 @@ export class PrivateRunModel {
       prior = old?.bytes ?? 0
     if (
       (!old && (source.views.size >= 8 || this.views.size >= 32)) ||
-      source.bytes - prior + bytes > 131072 ||
-      this.#bytes - prior + bytes > 524288
+      source.bytes - prior + bytes > VIEW_LIMITS.bytesPerSource ||
+      this.#bytes - prior + bytes > VIEW_LIMITS.bytesPerCommand
     )
       throw new Error('Retained view capacity reached')
     // All identity and capacity checks precede mutation of the last complete snapshot.
@@ -558,7 +590,10 @@ export class PrivateRunModel {
     this.#semantic()
     this.onChange()
   }
-  activity(publisher: string, value: Extract<ReportingMessage, { kind: 'activity' | 'clear' }>): void {
+  activity(
+    publisher: string,
+    value: Extract<ReportingMessage, { kind: 'activity' | 'clear' }>,
+  ): void {
     if (this.#stopped) return
     if (value.kind === 'clear') this.activities.delete(key(publisher, value.id))
     else if (this.activities.has(key(publisher, value.id)) || this.activities.size < 16)
@@ -622,11 +657,96 @@ export class PrivateRunModel {
       ref: Extract<Reference, { kind: 'artifact' }>,
     ) => string | undefined,
     preview: (path: string) => Promise<PrivatePreview | undefined>,
+    read?: (path: string) => Promise<Uint8Array | undefined>,
   ): void {
     this.#artifact = resolve
     this.#preview = preview
+    this.#read = read
     this.#semantic()
     this.onChange()
+  }
+  setInputArtifacts(
+    resolve: (
+      publisher: string,
+      ref: Extract<Reference, { kind: 'input-artifact' }>,
+    ) => string | undefined,
+    preview: (path: string) => Promise<PrivatePreview | undefined>,
+    read?: (path: string) => Promise<Uint8Array | undefined>,
+  ): void {
+    this.#inputArtifact = resolve
+    this.#inputPreview = preview
+    this.#inputRead = read
+    this.#semantic()
+    this.onChange()
+  }
+  setInputCapture(capture: PrivateInputCapture): void {
+    if (capture.files.length > 64 || !capture.generation || capture.generation.length > 256)
+      throw new TypeError('Invalid immutable input inventory')
+    let bytes = 0
+    const keys = new Set<string>()
+    for (const file of capture.files) {
+      const parts = file.path.split('/')
+      const key = JSON.stringify([file.attachment, file.path])
+      if (
+        !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(file.attachment) ||
+        file.attachment.length > 64 ||
+        !file.path ||
+        Buffer.byteLength(file.path) > 512 ||
+        parts.length > 16 ||
+        parts.some((part) => !part || part === '.' || part === '..' || part === '.jig') ||
+        /[\\\p{Cc}]/u.test(file.path) ||
+        keys.has(key) ||
+        !Number.isSafeInteger(file.bytes) ||
+        file.bytes < 0 ||
+        !['text', 'empty', 'image', 'non-text', 'unavailable'].includes(file.state)
+      )
+        throw new TypeError('Invalid immutable input inventory')
+      keys.add(key)
+      bytes += file.bytes
+    }
+    if (bytes > 64 * 1024 * 1024) throw new TypeError('Invalid immutable input inventory')
+    this.#inputCapture = Object.freeze({
+      ...capture,
+      generation: `${++this.#captureSequence}:${capture.generation}`,
+      files: Object.freeze(capture.files.map((file) => Object.freeze({ ...file }))),
+    })
+    this.#semantic()
+    this.onChange()
+  }
+  async inputCapturePreview(path: string, generation: string): Promise<PrivatePreview | undefined> {
+    const capture = this.#inputCapture
+    if (
+      this.#closed ||
+      capture.generation !== generation ||
+      capture.phase !== 'ready' ||
+      !capture.files.some((file) => `${file.attachment}/${file.path}` === path)
+    )
+      return undefined
+    const value = await this.#inputPreview?.(path)
+    return !this.#closed && this.#inputCapture === capture ? value : undefined
+  }
+  async captureRead(
+    path: string,
+    generation: string,
+    input = false,
+  ): Promise<Uint8Array | undefined> {
+    const capture = input ? this.#inputCapture : this.#capture
+    if (this.#closed || capture.generation !== generation || capture.phase !== 'ready')
+      return undefined
+    const file = capture.files.find(
+      (file) =>
+        (input && 'attachment' in file ? `${file.attachment}/${file.path}` : file.path) === path,
+    )
+    if (!file || file.downloadable === false) return undefined
+    const bytes = await (input ? this.#inputRead : this.#read)?.(path)
+    if (
+      !bytes ||
+      this.#closed ||
+      (input ? this.#inputCapture : this.#capture) !== capture ||
+      bytes.byteLength !== file.bytes
+    )
+      return undefined
+    return new Uint8Array(bytes)
   }
   setArtifactCapture(capture: PrivateArtifactCapture): void {
     if (capture.files.length > 64 || !capture.generation || capture.generation.length > 256)
@@ -694,18 +814,24 @@ export class PrivateRunModel {
         ? { available: true, label: `${view!.value.title} / ${ref.rowId}`, target: view!.key }
         : { available: false, label: 'Record unavailable' }
     }
-    const path = this.#artifact?.(publisher, ref)
+    const path =
+      ref.kind === 'input-artifact'
+        ? this.#inputArtifact?.(publisher, ref)
+        : this.#artifact?.(publisher, ref)
     return path
       ? {
           available: true,
-          label: `${this.workspace.recorded ? 'Captured recorded file' : 'Delivered file'}: ${ref.path}`,
+          label: `${ref.kind === 'input-artifact' ? 'Captured input' : this.workspace.recorded ? 'Captured recorded file' : 'Delivered file'}: ${ref.path}`,
           target: path,
         }
       : {
           available: false,
-          label: this.workspace.recorded
-            ? 'Artifact unavailable; not present in captured recorded files'
-            : 'Artifact unavailable; not present in verified delivered files',
+          label:
+            ref.kind === 'input-artifact'
+              ? 'Input unavailable; not present in the selected captured input set'
+              : this.workspace.recorded
+                ? 'Artifact unavailable; not present in captured recorded files'
+                : 'Artifact unavailable; not present in verified delivered files',
         }
   }
   commitAttention(reports: readonly PrivateAttention[]): void {
@@ -726,6 +852,10 @@ export class PrivateRunModel {
     this.stop()
     this.#artifact = undefined
     this.#preview = undefined
+    this.#read = undefined
+    this.#inputArtifact = undefined
+    this.#inputPreview = undefined
+    this.#inputRead = undefined
     this.#semanticListeners.clear()
     this.onChange = () => {}
   }

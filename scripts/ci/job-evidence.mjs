@@ -40,7 +40,30 @@ export async function observedCount({
       paths.add(command.transcript)
       const transcriptPath = await regularFile(dirname(transcriptManifest), command.transcript)
       const text = await readFile(transcriptPath, 'utf8')
-      reports.push(parseBunTranscript(text, command))
+      if (command.commandKind === 'node-test') {
+        if (
+          Object.keys(command).some(
+            (key) =>
+              !['transcript', 'files', 'hostMode', 'timeoutMs', 'commandKind', 'junit'].includes(
+                key,
+              ),
+          ) ||
+          !Array.isArray(command.files) ||
+          command.files.length !== 1 ||
+          !command.files[0].endsWith('.node.mjs') ||
+          typeof command.junit !== 'string' ||
+          !text.trim()
+        )
+          throw new Error('Node command requires one exact unfiltered file and its JUnit report')
+        if (paths.has(command.junit)) throw new Error('Repeated owning report')
+        paths.add(command.junit)
+        const report = await regularFile(dirname(transcriptManifest), command.junit)
+        const cases = readJUnitCases(report)
+        const observed = [...new Set(cases.map((item) => item.file ?? ''))].sort()
+        if (JSON.stringify(observed) !== JSON.stringify(command.files))
+          throw new Error('Node report files differ from its owning command')
+        reports.push({ count: cases.length, skipped: 0, filtered: 0 })
+      } else reports.push(parseBunTranscript(text, command))
     }
     if (reports.some((report) => report.skipped !== 0 || report.filtered !== 0))
       throw new Error('Selected whole-file execution contains skipped or filtered cases')

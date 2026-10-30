@@ -69,6 +69,11 @@ authored examples, not independent consumer evidence or promoted Starters.
   collections identify work, selection adds context, and typed references lead
   to evidence. Bound complete encoded items and disclose excerpts/totals.
 
+  Use `previewCollection` for explicit whole-row previews. Keep complete selected values and report full counts.
+  Stable targets identify captured source or domain requests independently of Run identity.
+  Reading views leave the publisher’s one lifetime landing hint for the targeted application page.
+  Use gallery roles for images, content blocks for captured files, and literal formats for code and diffs.
+
   Preserve full results. Reports remain provisional until application checks
   accept them, and blocking failures must be noticed while healthy work
   continues. TUI and web consume the same declarations.

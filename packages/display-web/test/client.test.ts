@@ -13,7 +13,7 @@ afterEach(() => {
   for (const client of clients.splice(0)) client.stop()
 })
 
-function snapshot(revision: number): DisplaySnapshot {
+function snapshot(revision: number, artifacts = [artifact]): DisplaySnapshot {
   return {
     kind: 'snapshot',
     revision,
@@ -38,7 +38,14 @@ function snapshot(revision: number): DisplaySnapshot {
       permittedAttachments: ['output'],
       provenance: 'verified-delivery',
       phase: 'ready',
-      files: [],
+      files: artifacts.map((id, index) => ({
+        id,
+        attachment: 'output',
+        path: `result-${index}.txt`,
+        bytes: 64,
+        state: 'text',
+        clipped: false,
+      })),
     },
   }
 }
@@ -98,12 +105,12 @@ function events() {
     },
   }
 }
-async function connected(revision = 1) {
+async function connected(revision = 1, artifacts = [artifact]) {
   const owner = harness()
   const stream = events()
   owner.client.start()
   owner.take('/api/events').resolve(stream.response)
-  owner.take('/api/snapshot').resolve(json(snapshot(revision)))
+  owner.take('/api/snapshot').resolve(json(snapshot(revision, artifacts)))
   await flush()
   expect(owner.client.connection).toBe('current')
   return { ...owner, stream }
@@ -327,7 +334,7 @@ test('snapshot bounds refuse before JSON acceptance and terminal responses relea
   const owner = harness()
   owner.client.start()
   owner.take('/api/events').resolve(events().response)
-  owner.take('/api/snapshot').resolve(new Response(' '.repeat(8 * 1024 * 1024 + 1)))
+  owner.take('/api/snapshot').resolve(new Response(' '.repeat(16 * 1024 * 1024 + 1)))
   await flush()
   expect(owner.client.body).toBeUndefined()
   expect(owner.client.connection).toBe('disconnected')
@@ -352,8 +359,8 @@ test('malformed new semantic fields never partly replace an already complete bod
 })
 
 test('preview routes encode producer opaque IDs without depending on a host HMAC scheme', async () => {
-  const owner = await connected()
   const opaque = 'producer/opaque?artifact'
+  const owner = await connected(1, [opaque])
   owner.client.setPreview({ artifactId: opaque, captureGeneration: 'capture-1', signature: 'row' })
   owner.take(`/api/artifacts/${encodeURIComponent(opaque)}/preview`).resolve(
     json({

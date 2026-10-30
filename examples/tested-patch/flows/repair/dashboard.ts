@@ -1,5 +1,6 @@
+import { createHash } from 'node:crypto'
 import type { RunResult } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/reporting'
+import type { ViewOptions, ViewSnapshot } from '@jigging/reporting'
 
 type Request = {
   issue: string
@@ -7,6 +8,33 @@ type Request = {
   files?: Record<string, string>
   cases?: { id: string }[]
 }
+export function repairViewOptions(
+  input: Request & { files: Record<string, string> },
+): Readonly<Record<'repair' | 'checks', ViewOptions>> {
+  const instanceKey = createHash('sha256')
+    .update(
+      JSON.stringify({
+        issue: input.issue,
+        editPaths: input.editPaths,
+        files: Object.keys(input.files)
+          .sort()
+          .map((path) => [path, input.files[path]]),
+      }),
+    )
+    .digest('hex')
+  return {
+    repair: {
+      title: 'Repair',
+      landing: true,
+      target: { definitionId: 'repair', instanceKey, subjectKey: instanceKey },
+    },
+    checks: {
+      title: 'Checks',
+      target: { definitionId: 'repair-checks', instanceKey, subjectKey: instanceKey },
+    },
+  }
+}
+
 type Check = {
   repositoryTestsPassed: boolean
   accepted: boolean

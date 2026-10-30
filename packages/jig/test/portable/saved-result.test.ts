@@ -8,6 +8,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { validateReportingMessage } from '@jigging/reporting'
 import { privateCliRequiresHost, privateCliSavedResultInspection } from '../../src/cli.js'
+import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
 import {
   privateSavedResultPlain,
@@ -117,6 +118,86 @@ test('saved previews remain immutable after packet replacement and release on cl
     }
     expect(capture.preview('review.patch')).toBeUndefined()
     expect(() => capture.reportPreview()).toThrow('closed')
+  }))
+test('saved web inspection advertises and downloads verified bytes without a preview', async () =>
+  fixture(async (root) => {
+    const original = Buffer.from([255, 0, 254, 1])
+    await packet(root, { 'binary.dat': original, 'missing.txt': Buffer.from('not retained') })
+    await rm(join(root, 'files', 'missing.txt'))
+    const capture = await privateCaptureSavedResult(root, undefined, false)
+    expect(capture.preview('binary.dat')).toBeUndefined()
+    let publishLink!: (url: URL) => void
+    const launched = new Promise<URL>((resolve) => {
+      publishLink = resolve
+    })
+    const progress = new PrivateCliProgress(
+      true,
+      (text) => {
+        const link = /Web display: (http:\/\/127\.0\.0\.1:[^\s]+)/.exec(text)?.[1]
+        if (link) publishLink(new URL(link))
+      },
+      undefined,
+      false,
+    )
+    const inspection = progress.inspectSavedResult(capture, false, process.stdin, 'web')
+    let launchTimer: ReturnType<typeof setTimeout> | undefined
+    try {
+      const url = await Promise.race([
+        launched,
+        inspection.then(() => {
+          throw new Error('Saved web inspection closed before activation')
+        }),
+        new Promise<never>((_, reject) => {
+          launchTimer = setTimeout(
+            () => reject(new Error('Saved web inspection did not activate')),
+            5000,
+          )
+        }),
+      ])
+      clearTimeout(launchTimer)
+      const headers = { Authorization: `Bearer ${url.hash.slice('#cap='.length)}` }
+      const request = (path: string, extra: RequestInit = {}) =>
+        fetch(url.origin + path, {
+          ...extra,
+          headers: { ...headers, ...extra.headers },
+          signal: AbortSignal.timeout(2000),
+        })
+      const snapshotResponse = await request('/api/snapshot')
+      expect(snapshotResponse.status).toBe(200)
+      const snapshot = await snapshotResponse.json()
+      expect(snapshot.kind).toBe('snapshot')
+      expect(snapshot.artifacts.files).toHaveLength(2)
+      const binary = snapshot.artifacts.files.find(
+        (file: { path: string }) => file.path === 'binary.dat',
+      )
+      const missing = snapshot.artifacts.files.find(
+        (file: { path: string }) => file.path === 'missing.txt',
+      )
+      expect(binary).toMatchObject({ state: 'non-text', downloadable: true })
+      expect(missing).toMatchObject({ state: 'unavailable', downloadable: false })
+      await writeFile(join(root, 'files', 'binary.dat'), 'changed after capture')
+      const download = (id: string) =>
+        request(`/api/artifacts/${id}/download`, {
+          headers: { 'X-Jig-Capture-Generation': snapshot.artifacts.generation },
+        })
+      const reply = await download(binary.id)
+      expect(reply.status).toBe(200)
+      expect(new Uint8Array(await reply.arrayBuffer())).toEqual(new Uint8Array(original))
+      expect((await download(missing.id)).status).toBe(404)
+      expect(
+        (await request('/api/close', { method: 'POST', headers: { Origin: url.origin } })).status,
+      ).toBe(200)
+      await inspection
+    } finally {
+      clearTimeout(launchTimer)
+      progress.close()
+      try {
+        await progress.closeWorkspace()
+        await inspection
+      } finally {
+        capture.close()
+      }
+    }
   }))
 test('partial file verification preserves the exact valid report and prior verified files', async () =>
   fixture(async (root) => {

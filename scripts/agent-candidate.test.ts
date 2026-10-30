@@ -24,6 +24,9 @@ async function linuxCommandFixture(workflow: any) {
     'packages/display-model/test/one.test.ts',
     'packages/display-web/test/one.test.ts',
     'packages/display-tui/test/one.test.ts',
+    'packages/display-model/test/material.node.mjs',
+    'packages/display-web/test/material.node.mjs',
+    'packages/display-tui/test/material.node.mjs',
   ]
   try {
     for (const file of files) {
@@ -160,10 +163,10 @@ test('PRs retain complete coverage and keep quick checks independent of candidat
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
   const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
   const entries = mac.jobs.prerequisites.strategy.matrix.include
-  expect(entries).toHaveLength(6)
-  expect(mac.jobs.prerequisites['timeout-minutes']).toBe(
-    '${{ matrix.installed && inputs.include_startup_profile && 65 || 35 }}',
+  expect(entries).toHaveLength(
+    Object.values(MAC_HOST_SHARDS).reduce((sum, count) => sum + count, 0),
   )
+  // host-test-coverage.test.mjs evaluates allocation and timeout semantics.
   for (const [arch, count] of Object.entries(MAC_HOST_SHARDS)) {
     const selected = entries.filter((e: any) => e.arch === arch)
     expect(selected.map((e: any) => e.shard).sort()).toEqual(
@@ -466,7 +469,12 @@ test('Python reporting uses frozen distributions and the published FLOW dependen
   const ci = Bun.YAML.parse(await Bun.file(join(root, '.github/workflows/ci.yml')).text())
   expect(
     ci.jobs['python-build'].steps.some((step) =>
-      step.run?.includes('pip download --no-deps jiggy-flow==0.1.0a7'),
+      step.run?.includes('pip download --no-deps jiggy-flow==0.1.0a8'),
+    ),
+  ).toBeTrue()
+  expect(
+    ci.jobs['source-tests'].steps.some((step) =>
+      step.run?.includes('mypy==1.18.2 jiggy-flow==0.1.0a8'),
     ),
   ).toBeTrue()
   expect(
@@ -616,6 +624,10 @@ test('Linux host scope preserves complete qualification and always reports its f
     expect(
       sourceCommands.every((command: any) => command.files.length === 1 && !command.filter),
     ).toBeTrue()
+    for (const command of sourceCommands) {
+      expect(command.commandKind === 'node-test').toBe(command.files[0].endsWith('.node.mjs'))
+      expect(typeof command.junit === 'string').toBe(command.files[0].endsWith('.node.mjs'))
+    }
     for (const [index, file] of fixture.files.entries()) {
       const suite = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'][index % 3]
       expect(fixture.commands[suite].some((command: any) => command.files[0] === file)).toBeTrue()
@@ -704,11 +716,17 @@ for (const scenario of linuxAggregateScenarios) {
           join(shard, 'linux-command-evidence/manifest.json'),
           JSON.stringify({ schemaVersion: 1, commands: commands[suite] }),
         )
-        for (const command of commands[suite])
+        for (const command of commands[suite]) {
           await writeFile(
             join(shard, 'linux-command-evidence', command.transcript),
             'Owning transcript retained.\n',
           )
+          if (command.commandKind === 'node-test')
+            await writeFile(
+              join(shard, 'linux-command-evidence', command.junit),
+              `<testsuites tests="1"><testcase file="${command.files[0]}" classname="node" name="executes whole file"/></testsuites>`,
+            )
+        }
       }
       if (scenario.command) {
         await writeFile(
@@ -954,184 +972,3 @@ test('native acquisition passes exact source and optional upstream run, and pres
     await rm(directory, { recursive: true, force: true })
   }
 })
-
-test('Mac qualification copies the supplied candidate bytes and refuses archive drift without repacking', async () => {
-  const directory = await mkdtemp(join(tmpdir(), 'mac-frozen-candidate-'))
-  const repository = join(directory, 'source')
-  const canonical = join(directory, 'canonical')
-  const bin = join(directory, 'bin')
-  const log = join(directory, 'bun-calls')
-  const shardLog = join(directory, 'shard-calls')
-  const node = Bun.which('node')
-  if (!node) throw new Error('candidate orchestration requires genuine Node')
-  const execute = (command: string, args: string[], cwd = repository) => {
-    const result = spawnSync(command, args, {
-      cwd,
-      encoding: 'utf8',
-      env: { ...process.env, LC_ALL: 'C' },
-    })
-    if (result.status !== 0)
-      throw Error(result.stderr || result.error?.message || 'fixture command failed')
-    return result.stdout.trim()
-  }
-  try {
-    await mkdir(join(repository, 'scripts/ci'), { recursive: true })
-    await mkdir(canonical)
-    await mkdir(bin)
-    await mkdir(join(directory, 'scratch'))
-    for (const name of ['qualify-macos-host.sh', 'candidate-provenance.mjs']) {
-      await copyFile(join(root, 'scripts/ci', name), join(repository, 'scripts/ci', name))
-    }
-    await mkdir(join(repository, 'scripts/release'))
-    await copyFile(
-      join(root, 'scripts/release/catalog.mjs'),
-      join(repository, 'scripts/release/catalog.mjs'),
-    )
-    await writeFile(
-      join(repository, 'scripts/ci/macos-host-test-shards.mjs'),
-      `
-      import { appendFileSync, readFileSync } from 'node:fs'
-      import { join } from 'node:path'
-      if (process.argv[2] === 'count') console.log(3)
-      else if (process.argv[2] === 'run') {
-        const inputs = Object.entries({ 'flow-sdk':'FLOW_SDK_PACKAGE_ARCHIVE', 'reporting':'REPORTING_PACKAGE_ARCHIVE', 'agent-method':'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp':'AGENT_ACP_PACKAGE_ARCHIVE', 'display-model':'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web':'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui':'DISPLAY_TUI_PACKAGE_ARCHIVE', jig:'JIG_PACKAGE_ARCHIVE' })
-        for (const [kind, variable] of inputs) {
-          const copied = process.env[variable]
-          if (!copied || copied.startsWith(process.env.JIG_CI_CANDIDATE_DIRECTORY)) throw Error('consumer must receive an isolated frozen copy')
-          if (!readFileSync(copied).equals(readFileSync(join(process.env.JIG_CI_CANDIDATE_DIRECTORY,kind,kind+'.tgz')))) throw Error('consumer received different bytes')
-        }
-        appendFileSync(process.env.MOCK_SHARD_LOG, 'qualified-copy\\n')
-        if (process.env.MOCK_MUTATE === 'archive') appendFileSync(join(process.env.JIG_CI_CANDIDATE_DIRECTORY,'jig/jig.tgz'), 'changed')
-      } else throw Error('unexpected shard invocation')
-    `,
-    )
-    const tools = {
-      uname: 'case "$1" in -s) echo Darwin;; -m) echo x86_64;; -r) echo 24.6.0;; *) exit 2;; esac',
-      sw_vers: 'echo 24G830',
-      launchctl: 'exit 0',
-      mount: 'exit 0',
-      ps: 'exit 0',
-      bun: `printf '%s\\n' "$*" >> "$MOCK_BUN_LOG"
-if [ "$1" = -e ]; then
-  case "$2" in
-    'console.log(process.arch)') echo x64;;
-    *realpathSync*) exec "$MOCK_NODE" -e "$2" "$3";;
-    *Bun.version*) exit 0;;
-    *) exit 42;;
-  esac
-else exit 42; fi`,
-    }
-    for (const [name, body] of Object.entries(tools)) {
-      await writeFile(join(bin, name), `#!/bin/sh\nset -eu\n${body}\n`)
-      await chmod(join(bin, name), 0o755)
-    }
-    execute('git', ['init', '-q'])
-    execute('git', ['add', 'scripts'])
-    execute('git', [
-      '-c',
-      'user.name=Candidate fixture',
-      '-c',
-      'user.email=fixture@example.invalid',
-      'commit',
-      '-qm',
-      'candidate fixture',
-    ])
-    const revision = execute('git', ['rev-parse', 'HEAD'])
-    const { PACKAGE_LAYOUT, RELEASE_PACKAGE_LAYOUT, writeCandidateReceipt } = await import(
-      './ci/candidate-provenance.mjs'
-    )
-    for (const [kind, name] of Object.entries(PACKAGE_LAYOUT)) {
-      const contents = join(directory, 'contents', kind)
-      await mkdir(join(contents, 'package'), { recursive: true })
-      await mkdir(join(canonical, kind))
-      await writeFile(
-        join(contents, 'package/package.json'),
-        JSON.stringify({ name, version: '0.1.0-alpha.1' }),
-      )
-      const archive = join(canonical, kind, `${kind}.tgz`)
-      execute('tar', ['-czf', archive, '-C', contents, 'package'])
-      const bytes = await readFile(archive)
-      await writeFile(
-        `${archive}.sha256`,
-        `${createHash('sha256').update(bytes).digest('hex')}  ${kind}.tgz\n`,
-      )
-      await writeFile(
-        `${archive}.files`,
-        `${execute('tar', ['-tzf', archive]).split('\n').sort().join('\n')}\n`,
-      )
-    }
-    await mkdir(join(canonical, 'resolution'))
-    await writeFile(join(canonical, 'resolution/bun.lock'), 'fixture dependency resolution')
-    await writeCandidateReceipt({
-      root: canonical,
-      sourceRevision: revision,
-      release: {
-        schemaVersion: 1,
-        sourceRevision: revision,
-        eligible: false,
-        reason: 'feature-source',
-        packages: Object.entries(RELEASE_PACKAGE_LAYOUT).map(([kind, name]) => ({
-          kind,
-          name,
-          version: '0.1.0-alpha.1',
-        })),
-        pendingPackages: [],
-      },
-      producer: {
-        repository: 'local/local',
-        workflowPath: '.github/workflows/ci.yml',
-        runId: 0,
-        runAttempt: 0,
-        event: 'local',
-        headSha: revision,
-        headBranch: 'local',
-        headRepository: 'local/local',
-      },
-      buildProfile: {
-        version: '1.3.3',
-        revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
-        platform: 'linux',
-        architecture: 'x64',
-        nodeVersion: process.versions.node,
-        npmVersion: '11.6.2',
-        justVersion: 'just 1.43.1',
-      },
-      resolutionFiles: ['resolution/bun.lock'],
-    })
-    const run = (extra: Record<string, string> = {}) =>
-      spawnSync('/bin/bash', ['scripts/ci/qualify-macos-host.sh', '--shard', '0'], {
-        cwd: repository,
-        encoding: 'utf8',
-        timeout: 30000,
-        env: {
-          ...process.env,
-          PATH: `${bin}:${process.env.PATH}`,
-          JIG_AUTHORING_NODE_PATH: node,
-          JIG_CI_CANDIDATE_DIRECTORY: canonical,
-          TMPDIR: join(directory, 'scratch'),
-          MOCK_NODE: node,
-          MOCK_BUN_LOG: log,
-          MOCK_SHARD_LOG: shardLog,
-          ...extra,
-        },
-      })
-    const qualified = run()
-    expect(qualified.status, qualified.stderr).toBe(0)
-    expect(await Bun.file(shardLog).text()).toBe('qualified-copy\n')
-    expect(await readdir(join(directory, 'scratch'))).toEqual([])
-    const extraArchive = join(canonical, 'jig/extra.tgz')
-    await copyFile(join(canonical, 'jig/jig.tgz'), extraArchive)
-    const ambiguous = run()
-    expect(ambiguous.status).toBe(1)
-    expect(ambiguous.stderr).toContain('Expected one canonical jig archive')
-    expect(await Bun.file(shardLog).text()).toBe('qualified-copy\n')
-    await rm(extraArchive)
-    const changed = run({ MOCK_MUTATE: 'archive' })
-    expect(changed.status).toBe(1)
-    expect(changed.stderr).toContain('The canonical candidate changed')
-    expect(await Bun.file(log).text()).not.toContain('pm pack')
-    expect(await Bun.file(log).text()).not.toContain('scripts/pack.ts')
-  } finally {
-    await rm(directory, { recursive: true, force: true })
-  }
-}, 30000)

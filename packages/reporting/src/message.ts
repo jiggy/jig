@@ -3,7 +3,11 @@ import descriptor from './reporting.json' with { type: 'json' }
 import { canonicalReportingMessage } from './validation.js'
 
 export type { NoticeSeverity, Progress, ReportingMessage } from './validation.js'
-export { canonicalReportingMessage, REPORTING_LIMITS, validateReportingMessage } from './validation.js'
+export {
+  canonicalReportingMessage,
+  REPORTING_LIMITS,
+  validateReportingMessage,
+} from './validation.js'
 
 export const REPORTING_CONTRACT = Object.freeze({
   id: descriptor.id,

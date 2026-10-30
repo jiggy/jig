@@ -1,16 +1,16 @@
 import { createHmac, randomBytes } from 'node:crypto'
 import {
-  recordReferences as privateRecordReferences,
+  DISPLAY_INCOMPLETE_LIMIT,
+  DISPLAY_SNAPSHOT_LIMIT,
   type DisplayAttribution,
   type DisplayFact,
-  type DisplaySnapshot,
   type DisplayIncompleteSnapshot,
   type DisplayPreviewReply,
-  DISPLAY_SNAPSHOT_LIMIT,
-  DISPLAY_INCOMPLETE_LIMIT,
+  type DisplaySnapshot,
+  recordReferences as privateRecordReferences,
 } from '@jigging/display-model'
 import { privateRecordedViewRole } from './cli-recorded-role.js'
-import { type PrivateAdmission, type PrivateRunModel } from './cli-run-model.js'
+import type { PrivateAdmission, PrivateRunModel } from './cli-run-model.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 
 export const PRIVATE_WEB_SNAPSHOT_LIMIT = DISPLAY_SNAPSHOT_LIMIT
@@ -223,10 +223,31 @@ export class PrivateDisplayProjection {
       phase: capture.phase,
       files: capture.files.map((file) => ({
         id: this.#artifactId(capture.generation, file.path),
+        ...(file.downloadable === undefined ? {} : { downloadable: file.downloadable }),
         path: file.path,
         bytes: file.bytes,
         state: file.state,
         clipped: file.clipped,
+      })),
+    }
+  }
+  #inputs(): NonNullable<DisplaySnapshot['inputs']> {
+    const capture = this.model.inputCapture
+    return {
+      generation: this.#id('input-capture', capture.generation),
+      sourceId: this.#source(capture.sourcePublisher),
+      permittedAttachments: [...new Set(capture.files.map((file) => file.attachment))],
+      provenance: 'captured-input',
+      phase: capture.phase,
+      files: capture.files.map((file) => ({
+        id: this.#artifactId(capture.generation, `input:${file.attachment}/${file.path}`),
+        attachment: file.attachment,
+        sourceId: this.#source(capture.sourcePublisher),
+        path: file.path,
+        bytes: file.bytes,
+        state: file.state,
+        clipped: file.clipped,
+        ...(file.downloadable === undefined ? {} : { downloadable: file.downloadable }),
       })),
     }
   }
@@ -279,7 +300,7 @@ export class PrivateDisplayProjection {
       artifacts = this.#artifacts()
     allowance(
       views.map((view) => view.value),
-      512 * 1024,
+      6 * 1024 * 1024,
     )
     allowance(calls, 512 * 1024)
     allowance(activities, 768 * 1024)
@@ -311,6 +332,7 @@ export class PrivateDisplayProjection {
       journal,
       attention,
       artifacts,
+      inputs: this.#inputs(),
     }
     allowance(
       {
@@ -363,24 +385,46 @@ export class PrivateDisplayProjection {
     )
     return result
   }
+  #locate(artifactId: string) {
+    const output = this.model.artifactCapture
+    const outputFile = output.files.find(
+      (file) => this.#artifactId(output.generation, file.path) === artifactId,
+    )
+    if (outputFile)
+      return {
+        capture: output,
+        file: outputFile,
+        path: outputFile.path,
+        generation: this.#id('capture', output.generation),
+        input: false,
+      }
+    const input = this.model.inputCapture
+    const inputFile = input.files.find(
+      (file) =>
+        this.#artifactId(input.generation, `input:${file.attachment}/${file.path}`) === artifactId,
+    )
+    return inputFile
+      ? {
+          capture: input,
+          file: inputFile,
+          path: `${inputFile.attachment}/${inputFile.path}`,
+          generation: this.#id('input-capture', input.generation),
+          input: true,
+        }
+      : undefined
+  }
   async preview(
     artifactId: string,
     captureGeneration?: string,
   ): Promise<DisplayPreviewReply | undefined> {
     if (!/^[0-9a-f]{64}$/.test(artifactId) || this.#previewBusy) return undefined
-    const capture = this.model.artifactCapture
-    if (
-      captureGeneration !== undefined &&
-      captureGeneration !== this.#id('capture', capture.generation)
-    )
+    const located = this.#locate(artifactId)
+    if (!located || (captureGeneration !== undefined && captureGeneration !== located.generation))
       return undefined
-    const file = capture.files.find(
-      (file) => this.#artifactId(capture.generation, file.path) === artifactId,
-    )
-    if (!file) return undefined
+    const { capture, file, path, generation, input } = located
     const base: DisplayPreviewReply = {
       artifactId,
-      captureGeneration: this.#id('capture', capture.generation),
+      captureGeneration: generation,
       provenance: capture.provenance,
       state: capture.phase === 'ready' ? file.state : 'unavailable',
       bytes: file.bytes,
@@ -389,8 +433,11 @@ export class PrivateDisplayProjection {
     if (!['text', 'empty', 'image'].includes(base.state)) return base
     this.#previewBusy = true
     try {
-      const preview = await this.model.capturePreview(file.path, capture.generation)
-      if (this.model.artifactCapture !== capture) return undefined
+      const preview = await (input
+        ? this.model.inputCapturePreview(path, capture.generation)
+        : this.model.capturePreview(path, capture.generation))
+      if ((input ? this.model.inputCapture : this.model.artifactCapture) !== capture)
+        return undefined
       if (!preview || Buffer.byteLength(preview.text) > 65536)
         return { ...base, state: 'unavailable' }
       return {
@@ -400,9 +447,41 @@ export class PrivateDisplayProjection {
         clipped: preview.clipped,
       }
     } catch {
-      return this.model.artifactCapture === capture ? { ...base, state: 'unavailable' } : undefined
+      return (input ? this.model.inputCapture : this.model.artifactCapture) === capture
+        ? { ...base, state: 'unavailable' }
+        : undefined
     } finally {
       this.#previewBusy = false
+    }
+  }
+  async download(
+    artifactId: string,
+    requestedGeneration: string,
+  ): Promise<
+    Readonly<{ bytes: Uint8Array; filename: string; captureGeneration: string }> | undefined
+  > {
+    if (!/^[0-9a-f]{64}$/.test(artifactId)) return undefined
+    const located = this.#locate(artifactId)
+    if (
+      !located ||
+      requestedGeneration !== located.generation ||
+      located.file.bytes > 16 * 1024 * 1024
+    )
+      return undefined
+    const bytes = await this.model.captureRead(
+      located.path,
+      located.capture.generation,
+      located.input,
+    )
+    if (
+      !bytes ||
+      (located.input ? this.model.inputCapture : this.model.artifactCapture) !== located.capture
+    )
+      return undefined
+    return {
+      bytes,
+      filename: located.file.path.split('/').at(-1) ?? 'artifact',
+      captureGeneration: located.generation,
     }
   }
 }

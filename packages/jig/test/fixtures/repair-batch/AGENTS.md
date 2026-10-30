@@ -9,7 +9,7 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 
 - The files here overlay the public tested-patch application in disposable
   host-test projects. They own only batch orchestration and timesheet inputs.
-- `../../root-agent-run-lifecycle.test.ts` owns assembly, synthetic Agent
+- `../../host/root-agent-run-lifecycle.test.ts` owns assembly, synthetic Agent
   responses, command execution, result assertions, and cleanup.
 - Source capture, patch acceptance, and the repair leaf come from the current
   public example. Do not maintain private copies of those implementations.
@@ -22,6 +22,7 @@ checkpoint aggregates without adding batch behavior to the introductory example.
   prefix. Host execution uses the unchanged current helpers, never a
   maintained private implementation. The public single-project coordinator
   stays unchanged.
+  Copy each imported helper's package-local dependencies, including presentation projections.
 - `../../portable/repair-monitoring.test.ts` checks the actual progress formatter.
   It does not replace child dispatch or channel lifecycle.
   Batch execution requires the installed native suite.
@@ -38,7 +39,7 @@ checkpoint aggregates without adding batch behavior to the introductory example.
 
 ## Verification
 
-- `bun test packages/jig/test/root-agent-run-lifecycle.test.ts` checks assembly.
+- `bun test packages/jig/test/portable/root-agent-fixtures.test.ts` checks exact helper bytes and bundles the assembled Flow.
 - Real execution requires the provisioned Linux host-conformance workflow.
 
 ## Child DOX Index

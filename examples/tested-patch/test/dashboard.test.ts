@@ -1,11 +1,67 @@
 import { expect, test } from 'bun:test'
 import { type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
-import { patchReviewView } from '../flows/project/dashboard.ts'
+import { exportedPatchView } from '../flows/export-patch/dashboard.ts'
+import { unifiedPatch } from '../flows/export-patch/patch.ts'
+import { patchReviewOptions, patchReviewView } from '../flows/project/dashboard.ts'
 import {
+  repairViewOptions,
   checksView as workerChecks,
   repairView as workerRequest,
 } from '../flows/repair/dashboard.ts'
 import { input } from './fixture.ts'
+
+test('application and specialist projections retain request identity across live updates', () => {
+  const options = patchReviewOptions(input)
+  expect(options).toEqual(patchReviewOptions({ ...input }))
+  expect(options).toEqual(
+    patchReviewOptions({
+      ...input,
+      files: Object.fromEntries(Object.entries(input.files).reverse()),
+    }),
+  )
+  expect(options.landing).toBe(true)
+  expect(options.target?.instanceKey).toMatch(/^[a-f0-9]{64}$/)
+  expect(options.target?.instanceKey).not.toBe(
+    patchReviewOptions({ ...input, issue: 'A separate repair request' }).target?.instanceKey,
+  )
+  expect(options.target?.instanceKey).not.toBe(
+    patchReviewOptions({ ...input, files: { ...input.files, 'src/parse.ts': 'changed source' } })
+      .target?.instanceKey,
+  )
+  const worker = repairViewOptions(input)
+  expect(worker.repair.target?.subjectKey).toBe(options.target?.subjectKey)
+  expect(worker.checks.target?.subjectKey).toBe(options.target?.subjectKey)
+  expect(worker.repair.target?.definitionId).not.toBe(worker.checks.target?.definitionId)
+  for (const [id, value] of Object.entries({ project: options, ...worker })) {
+    validateReportingMessage({
+      kind: 'view',
+      id,
+      ...value,
+      ...patchReviewView({ phase: 'reading', request: input }),
+    })
+  }
+})
+
+test('exported patches retain literal diff formatting and a complete-file reference', () => {
+  const diff = unifiedPatch('src/example.ts', 'const count = 1\n', 'const count = 2\n')
+  const item = checked(
+    exportedPatchView({ 'review.patch': diff, 'goal.txt': '<script>literal request</script>' }),
+  )
+  const rows = item.sections[0].blocks[0].rows
+  expect(rows[0].details[0]).toEqual({
+    kind: 'report',
+    format: 'diff',
+    text: diff,
+    references: [{ kind: 'artifact', attachment: 'files', path: 'review/review.patch' }],
+  })
+  expect(rows[1].details[0].format).toBe('plain')
+  expect(rows[1].details[0].text).toBe('<script>literal request</script>')
+  const long = checked(exportedPatchView({ 'proposal-1.patch': 'x'.repeat(8192) }))
+  expect(long.sections[0].blocks[0].rows[0].details[0].text).toContain('[Excerpt;')
+  expect(long.sections[0].blocks[0].rows[0].details[0].references[0].path).toBe(
+    'review/proposal-1.patch',
+  )
+})
 
 function checked(view: ViewSnapshot) {
   const item = validateReportingMessage({ kind: 'view', id: 'test', title: 'Domain view', ...view })

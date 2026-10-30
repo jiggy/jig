@@ -103,8 +103,11 @@ stays with the checker. It does not write anything until formatting passes.
 Flow contracts bound invocation data; `check-roster/policy.ts` enforces scheduling
 rules. The private reply schema is deliberately separate from those rules.
 
+`flows/roster/view.ts` projects typed application state through public reporting types.
+Its fixed target identifies the captured scenario independently of a Run.
+The completed page offers the captured CSV through a semantic content block.
 All views use `withReporting` from `@jigging/reporting` and the copied
-`jig:reporting` agreement. Views are observations; the final application and
+`jig:reporting` agreement. Views are observations. The final application and
 host result establish acceptance and delivery.
 
 ## Checks and limits

@@ -3,7 +3,11 @@ import { type ViewSnapshot, validateReportingMessage } from '@jigging/reporting'
 import input from '../fixtures/duplicate.json'
 import { caseView as proposal, chargesView as proposalCharges } from '../flows/assess/dashboard.ts'
 import { decide } from '../flows/check-credit/policy.ts'
-import { type SupportState, supportCaseView } from '../flows/resolve/dashboard.ts'
+import {
+  type SupportState,
+  supportCaseOptions,
+  supportCaseView,
+} from '../flows/resolve/dashboard.ts'
 
 function checked(view: ViewSnapshot) {
   const item = validateReportingMessage({ kind: 'view', id: 'test', title: 'Domain view', ...view })
@@ -77,4 +81,24 @@ test('a disputed charge beyond the excerpt and its earlier match remain visible'
   expect(visible.map((row: any) => row.cells.charge)).toContain('charge-31')
   expect(visible.map((row: any) => row.cells.charge)).toContain('charge-24')
   expect(visible.find((row: any) => row.cells.charge === 'charge-31').cells.proposed).toBe(true)
+})
+
+test('a case target follows the supplied account and request independently of changing charge facts', () => {
+  const options = supportCaseOptions(input)
+  const updated = structuredClone(input)
+  updated.account.charges[0]!.amountCents += 1
+  expect(supportCaseOptions(updated)).toEqual(options)
+  const anotherRequest = supportCaseOptions({
+    ...input,
+    message: 'Please explain the earlier charge.',
+  })
+  expect(anotherRequest.target?.instanceKey).not.toBe(options.target?.instanceKey)
+  expect(anotherRequest.target?.subjectKey).toBe(options.target?.subjectKey)
+  expect(options.landing).toBe(true)
+  validateReportingMessage({
+    kind: 'view',
+    id: 'case',
+    ...options,
+    ...supportCaseView({ input, phase: 'assessing' }),
+  })
 })

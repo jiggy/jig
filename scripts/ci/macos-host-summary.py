@@ -61,16 +61,20 @@ def summarize(architecture, revision, count, evidence, jobs):
 
 def markdown(report):
     lines = [f"### Mac host proof — {report['architecture']}", "",
-             f"Revision: `{report['revision']}`. Qualification: **{'passed' if report['qualified'] else 'failed'}**.", "",
+             f"Revision: `{report['revision']}`. Qualification: **{'passed' if report['qualified'] else 'failed'}**.", ""]
+    if report.get("hostProfile"):
+        host = report["hostProfile"]
+        lines.extend([f"Tested host: `{host['arch']}` Darwin `{host['kernel']}` build `{host['build']}`, Bun `{host['bun']}` (`{host['revision']}`).", ""])
+    lines.extend([
              "| Shard | Runner wait | Job execution | Executed cases | Skipped reports | Failed cases |",
-             "| --- | --- | --- | --- | --- | --- |"]
+             "| --- | --- | --- | --- | --- | --- |"])
     for row in report["shards"]:
         timing = row["timing"]
         wait = f"{timing['wait_seconds']:.0f}s" if timing else "unavailable"
         execution = f"{timing['job_seconds']:.0f}s" if timing else "unavailable"
         lines.append(f"| {row['shard']} | {wait} | {execution} | {row['executed']} | {row['skipped_reports']} | {row['failures']} |")
     lines.extend(["", f"Executed cases: **{report['executed']}**. Skipped or filtered cases are not executed proof and reject selected whole-file qualification.", "",
-                  "Counts cover planned Bun source, native and installed-client startup tests. Packed consumer CLI probes, archive identity and residue checks are additionally required by completion markers.", "",
+                  "Counts cover planned source, native and installed-client startup tests. Packed consumer CLI probes, archive identity and residue checks are additionally required by completion markers.", "",
                   "Runner wait is measured from job creation to runner start. Job execution includes setup, proof and cleanup; neither value is a per-test runtime."])
     if not report["timing_available"]:
         lines.extend(["", "Some job timings are unavailable. Qualification uses completion markers and test reports, independently of the timing API."])

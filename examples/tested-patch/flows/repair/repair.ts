@@ -5,7 +5,7 @@ import {
 } from '@jigging/agent-method'
 import { type JsonValue, OperationError, type RunContext, type RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
-import { checksView, repairView } from './dashboard.ts'
+import { checksView, repairView, repairViewOptions } from './dashboard.ts'
 import { type Evaluation, evaluate } from './evidence.ts'
 import { candidate, digest, object, type Proposal, parseInput, parseProposal } from './policy.ts'
 
@@ -22,8 +22,9 @@ export async function repair(
   updates?: Reporter,
 ): Promise<RunResult> {
   const input = parseInput(run.input)
-  const repairReport = updates?.view('repair', { title: 'Repair', landing: true })
-  const checks = updates?.view('checks', { title: 'Checks' })
+  const options = repairViewOptions(input)
+  const repairReport = updates?.view('repair', options.repair)
+  const checks = updates?.view('checks', options.checks)
   repairReport?.update(repairView(input))
   checks?.update(checksView())
   const settings = object(run.settings ?? {})

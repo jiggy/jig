@@ -865,7 +865,8 @@ function requireProfileEnvironment() {
   const macHost =
     platform() === 'darwin' &&
     ((arch() === 'x64' && release() === '23.4.0' && macBuild === '23E224') ||
-      (['x64', 'arm64'].includes(arch()) && release() === '24.6.0' && macBuild === '24G830')) &&
+      (['x64', 'arm64'].includes(arch()) && release() === '24.6.0' && macBuild === '24G830') ||
+      (arch() === 'arm64' && release() === '24.6.0' && macBuild === '24H232')) &&
     Bun.version === '1.4.2' &&
     Bun.revision === '744846f844374847c902b5e7fd59b4342a51ef99'
   if (

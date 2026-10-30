@@ -1,5 +1,5 @@
 from jiggy.flow import RunContext, RunResult
-from jiggy.reporting import Progress, reporting
+from jiggy.reporting import (DisplayPublicationContext, Progress, create_display_bundle, encode_display_bundle, reporting)
 
 
 async def invoices(run: RunContext) -> RunResult:
@@ -18,3 +18,14 @@ async def document_review(run: RunContext) -> RunResult:
             {"blocks": [{"kind": "report", "text": "Checking the requested questions"}]}]})
         matters.retire()
     return {"outcome": "needs-review", "output": None}
+
+
+def final_edition(context: DisplayPublicationContext) -> str:
+    bundle = create_display_bundle(context, {
+        'requestId': 'publication-1', 'edition': 'Checked documents',
+        'views': [{'view': {'kind':'view','id':'documents','title':'Documents',
+            'summary':'Checked document material',
+            'target': {'definitionId':'documents','instanceKey':'batch-1'},
+            'sections': []}, 'completeness':'complete'}],
+    })
+    return encode_display_bundle(bundle)

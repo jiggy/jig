@@ -5,9 +5,12 @@ import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
+import { parse } from 'yaml'
 
 const affectedManifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url)))
 
+import { MAC_HOST_PROFILES } from './macos-host-profiles.mjs'
 import {
   commandsForShard,
   discoverHostTests,
@@ -46,9 +49,32 @@ test('current full Mac role assignment owns every selected file once without nam
     ),
   )
   for (const arch of ['x64', 'arm64']) {
-    const shards = planMacHostTests(files, arch)
+    const target = affectedManifest.targets.find((target) => target.id === `macos-${arch}`)
+    const candidates = MAC_HOST_PROFILES[arch]
+    assert.ok(candidates.some(({ build }) => target.inventoryProfile === `macos-${build}`))
+    assert.deepEqual(target.profiles, [
+      arch === 'arm64' ? 'macos/arm64/bun-1.4.2' : 'macos-24G830/x64/bun-1.4.2',
+    ])
+    const selected = await discoverHostTests(root, arch)
+    assert.deepEqual(selected, files)
+    for (const { build } of candidates)
+      assert.deepEqual(
+        filesForTarget(
+          discoverRepositoryTests(root, affectedManifest),
+          target.id,
+          affectedManifest,
+          `macos-${build}`,
+        ),
+        selected,
+        `Every admitted ${arch}/${build} host must execute the complete common inventory`,
+      )
+    assert.deepEqual(
+      selected,
+      filesForTarget(discoverRepositoryTests(root, affectedManifest), target.id, affectedManifest),
+    )
+    const shards = planMacHostTests(selected, arch)
     const primitives = new Set(
-      suiteTestFiles(files, ['macos-native'], affectedManifest, 'macos-24G830'),
+      suiteTestFiles(selected, ['macos-native'], affectedManifest, target.inventoryProfile),
     )
     for (const shard of shards) {
       const firstOther = shard.groups.findIndex(({ file }) => !primitives.has(file))
@@ -64,7 +90,12 @@ test('current full Mac role assignment owns every selected file once without nam
       )
     for (const shard of shards)
       for (const [index, command] of commandsForShard(shard).entries()) {
-        assert.equal(command[2], `./${shard.groups[index].file}`)
+        const file = shard.groups[index].file
+        assert.deepEqual(
+          command.slice(0, 2),
+          file.endsWith('.node.mjs') ? ['node', '--test'] : ['bun', 'test'],
+        )
+        assert.ok(command.includes(`./${file}`))
         assert.equal(command.includes('--test-name-pattern'), false)
         assert.deepEqual(Object.keys(shard.groups[index]).sort(), ['estimatedSeconds', 'file'])
       }
@@ -120,8 +151,10 @@ test('synthetic costs balance whole files and fixed overhead before prioritizing
       { seconds: 110, files: [specialist] },
     ],
     arm64: [
-      { seconds: 210, files: [checkpoint, factory, storage] },
-      { seconds: 202, files: [workspace, specialist, portable, future] },
+      {
+        seconds: 412,
+        files: [checkpoint, workspace, factory, specialist, storage, portable, future],
+      },
     ],
   }
   for (const arch of ['x64', 'arm64']) {
@@ -141,8 +174,9 @@ test('synthetic costs balance whole files and fixed overhead before prioritizing
         ),
       )
       if (baseline.files.includes(future)) {
-        assert.equal(shard.groups[0].file, future)
-        assert.equal(shard.groups[0].estimatedSeconds, 2)
+        const index = baseline.files.includes(storage) ? 1 : 0
+        assert.equal(shard.groups[index].file, future)
+        assert.equal(shard.groups[index].estimatedSeconds, 2)
       }
       if (baseline.files.includes(storage)) assert.equal(shard.groups[0].file, storage)
     }
@@ -187,7 +221,7 @@ test('the Mac group runner preserves the first child failure and starts no later
     const bun = resolve(root, 'failing-bun')
     await writeFile(
       bun,
-      `#!/usr/bin/env node\nrequire('node:fs').appendFileSync(process.env.CALLS, JSON.stringify(process.argv.slice(2))+'\\n'); process.exit(42);\n`,
+      `#!/usr/bin/env node\nimport {appendFileSync} from 'node:fs'; appendFileSync(process.env.CALLS, JSON.stringify(process.argv.slice(2))+'\\n'); process.exit(42);\n`,
       { mode: 0o700 },
     )
     const child = spawnSync(
@@ -198,6 +232,9 @@ test('the Mac group runner preserves the first child failure and starts no later
         env: {
           ...process.env,
           JIG_CI_BUN: bun,
+          FLOW_NODE: spawnSync('/bin/sh', ['-c', 'command -v node'], {
+            encoding: 'utf8',
+          }).stdout.trim(),
           CALLS: calls,
           JIG_MACOS_TEST_TIMINGS_DIRECTORY: root,
         },
@@ -233,11 +270,24 @@ test('the Mac group runner preserves the first child failure and starts no later
   }
 })
 
-test('four Intel and two Apple Silicon shards cover identical work', async () => {
-  const files = await discoverHostTests(resolve(import.meta.dirname, '../..'))
-  const plans = Object.keys(MAC_HOST_SHARDS).map((arch) => planMacHostTests(files, arch))
-  assert.deepEqual(MAC_HOST_SHARDS, { x64: 4, arm64: 2 })
-  assert.equal(plans.flat().length, 6)
+test('Node material suites retain their runtime, whole file and timeout in native command plans', () => {
+  const file = 'packages/display-web/test/material.node.mjs'
+  assert.equal(isHostTestFile(file), true)
+  assert.deepEqual(commandsForShard({ groups: [{ file }] }, '/tools/bun', '/tools/node'), [
+    ['/tools/node', '--test', '--test-timeout=420000', `./${file}`],
+  ])
+})
+
+test('four Intel shards and one complete Apple Silicon host cover identical work', async () => {
+  const root = resolve(import.meta.dirname, '../..')
+  const files = await discoverHostTests(root, 'x64')
+  const plans = await Promise.all(
+    Object.keys(MAC_HOST_SHARDS).map(async (arch) =>
+      planMacHostTests(await discoverHostTests(root, arch), arch),
+    ),
+  )
+  assert.deepEqual(MAC_HOST_SHARDS, { x64: 4, arm64: 1 })
+  assert.equal(plans.flat().length, 5)
   const membership = (plan) =>
     plan
       .flatMap((s) => s.groups)
@@ -252,7 +302,7 @@ test('four Intel and two Apple Silicon shards cover identical work', async () =>
   assert.throws(() => planMacHostTests(files, 'ia32'))
   assert.throws(() => planMacHostTests(files))
   for (const args of [
-    ['run', 'arm64', '2'],
+    ['run', 'arm64', '1'],
     ['run', 'x64', '4'],
     ['plan', 'x64'],
     ['run', 'ia32', '0'],
@@ -277,7 +327,7 @@ test('installed startup reporting works with and without a timing directory on s
     const bun = resolve(root, 'bun')
     await writeFile(
       bun,
-      '#!/usr/bin/env node\nrequire("node:fs").appendFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION})+"\\n");\n',
+      '#!/usr/bin/env node\nimport {appendFileSync} from "node:fs"; appendFileSync(process.env.CALLS,JSON.stringify({args:process.argv.slice(2),startup:process.env.JIG_NATIVE_AGENT_STARTUP,expectation:process.env.JIG_CODEX_MACOS_STARTUP_EXPECTATION})+"\\n");\n',
       { mode: 0o700 },
     )
     for (const [directory, expectation] of [
@@ -368,6 +418,7 @@ printf '%s\\n' "$codex_startup_expectation"
     ['x86_64', '23.4.0', '23E224', 'startup'],
     ['x86_64', '24.6.0', '24G830', 'unsupported'],
     ['arm64', '24.6.0', '24G830', 'unsupported'],
+    ['arm64', '24.6.0', '24H232', 'unsupported'],
   ]) {
     const result = run('Darwin', arch, release, build)
     assert.equal(result.status, 0, result.stderr)
@@ -376,6 +427,8 @@ printf '%s\\n' "$codex_startup_expectation"
   for (const tuple of [
     ['Darwin', 'arm64', '23.4.0', '23E224'],
     ['Darwin', 'x86_64', '24.6.0', '24G831'],
+    ['Darwin', 'x86_64', '24.6.0', '24H232'],
+    ['Darwin', 'arm64', '24.6.0', '24H233'],
     ['Linux', 'x86_64', '23.4.0', '23E224'],
   ]) {
     assert.equal(run(...tuple).status, 2, `unqualified tuple ${tuple} must refuse`)
@@ -385,6 +438,105 @@ printf '%s\\n' "$codex_startup_expectation"
     /JIG_NATIVE_AGENT_STARTUP=1 JIG_CODEX_MACOS_STARTUP_EXPECTATION="\$codex_startup_expectation" \\\n\s*bun test packages\/jig\/test\/startup\/native-agent-startup\.test\.ts/,
   )
   assert.ok(qualification.includes('macos-codex-preferences'))
+  assert.match(qualification, /--profile "\$inventory_profile"/)
+  assert.match(
+    qualification,
+    /if \[\[ "\$mode" == shard \]\]; then\n\s*bun scripts\/ci\/probe-macos-host\.ts --hosted > \/dev\/null\nfi/,
+  )
+})
+
+test('every hosted Mac shard checks its exact target before compilation and builds', async () => {
+  const workflow = parse(
+    await readFile(
+      resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
+      'utf8',
+    ),
+  )
+  const job = workflow.jobs.prerequisites
+  assert.deepEqual([...new Set(job.strategy.matrix.include.map(({ arch }) => arch))].sort(), [
+    'arm64',
+    'x64',
+  ])
+  const probes = job.steps.filter((step) =>
+    /bun scripts\/ci\/probe-macos-host\.ts --hosted/.test(step.run ?? ''),
+  )
+  assert.equal(probes.length, 1)
+  const probe = probes[0]
+  assert.equal(probe.if, undefined)
+  assert.match(probe.env.EXPECTED_ARCH, /^\$\{\{ matrix\.arch \}\}$/)
+  assert.match(probe.run, /set -o pipefail/)
+  assert.match(probe.run, /tee "\$RUNNER_TEMP\/mac-evidence\/prerequisites\.json"/)
+  const setup = job.steps.filter((step) => /clang |just --justfile/.test(step.run ?? ''))
+  assert.ok(setup.length >= 2)
+  assert.ok(setup.every((step) => job.steps.indexOf(probe) < job.steps.indexOf(step)))
+})
+
+test('one complete ARM runner owns native and installed proof within the former combined allowance', async () => {
+  const workflow = parse(
+    await readFile(
+      resolve(import.meta.dirname, '../../.github/workflows/macos-hosted-candidates.yml'),
+      'utf8',
+    ),
+  )
+  const job = workflow.jobs.prerequisites
+  const matrix = job.strategy.matrix.include
+  for (const [arch, count] of Object.entries(MAC_HOST_SHARDS)) {
+    const roles = matrix.filter((role) => role.arch === arch)
+    assert.deepEqual(
+      roles.map((role) => role.shard).sort(),
+      Array.from({ length: count }, (_, i) => i),
+    )
+    assert.deepEqual(
+      roles.filter((role) => role.installed).map((role) => role.shard),
+      [count - 1],
+    )
+    assert.equal(
+      workflow.jobs['qualified-architecture'].strategy.matrix.include.find(
+        (role) => role.arch === arch,
+      ).count,
+      count,
+    )
+  }
+  const arm = matrix.filter((role) => role.arch === 'arm64')
+  assert.deepEqual(arm, [{ arch: 'arm64', shard: 0, installed: true }])
+  const evaluate = (expression, role, profile = false) =>
+    runInNewContext(expression.replace(/^\$\{\{\s*|\s*\}\}$/g, ''), {
+      matrix: role,
+      inputs: { include_startup_profile: profile },
+    })
+  const native = job.steps.find((step) =>
+    /bun test packages\/jig\/test\/macos\/macos-process-controls/.test(step.run ?? ''),
+  )
+  const clients = job.steps.find((step) =>
+    /scripts\/ci\/install-macos-test-clients/.test(step.run ?? ''),
+  )
+  const qualifier = job.steps.find((step) => /qualify-macos-host\.sh --shard/.test(step.run ?? ''))
+  assert.equal(evaluate(native.if, arm[0]), true)
+  assert.equal(evaluate(clients.if, arm[0]), true)
+  assert.equal(qualifier.if, undefined)
+  assert.match(qualifier.run, /--shard "\$\{\{ matrix\.shard \}\}"/)
+  for (const profile of [false, true]) {
+    const minutes = evaluate(job['timeout-minutes'], arm[0], profile)
+    assert.equal(minutes, profile ? 90 : 60)
+    assert.ok(minutes < (profile ? 100 : 70))
+    for (const role of matrix.filter((role) => role.arch === 'x64'))
+      assert.equal(
+        evaluate(job['timeout-minutes'], role, profile),
+        profile && role.installed ? 65 : 35,
+      )
+    const total = matrix.reduce(
+      (sum, role) => sum + evaluate(job['timeout-minutes'], role, profile),
+      0,
+    )
+    assert.ok(total < (profile ? 270 : 210))
+  }
+  const receipt = workflow.jobs['qualified-architecture'].steps.find((step) =>
+    /candidate-provenance\.mjs qualification/.test(step.run ?? ''),
+  )
+  assert.match(
+    receipt.run,
+    /cp "\$RUNNER_TEMP\/mac-summary\.json" "\$RUNNER_TEMP\/macos-qualification\/mac-summary\.json"/,
+  )
 })
 
 test('Linux whole-file roles own all hostile and display work while startup remains a separate Mac obligation', async () => {
@@ -406,21 +558,6 @@ test('Linux whole-file roles own all hostile and display work while startup rema
     resolve(import.meta.dirname, '../../.github/workflows/linux-host-conformance.yml'),
     'utf8',
   )
-  const parse = (text) => {
-    const result = spawnSync(
-      'bun',
-      [
-        '--no-env-file',
-        '--no-install',
-        '--config=/dev/null',
-        '--eval',
-        'process.stdout.write(JSON.stringify(Bun.YAML.parse(await Bun.stdin.text())))',
-      ],
-      { input: text, encoding: 'utf8', timeout: 10000 },
-    )
-    assert.equal(result.status, 0, result.stderr)
-    return JSON.parse(result.stdout)
-  }
   const check = (parsed) => {
     const steps = parsed.jobs['host-suite'].steps
     const condition = (step) => step.if.replace(/^\s*\$\{\{\s*|\s*\}\}\s*$/g, '').trim()

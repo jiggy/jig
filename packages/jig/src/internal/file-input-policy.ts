@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 
 /** Closed invocation-file policy shared by the supported native hosts. */
 export const PRIVATE_FILE_LIMITS = Object.freeze({
-  bytes: 8 * 1024 * 1024,
+  bytes: 64 * 1024 * 1024,
   files: 64,
   entries: 256,
   pathBytes: 512,
@@ -15,7 +15,10 @@ export const PRIVATE_CAPTURE_LIMITS = Object.freeze({
   'artifact-input': 16 * 1024 * 1024,
   output: 16 * 1024 * 1024,
 })
-export const PRIVATE_READ_INPUT_BYTES = PRIVATE_CAPTURE_LIMITS['artifact-input']
+export const PRIVATE_READ_INPUT_BYTES = Math.max(
+  PRIVATE_CAPTURE_LIMITS.input,
+  PRIVATE_CAPTURE_LIMITS['artifact-input'],
+)
 export type PrivateCapturePurpose = keyof typeof PRIVATE_CAPTURE_LIMITS
 /** Capture/import borrows one bounded buffer, never another complete file tree. */
 export const PRIVATE_CAPTURE_CHUNK_BYTES = 64 * 1024

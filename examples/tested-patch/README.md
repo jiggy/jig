@@ -63,6 +63,11 @@ evidence acceptance, then exports patches. It shows checked verdicts only after
 Worker views remain provisional in Inspector. Only accepted evidence earns
 `review/review.patch`; unsuccessful proposals remain inspectable.
 
+Patch review and the specialist views share one repair subject.
+Inspector preserves the actual publisher for each view.
+Select an exported patch for a literal diff excerpt and its complete file reference.
+File access becomes available after verified delivery.
+
 Add `--display tui` for a terminal workspace or `--display web` for the same
 views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.

@@ -31,6 +31,8 @@ input, native allocation and output remain with their existing owners.
 - Application projection composes full block content in authored section
   order. Dense inspection lists and optional collection/evidence context
   remain separate.
+- Keep code and diff detail text literal. Content blocks expose selected input or
+  output references through the same typed inspection path.
 - Keep semantic presentation separate from actual I/O and execution authority.
 
 ## Verification

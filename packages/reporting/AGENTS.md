@@ -20,8 +20,9 @@ wire operation. Python's independently packaged counterpart lives in
 - Views are whole portable documents, never callbacks or terminal layout. Keep
   TS/Python closed schemas, semantic aggregate limits and JSON/0 numeric/byte
   accounting identical. `view()` claims a local lifetime ID. One landing hint,
-  fixed call association, no reuse after retirement. Only consecutive unsent
-  same-view/activity tails coalesce. Removals and in-flight items are barriers.
+  fixed target and call association, no reuse after retirement. Unsent view and
+  activity replacements coalesce across keys within one epoch. Notices, clears,
+  removals and in-flight items are barriers.
 - Local publication budgets stop observations, never cancel original sends or
   discard their eventual errors. Close acknowledgement is not send settlement.
   Final drain follows restarted pumps under one body-exit timer before closing
@@ -43,14 +44,24 @@ reexports the same validator for existing main-entry callers. UTF-8 counting
 uses `TextEncoder` and must preserve the profile's byte accounting in both
 runtimes.
 
+`bundle.ts` owns finite plain-data final editions and opaque publication contexts.
+Its pure helpers derive revision conditions without granting source or file authority.
+Copyable target and publication identities reject Unicode control and format characters.
+`preview.ts` selects whole collection rows and reports omitted records explicitly.
+Content and gallery roles reference selected immutable input or verified output media.
+Layout blocks and row detail blocks have separate aggregate budgets.
+
 ## Verification
 
-`just build`, `bun test`, packed Node consumer, and the matching Python
+`just build`, `bun test`, `just test-node`, packed Node consumer, and the matching Python
 publisher must establish lifecycle, identity and boundedness separately. Public
 availability must state the tested runtimes. Approval of a design is not
 qualification. Parameterized source cases register distinct names so whole-file
 CI reports can reject duplicate execution records without name or line exception
 tables.
+
+Real SDK protocol cases cover reading-view retirement before a targeted landing view, with observations wired and unwired.
+A landing claim remains reserved after its view retires. This does not qualify application composition or native execution.
 
 The final best-effort drain allows 4000 ms from body exit. Individual send wait
 remains 500 ms. Drained/unwired scopes add no waiting period. Neither allowance

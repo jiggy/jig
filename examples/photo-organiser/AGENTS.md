@@ -9,12 +9,12 @@ while application checks and operator authority control file effects.
 
 - `flows/organise` owns the short coordinating method. Its `catalogue.ts` owns source
   capture. Its `plan.ts` owns proposal/child-result acceptance and path checks.
-  Its `view.ts` projects Photo box throughout reading, grouping, checking,
-  copying, rendering and stopped outcomes.
+  Its `view.ts` projects Photos, Organise and Contact sheet from one application state.
+  Catalogue-derived application targets distinguish finite collections without assigning Run provenance.
 
-  The completed page leads with
-  contact-sheet and manifest references. It calls grouping and both
-  independent file Flows. It writes no files.
+  Photos exposes captured originals before the Agent call.
+  The completed contact-sheet page leads with visual content and a manifest reference.
+  The coordinator calls grouping and both independent file Flows. It writes no files.
 - `flows/group` owns the caption-only grouping contract, one Agent call and its
   provisional grouping view in `view.ts`. It returns assignments or an explicit
   cause. It neither imports the organiser nor acquires file access.
@@ -67,7 +67,7 @@ while application checks and operator authority control file effects.
   references. Each Flow uses `withReporting`/`Reporter` from
   `@jigging/reporting` and carries the complete current `jig:reporting`
   descriptor and license under `contracts/reporting`. The shared web preview
-  rasterises the captured contact sheet. Original SVG resolution remains
+  rasterises selected captured originals and the delivered contact sheet. Original SVG resolution remains
   available in the packet. Terminal evidence keeps its textual fallback. Do
   not introduce an example-only viewer.
 - Fixture SVGs are inert synthetic illustrations. Supported user inputs are

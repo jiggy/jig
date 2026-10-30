@@ -73,7 +73,9 @@ jobs:
   prerequisites:
     name: "Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}"
     runs-on: "${{ matrix.arch == 'x64' && 'macos-15-intel' || 'macos-15' }}"
-    timeout-minutes: "${{ matrix.installed && inputs.include_startup_profile && 65 || 35 }}"
+    # ARM consolidates two former jobs: 60 < 2*35 minutes, or 90 < 35+65
+    # with the optional 30-minute profile. Individual test limits stay unchanged.
+    timeout-minutes: "${{ matrix.arch == 'arm64' && (inputs.include_startup_profile && 90 || 60) || (matrix.installed && inputs.include_startup_profile && 65 || 35) }}"
     strategy:
       fail-fast: false
       max-parallel: 5
@@ -97,12 +99,8 @@ jobs:
             installed: false
           -
             arch: "arm64"
-            shard: 1
-            installed: true
-          -
-            arch: "arm64"
             shard: 0
-            installed: false
+            installed: true
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -132,7 +130,7 @@ jobs:
           sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
           xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
           bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
-          bun scripts/ci/probe-macos-host.ts | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+          bun scripts/ci/probe-macos-host.ts --hosted | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
       -
         name: "Compile the native launcher and validate SDK descriptor layouts"
         run: |
@@ -245,7 +243,7 @@ jobs:
             count: 4
           -
             arch: "arm64"
-            count: 2
+            count: 1
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -334,6 +332,7 @@ jobs:
           mkdir "$RUNNER_TEMP/macos-qualification"
           node scripts/ci/job-evidence.mjs --id "macos-$ARCHITECTURE" --summary "$RUNNER_TEMP/mac-summary.json" --artifacts --residue --output "$RUNNER_TEMP/macos-observed.json"
           node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/macos-host-artifacts" "$RUNNER_TEMP/macos-qualification/QUALIFICATION.json" --kind macos --profile "$ARCHITECTURE"
+          cp "$RUNNER_TEMP/mac-summary.json" "$RUNNER_TEMP/macos-qualification/mac-summary.json"
       -
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:

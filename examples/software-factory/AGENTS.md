@@ -16,7 +16,10 @@ stays with a person.
   failure evidence into ordinary language. Optional input labels name jobs for
   people. It names observed work and repeats goals with verified outcomes in the
   final report. `dashboard.ts` composes the portable Jobs, Checks and Patches
-  documents using public reporting types. Activity is the initial host surface.
+  documents using public reporting types.
+
+  Jobs is the application landing view.
+  Request-derived target options relate these definitions through one batch subject.
 
   All three domain views are offered before work and at settlement. Jobs retains
   goals, scope and outcomes, with concise check verdicts and patch references

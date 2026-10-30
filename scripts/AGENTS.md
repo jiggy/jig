@@ -41,7 +41,7 @@ operational baselines, and public-site assembly.
   pages. Site assembly copies canonical bytes. It never regenerates contracts.
 - `preflight.ts` owns local pre-push regression checks. `just preflight` builds
   Jig and its dependencies. It runs quick tooling and portable source checks. On
-  an exact supported unprivileged Mac with qualified Bun, it then runs every
+  an exact selected unprivileged Mac candidate with qualified Bun, it then runs every
   applicable `test/macos/` and exact observer suite sequentially. It uses the
   hosted prerequisite order, excludes ambient credentials and live-client
   opt-ins, checks ownership residue, and stops at the first failure. Other hosts
@@ -53,6 +53,9 @@ operational baselines, and public-site assembly.
   full host qualification. The full local command checks Just, Node and jq
   availability before building. Before local tests, resolve the selected real
   Node 22+ executable.
+
+  Apple Silicon Darwin 24.6.0 build 24H232 is an exact qualification candidate.
+  Full native, installed and residue checks must pass before release.
 
   Verify it. Supply compiler paths even when PATH uses a version-manager shim.
   Preserve distinct operator compiler overrides and exclude ambient credentials.
@@ -70,6 +73,10 @@ operational baselines, and public-site assembly.
   Selected reports bind the complete whole-file suite inventory. Its default
   runs all stages serially after shared builds and archive freezing. Jig's
   portable build owns its complete local package graph.
+
+  Both portable and protocol stages run `.node.mjs` files with the verified
+  `FLOW_NODE` executable. Other selected files run with Bun. The stages merge
+  actual reports and require exact coverage of their complete selected files.
 
   FLOW SDKs and authoring
   use exact versioned public artifacts from `jiggy/flow`, not local builds.

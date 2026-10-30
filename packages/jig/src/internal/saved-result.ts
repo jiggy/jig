@@ -99,6 +99,7 @@ export interface PrivateSavedResult {
   readonly complete: boolean
   readonly finding?: string
   reportPreview(): { text: string; bytes: number; clipped: boolean }
+  read(path: string): Uint8Array | undefined
   preview(path: string): PrivatePreview | undefined
   close(): void
 }
@@ -229,6 +230,10 @@ export async function privateCaptureSavedResult(
       reportPreview() {
         if (closed) throw new Error('saved inspection is closed')
         return preview(capturedReport)!
+      },
+      read(path) {
+        const bytes = closed ? undefined : retained.get(path)
+        return bytes ? new Uint8Array(bytes) : undefined
       },
       preview(path) {
         if (closed) return undefined

@@ -59,7 +59,10 @@ or both, then using ordinary code to produce a contact preview.
 
 - The coordinator’s `dashboard.ts` projects a small typed state into one
   Contact preview page with mapping, accepted records, correction reasons and
-  export access. All child Flows have independent optional domain views
+  export access. Its target identifies the captured headings and rows.
+  `previewCollection` bounds lists by whole rows, preserves values and reports totals.
+
+  All child Flows have independent optional domain views
   through `progress`. FLOW entrypoints own scoped publishers, activity and
   failure notices. Pure methods retain their exact results and policy. The
   existing reporting profile serves terminal and web without display code.

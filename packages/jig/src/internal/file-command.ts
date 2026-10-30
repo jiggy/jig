@@ -510,6 +510,25 @@ export async function privateOwnFileCommand(
               ok: true,
               preview,
             } as unknown as JsonValue)
+          } else if (request.type === 'read') {
+            if (
+              typeof request.path !== 'string' ||
+              !Number.isSafeInteger(request.offset) ||
+              !Number.isSafeInteger(request.deadline) ||
+              !publication ||
+              privatePresentationNow() >= Number(request.deadline)
+            )
+              throw new Error('inspection read unavailable')
+            await publication
+            if (privatePresentationNow() >= Number(request.deadline))
+              throw new Error('inspection read expired')
+            const value = owner.inspectionRead(request.path, Number(request.offset), 65536)
+            if (!value) throw new Error('inspection read unavailable')
+            send(socket, {
+              ok: true,
+              bytes: value.bytes,
+              chunk: Buffer.from(value.chunk).toString('base64'),
+            })
           } else if (request.type === 'cancel') {
             cancellation.abort()
           } else throw new Error('invalid file owner request')
@@ -520,7 +539,12 @@ export async function privateOwnFileCommand(
             break
           }
           send(socket, { ok: false })
-          if (request.type !== 'checkpoint' && request.type !== 'preview') cancellation.abort()
+          if (
+            request.type !== 'checkpoint' &&
+            request.type !== 'preview' &&
+            request.type !== 'read'
+          )
+            cancellation.abort()
         }
       }
     })().catch(() => {
@@ -882,6 +906,43 @@ export function privateFileDeliveryConnection(
         : { text: preview.text, bytes: preview.bytes, clipped: preview.clipped }
     },
     inspectionPreview,
+    async read(path, options) {
+      if (!inspection) return undefined
+      const deadline =
+        options?.deadline ?? privatePresentationNow() + PRIVATE_INSPECTION_COMPLETION_MS
+      const chunks: Uint8Array[] = []
+      let offset = 0,
+        total: number | undefined
+      do {
+        if (
+          !Number.isSafeInteger(deadline) ||
+          privatePresentationNow() >= deadline ||
+          options?.signal?.aborted
+        )
+          throw new Error('inspection read expired')
+        const operation = request({ type: 'read', path, offset, deadline })
+        const reply = options ? await privateBoundInspection(operation, options) : await operation
+        if (
+          !Number.isSafeInteger(reply.bytes) ||
+          Number(reply.bytes) < 0 ||
+          Number(reply.bytes) > 16 * 1024 * 1024 ||
+          typeof reply.chunk !== 'string' ||
+          reply.chunk.length > 4 * Math.ceil(65536 / 3)
+        )
+          throw new Error('Invalid inspection bytes')
+        if (total !== undefined && total !== reply.bytes) throw new Error('Changed inspection size')
+        total = Number(reply.bytes)
+        const chunk = Buffer.from(reply.chunk, 'base64')
+        if (
+          chunk.toString('base64') !== reply.chunk ||
+          chunk.length !== Math.min(65536, total - offset)
+        )
+          throw new Error('Invalid inspection slice')
+        chunks.push(chunk)
+        offset += chunk.length
+      } while (offset < total!)
+      return new Uint8Array(Buffer.concat(chunks, total))
+    },
     retire(options) {
       if (retirement) return retirement
       retiring = true

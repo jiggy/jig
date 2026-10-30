@@ -31,6 +31,7 @@
         "portable",
         "portable-linux",
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -60,6 +61,7 @@
       ],
       "profiles": [
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -80,6 +82,7 @@
       "profiles": [
         "linux",
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -111,6 +114,7 @@
         "portable-linux",
         "linux",
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -124,6 +128,7 @@
         "portable-linux",
         "linux",
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -137,6 +142,7 @@
         "portable-linux",
         "linux",
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -205,6 +211,7 @@
         "portable-linux",
         "linux",
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     },
@@ -215,6 +222,7 @@
       ],
       "profiles": [
         "macos-24G830",
+        "macos-24H232",
         "macos-23E224"
       ]
     }
@@ -396,7 +404,7 @@
       "scope": "macos",
       "kind": "native-and-installed",
       "profiles": [
-        "macos-24G830/arm64/bun-1.4.2"
+        "macos/arm64/bun-1.4.2"
       ],
       "suiteIds": [
         "jig-portable",
@@ -409,7 +417,7 @@
         "native-startup",
         "macos-observer"
       ],
-      "inventoryProfile": "macos-24G830",
+      "inventoryProfile": "macos-24H232",
       "requiresArtifacts": true,
       "requiresResidue": true
     }

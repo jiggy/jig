@@ -102,6 +102,23 @@ All selected domain requirements still apply.
   preparation. Generic limits do not imply host pressure. Arbitrary launch codes
   cannot establish a deadline.
 
+### Retained application views
+
+- `src/cli-display-archive.ts` owns explicit final-bundle selection and the `views` commands.
+  The command adapts the protected archive into bounded presentation without acquiring execution authority.
+  Read [retained application views](../../docs/jig/spec/display-archive.md) before changing this boundary.
+
+  Only a verified final-delivery receipt can publish a selected final edition.
+  A checkpoint, familiar filename or last live snapshot cannot substitute for final material.
+  Preserve the original publication promise, inherited deadline and receipt recovery identity through cleanup.
+  Treat stored views as application projections with unknown currency, never as the application's database.
+
+  Context includes removed target heads, and receipt lookup requires its original generation.
+  Apply exact scope and payload limits before loading views or evidence.
+  Reject a changing archive capture instead of combining inconsistent snapshots.
+  Browser inspection owns no publish, remove, reset or execution action.
+  External interruption must retain the command's interrupted exit status.
+
 ### Approved target inspection
 
 - `inspect` compares the last local approval with current local execution
@@ -277,8 +294,14 @@ stderr writer. `src/cli-display-projection.ts` adapts accepted host facts into
 readonly snapshots from `@jigging/display-model`. `src/cli-recorded-role.ts`
 assigns reserved recorded roles only at the host adapter. Publisher/call
 correspondence, opaque display identities, transcript receipt accounting and
-immutable captured excerpt access stay private to Jig. Authored names never
-choose host status or roles.
+immutable captured evidence access stay private to Jig.
+
+Selected input captures retain identities and provenance separate from delivered outputs.
+Full-byte suppliers require the exact capture generation and declared retained availability.
+Unavailable previews do not imply missing retained download bytes.
+Saved packet inventories advertise downloads only for manifest-verified retained bytes, including non-text files without previews.
+Closing the model fences pending preview and download completions.
+Authored names never choose host status or roles.
 
 `@jigging/display-web` owns browser rendering, client generations, navigation
 and fixed self-contained assets. `src/cli-web.ts` retains loopback HTTP, bearer
@@ -296,7 +319,7 @@ disable references while current causes and Close remain available.
 
 After a known terminal and confirmed project closure, every display mode retires
 delivery authority under one finite completion end, preserving the presentation
-minimum. Dashboards transfer receipt-selected excerpts first. Plain/JSON retires
+minimum. Dashboards transfer receipt-selected complete bytes and previews first. Plain/JSON retires
 directly. Close local captures before command success or indefinite inspection.
 Unknown execution or failed project closure retains original source-exit
 recovery. Local closure uses only the existing presentation end.
@@ -309,7 +332,11 @@ discarding response queues and join it after disposing subscriptions and
 buffers. Blocked-stream expiry retains admission until abort/cancel
 acknowledgement. Closing inspection releases preview waiters.
 
-Late bytes cannot restore it.
+Full-file downloads resolve exact captured identities and generations through authenticated transport.
+They remain independent of clipped previews and mutable destinations.
+Input media comes only from exact original captured members.
+Its detached map releases original input capabilities before source capture closes.
+Late bytes cannot restore a closed capture.
 
 `@jigging/display-tui` owns private viewer state, key/escape decoding,
 responsive panes, inline rendering and bounded terminal frames. Jig imports its

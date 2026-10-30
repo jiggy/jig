@@ -159,6 +159,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   them against the same SDK wheel on the interpreter/OS matrix. These artifacts
   are qualification inputs, not added publication candidates. Host
   installed-update checks also receive the frozen reporting npm archive.
+  The SDK version must match Python reporting's exact declared dependency.
+  The Python matrix uses `macos-15` and records that same image in its required evidence profile.
+  This package check does not qualify Jig's native host profiles.
 - After npm convergence and source tagging, create missing
   package-specific GitHub prereleases. Include exact registry version links,
   install commands, and docs. Preserve existing release notes on retries. Never
@@ -235,10 +238,33 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   claim live model/API qualification.
 - `workflows/macos-hosted-candidates.yml` qualifies disposable GitHub-hosted
   Intel (`macos-15-intel`) and Apple Silicon (`macos-15`) runners. Four Intel
-  and two Apple Silicon shards share the observed five-slot capacity, with
-  `max-parallel: 5`. The sixth job queues without increasing concurrent demand.
+  shards and one complete Apple Silicon host share the observed five-slot
+  capacity, with `max-parallel: 5`.
   Actual runner availability still determines start times.
 
+  Intel shards require Darwin 24.6.0 build 24G830.
+  The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
+  GitHub's standard image label can assign either build during rollout. Its full
+  plan runs on one host, without combining partial results from different builds.
+
+  The prerequisite probe rejects other tuples before compilation or dependency
+  installation. Aggregate evidence validates each retained architecture, kernel,
+  build and exact Bun revision. Summaries name the observed tuple only.
+
+  An admitted candidate still needs complete native and installed qualification
+  on that build before support expands.
+
+  The complete Apple Silicon job has 60 minutes instead of two 35-minute jobs.
+  Optional startup profiling has 90 minutes instead of 35 plus 65 minutes.
+  These allocations reduce the aggregate allowance, execute each file once,
+  and share host setup. Test and product deadlines remain unchanged. This trades
+  parallel ARM execution for a complete result on one observed build. It makes
+  no faster-execution claim.
+
+  Before full native allocation, the existing Ubuntu acquisition job waits for
+  the exact canonical CI producer's current-attempt `Quick development checks`
+  success. This wait permits up to 600 seconds within the job's 15-minute
+  budget. Keep every test and profile.
   Linux and hosted Mac acquisition wait for the exact current-attempt
   `candidate-build` job before starting the artifact transfer bound. Producer
   readiness permits 1,800 seconds, including runner queues. Failed or invalid
@@ -257,10 +283,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   ordinary build, frozen archive identity and ownership residue. The
   deterministic test plan covers every discovered Jig and display test file. It
   balances physical lifecycle/provider suites with all other applicable files.
-  Tests run in fresh, sequential per-group Bun processes inside each host.
+
+  Tests run in fresh, sequential processes inside each host.
+  Node material files use verified Node. Other files use Bun.
+  Both runtimes retain complete per-file JUnit evidence.
 
   One shard per architecture additionally checks genuine pinned clients offline,
-  ordinary npm installation and packed consumer execution. On 24G830, it
+  ordinary npm installation and packed consumer execution. On hosted profiles, it
   requires Codex preference-profile refusal while Claude and Pi start. Native
   containment/recovery and descriptor-handoff probes run once in a dedicated
   step on shard zero. Per-architecture aggregate checks require exact-revision

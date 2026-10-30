@@ -168,7 +168,7 @@ assert.equal(recordReferences({row:snapshot.views[0].value.sections[0].blocks[0]
 
 const opaqueIds = ['files', 'overview', 'activity', displayViewKey('files')];
 const colliding = validateDisplaySnapshot({...supplied,views:opaqueIds.map((id,index) => ({...supplied.views[0],id,value:{...supplied.views[0].value,id:'semantic-'+index}}))});
-const destinations = displayDestinations(false,colliding.views.map(view => ({key:view.id,title:view.value.title,source:view.sourceLabel})));
+const destinations = displayDestinations('live-run',colliding.views.map(view => ({key:view.id,title:view.value.title,source:view.sourceLabel})));
 assert.equal(new Set(destinations.map(destination=>destination.key)).size,destinations.length);
 assert.deepEqual(destinations.slice(-3).map(destination=>destination.key),['overview','activity','files']);
 assert.deepEqual(destinations.slice(0,-3).map(destination=>destination.key),opaqueIds.map(displayViewKey));

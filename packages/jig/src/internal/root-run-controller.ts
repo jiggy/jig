@@ -400,9 +400,10 @@ async function startOrResumeCurrentExecution(
       work.run.runId,
       recipe.request,
       work.run.files,
-      boundFiles.attachments,
+      boundFiles,
     )
     fileContext = fileProjection.context
+    if (fileProjection.retainedInputs) boundFiles = undefined
     if (Object.keys(recipe.request.attachments).length !== 0 && fileProjection === undefined)
       throw new Error('root attachment authority is unavailable')
     const flowLaunch = privateFlowExecutionIntent(

@@ -1,13 +1,13 @@
 import type { RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
-import { type SupportState, supportCaseView } from './dashboard.ts'
+import { type SupportState, supportCaseOptions, supportCaseView } from './dashboard.ts'
 
 export async function resolve(
   run: Pick<RunContext, 'input' | 'call' | 'signal'>,
   reporter?: Reporter,
 ): Promise<RunResult> {
   const input = run.input as SupportState['input']
-  const view = reporter?.view('case', { title: 'Support case', landing: true })
+  const view = reporter?.view('case', supportCaseOptions(input))
   let state: SupportState = { input, phase: 'assessing' }
   const show = (phase: SupportState['phase']) => {
     state = { ...state, phase }

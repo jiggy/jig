@@ -271,13 +271,14 @@ export class NativeRenderer {
     content: string | StyledText,
     role: 'normal' | 'muted' | 'accent' | 'warning' | 'error' = 'normal',
     strong = false,
+    literal = false,
   ) {
     const p = this.model.theme === 'one-light' ? palettes.light : palettes.dark
     const node = new this.core.TextRenderable(this.renderer, {
       content: typeof content === 'string' ? safe(content) : content,
       fg: role === 'normal' ? p.fg : role === 'muted' ? p.muted : p[role],
       attributes: strong ? this.core.TextAttributes.BOLD : 0,
-      wrapMode: 'word',
+      wrapMode: literal ? 'char' : 'word',
       width: '100%',
       flexShrink: 0,
     })
@@ -344,7 +345,24 @@ export class NativeRenderer {
       } else if (part.kind === 'heading') {
         this.#text(parent, `\n${part.text}`, 'accent', true)
       } else if (part.kind === 'value') this.#text(parent, this.#value(part.text))
-      else this.#text(parent, part.text, part.kind === 'note' ? 'muted' : 'normal')
+      else if (part.kind === 'literal') {
+        if (part.format === 'diff') {
+          const palette = this.model.theme === 'one-light' ? palettes.light : palettes.dark
+          const content = new this.core.StyledText([])
+          for (const line of part.text.match(/[^\n]*\n|[^\n]+$/g) ?? []) {
+            const tone =
+              line.startsWith('+') && !line.startsWith('+++')
+                ? palette.success
+                : line.startsWith('-') && !line.startsWith('---')
+                  ? palette.error
+                  : line.startsWith('@@')
+                    ? palette.accent
+                    : palette.fg
+            content.chunks.push(this.core.fg(tone)(safe(line)))
+          }
+          this.#text(parent, content, 'normal', false, true)
+        } else this.#text(parent, part.text, 'normal', false, true)
+      } else this.#text(parent, part.text, part.kind === 'note' ? 'muted' : 'normal')
     }
   }
   #capturedContent(parent: BoxRenderable): void {
@@ -607,11 +625,14 @@ export class NativeRenderer {
     const settled = model.workspace.phase === 'settled',
       facts = model.workspace.facts
     const elapsed = Math.max(0, Math.floor(model.workspace.elapsedMs / 1000))
-    const phase = settled
-      ? model.workspace.recorded
-        ? 'Saved result · read-only'
-        : `Settled · ${elapsed}s · read-only`
-      : one(model.workspace.hostStage)
+    const phase =
+      model.mode === 'retained-views'
+        ? 'Retained views · read-only'
+        : settled
+          ? model.workspace.recorded
+            ? 'Saved result · read-only'
+            : `Settled · ${elapsed}s · read-only`
+          : one(model.workspace.hostStage)
     const target = truncateTerminalText(
       one(model.workspace.target),
       Math.max(1, width - 4 - terminalWidth(`Jig  ·    ·  ${phase}`)),
@@ -634,25 +655,35 @@ export class NativeRenderer {
     this.#status.content = facts
       ? this.core
           .t`${this.core.fg(factColor('execution'))(truncateTerminalText(execution, splitFacts ? factWidth : width))} · ${truncateTerminalText(application, splitFacts ? factWidth : width)}${splitFacts ? '\n' : ' · '}${this.core.fg(factColor('cleanup'))(truncateTerminalText(cleanup, splitFacts ? factWidth : width))} · ${this.core.fg(factColor('delivery'))(truncateTerminalText(delivery, splitFacts ? factWidth : width))}`
-      : `elapsed ${elapsed}s · limit ${model.workspace.limitMs === undefined ? 'unspecified' : `${Math.floor(model.workspace.limitMs / 1000)}s`} · Application reports provisional`
+      : model.mode === 'retained-views'
+        ? one(model.context)
+        : `elapsed ${elapsed}s · limit ${model.workspace.limitMs === undefined ? 'unspecified' : `${Math.floor(model.workspace.limitMs / 1000)}s`} · Application reports provisional`
     const destinations = model.destinations()
     const destination = destinations.find((entry) => entry.key === model.surface)
     const rail = width >= 150 && height >= 24
     this.#navigation.visible = rail
-    this.#navigation.title = model.workspace.recorded ? ' Saved packet ' : ' Run workspace '
+    this.#navigation.title =
+      model.mode === 'retained-views'
+        ? ' Application views '
+        : model.workspace.recorded
+          ? ' Saved packet '
+          : ' Run workspace '
     this.#tabs.content = `${destination?.group === 'application' ? `Application · ${one(destination.source)} › ` : model.workspace.recorded ? 'Recorded › ' : 'Inspector › '}[${one(destination?.title ?? 'Activity')}] · v all views${rail ? '' : ' · Tab next'}`
     const sticky = model.sticky
     const omissions = Object.entries(model.journalOmitted)
       .filter(([, n]) => n)
       .map(([k, n]) => `${n} ${k}`)
       .join(', ')
-    const observation = model.workspace.recorded
-      ? 'Recorded local claims · no live observation'
-      : model.selected
-        ? `${model.selected.ended ? one(model.selected.ended) : 'Live observations'} · last update ${observedTime(model.selected.updated)}`
-        : facts?.completeness
-          ? one(viewerFactText('Observation', facts.completeness))
-          : 'Read-only observations'
+    const observation =
+      model.mode === 'retained-views'
+        ? 'Retained application projections · currency unknown'
+        : model.workspace.recorded
+          ? 'Recorded local claims · no live observation'
+          : model.selected
+            ? `${model.selected.ended ? one(model.selected.ended) : 'Live observations'} · last update ${observedTime(model.selected.updated)}`
+            : facts?.completeness
+              ? one(viewerFactText('Observation', facts.completeness))
+              : 'Read-only observations'
     this.#attention.content = sticky
       ? `! ${one(sticky.source)} · ${attentionImportance(sticky.priority)} · ${one(sticky.text)} · ! full cause`
       : model.incomplete
@@ -686,7 +717,9 @@ export class NativeRenderer {
     const wide =
       (!applicationPage ||
         Boolean(model.record?.row) ||
-        viewerReferences(model.record).some((ref) => ref.kind === 'artifact')) &&
+        viewerReferences(model.record).some(
+          (ref) => ref.kind === 'artifact' || ref.kind === 'input-artifact',
+        )) &&
       width >= 118 &&
       height >= 24 &&
       viewerHasContext(model, model.record)
@@ -951,7 +984,9 @@ export class NativeRenderer {
         const refs = viewerReferences(model.record)
         if (
           model.previewState &&
-          (model.record?.file || (refs.length === 1 && refs[0]?.kind === 'artifact'))
+          (model.record?.file ||
+            (refs.length === 1 &&
+              (refs[0]?.kind === 'artifact' || refs[0]?.kind === 'input-artifact')))
         ) {
           this.#capturedContent(this.#detail)
           if (!model.record?.file)

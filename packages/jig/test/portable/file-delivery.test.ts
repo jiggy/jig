@@ -227,6 +227,11 @@ test('inspection retains only verified immutable bytes and closes previews with 
       expect((await owner.publish(record, { kind: 'snapshot', capture })).status).toBe('written')
       await writeFile(join(destination, 'files/review.patch'), 'Changed destination')
       expect(owner.preview('review.patch')?.text).toBe('Original checked patch\n')
+      expect(Buffer.from(owner.read('binary')!)).toEqual(Buffer.from([255, 128]))
+      expect(Buffer.from(owner.read('large.txt')!).toString('utf8')).toBe('x' + '🧭'.repeat(20000))
+      const transferred = owner.read('large.txt')!
+      transferred.fill(0)
+      expect(owner.read('large.txt')![0]).toBe(120)
       const large = owner.preview('large.txt')!
       expect(large.clipped).toBe(true)
       expect(Buffer.byteLength(large.text)).toBeLessThanOrEqual(4096)
@@ -292,7 +297,7 @@ test('every accepted text file retains its excerpt when output exceeds the previ
       capture.close()
     }
   }))
-test('image source retention shares one aggregate budget and reserves every text prefix', async () =>
+test('image replies share one aggregate budget and reserve every text prefix', async () =>
   fixture(async (root) => {
     const source = join(root, 'source')
     await mkdir(source)
@@ -300,8 +305,28 @@ test('image source retention shares one aggregate budget and reserves every text
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/><!--' +
       'x'.repeat(48000) +
       '--></svg>'
+    let colour = 0x193a2845
+    const dense =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">' +
+      Array.from({ length: 256 }, (_, index) => {
+        colour = (Math.imul(colour, 1664525) + 1013904223) >>> 0
+        const fill = colour.toString(16).padStart(8, '0').slice(0, 6)
+        return `<rect x="${index % 16}" y="${Math.floor(index / 16)}" width="1" height="1" fill="#${fill}"/>`
+      }).join('') +
+      '</svg>'
+    expect(Buffer.byteLength(dense)).toBeLessThanOrEqual(PRIVATE_PREVIEW_LIMITS.svgSourceBytes)
+    const image = (await imagePreview.privateImagePreview(Buffer.from(dense)))!
+    expect(image).toBeDefined()
+    // All 64 full text prefixes consume the reply allowance. This actual PNG
+    // needs more than its own fallback reservation, so it must retain text.
+    expect(privatePreviewStringBytes(image.base64)).toBeGreaterThan(
+      2 * PRIVATE_PREVIEW_LIMITS.textBytes,
+    )
     for (let index = 0; index < 64; index++)
-      await writeFile(join(source, `image-${String(index).padStart(2, '0')}.svg`), svg)
+      await writeFile(
+        join(source, `image-${String(index).padStart(2, '0')}.svg`),
+        index === 63 ? dense : svg,
+      )
     const fd = privateOpenFileRoot(source)
     const capture = capturePrivateOutput(fd)
     closeSync(fd)
@@ -316,7 +341,7 @@ test('image source retention shares one aggregate budget and reserves every text
       expect(last.state).toBe('text')
       expect(last.text?.length).toBe(4096)
       expect(last.clipped).toBeTrue()
-      expect(await readFile(join(destination, 'files/image-63.svg'), 'utf8')).toBe(svg)
+      expect(await readFile(join(destination, 'files/image-63.svg'), 'utf8')).toBe(dense)
       const pending = owner.inspectionPreview('image-01.svg')
       await owner.close()
       expect((await pending).state).toBe('unavailable')

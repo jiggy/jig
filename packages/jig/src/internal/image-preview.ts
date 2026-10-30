@@ -1,6 +1,6 @@
-import type { DisplayImagePreview } from '@jigging/display-model'
-import { dirname } from 'node:path'
 import { spawn } from 'node:child_process'
+import { dirname } from 'node:path'
+import type { DisplayImagePreview } from '@jigging/display-model'
 import { PRIVATE_PREVIEW_LIMITS, privateValidImagePreview } from './image-preview-policy.js'
 import { privateImagePreviewWorkerPath } from './image-preview-worker-location.js'
 import { privatePresentationNow } from './root-run-timeout-policy.js'
@@ -27,11 +27,13 @@ export async function privateImagePreview(
   signal?: AbortSignal,
   deadline?: number,
 ): Promise<DisplayImagePreview | undefined> {
+  const raster = bytes[0] === 137 || (bytes[0] === 255 && bytes[1] === 216)
   if (
     rendering ||
     signal?.aborted ||
     (deadline !== undefined && privatePresentationNow() >= deadline) ||
-    bytes.length > PRIVATE_PREVIEW_LIMITS.sourceBytes ||
+    bytes.length >
+      (raster ? PRIVATE_PREVIEW_LIMITS.sourceBytes : PRIVATE_PREVIEW_LIMITS.svgSourceBytes) ||
     !privateImageSourceCandidate(bytes)
   )
     return undefined

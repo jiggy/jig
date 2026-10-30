@@ -48,8 +48,10 @@ preparation never becomes a consumer requirement.
   including Jig's three standalone display gates. Local source execution retains
   those consumers. Source-only Python stages do not build Jig.
 
-  Actual Node authoring events retain file identities through
-  `source-node-reporter.mjs`. Python executes every selected file, including
+  Both portable and protocol stages run `.node.mjs` files under verified Node.
+  Actual Node events retain file identities through `source-node-reporter.mjs`.
+  The report merger requires complete selected-file coverage across Node and Bun.
+  Python executes every selected file, including
   nested additions, and emits exact completed-file markers only after successful
   zero-skip groups. Disposable application reports normalize file paths only
   after source bytes are verified.
@@ -154,8 +156,11 @@ They consume frozen package exports with tracked test helpers and installed
   pagination.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
-- `qualify-macos-host.sh` owns the exact selected Intel 23E224 and hosted
-  Intel/Apple Silicon 24G830 profiles. It owns Bun 1.4.2 and real Node 22+
+- `qualify-macos-host.sh` owns the exact selected Intel 23E224, Intel/Apple
+  Silicon 24G830, and Apple Silicon 24H232 profiles. The hosted pool admits Intel
+  24G830 and either exact Apple Silicon 24G830 or 24H232 tuple.
+
+  It owns Bun 1.4.2 and real Node 22+
   preflight, and frozen same-revision host/model/renderer archives with digest
   rechecks. It owns ordinary native npm installation through the same fresh full
   Jig package-smoke consumer. That consumer verifies the matching optional
@@ -166,9 +171,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   Observed paths never authorize cleanup or detachment. Its full mode remains
   the self-hosted entrypoint. Hosted `--shard` runs one isolated portion of the
-  same complete suite: four Intel or two Apple Silicon shards. Shard zero runs
-  native prerequisites and the final shard runs installed consumer and
-  genuine-client checks on each architecture. The full Jig package smoke
+  same complete suite: four Intel shards or one complete Apple Silicon host.
+  Shard zero runs native prerequisites and the final shard runs installed
+  consumer and genuine-client checks on each architecture. Both roles run once
+  on the single Apple Silicon host.
+
+  The full Jig package smoke
   receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY` only from the existing Mac
   evidence directory. Its flat exclusive mode-0600 JSON retains closed
   failed-command metadata.
@@ -179,11 +187,19 @@ They consume frozen package exports with tracked test helpers and installed
   `JIG_CI_CANDIDATE_DIRECTORY` after verifying provenance and copies its exact
   archives. Ordinary platform source builds remain separate. Full self-hosted
   local mode uses the owning local packers.
+
+  The workflow reallocates the former two Apple Silicon jobs' allowance to one
+  complete host, with a smaller aggregate allowance and shared setup. Per-test
+  and product deadlines stay unchanged. The exact allocations belong to
+  `.github/AGENTS.md` and the workflow.
 - `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
   catalog, retaining portable files until a separate audit proves host
   neutrality. Eight native prerequisite files run once on shard zero and genuine
   installed startup runs separately on the final shard. Every other selected
-  file runs once in a fresh sequential Bun process, without name filters.
+  file runs once in a fresh sequential process, without name filters.
+  `.node.mjs` files use verified Node. Other files use Bun. Both runtimes retain
+  exact file identities in their JUnit reports.
+
   Advisory architecture timings affect placement, never membership. Balance
   includes installed tail work. After balancing, each shard runs its
   `macos-native` whole files before long application scenarios, preserving order
@@ -195,8 +211,16 @@ They consume frozen package exports with tracked test helpers and installed
   and Mac reports. It rejects empty, failed, skipped, incomplete or
   duplicate-case reports. Each consumer enforces its owning file inventory. The
   Mac validator reconstructs the complete source-pinned shard plan and reads
-  every owning report and completion marker once. Linux whole-file commands
-  retain their stdout parser and installed-script completion markers.
+  every owning report and completion marker once.
+
+  Every shard's retained prerequisites must match an exact admitted architecture,
+  kernel, build and Bun tuple. A complete architecture plan must use one observed
+  tuple. Its summary and retained qualification artifact name that tuple, without
+  extending qualification to another admitted build.
+
+  Linux Bun commands retain their stdout parser. Linux Node commands retain
+  exact single-file JUnit reports
+  beside their transcripts. Installed scripts retain completion markers.
   `macos-host-summary.py` projects validated Mac counts and optional job timing.
 
   It does not implement another XML or plan validator. Timing cannot grant or
@@ -211,10 +235,19 @@ They consume frozen package exports with tracked test helpers and installed
   versions retain the complete registry check. Only an explicit registry E404
   means unpublished. It executes no package code, publishes nothing, and cannot
   replace the protected publisher's later group and channel reconciliation.
+- `macos-host-profiles.mjs` declares each architecture's finite pool of exact
+  hosted kernel, build and Bun tuples. The suite catalog retains each target's
+  complete file inventory. The Apple Silicon pool includes both builds observed
+  during GitHub's image rollout. One complete host executes its full plan, so a
+  mixed pool cannot combine partial results from different builds.
+
+  The Apple Silicon execution profile names its architecture and pinned Bun,
+  rather than one configured build. Its canonical G/H inventory is identical.
+  Complete evidence establishes only the observed build's qualification.
 - `probe-macos-host.ts` observes native process identity and coalition
-  accounting prerequisites on hosted Intel and Apple Silicon candidates. It
-  starts no package work and does not bypass the backend's qualified-platform
-  checks.
+  accounting prerequisites. Hosted mode rejects target drift before native
+  compilation and source builds. Failed target checks retain the observed tuple.
+  Prerequisites start no package work and never establish backend qualification.
 - `install-macos-test-clients.ts` extracts digest-pinned native Codex, Claude
   and Pi archives into a fresh runner-owned directory for offline startup
   qualification. It neither executes clients nor provisions consumer machines.
@@ -244,7 +277,7 @@ They consume frozen package exports with tracked test helpers and installed
   three genuine native client paths for full qualification and the installed
   consumer shard. Missing prerequisites fail explicitly. Claude and Pi must
   complete offline startup. Codex must complete offline startup on Intel 23E224
-  and return the explicit unsupported-preferences refusal on hosted 24G830
+  and return the explicit unsupported-preferences refusal on 24G830 and 24H232
   profiles. The selected path remains genuine and the case never skips.
 
   Qualification passes that expected outcome through
@@ -292,6 +325,8 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
   propagation, canonical-input reuse and protocol-only prerequisites through the
   actual source shell with controlled tools on Bash and POSIX sh.
+  It executes actual Node tests through the owning reporter and Python merger.
+  It also checks both source inventories through the root test recipe.
 - Exercise provision, the hostile suite, cleanup, and `assert-clean` on a
   disposable supported runner.
 - `node --test scripts/ci/host-test-coverage.test.mjs` verifies exhaustive Mac
@@ -305,6 +340,12 @@ They consume frozen package exports with tracked test helpers and installed
 - `node --test scripts/ci/macos-host-summary.test.mjs` exercises both
   architecture aggregates, nested reports, installed-client evidence, duplicate
   execution, missing/cancelled/stale proof and optional timing failures.
+- `node --test scripts/ci/macos-host-profiles.test.mjs` checks the exact admitted
+  tuples, neighboring kernel and toolchain refusal, and complete prerequisite
+  evidence. Ordinary input records establish no native qualification.
+- `node --test scripts/ci/macos-candidate-archives.test.mjs` executes the
+  qualifier's actual archive staging and revalidation sections with real tools.
+  It checks isolated copies, ambiguous archives and changed bytes without native qualification claims.
 - `node --test scripts/ci/npm-candidate-preflight.test.mjs` verifies unpublished
   and identical versions, immutable collisions, registry errors and changed
   candidate evidence without credentials or registry mutations. It also checks

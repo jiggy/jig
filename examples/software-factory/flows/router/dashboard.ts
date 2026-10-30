@@ -1,6 +1,16 @@
+import { createHash } from 'node:crypto'
 import type { RunResult } from '@jigging/flow'
-import type { ViewSnapshot } from '@jigging/reporting'
+import { previewCollection, type ViewOptions, type ViewSnapshot } from '@jigging/reporting'
 import type { RoutingInput } from './decision.ts'
+
+export function selectionViewOptions(input: RoutingInput): ViewOptions {
+  const instanceKey = createHash('sha256').update(JSON.stringify(input)).digest('hex')
+  return {
+    title: 'Selection',
+    landing: true,
+    target: { definitionId: 'candidate-selection', instanceKey },
+  }
+}
 
 function excerpt(text: string, limit: number): string {
   const chars = [...text]
@@ -25,26 +35,30 @@ export function selectionView(input: RoutingInput, result?: RunResult): ViewSnap
       {
         blocks: [
           { kind: 'report', text: excerpt(input.task, 512) },
-          {
-            kind: 'collection',
-            id: 'candidates',
-            title: 'Eligible candidates (first 8)',
-            columns: [
-              { key: 'id', label: 'Candidate', type: 'text' },
-              { key: 'description', label: 'Description excerpt', type: 'text' },
-              { key: 'selected', label: 'Selected', type: 'boolean' },
-            ],
-            rows: input.candidates.slice(0, 8).map((candidate) => ({
-              id: candidate.id,
-              cells: {
+          previewCollection(
+            {
+              kind: 'collection',
+              id: 'candidates',
+              title: 'Eligible candidates',
+              columns: [
+                { key: 'id', label: 'Candidate', type: 'text' },
+                { key: 'description', label: 'Description', type: 'text' },
+                { key: 'selected', label: 'Selected', type: 'boolean' },
+              ],
+              rows: input.candidates.map((candidate) => ({
                 id: candidate.id,
-                description: excerpt(candidate.description, 80),
-                selected: result?.outcome === 'done' ? output?.candidateId === candidate.id : null,
-              },
-              details: [{ kind: 'report', text: excerpt(candidate.description, 192) }],
-            })),
-            total: input.candidates.length,
-          },
+                cells: {
+                  id: candidate.id,
+                  description: candidate.description,
+                  selected:
+                    result?.outcome === 'done' ? output?.candidateId === candidate.id : null,
+                },
+                details: [{ kind: 'report', text: candidate.description, format: 'plain' }],
+              })),
+              total: input.candidates.length,
+            },
+            { limit: 8 },
+          ).collection,
           {
             kind: 'report',
             text: output?.reason

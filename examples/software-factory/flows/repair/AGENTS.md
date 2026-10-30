@@ -44,6 +44,9 @@ operator's fixed commands and application-owned acceptance cases.
   callers. Call references name only this publisher’s operations. The private
   `progress` protocol and factory relay remain separate.
 
+  Fixed request-derived targets relate Repair and Checks through one application subject.
+  They do not supply host provenance or establish acceptance.
+
 ## Work Guidance
 
 - Keep this Flow editable and fully owned by the software-factory project. Use

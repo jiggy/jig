@@ -65,22 +65,23 @@ build: jig::build
 @test *args:
     #!/usr/bin/env bash
     set -euo pipefail
+    flow_node=${FLOW_NODE:-$(command -v node)}
+    "$flow_node" -e 'if(process.release?.name!=="node"||process.versions?.bun!==undefined||Number(process.versions.node.split(".")[0])<22)process.exit(70)'
     profile=portable
     if [[ "$(uname -s)" == Linux ]]; then profile=portable-linux; fi
-    portable=$(node scripts/ci/suite-inventory.mjs --target source-portable --profile "$profile")
-    protocol=$(node scripts/ci/suite-inventory.mjs --target source-protocol --profile "$profile")
+    portable=$("$flow_node" scripts/ci/suite-inventory.mjs --target source-portable --profile "$profile")
+    protocol=$("$flow_node" scripts/ci/suite-inventory.mjs --target source-protocol --profile "$profile")
     files=()
     node_files=()
-    while IFS= read -r file; do files+=("./$file"); done <<< "$portable"
     while IFS= read -r file; do
         case "$file" in
             *.node.mjs) node_files+=("./$file") ;;
             *) files+=("./$file") ;;
         esac
-    done <<< "$protocol"
+    done <<< "$(printf '%s\n%s\n' "$portable" "$protocol")"
     bun test "${files[@]}" "$@"
     if (( ${#node_files[@]} )); then
-        "${FLOW_NODE:-node}" --test "${node_files[@]}"
+        "$flow_node" --test "${node_files[@]}"
     fi
 
 # Run the installed operational baseline with its documented host prerequisites

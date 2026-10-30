@@ -126,12 +126,23 @@ type CaptureFile = {
   bytes: number
   state: 'text' | 'empty' | 'image' | 'non-text' | 'unavailable'
   clipped: boolean
+  sourceId?: string
+  attachment?: string
+}
+type Capture = {
+  generation: string
+  sourcePublisher: string
+  provenance: 'verified-delivery' | 'recorded-capture' | 'captured-input'
+  phase: 'pending' | 'ready' | 'unavailable'
+  files: CaptureFile[]
+  permittedAttachments: string[]
 }
 export type ViewerRecord = {
   key: string
   kind:
     | 'summary'
     | 'report'
+    | 'content'
     | 'facts'
     | 'progress'
     | 'row'
@@ -180,6 +191,7 @@ export class ViewerModel {
     facts?: DisplaySnapshot['workspace']['facts']
   } = { target: 'Run', phase: 'live', hostStage: 'Waiting', elapsedMs: 0, recorded: false }
   readonly theme: TuiTheme
+  mode: DisplaySnapshot['mode'] = 'live-run'
   rootSourceId = ''
   omissions = 0
   incomplete: string | undefined
@@ -197,10 +209,12 @@ export class ViewerModel {
   #treeExpanded = new Set<string>()
   #treeChoices = new Set<string>()
   #labels = new Map<string, string>()
-  #capture = {
+  #inputs: Capture | undefined
+  #previewProvenance: Capture['provenance'] | undefined
+  #capture: Capture = {
     generation: '',
     sourcePublisher: '',
-    provenance: 'verified-delivery' as 'verified-delivery' | 'recorded-capture',
+    provenance: 'verified-delivery',
     phase: 'pending' as 'pending' | 'ready' | 'unavailable',
     files: [] as CaptureFile[],
     permittedAttachments: [] as string[],
@@ -231,6 +245,12 @@ export class ViewerModel {
     return this.incomplete
       ? `${this.#bodyStale ? 'Stale' : 'Incomplete'} observations · ${this.incomplete}`
       : undefined
+  }
+  get previewProvenance() {
+    return this.#previewProvenance ?? this.#capture.provenance
+  }
+  #captures(): Capture[] {
+    return this.#inputs ? [this.#capture, this.#inputs] : [this.#capture]
   }
   get artifactCapture() {
     return this.#capture
@@ -300,6 +320,7 @@ export class ViewerModel {
     if (snapshot.revision < this.#revision) return
     this.#revision = snapshot.revision
     this.rootSourceId = snapshot.rootSourceId
+    this.mode = snapshot.mode
     const facts = snapshot.workspace.facts
     this.workspace = {
       target: snapshot.workspace.target,
@@ -366,7 +387,7 @@ export class ViewerModel {
       )
     }
     this.#surface = retainedSurface
-    const previousCapture = JSON.stringify(this.#capture)
+    const previousCapture = JSON.stringify(this.#captures())
     this.#complete = true
     this.#hadComplete = true
     this.#bodyStale = false
@@ -443,6 +464,16 @@ export class ViewerModel {
       files: snapshot.artifacts.files.map((file) => ({ ...file })),
       permittedAttachments: [...snapshot.artifacts.permittedAttachments],
     }
+    this.#inputs = snapshot.inputs
+      ? {
+          generation: snapshot.inputs.generation,
+          sourcePublisher: snapshot.inputs.sourceId,
+          provenance: 'captured-input',
+          phase: snapshot.inputs.phase,
+          files: snapshot.inputs.files.map((file) => ({ ...file })),
+          permittedAttachments: [...snapshot.inputs.permittedAttachments],
+        }
+      : undefined
     const keys = this.surfaceKeys()
     for (const surface of [...this.#locals.keys()])
       if (!keys.includes(surface)) this.#locals.delete(surface)
@@ -462,7 +493,7 @@ export class ViewerModel {
     }
     this.#surface = keys.includes(retainedSurface)
       ? retainedSurface
-      : this.workspace.recorded
+      : this.mode !== 'live-run'
         ? (keys[0] ?? 'files')
         : 'overview'
     if (!this.#chosen) {
@@ -473,13 +504,13 @@ export class ViewerModel {
       if (landing && (this.#surface === 'activity' || this.workspace.phase === 'settled')) {
         this.#surface = landing.key
         if (this.workspace.phase === 'settled') this.local.record = this.records()[0]?.key
-      } else if (this.workspace.recorded && !keys.includes(this.#surface))
+      } else if (this.mode !== 'live-run' && !keys.includes(this.#surface))
         this.#surface = keys[0] ?? 'files'
     }
     this.#repairSelection(previous.get(this.#surface) ?? [], false)
     const selected = this.record
     if (
-      previousCapture !== JSON.stringify(this.#capture) ||
+      previousCapture !== JSON.stringify(this.#captures()) ||
       oldSignature !== (selected && JSON.stringify([selected.key, selected.signature]))
     ) {
       this.dismissPreview()
@@ -508,11 +539,13 @@ export class ViewerModel {
   }
   destinations() {
     return displayDestinations(
-      Boolean(this.workspace.recorded),
+      this.mode,
       [...this.views.values()].map((view) => ({
         key: view.id,
         title: view.value.title,
-        source: view.sourceLabel,
+        source: view.value.target
+          ? `${view.sourceLabel} · ${view.value.target.instanceKey}`
+          : view.sourceLabel,
         sourceId: view.publisher,
         role: view.role,
       })),
@@ -725,6 +758,7 @@ export class ViewerModel {
     this.preview = undefined
     this.previewState = undefined
     this.previewTitle = undefined
+    this.#previewProvenance = undefined
     this.#peekSignature = ''
   }
   #invalidate(): void {
@@ -733,6 +767,7 @@ export class ViewerModel {
     this.preview = undefined
     this.previewState = undefined
     this.previewTitle = undefined
+    this.#previewProvenance = undefined
     this.#peekSignature = ''
     this.feedback = ''
   }
@@ -871,36 +906,50 @@ export class ViewerModel {
         ? { available: true, label: `${view!.value.title} / ${ref.rowId}`, target: view!.key }
         : { available: false, label: 'Record unavailable' }
     }
-    const file = this.#capture.files.find((file) => file.path === ref.path)
-    return this.#capture.phase === 'ready' &&
-      publisher === this.#capture.sourcePublisher &&
-      this.#capture.permittedAttachments.includes(ref.attachment) &&
+    const capture = ref.kind === 'input-artifact' ? this.#inputs : this.#capture
+    const matches =
+      capture?.files.filter(
+        (file) =>
+          file.path === ref.path &&
+          (file.sourceId ?? capture.sourcePublisher) === publisher &&
+          (file.attachment === undefined || file.attachment === ref.attachment),
+      ) ?? []
+    const file = matches.length === 1 ? matches[0] : undefined
+    return capture?.phase === 'ready' &&
+      capture.permittedAttachments.includes(ref.attachment) &&
       file &&
       file.state !== 'unavailable'
       ? {
           available: true,
-          label: `${this.workspace.recorded ? 'Captured recorded file' : 'Delivered file'}: ${ref.path}`,
-          target: file.path,
+          label: `${ref.kind === 'input-artifact' ? 'Captured input' : this.workspace.recorded ? 'Captured recorded file' : 'Delivered file'}: ${ref.path}`,
+          target: file.id,
         }
       : {
           available: false,
-          label: this.workspace.recorded
-            ? 'Artifact unavailable; not present in captured recorded files'
-            : 'Artifact unavailable; not present in verified delivered files',
+          label:
+            ref.kind === 'input-artifact'
+              ? 'Input unavailable; not present in selected captured inputs'
+              : this.mode !== 'live-run'
+                ? 'Artifact unavailable; not present in captured recorded files'
+                : 'Artifact unavailable; not present in verified delivered files',
         }
   }
+
   peekSelectedArtifact(): void {
     if (this.#closed || !this.#complete || !this.#previewEnabled) return
     const record = this.record,
       references = recordReferences(record)
     const ref =
-      references.length === 1 && references[0]?.kind === 'artifact' ? references[0] : undefined
+      references.length === 1 &&
+      (references[0]?.kind === 'artifact' || references[0]?.kind === 'input-artifact')
+        ? references[0]
+        : undefined
     const signature = JSON.stringify([
       this.surface,
       record?.key,
       record?.signature,
       references,
-      this.#capture.generation,
+      this.#captures().map((capture) => capture.generation),
     ])
     if (signature === this.#peekSignature) return
     this.#peekSignature = signature
@@ -922,7 +971,10 @@ export class ViewerModel {
     this.previewTitle = ref.path
     const resolved = this.resolve(record?.publisher ?? this.rootSourceId, ref)
     if (!resolved.available) {
-      this.previewState = this.#capture.phase === 'pending' ? 'pending' : 'unavailable'
+      this.previewState =
+        (ref.kind === 'input-artifact' ? this.#inputs?.phase : this.#capture.phase) === 'pending'
+          ? 'pending'
+          : 'unavailable'
       return
     }
     if (this.#previewBusy) {
@@ -945,13 +997,21 @@ export class ViewerModel {
   }
   async #loadPreview(path: string, title: string, identity?: string): Promise<void> {
     if (this.#closed || !this.#complete || !this.#previewEnabled) return
-    const file = this.#capture.files.find((file) =>
-      identity === undefined ? file.path === path : file.id === identity,
+    const captures = this.#captures()
+    const capture =
+      captures.find((capture) =>
+        capture.files.some((file) =>
+          identity === undefined ? file.id === path : file.id === identity,
+        ),
+      ) ?? (identity === undefined ? this.#capture : undefined)
+    const file = capture?.files.find((file) =>
+      identity === undefined ? file.id === path || file.path === path : file.id === identity,
     )
+    this.#previewProvenance = capture?.provenance
     this.preview = undefined
     this.previewTitle = title
-    if (!file || this.#capture.phase !== 'ready') {
-      this.previewState = this.#capture.phase === 'pending' ? 'pending' : 'unavailable'
+    if (!file || !capture || capture.phase !== 'ready') {
+      this.previewState = capture?.phase === 'pending' ? 'pending' : 'unavailable'
       this.onChange()
       return
     }
@@ -965,12 +1025,14 @@ export class ViewerModel {
     this.previewState = 'loading'
     this.feedback = `${title} — loading immutable preview`
     const generation = this.#generation,
-      captureGeneration = this.#capture.generation
+      captureGeneration = capture.generation
     const current = () =>
       !this.#closed &&
       this.#complete &&
       generation === this.#generation &&
-      captureGeneration === this.#capture.generation
+      captureGeneration ===
+        this.#captures().find((current) => current.files.some((item) => item.id === file.id))
+          ?.generation
     try {
       const reply = await this.#previewService?.({ artifactId: file.id, captureGeneration })
       if (current()) {
@@ -978,7 +1040,7 @@ export class ViewerModel {
           reply &&
           reply.artifactId === file.id &&
           reply.captureGeneration === captureGeneration &&
-          reply.provenance === this.#capture.provenance &&
+          reply.provenance === capture.provenance &&
           Number.isSafeInteger(reply.bytes) &&
           reply.bytes >= 0 &&
           typeof reply.clipped === 'boolean' &&
@@ -1029,7 +1091,7 @@ export class ViewerModel {
   async activate(publisher: string, ref: Reference): Promise<void> {
     if (this.#closed) return
     const resolved = this.resolve(publisher, ref)
-    if (ref.kind === 'artifact' && this.#previewBusy) {
+    if ((ref.kind === 'artifact' || ref.kind === 'input-artifact') && this.#previewBusy) {
       this.feedback = 'A preview is loading; wait before opening another artifact'
       this.onChange()
       return
@@ -1079,6 +1141,8 @@ export class ViewerModel {
     this.journal.length = 0
     this.attention.length = 0
     this.#capture.files = []
+    this.#inputs = undefined
+    this.#previewProvenance = undefined
     this.onChange = () => {}
   }
   /** Inline owns observations and local state; all interactive effects end here. */

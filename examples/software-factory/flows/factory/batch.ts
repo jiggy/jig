@@ -10,7 +10,13 @@ import {
 } from 'factory-repair-flow/progress'
 import { checkRoutingResult } from 'semantic-router-flow/decision'
 import { checkName, loadChecks } from './checks.ts'
-import { checksView, type FactoryStage, jobsView, patchesView } from './dashboard.ts'
+import {
+  checksView,
+  type FactoryStage,
+  factoryViewOptions,
+  jobsView,
+  patchesView,
+} from './dashboard.ts'
 import {
   identity,
   inspect,
@@ -135,9 +141,10 @@ async function repairBatchWithProgress(run: RunContext, updates: Reporter): Prom
     await writeFile(join(output, 'goal.txt'), input.issue, { flag: 'wx' })
     retainedFiles[`${job.id}/goal.txt`] = input.issue
   }
-  const jobView = updates.view('jobs', { title: 'Jobs' })
-  const checkView = updates.view('checks', { title: 'Checks' })
-  const patchView = updates.view('patches', { title: 'Patches' })
+  const options = factoryViewOptions(prepared)
+  const jobView = updates.view('jobs', options.jobs)
+  const checkView = updates.view('checks', options.checks)
+  const patchView = updates.view('patches', options.patches)
   const stages = new Map<string, FactoryStage>()
   const reports = new Map<string, string>()
   const saved = new Set<string>()

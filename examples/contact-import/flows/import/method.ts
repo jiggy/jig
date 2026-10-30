@@ -1,12 +1,17 @@
-import type { RunContext, RunHandlerResult } from '@jigging/flow'
+import type { RunContext, RunResult } from '@jigging/flow'
 import type { Reporter } from '@jigging/reporting'
-import { type ContactPreview, contactPreviewView, type ImportState } from './dashboard.ts'
+import {
+  type ContactPreview,
+  contactPreviewOptions,
+  contactPreviewView,
+  type ImportState,
+} from './dashboard.ts'
 
 export async function runMethod(
   run: Pick<RunContext, 'input' | 'attachments' | 'signal' | 'call'>,
   reporter?: Reporter,
-): Promise<RunHandlerResult> {
-  const view = reporter?.view('contacts', { title: 'Contact preview', landing: true })
+): Promise<RunResult> {
+  let view = reporter?.view('reading', { title: 'Contact preview' })
   let state: ImportState = { phase: 'reading' }
   const show = (phase: ImportState['phase']) => {
     state = { ...state, phase }
@@ -25,6 +30,8 @@ export async function runMethod(
     if (captured.outcome !== 'done') throw new TypeError('The CSV reader did not complete.')
     const { headers, rows } = captured.output as { headers: string[]; rows: string[][] }
     state = { ...state, headers, records: rows.length }
+    view?.retire()
+    view = reporter?.view('contacts', contactPreviewOptions(headers, rows))
 
     show('mapping')
     const proposal = await run.call({

@@ -45,6 +45,7 @@ env:
         (name.startsWith('installed-') || ['package-provider-observation.test.ts', 'markdown-worker.test.ts'].includes(name));
       commands[suites[index % suites.length]].push({
         transcript: `source-${index}.txt`, files: [file],
+        ...(file.endsWith('.node.mjs') ? { commandKind: 'node-test', junit: `source-${index}.xml` } : {}),
         hostMode: acquisition ? 'run-acquisition-host' : 'run-delegated',
         timeoutMs: timeouts.get(name) ?? (name.startsWith('root-agent-') ? 180000 : 120000),
       });
@@ -219,13 +220,19 @@ jobs:
           SUITE: "${{ matrix.suite }}"
         run: |
           set -euo pipefail
+          FLOW_NODE=$(node -p 'if (Number(process.versions.node.split(".")[0]) < 22) throw Error("Node 22+ required"); process.execPath')
+          [[ "$FLOW_NODE" == /* && -x "$FLOW_NODE" ]] || { echo 'Expected an absolute real Node executable.' >&2; exit 2; }
+          export FLOW_NODE
           node --input-type=module -e "$LINUX_COMMAND_PLANNER" > "$RUNNER_TEMP/linux-commands.json"
           node -e '
             const fs=require("node:fs"), plans=JSON.parse(fs.readFileSync(process.argv[1]));
             for(const command of plans[process.env.SUITE])
-              process.stdout.write([command.files[0],command.transcript,command.hostMode,String(command.timeoutMs)].join("\0")+"\0");
+              process.stdout.write([command.files[0],command.transcript,command.hostMode,String(command.timeoutMs),command.commandKind||"ordinary",command.junit||"none"].join("\0")+"\0");
           ' "$RUNNER_TEMP/linux-commands.json" > "$RUNNER_TEMP/linux-command-arguments.bin"
-          while IFS= read -r -d '' file && IFS= read -r -d '' transcript && IFS= read -r -d '' host_mode && IFS= read -r -d '' timeout_ms; do
+          while IFS= read -r -d '' file && IFS= read -r -d '' transcript && IFS= read -r -d '' host_mode && IFS= read -r -d '' timeout_ms && IFS= read -r -d '' command_kind && IFS= read -r -d '' junit; do
+            if [[ "$command_kind" == node-test ]]; then
+              runner=("$FLOW_NODE" --test "--test-timeout=$timeout_ms" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=./scripts/ci/source-node-reporter.mjs "--test-reporter-destination=$RUNNER_TEMP/linux-command-evidence/$junit" "./$file")
+            else runner=("$JIG_CI_BUN" test "$file" --timeout "$timeout_ms"); fi
             scripts/ci/provision-github-rootless-host.sh "$host_mode" env \
               "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" \
               "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
@@ -235,9 +242,9 @@ jobs:
               "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" \
               "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
               "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" \
-              "FLOW_NODE=$(command -v node)" "JIG_AUTHORING_NODE_PATH=$(command -v node)" \
+              "FLOW_NODE=$FLOW_NODE" "JIG_AUTHORING_NODE_PATH=$FLOW_NODE" \
               "JIG_NPM=$(command -v npm)" JIG_LINUX_ROOTLESS_HOSTILE=1 \
-              "$JIG_CI_BUN" test "$file" --timeout "$timeout_ms" \
+              "${runner[@]}" \
               2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/$transcript"
             node -e '
               const fs=require("node:fs"), plan=JSON.parse(fs.readFileSync(process.argv[1]));
@@ -462,7 +469,16 @@ jobs:
                   retained = directory / "linux-command-evidence" / transcript
                   if retained.is_symlink() or not retained.is_file() or not retained.read_text().strip():
                       raise ValueError("missing Linux command execution transcript")
-                  commands.append({**command, "transcript": str(retained.relative_to(root / "linux-evidence"))})
+                  rewritten = {**command, "transcript": str(retained.relative_to(root / "linux-evidence"))}
+                  if command.get("commandKind") == "node-test":
+                      report = Path(command["junit"])
+                      if report.is_absolute() or len(report.parts) != 1 or report.name in (".", ".."):
+                          raise ValueError("unsafe Linux Node report path")
+                      report = directory / "linux-command-evidence" / report
+                      if report.is_symlink() or not report.is_file() or not report.read_text().strip():
+                          raise ValueError("missing Linux Node execution report")
+                      rewritten["junit"] = str(report.relative_to(root / "linux-evidence"))
+                  commands.append(rewritten)
           (root / "linux-evidence" / "manifest.json").write_text(json.dumps({"schemaVersion": 1, "commands": commands}))
           PY
           mkdir "$RUNNER_TEMP/linux-qualification"

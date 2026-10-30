@@ -79,3 +79,13 @@ prerequisites through their owning recipes.
 Appearance uses monitor, sun, moon and monochrome icon buttons, with accessible
 names and tooltips. System follows the browser preference by default; selection
 is local to the current viewer and does not change supplied observations.
+
+Application views preserve explicit gallery roles, literal report formats and captured content references.
+Gallery cards retain every supplied column and expose additional row context when supplied.
+Plain display pages need no inspection button. Related navigation uses the publisher and application subject.
+
+Captured inputs retain distinct provenance from delivered outputs.
+Visible media shares one serial preview request queue and an eight MiB cache.
+Full-file downloads require the exact capture generation and declared captured availability.
+The client retains no authorization after Close and fences late media completions.
+Retained application views present no execution history or invented duration.

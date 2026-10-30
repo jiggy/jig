@@ -66,6 +66,10 @@ finish. Up to twelve charges are shown, including the proposed charge and any
 matching earlier settled payment. Complete facts remain in the input and result.
 Child views remain available in Inspector and on independent invocation.
 
+`flows/resolve/dashboard.ts` projects typed state through the public reporting API.
+The application target identifies the account and request independently of a Run.
+`previewCollection` preserves selected charge records and the full count. The proposed charge and its earlier match remain visible together.
+
 Add `--display tui` for a terminal workspace or `--display web` for the same
 views in a browser. Open the private link printed after execution starts. The completed inspector
 stays open until you explicitly close it; leaving a live display does not cancel work.

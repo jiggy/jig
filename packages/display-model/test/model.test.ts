@@ -49,12 +49,12 @@ test('typed references include hidden/detail evidence and deduplicate exact iden
 
 test('only explicit roles select recorded destinations; intervals remain observed and uncertainty explicit', () => {
   expect(
-    displayDestinations(true, [
+    displayDestinations('recorded-packet', [
       { key: 'authored', title: 'Recorded result', source: 'Author' },
     ]).map((item) => item.key),
   ).toEqual(['files', displayViewKey('authored')])
   expect(
-    displayDestinations(true, [
+    displayDestinations('recorded-packet', [
       { key: 'host', title: 'Anything', source: 'Host', role: 'recorded-report' },
     ])[0]!.title,
   ).toBe('Recorded result')
@@ -142,7 +142,7 @@ test('public destination keys keep opaque view identities disjoint from built-in
     title: view.value.title,
     source: view.sourceLabel,
   }))
-  const live = displayDestinations(false, views)
+  const live = displayDestinations('live-run', views)
   expect(live.slice(-3).map((destination) => destination.key)).toEqual([
     'overview',
     'activity',
@@ -151,7 +151,7 @@ test('public destination keys keep opaque view identities disjoint from built-in
   expect(live.slice(0, -3).map((destination) => destination.key)).toEqual(ids.map(displayViewKey))
   expect(new Set(live.map((destination) => destination.key)).size).toBe(live.length)
   expect(snapshot.views.map((view) => view.id)).toEqual(ids)
-  const recorded = displayDestinations(true, [
+  const recorded = displayDestinations('recorded-packet', [
     { ...views[0]!, role: 'recorded-report' },
     { ...views[1]!, role: 'recorded-diagnostics' },
     ...views.slice(2),

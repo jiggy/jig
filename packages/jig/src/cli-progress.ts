@@ -9,6 +9,13 @@ import {
   privateCliSecondary,
   privateCliStyleEnabled,
 } from './cli-presentation.js'
+import {
+  PrivateCliReporting,
+  type PrivateReportingSource,
+  privateTerminalWidth,
+  privateTruncateUpdate,
+  privateUpdateText as privateUpdateTextForProgress,
+} from './cli-reporting.js'
 import type { PrivateArtifactCapture } from './cli-run-model.js'
 import {
   type PrivateAttention,
@@ -20,13 +27,6 @@ import {
 import { privateSavedResultViews } from './cli-saved-result-presentation.js'
 import { PrivateTuiInput } from './cli-tui-input.js'
 import { CliDiagnostic } from './cli-usage.js'
-import {
-  PrivateCliReporting,
-  type PrivateReportingSource,
-  privateTerminalWidth,
-  privateTruncateUpdate,
-  privateUpdateText as privateUpdateTextForProgress,
-} from './cli-reporting.js'
 import { PrivateWebDisplay } from './cli-web.js'
 import { PrivateWebInput } from './cli-web-input.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
@@ -580,6 +580,7 @@ export class PrivateCliProgress {
             ? ref.path
             : undefined,
         async (path) => previews.get(path),
+        async (path) => packet.read(path),
       )
       this.model.setArtifactCapture({
         generation: 'saved-capture',
@@ -589,6 +590,7 @@ export class PrivateCliProgress {
         files: packet.files.map((file) => ({
           path: file.path,
           bytes: file.bytes,
+          downloadable: file.available,
           state:
             !file.available || omittedPreviews.has(file.path)
               ? 'unavailable'
@@ -714,6 +716,7 @@ export class PrivateCliProgress {
         ref: Extract<Reference, { kind: 'artifact' }>,
       ) => string | undefined
       preview: (path: string) => Promise<PrivatePreview | undefined>
+      read?: (path: string) => Promise<Uint8Array | undefined>
       capture?: PrivateArtifactCapture
     },
   ): Promise<void> {
@@ -758,7 +761,7 @@ export class PrivateCliProgress {
         this.model.addAttention('Jig', cause, 4, false)
       }
       if (artifact) {
-        this.model.setArtifacts(artifact.resolve, artifact.preview)
+        this.model.setArtifacts(artifact.resolve, artifact.preview, artifact.read)
         if (artifact.capture) this.model.setArtifactCapture(artifact.capture)
       }
     })

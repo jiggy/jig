@@ -1,11 +1,13 @@
 import { spawnSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
-export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 2 })
+// Keep the complete ARM role on one runner during hosted image rollouts.
+// Different kernel builds cannot supply parts of one profile's qualification.
+export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 1 })
 export function macHostShardCount(architecture) {
   if (!Object.hasOwn(MAC_HOST_SHARDS, architecture))
     throw new Error('Mac qualification requires x64 or arm64')
@@ -73,7 +75,7 @@ const WEIGHTS = new Map([
 const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze({ x64: 57, arm64: 36 })
 const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 900, arm64: 250 })
 const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url), 'utf8'))
-const TEST_FILE = /(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)$/
+const TEST_FILE = /(?:(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)|\.node\.mjs)$/
 export const HOST_TEST_DIRECTORIES = Object.freeze([
   'packages/jig/test',
   'packages/display-model/test',
@@ -91,15 +93,11 @@ export function isHostTestFile(file) {
   )
 }
 
-export async function discoverHostTests(root) {
-  // Both 24G architectures share the same full-role inventory. Preserve portable
+export async function discoverHostTests(root, architecture = 'x64') {
+  macHostShardCount(architecture)
+  // Each architecture selects its exact full-role inventory. Preserve portable
   // cases on Mac until a separate classification audit proves host neutrality.
-  return filesForTarget(
-    discoverRepositoryTests(root, manifest),
-    'macos-x64',
-    manifest,
-    'macos-24G830',
-  )
+  return filesForTarget(discoverRepositoryTests(root, manifest), `macos-${architecture}`, manifest)
 }
 
 export function planMacHostTests(
@@ -148,7 +146,10 @@ export function planMacHostTests(
   }
   // Expose primitive failures before long application scenarios without changing
   // LPT membership, weights or the order within either partition.
-  const primitives = new Set(suiteTestFiles(files, ['macos-native'], manifest, 'macos-24G830'))
+  const profile = manifest.targets.find(
+    (target) => target.id === `macos-${architecture}`,
+  ).inventoryProfile
+  const primitives = new Set(suiteTestFiles(files, ['macos-native'], manifest, profile))
   for (const shard of shards)
     shard.groups = [
       ...shard.groups.filter(({ file }) => primitives.has(file)),
@@ -160,17 +161,13 @@ export function planMacHostTests(
   return shards
 }
 
-export function commandsForShard(shard, bun = 'bun') {
-  // Each group gets a fresh Bun process. Host ownership tests still run
-  // sequentially, while a failure cannot leave JS state for the next group.
-  return shard.groups.map(({ file }) => [
-    bun,
-    'test',
-    `./${file}`,
-    '--bail=1',
-    '--timeout',
-    '420000',
-  ])
+export function commandsForShard(shard, bun = 'bun', node = 'node') {
+  // Each group retains its actual runtime in a fresh sequential process.
+  return shard.groups.map(({ file }) =>
+    file.endsWith('.node.mjs')
+      ? [node, '--test', '--test-timeout=420000', `./${file}`]
+      : [bun, 'test', `./${file}`, '--bail=1', '--timeout', '420000'],
+  )
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
@@ -194,9 +191,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     )
     process.exit(2)
   }
-  const shards = planMacHostTests(await discoverHostTests(process.cwd()), architecture)
+  const shards = planMacHostTests(
+    await discoverHostTests(process.cwd(), architecture),
+    architecture,
+  )
   const shard = shards[index]
-  const commands = commandsForShard(shard, process.env.JIG_CI_BUN || 'bun')
+  const node = process.env.FLOW_NODE
+  if (
+    mode === 'run' &&
+    shard.groups.some(({ file }) => file.endsWith('.node.mjs')) &&
+    (!node || !isAbsolute(node))
+  )
+    throw new Error('Node material tests require the verified absolute FLOW_NODE executable')
+  const commands = commandsForShard(shard, process.env.JIG_CI_BUN || 'bun', node || 'node')
   const plan = {
     architecture,
     shard: index,
@@ -214,14 +221,24 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       )
     for (const [commandIndex, [command, ...args]] of commands.entries()) {
       const timingDirectory = process.env.JIG_MACOS_TEST_TIMINGS_DIRECTORY
-      const reporter = timingDirectory
-        ? [
-            '--reporter=junit',
-            `--reporter-outfile=${join(timingDirectory, `shard-${index}-group-${commandIndex}.xml`)}`,
-          ]
+      const nodeCommand = shard.groups[commandIndex].file.endsWith('.node.mjs')
+      const destination =
+        timingDirectory && join(timingDirectory, `shard-${index}-group-${commandIndex}.xml`)
+      const reporter = destination
+        ? nodeCommand
+          ? [
+              '--test-reporter=spec',
+              '--test-reporter-destination=stdout',
+              '--test-reporter=./scripts/ci/source-node-reporter.mjs',
+              `--test-reporter-destination=${destination}`,
+            ]
+          : ['--reporter=junit', `--reporter-outfile=${destination}`]
         : []
+      const commandArguments = nodeCommand
+        ? [...args.slice(0, -1), ...reporter, args.at(-1)]
+        : [...args, ...reporter]
       const started = performance.now()
-      const result = spawnSync(command, [...args, ...reporter], {
+      const result = spawnSync(command, commandArguments, {
         stdio: 'inherit',
         env: process.env,
       })
