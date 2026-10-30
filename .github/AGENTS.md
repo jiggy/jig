@@ -318,12 +318,27 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   a different merged revision.
 - Release completion events from CI, Linux, hosted Mac and native Agent
   workflows each run a short read-only readiness check. Duplicate and
-  out-of-order events converge. Manual reconciliation accepts a full main-push
+  out-of-order events converge. Ignore PR completions, foreign repositories,
+  non-main branches and wholly skipped native descendants before runner allocation.
+
+  Manual reconciliation accepts a full main-push
   source revision. FLOW uses complete CI evidence independently of host
   readiness. Agent/Jig also require all current-attempt Linux shards, both Mac
   architectures and all three native clients against the same canonical
   candidate and verified Linux lineage. Native descendant workflow SHA is
   metadata, not the tested source revision.
+
+  Readiness summaries show the source, verified candidate versions and links to
+  current qualification attempts. Failed qualification or invalid evidence fails
+  reconciliation. Expected asynchronous waiting publishes nothing and remains
+  distinct from blocked qualification. Manual reconciliation fails until ready.
+  Version generation links to the publisher even when no changesets remain.
+  Completed publication summarizes each package's actual registry result.
+
+  Native recovery summaries retain the job outcome and selected model without
+  copying credentials, raw transcripts or private responses. A closed limit
+  diagnostic does not establish its underlying cause. Preserve complete reruns,
+  mandatory settlement, archive identity and cleanup checks.
 
   Missing, expired, stale, failed or cancelled evidence cannot authorize
   release. Full reruns regenerate every required current-attempt proof. Partial

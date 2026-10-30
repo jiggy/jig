@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -400,4 +400,111 @@ test('release App access is repository-scoped and automatic merge preserves norm
         step.run?.includes('merge it as a maintainer'),
     ),
   )
+})
+
+test('npm readiness ignores PRs and skipped descendants while retaining failed main qualification', async () => {
+  const workflow = parse(await readFile(new URL('npm-publish.yml', workflows), 'utf8'))
+  assert.deepEqual(workflow.on.workflow_run.branches, ['main'])
+  const qualifies = (github) => Function('github', 'return (' + workflow.jobs.authorize.if + ')')(github)
+  const event = (changes = {}) => ({
+    event_name: 'workflow_run',
+    ref: 'refs/heads/main',
+    repository: 'jiggy/jig',
+    event: {
+      workflow_run: {
+        head_branch: 'main',
+        head_repository: { full_name: 'jiggy/jig' },
+        event: 'push',
+        path: '.github/workflows/ci.yml',
+        conclusion: 'success',
+        ...changes,
+      },
+    },
+  })
+  assert.equal(qualifies(event()), true)
+  assert.equal(qualifies(event({ event: 'pull_request' })), false)
+  assert.equal(qualifies(event({ head_branch: 'feature' })), false)
+  assert.equal(qualifies(event({ head_repository: { full_name: 'fork/jig' } })), false)
+  assert.equal(qualifies(event({ conclusion: 'failure' })), true)
+  for (const nativeEvent of ['workflow_run', 'workflow_dispatch']) {
+    const native = { event: nativeEvent, path: '.github/workflows/native-agent-api-qualification.yml' }
+    assert.equal(qualifies(event({ ...native, conclusion: 'skipped' })), false)
+    assert.equal(qualifies(event({ ...native, conclusion: 'failure' })), true)
+    assert.equal(qualifies(event({ ...native, conclusion: 'success' })), true)
+  }
+  assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }), true)
+  assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }), false)
+})
+
+test('native recovery summary preserves failures without exposing credentials', async () => {
+  const workflow = parse(await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'))
+  const job = workflow.jobs.qualification
+  const step = job.steps.find((step) => step.name === 'Explain native qualification and recovery')
+  assert.equal(step.if, 'always()')
+  assert.equal(step.env.QUALIFICATION_OUTCOME, '$' + '{{ job.status }}')
+  assert.doesNotMatch(JSON.stringify(step), /secrets\.|OPENROUTER_API_KEY|native-api-tests\.txt/)
+  for (const outcome of ['success', 'failure', 'cancelled']) {
+    const result = await runWriterStep(step, {
+      NATIVE_CLIENT: 'codex',
+      NATIVE_MODEL: 'openrouter/free',
+      QUALIFICATION_OUTCOME: outcome,
+    })
+    assert.equal(result.status, 0)
+    assert.ok(result.summary.includes('Native codex qualification: ' + outcome))
+    if (outcome !== 'success') {
+      assert.match(result.summary, /Re-run all jobs/)
+      assert.match(result.summary, /does not identify the underlying provider cause/)
+    }
+  }
+  assert.equal(job.steps.find((step) => step.id === 'native-api')['continue-on-error'], undefined)
+})
+
+test('publication summary distinguishes verified archives from superseded versions', async () => {
+  const workflow = parse(await readFile(new URL('npm-publish.yml', workflows), 'utf8'))
+  const step = workflow.jobs.tag_host.steps.at(-1)
+  assert.equal(step.name, 'Summarize completed npm publication')
+  assert.equal(step.if, undefined)
+  const result = await runWriterStep(step, {
+    AGENT_VERSION: '0.1.0-alpha.1',
+    AGENT_STATE: 'verified',
+    ACP_VERSION: '0.1.0-alpha.2',
+    ACP_STATE: 'superseded',
+    JIG_VERSION: '0.1.0-alpha.3',
+    JIG_STATE: 'published',
+  })
+  assert.equal(result.status, 0)
+  assert.ok(result.summary.includes('@jigging/agent-acp | 0.1.0-alpha.2 | superseded'))
+  assert.ok(result.summary.includes('@jigging/jig | 0.1.0-alpha.3 | published'))
+})
+
+test('version planning explains pending and consumed changesets without claiming publication', async () => {
+  const workflow = parse(await readFile(new URL('release-version.yml', workflows), 'utf8'))
+  const step = workflow.jobs.generate.steps.find((step) => step.id === 'plan')
+  const program = step.run.split("<<'NODE'\n")[1].split('\nNODE')[0]
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-version-plan-summary-'))
+  try {
+    for (const pendingChangesets of [[], ['fix']]) {
+      await writeFile(join(temporary, 'release-plan.json'), JSON.stringify({ pendingChangesets }))
+      const summary = join(temporary, 'summary-' + pendingChangesets.length + '.md')
+      const output = join(temporary, 'output-' + pendingChangesets.length)
+      const child = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
+        env: {
+          RUNNER_TEMP: temporary,
+          GITHUB_REPOSITORY: 'jiggy/jig',
+          GITHUB_STEP_SUMMARY: summary,
+          GITHUB_OUTPUT: output,
+        },
+        encoding: 'utf8',
+        timeout: 5_000,
+      })
+      assert.ifError(child.error)
+      assert.equal(child.status, 0, child.stderr)
+      const rendered = await readFile(summary, 'utf8')
+      assert.ok(rendered.includes('https://github.com/jiggy/jig/actions/workflows/npm-publish.yml'))
+      assert.match(rendered, pendingChangesets.length ? /Pending changesets/ : /No pending changesets/)
+      assert.ok((await readFile(output, 'utf8')).includes('pending=' + (pendingChangesets.length > 0)))
+    }
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
 })

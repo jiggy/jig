@@ -260,16 +260,75 @@ async function loadCanonical(client, repository, run, source) {
     throw new Error('Missing canonical receipt digest')
   if (receipt.schemaVersion !== 2) throw new Error('Unsupported canonical candidate receipt')
   const release = validateCandidateRelease(receipt.release, source, receipt.packages)
-  if (!release.eligible)
-    throw new Error(`Canonical source is not a versioned release: ${release.reason}`)
   return {
-    sourceRevision: source,
-    receiptSha256: receipt.receiptSha256,
-    producerRunId: run.id,
-    producerRunAttempt: run.run_attempt,
-    artifactId: artifact.id,
-    artifactDigest: artifact.digest,
+    release,
+    candidate: {
+      sourceRevision: source,
+      receiptSha256: receipt.receiptSha256,
+      producerRunId: run.id,
+      producerRunAttempt: run.run_attempt,
+      artifactId: artifact.id,
+      artifactDigest: artifact.digest,
+    },
   }
+}
+
+async function latestNativeRun(client, repository, source, ciRuns) {
+  // Rerunning an older Linux/native pair may consume a newer same-source CI
+  // producer. Preserve descendants since the first verified push of that source.
+  const earliestCi = ciRuns.reduce((earliest, run) =>
+    creationTime(run.created_at) < creationTime(earliest.created_at) ? run : earliest,
+  )
+  creationTime(earliestCi.created_at)
+  // A queued manual run can predate even the first CI run; its head identifies
+  // the tested source directly, unlike a workflow_run descendant's head.
+  const nativeQueries = [
+    new URLSearchParams({
+      branch: 'main',
+      event: 'workflow_run',
+      created: `>=${earliestCi.created_at}`,
+    }),
+    new URLSearchParams({ branch: 'main', event: 'workflow_dispatch', head_sha: source }),
+  ]
+  const nativeResponses = await Promise.all(
+    nativeQueries.map((query) =>
+      paginated(
+        client,
+        `repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs?${query}`,
+        'workflow_runs',
+      ),
+    ),
+  )
+  const nativeRuns = [...new Map(nativeResponses.flat().map((run) => [run.id, run])).values()]
+  // Native head_sha is the default-branch workflow revision, not the tested
+  // source. Receipts and Linux lineage are the only source association.
+  for (const run of nativeRuns.sort((a, b) => b.id - a.id)) {
+    if (
+      run.repository?.full_name !== repository ||
+      run.path !== WORKFLOWS.native ||
+      run.head_branch !== 'main' ||
+      run.head_repository?.full_name !== repository ||
+      !['workflow_run', 'workflow_dispatch'].includes(run.event)
+    )
+      continue
+    const artifacts = await paginated(
+      client,
+      `repos/${repository}/actions/runs/${run.id}/artifacts`,
+      'artifacts',
+    )
+    const suffix = new RegExp(`-${source}-r${run.id}-a[1-9][0-9]*$`)
+    if (
+      !(run.event === 'workflow_dispatch' && run.head_sha === source) &&
+      !artifacts.some(
+        (artifact) =>
+          /^native-(qualification|inputs)-/.test(artifact.name ?? '') &&
+          suffix.test(artifact.name),
+      )
+    )
+      continue
+    return run
+  }
+  return undefined
 }
 
 export async function resolveTriggerSource({ client, repository, triggerRunId, sourceRevision }) {
@@ -329,6 +388,28 @@ export async function resolveTriggerSource({ client, repository, triggerRunId, s
   return [...sources][0]
 }
 
+const CHECK_NAMES = {
+  ci: 'CI',
+  linux: 'Linux host conformance',
+  macos: 'macOS hosted candidates',
+  native: 'Native Agent API qualification',
+}
+
+function qualificationCheck(kind, run) {
+  return {
+    kind,
+    name: CHECK_NAMES[kind],
+    runId: run?.id ?? null,
+    runAttempt: run?.run_attempt ?? null,
+    status: run?.status ?? 'missing',
+    conclusion: run?.conclusion ?? null,
+  }
+}
+
+function failedCheck(checks) {
+  return checks.some((check) => check.status === 'completed' && check.conclusion !== 'success')
+}
+
 export async function releaseReadiness({
   client,
   repository,
@@ -339,6 +420,9 @@ export async function releaseReadiness({
   const source = await resolveTriggerSource({ client, repository, triggerRunId, sourceRevision })
   const result = {
     sourceRevision: source ?? '',
+    state: 'waiting',
+    checks: [],
+    packages: [],
     producerRunId: '',
     producerRunAttempt: '',
     artifactId: '',
@@ -352,21 +436,34 @@ export async function releaseReadiness({
     obligations: [],
   }
   if (!source) {
+    result.state = 'ignored'
     result.reasons.push('No trusted tested source was identified')
     return result
   }
   const ciRuns = await mainRuns(client, repository, 'ci', source)
   const ci = ciRuns[0]
+  result.checks.push(qualificationCheck('ci', ci))
   if (!succeeded(ci)) {
+    result.state = failedCheck(result.checks) ? 'blocked' : 'waiting'
     result.reasons.push('Complete current-attempt CI qualification is pending or failed')
     return result
   }
   let candidate
+  result.state = 'blocked'
   try {
     result.obligations.push(
       ...(await requireJobs(client, repository, ci, [...CI_QUALIFICATION_JOBS, ciJobName])),
     )
-    candidate = await loadCanonical(client, repository, ci, source)
+    const canonical = await loadCanonical(client, repository, ci, source)
+    result.packages = canonical.release.packages.map(({ name, version }) => ({ name, version }))
+    if (!canonical.release.eligible) {
+      result.state = canonical.release.reason === 'stale-release-plan' ? 'blocked' : 'not-release'
+      result.reasons.push(
+        `Canonical source is not a versioned release: ${canonical.release.reason}`,
+      )
+      return result
+    }
+    candidate = canonical.candidate
     result.producerRunId = ci.id
     result.producerRunAttempt = ci.run_attempt
     result.artifactId = candidate.artifactId
@@ -399,7 +496,23 @@ export async function releaseReadiness({
   let linuxReceipt
   try {
     const linux = await latestMainRun(client, repository, 'linux', source)
-    if (!succeeded(linux)) throw new Error('Complete Linux qualification is pending or failed')
+    const mac = await latestMainRun(client, repository, 'macos', source)
+    const nativeMatch = await latestNativeRun(client, repository, source, ciRuns)
+    result.checks.push(
+      qualificationCheck('linux', linux),
+      qualificationCheck('macos', mac),
+      qualificationCheck('native', nativeMatch),
+    )
+    const pending = [
+      [linux, 'Complete Linux qualification is pending or failed'],
+      [mac, 'Complete Mac qualification is pending or failed'],
+      [nativeMatch, 'Current matching native qualification is pending or failed'],
+    ].filter(([run]) => !succeeded(run))
+    if (pending.length) {
+      result.state = failedCheck(result.checks) ? 'blocked' : 'waiting'
+      result.reasons.push(...pending.slice(1).map(([, reason]) => reason))
+      throw new Error(pending[0][1])
+    }
     result.obligations.push(
       ...(await requireJobs(client, repository, linux, LINUX_QUALIFICATION_JOBS)),
     )
@@ -426,8 +539,6 @@ export async function releaseReadiness({
       run: linux,
       repository,
     })
-    const mac = await latestMainRun(client, repository, 'macos', source)
-    if (!succeeded(mac)) throw new Error('Complete Mac qualification is pending or failed')
     result.obligations.push(
       ...(await requireJobs(client, repository, mac, MACOS_QUALIFICATION_JOBS)),
     )
@@ -442,89 +553,31 @@ export async function releaseReadiness({
       const { receipt } = await qualificationFromArtifact(client, artifact)
       verifyQualification(receipt, { kind: 'macos', profile, candidate, run: mac, repository })
     }
-    // Rerunning an older Linux/native pair may consume a newer same-source CI
-    // producer. Preserve descendants since the first verified push of that source.
-    const earliestCi = ciRuns.reduce((earliest, run) =>
-      creationTime(run.created_at) < creationTime(earliest.created_at) ? run : earliest,
-    )
-    creationTime(earliestCi.created_at)
-    // A queued manual run can predate even the first CI run; its head identifies
-    // the tested source directly, unlike a workflow_run descendant's head.
-    const nativeQueries = [
-      new URLSearchParams({
-        branch: 'main',
-        event: 'workflow_run',
-        created: `>=${earliestCi.created_at}`,
-      }),
-      new URLSearchParams({ branch: 'main', event: 'workflow_dispatch', head_sha: source }),
-    ]
-    const nativeResponses = await Promise.all(
-      nativeQueries.map((query) =>
-        paginated(
-          client,
-          `repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs?${query}`,
-          'workflow_runs',
-        ),
-      ),
-    )
-    const nativeRuns = [...new Map(nativeResponses.flat().map((run) => [run.id, run])).values()]
-    // Native head_sha is the default-branch workflow revision, not the tested
-    // source. Receipts and Linux lineage are the only source association.
-    let nativeMatch
-    for (const run of nativeRuns.sort((a, b) => b.id - a.id)) {
-      if (
-        run.repository?.full_name !== repository ||
-        run.path !== WORKFLOWS.native ||
-        run.head_branch !== 'main' ||
-        run.head_repository?.full_name !== repository ||
-        !['workflow_run', 'workflow_dispatch'].includes(run.event)
-      )
-        continue
-      const artifacts = await paginated(
+    const run = nativeMatch
+    result.obligations.push(
+      ...(await requireJobs(
         client,
-        `repos/${repository}/actions/runs/${run.id}/artifacts`,
-        'artifacts',
+        repository,
+        run,
+        ['codex', 'claude', 'pi'].map((profile) => `${profile} — Ubuntu 24.04`),
+      )),
+    )
+    for (const profile of ['codex', 'claude', 'pi']) {
+      const artifact = await artifactFor(
+        client,
+        repository,
+        run,
+        `native-qualification-${profile}-${source}-r${run.id}-a${run.run_attempt}`,
       )
-      const suffix = new RegExp(`-${source}-r${run.id}-a[1-9][0-9]*$`)
+      hostArtifacts.push(artifact)
+      const { receipt } = await qualificationFromArtifact(client, artifact)
+      verifyQualification(receipt, { kind: 'native', profile, candidate, run, repository })
       if (
-        !(run.event === 'workflow_dispatch' && run.head_sha === source) &&
-        !artifacts.some(
-          (artifact) =>
-            /^native-(qualification|inputs)-/.test(artifact.name ?? '') &&
-            suffix.test(artifact.name),
-        )
+        receipt.upstream?.receiptSha256 !== linuxReceipt.receiptSha256 ||
+        !same(receipt.upstream?.receipt, linuxReceipt.receipt)
       )
-        continue
-      if (!succeeded(run))
-        throw new Error('Current matching native qualification is pending or failed')
-      result.obligations.push(
-        ...(await requireJobs(
-          client,
-          repository,
-          run,
-          ['codex', 'claude', 'pi'].map((profile) => `${profile} — Ubuntu 24.04`),
-        )),
-      )
-      for (const profile of ['codex', 'claude', 'pi']) {
-        const artifact = await artifactFor(
-          client,
-          repository,
-          run,
-          `native-qualification-${profile}-${source}-r${run.id}-a${run.run_attempt}`,
-        )
-        hostArtifacts.push(artifact)
-        const { receipt } = await qualificationFromArtifact(client, artifact)
-        verifyQualification(receipt, { kind: 'native', profile, candidate, run, repository })
-        if (
-          receipt.upstream?.receiptSha256 !== linuxReceipt.receiptSha256 ||
-          !same(receipt.upstream?.receipt, linuxReceipt.receipt)
-        )
-          throw new Error('Native qualification Linux lineage mismatch')
-      }
-      nativeMatch = run
-      break
+        throw new Error('Native qualification Linux lineage mismatch')
     }
-    if (!nativeMatch) throw new Error('No complete current-candidate native qualification exists')
     // Recheck producer and every retained qualification attempt immediately
     // before granting readiness, closing rerun races during the API snapshot.
     for (const run of [ci, linux, mac, nativeMatch]) {
@@ -533,6 +586,7 @@ export async function releaseReadiness({
         throw new Error('Qualification changed during readiness evaluation')
     }
     result.readyHost = true
+    result.state = 'ready'
     result.hostSnapshot = qualificationSnapshot(
       repository,
       'host',
@@ -550,6 +604,7 @@ export async function releaseReadiness({
     if (currentCi.run_attempt !== ci.run_attempt || !succeeded(currentCi))
       throw new Error('CI changed before readiness completed')
   } catch (error) {
+    result.state = 'blocked'
     result.readyFlow = false
     result.readyHost = false
     result.flowSnapshot = null
@@ -557,6 +612,79 @@ export async function releaseReadiness({
     result.reasons.push(error.message)
   }
   return result
+}
+
+function summaryText(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('|', '&#124;')
+    .replaceAll('`', '&#96;')
+    .replaceAll('[', '&#91;')
+    .replaceAll(']', '&#93;')
+    .replaceAll(/\r?\n/g, ' ')
+}
+
+export function releaseSummary(result, repository) {
+  const titles = {
+    ready: 'Ready for publication',
+    waiting: 'Waiting for qualification',
+    blocked: 'Blocked',
+    'not-release': 'No versioned release',
+    ignored: 'No release source',
+  }
+  const root = `https://github.com/${repository}`
+  const lines = [`## npm release: ${titles[result.state] ?? 'Blocked'}`, '']
+  if (result.sourceRevision)
+    lines.push(`Source: [${result.sourceRevision}](${root}/commit/${result.sourceRevision})`, '')
+  if (result.packages.length) {
+    lines.push('| Package | Candidate version |', '| --- | --- |')
+    for (const entry of result.packages)
+      lines.push(`| ${summaryText(entry.name)} | ${summaryText(entry.version)} |`)
+    lines.push('')
+  }
+  lines.push('| Required qualification | Current attempt |', '| --- | --- |')
+  for (const [kind, name] of Object.entries(CHECK_NAMES)) {
+    const check = result.checks.find((entry) => entry.kind === kind)
+    let state = check ? summaryText(check.conclusion ?? check.status) : 'not inspected'
+    if (check?.runId)
+      state = `[${state}](${root}/actions/runs/${check.runId}/attempts/${check.runAttempt})`
+    lines.push(`| ${name} | ${state} |`)
+  }
+  lines.push('')
+  for (const reason of result.reasons) lines.push(`- ${summaryText(reason)}`)
+  lines.push('')
+  if (result.readyHost) {
+    lines.push(
+      'Qualification permits publication. The publication jobs must still verify registry convergence.',
+      '',
+    )
+  } else if (result.state === 'not-release') {
+    lines.push('Merge the generated release PR before publication can qualify.', '')
+  } else {
+    lines.push(
+      '**No packages were published by this readiness check.**',
+      '',
+      'Wait for queued or running checks. Fix failed qualification, then choose **Re-run all jobs** in that workflow.',
+      'Completion events check readiness again. Partial qualification reruns cannot reuse earlier proof.',
+      '',
+    )
+  }
+  lines.push(`[Release and recovery instructions](${root}/blob/main/RELEASING.md)`, '')
+  return lines.join('\n')
+}
+
+export async function reportReleaseReadiness(result, { repository, output, summary, eventName }) {
+  if (output)
+    await appendFile(
+      output,
+      `source_revision=${result.sourceRevision}\nproducer_run_id=${result.producerRunId}\nproducer_run_attempt=${result.producerRunAttempt}\ncandidate_artifact_id=${result.artifactId}\ncandidate_artifact_digest=${result.artifactDigest}\ncandidate_receipt_sha256=${result.receiptSha256}\nready_flow=${result.readyFlow}\nready_host=${result.readyHost}\nflow_snapshot=${result.flowSnapshot ? JSON.stringify(result.flowSnapshot) : ''}\nhost_snapshot=${result.hostSnapshot ? JSON.stringify(result.hostSnapshot) : ''}\n`,
+    )
+  if (summary) await appendFile(summary, releaseSummary(result, repository))
+  return result.state === 'blocked' || (eventName === 'workflow_dispatch' && !result.readyHost)
+    ? 1
+    : 0
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
@@ -581,14 +709,20 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       triggerRunId: event.workflow_run?.id,
       ciJobName: options['ci-job-name'] ?? 'candidate-build',
     })
-    if (options['github-output'])
-      await appendFile(
-        options['github-output'],
-        `source_revision=${result.sourceRevision}\nproducer_run_id=${result.producerRunId}\nproducer_run_attempt=${result.producerRunAttempt}\ncandidate_artifact_id=${result.artifactId}\ncandidate_artifact_digest=${result.artifactDigest}\ncandidate_receipt_sha256=${result.receiptSha256}\nready_flow=${result.readyFlow}\nready_host=${result.readyHost}\nflow_snapshot=${result.flowSnapshot ? JSON.stringify(result.flowSnapshot) : ''}\nhost_snapshot=${result.hostSnapshot ? JSON.stringify(result.hostSnapshot) : ''}\n`,
-      )
+    process.exitCode = await reportReleaseReadiness(result, {
+      repository,
+      output: options['github-output'],
+      summary: process.env.GITHUB_STEP_SUMMARY,
+      eventName: process.env.GITHUB_EVENT_NAME,
+    })
     console.log(JSON.stringify(result, null, 2))
   } catch (error) {
     console.error(error.message)
+    if (process.env.GITHUB_STEP_SUMMARY)
+      await appendFile(
+        process.env.GITHUB_STEP_SUMMARY,
+        "## npm release: Blocked\n\nReadiness could not be verified. Inspect this job's error before retrying.\n",
+      )
     process.exitCode = 1
   }
 }

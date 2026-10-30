@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -26,6 +26,8 @@ import {
   CI_QUALIFICATION_JOBS,
   LINUX_QUALIFICATION_JOBS,
   MACOS_QUALIFICATION_JOBS,
+  reportReleaseReadiness,
+  releaseSummary,
   releaseReadiness,
   resolveTriggerSource,
 } from './release-readiness.mjs'
@@ -1087,4 +1089,122 @@ test('manual acquisition accepts main producers while release readiness still re
   const result = await fixture.check()
   assert.equal(result.readyFlow, false)
   assert.equal(result.readyHost, false)
+})
+
+test('release reporting exposes failed native qualification while Mac is still running', async () => {
+  const fixture = readinessFixture()
+  fixture.runs.get(300).status = 'in_progress'
+  fixture.runs.get(300).conclusion = null
+  fixture.runs.get(400).conclusion = 'failure'
+  const result = await fixture.check()
+  assert.equal(result.state, 'blocked')
+  assert.equal(result.readyHost, false)
+  assert.equal(result.hostSnapshot, null)
+  assert.deepEqual(
+    result.checks.map(({ kind, status, conclusion }) => ({ kind, status, conclusion })),
+    [
+      { kind: 'ci', status: 'completed', conclusion: 'success' },
+      { kind: 'linux', status: 'completed', conclusion: 'success' },
+      { kind: 'macos', status: 'in_progress', conclusion: null },
+      { kind: 'native', status: 'completed', conclusion: 'failure' },
+    ],
+  )
+  assert.equal(result.reasons.length, 2)
+  const summary = releaseSummary(result, repository)
+  assert.match(summary, /npm release: Blocked/)
+  assert.ok(summary.includes('@jigging/jig | 0.1.0-alpha.1'))
+  assert.ok(summary.includes('macOS hosted candidates | [in_progress](https://github.com/jiggy/jig/actions/runs/300/attempts/1)'))
+  assert.ok(summary.includes('Native Agent API qualification | [failure](https://github.com/jiggy/jig/actions/runs/400/attempts/1)'))
+  assert.match(summary, /No packages were published by this readiness check/)
+  assert.match(summary, /Re-run all jobs/)
+})
+
+test('waiting release checks never authorize publication and manual reconciliation fails visibly', async () => {
+  const fixture = readinessFixture()
+  fixture.runs.get(300).status = 'queued'
+  fixture.runs.get(300).conclusion = null
+  const result = await fixture.check()
+  assert.equal(result.state, 'waiting')
+  assert.equal(result.readyHost, false)
+  assert.equal(result.hostSnapshot, null)
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-release-report-'))
+  try {
+    const output = join(temporary, 'outputs')
+    const summary = join(temporary, 'summary.md')
+    assert.equal(
+      await reportReleaseReadiness(result, { repository, output, summary, eventName: 'workflow_run' }),
+      0,
+    )
+    assert.match(await readFile(output, 'utf8'), /^ready_host=false$/m)
+    assert.match(await readFile(summary, 'utf8'), /Waiting for qualification/)
+    assert.equal(
+      await reportReleaseReadiness(result, { repository, eventName: 'workflow_dispatch' }),
+      1,
+    )
+    fixture.runs.get(300).status = 'completed'
+    fixture.runs.get(300).conclusion = 'failure'
+    const blocked = await fixture.check()
+    assert.equal(
+      await reportReleaseReadiness(blocked, { repository, eventName: 'workflow_run' }),
+      1,
+    )
+    fixture.runs.get(300).conclusion = 'success'
+    const ready = await fixture.check()
+    assert.equal(
+      await reportReleaseReadiness(ready, { repository, eventName: 'workflow_dispatch' }),
+      0,
+    )
+    assert.equal(ready.state, 'ready')
+    assert.match(releaseSummary(ready, repository), /Ready for publication/)
+    assert.doesNotMatch(releaseSummary(ready, repository), /packages were published/)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('unverified evidence blocks reporting even when every workflow is green', async () => {
+  const fixture = readinessFixture()
+  fixture.artifacts.get(300).pop()
+  const result = await fixture.check()
+  assert.equal(result.state, 'blocked')
+  assert.equal(result.readyHost, false)
+  assert.equal(
+    await reportReleaseReadiness(result, { repository, eventName: 'workflow_run' }),
+    1,
+  )
+  result.reasons.push('<script>bad</script> | [link](https://example.com)\n## forged heading')
+  const summary = releaseSummary(result, repository)
+  assert.doesNotMatch(summary, /<script>|\n## forged heading|\[link\]/)
+  assert.match(summary, /&lt;script&gt;/)
+})
+
+test('missing native qualification is reported as waiting without borrowing a different source', async () => {
+  const fixture = readinessFixture()
+  fixture.artifacts.set(400, [])
+  const result = await fixture.check()
+  assert.equal(result.state, 'waiting')
+  assert.equal(result.readyHost, false)
+  assert.equal(result.checks.find((check) => check.kind === 'native').status, 'missing')
+})
+
+test('readiness CLI leaves a blocked summary when verification cannot start', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-readiness-cli-'))
+  try {
+    const summary = join(temporary, 'summary.md')
+    const child = spawnSync(
+      process.execPath,
+      [new URL('./release-readiness.mjs', import.meta.url).pathname, '--source', source],
+      {
+        env: { PATH: process.env.PATH, GITHUB_REPOSITORY: 'invalid', GITHUB_STEP_SUMMARY: summary },
+        encoding: 'utf8',
+        timeout: 10_000,
+      },
+    )
+    assert.ifError(child.error)
+    assert.equal(child.status, 1)
+    assert.match(child.stderr, /Invalid GitHub repository/)
+    assert.match(await readFile(summary, 'utf8'), /npm release: Blocked/)
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
 })

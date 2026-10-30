@@ -136,6 +136,15 @@ They consume frozen package exports with tracked test helpers and installed
   receipt. Early native input receipts route pending/failing descendants but
   cannot qualify them.
 
+  After canonical CI validation, inspect all host run states before receipt
+  validation. Report simultaneous pending and failed gates with current-attempt
+  links and candidate versions. Diagnostics never grant publication authority.
+
+  Summaries distinguish waiting, blocked, ready and sources without generated
+  releases. Blocked evidence returns nonzero. Manual reconciliation also returns
+  nonzero while waiting. Every existing receipt and supersession check remains
+  required before readiness.
+
   Canonical source must be an eligible generated release with no pending
   changesets. Feature source and stale release plans cannot receive readiness,
   even when all execution evidence passed. Every protected publication retains
