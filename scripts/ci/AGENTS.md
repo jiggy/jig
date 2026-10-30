@@ -8,6 +8,10 @@ preparation never becomes a consumer requirement.
 
 ## Ownership
 
+- `../example-inventory.mjs` requires every direct example directory to retain
+  its manifest, project definition and application tests. Its host-suite mapping
+  must remain selected by Linux and both Mac targets. Application suite ownership
+  covers `examples/`, so new tests cannot escape source-stage discovery.
 - `test-suites.json` declares whole-file roots, applicability and fixed full
   execution targets. `suite-inventory.mjs` supplies local and pinned-Git
   membership, rejecting unknown, ambiguous or linked tests. Every applicable
@@ -182,6 +186,19 @@ They consume frozen package exports with tracked test helpers and installed
   pagination.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
+- `provision-example-smoke.sh` prepares the dedicated Linux example shard.
+  It installs the exact official Codex 0.152.1 package after digest verification,
+  preserving its executable/resource layout. It creates one private local HTTPS
+  certificate and installs its CA through ordinary disposable-host trust.
+  The runner receives only executable, certificate and key paths.
+  Delete the signing key after certificate creation. Never retain TLS keys in
+  CI artifacts or pass live model credentials.
+
+  The complete `linux-host/example-smoke.test.ts` file belongs only to the
+  canonical `examples` shard. Ordinary source files follow the measured scheduling
+  policy. This shard uses real acquisition, native execution and cleanup, with ordinary
+  source and candidate verification. The aggregate and release readiness require
+  its current-attempt proof alongside the other Linux shards.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224, Intel/Apple
   Silicon 24G830, and Apple Silicon 24H232 profiles. The hosted pool admits Intel
   24G830 and either exact Apple Silicon 24G830 or 24H232 tuple.

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
-import { CI_QUALIFICATION_JOBS } from './release-readiness.mjs'
+import { CI_QUALIFICATION_JOBS, LINUX_QUALIFICATION_JOBS } from './release-readiness.mjs'
 
 const workflows = new URL('../../.github/workflows/', import.meta.url)
 const rootKeys = new Set([
@@ -124,6 +124,16 @@ test('required Mac checks allocate complete ARM only and keep Intel on nightly/m
   const manual = parse(await readFile(new URL('macos-host-conformance.yml', workflows), 'utf8'))
   assert.deepEqual(Object.keys(manual.on), ['workflow_dispatch'])
   assert.equal(manual.jobs.qualify.environment, 'macos-host-conformance')
+})
+
+test('release readiness requires every canonical Linux shard including example e2e', async () => {
+  const workflow = parse(await readFile(new URL('linux-host-conformance.yml', workflows), 'utf8'))
+  const shards = workflow.jobs['host-suite'].strategy.matrix.suite
+  assert.ok(shards.includes('examples'))
+  assert.deepEqual(LINUX_QUALIFICATION_JOBS, [
+    'rootless-linux',
+    ...shards.map((suite) => `Linux host — ${suite}`),
+  ])
 })
 
 test('every workflow declares GitHub triggers using YAML 1.2 keys', async () => {

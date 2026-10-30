@@ -10,7 +10,7 @@ with platform context. They are not unfamiliar-consumer usability qualification.
 
 - `materialize.ts` constructs three independent temporary consumer repositories and
   installs exact frozen Jig/FLOW archives using the installed-test conventions.
-- `../private-profile-diagnostics.ts` owns bounded profile summaries shared with workspace review fixtures.
+- `../private-profile-diagnostics.ts` owns bounded profile summaries shared with workspace review fixtures and closed public evaluation failure summaries.
 - Without a supplied FLOW archive, freeze the installed public SDK package.
   Never require a neighboring SDK source checkout.
 - `adaptive/` owns deterministic candidate production, reviewed evaluation,
@@ -69,6 +69,10 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   Keep the existing 75-second client transport margin and all evaluation phase limits.
   Phase ceilings do not establish measured payload time or the deadline's underlying cause.
   Existing aggregate spans do not isolate every evaluator substep.
+
+  A failed profiled adaptive command may read its existing public observation through a bounded 256 KiB, no-follow regular-file read.
+  Its summary retains only phase, stage, limiting budget, stop reason, cleanup label, bounded process duration and phase/process counts.
+  Messages, streams, inputs, invocation data and identities remain private. Missing or malformed evidence preserves the original command assertion.
 - Exact repeated exports reconcile their original delivery. Collision checks use
   a different selection at an existing destination and verify unchanged bytes.
 - Candidate tests are process evidence, not independent acceptance. Deterministic

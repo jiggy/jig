@@ -19,7 +19,7 @@ import {
   foundationResidue,
   lockFoundationWorkspace,
 } from './host-foundation/materialize.js'
-import { incidentWorkerDiagnostic } from './incident-diagnostics.js'
+import { incidentBranchDiagnostic, incidentWorkerDiagnostic } from './incident-diagnostics.js'
 
 const application = resolve(import.meta.dir, 'incident-brief')
 const hash = async (path: string) =>
@@ -204,6 +204,14 @@ export default defineBinding({package:'flows/agent-task',settings:{refuseSuccess
   assert.equal(result.output.results[1].role, 'independent')
   const draft = result.output.results[0].result
   const reviewer = result.output.results[1].result
+  assert.ok(
+    draft !== null && typeof draft === 'object' && !Array.isArray(draft),
+    JSON.stringify(incidentBranchDiagnostic(result.output.results[0])),
+  )
+  assert.ok(
+    reviewer !== null && typeof reviewer === 'object' && !Array.isArray(reviewer),
+    JSON.stringify(incidentBranchDiagnostic(result.output.results[1])),
+  )
   const draftDiagnostic = JSON.stringify(incidentWorkerDiagnostic(draft))
   const reviewerDiagnostic = JSON.stringify(incidentWorkerDiagnostic(reviewer))
   assert.equal(reviewer.outcome, 'done', reviewerDiagnostic)

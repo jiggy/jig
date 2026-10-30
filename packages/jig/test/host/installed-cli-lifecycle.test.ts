@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { realpathSync } from 'node:fs'
+import { existsSync, realpathSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
@@ -18,14 +18,16 @@ import { checkInstalledDisplay, installedRuntime } from '../fixtures/installed-d
 requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
 
-test('installed CLI: admitted greeting, exact output, real saved inspectors and native residue', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'jig-installed-cli-lifecycle-'))
+test('installed CLI: pristine initialized greeting, exact output, real saved inspectors and native residue', async () => {
+  const root = realpathSync(await mkdtemp(join(tmpdir(), 'jig-installed-cli-lifecycle-')))
   let passed = false
   try {
     const command = foundationCommands(join(root, 'commands'))
     const archives = await freezeFoundationArchives(root, command)
+    const tooling = join(root, 'tooling')
+    await mkdir(tooling)
     await writeFile(
-      join(root, 'package.json'),
+      join(tooling, 'package.json'),
       JSON.stringify({
         private: true,
         dependencies: {
@@ -36,37 +38,26 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
     )
     await command(
       [process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
-      root,
+      tooling,
       120_000,
     )
-    const cli = join(root, 'node_modules/.bin/jig')
+    const cli = join(tooling, 'node_modules/.bin/jig')
     const project = join(root, 'greeting')
     const before = await foundationResidue(qualification, command, root)
     await command([cli, 'init', project], root)
-    // Ordinary source-workspace consumption of the exact public SDK archive.
-    // This avoids registry publication claims and preserves the normal resolver.
-    const library = join(project, 'libs/flow')
-    await mkdir(library, { recursive: true })
-    await command(['tar', '-xzf', archives.flow, '--strip-components=1', '-C', library], root)
-    await writeFile(
-      join(project, 'package.json'),
-      JSON.stringify({
-        name: 'installed-cli-greeting',
-        private: true,
-        type: 'module',
-        workspaces: ['flows/*', 'libs/*'],
-      }),
+    // The tutorial must work on the files init writes, outside the tooling
+    // installation, without a workspace, a local dependency install or Git setup.
+    const authoredPaths = [
+      '.gitignore',
+      'README.md',
+      'jig.ts',
+      'flows/hello/package.json',
+      'flows/hello/FLOW.meta.json',
+      'flows/hello/FLOW.ts',
+    ]
+    const authoredBytes = await Promise.all(
+      authoredPaths.map((path) => readFile(join(project, path))),
     )
-    // Bun requires a name when a standalone package becomes a workspace member.
-    const greetingManifest = join(project, 'flows/hello/package.json')
-    await writeFile(
-      greetingManifest,
-      JSON.stringify({
-        ...JSON.parse(await readFile(greetingManifest, 'utf8')),
-        name: 'installed-cli-greeting-hello',
-      }),
-    )
-    await command(['git', 'init', '--quiet'], project)
     await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
     const lock = await readFile(join(project, 'jig.lock'), 'utf8')
     for (const display of [[], ['--display', 'plain'], ['--json']]) {
@@ -85,16 +76,27 @@ test('installed CLI: admitted greeting, exact output, real saved inspectors and 
         /private-root-owners|private-host-ticket|#cap=/,
       )
       expect(await readFile(join(project, 'jig.lock'), 'utf8')).toBe(lock)
+      for (const [index, path] of authoredPaths.entries())
+        expect(await readFile(join(project, path))).toEqual(authoredBytes[index])
+      for (const path of [
+        'package.json',
+        'bun.lock',
+        'node_modules',
+        '.git',
+        'flows/hello/bun.lock',
+        'flows/hello/node_modules',
+      ])
+        expect(existsSync(join(project, path))).toBe(false)
       expect(await foundationResidue(qualification, command, root)).toEqual(before)
     }
-    const installed = realpathSync(join(root, 'node_modules/@jigging/jig'))
+    const installed = realpathSync(join(tooling, 'node_modules/@jigging/jig'))
     const runtime = realpathSync(
       createRequire(join(installed, 'package.json')).resolve(
         `@oven/${installedRuntime.package}/bin/bun`,
       ),
     )
     await checkInstalledDisplay({
-      consumer: root,
+      consumer: tooling,
       installed,
       runtime,
       command: cli,

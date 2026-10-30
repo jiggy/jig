@@ -8,6 +8,11 @@ operational baselines, and public-site assembly.
 ## Ownership
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `example-inventory.mjs` reconciles every example directory with application
+  tests, installed-host suites and the mandatory Linux end-to-end suite.
+  `check-example-project.ts` imports original project and Binding declarations
+  and bundles every TypeScript Flow against the frozen public package closure.
+  These source checks do not establish native admission or live Agent quality.
 - `release/` owns package changeset coverage, independent prerelease planning,
   dependency propagation, generated pins, and source-bound release metadata.
   The required quick CI job validates every change against its Git baseline.
@@ -81,8 +86,10 @@ operational baselines, and public-site assembly.
   FLOW SDKs and authoring
   use exact versioned public artifacts from `jiggy/flow`, not local builds.
 
-  A failed stage stops later execution and archive-success verification. It
-  includes the authored examples' deterministic application tests, the private
+  A failed stage stops later execution and archive-success verification.
+  Application checks install the frozen Jig authoring package, validate original
+  example declarations and bundle Flow imports before running application tests.
+  The gate includes the authored examples' deterministic application tests, the private
   conversation-handoff fixture, and the external FLOW dependency boundary.
   It also checks the shared Agent method and
   ordinary ACP package. FLOW owns SDK, authoring, and conformance qualification.
@@ -253,9 +260,13 @@ operational baselines, and public-site assembly.
 
 ## Verification
 
+- `node --test scripts/ci/example-inventory.test.mjs` checks complete example
+  registration, source selection, native selection and missing-input refusal.
+- `bun test scripts/check-example-project.test.ts` checks real declaration
+  evaluation and compiler refusal without executing Flow entrypoints.
 - `bun test scripts/test-release-applications.test.ts` runs the complete source
   applications stage with real builds, frozen archives and a fresh Bun cache.
-  It verifies all six installations and source-checked application reports.
+  It verifies every example installation, source smoke and source-checked report.
 - `bun test scripts/check-docs.test.ts` verifies documentation refusal and baseline handling.
 - `bun scripts/check-docs.ts` checks current source documentation.
 

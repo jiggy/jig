@@ -15,6 +15,7 @@ const workflowTriggers = (workflow: any) => workflow.on ?? workflow.true
 async function linuxCommandFixture(workflow: any) {
   const directory = await mkdtemp(join(tmpdir(), 'linux-command-plan-'))
   const files = [
+    'packages/jig/test/linux-host/example-smoke.test.ts',
     'packages/jig/test/linux-host/linux-rootless-delegation-hostile.test.ts',
     'packages/jig/test/linux/linux-rootless-run.test.ts',
     'packages/jig/test/host/root-agent-composition.test.ts',
@@ -547,6 +548,7 @@ test('Linux host scope preserves complete qualification and always reports its f
     'agent-lifecycle',
     'delegated-authority',
     'package-lifecycle',
+    'examples',
     'installed-evidence',
   ])
   const source = suites.steps.find(
@@ -559,6 +561,14 @@ test('Linux host scope preserves complete qualification and always reports its f
   expect(source.run).not.toContain(' -t ')
   expect(source.run).not.toContain('testNamePattern')
   expect(workflow.env.LINUX_COMMAND_PLANNER).toContain('gitRepositoryTests(process.cwd(), source)')
+  const exampleSetup = suites.steps.find((step: any) =>
+    step.run?.includes('scripts/ci/provision-example-smoke.sh'),
+  )
+  expect(exampleSetup.if).toBe("matrix.suite == 'examples'")
+  expect(suites.steps.indexOf(exampleSetup)).toBeLessThan(suites.steps.indexOf(source))
+  expect(suites['timeout-minutes']).toContain("matrix.suite == 'examples' && 90")
+  for (const variable of ['JIG_EXAMPLE_CODEX_PATH', 'JIG_EXAMPLE_API_CERT', 'JIG_EXAMPLE_API_KEY'])
+    expect(source.run).toContain(`"${variable}=$${variable}"`)
   const archiveVariables = [
     'JIG_PACKAGE_ARCHIVE',
     'FLOW_SDK_PACKAGE_ARCHIVE',
@@ -643,9 +653,12 @@ test('Linux host scope preserves complete qualification and always reports its f
   expect(linuxGate.env.JOB_RESULTS).toBe('${{ toJSON(needs) }}')
   const fixture = await linuxCommandFixture(workflow)
   try {
-    const sourceCommands = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'].flatMap(
-      (suite) => fixture.commands[suite],
-    )
+    const sourceCommands = [
+      'agent-lifecycle',
+      'delegated-authority',
+      'package-lifecycle',
+      'examples',
+    ].flatMap((suite) => fixture.commands[suite])
     expect(sourceCommands.map((command: any) => command.files[0]).sort()).toEqual(fixture.files)
     expect(new Set(sourceCommands.map((command: any) => command.files[0])).size).toBe(
       fixture.files.length,
@@ -657,6 +670,14 @@ test('Linux host scope preserves complete qualification and always reports its f
       expect(command.commandKind === 'node-test').toBe(command.files[0].endsWith('.node.mjs'))
       expect(typeof command.junit === 'string').toBe(command.files[0].endsWith('.node.mjs'))
     }
+    expect(fixture.commands.examples).toEqual([
+      {
+        transcript: 'example-smoke.txt',
+        files: ['packages/jig/test/linux-host/example-smoke.test.ts'],
+        hostMode: 'run-acquisition-host',
+        timeoutMs: 1200000,
+      },
+    ])
     // Cost-based placement retains complete membership without freezing shard allocation.
     expect(
       ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'].every(
@@ -693,6 +714,7 @@ const linuxAggregateScenarios = [
     command: `command-${index}.txt`,
   })),
   { name: 'refuses a missing whole-file command', kind: 'source-missing', command: undefined },
+  { name: 'refuses missing example e2e proof', kind: 'examples-missing', command: undefined },
   {
     name: 'refuses changed whole-file authority metadata',
     kind: 'source-drift',
@@ -769,6 +791,8 @@ for (const scenario of linuxAggregateScenarios) {
             ),
           }),
         )
+      } else if (scenario.kind === 'examples-missing') {
+        await rm(shardDirectory('examples'), { recursive: true })
       } else if (['source-missing', 'source-drift', 'legacy'].includes(scenario.kind)) {
         const changed = structuredClone(commands['agent-lifecycle'])
         if (scenario.kind === 'source-missing') changed.pop()

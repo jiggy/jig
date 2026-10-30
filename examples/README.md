@@ -65,3 +65,20 @@ boundaries; successful runs do not establish general model accuracy.
 The software factory is planned for extraction into an independent project.
 Its source remains temporarily in this tree to preserve existing host checks;
 it is outside the cookbook. Tested patch is the developer repair example.
+
+## Check the examples
+
+CI runs one end-to-end case for every example against the current package archives.
+Each case copies the complete original project, installs its dependencies,
+reviews it, runs its authored default invocation and checks the expected result.
+Manifests, Bindings and Flow source must remain unchanged. Assertions cover
+delivered files and native cleanup as well as stdout.
+
+These tests use a genuine Codex client with a controlled HTTPS model endpoint.
+They check the application and native execution path without live model calls.
+Run `just test-examples` on the qualified Linux test host with its frozen
+archives, client and test certificate setup. Missing prerequisites fail explicitly.
+
+For portable source checks after workspace setup, run `just test-example-source`.
+This installs every example, evaluates its declarations, bundles its Flow imports
+and runs its application tests. New examples require both source and end-to-end coverage.

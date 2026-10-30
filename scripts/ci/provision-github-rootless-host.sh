@@ -29,6 +29,7 @@ provision() {
     libcap2-bin \
     meson \
     ninja-build \
+    openssl \
     pkg-config \
     xz-utils
 

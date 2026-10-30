@@ -14,7 +14,10 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { settleTestCommand } from '../bounded-command.js'
 import { flowSdkDirectory } from '../flow-dependency.js'
-import { profilePhaseSummary } from '../private-profile-diagnostics.js'
+import {
+  foundationEvaluationFailureSummary,
+  profilePhaseSummary,
+} from '../private-profile-diagnostics.js'
 
 export type FoundationApplication = 'adaptive' | 'documents' | 'evaluation-deadline'
 export interface FoundationArchives {
@@ -190,10 +193,14 @@ export function foundationCommands(evidence: string) {
       result.code !== 0 && runProfile !== undefined
         ? await profilePhaseSummary(runProfile, 'run')
         : undefined
+    const evaluationFailure =
+      result.code !== 0 && runProfile !== undefined
+        ? await foundationEvaluationFailureSummary(join(cwd, 'adaptive-observation.json'))
+        : undefined
     assert.equal(
       result.code,
       0,
-      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}${reviewPhases ? ` review phases: ${reviewPhases}` : ''}${runPhases ? ` run phases: ${runPhases}` : ''}; see ${evidence}`,
+      `Installed foundation command ${sequence} failed${diagnostic ? ` (${diagnostic})` : ''}${clientFailure ? ` ${clientFailure}` : ''}${resultPhases ? ` result phases: ${resultPhases}` : ''}${reviewPhases ? ` review phases: ${reviewPhases}` : ''}${runPhases ? ` run phases: ${runPhases}` : ''}${evaluationFailure ? ` evaluation failure: ${evaluationFailure}` : ''}; see ${evidence}`,
     )
     return result
   }

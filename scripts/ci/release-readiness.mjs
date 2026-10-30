@@ -49,9 +49,13 @@ export const CI_QUALIFICATION_JOBS = Object.freeze([
 ])
 export const LINUX_QUALIFICATION_JOBS = Object.freeze([
   'rootless-linux',
-  ...['agent-lifecycle', 'delegated-authority', 'package-lifecycle', 'installed-evidence'].map(
-    (suite) => `Linux host — ${suite}`,
-  ),
+  ...[
+    'agent-lifecycle',
+    'delegated-authority',
+    'package-lifecycle',
+    'examples',
+    'installed-evidence',
+  ].map((suite) => `Linux host — ${suite}`),
 ])
 export const MACOS_QUALIFICATION_JOBS = Object.freeze([
   'Native host qualification — arm64',

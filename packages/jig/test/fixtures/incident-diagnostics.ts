@@ -51,3 +51,37 @@ export function incidentWorkerDiagnostic(value: unknown) {
     failuresTruncated: failures.length > 8,
   }
 }
+
+function ownData(value: unknown, key: string): unknown {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+    const descriptor = Object.getOwnPropertyDescriptor(value, key)
+    return descriptor && Object.hasOwn(descriptor, 'value') ? descriptor.value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Root branch presence and public operation codes only; messages remain private. */
+export function incidentBranchDiagnostic(value: unknown) {
+  const role = ownData(value, 'role')
+  const result = ownData(value, 'result')
+  const failure = ownData(value, 'failure')
+  let hasResult = false
+  try {
+    hasResult = result !== null && typeof result === 'object' && !Array.isArray(result)
+  } catch {
+    // A malformed observation cannot replace the original assertion failure.
+  }
+  return {
+    role: role === 'draft' || role === 'independent' ? role : 'unknown',
+    hasResult,
+    failureCode:
+      failure === undefined
+        ? null
+        : typeof failure === 'string' && Object.hasOwn(operationCodes, failure)
+          ? failure
+          : 'OTHER',
+  }
+}
+

@@ -162,11 +162,20 @@ authored examples, not independent consumer evidence or promoted Starters.
   Check that Flow boundaries, contracts, powers and focused tests demonstrate
   high modularity, and verify the complete composed application separately.
 
-- Run `bun test examples/kitchen-roster/test examples/photo-organiser/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/software-factory/test`
-  after workspace setup. Private handoff checks live in
+- Run `just test-example-source` after workspace setup. It discovers every example,
+  installs current frozen packages, evaluates original declarations, bundles
+  Flow imports and executes complete application tests. Every example requires
+  registered installed-host coverage in `scripts/example-inventory.mjs`.
+  Private handoff checks live in
   `packages/jig/test/fixtures/incident-brief/test` and remain in the packed
   release gate. The release gate repeats these application checks against the
   freshly packed SDK.
+- `just test-examples` runs one complete first-run case per discovered example
+  on the qualified Linux proof host. CI supplies frozen archives, a genuine
+  Codex executable and ordinary certificate trust for the controlled HTTPS model.
+  Each case preserves original manifests, project declarations, Bindings and
+  Flows. It installs dependencies, reviews, runs the authored default invocation,
+  and verifies the expected result and delivered files. Missing cases fail.
 - Exercise package boundaries through an admitted Jig Run before claiming host
   execution. Unit tests alone establish only application behavior.
 - Keep live Agent evidence separate from deterministic substitutes and

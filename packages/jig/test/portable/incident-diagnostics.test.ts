@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test'
-import { incidentWorkerDiagnostic } from '../fixtures/incident-diagnostics.js'
+import {
+  incidentBranchDiagnostic,
+  incidentWorkerDiagnostic,
+} from '../fixtures/incident-diagnostics.js'
 
 test('incident diagnostics retain bounded public failure codes and turn observations', () => {
   expect(
@@ -53,3 +56,75 @@ test('incident diagnostics bound malformed and oversized observations', () => {
   expect(summary.failureCodes).toHaveLength(8)
   expect(summary.failuresTruncated).toBe(true)
 })
+
+test('incident branch diagnostics expose missing results without disclosing messages', () => {
+  expect(
+    incidentBranchDiagnostic({
+      role: 'independent',
+      failure: 'UNCERTAIN',
+      message: 'PRIVATE-MESSAGE',
+      causes: [{ stack: 'PRIVATE-STACK' }],
+    }),
+  ).toEqual({ role: 'independent', hasResult: false, failureCode: 'UNCERTAIN' })
+  expect(
+    incidentBranchDiagnostic({
+      role: 'draft',
+      result: { outcome: 'blocked', output: { context: 'PRIVATE-CONTEXT' } },
+    }),
+  ).toEqual({ role: 'draft', hasResult: true, failureCode: null })
+})
+
+test('incident branch diagnostics allow only public outer operation codes', () => {
+  for (const failure of ['PRIVATE-CODE', 'constructor', 'INCOMPLETE_WORK', { code: 'UNCERTAIN' }]) {
+    const summary = incidentBranchDiagnostic({
+      role: 'PRIVATE-ROLE',
+      failure,
+      message: 'PRIVATE-MESSAGE',
+    })
+    expect(summary).toEqual({ role: 'unknown', hasResult: false, failureCode: 'OTHER' })
+    expect(JSON.stringify(summary)).not.toContain('PRIVATE')
+  }
+})
+
+test('incident branch diagnostics ignore inherited values and never invoke accessors', () => {
+  const inherited = Object.create({
+    role: 'independent',
+    result: { outcome: 'done' },
+    failure: 'EXECUTION_FAILED',
+  })
+  expect(incidentBranchDiagnostic(inherited)).toEqual({
+    role: 'unknown',
+    hasResult: false,
+    failureCode: null,
+  })
+  let reads = 0
+  const accessors = Object.create(null)
+  for (const key of ['role', 'result', 'failure', 'message'])
+    Object.defineProperty(accessors, key, {
+      get() {
+        reads++
+        throw new Error('PRIVATE-GETTER')
+      },
+    })
+  expect(incidentBranchDiagnostic(accessors)).toEqual({
+    role: 'unknown',
+    hasResult: false,
+    failureCode: null,
+  })
+  expect(reads).toBe(0)
+})
+
+test('incident branch diagnostics preserve assertion failures for malformed observations', () => {
+  const revoked = Proxy.revocable({}, {})
+  revoked.revoke()
+  for (const value of [null, undefined, 'PRIVATE', [], revoked.proxy]) {
+    expect(incidentBranchDiagnostic(value)).toEqual({
+      role: 'unknown',
+      hasResult: false,
+      failureCode: null,
+    })
+  }
+  expect(incidentBranchDiagnostic({ role: 'draft', result: [] }).hasResult).toBe(false)
+  expect(incidentBranchDiagnostic({ role: 'draft', result: null }).hasResult).toBe(false)
+})
+

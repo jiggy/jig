@@ -14,7 +14,7 @@ import { runInstalledContactProject } from '../fixtures/installed-contact-import
 requireFoundationOptIn()
 const qualification = await qualifyFoundationHost()
 
-test('installed contact import composes real mapping, conversion and Agent-contract header tasks', async () => {
+test('installed contact import runs authored defaults and composes real Agent-contract header tasks', async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-installed-contact-')))
   let passed = false
   try {

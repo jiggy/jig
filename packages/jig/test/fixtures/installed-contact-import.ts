@@ -74,14 +74,8 @@ export async function runInstalledContactProject(options: {
   })
   // An ordinary deterministic Flow performs the declared header-mapping task.
   // It supplies no native-client, session, execution or cleanup receipts.
-  await put(
-    project,
-    'jig.ts',
-    `import {defineJig,discover} from '@jigging/jig'
-export default defineJig({flows:discover('flows'),bindings:discover('bindings'),
-defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
-`,
-  )
+  // First review and Run use the example's original project definition.
+  await cp(join(example, 'jig.ts'), join(project, 'jig.ts'))
   await mkdir(join(project, 'bindings'))
   await cp(join(example, 'bindings/code.ts'), join(project, 'bindings/code.ts'))
   await put(
@@ -142,25 +136,11 @@ await handle(async run => {
   const sourceLock = await lockFoundationWorkspace(project, command)
   await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
   assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
-  const lock = await hash(join(project, 'jig.lock'))
+  let lock = await hash(join(project, 'jig.lock'))
   const packet = join(directory, 'packet')
-  const invoked = await command(
-    [
-      cli,
-      'run',
-      'binding:code',
-      '--input',
-      '{}',
-      '--attach',
-      'source=fixtures/known',
-      '--out',
-      packet,
-      '--timeout',
-      '2m',
-      '--json',
-    ],
-    project,
-  )
+  // No target, input, attachments or timeout override: exercise authored defaults.
+  const invoked = await command([cli, 'run', '--out', packet, '--json'], project)
+  assert.deepEqual(await readFile(join(project, 'jig.ts')), await readFile(join(example, 'jig.ts')))
   const result = JSON.parse(invoked.stdout)
   assert.equal(result.status, 'succeeded')
   assert.equal(result.outcome, 'done')
@@ -202,6 +182,17 @@ await handle(async run => {
   assert.deepEqual(JSON.parse(previewBytes.toString('utf8')), result.output)
   assert.deepEqual(await readdir(join(packet, 'files')), ['preview'])
   assert.deepEqual(await readdir(join(packet, 'files/preview')), ['preview.json'])
+  // Qualify the alternative mappers in a separate operator configuration.
+  assert.equal(await hash(join(project, 'jig.lock')), lock)
+  await writeFile(
+    join(project, 'jig.ts'),
+    `import {defineJig,discover} from '@jigging/jig'
+export default defineJig({flows:discover('flows'),bindings:discover('bindings'),
+defaultProviders:{'https://jig.md/contracts/agent-run':'binding:model'}})
+`,
+  )
+  await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
+  lock = await hash(join(project, 'jig.lock'))
   for (const method of ['map-agent', 'map-mixed'])
     for (const [headers, mapping] of [
       [['Organisation', 'Courriel', 'Nom complet'], { name: 2, email: 1, organization: 0 }],

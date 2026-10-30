@@ -179,12 +179,7 @@
     {
       "id": "applications",
       "roots": [
-        "examples/kitchen-roster/",
-        "examples/tested-patch/",
-        "examples/software-factory/",
-        "examples/photo-organiser/",
-        "examples/support-case/",
-        "examples/contact-import/",
+        "examples/",
         "packages/jig/test/fixtures/incident-brief/"
       ],
       "profiles": [
