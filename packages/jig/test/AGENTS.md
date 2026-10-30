@@ -160,6 +160,25 @@ runs its default entrypoint without target, input, attachment or timeout overrid
 It verifies the preview and unchanged project definition. A separate reviewed
 operator configuration checks Agent-contract and mixed mapping with a deterministic
 header task, without claiming model quality.
+
+`linux-host/example-smoke.test.ts` registers one first-run case for every
+discovered example. Its fresh projects retain all original source and manifests.
+Ordinary workspace installation supplies the frozen public packages. Each case
+uses the installed CLI for review and the authored default invocation. Domain
+assertions verify stdout and complete delivered artifacts. Source hashes must
+remain unchanged through setup and execution. Native residue and archive checks
+also run after failure.
+
+The genuine Codex client uses a controlled HTTPS Responses endpoint through
+ordinary operator settings and host certificate trust. The protocol peer computes
+the fixture tasks from actual prompts. Unknown, repeated or missing tasks fail.
+Portable HTTPS tests qualify that peer, not native execution or model quality.
+
+`host/installed-cli-lifecycle.test.ts` first exercises pristine `jig init` output
+outside the installed tooling directory. Its first review and greeting Runs
+require no inserted manifest, workspace, Git repository or local dependency setup.
+The test verifies generated source stays unchanged before later explicit edits.
+
 `host/installed-incident-brief.test.ts` checks the private handoff application
 with an ordinary bounded conversation task. Pure application cases do not prove
 dispatch races, native session restoration or cleanup.

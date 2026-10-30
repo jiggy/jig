@@ -29,8 +29,11 @@ env:
     const files = filesForTarget(gitRepositoryTests(process.cwd(), source), 'linux', manifest, 'linux');
     if (!files.length) throw Error('Empty full Linux inventory');
     const suites = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'];
-    const commands = Object.fromEntries([...suites, 'installed-evidence'].map(suite => [suite, []]));
-    const assignment = new Map(balanceWholeFiles(files, suites.length, file => hostTestSeconds(file, 'linux'))
+    const commands = Object.fromEntries([...suites, 'examples', 'installed-evidence'].map(suite => [suite, []]));
+    const exampleSmoke = 'packages/jig/test/linux-host/example-smoke.test.ts';
+    if (!files.includes(exampleSmoke)) throw Error('Missing full example e2e suite');
+    const ordinaryFiles = files.filter(file => file !== exampleSmoke);
+    const assignment = new Map(balanceWholeFiles(ordinaryFiles, suites.length, file => hostTestSeconds(file, 'linux'))
       .flatMap(shard => shard.groups.map(({ file }) => [file, suites[shard.index]])));
     const timeouts = new Map([
       ['linux-rootless-delegation-hostile.test.ts', 30000],
@@ -41,7 +44,7 @@ env:
       ['run-checkpoint-lifecycle.test.ts', 90000],
       ['finite-acp-lifecycle.test.ts', 180000],
     ]);
-    files.forEach((file, index) => {
+    ordinaryFiles.forEach((file, index) => {
       if (/[\r\n\0]/.test(file)) throw Error('Unsafe Linux suite path');
       const name = basename(file);
       const acquisition = file.startsWith('packages/jig/test/host/') &&
@@ -53,6 +56,10 @@ env:
         timeoutMs: timeouts.get(name) ?? (name.startsWith('root-agent-') ? 180000 : 120000),
       });
     });
+    commands.examples = [{
+      transcript: 'example-smoke.txt', files: [exampleSmoke],
+      hostMode: 'run-acquisition-host', timeoutMs: 1200000,
+    }];
     const installed = [
       [12, 'packages/jig/test/package-smoke.ts'],
       [13, 'scripts/test-operational-baseline.ts'],
@@ -125,7 +132,7 @@ jobs:
       - "host-artifacts"
     if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: "${{ matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}"
+    timeout-minutes: "${{ matrix.suite == 'examples' && 90 || matrix.suite == 'installed-evidence' && inputs.include_startup_profile && 60 || 20 }}"
     strategy:
       fail-fast: false
       matrix:
@@ -133,6 +140,7 @@ jobs:
           - "agent-lifecycle"
           - "delegated-authority"
           - "package-lifecycle"
+          - "examples"
           - "installed-evidence"
     steps:
       -
@@ -165,6 +173,10 @@ jobs:
         run: |
           scripts/ci/provision-github-rootless-host.sh provision
           printf 'ready=true\n' >> "$GITHUB_OUTPUT"
+      -
+        name: "Provision the genuine example client and trusted model peer"
+        if: "matrix.suite == 'examples'"
+        run: "sh scripts/ci/provision-example-smoke.sh"
       -
         name: "Install host-test dependencies"
         run: "bun install --ignore-scripts --filter @jigging/jig --filter @jigging/agent-method --filter @jigging/agent-acp --filter @jigging/reporting --filter @jigging/display-model --filter @jigging/display-web --filter @jigging/display-tui"
@@ -236,7 +248,17 @@ jobs:
             if [[ "$command_kind" == node-test ]]; then
               runner=("$FLOW_NODE" --test "--test-timeout=$timeout_ms" --test-reporter=tap --test-reporter-destination=stdout --test-reporter=./scripts/ci/source-node-reporter.mjs "--test-reporter-destination=$RUNNER_TEMP/linux-command-evidence/$junit" "./$file")
             else runner=("$JIG_CI_BUN" test "$file" --timeout "$timeout_ms"); fi
+            example_environment=()
+            if [ "$SUITE" = examples ]; then
+              example_environment+=(
+                "TMPDIR=/tmp"
+                "JIG_EXAMPLE_CODEX_PATH=$JIG_EXAMPLE_CODEX_PATH"
+                "JIG_EXAMPLE_API_CERT=$JIG_EXAMPLE_API_CERT"
+                "JIG_EXAMPLE_API_KEY=$JIG_EXAMPLE_API_KEY"
+              )
+            fi
             scripts/ci/provision-github-rootless-host.sh "$host_mode" env \
+              "${example_environment[@]}" \
               "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" \
               "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" \
               "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" \
@@ -453,7 +475,7 @@ jobs:
           commands = []
           expected_commands = json.loads(subprocess.check_output(
               ["node", "--input-type=module", "-e", os.environ["LINUX_COMMAND_PLANNER"]], text=True))
-          for suite in ("agent-lifecycle", "delegated-authority", "package-lifecycle", "installed-evidence"):
+          for suite in ("agent-lifecycle", "delegated-authority", "package-lifecycle", "examples", "installed-evidence"):
               directory = root / "linux-evidence" / f"linux-shard-{suite}-{sha}-r{run}-a{attempt}"
               marker = directory / "linux-shard.complete"
               if marker.is_symlink() or marker.read_text().strip() != f"{sha} {suite} {run} {attempt}":

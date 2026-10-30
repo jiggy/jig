@@ -192,6 +192,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   rechecks the frozen archive hashes, performs zero-residue verification, and
   contributes to the aggregate `rootless-linux` check. A skipped, cancelled, or
   failed shard must prevent that aggregate from succeeding.
+- Linux's `examples` shard runs every original example through installation,
+  public review and its authored default invocation. It uses unchanged candidate
+  packages, a digest-pinned genuine Codex client and a local HTTPS model peer.
+  Provision the peer CA through the disposable host's ordinary certificate trust
+  before review. Keep TLS keys and consumer trees outside retained artifacts.
+
+  The shard's 90-minute ceiling covers all authored Run budgets plus bounded
+  setup, review and settlement. Ordinary source coverage and limits remain
+  unchanged. Whole files follow the measured scheduling policy. The aggregate
+  and release readiness require this shard's complete
+  current-attempt evidence; no filtered or omitted example can qualify.
 - Linux package-lifecycle runs preparation, retained progress, Markdown and public
   workspace-dependency proof in whole physical suite files.
   The shared catalog assigns each file once across the three source shards. No
@@ -213,7 +224,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   consumer of the frozen Jig, ACP, Agent method and FLOW SDK archives.
   Pass all four archive paths through delegation and verify their installed
   versions. Historical registry pins cannot qualify current candidate changes.
-- Linux's three source shards and Mac source-test shards build the linked
+- Linux's ordinary source and example shards and Mac source-test shards build the linked
   workspace packages used by their source tests. Generated `dist` output is
   runner-local and is not created by a filtered dependency install. Linux's
   installed-evidence shard retains tooling and filtered dependencies but builds

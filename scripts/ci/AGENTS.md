@@ -186,6 +186,19 @@ They consume frozen package exports with tracked test helpers and installed
   pagination.
 - `provision-github-rootless-host.sh` owns provision, cleanup, and clean-state
   assertions for that runner.
+- `provision-example-smoke.sh` prepares the dedicated Linux example shard.
+  It installs the exact official Codex 0.152.1 package after digest verification,
+  preserving its executable/resource layout. It creates one private local HTTPS
+  certificate, installs its CA through ordinary disposable-host trust, and
+  exports only executable, certificate and key paths for the test runner.
+  Delete the signing key after certificate creation. Never retain TLS keys in
+  CI artifacts or pass live model credentials.
+
+  The complete `linux-host/example-smoke.test.ts` file belongs only to the
+  canonical `examples` shard. Ordinary source files follow the measured scheduling
+  policy. This shard uses real acquisition, native execution and cleanup, with ordinary
+  source and candidate verification. The aggregate and release readiness require
+  its current-attempt proof alongside the other Linux shards.
 - `qualify-macos-host.sh` owns the exact selected Intel 23E224, Intel/Apple
   Silicon 24G830, and Apple Silicon 24H232 profiles. The hosted pool admits Intel
   24G830 and either exact Apple Silicon 24G830 or 24H232 tuple.

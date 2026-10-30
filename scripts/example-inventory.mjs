@@ -24,6 +24,8 @@ export const EXAMPLE_HOST_TESTS = Object.freeze({
 })
 for (const paths of Object.values(EXAMPLE_HOST_TESTS)) Object.freeze(paths)
 
+export const EXAMPLE_E2E_TEST = 'packages/jig/test/linux-host/example-smoke.test.ts'
+
 /**
  * Checks coverage registration, not execution. Native suites establish their
  * own execution, delivery and cleanup evidence on qualified hosts.
@@ -82,6 +84,12 @@ export function exampleInventory(root) {
   const hostTargets = ['linux', 'macos-x64', 'macos-arm64'].map(
     (target) => new Set(filesForTarget(files, target, manifest)),
   )
+  requirePath(EXAMPLE_E2E_TEST)
+  if (
+    inventory.ownership[EXAMPLE_E2E_TEST] !== 'linux-host' ||
+    !hostTargets[0].has(EXAMPLE_E2E_TEST)
+  )
+    errors.push('Example end-to-end suite is outside the required Linux target')
 
   const examples = names.map((name) => {
     const directory = `examples/${name}`
@@ -113,7 +121,7 @@ export function exampleInventory(root) {
       )
         errors.push(`Example host test is outside required native targets: ${path}`)
     }
-    return { name, directory, sourceTests, hostTests: [...hostTests] }
+    return { name, directory, sourceTests, hostTests: [...hostTests], e2eTest: EXAMPLE_E2E_TEST }
   })
   refuse()
   return examples

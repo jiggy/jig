@@ -9,7 +9,7 @@ operational baselines, and public-site assembly.
 
 - Root scripts own unprivileged source, package, release, and site operations.
 - `example-inventory.mjs` reconciles every example directory with application
-  tests and installed-host suites in the complete source and native targets.
+  tests, installed-host suites and the mandatory Linux end-to-end suite.
   `check-example-project.ts` imports original project and Binding declarations
   and bundles every TypeScript Flow against the frozen public package closure.
   These source checks do not establish native admission or live Agent quality.

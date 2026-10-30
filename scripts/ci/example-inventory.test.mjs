@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { EXAMPLE_HOST_TESTS, exampleInventory } from '../example-inventory.mjs'
+import { EXAMPLE_E2E_TEST, EXAMPLE_HOST_TESTS, exampleInventory } from '../example-inventory.mjs'
 
 const repository = fileURLToPath(new URL('../../', import.meta.url))
 const script = join(repository, 'scripts/example-inventory.mjs')
@@ -28,6 +28,7 @@ function fixture() {
   roots.push(root)
   execFileSync('git', ['-C', root, 'init', '--quiet'])
   put(root, 'scripts/ci/test-suites.json', JSON.stringify(canonicalManifest))
+  put(root, EXAMPLE_E2E_TEST)
   for (const [name, hostTests] of Object.entries(EXAMPLE_HOST_TESTS)) {
     put(root, `examples/${name}/package.json`, JSON.stringify({ name, private: true }))
     put(root, `examples/${name}/jig.ts`, 'export default {}\n')
@@ -46,6 +47,7 @@ test('every authored example has application and native execution coverage', () 
   for (const example of examples) {
     assert.ok(example.sourceTests.length)
     assert.ok(example.hostTests.length)
+    assert.equal(example.e2eTest, EXAMPLE_E2E_TEST)
   }
 })
 
@@ -117,6 +119,19 @@ test('application tests must remain selected by the source application target', 
   manifest.targets.find(({ id }) => id === 'source-applications').suiteIds = []
   put(root, 'scripts/ci/test-suites.json', JSON.stringify(manifest))
   assert.throws(() => exampleInventory(root), /outside the complete application stage/)
+})
+
+test('end-to-end execution is mandatory in the complete Linux target', () => {
+  const root = fixture()
+  rmSync(join(root, EXAMPLE_E2E_TEST))
+  assert.throws(() => exampleInventory(root), /Missing example input|end-to-end suite/)
+
+  const other = fixture()
+  const manifest = structuredClone(canonicalManifest)
+  const linux = manifest.targets.find(({ id }) => id === 'linux')
+  linux.suiteIds = linux.suiteIds.filter((id) => id !== 'linux-host')
+  put(other, 'scripts/ci/test-suites.json', JSON.stringify(manifest))
+  assert.throws(() => exampleInventory(other), /end-to-end suite/)
 })
 
 test('CLI emits names or structured coverage and refuses invalid arguments', () => {

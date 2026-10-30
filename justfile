@@ -84,9 +84,13 @@ build: jig::build
         "$flow_node" --test "${node_files[@]}"
     fi
 
-# Check every example against the current frozen package archives
-@test-examples:
+# Check every example's source against the current frozen package archives
+@test-example-source:
     FLOW_NODE="${FLOW_NODE:-$(node -p process.execPath)}" sh scripts/test-release.sh --targets source-applications
+
+# Run every original example end to end on a qualified Linux host with frozen archives
+@test-examples:
+    bun test packages/jig/test/linux-host/example-smoke.test.ts
 
 # Run the installed operational baseline with its documented host prerequisites
 @test-baseline:
