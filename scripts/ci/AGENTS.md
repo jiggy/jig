@@ -244,10 +244,16 @@ They consume frozen package exports with tracked test helpers and installed
   exact file identities in their JUnit reports.
 
   `host-test-durations.json` retains source-bound successful whole-file timing
-  observations. `host-test-scheduling.mjs` balances complete files on Linux and
-  Mac, including native and installed tail costs. Timings affect placement,
-  never membership, limits or qualification. Unknown lifecycle files reserve
-  sixty seconds. Other unknown files reserve two seconds. After balancing, each shard runs its
+  observations and their source, run, attempt and job identities. Split incident
+  scenarios retain complete case observations and an explicit per-file startup
+  allowance until fresh whole-file observations replace those estimates.
+
+  `host-test-scheduling.mjs` balances complete files on Linux and Mac, including
+  native and installed tail costs. Timings affect placement, never membership,
+  limits or qualification. Unknown lifecycle files reserve
+  sixty seconds. Other unknown files reserve two seconds.
+
+  After balancing, each shard runs its
   `macos-native` whole files before long application scenarios, preserving order
   within both partitions.
 

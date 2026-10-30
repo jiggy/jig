@@ -1,14 +1,18 @@
 {
   "schemaVersion": 1,
   "unit": "seconds",
-  "aggregation": "maximum completed whole-file duration rounded up; placement only",
+  "aggregation": "maximum completed whole-file duration rounded up; split scenarios use completed case maxima plus one second startup; placement only",
   "sources": {
     "linux": [
       {
         "run": 40773538257,
         "attempt": 1,
         "source": "a8f70202a7dfbe92f744447c9e704c8bf3bff229",
-        "jobs": [123117157439, 123117157565, 123117157639]
+        "jobs": [
+          123117157439,
+          123117157565,
+          123117157639
+        ]
       }
     ],
     "macos": [
@@ -17,8 +21,16 @@
         "attempt": 1,
         "source": "eff7d6098daadd9b4d4bfe7e978dd0a28c064b65",
         "jobs": {
-          "x64": [121007593054, 121007593066, 121007593089, 121007593348],
-          "arm64": [121007593078, 121007593083]
+          "x64": [
+            121007593054,
+            121007593066,
+            121007593089,
+            121007593348
+          ],
+          "arm64": [
+            121007593078,
+            121007593083
+          ]
         }
       },
       {
@@ -26,8 +38,16 @@
         "attempt": 1,
         "source": "a8f70202a7dfbe92f744447c9e704c8bf3bff229",
         "jobs": {
-          "x64": [123117917667, 123117917675, 123117917682, 123117917710],
-          "arm64": [123117917586, 123117917737]
+          "x64": [
+            123117917667,
+            123117917675,
+            123117917682,
+            123117917710
+          ],
+          "arm64": [
+            123117917586,
+            123117917737
+          ]
         }
       }
     ]
@@ -69,7 +89,10 @@
       "packages/jig/test/host/installed-cli-lifecycle.test.ts": 21,
       "packages/jig/test/host/installed-contact-import.test.ts": 53,
       "packages/jig/test/host/installed-host-foundation.test.ts": 57,
-      "packages/jig/test/host/installed-incident-brief.test.ts": 64,
+      "packages/jig/test/host/installed-incident-brief-budget.test.ts": 16,
+      "packages/jig/test/host/installed-incident-brief-commentary.test.ts": 17,
+      "packages/jig/test/host/installed-incident-brief-refused-successor.test.ts": 18,
+      "packages/jig/test/host/installed-incident-brief-replacement.test.ts": 18,
       "packages/jig/test/host/installed-kitchen-roster.test.ts": 28,
       "packages/jig/test/host/installed-package-provider.test.ts": 63,
       "packages/jig/test/host/installed-photo-organiser.test.ts": 22,
@@ -135,7 +158,10 @@
       "packages/jig/test/host/installed-cli-lifecycle.test.ts": 55,
       "packages/jig/test/host/installed-contact-import.test.ts": 172,
       "packages/jig/test/host/installed-host-foundation.test.ts": 226,
-      "packages/jig/test/host/installed-incident-brief.test.ts": 222,
+      "packages/jig/test/host/installed-incident-brief-budget.test.ts": 49,
+      "packages/jig/test/host/installed-incident-brief-commentary.test.ts": 56,
+      "packages/jig/test/host/installed-incident-brief-refused-successor.test.ts": 55,
+      "packages/jig/test/host/installed-incident-brief-replacement.test.ts": 71,
       "packages/jig/test/host/installed-kitchen-roster.test.ts": 75,
       "packages/jig/test/host/installed-package-provider.test.ts": 171,
       "packages/jig/test/host/installed-photo-organiser.test.ts": 74,
@@ -354,7 +380,10 @@
       "packages/jig/test/host/installed-cli-lifecycle.test.ts": 29,
       "packages/jig/test/host/installed-contact-import.test.ts": 54,
       "packages/jig/test/host/installed-host-foundation.test.ts": 72,
-      "packages/jig/test/host/installed-incident-brief.test.ts": 97,
+      "packages/jig/test/host/installed-incident-brief-budget.test.ts": 23,
+      "packages/jig/test/host/installed-incident-brief-commentary.test.ts": 24,
+      "packages/jig/test/host/installed-incident-brief-refused-successor.test.ts": 28,
+      "packages/jig/test/host/installed-incident-brief-replacement.test.ts": 29,
       "packages/jig/test/host/installed-kitchen-roster.test.ts": 30,
       "packages/jig/test/host/installed-package-provider.test.ts": 70,
       "packages/jig/test/host/installed-photo-organiser.test.ts": 32,
@@ -547,5 +576,31 @@
       "packages/jig/test/portable/submission-ticket.test.ts": 1,
       "packages/jig/test/portable/workspace-progress.test.ts": 1
     }
-  }
+  },
+  "splitScenarioEstimates": [
+    {
+      "historicalSourceFile": "packages/jig/test/host/installed-incident-brief.test.ts",
+      "method": "ceil(maximum completed case seconds) + one-second per-file startup allowance",
+      "observedCaseSeconds": {
+        "linux": {
+          "replacement": 16.061,
+          "commentary": 15.296,
+          "budget": 14.74,
+          "refused-successor": 16.566
+        },
+        "x64": {
+          "replacement": 69.149,
+          "commentary": 54.959,
+          "budget": 47.745,
+          "refused-successor": 53.535
+        },
+        "arm64": {
+          "replacement": 27.36,
+          "commentary": 22.002,
+          "budget": 21.666,
+          "refused-successor": 26.031
+        }
+      }
+    }
+  ]
 }

@@ -180,9 +180,15 @@ outside the installed tooling directory. Its first review and greeting Runs
 require no inserted manifest, workspace, Git repository or local dependency setup.
 The test verifies generated source stays unchanged before later explicit edits.
 
-`host/installed-incident-brief.test.ts` checks the private handoff application
-with an ordinary bounded conversation task. Pure application cases do not prove
-dispatch races, native session restoration or cleanup.
+`host/installed-incident-brief-*.test.ts` owns four independent whole-file
+scenarios: replacement, commentary, turn budget and refused successor. Each
+checks the private handoff application with the same ordinary bounded
+conversation task and its original ten-minute case limit.
+`fixtures/installed-incident-brief.ts` supplies registration-free construction
+and assertions. Every case retains fresh frozen archives, its own consumer,
+native prerequisite observation, unchanged-package checks and residue cleanup.
+Pure application cases do not prove dispatch races, native session restoration
+or cleanup.
 
 Its settlement assertions include bounded turn observations and allowlisted
 public operation codes through `fixtures/incident-diagnostics.ts`.
