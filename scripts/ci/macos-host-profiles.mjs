@@ -1,3 +1,5 @@
+import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs'
+
 // Exact hosted candidates. Prerequisites never establish native qualification.
 export const MAC_HOST_PROFILES = Object.freeze({
   x64: Object.freeze([
@@ -44,4 +46,32 @@ export function requireMacHostPrerequisites(evidence, architecture) {
       'Mac host prerequisites do not match the exact hosted architecture, kernel, build and Bun target',
     )
   return evidence
+}
+
+export function readMacHostPrerequisites(path, architecture) {
+  if (!constants.O_NOFOLLOW || !constants.O_NONBLOCK)
+    throw new Error('Mac prerequisite reads require no-follow and nonblocking support')
+  const descriptor = openSync(
+    path,
+    constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+  )
+  try {
+    const metadata = fstatSync(descriptor)
+    if (!metadata.isFile() || metadata.size > 8192)
+      throw new Error('Mac prerequisites require a bounded regular file')
+    const bytes = Buffer.alloc(8193)
+    let length = 0
+    while (length < bytes.length) {
+      const count = readSync(descriptor, bytes, length, bytes.length - length, null)
+      if (count === 0) break
+      length += count
+    }
+    if (length > 8192) throw new Error('Mac prerequisites require a bounded regular file')
+    return requireMacHostPrerequisites(
+      JSON.parse(bytes.subarray(0, length).toString('utf8')),
+      architecture,
+    )
+  } finally {
+    closeSync(descriptor)
+  }
 }

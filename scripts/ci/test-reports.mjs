@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { lstatSync, readFileSync, realpathSync } from 'node:fs'
 import { isAbsolute, join, normalize, relative, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { requireMacHostPrerequisites } from './macos-host-profiles.mjs'
+import { readMacHostPrerequisites } from './macos-host-profiles.mjs'
 import {
   INSTALLED_STARTUP_TEST,
   macHostShardCount,
@@ -177,8 +177,8 @@ export function readMacReports({
       evidenceDirectory,
       `macos-prerequisites-${architecture}-${shard.index}-${source}`,
     )
-    const prerequisites = requireMacHostPrerequisites(
-      JSON.parse(readFileSync(inertPath(directory, 'prerequisites.json'), 'utf8')),
+    const prerequisites = readMacHostPrerequisites(
+      inertPath(directory, 'prerequisites.json'),
       architecture,
     )
     const { arch, kernel, build, bun, revision } = prerequisites

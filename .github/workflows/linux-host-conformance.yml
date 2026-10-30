@@ -22,6 +22,7 @@ env:
     import { readFileSync } from 'node:fs';
     import { basename } from 'node:path';
     import { filesForTarget, gitRepositoryTests } from './scripts/ci/suite-inventory.mjs';
+    import { balanceWholeFiles, hostTestSeconds } from './scripts/ci/host-test-scheduling.mjs';
     const manifest = JSON.parse(readFileSync('./scripts/ci/test-suites.json', 'utf8'));
     const source = process.env.GITHUB_SHA;
     if (!/^[0-9a-f]{40}$/.test(source ?? '')) throw Error('Missing exact Linux source');
@@ -29,6 +30,8 @@ env:
     if (!files.length) throw Error('Empty full Linux inventory');
     const suites = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'];
     const commands = Object.fromEntries([...suites, 'installed-evidence'].map(suite => [suite, []]));
+    const assignment = new Map(balanceWholeFiles(files, suites.length, file => hostTestSeconds(file, 'linux'))
+      .flatMap(shard => shard.groups.map(({ file }) => [file, suites[shard.index]])));
     const timeouts = new Map([
       ['linux-rootless-delegation-hostile.test.ts', 30000],
       ['linux-rootless-run.test.ts', 30000],
@@ -43,7 +46,7 @@ env:
       const name = basename(file);
       const acquisition = file.startsWith('packages/jig/test/host/') &&
         (name.startsWith('installed-') || ['package-provider-observation.test.ts', 'markdown-worker.test.ts'].includes(name));
-      commands[suites[index % suites.length]].push({
+      commands[assignment.get(file)].push({
         transcript: `source-${index}.txt`, files: [file],
         ...(file.endsWith('.node.mjs') ? { commandKind: 'node-test', junit: `source-${index}.xml` } : {}),
         hostMode: acquisition ? 'run-acquisition-host' : 'run-delegated',
