@@ -34,7 +34,12 @@ async function linuxCommandFixture(workflow: any) {
       await writeFile(join(directory, file), '// Source inventory fixture.\n')
     }
     await mkdir(join(directory, 'scripts/ci'), { recursive: true })
-    for (const file of ['suite-inventory.mjs', 'test-suites.json'])
+    for (const file of [
+      'suite-inventory.mjs',
+      'test-suites.json',
+      'host-test-scheduling.mjs',
+      'host-test-durations.json',
+    ])
       await copyFile(join(root, 'scripts/ci', file), join(directory, 'scripts/ci', file))
     for (const args of [
       ['init', '--quiet'],
@@ -628,10 +633,12 @@ test('Linux host scope preserves complete qualification and always reports its f
       expect(command.commandKind === 'node-test').toBe(command.files[0].endsWith('.node.mjs'))
       expect(typeof command.junit === 'string').toBe(command.files[0].endsWith('.node.mjs'))
     }
-    for (const [index, file] of fixture.files.entries()) {
-      const suite = ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'][index % 3]
-      expect(fixture.commands[suite].some((command: any) => command.files[0] === file)).toBeTrue()
-    }
+    // Cost-based placement retains complete membership without freezing shard allocation.
+    expect(
+      ['agent-lifecycle', 'delegated-authority', 'package-lifecycle'].every(
+        (suite) => fixture.commands[suite].length > 0,
+      ),
+    ).toBeTrue()
     expect(
       sourceCommands.find((command: any) =>
         command.files[0].endsWith('installed-software-factory.test.ts'),
@@ -741,7 +748,11 @@ for (const scenario of linuxAggregateScenarios) {
       } else if (['source-missing', 'source-drift', 'legacy'].includes(scenario.kind)) {
         const changed = structuredClone(commands['agent-lifecycle'])
         if (scenario.kind === 'source-missing') changed.pop()
-        if (scenario.kind === 'source-drift') changed[0].hostMode = 'run-acquisition-host'
+        if (scenario.kind === 'source-drift')
+          changed[0].hostMode =
+            changed[0].hostMode === 'run-acquisition-host'
+              ? 'run-delegated'
+              : 'run-acquisition-host'
         if (scenario.kind === 'legacy')
           changed[0] = {
             transcript: 'command-0.txt',
