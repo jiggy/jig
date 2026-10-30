@@ -32,6 +32,28 @@ function changed(value: unknown, mutate: (copy: Record<string, any>) => void): u
 }
 
 describe('Project Authoring SDK/1 shape schema', () => {
+  test('dependency override ranges agree between public authoring and the shape schema', () => {
+    for (const [field, maximum] of [
+      ['maxPreparedBytes', 134_217_728],
+      ['maxPreparedFiles', 65_536],
+    ] as const) {
+      for (const value of [1, maximum, 0, -1, 1.5, maximum + 1, '8192', null]) {
+        const input = { limits: { dependencies: { [field]: value } } }
+        const validate = () => schema.validate(input, 'INVALID_PROJECT_AUTHORING')
+        const author = () => defineJig(input as never)
+        if (value === 1 || value === maximum) {
+          expect(validate).not.toThrow()
+          expect(author).not.toThrow()
+        } else {
+          expect(validate).toThrow()
+          expect(author).toThrow()
+        }
+      }
+    }
+    const unknown = { limits: { dependencies: { maxBytes: 1 } } }
+    expect(() => schema.validate(unknown, 'INVALID_PROJECT_AUTHORING')).toThrow()
+    expect(() => defineJig(unknown as never)).toThrow()
+  })
   test('matches operation-created, supplied and fixed read attachment route shapes', () => {
     for (const mapping of [{ create: true }, { supplied: 'read' }, { from: 'source' }]) {
       const value = defineBinding({

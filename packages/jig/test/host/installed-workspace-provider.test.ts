@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { settleTestCommand } from '../fixtures/bounded-command.js'
 import { caller, cli, contract, peer } from '../fixtures/installed-provider.js'
 import {
   profilePhaseSummary,
@@ -26,6 +27,9 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const nested = location === 'nested'
     const directory = await mkdtemp(join(tmpdir(), 'jig-npm-consumer-'))
     const evidence = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-review-profile-')))
+    // Keep command interruption, exit escalation and pipe drain inside the
+    // existing 240-second case allowance, including the original cancellation.
+    const commandDeadline = performance.now() + 220_000
     let sequence = 0
     const put = async (path: string, value: unknown) => {
       await mkdir(dirname(join(directory, path)), { recursive: true })
@@ -38,6 +42,8 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const putApp = (path: string, value: unknown) =>
       put(rootApplication ? path : `apps/consumer/${path}`, value)
     const run = async (args: string[], interrupt = false) => {
+      const timeoutMs = commandDeadline - performance.now()
+      if (timeoutMs <= 0) throw new Error('Workspace consumer command allowance exhausted')
       const env = reviewCommandEnvironment(args[0], join(evidence, `${++sequence}.review.jsonl`), {
         ...process.env,
         NO_COLOR: '1',
@@ -66,11 +72,14 @@ for (const location of ['member', 'root', 'nested'] as const) {
           }, 20_000)
         : undefined
       try {
-        const [exit, stdout, stderr] = await Promise.all([
-          child.exited,
-          new Response(child.stdout).text(),
-          new Response(child.stderr).text(),
-        ])
+        const {
+          code: exit,
+          stdout,
+          stderr,
+        } = await settleTestCommand(child, {
+          evidence: join(evidence, `${sequence}.command`),
+          timeoutMs,
+        })
         const profile =
           exit !== 0 && env.JIG_PRIVATE_PROFILE_FILE !== undefined
             ? await profilePhaseSummary(env.JIG_PRIVATE_PROFILE_FILE, 'review')

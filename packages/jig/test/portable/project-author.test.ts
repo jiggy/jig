@@ -6,6 +6,16 @@ import {
 } from '../../src/project/author.js'
 
 describe('Jig project authoring SDK/1', () => {
+  test('captures production dependency limits without copying defaults into source', () => {
+    const limits = { dependencies: { maxPreparedBytes: 64 * 1024 * 1024 } }
+    const project = defineJig({ limits })
+    limits.dependencies.maxPreparedBytes = 1
+    expect(project).toEqual({ limits: { dependencies: { maxPreparedBytes: 67_108_864 } } })
+    expect(Object.isFrozen(project.limits?.dependencies)).toBeTrue()
+    expect(normalizeJigDefinition(project)).toEqual(project)
+    expect(() => defineJig({ limits: { dependencies: { maxPreparedFiles: 0 } } })).toThrow()
+    expect(() => defineJig({ limits: { unknown: true } } as never)).toThrow()
+  })
   test('captures discovery and exact membership', () => {
     const project = defineJig({
       flows: discover(['./vendor', './flows']),

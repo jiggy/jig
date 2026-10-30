@@ -1,26 +1,22 @@
-# Centralize limits and settings authority
+# Extend limits and settings coverage
 
-Postponed owner-requested work: give limits and settings a canonical source so
-runtime defaults, configuration validation, CLI help and public documentation
-cannot drift independently. This is future work, not a new merge requirement.
+The [limits reference](../../../docs/jig/guide/limits.md) now centralizes task-level
+bounds and documented overrides. Typed metadata derives its numeric tables from
+implementation owners. Documentation checks reject drift. The
+[maintainer discipline](../../maintainer-guide.md#limits-defaults-and-override-discipline)
+owns future changes.
 
-The Mac host's root Run timeout had diverged to 60 seconds while Linux and the
-public contract specified 30. Both hosts now use the same 30-second value.
+Production dependency preparation supports project and operator byte/file
+allowances. Other profiles retain their documented fixed or derived bounds.
 
-Native turn defaults and ranges share Jig's private `native-agent-turn-policy.ts`
-across grant validation, controller dispatch and finite ACP enforcement. Boundary
-checks verify agreement with the independently owned authoring schema. The
-remaining inventory and ownership choices are still separate work.
+Remaining work awaits separate triage:
 
-- Inventory limits, defaults, allowed ranges, units, override precedence and
-  genuine platform enforcement differences across code and configuration.
-- Establish a canonical owner for each setting and derive or verify its
-  configuration, help, documentation and regression expectations from that owner.
-- Keep common policy shared across hosts; represent necessary platform differences
-  explicitly without duplicating the whole policy.
-- Preserve operator authority and FLOW's independence. Centralizing Jig settings
-  must not move host policy into FLOW or silently alter an existing contract.
-- Remove superseded duplicate definitions when implementing the selected design.
+- Audit unindexed settings in workspace discovery, authored module capture,
+  metadata traversal, preview rendering, and provider launchers.
+- Add supported overrides when consumer evidence establishes the need and the
+  responsible owner can enforce their complete consequences.
+- Extend schema and help agreement checks where independent numeric definitions
+  remain. Preserve FLOW and Agent contract ownership.
 
-Triage the mechanism and scope separately; this entry does not select a new
-configuration framework or authorize a broad refactor in the Mac-support PR.
+This residual inventory does not authorize a new configuration framework or
+require exposing every implementation constant.

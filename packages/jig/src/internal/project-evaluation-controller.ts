@@ -45,7 +45,11 @@ import {
   privateExecutionFileProjections,
   privateExecutionPath,
 } from './execution-intent.js'
-import { closePrivateExecutionOutput } from './execution-output.js'
+import {
+  closePrivateExecutionOutput,
+  isPrivateOutputRetirementUnconfirmed,
+} from './execution-output.js'
+import { PrivateExecutionPreparationDeadlineError } from './execution-process.js'
 import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifact,
@@ -74,8 +78,14 @@ import {
 import { privateProfileSpan } from './private-profile.js'
 import { PROJECT_EVALUATION_CONTRACT_DIGEST } from './private-project-evaluation.js'
 import {
+  type PrivateProjectEvaluationFailureEvidence,
+  type PrivateProjectEvaluationProcessEvidence,
+  privateProjectEvaluationFailureDetails,
+} from './project-evaluation-evidence.js'
+import {
   executePrivateProjectEvaluationPhases,
   PrivateProjectEvaluationDeadlineError,
+  type PrivateProjectEvaluationDeadlineLimit,
   type PrivateProjectEvaluationPhase,
   type PrivateProjectEvaluationPhaseEvidence,
   type PrivateProjectEvaluationPhaseRequest,
@@ -117,6 +127,7 @@ import {
   normalizePrivateBootDeadline,
   type PrivateBootDeadline,
   privateBootRemaining,
+  readPrivateNativeClock,
 } from './native-clock.js'
 
 interface PhasePlan {
@@ -186,16 +197,51 @@ export async function executePrivateProjectEvaluation(
       'supply empty input, a held candidate read and operation-created deliverables',
     )
   }
-  const effectiveBootDeadline = await privateInvocationBootDeadline(
-    input,
-    PROJECT_EVALUATION_LIMITS.timeoutMs,
-  )
+  const enclosingBootDeadline = await privateInvocationBootDeadline(input)
+  const clock = readPrivateNativeClock()
+  const evaluationDeadline = clock.monotonicMs + PROJECT_EVALUATION_LIMITS.timeoutMs
+  const effectiveBootDeadline = normalizePrivateBootDeadline({
+    bootId: enclosingBootDeadline.bootId,
+    monotonicMs:
+      enclosingBootDeadline.bootId === clock.bootId
+        ? Math.min(enclosingBootDeadline.monotonicMs, evaluationDeadline)
+        : 0,
+  })
+  const deadlineLimit =
+    enclosingBootDeadline.monotonicMs < evaluationDeadline
+      ? 'enclosing'
+      : enclosingBootDeadline.monotonicMs > evaluationDeadline
+        ? 'evaluation'
+        : 'unknown'
   const deadlineUnixMs = Math.min(
     input.parentDeadlineUnixMs,
     input.parent.intent.deadlineUnixMs,
     Date.now() + PROJECT_EVALUATION_LIMITS.timeoutMs,
   )
   const key = operationKey(input, input.call.operationId)
+  const candidateDigest = privateCapturedOutputManifestDigest(candidate)
+  let environmentDigest: string | null = null
+  let phase: PrivateProjectEvaluationPhase | null = null
+  let stage: PrivateProjectEvaluationFailureEvidence['stage'] = 'setup'
+  let phaseRequest: PrivateProjectEvaluationPhaseRequest | undefined
+  let phaseStopReason: 'deadline' | 'cancelled' | null = null
+  let process: PrivateProjectEvaluationProcessEvidence | null = null
+  let phaseFiles: PrivateProjectEvaluationPhaseEvidence['files'] | null = null
+  const phaseEvidence: PrivateProjectEvaluationPhaseEvidence[] = []
+  const failureDetails = (limit: PrivateProjectEvaluationDeadlineLimit | null = null) =>
+    privateProjectEvaluationFailureDetails({
+      candidateDigest,
+      recipeDigest: retained.recipeDigest,
+      dependencyDigest: retained.dependencyDigest,
+      environmentDigest,
+      phase,
+      stage,
+      limit,
+      phases: phaseEvidence,
+      process,
+      files: phaseFiles,
+      cleanup: 'complete',
+    })
   const prior = (await owners(input)).find(
     (row) =>
       row.operationId === input.call.operationId &&
@@ -207,9 +253,13 @@ export async function executePrivateProjectEvaluation(
     return failed('UNCERTAIN', 'the prior evaluation was fenced without replaying its program')
   }
   if (input.signal.aborted)
-    return failed('CANCELLED', 'the evaluation was cancelled before dispatch')
+    return failed('CANCELLED', 'the evaluation was cancelled before dispatch', failureDetails())
   if (privateBootRemaining(effectiveBootDeadline) <= 0)
-    return failed('DEADLINE_EXCEEDED', 'the evaluation did not start before its enclosing deadline')
+    return failed(
+      'DEADLINE_EXCEEDED',
+      'the evaluation did not start before its enclosing deadline',
+      failureDetails(deadlineLimit),
+    )
   const snapshots: PrivateCapturedOutput[] = []
   let reviewed: CapturedPackage | undefined
   let dependencies: CapturedPackage | undefined
@@ -242,7 +292,12 @@ export async function executePrivateProjectEvaluation(
       await revalidatePrivateInstalledBunSupport(input.installedSupport)
       if (input.parentFlow !== undefined)
         await requireParentFlowOwner(input, input.parentFlow, deadlineUnixMs)
-      const candidateDigest = privateCapturedOutputManifestDigest(candidate)
+      environmentDigest = privateProjectEvaluationEnvironmentDigest({
+        recipeDigest: retained.recipeDigest,
+        dependencyDigest: retained.dependencyDigest,
+        installedSupportDigest: recipe.installedSupport.digest,
+        mechanismDigest: recipe.mechanismDigest,
+      })
       const allocation: Allocation = {
         kind: KIND,
         effect: 'project-evaluation',
@@ -273,9 +328,19 @@ export async function executePrivateProjectEvaluation(
         recipe: configuration.recipe,
         deadlineUnixMs,
         bootDeadline: effectiveBootDeadline,
+        deadlineLimit,
         signal: input.signal,
+        onPhase: (request) => {
+          phaseRequest = request
+          phaseStopReason = null
+          phase = request?.phase ?? null
+          stage = request === undefined ? 'setup' : 'preparation'
+          process = null
+          phaseFiles = null
+        },
+        onEvidence: (observed) => phaseEvidence.push(observed),
         executePhase: async (request) => {
-          activePhase = 'preparation'
+          stage = activePhase = 'preparation'
           const workspace = await privateProfileSpan('contained-effect-planning', () =>
             capturePrivateProjectEvaluationWorkspace({
               candidate,
@@ -287,7 +352,7 @@ export async function executePrivateProjectEvaluation(
               signal: input.signal,
             }),
           )
-          try {
+          const executePhase = async (): Promise<PrivateProjectEvaluationPhaseEvidence> => {
             const identity = phaseIdentity(input, input.call.operationId, request.index).slice(7)
             const protectedParent = await protectedOwnerRoot(input.projectRoot)
             const ownerAllocation = await planPrivateExecutionOwnerStateAllocation(input.backend, {
@@ -335,7 +400,7 @@ export async function executePrivateProjectEvaluation(
             const lease = await privateProfileSpan('contained-effect-allocation', () =>
               materializePrivatePackageLease(workspace, packageAllocation),
             )
-            activePhase = 'sealing'
+            stage = activePhase = 'sealing'
             const sealed = await privateProfileSpan('contained-effect-sealing', () =>
               sealPrivateExecutionOwner(
                 input.backend,
@@ -350,7 +415,7 @@ export async function executePrivateProjectEvaluation(
               checkpoint: 'sandbox',
               value: sealed.identity as unknown as JsonValue,
             })
-            activePhase = 'admission'
+            stage = activePhase = 'admission'
             input.signal.throwIfAborted()
             const started = performance.now()
             attempted = true
@@ -358,7 +423,16 @@ export async function executePrivateProjectEvaluation(
             const component = await privateProfileSpan('contained-effect-launch', () =>
               admitPrivateExecutionOwner(sealed, input.signal),
             )
-            activePhase = 'collection'
+            stage = activePhase = 'collection'
+            process = {
+              invocation: request.invocation,
+              exitCode: null,
+              signal: null,
+              stopReason: null,
+              durationMs: null,
+              stdout: null,
+              stderr: null,
+            }
             for (const promise of [
               component.completion,
               component.evidence,
@@ -377,22 +451,59 @@ export async function executePrivateProjectEvaluation(
             const stdout = collectProjectCommandStream(
               bounded(component.stdout),
               PROJECT_EVALUATION_LIMITS.retainedStreamBytes,
-            )
+            ).then((out) => {
+              process = {
+                ...process!,
+                stdout: logicalStream(out, ownerAllocation, lease.root, recipe),
+              }
+              return out
+            })
             const stderr = collectProjectCommandStream(
               bounded(component.stderr),
               PROJECT_EVALUATION_LIMITS.retainedStreamBytes,
-            )
+            ).then((err) => {
+              process = {
+                ...process!,
+                stderr: logicalStream(err, ownerAllocation, lease.root, recipe),
+              }
+              return err
+            })
+            const enforcement = component.enforcement.then((fence) => {
+              if (['payload_exit', 'cancelled', 'deadline'].includes(fence.stopReason))
+                process = {
+                  ...process!,
+                  exitCode: fence.exitCode,
+                  stopReason:
+                    fence.stopReason === 'payload_exit'
+                      ? 'exited'
+                      : (fence.stopReason as 'deadline' | 'cancelled'),
+                }
+              return fence
+            })
+            const completionEvidence = component.completion.then((exit) => {
+              process = {
+                ...process!,
+                signal: exit.signal,
+                durationMs: Math.max(0, performance.now() - started),
+              }
+              return exit
+            })
             const send = component.closeInput()
             let observed: PrivateProjectEvaluationPhaseEvidence
             try {
               const [out, err, fence, completion] = await privateProfileSpan(
                 'contained-effect-collection',
-                () =>
-                  Promise.all([stdout, stderr, component.enforcement, component.completion, send]),
+                () => Promise.all([stdout, stderr, enforcement, completionEvidence, send]),
               )
               if (!['payload_exit', 'cancelled', 'deadline'].includes(fence.stopReason))
                 throw new Error('evaluation has no proved process terminal')
               terminalProved = true
+              // Preserve the original native stop if later capture fails. Recovery
+              // termination must not manufacture a cancellation classification.
+              phaseStopReason =
+                fence.stopReason === 'payload_exit'
+                  ? null
+                  : (fence.stopReason as 'deadline' | 'cancelled')
               if (component.output === undefined)
                 throw new Error('evaluation output capture is unavailable')
               const snapshot =
@@ -401,6 +512,11 @@ export async function executePrivateProjectEvaluation(
                   : await component.output.ready
               snapshots.push(snapshot)
               requirePrivateProjectEvaluationOutputFiles(snapshot.files, request.writableRoots)
+              phaseFiles = snapshot.files.map(({ path, bytes, digest }) => ({
+                path,
+                bytes,
+                digest,
+              }))
               const emitted = snapshots.flatMap((item) => item.files)
               if (
                 emitted.length > PROJECT_EVALUATION_LIMITS.outputFiles ||
@@ -411,7 +527,7 @@ export async function executePrivateProjectEvaluation(
               // Snapshot ownership has transferred; only Linux's original directory loan closes here.
               if (component.output.kind === 'linux-directory')
                 await closePrivateExecutionOutput(component.output)
-              activePhase = 'settlement'
+              stage = activePhase = 'settlement'
               lifecycle = await privateProfileSpan('contained-effect-settlement', () =>
                 settlePhase(input, lifecycle!, request.phase, fence, lease),
               )
@@ -437,24 +553,39 @@ export async function executePrivateProjectEvaluation(
               }
             } catch (error) {
               await component.terminate().catch(() => undefined)
-              await Promise.allSettled([
-                stdout,
-                stderr,
-                send,
-                component.enforcement,
-                component.completion,
-              ])
+              await Promise.allSettled([stdout, stderr, send, enforcement, completionEvidence])
               if (component.output?.kind === 'linux-directory')
                 await closePrivateExecutionOutput(component.output)
               throw error
             }
             return observed
-          } finally {
-            await privateProfileSpan('contained-effect-settlement', () => workspace.dispose())
           }
+          const outcome = await executePhase().then(
+            (observed) => ({ status: 'fulfilled' as const, observed }),
+            (error: unknown) => ({ status: 'rejected' as const, error }),
+          )
+          try {
+            await privateProfileSpan('contained-effect-settlement', () => workspace.dispose())
+          } catch (cleanupError) {
+            throw new RunHostFatalOperationError(
+              outcome.status === 'rejected' &&
+                outcome.error instanceof RunHostFatalOperationError &&
+                outcome.error.code === 'UNCERTAIN'
+                ? 'UNCERTAIN'
+                : 'EXECUTION_FAILED',
+              {
+                cause: new AggregateError(
+                  [...(outcome.status === 'rejected' ? [outcome.error] : []), cleanupError],
+                  'evaluation workspace retirement is unconfirmed',
+                ),
+              },
+            )
+          }
+          if (outcome.status === 'rejected') throw outcome.error
+          return outcome.observed
         },
       })
-      activePhase = 'settlement'
+      stage = activePhase = 'settlement'
       await privateProfileSpan('contained-effect-settlement', () =>
         releaseEvaluation(input, lifecycle!),
       )
@@ -473,7 +604,16 @@ export async function executePrivateProjectEvaluation(
           input.signal,
         )
       } catch (error) {
-        output.close()
+        try {
+          output.close()
+        } catch (cleanupError) {
+          throw new RunHostFatalOperationError('EXECUTION_FAILED', {
+            cause: new AggregateError(
+              [error, cleanupError],
+              'evaluation deliverables retirement is unconfirmed',
+            ),
+          })
+        }
         throw error
       }
       const reference = commitPrivateFlowArtifact(files, output)
@@ -485,12 +625,7 @@ export async function executePrivateProjectEvaluation(
             candidateDigest,
             recipeDigest: retained.recipeDigest,
             dependencyDigest: retained.dependencyDigest,
-            environmentDigest: privateProjectEvaluationEnvironmentDigest({
-              recipeDigest: retained.recipeDigest,
-              dependencyDigest: retained.dependencyDigest,
-              installedSupportDigest: recipe.installedSupport.digest,
-              mechanismDigest: recipe.mechanismDigest,
-            }),
+            environmentDigest,
             phases,
             cleanup: 'complete',
           } as unknown as JsonValue,
@@ -520,28 +655,50 @@ export async function executePrivateProjectEvaluation(
         }
       }
       if (error instanceof RunHostFatalOperationError) throw error
-      if (input.signal.aborted)
-        return failed('CANCELLED', 'evaluation cancelled after owned work was fenced')
+      if (isPrivateOutputRetirementUnconfirmed(error))
+        throw new RunHostFatalOperationError('EXECUTION_FAILED', { cause: error })
+      if (input.signal.aborted || phaseStopReason === 'cancelled')
+        return failed(
+          'CANCELLED',
+          'evaluation cancelled after owned work was fenced',
+          failureDetails(),
+        )
       if (
         error instanceof PrivateProjectEvaluationDeadlineError ||
+        phaseStopReason === 'deadline' ||
+        error instanceof PrivateExecutionPreparationDeadlineError ||
         privateBootRemaining(effectiveBootDeadline) <= 0
       )
         return failed(
           'DEADLINE_EXCEEDED',
           'evaluation stopped at its effective phase or enclosing deadline',
+          failureDetails(
+            error instanceof PrivateProjectEvaluationDeadlineError
+              ? error.limit
+              : error instanceof PrivateExecutionPreparationDeadlineError ||
+                  phaseStopReason === 'deadline'
+                ? (phaseRequest?.deadlineLimit ?? 'unknown')
+                : deadlineLimit,
+          ),
         )
       if (error instanceof PrivateProjectEvaluationReviewRequiredError)
         return failed(
           'UNAVAILABLE',
           'candidate manifest or lock changed; review the evaluation recipe again',
+          failureDetails(),
         )
       if (error instanceof CheckError && error.code === 'RUN_CHILD_CAPACITY')
-        return failed('RESOURCE_EXHAUSTED', 'the parent has no available evaluation reservation')
+        return failed(
+          'RESOURCE_EXHAUSTED',
+          'the parent has no available evaluation reservation',
+          failureDetails(),
+        )
       return failed(
         attempted && !terminalProved ? 'UNCERTAIN' : 'EXECUTION_FAILED',
         attempted && !terminalProved
           ? 'evaluation was fenced without complete process evidence; it was not retried'
           : 'evaluation evidence or setup failed; no later phase was started',
+        failureDetails(),
       )
     }
   }
@@ -870,6 +1027,7 @@ function owners(input: Context) {
 function failed(
   code: Extract<RunHostOperationTerminal, { status: 'failed' }>['code'],
   message: string,
+  details?: JsonValue,
 ): RunHostOperationTerminal {
-  return { status: 'failed', code, message }
+  return { status: 'failed', code, message, ...(details === undefined ? {} : { details }) }
 }

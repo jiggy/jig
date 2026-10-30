@@ -26,11 +26,14 @@ describe.serial('maintainer-owned installed host foundation (not unfamiliar usab
       foundationCommands(join(root, 'archive-commands')),
     )
   }, 300_000)
-  for (const application of ['adaptive', 'documents'] as const) {
+  const applications = ['adaptive', 'documents', 'evaluation-deadline'] as const
+  for (const application of applications) {
     const behavior =
       application === 'adaptive'
         ? 'real nonzero evaluation stops later phases, then immutable accepted artifacts'
-        : 'immutable duplicate child handoff, cancellation and client death without replay'
+        : application === 'documents'
+          ? 'immutable duplicate child handoff, cancellation and client death without replay'
+          : 'generation and test deadlines retain bounded public phase evidence without replay'
     test(`frozen public artifacts: independent ${application} application; ${behavior}`, async () => {
       await runInstalledFoundationApplication({
         directory: join(root!, application),
@@ -43,7 +46,7 @@ describe.serial('maintainer-owned installed host foundation (not unfamiliar usab
   }
   afterAll(async () => {
     if (!root) return
-    if (completed === 2) await rm(root, { recursive: true, force: true })
+    if (completed === applications.length) await rm(root, { recursive: true, force: true })
     else
       console.error(
         `Installed foundation failed consumers and private transcripts retained at ${root}`,

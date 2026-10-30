@@ -31,6 +31,7 @@ export function privateBoundInspection<T>(
   operation: Promise<T>,
   options: PrivateDeliveryInspectionOptions,
 ): Promise<T> {
+  const deadline = options.deadline
   return new Promise<T>((resolve, reject) => {
     let finished = false
     let timer: ReturnType<typeof setTimeout> | undefined
@@ -44,22 +45,30 @@ export function privateBoundInspection<T>(
     const abort = () => finish(() => reject(new PrivateDeliveryInspectionError('CANCELLED')))
     const expired = () =>
       finish(() => reject(new PrivateDeliveryInspectionError('DEADLINE_EXCEEDED')))
+    // A timer callback can arrive early. Only the original clock bound expires it.
+    const observe = () => {
+      if (finished) return
+      const remaining = deadline - privatePresentationNow()
+      if (remaining <= 0) expired()
+      else timer = setTimeout(observe, remaining)
+    }
     // Attach both handlers before a synchronously expired/cancelled bound. Late
     // results stay observed, but can never establish success here.
     operation.then(
       (value) => {
-        if (privatePresentationNow() >= options.deadline) expired()
+        if (privatePresentationNow() >= deadline) expired()
         else if (options.signal?.aborted) abort()
         else finish(() => resolve(value))
       },
       (error) => finish(() => reject(error)),
     )
-    if (!Number.isSafeInteger(options.deadline) || privatePresentationNow() >= options.deadline)
-      expired()
+    if (!Number.isSafeInteger(deadline) || privatePresentationNow() >= deadline) expired()
     else {
-      timer = setTimeout(expired, options.deadline - privatePresentationNow())
-      options.signal?.addEventListener('abort', abort, { once: true })
-      if (options.signal?.aborted) abort()
+      observe()
+      if (!finished) {
+        options.signal?.addEventListener('abort', abort, { once: true })
+        if (options.signal?.aborted) abort()
+      }
     }
   })
 }
@@ -105,13 +114,14 @@ export class PrivateDeliveryCompletion {
       const expired = () =>
         finish(() => reject(new PrivateDeliveryInspectionError('DEADLINE_EXCEEDED')))
       const observe = () => {
+        if (settled) return
         // A later authenticated retire may tighten a legacy exit join that is
         // already pending. Reschedule this join's one timer directly; completed
         // results remain immutable and never acquire another timer owner.
         clearTimeout(timer)
         const remaining = this.#deadline! - privatePresentationNow()
-        if (remaining <= 0) expired()
-        else timer = setTimeout(expired, remaining)
+        if (!Number.isSafeInteger(this.#deadline) || remaining <= 0) expired()
+        else timer = setTimeout(observe, remaining)
       }
       // Observe original operation failure even when the bound already expired.
       operation.then(

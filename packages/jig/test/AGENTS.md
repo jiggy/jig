@@ -41,6 +41,10 @@ or native stage-control compatibility path remains.
 descriptor, identity, output and workspace rules. Phase advancement requires
 actual installed evaluator execution in the host suites.
 
+`portable/project-limits.test.ts` checks inert project normalization, supported
+budget combinations against canonical archive encoding, operator environment
+validation, precedence and value origins. It does not qualify native preparation.
+
 `portable/attempt-clock.test.ts` checks cross-process native clock coordinates
 and actual elapsed timers. Reboot, suspend and clock anomalies require separate
 native evidence. Never replace the production reader.
@@ -167,6 +171,12 @@ Pure kitchen helpers and views do not qualify cancellation or exporter dispatch.
 Frozen Bun consumers bind the complete candidate closure through root
 `dependencies` and matching `overrides`. Peer edges must use those same archives.
 Do not reset caches or extend installation budgets to hide incomplete binding.
+
+`host/installed-package-provider.test.ts` also reviews an ordinary locked
+production closure above the default preparation byte limit. It checks project
+and operator overrides, bounded failure details, restrictive reuse, unchanged
+approval after refusal, and execution of retained bytes without the review's
+environment override.
 
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
@@ -364,6 +374,10 @@ Use a new root dependency on an existing workspace member to test stale dependen
 Its review commands select unique private profile destinations outside captured consumer source.
 Only failed reviews append bounded summaries. Runs retain their original limits and cancellation behavior.
 Keep failed profiles private and remove successful fixtures' profiles with their consumers.
+
+Every CLI command uses the shared bounded command owner and a unique private
+transcript prefix. Its command deadline reserves settlement inside the existing
+240-second case allowance. The original timed SIGTERM cancellation remains.
 `fixtures/private-profile-diagnostics.ts` shares strict profile projection with the foundation fixtures.
 It preserves the 256 KiB input, 1026-record and forty-event limits.
 
@@ -472,8 +486,8 @@ weights only place work. They cannot change inventory or evidence.
 ## Child DOX Index
 
 - [fixtures/host-foundation/AGENTS.md](fixtures/host-foundation/AGENTS.md) —
-  Real installed adaptive and noncoding consumers. Native execution and
-  unfamiliar-consumer evidence remain separate from source construction.
+  Real installed adaptive, noncoding and evaluation deadline consumers.
+  Native execution and unfamiliar-consumer evidence remain separate from source construction.
 - [fixtures/channel-conversation/AGENTS.md](fixtures/channel-conversation/AGENTS.md)
   — Installed synthetic request/reply and cancellation peers.
 - [fixtures/repair-batch/AGENTS.md](fixtures/repair-batch/AGENTS.md) —

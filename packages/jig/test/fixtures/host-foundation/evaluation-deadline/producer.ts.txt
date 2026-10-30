@@ -1,0 +1,28 @@
+import { handle } from '@jigging/flow'
+import { mkdir, writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
+await handle(async run => {
+  const { mode } = run.input as { mode: string }
+  if (mode !== 'generation' && mode !== 'test') throw Error('Unsupported deadline control')
+  const root = run.attachments.candidate!.path
+  for (const name of ['src', 'tools', 'test']) await mkdir(join(root, name))
+  await writeFile(join(root, 'src/answer.ts'), 'export const answer: number = 42\n')
+  await writeFile(join(root, 'tools/generate.js'), `
+console.log('deadline-generation-start')
+console.error('cwd:' + process.cwd())
+console.error('module:' + import.meta.path)
+${mode === 'generation' ? "console.log('g'.repeat(80 * 1024)); for (;;) {}" : "await Bun.write('generated/answer.json', JSON.stringify({answer:42})); console.log('generate-complete')"}
+`)
+  await writeFile(join(root, 'test/answer.test.js'), `
+import { test } from 'bun:test'
+test('intentional native test deadline', () => {
+  console.log('deadline-test-start')
+  console.error('cwd:' + process.cwd())
+  console.error('module:' + import.meta.path)
+  console.log('t'.repeat(80 * 1024))
+  for (;;) {}
+})
+`)
+  return { outcome: 'done', output: { mode } }
+})

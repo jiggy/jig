@@ -257,6 +257,12 @@ These links locate module rules. All selected domain requirements still apply.
   each and 512 KiB aggregate retained preview content. Charge text as UTF-16 storage.
   Complete download bytes have a separate 16 MiB aggregate allowance. Verify their size and digest before transferring ownership.
 
+  Completion and inspection callbacks recheck their captured absolute
+  presentation deadline. An early callback reschedules only the remaining allowance.
+  Tightening pending joins keeps the minimum deadline and completed joins remain
+  immutable. These bounds observe completion without cancelling underlying file
+  work or proving native retirement.
+
   Text, empty, image, non-text, unavailable and clipped states remain
   distinct. `image-preview-policy.ts` owns the shared finite capture/transport
   limits. Complete source bytes retain their separate bounded capture allowance. `image-preview-child.ts` runs the decoder in a disposable process.

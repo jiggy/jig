@@ -42,7 +42,7 @@ jobs:
     needs: "scope"
     if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: 15
+    timeout-minutes: 45
     permissions:
       contents: "read"
       actions: "read"
@@ -61,7 +61,7 @@ jobs:
           GH_TOKEN: "${{ github.token }}"
         run: |
           set -eu
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --timeout-seconds 600
+          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
       -
         name: "Retain exact macos host artifacts"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"

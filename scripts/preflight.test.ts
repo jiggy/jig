@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
@@ -79,6 +80,7 @@ test('preflight preserves tool configuration without inheriting live model opt-i
       PATH: '/tools',
       FLOW_NODE: '/tools/node',
       JIG_AUTHORING_NODE_PATH: '/tools/node',
+      PYTHON: '/tools/python',
       TMPDIR: '/tmp',
       JIG_MACOS_PROCESS_TEST: '1',
       JIG_NATIVE_AGENT_RESTORE: '1',
@@ -93,6 +95,7 @@ test('preflight preserves tool configuration without inheriting live model opt-i
     PATH: '/tools',
     FLOW_NODE: '/tools/node',
     JIG_AUTHORING_NODE_PATH: '/tools/node',
+    PYTHON: '/tools/python',
     TMPDIR: '/tmp',
   })
 })
@@ -287,6 +290,56 @@ test('invalid preflight arguments fail before any build or test', () => {
   expect(result.stderr).toContain('Usage: just preflight')
 })
 
+test('source-stage options are validated by the CI runner before build or native host checks', () => {
+  for (const args of [
+    ['--targets', 'not-a-source-stage'],
+    ['--targets', 'source-python,source-python'],
+    ['--profile', 'not-a-source-profile'],
+  ]) {
+    const result = spawnSync(
+      process.execPath,
+      [resolve(import.meta.dir, 'preflight.ts'), 'source', ...args],
+      { env: testEnvironment(process.env), encoding: 'utf8', timeout: 5000 },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toMatch(
+      /Unknown source target|Repeated source target|Invalid source profile/,
+    )
+    expect(result.stderr).not.toContain('Native preflight requires')
+  }
+})
+
+test('Python-only source checks preserve the selected interpreter and refuse before creating reports', async () => {
+  const directory = await mkdtemp(resolve(tmpdir(), 'jig-source-preflight-'))
+  try {
+    const reports = resolve(directory, 'source reports')
+    const result = spawnSync(
+      process.execPath,
+      [
+        resolve(import.meta.dir, 'preflight.ts'),
+        'source',
+        '--targets',
+        'source-python',
+        '--report-directory',
+        reports,
+      ],
+      {
+        env: { ...testEnvironment(process.env), PYTHON: resolve(directory, 'missing-python') },
+        encoding: 'utf8',
+        timeout: 5000,
+      },
+    )
+    expect(result.status).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('Selected source stages require Python 3; set PYTHON.')
+    expect(result.stderr).not.toContain('Native preflight requires')
+    expect(existsSync(reports)).toBe(false)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
 const mountFixture = [
   '/dev/disk20 on /private/tmp/jig-owned/mount (hfs, local, nodev, noexec)',
   '/dev/disk21 on /Volumes/Jig-0123456789abcdef (hfs, local, nodev, noexec)',
@@ -385,4 +438,4 @@ test('hosted and self-hosted Mac snapshot commands execute the same automatic-vo
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
-})
+}, 15_000)

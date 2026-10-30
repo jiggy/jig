@@ -68,6 +68,31 @@ These links locate module rules. All selected domain requirements still apply.
   Only native phase roots and fresh scratch are writable.
   `project-evaluation-workspace.ts` defines a closed native phase discriminator, never an arbitrary workspace interface.
 
+- Project Evaluation failure evidence belongs to the existing operation-error
+  `details.evaluation` channel, specified in
+  [Project Evaluation](../../../../docs/jig/spec/project-evaluation.md#stopped-evaluation-evidence).
+  Keep the successful descriptor and operational failure codes unchanged.
+  Retain observed phase records before propagating deadline or cancellation.
+  Track selected phase and host stage separately from native dispatch.
+  Pre-phase setup has no selected phase. Preparation or admission is not proof
+  that candidate code ran.
+
+  Preserve collected process evidence before output capture and settlement can
+  fail. Keep unavailable process or file evidence explicit as `null`. An empty
+  manifest requires a completed capture. Do not invent later skipped phases.
+
+  Derive limit attribution from protected monotonic minima. Tied or unproved
+  winners remain unknown. Wall time cannot establish root or phase expiry.
+  Recognize native preparation expiry only through its trusted deadline error.
+
+  Failure projection retains at most 8 KiB of UTF-8 per stream, with truncation
+  disclosed, after physical-to-logical path sanitization. Keep native collection
+  and successful 64 KiB stream limits unchanged. Project only bounded public
+  evidence, never private exceptions, owner identities, tickets or bearer rights.
+  Preserve cancellation precedence and fatal fencing/retirement uncertainty.
+  Emit `cleanup: complete` only after all owners and captured inputs retire.
+  Retained evidence never authorizes replay or phase advancement.
+
 - Evaluation custody stays on its original `root_child_owners` row: optional generate, then compile and test.
   Retain at most twelve append-only plan/sandbox/fence/cleanup checkpoints.
   Plans retain native allocation intent before launch. Cancellation may fence unsealed plans.
@@ -117,7 +142,10 @@ These links locate module rules. All selected domain requirements still apply.
   Retain fixed host phases and allowlisted codes, never error names, messages or private fields.
   Guardian codes reuse the owning finite step/cause parser. Unknown causes become `OTHER`.
 
-  Preparation observations retain only fixed worker and budget codes, plus authenticated native stop reasons and missing-terminal or nonzero-exit facts.
+  Preparation observations retain fixed worker and budget codes, exact exchange
+  and collection cleanup wrappers, authenticated native stop reasons, and
+  missing-terminal or nonzero-exit facts. Wrapper projections identify host
+  failure boundaries without establishing their underlying cause.
   These facts share the same failure budget and never include exit values, native identities or worker output.
   Readers use the strict failure-record normalizer and never count failures as timing or success evidence.
 
@@ -182,6 +210,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 - `preparationOutput` selects only production or evaluation package collection.
   It cannot share ordinary output or an evaluation workspace.
+
+  Optional `preparationLimits` carries the snapshotted production collection bounds
+  through both native plans. Validate and freeze that pair before sealing. Reject
+  it for evaluation or ordinary execution. It selects no collection path and
+  changes no execution resources, lifecycle or cleanup allowance.
+
   Linux pins original work custody before continuation through authenticated supervisor control.
   Its package promise captures after successful enforcement and closes that original loan.
   Native package promises retain rejection custody without replacing their original failures.

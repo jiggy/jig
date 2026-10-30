@@ -40,6 +40,7 @@ export const expectedInstalledFiles = [
   'dist/project/commands.d.ts',
   'dist/project/evaluation.d.ts',
   'dist/project/grants.d.ts',
+  'dist/project/limits.d.ts',
   'dist/schema/types.d.ts',
   'libexec/installed-cli.js',
   'libexec/image-preview-worker.js',

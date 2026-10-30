@@ -96,6 +96,7 @@ test('tightening pending real timers preserves successful joins and never refres
     const deadline = started + 2
     completion.start(deadline)
     await expect(joined).rejects.toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+    expect(privatePresentationNow()).toBeGreaterThanOrEqual(deadline)
     expect(privatePresentationNow() - started).toBeLessThan(500)
     expect(completion.start(started + 60_000)).toBe(deadline)
     expect(completion.join(completed)).toBe(successful)
@@ -103,6 +104,38 @@ test('tightening pending real timers preserves successful joins and never refres
     await operation
     expect(completion.join(operation)).toBe(joined)
     await expect(joined).rejects.toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+  }
+})
+
+test('real inspection timers never expire before their original deadline', async () => {
+  const operations: Promise<void>[] = []
+  for (let index = 0; index < 64; index++) {
+    const deadline = privatePresentationNow() + 2
+    const operation = Bun.sleep(10)
+    operations.push(operation)
+    const failure = await privateBoundInspection(operation, { deadline }).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    expect(failure).toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+    expect(privatePresentationNow()).toBeGreaterThanOrEqual(deadline)
+  }
+  await Promise.all(operations)
+})
+
+test('inspection snapshots its original deadline before caller options can change', async () => {
+  for (const laterDeadline of [privatePresentationNow() + 60_000, Number.NaN]) {
+    const deadline = privatePresentationNow() + 2
+    const options = { deadline }
+    const operation = Bun.sleep(10)
+    const observed = privateBoundInspection(operation, options).then(
+      () => undefined,
+      (error: unknown) => error,
+    )
+    options.deadline = laterDeadline
+    expect(await observed).toMatchObject({ code: 'DEADLINE_EXCEEDED' })
+    expect(privatePresentationNow()).toBeGreaterThanOrEqual(deadline)
+    await operation
   }
 })
 

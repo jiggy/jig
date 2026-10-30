@@ -31,7 +31,7 @@ export interface PrivateInvocationContext {
 /** Join protected root/parent budgets, never the caller's presentation scalar. */
 export async function privateInvocationBootDeadline(
   input: PrivateInvocationContext,
-  durationMs: number,
+  durationMs?: number,
 ): Promise<PrivateBootDeadline> {
   const accepted = await privateAttemptRunDeadline({
     projectRoot: input.projectRoot,
@@ -64,7 +64,7 @@ export async function privateInvocationBootDeadline(
     monotonicMs: deadlines.some((deadline) => deadline.bootId !== now.bootId)
       ? 0
       : Math.min(
-          now.monotonicMs + durationMs,
+          ...(durationMs === undefined ? [] : [now.monotonicMs + durationMs]),
           ...deadlines.map((deadline) => deadline.monotonicMs),
         ),
   })

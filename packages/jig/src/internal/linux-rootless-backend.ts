@@ -23,8 +23,10 @@ import { fileURLToPath } from 'node:url'
 import { types as utilTypes } from 'node:util'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import {
   capturePrivateBunPreparationOutput,
+  requirePrivateBunPreparationLimits,
   requirePrivateBunPreparationOutput,
 } from './bun-preparation-output.js'
 import { PRIVATE_OUTPUT_PATH } from './execution-intent.js'
@@ -127,6 +129,7 @@ export interface PrivateLinuxLaunchPlan {
   /** One bounded anonymous output mount; its retained descriptor is host-only. */
   readonly output?: boolean
   readonly preparationOutput?: 'production' | 'evaluation'
+  readonly preparationLimits?: ProjectDependencyLimits
   readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
   readonly inputDirectories?: readonly string[]
   readonly inputEmptyDirectories?: readonly string[]
@@ -817,6 +820,7 @@ export class PrivateLinuxCgroupBackend {
                 captured = await capturePrivateBunPreparationOutput(
                   outputDirectory!,
                   preparationMode,
+                  data.sealedPlan.preparationLimits,
                 )
               } catch (error) {
                 failures.push(error)
@@ -1822,6 +1826,10 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
   }
   const output = value.output ?? false
   const preparationOutput = requirePrivateBunPreparationOutput(value.preparationOutput)
+  const preparationLimits = requirePrivateBunPreparationLimits(
+    value.preparationLimits,
+    preparationOutput,
+  )
   if (preparationOutput !== undefined && (output || value.evaluationWorkspace !== undefined))
     throw new TypeError('Bun preparation cannot share another native output profile')
   const evaluationWorkspace = normalizePrivateProjectEvaluationWorkspace(value.evaluationWorkspace)
@@ -1906,6 +1914,7 @@ function snapshotPlan(value: PrivateLinuxLaunchPlan): SealedLaunchPlan {
     nestedUserNamespaces,
     output,
     ...(preparationOutput === undefined ? {} : { preparationOutput }),
+    ...(preparationLimits === undefined ? {} : { preparationLimits }),
     capturedInputs: Object.freeze(capturedInputs.map((file) => Object.freeze({ ...file }))),
     inputDirectories: Object.freeze(inputDirectories),
     inputEmptyDirectories: Object.freeze(

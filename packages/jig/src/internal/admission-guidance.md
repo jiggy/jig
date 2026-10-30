@@ -102,6 +102,13 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### dependency-flows
 
+- `dependency-preparation-limits.ts` snapshots supported operator environment
+  settings before project evaluation, then resolves each prepared-output budget
+  from environment, project choice or default. Keep value origins available for
+  actionable diagnostics. These review operational budgets do not grant Run
+  authority or alter admitted grants. Workers receive validated numeric values,
+  never ambient environment configuration.
+
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
   the original dependency lookup layout with that package as the execution root.
@@ -246,7 +253,7 @@ These links locate module rules. All selected domain requirements still apply.
 
   The subsequent install stays frozen and script-disabled.
 
-- `bun-preparation-output.ts` owns fixed native directory collection for both modes.
+- `bun-preparation-output.ts` owns descriptor-based native directory collection for both modes.
   Both Bun preparation modes return metadata only on stdout: layout, file count,
   logical bytes and canonical Package/0 digest.
   The worker moves selected regular files into fixed `work/prepared` without
@@ -254,8 +261,19 @@ These links locate module rules. All selected domain requirements still apply.
   Native collectors retain original work descriptors and capture only after fencing.
   Host-created immutable package bytes must match metadata, source and layout.
 
-  Production retains 4,096 records/32 MiB. Evaluation retains 8,192 records/128 MiB.
+  Production defaults to 4,096 records/32 MiB. Resolve its operator-selected
+  bounds once through `../project/limits.ts`. Pass the frozen complete pair to
+  worker input, native collection, result decoding and retained-byte reassembly.
+
+  Never reread environment selectors in workers or collectors. Evaluation retains
+  its fixed 8,192 records/128 MiB. Source capture bounds remain unchanged.
   Layout bytes share each decoded allowance. Stream and storage limits stay separate.
+
+  Worker overflow evidence contains only a closed dimension and safe integer
+  observation/maximum. The controller checks the maximum against its own selected
+  policy before retaining the diagnostic. The host alone identifies an evaluation
+  diagnostic from its selected preparation mode. Observations may stop at the first overflow.
+
   Failed cleanup grants no prepared package. Recovery settles owners without recapture or replay.
 
 - Workspace capture supports root applications and declared ancestor members,

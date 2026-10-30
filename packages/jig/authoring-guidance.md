@@ -23,6 +23,12 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### src project author
 
+- `src/project/limits.ts` owns closed project preparation choices, their defaults,
+  supported ranges and environment names. It stays inert. `src/package/capacity.ts`
+  owns shared Package/0 and protected archive capacities without importing native
+  storage. Validate prepared byte/file combinations against canonical archive
+  overhead, including maximum-length paths, before starting preparation.
+
 - `src/project/author.ts` also owns shipped attachment-route data types:
   fixed `{from}`, call-supplied `{supplied:"read"}` and operation-owned
   `{create:true}` mappings. `attachment-routes.ts` validates their closed maps

@@ -14,6 +14,8 @@ import {
   PRIVATE_BUN_PREPARED_MESSAGE_BYTES,
   PRIVATE_BUN_SOURCE_MESSAGE_BYTES,
   privateBunMessageFits,
+  privateBunPreparationLimitFailure,
+  privateBunPreparationLimits,
 } from '../../src/internal/bun-native-preparation-protocol.js'
 import {
   requirePrivateProjectEvaluationLock,
@@ -37,6 +39,46 @@ function lock(packages: Readonly<Record<string, unknown>>): object {
 }
 
 describe('private Bun preparation policy', () => {
+  test('worker limit evidence must match the selected bound and a real overflow', () => {
+    const limits = privateBunPreparationLimits('production', {
+      maxPreparedFiles: 12,
+      maxPreparedBytes: 1024,
+    })
+    expect(
+      privateBunPreparationLimitFailure({ dimension: 'files', observed: 13, maximum: 12 }, limits),
+    ).toEqual({ dimension: 'files', observed: 13, maximum: 12 })
+    for (const failure of [
+      { dimension: 'files', observed: 13, maximum: 4096 },
+      { dimension: 'bytes', observed: 1024, maximum: 1024 },
+      { dimension: 'files', observed: 12.5, maximum: 12 },
+      { dimension: 'other', observed: 13, maximum: 12 },
+      { dimension: 'files', observed: 13, maximum: 12, message: 'private' },
+      { dimension: 'files', observed: 13, maximum: 12, profile: 'evaluation' },
+    ])
+      expect(() => privateBunPreparationLimitFailure(failure, limits)).toThrow()
+    let accessed = false
+    const accessor = {
+      dimension: 'files',
+      maximum: 12,
+      get observed() {
+        accessed = true
+        return 13
+      },
+    }
+    const proxy = new Proxy(
+      {},
+      {
+        ownKeys() {
+          accessed = true
+          return []
+        },
+      },
+    )
+    expect(() => privateBunPreparationLimitFailure(accessor, limits)).toThrow()
+    expect(() => privateBunPreparationLimitFailure(proxy, limits)).toThrow()
+    expect(accessed).toBeFalse()
+  })
+
   test('evaluation recipes are a fixed family, not executable tool policy', () => {
     const recipe = {
       family: 'bun-typescript',

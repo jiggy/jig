@@ -48,6 +48,9 @@ use-case and orchestration hypotheses.
   verification. Keep verification defaults and limits aligned with execution
   policy and `SECURITY.md`. Fast mode does not skip Flow approval or sandbox
   enforcement.
+- `guide/limits.md` owns the central task-based limits reference and supported
+  override guidance. `scripts/limit-reference.ts` derives its numeric tables from
+  implementation policy owners. Keep fixed and derived constraints explicit.
 - `guide/files.md` starts with a complete file-copy example and explains
   per-run files, review-pinned Binding resources, and
   their shared read attachment interface. It covers temporary packets for writable

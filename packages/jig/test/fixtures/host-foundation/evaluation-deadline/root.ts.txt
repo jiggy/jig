@@ -1,0 +1,30 @@
+import { handle, OperationError } from '@jigging/flow'
+
+await handle(async run => {
+  const { mode } = run.input as { mode: string }
+  if (mode !== 'generation' && mode !== 'test') throw Error('Unsupported deadline control')
+  const produced = await run.call({
+    operationId: 'produce', slot: 'producer', input: { mode },
+    attachments: { candidate: { create: true } },
+  })
+  if (produced.outcome !== 'done' || !produced.artifacts?.candidate)
+    throw Error('Producer did not seal its deadline control')
+  const candidate = produced.artifacts.candidate
+  try {
+    await run.call({
+      operationId: 'evaluate', slot: 'evaluate', input: {},
+      attachments: { candidate: { read: candidate }, deliverables: { create: true } },
+    })
+    throw Error('Intentional infinite phase returned normally')
+  } catch (error) {
+    if (!(error instanceof OperationError)) throw error
+    await run.release({ operationId: 'release-candidate', artifact: candidate })
+    return {
+      outcome: 'done',
+      output: {
+        mode, code: error.code, details: error.details ?? null,
+        remainingAfterMs: run.deadlineUnixMs - Date.now(),
+      },
+    }
+  }
+})

@@ -1,3 +1,4 @@
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import type { PrivateCapturedInput } from './input-capture.js'
 import type { PrivateBootDeadline } from './native-clock.js'
 import type { PrivateProjectEvaluationWorkspace } from './project-evaluation-workspace.js'
@@ -39,6 +40,7 @@ export interface PrivateExecutionIntent {
   readonly output?: boolean
   /** Fixed dependency collection from fenced native work, separate from Flow output. */
   readonly preparationOutput?: 'production' | 'evaluation'
+  readonly preparationLimits?: ProjectDependencyLimits
   /** Fixed evaluator-only read-only C/R/D/prior tree with phase-owned output roots. */
   readonly evaluationWorkspace?: PrivateProjectEvaluationWorkspace
   readonly storageBytes: number

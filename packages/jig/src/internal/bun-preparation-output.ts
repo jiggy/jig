@@ -4,6 +4,7 @@ import {
   type CapturedPackage,
   capturePrivateFencedPreparationDirectory,
 } from '../package/capture.js'
+import type { ProjectDependencyLimits } from '../project/limits.js'
 import {
   type PrivateBunPreparationMode,
   privateBunPreparationLimits,
@@ -19,14 +20,29 @@ export function requirePrivateBunPreparationOutput(
   throw new TypeError('invalid Bun preparation collection profile')
 }
 
+/** Snapshot operator bounds before native launch; other collection profiles stay fixed. */
+export function requirePrivateBunPreparationLimits(
+  value: unknown,
+  mode: PrivateBunPreparationMode | undefined,
+): ProjectDependencyLimits | undefined {
+  if (value === undefined) return undefined
+  if (mode !== 'production') throw new TypeError('only production preparation accepts limits')
+  const selected = privateBunPreparationLimits(mode, value as ProjectDependencyLimits)
+  return Object.freeze({
+    maxPreparedFiles: selected.preparedFiles,
+    maxPreparedBytes: selected.preparedBytes,
+  })
+}
+
 /** Borrow only an authentic native work collector after complete writer fencing. */
 export async function capturePrivateBunPreparationOutput(
   work: FileHandle,
   mode: PrivateBunPreparationMode,
+  dependencyLimits?: ProjectDependencyLimits,
 ): Promise<CapturedPackage> {
   const selected = requirePrivateBunPreparationOutput(mode)
   if (selected === undefined) throw new TypeError('Bun preparation collection profile is missing')
-  const limits = privateBunPreparationLimits(selected)
+  const limits = privateBunPreparationLimits(selected, dependencyLimits)
   const flags =
     constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK
   const directory =

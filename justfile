@@ -97,6 +97,11 @@ build: jig::build
 @preflight:
     bun scripts/preflight.ts
 
+# Run selected complete CI source stages with resolved local tools and no native host allocation
+[positional-arguments]
+@test-source *args:
+    bun scripts/preflight.ts source "$@"
+
 # Run the unprivileged release gate; requires FLOW_NODE and Python
 @test-release:
     sh scripts/test-release.sh

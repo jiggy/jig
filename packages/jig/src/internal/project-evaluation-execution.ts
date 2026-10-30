@@ -13,6 +13,7 @@ import {
 } from './project-evaluation-policy.js'
 
 export type PrivateProjectEvaluationPhase = 'generate' | 'compile' | 'test'
+export type PrivateProjectEvaluationDeadlineLimit = 'phase' | 'evaluation' | 'enclosing' | 'unknown'
 export interface PrivateProjectEvaluationFile {
   readonly path: string
   readonly bytes: number
@@ -38,6 +39,7 @@ export interface PrivateProjectEvaluationPhaseRequest {
   readonly deadlineUnixMs: number
   readonly timeoutMs: number
   readonly bootDeadline?: PrivateBootDeadline
+  readonly deadlineLimit: PrivateProjectEvaluationDeadlineLimit
   readonly writableRoots: readonly EvaluationOutputRoot[]
 }
 
@@ -92,6 +94,9 @@ export async function executePrivateProjectEvaluationPhases(input: {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
   readonly bootDeadline?: PrivateBootDeadline
+  readonly deadlineLimit: Exclude<PrivateProjectEvaluationDeadlineLimit, 'phase'>
+  readonly onPhase: (request: PrivateProjectEvaluationPhaseRequest | undefined) => void
+  readonly onEvidence: (evidence: PrivateProjectEvaluationPhaseEvidence) => void
   readonly executePhase: (
     request: PrivateProjectEvaluationPhaseRequest,
   ) => Promise<PrivateProjectEvaluationPhaseEvidence>
@@ -117,9 +122,13 @@ export async function executePrivateProjectEvaluationPhases(input: {
   for (const [index, phase] of phases.entries()) {
     const invocation = privateProjectEvaluationInvocation(input.recipe, phase)
     if (blocked || invocation.length === 0) {
-      evidence.push(skipped(phase, invocation, blocked ? 'prior-phase-failed' : 'not-configured'))
+      const observed = skipped(phase, invocation, blocked ? 'prior-phase-failed' : 'not-configured')
+      evidence.push(observed)
+      input.onEvidence(observed)
       continue
     }
+    // Selection/setup of the next phase is separate from executing its program.
+    input.onPhase(undefined)
     input.signal.throwIfAborted()
     const timeoutMs = PROJECT_EVALUATION_LIMITS[`${phase}Ms`]
     const deadlineUnixMs = Math.min(end, Date.now() + timeoutMs)
@@ -134,21 +143,27 @@ export async function executePrivateProjectEvaluationPhases(input: {
                 ? Math.min(endBoot!.monotonicMs, clock.monotonicMs + timeoutMs)
                 : 0,
           })
+    const remaining =
+      endBoot === undefined ? end - Date.now() : privateBootRemaining(endBoot, clock!)
+    const deadlineLimit =
+      remaining > timeoutMs ? 'phase' : remaining < timeoutMs ? input.deadlineLimit : 'unknown'
     if (
       bootDeadline === undefined
         ? deadlineUnixMs <= Date.now()
         : privateBootRemaining(bootDeadline, clock!) <= 0
     )
-      throw new PrivateProjectEvaluationDeadlineError()
+      throw new PrivateProjectEvaluationDeadlineError(input.deadlineLimit)
     const request: PrivateProjectEvaluationPhaseRequest = Object.freeze({
       index: index as 0 | 1 | 2,
       phase,
       invocation: Object.freeze([...invocation]),
       timeoutMs,
+      deadlineLimit,
       deadlineUnixMs,
       ...(bootDeadline === undefined ? {} : { bootDeadline }),
       writableRoots: Object.freeze([...privateProjectEvaluationWritableRoots(phase)]),
     })
+    input.onPhase(request)
     const observed = await input.executePhase(request)
     if (
       observed.phase !== phase ||
@@ -164,10 +179,12 @@ export async function executePrivateProjectEvaluationPhases(input: {
       throw new TypeError('evaluation phase returned inconsistent process evidence')
     requirePrivateProjectEvaluationOutputFiles(observed.files, request.writableRoots)
     evidence.push(observed)
+    input.onEvidence(observed)
     blocked = observed.status !== 'completed'
     // Native stop evidence must not become ordinary done evidence.
-    if (observed.stopReason === 'cancelled') input.signal.throwIfAborted()
-    if (observed.stopReason === 'deadline') throw new PrivateProjectEvaluationDeadlineError()
+    input.signal.throwIfAborted()
+    if (observed.stopReason === 'deadline')
+      throw new PrivateProjectEvaluationDeadlineError(request.deadlineLimit)
     if (observed.stopReason === 'cancelled')
       throw new DOMException('evaluation cancelled', 'AbortError')
   }
@@ -175,7 +192,7 @@ export async function executePrivateProjectEvaluationPhases(input: {
 }
 
 export class PrivateProjectEvaluationDeadlineError extends Error {
-  constructor() {
+  constructor(readonly limit: PrivateProjectEvaluationDeadlineLimit) {
     super('evaluation reached its effective phase or enclosing deadline')
   }
 }

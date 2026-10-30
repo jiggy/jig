@@ -98,6 +98,57 @@ termination, observed duration, bounded stream prefixes and output manifests.
 Domain evidence contains no root ticket or owner IDs. Application acceptance must
 check independently interpretable outputs without importing C into its trusted checker.
 
+### Stopped evaluation evidence
+
+Deadline expiry and cancellation remain failed operations with
+`DEADLINE_EXCEEDED` and `CANCELLED`, respectively. A Flow can catch the public
+`OperationError` and inspect `details.evaluation` without reading private project
+state. This evaluation-specific JSON/0 payload uses the existing Run/0 operation
+error details channel. It does not change the successful invocation descriptor.
+
+| Field | Meaning |
+| --- | --- |
+| `candidateDigest`, `recipeDigest`, `dependencyDigest` | The candidate and reviewed recipe/dependency identities for this call. |
+| `environmentDigest` | The verified evaluation environment identity, or `null` before it is available. |
+| `phase` | The selected executable phase: `generate`, `compile`, or `test`. It is `null` during setup before phase selection. Selection alone does not prove candidate execution began. |
+| `stage` | `setup`, `preparation`, `sealing`, `admission`, `collection`, or `settlement`. These distinguish initial setup, phase workspace preparation, containment sealing, native admission, evidence collection, and owned-resource retirement. |
+| `limit` | For deadline failures, `phase`, `evaluation`, or `enclosing` identifies the known limiting budget. `unknown` means the winner is unproved or tied. `null` applies to other failures. |
+| `phases` | At most three ordered phase records in the successful evidence format, limited to observations already obtained. This includes observed `not-configured` skips and a fully observed stopped phase when available. Later phases are never invented. |
+| `process` | The admitted phase's `invocation`, `exitCode`, `signal`, `stopReason`, `durationMs`, `stdout`, and `stderr`. It is `null` before a process is admitted. Individual observations may be unavailable. |
+| `files` | The current phase's captured output manifest, or `null` when collection is unavailable. An empty array means capture proved an empty manifest. Metadata grants no artifact access. |
+| `cleanup` | `complete`, only after confirmed fencing and retirement of all owned resources. |
+
+`phase: null` with `stage: 'setup'` explicitly identifies a stop before phase
+dispatch. A phase selected for preparation or admission must not be reported as
+a running test. `process` and `files` preserve evidence obtained before a later
+capture or settlement failure, independently of whether a complete phase record
+could be added to `phases`. Process fields accumulate independently.
+Unavailable evidence remains `null`, including an unknown stop reason or duration.
+
+The logical `invocation` is always present in an admitted process record.
+An observed `stopReason` is `exited`, `deadline`, or `cancelled`.
+Available streams use the same `{text, truncated}` shape as phase evidence.
+
+The `phase` limit is the selected phase cap, `evaluation` is the total evaluation
+cap, and `enclosing` is a containing Flow or root limit. Attribution follows the
+protected monotonic deadline minima, never elapsed wall time or an arbitrary
+exception. Ties or unavailable attribution remain `unknown`. An early enclosing
+expiry does not establish that any phase ran.
+
+Failure details project at most 8 KiB of UTF-8 text per stdout/stderr field,
+including streams within `phases` and `process`. A stream's `truncated` flag is
+true if native collection or this smaller projection omitted bytes.
+These are untrusted prefixes, not proof that candidate assertions ran
+honestly. Physical host paths are replaced with logical evaluation paths before
+projection. Credentials, tickets, owner identities, private paths, and bearer
+artifact references must not appear in the payload.
+
+Existing cancellation precedence and native fencing remain authoritative.
+Unconfirmed fencing or cleanup is fatal to the owning invocation even when its
+Flow catches an operation error. Available evidence cannot turn uncertainty into
+`cleanup: 'complete'`. Reading retained failure evidence does not execute, retry,
+or resume a phase. A failed operation returns no deliverables.
+
 ## Bounds and lifetime
 
 C: 64 files/8 MiB. R: 32 files/4 MiB. D: 8,192 files/128 MiB.

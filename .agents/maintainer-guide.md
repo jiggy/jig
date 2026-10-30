@@ -253,6 +253,43 @@ Package archives belong at distribution and isolated installed-artifact test
 boundaries. Retained test archives are evidence for those exact bytes, not live
 workspace dependencies. Rebuild the candidate before testing changed source.
 
+### Limits, defaults, and override discipline
+
+User-facing limits need an explicit owner and a discoverable operating contract.
+The [limits reference](../docs/jig/guide/limits.md) centralizes that contract.
+Its numeric tables derive from policy owners through `scripts/limit-reference.ts`.
+The metadata index documents policy. It never grants authority or replaces
+enforcement.
+
+For each new or changed limit, default, or timeout:
+
+- Define its value, units, scope, supported range, and validation at one canonical
+  implementation owner.
+- Classify it as configurable capacity, reviewed authority, a fixed contract, or
+  a derived constraint.
+- Provide a documented override for configurable capacity. Explain the protected
+  boundary when an override remains unavailable.
+- Use field-specific environment → `jig.ts` → built-in precedence for project
+  capacity controls. Preserve documented precedence for existing command options.
+- Reject invalid explicit values. Apply defaults only when a setting is absent.
+- Resolve operator environment inputs before untrusted execution. Preserve the
+  source of effective values in review diagnostics.
+- Keep authority changes in reviewed policy. An ambient environment value must
+  not silently enlarge an admitted resource grant.
+- Validate coupled capacities, retained archive overhead, and platform enforcement
+  differences. A larger local allowance cannot bypass an enclosing budget.
+- Update the limits metadata, affected schemas, help, diagnostics, and owning
+  specifications in the same change.
+- Verify the actual enforcement boundary, override precedence, invalid values,
+  and any above-default success claim in an ordinary consumer project.
+- Remove superseded definitions. Verify agreement with independently owned wire
+  contracts rather than importing Jig policy into FLOW or Agent packages.
+
+Refresh reference tables with `bun scripts/limit-reference.ts --write`.
+Run `bun scripts/check-docs.ts` to reject stale values or damaged markers.
+Keep internal buffer sizes and structural constants private unless they impose
+a meaningful user-facing constraint.
+
 ### Ordinary invocation and private implementation
 
 Finite invocation should remain simple for authors as well as consumers.

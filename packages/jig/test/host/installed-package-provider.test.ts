@@ -18,7 +18,7 @@ if (
 
 const testRoot = join(import.meta.dir, '..')
 
-for (const scenario of ['entrypoint', 'dependencies'] as const) {
+for (const scenario of ['entrypoint', 'dependencies', 'limits'] as const) {
   test(`packed project ${scenario} uses fresh reviewed data and immutable execution`, async () => {
     const directory = await realpath(await mkdtemp(join(tmpdir(), `jig-${scenario}-consumer-`)))
     const packageRoot = join(testRoot, '..')
@@ -64,7 +64,10 @@ for (const scenario of ['entrypoint', 'dependencies'] as const) {
       )
       const installed = join(tooling, 'node_modules/.bin/jig')
       let sequence = 0
-      const invoke = async (args: string[]) => {
+      const invoke = async (
+        args: string[],
+        operatorEnvironment: Readonly<Record<string, string | undefined>> = {},
+      ) => {
         const command = ++sequence
         const trace = join(directory, `${command}-profile.jsonl`)
         const child = Bun.spawn([installed, ...args], {
@@ -72,6 +75,7 @@ for (const scenario of ['entrypoint', 'dependencies'] as const) {
           env: {
             ...process.env,
             NO_COLOR: '1',
+            ...operatorEnvironment,
             ...(['review', 'run'].includes(args[0]!) ? { JIG_PRIVATE_PROFILE_FILE: trace } : {}),
           },
           stdin: 'ignore',
@@ -144,8 +148,11 @@ for (const scenario of ['entrypoint', 'dependencies'] as const) {
             : []
         return { exit, stdout, stderr, profile, failureEvidence }
       }
-      const succeed = async (args: string[]) => {
-        const result = await invoke(args)
+      const succeed = async (
+        args: string[],
+        operatorEnvironment?: Readonly<Record<string, string | undefined>>,
+      ) => {
+        const result = await invoke(args, operatorEnvironment)
         expect(result.exit, result.stdout + result.stderr + result.failureEvidence).toBe(0)
         return result
       }
@@ -277,6 +284,123 @@ for await (const line of lines) {
         await succeed(['review', '--yes'])
         const short = JSON.parse((await succeed(['run', '--input', '"short"', '--json'])).stdout)
         expect(short).toMatchObject({ status: 'succeeded', output: 'short' })
+        passed = true
+        return
+      }
+
+      if (scenario === 'limits') {
+        const defaultBytes = 32 * 1024 * 1024
+        const expandedBytes = 64 * 1024 * 1024
+        const bytesVariable = 'JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES'
+        const baseEnvironment = {
+          [bytesVariable]: undefined,
+          JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES: undefined,
+        }
+        const declareLimits = (maximum?: number) =>
+          `import {defineJig} from '@jigging/jig'; export default defineJig({flows:['flows/large'],${maximum === undefined ? '' : `limits:{dependencies:{maxPreparedBytes:${maximum}}},`}});`
+        await put('package.json', { private: true, type: 'module' })
+        await put('jig.ts', declareLimits())
+        await put('flows/large/package.json', {
+          name: 'large-dependency-consumer',
+          private: true,
+          type: 'module',
+          dependencies: { typescript: '5.2.2' },
+        })
+        await put(
+          'flows/large/FLOW.ts',
+          `import {createInterface} from 'node:readline';
+import {readdir,stat} from 'node:fs/promises';
+import {dirname,join} from 'node:path';
+import {fileURLToPath} from 'node:url';
+import ts from 'typescript/package.json';
+async function bytes(directory) {
+ let total=0;
+ for(const entry of await readdir(directory,{withFileTypes:true})) {
+  const path=join(directory,entry.name);
+  total+=entry.isDirectory()?await bytes(path):(await stat(path)).size;
+ }
+ return total;
+}
+const retainedBytes=await bytes(dirname(fileURLToPath(import.meta.resolve('typescript/package.json'))));
+for await(const line of createInterface({input:process.stdin})) {
+ const request=JSON.parse(line);
+ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{outcome:'done',output:{typescript:ts.version,retainedBytes}}})+'\\n');
+ break;
+}`,
+        )
+        // An ordinary authored lock makes every review exercise the same exact
+        // registry closure; no preparation needs resolution-network permission.
+        execFileSync(
+          process.execPath,
+          ['install', '--lockfile-only', '--ignore-scripts', '--no-progress'],
+          {
+            cwd: join(project, 'flows/large'),
+            env: {},
+            stdio: 'pipe',
+            timeout: 120000,
+          },
+        )
+        await rm(join(project, 'flows/large/node_modules'), { recursive: true, force: true })
+        const authoredLock = await readFile(join(project, 'flows/large/bun.lock'))
+        const refused = await invoke(['review', '--yes'], baseEnvironment)
+        expect(refused.exit).toBe(1)
+        expect(refused.stderr).toContain('PACKAGE_BUN_OUTPUT_LIMIT')
+        expect(refused.stderr).toContain('maxPreparedBytes')
+        expect(refused.stderr).toContain(bytesVariable)
+        expect(refused.stderr).toContain(`Effective limit: ${defaultBytes}`)
+        expect(refused.stderr).toContain('Limit source: built-in default')
+        const observedBytes = (stderr: string) => {
+          const match = /Observed: at least ([0-9]+) bytes/.exec(stderr)
+          expect(match).not.toBeNull()
+          if (match === null) throw new Error('observed dependency byte count is missing')
+          return Number(match[1])
+        }
+        expect(observedBytes(refused.stderr)).toBeGreaterThan(defaultBytes)
+
+        await put('jig.ts', declareLimits(expandedBytes))
+        await succeed(['review', '--yes'], baseEnvironment)
+        const run = async () =>
+          JSON.parse(
+            (
+              await succeed(
+                ['run', 'flow:flows/large', '--timeout', '120s', '--json'],
+                baseEnvironment,
+              )
+            ).stdout,
+          )
+        const admitted = await run()
+        expect(admitted).toMatchObject({
+          status: 'succeeded',
+          outcome: 'done',
+          output: { typescript: '5.2.2' },
+        })
+        expect(admitted.output.retainedBytes).toBeGreaterThan(defaultBytes)
+
+        // A lower operator selection takes precedence even when the installed
+        // dependency closure can be reused from the previous approval.
+        const constrained = await invoke(['review', '--yes'], {
+          ...baseEnvironment,
+          [bytesVariable]: String(defaultBytes),
+        })
+        expect(constrained.exit, constrained.stdout + constrained.stderr).toBe(1)
+        expect(constrained.stderr).toContain('PACKAGE_BUN_OUTPUT_LIMIT')
+        expect(constrained.stderr).toContain(`Effective limit: ${defaultBytes}`)
+        expect(constrained.stderr).toContain(`Limit source: ${bytesVariable}`)
+        expect(observedBytes(constrained.stderr)).toBeGreaterThan(defaultBytes)
+        expect(await run()).toMatchObject({
+          status: 'succeeded',
+          output: admitted.output,
+        })
+
+        // An environment override also works without a project override. Runs
+        // subsequently use admitted bytes without needing that environment.
+        await put('jig.ts', declareLimits())
+        await succeed(['review', '--yes'], {
+          ...baseEnvironment,
+          [bytesVariable]: String(expandedBytes),
+        })
+        expect(await run()).toMatchObject({ status: 'succeeded', output: admitted.output })
+        expect(await readFile(join(project, 'flows/large/bun.lock'))).toEqual(authoredLock)
         passed = true
         return
       }

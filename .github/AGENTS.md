@@ -56,6 +56,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   build their platform's source workspace separately. Protected publishers
   download the exact original CI artifact by immutable artifact ID. They never
   rebuild a release.
+- Installed Python consumer checks use supported, explicit GitHub runner labels,
+  including `macos-15`. Their matrix must exactly match the source catalog's
+  evidence profiles. This package check does not qualify Jig's native Mac host.
 - CI reports quick development/release checks and site builds independently of
   the longer source suite. Quick checks validate release coverage against the
   tested PR merge's verified first parent, previous main revision, or manual
@@ -75,6 +78,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Preserve `test` as a fail-closed aggregate of every CI job and its observed
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual runs require complete host coverage.
+  Retain required job results before rejecting failures or cancellations, even
+  after evidence download fails. Optional current-attempt runner observations
+  explain allocation failures without granting execution or cleanup evidence.
 - npm publication covers HTTP Agent, ACP Agent and Jig, in that dependency
   order, after same-revision CI, host and native gates. FLOW releases from its
   own repository. First publication requires each package's npm setup.
@@ -259,6 +265,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   the exact canonical CI producer's current-attempt `Quick development checks`
   success. This wait permits up to 600 seconds within the job's 15-minute
   budget. Keep every test and profile.
+  Linux and hosted Mac acquisition wait for the exact current-attempt
+  `candidate-build` job before starting the artifact transfer bound. Producer
+  readiness permits 1,800 seconds, including runner queues. Failed or invalid
+  producer jobs refuse immediately. Hosted Mac also requires the same
+  producer's `Quick development checks` success before native allocation.
+
+  Transfer then permits the existing 300 seconds on Linux or 600 seconds on
+  Mac. Acquisition jobs allow 40 and 45 minutes respectively, including setup
+  and settlement. Native test budgets, complete profiles and byte verification
+  remain mandatory.
 
 
   Measure queue effects separately. This head start does not guarantee Python

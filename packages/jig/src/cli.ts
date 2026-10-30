@@ -81,6 +81,7 @@ import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
 import type { AcpGrant } from './project/grants.js'
+import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from './project/limits.js'
 import { flowSelector } from './project/package-selector.js'
 import {
   createFlow,
@@ -2594,7 +2595,9 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_MEMBER_COLLISION:
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
-        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts only flows, bindings, grants, defaultProviders and entrypoint',
+        'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts flows, bindings, grants, defaultProviders, entrypoint and limits',
+      PROJECT_LIMITS_INVALID:
+        'Check limits.dependencies in jig.ts and the JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES and JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES environment variables. Their combined values must fit artifact capacity. See https://jig.md/guide/limits.',
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded a capture or execution limit; keep authoring modules small and inert. The specific limiting resource was not retained. Preserve this diagnostic if a small declaration fails. No Flow was started',
       PROJECT_DECLARATION_INVALID:
@@ -2642,8 +2645,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_LOCK_STALE: staleDependencyLockHint(error),
       PACKAGE_BUN_INPUT_LIMIT:
         'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/guide/dependencies',
-      PACKAGE_BUN_OUTPUT_LIMIT:
-        'prepared runtime dependencies exceed the 32 MiB or 4096-file limit; check production dependencies in package.json, keep development tools separate, and see https://jig.md/guide/dependencies',
+      PACKAGE_BUN_OUTPUT_LIMIT: dependencyPreparationLimitHint(error),
     }
     const hint =
       candidateHints[error.diagnostic?.code ?? ''] ??
@@ -2981,6 +2983,20 @@ function staleDependencyLockHint(error: ProjectAdministrationError): string {
   return `${repair}\n\n    ${afterRepair}`
 }
 
+function dependencyPreparationLimitHint(error: ProjectAdministrationError): string {
+  const detail = error.diagnostic?.preparationLimit
+  if (detail?.profile === 'evaluation')
+    return 'The evaluation dependency tree exceeds its fixed preparation profile. Reduce its dependencies and see https://jig.md/guide/limits. Production dependency overrides do not apply to evaluation.'
+  const field =
+    detail?.dimension === 'bytes'
+      ? 'maxPreparedBytes'
+      : detail?.dimension === 'files'
+        ? 'maxPreparedFiles'
+        : undefined
+  const keys: readonly ('maxPreparedBytes' | 'maxPreparedFiles')[] = field === undefined ? ['maxPreparedBytes', 'maxPreparedFiles'] : [field]
+  return `The prepared execution tree includes source, production dependencies, lock and layout bytes. Adjust ${keys.map((key) => `limits.dependencies.${key} in jig.ts or ${DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[key]}`).join('; ')}. Exported environment values take precedence. Then rerun your review command. See https://jig.md/guide/limits.`
+}
+
 function renderProjectDiagnostic(error: ProjectAdministrationError, message: string): string {
   const diagnostic = error.diagnostic
   if (diagnostic === undefined) return renderDiagnostic(error.code, message)
@@ -2995,6 +3011,12 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
     diagnostic.lockPath === undefined
       ? ''
       : `\n  Dependency lock: ${asciiJsonString(diagnostic.lockPath)}`
+  const detail = diagnostic.preparationLimit
+  const field = detail?.dimension === 'bytes' ? 'maxPreparedBytes' : 'maxPreparedFiles'
+  const limit =
+    detail === undefined
+      ? ''
+    : `\n  Observed: at least ${detail.observed} ${detail.dimension === 'bytes' ? 'bytes' : 'file/alias records'}\n  Effective limit: ${detail.maximum}\n  Limit source: ${detail.profile === 'evaluation' ? 'fixed evaluation profile' : detail.origin === 'environment' ? DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field] : detail.origin === 'project' ? `jig.ts limits.dependencies.${field}` : detail.origin === 'default' ? 'built-in default' : 'preparation policy'}`
   const selection =
     cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
       ? '\n  Agent selection: the resource grant at this Binding slot.'
@@ -3002,7 +3024,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const alternative = selection
     ? '\n\n  Use another installed client\n    Edit client in the ACP grant selected by this slot (its inline Binding value or named JSON file), choosing codex, claude, or pi. Check model and client-specific policy, then review the change:\n\n  $ jig review'
     : ''
-  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${lock}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
+  return `Review could not finish\n\n${cause === undefined ? '' : `  Cause: ${cause}\n\n`}  Location: ${asciiJsonString(diagnostic.path)}${pointer}${lock}${limit}${selection}${mismatch === undefined ? '' : `\n  ${mismatch}`}\n\n  Next step\n    ${message}${alternative}\n\n  Diagnostic code: ${diagnostic.code}\n  Category: ${error.code}\n`
 }
 
 if (import.meta.main) {

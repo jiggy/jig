@@ -46,6 +46,7 @@ execution evidence.
   hypotheses in specifications.
 - Keep prose, machine schemas, exact descriptors, implementation, fixtures, and
   tests synchronized.
+- Project authoring owns dependency preparation overrides and precedence. The central limits reference derives values from their implementation owners.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.

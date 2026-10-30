@@ -19,6 +19,10 @@ operational baselines, and public-site assembly.
   New technical paragraphs receive all mechanical style checks.
   `docs/jig/AGENTS.md` owns the temporary software-factory style exclusion.
   It makes no network requests and does not certify ASD-STE100 compliance.
+- `limit-reference.ts` owns typed documentation metadata for user-facing limits.
+  Import values from implementation policy owners instead of defining runtime
+  policy here. Its `--write` command refreshes the marked tables in
+  `docs/jig/guide/limits.md`. `check-docs.ts` runs its `--check` drift guard.
 - `new-worktree.sh` owns sibling development-checkout creation. It inherits
   existing ignored `../<same-name>` links from the primary checkout to real
   workspace entries. Tracked source stays local to each checkout. Parent links
@@ -57,6 +61,13 @@ operational baselines, and public-site assembly.
   Preserve distinct operator compiler overrides and exclude ambient credentials.
   Package-local `jig::check` runs Jig and display-package suites before the same
   native pass.
+
+  `just test-source` uses the same resolved Node and non-credential environment
+  to run `test-release.sh` with explicit source-stage options. Preserve the
+  operator's `PYTHON` selection. This source-only path does not select a native
+  host or run its ownership probes. It preserves the runner's stage limits and
+  nonzero status without adding a shell-only timeout. The ordinary
+  `just preflight` coverage stays unchanged.
 - `test-release.sh` accepts explicit portable, protocol, applications and Python
   stages in one built workspace. Omitted stages perform no setup or execution.
   Selected reports bind the complete whole-file suite inventory. Its default
@@ -287,8 +298,9 @@ operational baselines, and public-site assembly.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 - `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive
-  native inventory, real compiler selection and early refusal, environment
-  isolation and failure-preserving residue checks. Execute `just preflight` on a
+  native inventory, real compiler selection, environment isolation and
+  failure-preserving residue checks. It also verifies source-stage option
+  forwarding and early interpreter refusal. Execute `just preflight` on a
   qualified native Mac after changing its runner.
 
 ## Child DOX Index

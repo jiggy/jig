@@ -58,6 +58,11 @@ import {
 import { capturePrivateBunWorkspace, type PrivateBunWorkspace } from './bun-workspace-capture.js'
 import { prepareContractGeneration } from './contract-generation.js'
 import { captureDependencyFlows } from './dependency-flows.js'
+import {
+  capturePrivateDependencyPreparationLimitEnvironment,
+  type PrivateResolvedDependencyPreparationLimits,
+  resolvePrivateDependencyPreparationLimits,
+} from './dependency-preparation-limits.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
 import {
   statPrivateFile as lstat,
@@ -105,6 +110,7 @@ import type { PrivateRunChannelOutput } from './run-channels.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
+  readonly dependencyLimitEnvironment?: Readonly<Record<string, string | undefined>>
   readonly expectedAdmissionDigest?: string
   readonly backend: PrivateExecutionBackend
   readonly installedBunSupport: PrivateInstalledBunSupport
@@ -319,6 +325,22 @@ function closedNativeTestCause(error: Error): string | undefined {
     return undefined
   }
   switch (message) {
+    case 'Bun preparation exchange and cleanup failed':
+      return 'PACKAGE_BUN_EXCHANGE_CLEANUP'
+    case 'Bun preparation and cleanup did not both complete':
+      return 'PACKAGE_BUN_OWNER_CLEANUP'
+    case 'native preparation collection is unavailable':
+      return 'PACKAGE_BUN_COLLECTION_UNAVAILABLE'
+    case 'native preparation capture and collector retirement failed':
+      return 'PACKAGE_BUN_COLLECTOR_RETIREMENT'
+    case 'native preparation collection and cleanup failed':
+      return 'PACKAGE_BUN_NATIVE_CLEANUP'
+    case 'native preparation bytes lack successful cleanup':
+      return 'PACKAGE_BUN_OUTPUT_UNCONFIRMED'
+    case 'native preparation refusal and retirement failed':
+      return 'PACKAGE_BUN_REFUSAL_RETIREMENT'
+    case 'Bun preparation capture and retirement failed':
+      return 'PACKAGE_BUN_CAPTURE_RETIREMENT'
     case 'native output collection is unavailable':
       return 'NATIVE_OUTPUT_COLLECTION_UNAVAILABLE'
     case 'native output was lost during cleanup':
@@ -392,7 +414,21 @@ function createSession(
     async plan(value: ProjectPlanRequest): Promise<ProjectPlanResult> {
       const leave = enterOperation()
       let preparationBudget: PrivateBunPreparationBudget | undefined
+      let dependencyPolicy: PrivateResolvedDependencyPreparationLimits | undefined
       try {
+        let operatorLimits: ReturnType<typeof capturePrivateDependencyPreparationLimitEnvironment>
+        try {
+          operatorLimits = capturePrivateDependencyPreparationLimitEnvironment(
+            host.dependencyLimitEnvironment ?? {},
+          )
+        } catch (error) {
+          throw new ProjectAdministrationError(
+            'INVALID_REQUEST',
+            error instanceof TypeError
+              ? error.message
+              : 'dependency preparation limits are invalid',
+          )
+        }
         const request = normalizeProjectPlanRequest(value)
         planningCancellation.signal.throwIfAborted()
         await owner.verify()
@@ -409,6 +445,19 @@ function createSession(
           {
             projectRoot: owner.root,
             storeRoot: packageStoreRoot,
+            onProjectLimits: (limits) => {
+              try {
+                dependencyPolicy = resolvePrivateDependencyPreparationLimits(limits, operatorLimits)
+              } catch {
+                throw new CheckError(
+                  'invalid',
+                  'PROJECT_LIMITS_INVALID',
+                  'dependency preparation limits are incompatible',
+                  'jig.ts',
+                  '/limits/dependencies',
+                )
+              }
+            },
             ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
             reviewEvaluation: async (grant, captured) => {
               budget.reserve(captured.digest, `${grant.recipe}/package.json`)
@@ -454,6 +503,7 @@ function createSession(
                     return await privateProfileSpan('dependency-preparation', () =>
                       preparePrivateBunPackage({
                         captured,
+                        dependencyLimits: dependencyPolicy!.limits,
                         ...(workspace === undefined ? {} : { workspace }),
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
@@ -628,6 +678,7 @@ function createSession(
                     try {
                       const assembled = await assemblePrivateBunExecution({
                         source: captured,
+                        dependencyLimits: dependencyPolicy!.limits,
                         sourcePaths: inputs.sourcePaths,
                         dependencies,
                         layout: admitted.execution.layout,
@@ -662,6 +713,7 @@ function createSession(
                   const prepared = await privateProfileSpan('dependency-preparation', () =>
                     preparePrivateBunPackage({
                       captured,
+                      dependencyLimits: dependencyPolicy!.limits,
                       ...(workspace === undefined ? {} : { workspace }),
                       installedSupport: host.installedBunSupport,
                       backend: host.backend,
@@ -801,6 +853,28 @@ function createSession(
         return publicResult
       } catch (error) {
         reportOperationFailure('plan', error)
+        if (
+          error instanceof CheckError &&
+          error.preparationLimit !== undefined &&
+          error.preparationLimit.profile !== 'evaluation' &&
+          dependencyPolicy !== undefined
+        ) {
+          const field =
+            error.preparationLimit.dimension === 'bytes' ? 'maxPreparedBytes' : 'maxPreparedFiles'
+          throw handleOperationError(
+            new CheckError(
+              error.kind,
+              error.code,
+              error.message,
+              error.path,
+              error.pointer,
+              error.typeMismatch,
+              error.lockPath,
+              { ...error.preparationLimit, origin: dependencyPolicy.origins[field] },
+            ),
+            'plan',
+          )
+        }
         throw handleOperationError(error, 'plan')
       } finally {
         preparationBudget?.dispose()
@@ -1080,6 +1154,9 @@ export function projectError(
             ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
             ...(error.typeMismatch === undefined ? {} : { typeMismatch: error.typeMismatch }),
             ...(error.lockPath === undefined ? {} : { lockPath: error.lockPath }),
+            ...(error.preparationLimit === undefined
+              ? {}
+              : { preparationLimit: error.preparationLimit }),
           },
         )
       } catch {
@@ -1153,6 +1230,9 @@ export function scopePrivatePackagePlanningError(
     error.message,
     packagePath === '.' ? relativePath : `${packagePath}/${relativePath}`,
     error.pointer,
+    error.typeMismatch,
+    error.lockPath,
+    error.preparationLimit,
   )
 }
 
@@ -1203,6 +1283,7 @@ function isCandidateDiagnosticCode(code: string): boolean {
     code.startsWith('PROJECT_EVALUATOR_') ||
     code.startsWith('PROJECT_MEMBER_') ||
     code.startsWith('PROJECT_SOURCE_') ||
+    code === 'PROJECT_LIMITS_INVALID' ||
     [
       'CHANNEL_FIELD',
       'CHANNEL_LIMIT',
