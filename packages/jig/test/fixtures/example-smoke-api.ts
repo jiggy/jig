@@ -150,10 +150,25 @@ export async function startExampleSmokeApi(options: {
           total_tokens: 2,
         },
       }
-      // Codex's own protocol tests use created, output_item.done and completed.
-      // The done item carries the complete answer, without fabricated tool calls.
+      // The live ACP adapter forwards native agentMessage deltas, not the final
+      // completed item's text. Start the item and stream its answer exactly once.
+      const location = { item_id: item.id, output_index: 0, content_index: 0 }
+      const part = item.content[0]
       const events = [
         { type: 'response.created', response: { ...result, status: 'in_progress', output: [] } },
+        {
+          type: 'response.output_item.added',
+          output_index: 0,
+          item: { ...item, status: 'in_progress', content: [] },
+        },
+        {
+          type: 'response.content_part.added',
+          ...location,
+          part: { ...part, text: '' },
+        },
+        { type: 'response.output_text.delta', ...location, delta: text, logprobs: [] },
+        { type: 'response.output_text.done', ...location, text, logprobs: [] },
+        { type: 'response.content_part.done', ...location, part },
         { type: 'response.output_item.done', output_index: 0, item },
         { type: 'response.completed', response: result },
       ]

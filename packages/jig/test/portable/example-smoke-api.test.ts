@@ -144,12 +144,36 @@ test('the trusted HTTPS peer returns a complete native Responses event stream', 
       })
     assert.deepEqual(
       events.map((event) => event.type),
-      ['response.created', 'response.output_item.done', 'response.completed'],
+      [
+        'response.created',
+        'response.output_item.added',
+        'response.content_part.added',
+        'response.output_text.delta',
+        'response.output_text.done',
+        'response.content_part.done',
+        'response.output_item.done',
+        'response.completed',
+      ],
     )
-    assert.equal(events[1].item.role, 'assistant')
-    assert.equal(events[1].item.content[0].text, '{"ready":true}')
-    assert.deepEqual(events[2].response.output, [events[1].item])
-    assert.equal(events[2].response.status, 'completed')
+    const started = events[1].item
+    const final = events[6].item
+    assert.equal(started.role, 'assistant')
+    assert.equal(started.status, 'in_progress')
+    assert.deepEqual(started.content, [])
+    assert.equal(final.id, started.id)
+    const liveText = events
+      .filter((event) => event.type === 'response.output_text.delta')
+      .map((event) => {
+        assert.equal(event.item_id, started.id)
+        return event.delta
+      })
+      .join('')
+    assert.equal(liveText, '{"ready":true}')
+    assert.equal(final.content[0].text, liveText)
+    assert.equal(events[4].text, liveText)
+    assert.deepEqual(events[5].part, final.content[0])
+    assert.deepEqual(events[7].response.output, [final])
+    assert.equal(events[7].response.status, 'completed')
     assert.equal(api.consumedRequests, 1)
     api.assertConsumed()
   } finally {
