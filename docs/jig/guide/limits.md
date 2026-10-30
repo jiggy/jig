@@ -140,7 +140,7 @@ Binding-retained reads and per-run attachments share the invocation input allowa
 
 | Setting or bound | Value | Control |
 | --- | --- | --- |
-| Invocation input / artifact input / output content | 8 MiB (8,388,608 bytes) / 16 MiB (16,777,216 bytes) / 16 MiB (16,777,216 bytes) | Fixed |
+| Invocation input / artifact input / output content | 64 MiB (67,108,864 bytes) / 16 MiB (16,777,216 bytes) / 16 MiB (16,777,216 bytes) | Fixed |
 | Files / tree entries | 64 / 256 | Fixed |
 | Relative path depth / length | 16 components / 512 UTF-8 bytes | Fixed |
 | Input capture / file delivery deadline | 10 seconds / 20 seconds | Fixed |

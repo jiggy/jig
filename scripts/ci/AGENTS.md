@@ -204,7 +204,7 @@ They consume frozen package exports with tracked test helpers and installed
   observations. `host-test-scheduling.mjs` balances complete files on Linux and
   Mac, including native and installed tail costs. Timings affect placement,
   never membership, limits or qualification. Unknown lifecycle files reserve
-  sixty seconds; other unknown files reserve two seconds. After balancing, each shard runs its
+  sixty seconds. Other unknown files reserve two seconds. After balancing, each shard runs its
   `macos-native` whole files before long application scenarios, preserving order
   within both partitions.
 
