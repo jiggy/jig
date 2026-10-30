@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { balanceWholeFiles, HOST_TEST_DURATIONS, hostTestSeconds } from './host-test-scheduling.mjs'
 import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
 // Keep the complete ARM role on one runner during hosted image rollouts.
@@ -25,55 +26,27 @@ export const NATIVE_PREREQUISITE_TESTS = [
   'packages/jig/test/macos/macos-guardian.test.ts',
 ]
 
-// Advisory x64 timings use completed whole-file commands from run39460129830,
-// attempt1. That run exhausted its job allowance in the installed tail.
-// arm64 hints retain verified complete run38156769162, attempt1.
-// Hints place every applicable file once; they never qualify or omit coverage.
-const WEIGHTS = new Map([
-  ['packages/display-tui/test/native.test.ts', { x64: 17, arm64: 17 }],
-  ['packages/display-tui/test/portability.test.ts', { x64: 14, arm64: 14 }],
-  ['packages/jig/test/host/bun-native-preparation.test.ts', { x64: 203, arm64: 67 }],
-  ['packages/jig/test/host/child-diagnostic-source.test.ts', { x64: 54 }],
-  ['packages/jig/test/host/cli-review-setup.test.ts', { x64: 52 }],
-  ['packages/jig/test/host/http-request-lifecycle.test.ts', { x64: 230, arm64: 71 }],
-  ['packages/jig/test/host/installed-attachments.test.ts', { x64: 17, arm64: 11 }],
-  ['packages/jig/test/host/installed-attempt-export.test.ts', { x64: 49 }],
-  ['packages/jig/test/host/installed-cli-lifecycle.test.ts', { x64: 67 }],
-  ['packages/jig/test/host/installed-contact-import.test.ts', { x64: 178 }],
-  ['packages/jig/test/host/installed-host-foundation.test.ts', { x64: 217 }],
-  ['packages/jig/test/host/installed-incident-brief.test.ts', { x64: 327 }],
-  ['packages/jig/test/host/installed-kitchen-roster.test.ts', { x64: 92 }],
-  ['packages/jig/test/host/installed-package-provider.test.ts', { x64: 161, arm64: 68 }],
-  ['packages/jig/test/host/installed-photo-organiser.test.ts', { x64: 136 }],
-  ['packages/jig/test/host/installed-software-factory-blocked.test.ts', { x64: 126, arm64: 38 }],
-  ['packages/jig/test/host/installed-software-factory.test.ts', { x64: 253, arm64: 107 }],
-  ['packages/jig/test/host/installed-support-case.test.ts', { x64: 162 }],
-  ['packages/jig/test/host/installed-workspace-provider.test.ts', { x64: 279, arm64: 119 }],
-  ['packages/jig/test/host/markdown-worker.test.ts', { x64: 78, arm64: 15 }],
-  ['packages/jig/test/host/package-provider-observation.test.ts', { x64: 74, arm64: 18 }],
-  ['packages/jig/test/host/project-author-evaluator.test.ts', { x64: 91, arm64: 58 }],
-  ['packages/jig/test/host/project-command-lifecycle.test.ts', { x64: 177, arm64: 59 }],
-  ['packages/jig/test/host/root-agent-composition.test.ts', { x64: 168, arm64: 66 }],
-  ['packages/jig/test/host/root-agent-fences-run.test.ts', { x64: 125, arm64: 46 }],
-  ['packages/jig/test/host/root-agent-fences-specialist.test.ts', { x64: 343, arm64: 83 }],
-  ['packages/jig/test/host/root-agent-http-composition.test.ts', { x64: 315, arm64: 64 }],
-  ['packages/jig/test/host/root-agent-repair-batch.test.ts', { x64: 283, arm64: 91 }],
-  ['packages/jig/test/host/root-agent-repair-unsuccessful.test.ts', { x64: 168, arm64: 41 }],
-  ['packages/jig/test/host/root-agent-repair.test.ts', { x64: 176, arm64: 30 }],
-  ['packages/jig/test/host/run-checkpoint-lifecycle.test.ts', { x64: 245, arm64: 160 }],
-  ['packages/jig/test/macos/macos-guardian-storage.test.ts', { x64: 96, arm64: 44 }],
-  ['packages/jig/test/portable/activation-admission-store.test.ts', { x64: 45, arm64: 41 }],
-  ['packages/jig/test/portable/contract-generation.test.ts', { x64: 26, arm64: 8 }],
-  ['packages/jig/test/portable/project-evaluator-child.test.ts', { x64: 11, arm64: 11 }],
-  ['packages/jig/test/portable/workspace-progress.test.ts', { x64: 10, arm64: 11 }],
-])
-// Out-of-file scheduling costs include native prerequisites and the installed
-// tail: genuine-client startup and all four installed consumers.
-// Retain 15 minutes for the unfinished Intel tail; completed group timings
-// exclude that work and cannot establish a smaller reserve.
-// This changes placement only. Every test and job keeps its original timer.
-const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze({ x64: 57, arm64: 36 })
-const INSTALLED_CONSUMER_WEIGHTS = Object.freeze({ x64: 900, arm64: 250 })
+// Maximum successful whole-file observations from complete Linux/Mac runs live
+// in the source-pinned timing catalog. They affect placement, never coverage.
+const WEIGHTS = new Map(
+  Object.keys(HOST_TEST_DURATIONS.fileSeconds.x64).map((file) => [
+    file,
+    {
+      x64: HOST_TEST_DURATIONS.fileSeconds.x64[file],
+      arm64: HOST_TEST_DURATIONS.fileSeconds.arm64[file],
+    },
+  ]),
+)
+const NATIVE_PREREQUISITE_WEIGHTS = Object.freeze(
+  Object.fromEntries(
+    ['x64', 'arm64'].map((arch) => [arch, HOST_TEST_DURATIONS.fixedSeconds[arch].native]),
+  ),
+)
+const INSTALLED_CONSUMER_WEIGHTS = Object.freeze(
+  Object.fromEntries(
+    ['x64', 'arm64'].map((arch) => [arch, HOST_TEST_DURATIONS.fixedSeconds[arch].installed]),
+  ),
+)
 const manifest = JSON.parse(readFileSync(new URL('./test-suites.json', import.meta.url), 'utf8'))
 const TEST_FILE = /(?:(?:\.test|_test|\.spec|_spec)\.(?:[cm]?[jt]sx?)|\.node\.mjs)$/
 export const HOST_TEST_DIRECTORIES = Object.freeze([
@@ -120,30 +93,21 @@ export function planMacHostTests(
   if (!unique.has(INSTALLED_STARTUP_TEST)) {
     throw new Error(`Mac installed startup test is missing: ${INSTALLED_STARTUP_TEST}`)
   }
-  const shards = Array.from({ length: count }, (_, index) => ({
-    index,
-    architecture,
-    groups: [],
-    // Include native prerequisites in shard zero and the installed smoke tail
-    // in the last shard. These costs must participate in balancing, too.
-    estimatedSeconds:
+  const ordinary = files.filter(
+    (file) => !NATIVE_PREREQUISITE_TESTS.includes(file) && file !== INSTALLED_STARTUP_TEST,
+  )
+  const initialSeconds = Array.from(
+    { length: count },
+    (_, index) =>
       (index === 0 ? nativePrerequisiteSeconds : 0) +
       (index === count - 1 ? installedConsumerSeconds : 0),
-  }))
-  const ordinary = files
-    .filter((file) => !NATIVE_PREREQUISITE_TESTS.includes(file) && file !== INSTALLED_STARTUP_TEST)
-    .map((file) => ({
-      file,
-      estimatedSeconds: weights.get(file)?.[architecture] ?? 2,
-    }))
-    .sort((a, b) => b.estimatedSeconds - a.estimatedSeconds || a.file.localeCompare(b.file))
-  for (const group of ordinary) {
-    const target = [...shards].sort(
-      (a, b) => a.estimatedSeconds - b.estimatedSeconds || a.index - b.index,
-    )[0]
-    target.groups.push(group)
-    target.estimatedSeconds += group.estimatedSeconds
-  }
+  )
+  const shards = balanceWholeFiles(
+    ordinary,
+    count,
+    (file) => weights.get(file)?.[architecture] ?? hostTestSeconds(file, architecture),
+    initialSeconds,
+  ).map((shard) => ({ ...shard, architecture }))
   // Expose primitive failures before long application scenarios without changing
   // LPT membership, weights or the order within either partition.
   const profile = manifest.targets.find(

@@ -1,3 +1,8 @@
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { readMacHostPrerequisites } from './macos-host-profiles.mjs'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-profiles.mjs'
@@ -88,4 +93,34 @@ test('candidate identity never substitutes for complete native prerequisite evid
     assert.throws(() => requireMacHostPrerequisites(observed, 'x64'))
   }
   assert.throws(() => requireMacHostPrerequisites(null, 'arm64'))
+})
+
+test('descriptor-bound prerequisites accept exact ARM builds and refuse unsafe files', () => {
+  const root = mkdtempSync(join(tmpdir(), 'jig-profile-reader-'))
+  try {
+    const path = join(root, 'prerequisites.json')
+    for (const build of ['24G830', '24H232']) {
+      const record = evidence('arm64', build)
+      writeFileSync(path, JSON.stringify(record).padEnd(8192))
+      assert.deepEqual(readMacHostPrerequisites(path, 'arm64'), record)
+      writeFileSync(path, JSON.stringify(record).padEnd(8193))
+      assert.throws(() => readMacHostPrerequisites(path, 'arm64'), /bounded regular file/)
+    }
+    symlinkSync(path, join(root, 'linked.json'))
+    assert.throws(() => readMacHostPrerequisites(join(root, 'linked.json'), 'arm64'), /ELOOP/)
+    const directory = join(root, 'directory')
+    mkdirSync(directory)
+    assert.throws(() => readMacHostPrerequisites(directory, 'arm64'), /bounded regular file/)
+    const fifo = join(root, 'fifo')
+    const created = spawnSync('mkfifo', [fifo], { encoding: 'utf8' })
+    assert.equal(created.status, 0, created.stderr)
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e',
+      `import { readMacHostPrerequisites } from ${JSON.stringify(new URL('./macos-host-profiles.mjs', import.meta.url).href)}; readMacHostPrerequisites(process.argv[1], 'arm64')`, fifo],
+      { encoding: 'utf8', timeout: 5000 })
+    assert.equal(result.error, undefined, String(result.error))
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /bounded regular file/)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
 })

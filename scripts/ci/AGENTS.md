@@ -221,8 +221,11 @@ They consume frozen package exports with tracked test helpers and installed
   `.node.mjs` files use verified Node. Other files use Bun. Both runtimes retain
   exact file identities in their JUnit reports.
 
-  Advisory architecture timings affect placement, never membership. Balance
-  includes installed tail work. After balancing, each shard runs its
+  `host-test-durations.json` retains source-bound successful whole-file timing
+  observations. `host-test-scheduling.mjs` balances complete files on Linux and
+  Mac, including native and installed tail costs. Timings affect placement,
+  never membership, limits or qualification. Unknown lifecycle files reserve
+  sixty seconds; other unknown files reserve two seconds. After balancing, each shard runs its
   `macos-native` whole files before long application scenarios, preserving order
   within both partitions.
 
@@ -265,6 +268,9 @@ They consume frozen package exports with tracked test helpers and installed
   The Apple Silicon execution profile names its architecture and pinned Bun,
   rather than one configured build. Its canonical G/H inventory is identical.
   Complete evidence establishes only the observed build's qualification.
+  Prerequisite files are opened once with no-follow and nonblocking flags.
+  The descriptor must name a regular file, and reads stop at 8,193 bytes to
+  enforce the 8,192-byte limit even if the file grows.
 - `probe-macos-host.ts` observes native process identity and coalition
   accounting prerequisites. Hosted mode rejects target drift before native
   compilation and source builds. Failed target checks retain the observed tuple.
