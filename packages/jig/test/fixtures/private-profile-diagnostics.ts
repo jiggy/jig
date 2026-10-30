@@ -1,3 +1,4 @@
+import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { normalizePrivateProfileFailure } from '../../src/internal/private-profile.js'
 
@@ -102,5 +103,106 @@ export async function profilePhaseSummary(path: string, kind: 'review' | 'run'):
   } catch {
     // Optional trace observation must not replace the original command failure.
     return '{"status":"unavailable","events":[]}'
+  }
+}
+
+function ownDiagnosticData(value: unknown, key: string): unknown {
+  try {
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return undefined
+    const property = Object.getOwnPropertyDescriptor(value, key)
+    return property && Object.hasOwn(property, 'value') ? property.value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function diagnosticRecord(value: unknown): boolean {
+  try {
+    return value !== null && typeof value === 'object' && !Array.isArray(value)
+  } catch {
+    return false
+  }
+}
+
+function evaluationLabel(value: unknown, allowed: readonly string[]): string | null {
+  if (value === null) return null
+  return typeof value === 'string' && allowed.includes(value) ? value : 'unknown'
+}
+
+/** Public evaluation facts only; never copy messages, streams, identities or invocation data. */
+export function foundationEvaluationFailure(value: unknown) {
+  const terminal = ownDiagnosticData(value, 'terminal')
+  if (ownDiagnosticData(terminal, 'status') !== 'failed') return undefined
+  const evaluation = ownDiagnosticData(ownDiagnosticData(terminal, 'details'), 'evaluation')
+  if (!diagnosticRecord(evaluation)) return undefined
+  const process = ownDiagnosticData(evaluation, 'process')
+  const phases = ownDiagnosticData(evaluation, 'phases')
+  const durationMs = ownDiagnosticData(process, 'durationMs')
+  let phaseCount: number | null = null
+  try {
+    if (Array.isArray(phases)) {
+      const length = Object.getOwnPropertyDescriptor(phases, 'length')?.value
+      if (Number.isSafeInteger(length) && length >= 0 && length <= 3) phaseCount = length
+    }
+  } catch {}
+  return {
+    phase: evaluationLabel(ownDiagnosticData(evaluation, 'phase'), ['generate', 'compile', 'test']),
+    stage:
+      evaluationLabel(ownDiagnosticData(evaluation, 'stage'), [
+        'setup',
+        'preparation',
+        'sealing',
+        'admission',
+        'collection',
+        'settlement',
+      ]) ?? 'unknown',
+    limit: evaluationLabel(ownDiagnosticData(evaluation, 'limit'), [
+      'phase',
+      'evaluation',
+      'enclosing',
+      'unknown',
+    ]),
+    stopReason:
+      process === null
+        ? null
+        : evaluationLabel(ownDiagnosticData(process, 'stopReason'), [
+            'exited',
+            'deadline',
+            'cancelled',
+          ]),
+    durationMs:
+      typeof durationMs === 'number' &&
+      Number.isFinite(durationMs) &&
+      durationMs >= 0 &&
+      durationMs <= 86_400_000
+        ? durationMs
+        : null,
+    cleanup: ownDiagnosticData(evaluation, 'cleanup') === 'complete' ? 'complete' : 'unknown',
+    phaseCount,
+    processCount: process === null ? 0 : diagnosticRecord(process) ? 1 : null,
+  }
+}
+
+export async function foundationEvaluationFailureSummary(
+  path: string,
+): Promise<string | undefined> {
+  try {
+    const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
+    let text: string
+    try {
+      const metadata = await file.stat()
+      if (!metadata.isFile() || metadata.size > 256 * 1024) return undefined
+      const bytes = Buffer.alloc(256 * 1024 + 1)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      if (bytesRead > 256 * 1024 || bytesRead !== metadata.size) return undefined
+      text = bytes.subarray(0, bytesRead).toString('utf8')
+    } finally {
+      await file.close()
+    }
+    const summary = foundationEvaluationFailure(JSON.parse(text))
+    return summary === undefined ? undefined : JSON.stringify(summary)
+  } catch {
+    // Optional observation must preserve the original command assertion.
+    return undefined
   }
 }
