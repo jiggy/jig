@@ -1,6 +1,6 @@
 {
   "name": "@jigging/display-model",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Readonly semantic display data and pure interpretation helpers",
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
@@ -45,7 +45,7 @@
     "dist/text.d.ts"
   ],
   "dependencies": {
-    "@jigging/reporting": "0.1.0-alpha.2"
+    "@jigging/reporting": "0.1.0-alpha.3"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

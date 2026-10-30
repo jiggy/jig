@@ -1,6 +1,6 @@
 {
   "name": "@jigging/reporting",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "description": "Report progress, messages and application views through a portable FLOW channel",
   "license": "MPL-2.0",
   "repository": {

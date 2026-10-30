@@ -4,7 +4,7 @@
   "type": "module",
   "devDependencies": {
     "@jigging/flow": "0.1.0-alpha.15",
-    "@jigging/reporting": "0.1.0-alpha.2",
+    "@jigging/reporting": "0.1.0-alpha.3",
     "@jigging/agent-method": "0.1.0-alpha.10"
   },
   "dependencies": {

@@ -1,5 +1,23 @@
 # @jigging/jig
 
+## 0.1.0-alpha.44
+
+### Patch Changes
+
+- 48bd119: Allow production dependency preparation output budgets in jig.ts or the operator environment. Report the exhausted limit and its effective source. Add a central limits reference and checks that keep documented defaults aligned with their owners.
+- ecaa82e: Add application view targets, gallery roles, formatted reports, captured media,
+  and explicit bounded collection previews. Coalesce whole live snapshots within
+  publication epochs and expose matching TypeScript and Python authoring helpers.
+  
+  Retain explicitly selected final display bundles as atomic application editions.
+  Add revision checks, original receipt recovery, exact captured evidence, and
+  read-only CLI and web inspection. Keep retained presentation independent of Run
+  execution and application freshness.
+  
+  Select the exact Apple Silicon Darwin 24.6.0 build 24H232 profile. Bind hosted
+  qualification to each architecture's selected kernel, build, and native runtime.
+- 4567044: Recheck absolute presentation deadlines before expiring delivery inspection or command completion, so early timer callbacks cannot refuse work before its bound. Preserve the original deadline, cancellation and settled outcomes.
+
 ## 0.1.0-alpha.43
 
 ### Patch Changes

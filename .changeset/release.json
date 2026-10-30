@@ -1,19 +1,51 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "445dd9ade695c504d545642251fd37184f36cbde",
-  "sourceDigest": "ca660ea45378322e7a67779791f408dd0a467bd789d126804dbdd4cac9cd579e",
+  "baseRevision": "6be7471731baf68976bb246698547761e330531e",
+  "sourceDigest": "9316527b71da36739d743b5d3d05fd80a5e7a834cf622befdc423bf1092df376",
   "changesets": [
     {
-      "id": "project-evaluation-deadline-evidence",
-      "sha256": "4f6a841eb4bef65f9e6291f8a36e86b9ba860ca15b0086323e56cac51c8b1117"
+      "id": "configurable-dependency-limits",
+      "sha256": "bc8df79e019e7e9fa33938324d1b44050d7ef43117d5a6cd1c76e0b685bb0e2f"
+    },
+    {
+      "id": "finite-application-displays",
+      "sha256": "ab3e5cedcd77c1d1c8ce8dee5ed2371b8e08fafcb6c9d7c95e5e76e5d494c5f7"
+    },
+    {
+      "id": "respect-presentation-deadlines",
+      "sha256": "c28355c5d5463168bf7de854464971a92d88184ee6fc95cc276aa96872ee243e"
     }
   ],
   "releases": [
     {
+      "name": "@jigging/display-model",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.2",
+      "newVersion": "0.1.0-alpha.3"
+    },
+    {
+      "name": "@jigging/display-tui",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.2",
+      "newVersion": "0.1.0-alpha.3"
+    },
+    {
+      "name": "@jigging/display-web",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.2",
+      "newVersion": "0.1.0-alpha.3"
+    },
+    {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.42",
-      "newVersion": "0.1.0-alpha.43"
+      "oldVersion": "0.1.0-alpha.43",
+      "newVersion": "0.1.0-alpha.44"
+    },
+    {
+      "name": "@jigging/reporting",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.2",
+      "newVersion": "0.1.0-alpha.3"
     }
   ]
 }
