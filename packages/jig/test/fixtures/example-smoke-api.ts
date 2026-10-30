@@ -112,9 +112,15 @@ export async function startExampleSmokeApi(options: {
         return refuse(response, 'unexpected-model-request', 400)
       if (++requests > options.expectedRequests) return refuse(response, 'extra-model-request', 409)
       const ordinal = requests
+      let prompt: string
+      try {
+        prompt = promptText(body)
+      } catch {
+        return refuse(response, 'invalid-responses-input', 422)
+      }
       let text: string
       try {
-        text = await options.reply(promptText(body))
+        text = await options.reply(prompt)
         assert.ok(typeof text === 'string' && text.length > 0, 'A text reply is required')
         assert.ok(Buffer.byteLength(text) <= REPLY_BYTES, 'Reply exceeds fixture limit')
       } catch {

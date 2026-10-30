@@ -202,7 +202,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   setup, review and settlement. Ordinary source coverage and limits remain
   unchanged. Whole files follow the measured scheduling policy. The aggregate
   and release readiness require this shard's complete
-  current-attempt evidence; no filtered or omitted example can qualify.
+  current-attempt evidence. Each example must run completely.
 - Linux package-lifecycle runs preparation, retained progress, Markdown and public
   workspace-dependency proof in whole physical suite files.
   The shared catalog assigns each file once across the three source shards. No

@@ -205,7 +205,8 @@ test('the HTTPS peer requires ordinary certificate trust before a task can run',
 }, 10_000)
 
 test('unknown endpoints, credentials, model requests and tasks cannot count as a passing smoke', async () => {
-  for (const refusal of ['endpoint', 'credential', 'model', 'stream', 'task'] as const) {
+  for (const refusal of ['endpoint', 'credential', 'model', 'stream', 'input', 'task'] as const) {
+    let called = false
     const api = await startExampleSmokeApi({
       certFile,
       keyFile,
@@ -213,6 +214,7 @@ test('unknown endpoints, credentials, model requests and tasks cannot count as a
       token,
       expectedRequests: 1,
       reply: () => {
+        called = true
         throw new Error('Unknown task text must stay private')
       },
     })
@@ -220,6 +222,13 @@ test('unknown endpoints, credentials, model requests and tasks cannot count as a
       const body = input('task')
       if (refusal === 'model') body.model = 'unexpected'
       if (refusal === 'stream') body.stream = false
+      if (refusal === 'input') {
+        const message = body.input[0]
+        assert.ok(message)
+        const content = message.content[0]
+        assert.ok(content)
+        content.type = 'input_image'
+      }
       const response = await post(
         `${api.baseURL}/${refusal === 'endpoint' ? 'unknown' : 'responses'}`,
         body,
@@ -229,6 +238,14 @@ test('unknown endpoints, credentials, model requests and tasks cannot count as a
       assert.equal(api.consumedRequests, 0)
       assert.throws(() => api.assertConsumed(), /Example smoke API refused requests/)
       assert.ok(!response.text.includes('Unknown task text'))
+      if (refusal === 'input') {
+        assert.equal(called, false, 'Invalid Responses input must not reach the task callback')
+        assert.match(response.text, /invalid-responses-input/)
+      }
+      if (refusal === 'task') {
+        assert.equal(called, true)
+        assert.match(response.text, /unexpected-task/)
+      }
     } finally {
       await api.close()
     }

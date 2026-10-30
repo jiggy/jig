@@ -189,8 +189,8 @@ They consume frozen package exports with tracked test helpers and installed
 - `provision-example-smoke.sh` prepares the dedicated Linux example shard.
   It installs the exact official Codex 0.152.1 package after digest verification,
   preserving its executable/resource layout. It creates one private local HTTPS
-  certificate, installs its CA through ordinary disposable-host trust, and
-  exports only executable, certificate and key paths for the test runner.
+  certificate and installs its CA through ordinary disposable-host trust.
+  The runner receives only executable, certificate and key paths.
   Delete the signing key after certificate creation. Never retain TLS keys in
   CI artifacts or pass live model credentials.
 

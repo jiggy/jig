@@ -65,6 +65,33 @@ function promptJson(prompt: string, marker: string): ReturnType<typeof JSON.pars
   throw new Error('The model request contained incomplete task data')
 }
 
+/** Decode the public prepareAgent() envelope before interpreting its task instructions. */
+function agentInstructions(prompt: string): string {
+  const marker = 'The following value is canonical JSON:\n'
+  const markerIndex = prompt.indexOf(marker)
+  assert.ok(markerIndex >= 0, 'The model request omitted its Agent task envelope')
+  assert.equal(
+    prompt.indexOf(marker, markerIndex + marker.length),
+    -1,
+    'The model request contained multiple Agent task envelopes',
+  )
+  const start = markerIndex + marker.length
+  const end = prompt.indexOf('\n', start)
+  const line = prompt.slice(start, end < 0 ? prompt.length : end)
+  const envelope = object(JSON.parse(line))
+  assert.deepEqual(Object.keys(envelope).sort(), ['guidance', 'instructions', 'skills'])
+  assert.equal(typeof envelope.instructions, 'string')
+  assert.ok(envelope.instructions.length > 0, 'The Agent task instructions are empty')
+  assert.deepEqual(envelope.guidance, [])
+  assert.deepEqual(envelope.skills, [])
+  assert.equal(
+    line,
+    JSON.stringify({ guidance: [], instructions: envelope.instructions, skills: [] }),
+    'The Agent task envelope is not canonical JSON',
+  )
+  return envelope.instructions
+}
+
 function structuredModel(
   expected: readonly string[],
   answer: (prompt: string) => { task: string; value: unknown },
@@ -72,7 +99,7 @@ function structuredModel(
   const completed = new Set<string>()
   return {
     reply(prompt) {
-      const { task, value } = answer(prompt)
+      const { task, value } = answer(agentInstructions(prompt))
       assert.ok(expected.includes(task), 'Unexpected model task')
       assert.ok(!completed.has(task), 'A completed model task was requested again')
       completed.add(task)

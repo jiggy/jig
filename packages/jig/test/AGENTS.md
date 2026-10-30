@@ -163,8 +163,9 @@ header task, without claiming model quality.
 
 `linux-host/example-smoke.test.ts` registers one first-run case for every
 discovered example. Its fresh projects retain all original source and manifests.
-Ordinary workspace installation supplies the frozen public packages. Each case
-uses the installed CLI for review and the authored default invocation. Domain
+Ordinary workspace installation supplies the frozen public packages.
+
+Each case uses the installed CLI for review and the authored default invocation. Domain
 assertions verify stdout and complete delivered artifacts. Source hashes must
 remain unchanged through setup and execution. Native residue and archive checks
 also run after failure.
