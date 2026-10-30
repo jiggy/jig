@@ -45,6 +45,9 @@ jobs:
           overwrite: true
   quick-checks:
     name: Quick development checks
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -72,6 +75,12 @@ jobs:
           just test-tooling 2>&1 | tee "$RUNNER_TEMP/tooling.txt"
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id quick-checks --output "$RUNNER_TEMP/evidence.json" --transcript "$RUNNER_TEMP/tooling.txt"
+      - name: Bind observed execution to its merge job and immutable inputs
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs record --job "Quick development checks" --evidence "${{ runner.temp }}/evidence.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-evidence-quick-${{ github.sha }}-a${{ github.run_attempt }}
@@ -81,6 +90,9 @@ jobs:
           overwrite: true
   sites:
     name: Build public sites
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -113,6 +125,12 @@ jobs:
           bun scripts/check-docs.ts --sites "$RUNNER_TEMP/sites"
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id sites --output "$RUNNER_TEMP/evidence.json" --pages "$RUNNER_TEMP/sites" --profiles jig
+      - name: Bind observed execution to its merge job and immutable inputs
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs record --job "Build public sites" --evidence "${{ runner.temp }}/evidence.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-evidence-sites-${{ github.sha }}-a${{ github.run_attempt }}
@@ -122,6 +140,9 @@ jobs:
           overwrite: true
   python-build:
     name: Build Python reporting artifacts
+    permissions:
+      contents: read
+      actions: read
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -168,6 +189,12 @@ jobs:
           cp "$RUNNER_TEMP"/python-reporting-dist/*.whl "$RUNNER_TEMP"/python-reporting-dist/*.tar.gz "$RUNNER_TEMP/python-archives/"
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id python-build --output "$RUNNER_TEMP/evidence.json" --archives "$RUNNER_TEMP/python-archives" --profiles jiggy-reporting --artifacts
+      - name: Bind observed execution to its merge job and immutable inputs
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs record --job "Build Python reporting artifacts" --evidence "${{ runner.temp }}/evidence.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-evidence-python-build-${{ github.sha }}-a${{ github.run_attempt }}
@@ -179,6 +206,9 @@ jobs:
     name: Python ${{ matrix.python }} on ${{ matrix.os }}
     needs:
       - python-build
+    permissions:
+      contents: read
+      actions: read
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:
@@ -207,12 +237,26 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: ${{ matrix.python }}
+      - name: Read verified merge python input
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs input python --destination "python-dist" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.event_name != 'pull_request'
         with:
           name: python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: python-dist
       - run: python -m pip install mypy==1.18.2
+      - name: Read verified merge python-reporting input
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs input python-reporting --destination "python-reporting-dist" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.event_name != 'pull_request'
         with:
           name: python-reporting-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: python-reporting-dist
@@ -224,6 +268,12 @@ jobs:
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id python-installed --output "$RUNNER_TEMP/evidence.json" --transcript "$RUNNER_TEMP/python-installed.txt" --artifacts --profile "${{ matrix.os }}/python-${{ matrix.python }}"
         shell: bash
+      - name: Bind observed execution to its merge job and immutable inputs
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs record --job "Python ${{ matrix.python }} on ${{ matrix.os }}" --evidence "${{ runner.temp }}/evidence.json" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-evidence-python-${{ matrix.os }}-${{ matrix.python }}-${{ github.sha }}-a${{ github.run_attempt }}
@@ -261,13 +311,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --timeout-seconds 0
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            node scripts/ci/merge-retry.mjs input canonical --destination "$RUNNER_TEMP/candidates" --inputs "$RUNNER_TEMP/merge-inputs.json"
+          else
+            node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --timeout-seconds 0
+          fi
           printf 'CI_CANDIDATE_BUNDLE=%s\n' "$RUNNER_TEMP/candidates" >> "$GITHUB_ENV"
+      - name: Read verified merge python input
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs input python --destination "${{ runner.temp }}/python-dist" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.event_name != 'pull_request'
         with:
           name: python-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/python-dist
+      - name: Read verified merge python-reporting input
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs input python-reporting --destination "${{ runner.temp }}/python-reporting-dist" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: github.event_name != 'pull_request'
         with:
           name: python-reporting-candidate-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
           path: ${{ runner.temp }}/python-reporting-dist
@@ -298,6 +366,12 @@ jobs:
             })
           }
           JS
+      - name: Bind observed execution to its merge job and immutable inputs
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs record --job "Source and package tests" --evidence "${{ runner.temp }}/source-evidence" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-evidence-source-${{ github.sha }}-a${{ github.run_attempt }}
@@ -360,7 +434,12 @@ jobs:
       - name: Read the canonical candidate bytes
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --timeout-seconds 0
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            node scripts/ci/merge-retry.mjs input canonical --destination "$RUNNER_TEMP/candidates" --inputs "$RUNNER_TEMP/merge-inputs.json"
+          else
+            node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/candidates" --source "$GITHUB_SHA" --producer-run "$GITHUB_RUN_ID" --timeout-seconds 0
+          fi
       - name: Install candidate qualification dependencies
         run: bun install --ignore-scripts
       - name: Qualify the frozen candidate
@@ -390,6 +469,12 @@ jobs:
         run: node scripts/ci/npm-candidate-preflight.mjs "$CANDIDATE_DIRECTORY"
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id npm-candidate --output "$RUNNER_TEMP/evidence.json" --qualification "$RUNNER_TEMP/qualification.json" --artifacts --profile "${{ matrix.package }}"
+      - name: Bind observed execution to its merge job and immutable inputs
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: node scripts/ci/merge-retry.mjs record --job "Build ${{ matrix.package }} release candidate" --evidence "${{ runner.temp }}/evidence.json" --inputs "${{ runner.temp }}/merge-inputs.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: ci-evidence-npm-${{ matrix.package }}-${{ github.sha }}-a${{ github.run_attempt }}
@@ -425,7 +510,13 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
+      - name: Download verified latest merge job evidence
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/merge-retry.mjs collect --directory "$RUNNER_TEMP/evidence" --output "$RUNNER_TEMP/merge-retry.json"
       - name: Download observed target evidence
+        if: github.event_name != 'pull_request'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
           pattern: ci-evidence-*-${{ github.sha }}-a${{ github.run_attempt }}
@@ -437,6 +528,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          if [ "${GITHUB_EVENT_NAME:-}" = pull_request ] && [ -f "$RUNNER_TEMP/merge-retry.json" ]; then
+            JOB_RESULTS="$(node -p 'JSON.stringify(require(process.env.RUNNER_TEMP+"/merge-retry.json").jobResults)')"
+            export JOB_RESULTS
+          fi
           if [ -n "${GITHUB_REPOSITORY:-}" ] && [ -n "${GITHUB_RUN_ID:-}" ] && [ -n "${GITHUB_RUN_ATTEMPT:-}" ]; then
             timeout --kill-after=2s 10s gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs?per_page=100" --jq '.jobs' > "$RUNNER_TEMP/ci-jobs.json" || {
               rm -f "$RUNNER_TEMP/ci-jobs.json"
@@ -454,6 +549,7 @@ jobs:
             ${{ runner.temp }}/results.json
             ${{ runner.temp }}/job-results.json
             ${{ runner.temp }}/combined.json
+            ${{ runner.temp }}/merge-retry.json
           retention-days: 7
           if-no-files-found: error
           overwrite: true

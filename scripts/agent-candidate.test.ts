@@ -279,7 +279,12 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(execute.run).toContain('scripts/test-release.sh --profile portable-linux')
   expect(execute.env.JIG_CI_SOURCE_REPORT_DIRECTORY).toContain('/source-reports')
   for (const step of source.steps.filter((step: any) => step.with?.name?.startsWith('python-')))
-    expect(step.if).toBeUndefined()
+    expect(step.if).toBe("github.event_name != 'pull_request'")
+  for (const kind of ['python', 'python-reporting']) {
+    const retained = source.steps.find((step: any) => step.run?.includes(`merge-retry.mjs input ${kind} --`))
+    expect(retained.if).toBe("github.event_name == 'pull_request'")
+    expect(retained.run).toContain('--inputs')
+  }
   expect(
     source.steps.find((step: any) => step.name === 'Record each completed source stage').run,
   ).toContain('writeJobEvidence')

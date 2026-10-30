@@ -79,6 +79,15 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   full inventory. Each job must finish successfully with nonempty proof and
   complete profiles. Main and manual release runs require complete Linux and
   Apple Silicon coverage.
+
+  PR CI permits failed-job retries within the original run. Resolve the latest
+  execution of every job and retain only its immutable successful artifact.
+  Verify the exact merge source, workflow digest, runtime profile and complete
+  observed inventory. Require unchanged input artifact IDs and digests. Later
+  failures or rebuilt inputs invalidate earlier success. Record accepted job IDs
+  and attempts in a merge-only receipt.
+
+  Main and manual runs remain fresh, complete current-attempt qualification.
   Retain required job results before rejecting failures or cancellations, even
   after evidence download fails. Optional current-attempt runner observations
   explain allocation failures without granting execution or cleanup evidence.
@@ -240,9 +249,19 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   reconciles only this architecture. Linux and Apple Silicon remain release
   gates. Intel evidence never grants publication readiness.
 
-  Canonical acquisition retains its 1,800-second producer wait and separate
-  600-second transfer bound. Exact profiles, frozen archive identities, complete
-  source and installed coverage, and zero-residue checks stay mandatory.
+  Linux and required hosted Mac acquisition wait for the exact canonical
+  `candidate-build` job before starting the artifact transfer bound. PR retries
+  select its latest successful execution within that run. Main/manual runs
+  require current-attempt success. Producer readiness permits 1,800 seconds,
+  including runner queues. Failed or invalid producer jobs refuse immediately.
+
+  Hosted Mac also requires that producer's latest `Quick development checks`
+  success before native allocation. Main/manual runs require current-attempt
+  Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
+  Acquisition jobs allow 40 and 45 minutes respectively, including setup and
+  settlement. Exact profiles, frozen archive identities, complete coverage and
+  zero-residue checks stay mandatory.
+
   Manual startup profiling remains optional and non-gating.
 
   The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
@@ -272,6 +291,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Nightly failures and last passing published versions remain visible separately
   from
   release readiness. Qualified nightly receipts cannot replace main-push proof.
+
 - Release completion events from CI, Linux, hosted Mac and native Agent
   workflows each run a short read-only readiness check. Duplicate and
   out-of-order events converge. Ignore PR completions, foreign repositories,
@@ -298,8 +318,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Missing, expired, stale, failed or cancelled evidence cannot authorize
   release. Full reruns regenerate every required current-attempt proof. Partial
-  reruns cannot inherit old shards or rebuilt candidates. Publication
-  revalidates readiness after approvals and queueing and before registry
+  reruns cannot inherit old shards or rebuilt candidates. PR CI's merge-only
+  retry receipt does not alter these host/publication rules.
+
+  Publication revalidates readiness after approvals and queueing and before registry
   mutations. FLOW and host mutation queues are independent. Waiting for host
   qualification holds no runner or registry mutation lock.
 
