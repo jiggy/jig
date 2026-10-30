@@ -28,8 +28,8 @@ preparation never becomes a consumer requirement.
   independently reconstruct this decision and require either every native job's
   success or every job's explicit omission.
 
-  An omitted PR creates no host qualification receipt. No selection modes,
-  result reuse or compact witnesses exist. Intel has separate nightly
+  An omitted PR creates no host qualification receipt. No native selection
+  modes, native result reuse or compact witnesses exist. Intel has separate nightly
   compatibility coverage.
 - `intel-nightly.mjs` selects published Jig and distinct main sources, or an
   explicitly requested open PR merge. It acquires canonical inputs with their
@@ -42,6 +42,7 @@ preparation never becomes a consumer requirement.
   scope. The required `macos` scope owns Apple Silicon only. Nightly health
   names the tested version/source and last recorded passing published version.
   Missing, stale or foreign proof fails. Health never grants release readiness.
+
 - `release-base.mjs` selects the required release check's comparison commit.
   It verifies the workflow source and both parents of a PR merge.
   The second parent must equal the event head. The event base must be an
@@ -119,29 +120,33 @@ They consume frozen package exports with tracked test helpers and installed
   external FLOW coverage and malformed eligibility refuse qualification.
 
   `candidate-transfer.mjs` checks GitHub repository/workflow/event/head
-  identity, current run attempt, immutable artifact ID/digest and expiry before
+  identity, producer job attempt, immutable artifact ID/digest and expiry before
   safely extracting the bundle. PR head metadata differs from its tested merge
   source. Main-push consumers acquire only main-push CI producers. Manual
   qualification may acquire trusted main push/manual producers on `main`.
   Feature-branch producers are not accepted.
 
   Release readiness and native Linux lineage require full main-push producers.
-  Missing current-attempt artifacts never fall back to older candidates.
+  Main/manual consumers never fall back from missing current-attempt artifacts.
+  PR consumers may retain only the latest successful canonical-build execution
+  within the same original CI run. A later failed rebuild refuses acquisition.
   Linux and hosted Mac acquisition use `--producer-timeout-seconds 1800` to
-  await the exact current-attempt `candidate-build` job. Its run, attempt and
-  head must match the selected producer.
+  await that exact `candidate-build` job. Its run, attempt and head must match
+  the selected producer.
 
   Producer readiness has one absolute deadline, including runner queues.
   Missing, queued or running jobs poll every 30 seconds. Failed, skipped,
   duplicate, stale or completed-but-missing proof refuses immediately. Hosted
-  Mac also requires `Quick development checks` success through
-  `--after-quick true`.
+  Mac also requires latest `Quick development checks` success through
+  `--after-quick true`. Main/manual runs require current-attempt success.
 
-  Readiness pins the producer run and attempt before artifact transfer.
-  Transfer retains its separate 300-second Linux or 600-second Mac maximum
-  and 10-second polling. Other acquisition callers retain their existing
+  Readiness pins the workflow run and current attempt, selected build job ID
+  and producer attempt before artifact transfer. A later producer change refuses
+  acquisition. Transfer retains its separate 300-second Linux or 600-second Mac
+  maximum and 10-second polling. Other acquisition callers retain their existing
   bounds without producer waiting. These prerequisites grant no qualification
   and do not wait for unrelated source or Python work.
+
 - `release-readiness.mjs` rechecks all current-attempt CI, Linux, hosted Mac and
   native obligations after completion events. Qualification receipts bind the
   original CI candidate. Native receipts additionally bind the exact full Linux
@@ -231,6 +236,18 @@ They consume frozen package exports with tracked test helpers and installed
 
   This exposes primitive failures early without moving files between runners or
   changing weights, commands, limits or qualification obligations.
+- `merge-attempts.mjs` selects the newest authoritative execution of each named
+  job without falling back from failures. `merge-retry.mjs` owns PR CI input
+  acquisition and per-job evidence across attempts within one original run.
+  It downloads immutable artifact IDs and verifies ZIP transport hashes before
+  extraction.
+
+  Native PR acquisition may retain that run's original successful canonical
+  producer. Each native shard still executes and reports freshly. Main/manual
+  candidate acquisition and release readiness remain current-attempt.
+
+  Hosted runner family and architecture must match the job's fixed label.
+  Exact image build versions are retained observations of that execution.
 - `test-reports.mjs` owns the shared JUnit case reader for source/job evidence
   and Mac reports. It rejects empty, failed, skipped, incomplete or
   duplicate-case reports. Each consumer enforces its owning file inventory. The
@@ -287,14 +304,28 @@ They consume frozen package exports with tracked test helpers and installed
 
 ## Local Contracts
 
-- Execute all selected physical suites freshly. Never reuse passing results,
-  consumer installations, native execution, cleanup or live-client
-  qualification. Main and manual runs require complete coverage. Native jobs
-  omitted for an independent PR cannot qualify publication.
+- Every executing job runs its selected physical suites freshly. PR CI alone may
+  retain a completed successful job from an earlier attempt of the same workflow
+  run. `merge-retry.mjs` verifies the exact tested merge source, workflow digest,
+  job ID and attempt, and declared runtime profile. It requires complete
+  target/profile inventories and unchanged input artifact IDs and transport
+  digests.
+
+  Workflow digests hash the Git blob at the exact tested revision. Checkout
+  line endings cannot change this identity.
+
+  The latest job execution wins. A later failed or incomplete job cannot inherit
+  green. Rebuilt inputs invalidate dependent reports even at the same source
+  revision.
+
+  Never reuse consumer installations, native execution, cleanup or live-client
+  qualification. Host, main and manual qualification still require complete
+  current-attempt coverage. Merge-only receipts cannot qualify publication.
+  Native jobs omitted for an independent PR cannot qualify publication.
 - Canonical artifacts use `candidates-SHA-rRUN-aATTEMPT`. Host shard evidence
   and qualification artifacts also include run and attempt. Every host shard
   compares the canonical candidate metadata and unchanged archives after
-  execution. Full aggregates require all current-attempt shards. Qualification
+  execution. Full host aggregates require all current-attempt shards. Qualification
   artifacts contain root `QUALIFICATION.json`. Early native lineage uses root
   `INPUTS.json`.
 
@@ -349,6 +380,13 @@ They consume frozen package exports with tracked test helpers and installed
   beside independent FLOW readiness.
 - Inspect every workflow's permissions, executable modes, profile inventory,
   attempt-specific artifact flow and final gate when changing these interfaces.
+- `node --test scripts/ci/merge-retry.test.mjs` exercises complete PR CI
+  aggregation through real ZIP transports. One matrix job is retried while
+  other successful job evidence remains bound to unchanged inputs. Rejections
+  cover source, job, workflow, profile and input drift. They also cover later
+  failures, expired or foreign artifacts, transport changes, incomplete
+  inventories and attempt races. Candidate-transfer tests retain strict main
+  behavior and exercise native PR acquisition after a CI-only retry.
 - `node --test scripts/ci/source-stages.test.mjs` checks serial order, failure
   propagation, canonical-input reuse and protocol-only prerequisites through the
   actual source shell with controlled tools on Bash and POSIX sh.

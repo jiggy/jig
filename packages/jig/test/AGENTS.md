@@ -119,6 +119,13 @@ capture, retirement acknowledgements or native cleanup.
 Saved-result cases use actual files, descriptors and subprocess output.
 Hardware I/O failure windows require separate evidence.
 
+The file-command suite bundles its unchanged peer once in a separate Bun process
+before the cases, using the original pinned native support. Each command retains its existing startup
+and execution bound. Forced-escalation cases observe phase readiness and actual
+SIGSTOP before asserting SIGKILL, without renewing their command deadline.
+A same-process regression imports and exercises YAML and CommonMark after setup.
+Compiler resolver state must not affect later suites in the shared test process.
+
 `portable/display-archive.test.ts` uses actual protected SQLite and filesystem state.
 It checks atomic editions, revision conflicts, original receipts, detached evidence, deletion fences, reset and capacity refusal.
 These store checks do not qualify native capture, authenticated handoff or installed usability.

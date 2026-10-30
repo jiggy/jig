@@ -2,10 +2,12 @@ import { dirname as suiteDirname } from 'node:path'
 
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
-import { expect, spyOn, test } from 'bun:test'
+import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test'
 import { closeSync } from 'node:fs'
 import {
+  copyFile,
   mkdir,
+  mkdtemp,
   readdir,
   readFile,
   realpath,
@@ -15,6 +17,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   capturePrivateOutput,
@@ -37,6 +40,52 @@ import { PrivateRunCheckpoints } from '../../src/internal/private-run-checkpoint
 import { privatePresentationNow } from '../../src/internal/root-run-timeout-policy.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
 import { fixture, fixturePid, record, waitUntilStopped } from '.././file-delivery.fixture.js'
+
+let commandFixtureRoot: string | undefined
+let commandFixture: string
+beforeAll(async () => {
+  commandFixtureRoot = await realpath(await mkdtemp(join(tmpdir(), 'jig-file-command-test-')))
+  const libexec = join(commandFixtureRoot, 'libexec')
+  await mkdir(libexec)
+  if (process.platform === 'darwin')
+    await copyFile(
+      join(suiteTestRoot, '../support/macos-descriptor-bridge.dylib'),
+      join(libexec, 'macos-descriptor-bridge.dylib'),
+    )
+  const options = {
+    entrypoints: [join(suiteTestRoot, 'fixtures/file-delivery-client.ts')],
+    target: 'bun',
+    format: 'esm',
+    outdir: libexec,
+    naming: 'file-delivery-client.js',
+  }
+  // Keep the compiler's resolver state outside the long-lived test process.
+  const build = Bun.spawnSync(
+    [
+      process.execPath,
+      '--no-env-file',
+      '--no-install',
+      '--config=/dev/null',
+      '--eval',
+      `const result = await Bun.build(${JSON.stringify(options)});
+if (!result.success) throw new AggregateError(result.logs, 'fixture compilation failed')`,
+    ],
+    { timeout: 5000, stdout: 'pipe', stderr: 'pipe' },
+  )
+  if (build.exitCode !== 0) throw new Error(build.stderr.toString() || 'fixture compilation failed')
+  commandFixture = join(libexec, 'file-delivery-client.js')
+})
+afterAll(async () => {
+  if (commandFixtureRoot !== undefined)
+    await rm(commandFixtureRoot, { recursive: true, force: true })
+})
+
+test('fixture compilation preserves ordinary Markdown dependency imports', async () => {
+  const yaml = await import('yaml')
+  const commonmark = await import('commonmark')
+  expect(yaml.parse('answer: 42')).toEqual({ answer: 42 })
+  expect(new commonmark.Parser().parse('# Ready').type).toBe('document')
+})
 
 test('packet preparation refuses a symlinked parent and accepts its canonical directory', async () =>
   fixture(async (root) => {
@@ -661,13 +710,7 @@ for (const mode of ['cancel', 'success', 'cleanup-failed'] as const) {
       const abort = new AbortController()
       let stagedAfterSettlement = false
       const invocation = privateOwnFileCommand(
-        [
-          process.execPath,
-          '--no-env-file',
-          '--no-install',
-          '--config=/dev/null',
-          join(suiteTestRoot, 'fixtures/file-delivery-client.ts'),
-        ],
+        [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', commandFixture],
         [destination, pidFile, `settled-${mode}`, readyFile],
         abort.signal,
         3000,
@@ -726,7 +769,8 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
           const abort = new AbortController()
           let pid: number | undefined,
             rescued = false,
-            settled = false
+            settled = false,
+            stopped = false
           const watchdog = setTimeout(async () => {
             rescued = true
             try {
@@ -741,7 +785,7 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
               '--no-env-file',
               '--no-install',
               '--config=/dev/null',
-              join(suiteTestRoot, 'fixtures/file-delivery-client.ts'),
+              commandFixture,
             ],
             [destination, pidFile, phase, readyFile],
             abort.signal,
@@ -751,6 +795,7 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
               pid = await fixturePid(pidFile)
               process.kill(pid, 'SIGSTOP')
               await waitUntilStopped(pid)
+              stopped = true
               if (trigger === 'cancel') abort.abort()
               else await Bun.sleep(800) // Keep staging uncommitted until the deadline fires.
             },
@@ -758,19 +803,20 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
             settled = true
           })
           try {
-            if ((trigger === 'cancel' || trigger === 'late-cancel') && phase !== 'during') {
+            if (phase !== 'during') {
               while (!settled) {
                 try {
                   await readFile(readyFile)
                   pid = await fixturePid(pidFile)
                   await waitUntilStopped(pid)
+                  stopped = true
                   break
                 } catch {
                   await Bun.sleep(5)
                 }
               }
               if (trigger === 'cancel') abort.abort()
-              else {
+              else if (trigger === 'late-cancel') {
                 // Use actual elapsed time, not a replacement of the owner's timer.
                 // This exercises the deadline/cancellation race, not timer internals.
                 lateCancellation = setTimeout(
@@ -779,7 +825,9 @@ for (const trigger of ['deadline', 'cancel', 'late-cancel'] as const) {
                 )
               }
             }
-            expect((await invocation).signal).toBe('SIGKILL')
+            const exit = await invocation
+            expect(stopped).toBe(true)
+            expect(exit.signal).toBe('SIGKILL')
             if (trigger === 'late-cancel') expect(abort.signal.aborted).toBe(true)
             expect(rescued).toBe(false)
             expect(performance.now() - started).toBeLessThan(
@@ -929,13 +977,7 @@ test(
       const destination = join(root, 'review'),
         pidFile = join(root, 'coordinator.pid')
       const exit = await privateOwnFileCommand(
-        [
-          process.execPath,
-          '--no-env-file',
-          '--no-install',
-          '--config=/dev/null',
-          join(suiteTestRoot, 'fixtures/file-delivery-client.ts'),
-        ],
+        [process.execPath, '--no-env-file', '--no-install', '--config=/dev/null', commandFixture],
         [destination, pidFile],
         undefined,
         10000,

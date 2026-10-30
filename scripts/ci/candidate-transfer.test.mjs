@@ -17,6 +17,8 @@ import {
   validateWorkflowRun,
 } from './candidate-transfer.mjs'
 
+import { acquireMergeInput } from './merge-retry.mjs'
+
 const source = 'a'.repeat(40)
 const prHead = 'b'.repeat(40)
 const repository = 'jiggy/jig'
@@ -123,7 +125,12 @@ async function withFixture(runs, action) {
   const requestedArtifacts = []
   const downloaded = []
   const requestedJobs = []
-  const jobsByRun = new Map(runs.map((current) => [current.id, [quickJob(current)]]))
+  const jobsByRun = new Map(
+    runs.map((current) => [
+      current.id,
+      [quickJob(current), ...(current.event === 'pull_request' ? [buildJob(current)] : [])],
+    ]),
+  )
   try {
     for (const current of runs) {
       const root = join(temporary, `bundle-${current.id}`)
@@ -209,7 +216,7 @@ async function withFixture(runs, action) {
             workflow_runs: structuredClone(matching.slice((page - 1) * limit, page * limit)),
           }
         }
-        const jobsMatch = url.pathname.match(/\/actions\/runs\/(\d+)\/attempts\/(\d+)\/jobs$/)
+        const jobsMatch = url.pathname.match(/\/actions\/runs\/(\d+)(?:\/attempts\/(\d+))?\/jobs$/)
         if (jobsMatch) {
           const runId = Number(jobsMatch[1]),
             attempt = Number(jobsMatch[2])
@@ -971,4 +978,126 @@ test('Linux acquisition separates producer readiness from transfer within its ou
   assert.match(acquisition, /timeout-minutes: 40/)
   assert.match(acquisition, /--producer-timeout-seconds 1800 --timeout-seconds 300/)
   assert.doesNotMatch(acquisition, /--after-quick/)
+})
+
+for (const producerTimeoutSeconds of [0, 1800]) {
+test(`PR native acquisition retains the original immutable producer with a ${producerTimeoutSeconds}-second readiness wait`, async () => {
+  const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
+  await withFixture([ci], async (fixture) => {
+    ci.run_attempt = 2
+    const expected = { repository, workflowPath, event: 'pull_request', headSha: prHead, headBranch: 'feature', headRepository: repository }
+    const envelope = await acquireAfterQuick(fixture, { expected, producerTimeoutSeconds })
+    assert.equal(envelope.runAttempt, 1)
+    assert.equal(envelope.artifactId, 1000)
+    assert.equal((await verifyCandidateBundle(join(fixture.temporary, 'download'))).producer.runAttempt, 1)
+    const eventPath = join(fixture.temporary, 'event.json')
+    await writeFile(eventPath, JSON.stringify({
+      pull_request: { head: { sha: prHead, ref: 'feature', repo: { full_name: repository } } },
+    }))
+    const inputsPath = join(fixture.temporary, 'inputs.json')
+    const binding = await acquireMergeInput({
+      kind: 'canonical',
+      destination: join(fixture.temporary, 'ci-consumer'),
+      inputsPath,
+      client: fixture.client,
+      extract: fixture.extract,
+      env: {
+        GITHUB_SHA: source, GITHUB_REPOSITORY: repository, GITHUB_EVENT_NAME: 'pull_request',
+        GITHUB_RUN_ID: '100', GITHUB_RUN_ATTEMPT: '2', GITHUB_EVENT_PATH: eventPath,
+        GITHUB_WORKFLOW_REF: repository + '/.github/workflows/ci.yml@refs/pull/1/merge',
+      },
+    })
+    assert.equal(binding.producerAttempt, 1)
+    assert.equal(binding.artifactId, 1000)
+    assert.deepEqual(JSON.parse(await readFile(inputsPath, 'utf8')), [binding])
+    const previous = fixture.jobsByRun.get(100)
+    fixture.jobsByRun.set(100, [...previous, quickJob(ci, { id: 10002, name: 'candidate-build', conclusion: 'failure' })])
+    await assert.rejects(acquireAfterQuick(fixture, { expected, producerTimeoutSeconds, destination: join(fixture.temporary, 'refused') }), /Latest merge candidate build did not succeed/)
+    assert.deepEqual(fixture.downloaded, [1000, 1000])
+  })
+})
+}
+
+for (const change of ['job identity', 'producer attempt', 'workflow attempt']) {
+  test(`PR readiness refuses a changed ${change} while the original artifact is pending`, async () => {
+    const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
+    await withFixture([ci], async (fixture) => {
+      ci.run_attempt = 2
+      fixture.byRun.get(100).artifact.name = `candidates-${source}-r100-a0`
+      const expected = {
+        repository,
+        workflowPath,
+        event: 'pull_request',
+        headSha: prHead,
+        headBranch: 'feature',
+        headRepository: repository,
+      }
+      let clock = 0
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          expected,
+          producerTimeoutSeconds: 1800,
+          timeoutSeconds: 300,
+          now: () => clock,
+          sleep: async (milliseconds) => {
+            clock += milliseconds
+            if (change === 'workflow attempt') ci.run_attempt = 3
+            else
+              fixture.jobsByRun.set(
+                100,
+                fixture.jobsByRun.get(100).map((job) =>
+                  job.name !== 'candidate-build'
+                    ? job
+                    : {
+                        ...job,
+                        ...(change === 'job identity' ? { id: 10099 } : { run_attempt: 2 }),
+                      },
+                ),
+              )
+          },
+        }),
+        /changed after readiness/,
+      )
+      assert.equal(clock, 10_000)
+      assert.deepEqual(fixture.requestedArtifacts, [100])
+      assert.deepEqual(fixture.downloaded, [])
+    })
+  })
+}
+
+test('PR readiness rejects either newest failed prerequisite while the other is pending', async () => {
+  const ci = run(100, 'pull_request', { head_sha: prHead, head_branch: 'feature' })
+  await withFixture([ci], async (fixture) => {
+    ci.run_attempt = 2
+    const original = fixture.jobsByRun.get(100)
+    const expected = {
+      repository,
+      workflowPath,
+      event: 'pull_request',
+      headSha: prHead,
+      headBranch: 'feature',
+      headRepository: repository,
+    }
+    for (const jobs of [
+      [
+        buildJob(ci, { status: 'queued', conclusion: null }),
+        quickJob(ci, { conclusion: 'failure' }),
+      ],
+      [
+        buildJob(ci, { conclusion: 'failure' }),
+        quickJob(ci, { status: 'queued', conclusion: null }),
+      ],
+    ]) {
+      fixture.jobsByRun.set(100, [...original, ...jobs])
+      await assert.rejects(
+        acquireAfterQuick(fixture, {
+          expected,
+          producerTimeoutSeconds: 1800,
+        }),
+        /Latest merge.*did not succeed/,
+      )
+    }
+    assert.deepEqual(fixture.requestedArtifacts, [])
+    assert.deepEqual(fixture.downloaded, [])
+  })
 })

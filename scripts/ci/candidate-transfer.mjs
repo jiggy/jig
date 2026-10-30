@@ -12,6 +12,7 @@ import {
   requireRevision,
   verifyCandidateBundle,
 } from './candidate-provenance.mjs'
+import { allRunJobs, latestJob } from './merge-attempts.mjs'
 import { LINUX_QUALIFICATION_JOBS, requireJobs, verifyQualification } from './release-readiness.mjs'
 
 export function githubClient(repository = process.env.GITHUB_REPOSITORY) {
@@ -133,42 +134,46 @@ export async function acquisitionExpectation(sourceRevision, env = process.env) 
 }
 
 async function producerJobReady(client, expected, run, name) {
-  const jobs = await paginated(
-    client,
-    `repos/${expected.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
-    'jobs',
-  )
+  const merge = run.event === 'pull_request'
+  const jobs = merge
+    ? await allRunJobs(client, expected.repository, run)
+    : await paginated(
+        client,
+        `repos/${expected.repository}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
+        'jobs',
+      )
   const matching = jobs.filter((job) => job.name === name)
-  if (matching.length > 1) throw new Error(`Ambiguous current-attempt ${name}`)
+  if (!merge && matching.length > 1)
+    throw new Error(`Ambiguous current-attempt ${name}`)
   if (!matching.length) {
     if (run.status === 'completed')
-      throw new Error(`Completed CI producer has no current-attempt ${name}`)
+      throw new Error(`Completed CI producer has no ${merge ? 'latest merge' : 'current-attempt'} ${name}`)
     console.error(
       `Waiting for ${name} in CI run ${run.id}, attempt ${run.run_attempt}: job not observed yet`,
     )
     return false
   }
-  const job = matching[0]
+  const job = merge ? latestJob(jobs, run, name, { completed: false }) : matching[0]
   if (
     !Number.isSafeInteger(job.id) ||
     job.id <= 0 ||
     job.run_id !== run.id ||
-    job.run_attempt !== run.run_attempt ||
+    (!merge && job.run_attempt !== run.run_attempt) ||
     job.head_sha !== run.head_sha
   )
     throw new Error(`${name} producer identity mismatch`)
   if (job.status === 'completed') {
     if (job.conclusion !== 'success')
       throw new Error(
-        `Current-attempt ${name} did not succeed (${job.conclusion ?? 'missing conclusion'}, run ${run.id}, attempt ${run.run_attempt})`,
+        `${merge ? 'Latest merge' : 'Current-attempt'} ${name === 'candidate-build' ? 'candidate build' : name} did not succeed (${job.conclusion ?? 'missing conclusion'}, run ${run.id}, attempt ${job.run_attempt})`,
       )
-    return true
+    return job
   }
   if (!['queued', 'in_progress'].includes(job.status) || job.conclusion !== null)
     throw new Error(`Invalid pending ${name} status`)
   if (run.status === 'completed') throw new Error(`Completed CI producer has unfinished ${name}`)
   console.error(
-    `Waiting for ${name} in CI run ${run.id}, attempt ${run.run_attempt}: ${job.status}`,
+    `Waiting for ${name} in CI run ${run.id}, attempt ${job.run_attempt}: ${job.status}`,
   )
   return false
 }
@@ -243,10 +248,22 @@ export async function acquireCandidate({
         (run.id !== readyProducer.id || run.run_attempt !== readyProducer.attempt)
       )
         throw new Error('Canonical CI producer changed after readiness')
+      let producerJob
+      if (run.event === 'pull_request') {
+        producerJob = await producerJobReady(client, expected, run, 'candidate-build')
+        if (
+          readyProducer &&
+          (!producerJob ||
+            producerJob.id !== readyProducer.jobId ||
+            producerJob.run_attempt !== readyProducer.producerAttempt)
+        )
+          throw new Error('Merge candidate build changed after readiness')
+      }
       if (!readyProducer) {
+        if (run.event !== 'pull_request' && producerTimeoutSeconds)
+          producerJob = await producerJobReady(client, expected, run, 'candidate-build')
         const buildReady =
-          !producerTimeoutSeconds ||
-          (await producerJobReady(client, expected, run, 'candidate-build'))
+          run.event === 'pull_request' || producerTimeoutSeconds ? Boolean(producerJob) : true
         const quickReady =
           !afterQuick || (await producerJobReady(client, expected, run, 'Quick development checks'))
         if (!buildReady || !quickReady) continue
@@ -255,14 +272,21 @@ export async function acquireCandidate({
             throw new Error(
               'Canonical CI candidate producer was not ready before the producer deadline',
             )
-          readyProducer = { id: run.id, attempt: run.run_attempt }
+          readyProducer = {
+            id: run.id,
+            attempt: run.run_attempt,
+            jobId: producerJob.id,
+            producerAttempt: producerJob.run_attempt,
+          }
           deadline = now() + timeoutSeconds * 1000
           console.error(
             `Canonical CI producer ready: run ${run.id}, attempt ${run.run_attempt}; artifact wait allows ${timeoutSeconds} seconds`,
           )
         }
       }
-      const name = `candidates-${sourceRevision}-r${run.id}-a${run.run_attempt}`
+      const producerAttempt =
+        readyProducer?.producerAttempt ?? producerJob?.run_attempt ?? run.run_attempt
+      const name = `candidates-${sourceRevision}-r${run.id}-a${producerAttempt}`
       const artifacts = await paginated(
         client,
         `repos/${expected.repository}/actions/runs/${run.id}/artifacts`,
@@ -281,7 +305,7 @@ export async function acquireCandidate({
       const receipt = await verifyCandidateBundle(destination, {
         sourceRevision,
         producerRunId: run.id,
-        producerRunAttempt: run.run_attempt,
+        producerRunAttempt: producerAttempt,
         producerRepository: expected.repository,
       })
       for (const key of ['workflowPath', 'event', 'headBranch', 'headRepository', 'headSha'])
@@ -291,12 +315,21 @@ export async function acquireCandidate({
       validateWorkflowRun(current, expected)
       if (current.run_attempt !== run.run_attempt)
         throw new Error('Candidate producer attempt changed during acquisition')
+      if (producerJob && run.event === 'pull_request') {
+        const currentJob = latestJob(
+          await allRunJobs(client, expected.repository, current),
+          current,
+          'candidate-build',
+        )
+        if (currentJob.id !== producerJob.id || currentJob.run_attempt !== producerJob.run_attempt)
+          throw new Error('Merge candidate build changed during acquisition')
+      }
       const envelope = {
         schemaVersion: 1,
         repository: expected.repository,
         sourceRevision,
         runId: run.id,
-        runAttempt: run.run_attempt,
+        runAttempt: producerAttempt,
         artifactId: artifact.id,
         artifactDigest: artifact.digest,
         receiptSha256: receipt.receiptSha256,
