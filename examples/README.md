@@ -65,3 +65,15 @@ boundaries; successful runs do not establish general model accuracy.
 The software factory is planned for extraction into an independent project.
 Its source remains temporarily in this tree to preserve existing host checks;
 it is outside the cookbook. Tested patch is the developer repair example.
+
+## Check the examples
+
+After workspace setup, run `just test-examples` from the repository root.
+The same checks run in CI against the current package archives.
+They install every example, load its project and Binding declarations, bundle
+its Flow imports, and run its application tests. New example directories require
+application tests and registered installed-host coverage.
+
+Installed-host suites separately check admission, application results and
+cleanup with deterministic collaborators. Contact import also runs its original
+default entrypoint. These checks do not establish live Agent quality.

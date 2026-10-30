@@ -8,6 +8,10 @@ preparation never becomes a consumer requirement.
 
 ## Ownership
 
+- `../example-inventory.mjs` requires every direct example directory to retain
+  its manifest, project definition and application tests. Its host-suite mapping
+  must remain selected by Linux and both Mac targets. Application suite ownership
+  covers `examples/`, so new tests cannot escape source-stage discovery.
 - `test-suites.json` declares whole-file roots, applicability and fixed full
   execution targets. `suite-inventory.mjs` supplies local and pinned-Git
   membership, rejecting unknown, ambiguous or linked tests. Every applicable

@@ -46,7 +46,11 @@ test('complete source applications install frozen candidates with a fresh Bun ca
     expect(output.match(/packages installed/g)?.length).toBe(applications.length)
     // The production normalizer verifies copied tests against exact source bytes.
     const report = readFileSync(join(reports, 'source-applications.xml'), 'utf8')
-    for (const application of applications) expect(report).toContain(`${application}/test/`)
+    for (const application of applications) {
+      expect(report).toContain(`${application}/test/`)
+      if (application !== 'incident-brief')
+        expect(output).toContain(`Example source smoke passed: ${application} (`)
+    }
   } finally {
     rmSync(temporary, { recursive: true, force: true })
   }

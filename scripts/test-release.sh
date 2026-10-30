@@ -55,11 +55,14 @@ for stage in source-portable source-protocol source-applications source-python; 
     echo "Source evidence destination must be fresh" >&2; exit 1
   fi
 done
+if has_stage source-applications; then
+  "$FLOW_NODE" scripts/example-inventory.mjs --format names > "$release_tmp/examples.names"
+fi
 archive_packages=
-if has_stage source-portable; then
+if has_stage source-portable || has_stage source-applications; then
   just jig::build
   archive_packages="flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig"
-elif has_stage source-protocol || has_stage source-applications; then
+elif has_stage source-protocol; then
   just reporting::build
   just agent::build
   just acp::build
@@ -154,7 +157,11 @@ copy_application_member() {
     });
   ' "$1" "$2"
 }
-for application in kitchen-roster photo-organiser tested-patch software-factory support-case contact-import incident-brief; do
+{
+  cat "$release_tmp/examples.names"
+  printf '%s\n' incident-brief
+} > "$release_tmp/applications.names"
+while IFS= read -r application; do
   application_source="examples/$application"
   if [ "$application" = incident-brief ]; then
     application_source="packages/jig/test/fixtures/incident-brief"
@@ -162,7 +169,7 @@ for application in kitchen-roster photo-organiser tested-patch software-factory 
   application_copy="$release_tmp/$application"
   mkdir -p "$application_copy"
   cp "$application_source/package.json" "$application_copy/"
-  for member in flows test fixtures grants issue.json input.json batch.json; do
+  for member in jig.ts bindings flows test fixtures grants issue.json input.json batch.json; do
     if [ -e "$application_source/$member" ]; then
       copy_application_member "$application_source/$member" "$application_copy/$member"
     fi
@@ -181,6 +188,7 @@ for application in kitchen-roster photo-organiser tested-patch software-factory 
       "@jigging/agent-method": Bun.argv[3],
       "@jigging/agent-acp": Bun.argv[4],
       "@jigging/reporting": Bun.argv[5],
+      "@jigging/jig": Bun.argv[6],
     };
     const manifests = [path];
     for (const directory of ["flows", "methods"]) {
@@ -203,6 +211,11 @@ for application in kitchen-roster photo-organiser tested-patch software-factory 
       // Preserve the application plus Flow-member relationship from the source
       // repository workspace. Resolve each owning declaration, not ambient deps.
       if (current === path) {
+        // The source checker uses the ordinary public authoring export as tooling.
+        manifest.devDependencies = {
+          ...manifest.devDependencies,
+          "@jigging/jig": `file:${candidates["@jigging/jig"]}`,
+        };
         manifest.workspaces = manifests.some(current => current.includes("/methods/"))
           ? ["flows/*", "methods/*"] : ["flows/*"];
         // Member file declarations alone do not bind the full Bun resolution graph.
@@ -220,9 +233,12 @@ for application in kitchen-roster photo-organiser tested-patch software-factory 
       }
       await Bun.write(current, JSON.stringify(manifest));
     }
-  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE"
+  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE"
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
-done
+  if [ "$application" != incident-brief ]; then
+    bun --no-env-file scripts/check-example-project.ts "$application_copy"
+  fi
+done < "$release_tmp/applications.names"
 
   set -- --target source-applications --profile "$source_profile"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "${GITHUB_SHA:?Missing tested source}"; fi

@@ -162,8 +162,10 @@ authored examples, not independent consumer evidence or promoted Starters.
   Check that Flow boundaries, contracts, powers and focused tests demonstrate
   high modularity, and verify the complete composed application separately.
 
-- Run `bun test examples/kitchen-roster/test examples/photo-organiser/test examples/support-case/test examples/tested-patch/test examples/contact-import/test examples/software-factory/test`
-  after workspace setup. Private handoff checks live in
+- Run `just test-examples` after workspace setup. It discovers every example,
+  installs current frozen packages, evaluates original declarations, bundles
+  Flow imports and executes complete application tests. Every example requires
+  registered installed-host coverage in `scripts/example-inventory.mjs`. Private handoff checks live in
   `packages/jig/test/fixtures/incident-brief/test` and remain in the packed
   release gate. The release gate repeats these application checks against the
   freshly packed SDK.

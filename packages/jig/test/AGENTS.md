@@ -155,9 +155,11 @@ Recorded packet inputs do not establish native execution or fencing.
 frozen packages and a real deterministic caption task through the installed host.
 It remains separate from live Agent judgment and untested fault windows.
 
-`host/installed-contact-import.test.ts` checks ordinary code, Agent-contract and
-mixed mapping through the installed host. Its deterministic header task performs
-the declared mapping work without claiming model quality.
+`host/installed-contact-import.test.ts` first reviews the authored `jig.ts` and
+runs its default entrypoint without target, input, attachment or timeout overrides.
+It verifies the preview and unchanged project definition. A separate reviewed
+operator configuration checks Agent-contract and mixed mapping with a deterministic
+header task, without claiming model quality.
 `host/installed-incident-brief.test.ts` checks the private handoff application
 with an ordinary bounded conversation task. Pure application cases do not prove
 dispatch races, native session restoration or cleanup.
