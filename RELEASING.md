@@ -67,6 +67,22 @@ just release-check "$(git merge-base origin/main HEAD)"
 
 ## If a release stops
 
+Open [Publish npm prereleases](https://github.com/jiggy/jig/actions/workflows/npm-publish.yml).
+Its readiness summary links the current source and qualification attempts.
+Candidate versions appear after canonical CI validation.
+**Waiting for qualification** means required work is queued, running or missing.
+**Blocked** means qualification failed or evidence could not be verified.
+Manual reconciliation fails until the exact source is ready.
+
+Version generation can succeed while publication remains blocked.
+Completion events check readiness again when qualification finishes.
+**Ready for publication** permits a publication attempt and does not establish registry success.
+The publication summary reports newly published, byte-verified or superseded versions separately.
+
+For native Agent failures, inspect the failed client and selected qualification model.
+A native-session `limit` diagnostic does not identify the underlying provider cause.
+Check provider availability and quota without exposing credentials or private responses.
+
 - **Release versions fails:** Read its run summary and failed step.
   After fixing the cause, choose **Re-run all jobs**, or run the workflow again on current `main`.
   **Re-run failed jobs** cannot reuse prepared version changes from an earlier attempt.

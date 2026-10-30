@@ -235,6 +235,7 @@ jobs:
           printf 'Installed supported Pi profile: `%s`\n' "$identity" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Qualify native ${{ matrix.client }} API-key ACP through OpenRouter
+        id: native-api
         shell: bash
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -316,3 +317,22 @@ jobs:
           path: ${{ runner.temp }}/native-qualification
           retention-days: 7
           if-no-files-found: error
+
+      - name: Explain native qualification and recovery
+        if: always()
+        env:
+          NATIVE_CLIENT: ${{ matrix.client }}
+          NATIVE_MODEL: ${{ matrix.model }}
+          QUALIFICATION_OUTCOME: ${{ job.status }}
+        run: |
+          printf '## Native %s qualification: %s\n\n' "$NATIVE_CLIENT" "$QUALIFICATION_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Selected qualification model: `%s`.\n\n' "$NATIVE_MODEL" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$QUALIFICATION_OUTCOME" != success ]; then
+            printf '%s\n' \
+              'Publication requires every native client to pass against the same candidate.' '' \
+              'Inspect the failed step and its bounded conversation diagnostics.' \
+              'A native-session **limit** category does not identify the underlying provider cause.' \
+              'Check provider availability and quota without exposing credentials or private responses.' '' \
+              'Fix the cause, then choose **Re-run all jobs** in this workflow.' \
+              'Partial qualification reruns cannot reuse earlier proof.' >> "$GITHUB_STEP_SUMMARY"
+          fi

@@ -93,7 +93,7 @@ describe.serial('private contained Agent Run lifecycle', () => {
             },
           },
         })
-        expect(agentText(terminal)).toContain('READY')
+        expect(agentText(terminal).trim().toUpperCase()).toBe('READY')
         expect(JSON.stringify(terminal)).not.toContain(process.env.OPENROUTER_API_KEY!)
         await expectNoAgentOwner(root)
         await session.close()

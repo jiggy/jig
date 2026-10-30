@@ -1,7 +1,8 @@
 name: Publish npm prereleases
-run-name: Reconcile qualified npm prereleases
+run-name: Check npm release qualification
 on:
   workflow_run:
+    branches: [main]
     workflows:
       - CI
       - Linux host conformance
@@ -18,7 +19,15 @@ on:
 jobs:
   authorize:
     name: Require same-revision release qualification
-    if: github.event_name == 'workflow_run' || github.ref == 'refs/heads/main'
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository &&
+       (github.event.workflow_run.event == 'push' ||
+        (github.event.workflow_run.path == '.github/workflows/native-agent-api-qualification.yml' &&
+         github.event.workflow_run.conclusion != 'skipped' &&
+         (github.event.workflow_run.event == 'workflow_run' || github.event.workflow_run.event == 'workflow_dispatch'))))
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -590,3 +599,14 @@ jobs:
               ;;
             *) exit 1 ;;
           esac
+      - name: Summarize completed npm publication
+        run: |
+          printf '%s\n' '## npm publication results' '' \
+            '| Package | Version | Registry result |' '| --- | --- | --- |' >> "$GITHUB_STEP_SUMMARY"
+          printf '| @jigging/agent-method | %s | %s |\n' "$AGENT_VERSION" "$AGENT_STATE" >> "$GITHUB_STEP_SUMMARY"
+          printf '| @jigging/agent-acp | %s | %s |\n' "$ACP_VERSION" "$ACP_STATE" >> "$GITHUB_STEP_SUMMARY"
+          printf '| @jigging/jig | %s | %s |\n' "$JIG_VERSION" "$JIG_STATE" >> "$GITHUB_STEP_SUMMARY"
+          printf '%s\n' '' \
+            '**published** means a new version passed registry verification.' \
+            '**verified** means the existing version matches the tested archive.' \
+            '**superseded** means a newer channel version prevented publication.' >> "$GITHUB_STEP_SUMMARY"

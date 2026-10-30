@@ -391,6 +391,10 @@ requires the executable, model and OpenRouter key. Claude and Pi require their
 own executable, API model/provider and key. The protected native API workflow
 selects only its matching file. Restoration is an independent explicit opt-in.
 
+The Codex Responses text check requires exactly the requested readiness word,
+ignoring capitalization and surrounding whitespace. Live qualification still
+requires successful execution, credential isolation, settlement and cleanup.
+
 The installed native conversation requires frozen Jig, ACP, method and FLOW SDK
 archives. Its library workspace preserves extracted package bytes and uses
 ordinary declared dependencies. `portable/root-agent-fixtures.test.ts` verifies

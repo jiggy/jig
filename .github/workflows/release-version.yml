@@ -43,6 +43,7 @@ jobs:
           current_main=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)
           if [ "$current_main" != "$GITHUB_SHA" ]; then
             echo "A newer main revision owns the release PR."
+            printf '%s\n' '## Version generation' '' 'A newer main revision owns the release PR.' >> "$GITHUB_STEP_SUMMARY"
             echo "pending=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -51,6 +52,12 @@ jobs:
           import { appendFileSync, readFileSync } from 'node:fs'
           const plan = JSON.parse(readFileSync(`${process.env.RUNNER_TEMP}/release-plan.json`, 'utf8'))
           appendFileSync(process.env.GITHUB_OUTPUT, `pending=${plan.pendingChangesets.length > 0}\n`)
+          const publisher = `https://github.com/${process.env.GITHUB_REPOSITORY}/actions/workflows/npm-publish.yml`
+          const status = plan.pendingChangesets.length > 0
+            ? 'Pending changesets will update the generated release PR.'
+            : 'No pending changesets require a version PR.'
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            `## Version generation\n\n${status}\n\nThis workflow prepares versions. [The npm publisher](${publisher}) reports qualification and publication.\n`)
           NODE
       - name: Generate release changes without repository write authority
         if: steps.plan.outputs.pending == 'true'
