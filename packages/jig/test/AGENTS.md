@@ -186,6 +186,7 @@ dispatch races, native session restoration or cleanup.
 
 Its settlement assertions include bounded turn observations and allowlisted
 public operation codes through `fixtures/incident-diagnostics.ts`.
+Missing worker results retain only the branch role and allowlisted failure code.
 Diagnostics exclude messages, task context and exception payloads. They do not establish host causes or cleanup.
 
 `host/installed-support-case.test.ts` checks unchanged application composition
