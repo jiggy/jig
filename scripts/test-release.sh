@@ -55,9 +55,6 @@ for stage in source-portable source-protocol source-applications source-python; 
     echo "Source evidence destination must be fresh" >&2; exit 1
   fi
 done
-if has_stage source-applications; then
-  "$FLOW_NODE" scripts/example-inventory.mjs --format names > "$release_tmp/examples.names"
-fi
 archive_packages=
 if has_stage source-portable || has_stage source-applications; then
   just jig::build
@@ -148,6 +145,7 @@ source_protocol_stage() {
   bun packages/reporting/test/package-smoke.ts
 }
 source_applications_stage() {
+  "$FLOW_NODE" scripts/example-inventory.mjs --format names > "$release_tmp/examples.names"
 copy_application_member() {
   bun --no-env-file -e '
     import { cp } from "node:fs/promises";
