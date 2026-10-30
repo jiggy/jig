@@ -893,6 +893,10 @@ test('wrong source, producer run/attempt, fork origin or expired canonical artif
 })
 
 test('failed, cancelled, skipped, missing or stale host evidence blocks Jig while FLOW remains ready', async () => {
+  const armShard = MACOS_QUALIFICATION_JOBS.find((name) =>
+    name.startsWith('Native host shard — arm64 / '),
+  )
+  assert.ok(armShard)
   const mutations = [
     (f) => {
       f.runs.get(200).conclusion = 'failure'
@@ -907,12 +911,12 @@ test('failed, cancelled, skipped, missing or stale host evidence blocks Jig whil
       f.jobs.get(200)[1].run_attempt = 0
     },
     (f) => {
-      f.jobs.get(300).find((job) => job.name === 'Native host shard — arm64 / 1').run_attempt = 0
+      f.jobs.get(300).find((job) => job.name === armShard).run_attempt = 0
     },
     (f) => {
       f.jobs.set(
         300,
-        f.jobs.get(300).filter((job) => job.name !== 'Native host shard — arm64 / 1'),
+        f.jobs.get(300).filter((job) => job.name !== armShard),
       )
     },
     (f) => {
