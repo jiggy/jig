@@ -261,10 +261,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   gates. Intel evidence never grants publication readiness.
 
   Main and manual-main runs start scope and acquisition independently.
-  Their complete ARM jobs alternate between two fixed concurrency lanes by
-  workflow run number. Each lane permits one running native job.
-  This bounds main native execution at two jobs. Other PR branches retain their
-  existing cancellation groups and runner allocation behavior.
+  Their complete ARM jobs use one of two fixed concurrency lanes, selected by
+  workflow run-number parity. Each lane permits one running native job.
+  This bounds main native execution at two jobs. PR runs also advance that
+  number, so successive main jobs can select the same lane.
+
+  Lane assignment does not balance load or guarantee both lanes are occupied.
+  PR branches retain their existing cancellation groups and runner allocation behavior.
 
   Each lane uses GitHub's `queue: max` to retain up to 100 pending jobs.
   GitHub cancels submissions beyond that limit, which cannot qualify publication.
