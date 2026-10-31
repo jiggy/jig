@@ -82,12 +82,12 @@ does not load that local environment file.
 
 From the repository root, `bun i` installs the root tooling and all TypeScript
 packages under `packages/`, example applications, and their Flows as Bun workspaces.
-Examples use the local SDK through `workspace:*`. The root `bun.lock` is generated
+Examples declare exact public FLOW SDK versions and use ordinary workspace links for application-local packages. The root `bun.lock` is generated
 by Bun and ignored; regenerate it as needed, never maintain it by hand.
 Site tooling and conformance fixtures keep their separate dependency installations.
-Build the SDK with `just flow::build` before reviewing examples; `just build`
-builds both SDK and Jig. Review captures the workspace, so no SDK publication
-or per-Flow dependency setup is needed.
+Build Jig with `just jig::build` before reviewing examples.
+Review captures declared workspace dependencies without per-Flow setup.
+FLOW SDKs remain versioned public dependencies.
 
 Shell entry warns in bold red when Jig is missing or incompletely built, or
 when its successful-build version differs from `packages/jig/package.json`.
@@ -101,6 +101,12 @@ just jig::build
 The shell compares `jig --version` (embedded at build time) with the source
 manifest. This is a version check, not source-change detection: rebuild after
 source edits even when the package version has not changed.
+
+The contributor launcher also checks source and generated output whenever a command runs.
+Changes since the successful build produce `JIG_BUILD_STALE` with the repository rebuild command.
+Top-level help and version reporting remain available.
+This check belongs to the source installation, even when invoking it from another application.
+Packaged users receive installation recovery instead.
 
 The shell supplies Bubblewrap locally and sets `JIG_BWRAP_PATH` to its exact
 Nix-store executable. No system-wide Bubblewrap installation is needed.

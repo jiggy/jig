@@ -80,6 +80,7 @@ import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue }
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
+import { checkProjectJigRequirement } from './project/jig-version.js'
 import type { AcpGrant } from './project/grants.js'
 import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from './project/limits.js'
 import { flowSelector } from './project/package-selector.js'
@@ -517,6 +518,15 @@ export async function privateCliPrepareArguments(
   arguments_: readonly string[],
   options: PrivateCliOptions = {},
 ): Promise<{ arguments: readonly string[]; admissionDigest?: string } | { exitCode: number }> {
+  if (!isHelpRequest(arguments_) && ['review', 'new'].includes(arguments_[0] ?? '')) {
+    try {
+      const cwd = options.currentDirectory ?? process.cwd()
+      const directory = arguments_[0] === 'review' ? parseReview(arguments_, cwd).project : cwd
+      await checkProjectJigRequirement(directory)
+    } catch (error) {
+      return { exitCode: renderFailure(error, cliRuntime(options)) }
+    }
+  }
   if (arguments_[0] !== 'run' || isHelpRequest(arguments_)) return { arguments: arguments_ }
   const runtime = cliRuntime(options)
   try {
@@ -2448,6 +2458,13 @@ async function defaultPause(milliseconds: number): Promise<void> {
 }
 
 function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
+  if (
+    error instanceof CheckError &&
+    ['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code)
+  ) {
+    runtime.writeError(renderDiagnostic(error.code, error.message))
+    return 1
+  }
   if (error instanceof PrivateAttemptError) {
     runtime.writeError(
       renderDiagnostic(
@@ -2480,6 +2497,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   if (error instanceof ProjectAdministrationError) {
     const projected = projectError(error.code)
     const candidateHints: Record<string, string> = {
+      PROJECT_JIG_VERSION_MISMATCH: error.message,
+      PROJECT_JIG_REQUIREMENT_INVALID: error.message,
       ...ACP_SETUP_HINTS,
       PROJECT_AGENT_OVERRIDE_MODEL:
         'this ACP policy pins a model. Review its model and client together at the indicated Binding slot, following any grant:name selector to its JSON policy; --agent never translates or drops a model pin',

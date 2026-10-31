@@ -158,6 +158,10 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
+- Every example declares the current exact Jig version as an optional peer requirement.
+  Review checks it before evaluating project declarations.
+  Keep these pins synchronized through ordinary release generation.
+
 - Review every substantial workflow stage for its own callable responsibility.
   Check that Flow boundaries, contracts, powers and focused tests demonstrate
   high modularity, and verify the complete composed application separately.

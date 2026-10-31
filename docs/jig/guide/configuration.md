@@ -9,6 +9,24 @@ Use this reference to adjust Jig for your terminal, host, and application. The
 defaults work for the [first Flow](./index.md). Change these settings when you
 need a different operating preference.
 
+## Jig version requirements
+
+Projects can name the exact Jig version they were tested with in `package.json` under `peerDependencies["@jigging/jig"]`.
+An optional peer declaration records the host requirement without installing Jig into the project.
+Generated projects and repository examples supply this metadata.
+Bare projects can omit it.
+
+If review reports `PROJECT_JIG_VERSION_MISMATCH`, compare the displayed running and required versions.
+Install the required version using the bun/npm command in the diagnostic, then retry review.
+The check works offline and changes no files.
+A newer release’s existence alone does not establish incompatibility.
+
+For contributor builds, rebuild from Jig’s repository root with `just jig::build`.
+The checkout launcher detects changed source or generated output even when the version number stays unchanged.
+Ordinary installed packages receive installation instructions instead.
+Run `jig --version` to identify the executing build.
+See the [exact project requirement](../spec/project-policy.md#jig-version-requirements).
+
 ## Shell completion
 
 Load completion for your shell:

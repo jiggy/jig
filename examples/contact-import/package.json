@@ -9,5 +9,13 @@
   },
   "dependencies": {
     "@jigging/agent-acp": "0.1.0-alpha.12"
+  },
+  "peerDependencies": {
+    "@jigging/jig": "0.1.0-alpha.43"
+  },
+  "peerDependenciesMeta": {
+    "@jigging/jig": {
+      "optional": true
+    }
   }
 }

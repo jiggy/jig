@@ -7,6 +7,7 @@
 
 # Build the installed CLI, inert authoring SDK, and private workers
 @build: verify-build-bun check-native-support clean
+    bun ../../scripts/jig-development-build.ts begin "$PWD"
     just --justfile ../display-web/justfile build
     just --justfile ../display-tui/justfile build
     just --justfile ../agent-method/justfile build
@@ -53,6 +54,7 @@
     cp ../../LICENSE.md ../../PRICING.md ../../LICENSES.md .
     mkdir -p LICENSES
     cp ../../LICENSES/Apache-2.0.txt ../../LICENSES/CC-BY-4.0.txt ../../LICENSES/Community-Spec-1.0.md ../../LICENSES/MPL-2.0.txt LICENSES/
+    bun ../../scripts/jig-development-build.ts finish "$PWD"
 
 # Remove only generated package output
 clean:

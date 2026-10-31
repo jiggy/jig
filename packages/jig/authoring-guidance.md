@@ -141,6 +141,13 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Local Contracts
 
+- `project/jig-version.ts` reads an optional exact Jig peer requirement before declaration evaluation.
+  It captures `package.json` beneath the held project descriptor and verifies it after aggregate capture.
+  Missing requirements preserve manifest-free projects.
+  Normal initialization and shipped examples declare the tested version as an optional peer.
+  Optional peer metadata prevents an automatic host installation.
+  This requirement grants no execution authority or registry access.
+
 - `import-contract` copies a validated local invocation/channel bundle into a
   new directory, preserving bytes and relative paths. A direct descriptor path
   or exact `npm:` package name selects the source. `jig:` names select the

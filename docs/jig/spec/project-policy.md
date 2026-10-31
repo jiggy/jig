@@ -33,6 +33,23 @@ These routes identify related requirements. Requirements accumulate across the s
 a newline and exits successfully. It does not acquire a project or sandbox,
 read project configuration, or look up a version in the registry.
 
+### Jig version requirements
+
+A project may declare one exact tested Jig version in `package.json` under `peerDependencies["@jigging/jig"]`.
+The requirement uses an exact SemVer value, including any prerelease identifier.
+Ranges, tags, aliases and workspace selectors are invalid requirements.
+Set `peerDependenciesMeta["@jigging/jig"].optional` to `true` to avoid installing the host as a project dependency.
+
+Review reads this inert metadata before acquiring the execution host or evaluating declarations.
+`PROJECT_JIG_VERSION_MISMATCH` identifies different required and running versions.
+`PROJECT_JIG_REQUIREMENT_INVALID` identifies malformed requirement metadata without displaying rejected values.
+Checks require no registry lookup, automatic update or package installation.
+Missing manifests and missing requirements remain supported.
+
+Project capture repeats the check beneath its held root descriptor and rechecks captured metadata before completion.
+This requirement does not authorize execution or change an approved Run.
+The current prerelease policy requires the exact tested version and makes no broader compatibility promise.
+
 `jig init <directory>` creates an ordinary editable greeting package under
 `flows/hello`, a short project README, and the project skeleton below. Its
 package-local manifest names the exact `@jigging/flow` revision tested with the
@@ -40,6 +57,10 @@ Jig build, rather than a moving registry tag. It uses
 the same explicit missing-lock resolution permission and review as any other
 package; initialization performs no installation, network requests, approval,
 or execution. A destination must not exist. Initialization never replaces files.
+
+Normal initialization writes a private root `package.json` with its build’s exact Jig version as an optional peer requirement.
+This metadata records the required host without installing it.
+Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 
 `jig init --bare <directory>` creates only:
 
@@ -62,7 +83,7 @@ export default defineJig({
 });
 ```
 
-The project initially needs no `package.json`, compiler configuration, setup
+Hand-authored and bare projects need no `package.json`, compiler configuration, setup
 command, or visible lock. Jig creates protected `.jig/` state as needed. The
 first approved project change creates `jig.lock`.
 

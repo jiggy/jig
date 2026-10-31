@@ -12,5 +12,13 @@
   },
   "workspaces": [
     "flows/*"
-  ]
+  ],
+  "peerDependencies": {
+    "@jigging/jig": "0.1.0-alpha.43"
+  },
+  "peerDependenciesMeta": {
+    "@jigging/jig": {
+      "optional": true
+    }
+  }
 }
