@@ -86,6 +86,20 @@ preparation never becomes a consumer requirement.
   is reported as unassigned. Missing observations never establish that cause.
   Observations cannot qualify execution, bypass evidence validation or change
   required job outcomes. API unavailability leaves them absent.
+- `native-responses-probe.mjs` observes the existing free Responses endpoint
+  once after a Codex qualification test command fails. It sends one fixed
+  prompt with a 32-token output cap and `store:false`, without retry or
+  endpoint/model overrides. This bounded availability request differs from the
+  native uncapped request and cannot establish native compatibility.
+
+  One 30-second deadline covers acquisition and streaming. The workflow bounds
+  the Node process separately at 30 seconds, with two seconds for forced exit.
+  Response input stops at 64 KiB. Output contains only actual HTTP status, a listed numeric provider
+  error code and a closed terminal observation.
+
+  The original native exit status remains authoritative. This fresh diagnostic
+  call does not replay the failed operation or establish qualification. It does
+  not retain raw bodies, error messages, headers or response identifiers.
 - `ci-performance.mjs` reports workflow, queue and execution intervals from
   read-only GitHub metadata. It separates pre-job delay from job queues and
   preserves every attempt's observed conclusions. Job queues combine concurrency
@@ -449,6 +463,10 @@ They consume frozen package exports with tracked test helpers and installed
   beside independent FLOW readiness.
 - Inspect every workflow's permissions, executable modes, profile inventory,
   attempt-specific artifact flow and final gate when changing these interfaces.
+- `node --test scripts/ci/native-responses-probe.test.mjs` uses actual local
+  HTTP responses to check streaming, error-code filtering, malformed input,
+  response bounds and deadlines. The actual workflow hook preserves native and
+  transcript failures independently of the diagnostic command's outcome.
 - `node --test scripts/ci/merge-retry.test.mjs` exercises complete PR CI
   aggregation through real ZIP transports. One matrix job is retried while
   other successful job evidence remains bound to unchanged inputs. Rejections

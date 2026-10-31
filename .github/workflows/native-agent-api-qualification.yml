@@ -273,6 +273,7 @@ jobs:
               exit 2
               ;;
           esac
+          set +e
           scripts/ci/provision-github-rootless-host.sh run-delegated \
             env JIG_LINUX_ROOTLESS_HOSTILE=1 \
             "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" \
@@ -289,6 +290,17 @@ jobs:
             "${client_environment[@]}" \
             "$JIG_CI_BUN" test "$JIG_NATIVE_API_TEST_FILE" \
             --timeout 420000 2>&1 | tee "$RUNNER_TEMP/native-api-tests.txt"
+          qualification_status=("${PIPESTATUS[@]}")
+          set -e
+          if (( qualification_status[0] != 0 )); then
+            if [[ "$JIG_NATIVE_API_CLIENT" == codex ]]; then
+              timeout --kill-after=2s 30s node scripts/ci/native-responses-probe.mjs || true
+            fi
+            exit "${qualification_status[0]}"
+          fi
+          if (( qualification_status[1] != 0 )); then
+            exit "${qualification_status[1]}"
+          fi
           node --input-type=module -e 'import {readFileSync} from "node:fs"; import {parseBunTranscript} from "./scripts/ci/test-reports.mjs"; parseBunTranscript(readFileSync(process.env.RUNNER_TEMP + "/native-api-tests.txt", "utf8"), {files: [process.env.JIG_NATIVE_API_TEST_FILE]});'
 
       - name: Verify the tested archives are unchanged

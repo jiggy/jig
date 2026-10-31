@@ -41,6 +41,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   through 599. These reports do not prove a provider cause or authorize retries.
   Native failures still block publication and require fresh complete qualification.
 
+  After a failed Codex test command, that same protected step performs one
+  fixed-input probe of the existing free Responses route. The probe has a
+  30-second deadline and a 64 KiB response bound. An outer command deadline
+  reserves two further seconds for forced process exit. It retains only HTTP status,
+  an allowlisted numeric provider error code and a closed terminal observation.
+  It sends no retry and cannot change the original failure or qualify execution.
+  Raw response bodies, headers, messages and identifiers remain private.
+
+  Its 32-token cap and `store:false` request differ from native uncapped work.
+  A completed probe establishes neither native compatibility nor native success.
+
   Keep the OpenRouter key only in the dedicated test step of the protected
   `native-agent-api` environment. Never expose it to PRs or artifact builds.
   Configure Mistral BYOK to never use shared capacity for that provider so
