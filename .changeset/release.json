@@ -1,19 +1,19 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "578e204037823da1d4332a6886fc3adc537dc75d",
-  "sourceDigest": "a6fed9e8db7137b04574b28b8f40fea9d7ea91800fbc14c982673f58a1224626",
+  "baseRevision": "2e0f7f2530fc0efc9afa53efcde04a570585b631",
+  "sourceDigest": "cfd5664c88105e93b447526e92affdcbc39145d411096c412eec44519449db8c",
   "changesets": [
     {
-      "id": "native-http-failure-status",
-      "sha256": "97366822e306bec6074bccad36059170e057ccc3f9c8a7e5fe9c8ebb695156de"
+      "id": "clear-jig-version-recovery",
+      "sha256": "589d8b1b1a128d4deb1c907750db59141067e8a24b4cc549e1e6d9b942ea554e"
     }
   ],
   "releases": [
     {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.44",
-      "newVersion": "0.1.0-alpha.45"
+      "oldVersion": "0.1.0-alpha.45",
+      "newVersion": "0.1.0-alpha.46"
     }
   ]
 }
