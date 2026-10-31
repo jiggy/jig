@@ -127,7 +127,7 @@ jobs:
             assert.equal(escaped.status, 'ok')
             assert.equal(escaped.values[0].settings.text, hostile)
             const denied = await evaluate('denied-filesystem-import', ['jig.ts'], [{ projectPath:'jig.ts', imports:[],
-              source:'import fs from "node:fs"; export default {};' }])
+              source:'import fs from "node:fs"; export default {ambient:typeof fs.readFileSync};' }])
             assert.equal(denied.status, 'error')
             assert.equal(denied.code, 'PROJECT_EVALUATOR_IMPORT')
             assert.throws(() => privateAuthorEvaluatorProgram(new Uint8Array(PRIVATE_AUTHOR_EVALUATOR_MAX_REQUEST_BYTES+1), support), /request exceeds/)
