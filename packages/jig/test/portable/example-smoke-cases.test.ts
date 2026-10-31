@@ -72,7 +72,7 @@ test('photo smoke model consumes escaped captions from the public Agent envelope
       JSON.stringify(captions),
   )
   const reply = JSON.parse(selected.reply(prompt))
-  assert.equal(reply.assignments.length, 12)
+  assert.equal(reply.assignments.length, captions.length)
   assert.deepEqual(
     [...new Set(reply.assignments.map((item: { event: string }) => item.event))].sort(),
     ['Birthday party', 'Lake picnic', 'Mountain walk'],
