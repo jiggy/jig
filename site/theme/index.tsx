@@ -1,16 +1,13 @@
 import {
   Layout as DefaultLayout,
-  HomeLayout as DefaultHomeLayout,
-  DocContent,
   HomeFooter,
   Link,
   useMdUrl,
 } from '@rspress/core/theme-original'
-import { Content, useFrontmatter, usePage, useSite } from '@rspress/core/runtime'
+import { Content, usePage, useSite } from '@rspress/core/runtime'
+import { useEffect } from 'react'
 import { Arrow } from './icons'
-import { Showcase, type ShowcaseData } from './showcase'
 import { BrandTitle } from './brand-title'
-import { HeroVideo, type HeroVideoData } from './hero-video'
 import '../landing.css'
 
 export * from '@rspress/core/theme-original'
@@ -20,91 +17,19 @@ export { Tabs } from './tabs'
 export { Sidebar } from './sidebar'
 export { NavHamburger } from './navigation'
 
-interface HomeData {
-  hero: {
-    name: string
-    text: string
-    tagline: string
-    eyebrow: string
-    status: string
-    statusLink: string
-    actions: { text: string; link: string; theme: string }[]
-  }
-  heroVideo?: HeroVideoData
-  showcase: ShowcaseData
-}
-
-function HomeShowcase({ data }: { data: ShowcaseData }) {
-  return <Showcase data={data} />
-}
-
+/** Client-side documentation links return to the independently rendered home. */
 export function HomeLayout() {
-  const { frontmatter } = useFrontmatter()
-  const data = frontmatter as unknown as HomeData
-  if (import.meta.env.SSG_MD)
-    return (
-      <>
-        <DefaultHomeLayout />
-        <HomeShowcase data={data.showcase} />
-        <Content />
-      </>
-    )
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production' && !import.meta.env.SSG_MD) {
+      window.location.reload()
+    }
+  }, [])
+  if (import.meta.env.SSG_MD) return <Content />
   return (
-    <>
-      <main id="main-content" className="landing">
-        <div className="landing-opening">
-          <header className="hero">
-            <div className="hero-field" aria-hidden="true">
-              <div className="field-line" />
-              <div className="field-line" />
-              <div className="field-line" />
-              <div className="field-core" />
-            </div>
-            <p className="eyebrow">{data.hero.eyebrow}</p>
-            <h1>
-              {data.hero.text.split('\n').map((line, index) => (
-                <span key={line} className={index ? 'hero-emphasis' : undefined}>
-                  {line}
-                </span>
-              ))}
-            </h1>
-            <p className="hero-description">{data.hero.tagline}</p>
-            <nav className="hero-actions" aria-label="Get started">
-              {data.hero.actions.map((action) => (
-                <Link
-                  key={action.link}
-                  href={action.link}
-                  className={`action action--${action.theme}`}
-                >
-                  {action.text}
-                  <Arrow />
-                </Link>
-              ))}
-            </nav>
-            <Link className="hero-status" href={data.hero.statusLink}>
-              <span aria-hidden="true" />
-              {data.hero.status}
-            </Link>
-          </header>
-          {data.heroVideo ? (
-            <HeroVideo video={data.heroVideo} />
-          ) : (
-            <HomeShowcase data={data.showcase} />
-          )}
-        </div>
-        {data.heroVideo && (
-          <section className="landing-showcase-section">
-            <HomeShowcase data={data.showcase} />
-          </section>
-        )}
-        <div className="landing-content">
-          <div className="product-story rp-doc">
-            <DocContent isOverviewPage />
-          </div>
-        </div>
-      </main>
-      <HomeFooter />
-    </>
+    <main id="main-content">
+      <p><a href="/">Open the Jig landing page</a></p>
+      <Content />
+    </main>
   )
 }
 

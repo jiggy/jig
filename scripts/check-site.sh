@@ -11,7 +11,7 @@ site_name=$1
 case $site_name in
   jig)
     default_base=https://jig.md
-    home_title='<title>Jig</title>'
+    home_title='<title>Jig — Put your Agents to work.</title>'
     guide_title='<title>Get started with Jig - Jig</title>'
     json_map='packages/reporting/src/reporting.json|contracts/reporting.json
 docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json

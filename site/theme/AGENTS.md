@@ -7,24 +7,13 @@ shared reading experience.
 
 ## Ownership
 
-- `index.tsx` extends the default layout with homepage composition, document
-  context, an accessible brand title, and a direct Markdown resource link beside
-  Rspress's copy action.
+- `index.tsx` extends the documentation layout with context, an accessible brand
+  title, and a direct Markdown resource link beside Rspress's copy action.
+  Production client-side home navigation reloads the current URL to load the
+  standalone landing page. Markdown generation and development retain the
+  semantic homepage content.
 - `brand-title.tsx` composes the theme-selected decorative emblem with the live
   product name, which provides the navigation link's accessible name.
-- `hero-video.tsx` renders a shared, accessible product video player with sound
-  controls and reduced-motion awareness from homepage frontmatter.
-- `package-showcase.tsx` renders the FLOW package explorer from frontmatter,
-  preserving every stage, language, and optional layer in generated Markdown.
-  Show only one selected entrypoint. Implementation alternatives replace rather
-  than accompany the Markdown entrypoint. It uses native Rspress code rendering
-  and the shared One Light/One Dark Pro palettes. Snippets demonstrate the
-  protocol and do not execute in the browser.
-- `showcase.tsx` renders Jig’s illustrative implementations from homepage
-  frontmatter, showing a request, selectable method steps, and an illustrative
-  result. A native disclosure reveals the unchanged caller and implementation.
-  All inputs, variants, results, and qualifications remain in generated
-  Markdown. It never executes product work.
 - `search.tsx` uses Rspress's native local search with conditional mounting,
   modal semantics, keyboard controls, focus containment, and focus restoration.
 - `navigation.tsx` presents the flat primary links in a native mobile disclosure
@@ -53,7 +42,10 @@ shared reading experience.
   variants of local Archify SVGs during HTML builds. Site appearance selects the
   visible image. Native zoom and the original Markdown image remain intact. This
   avoids relying on WebKit inheriting color schemes inside SVG images.
-- Public prose stays in `docs/`. Shared presentation stays in `../landing.css`.
+- Documentation prose and the semantic homepage companion stay in `docs/`.
+  Shared documentation presentation stays in `../landing.css`.
+  The standalone landing page belongs to `../../docs/jig/index.html`.
+  Its static assets belong to `../jig/public/landing/`.
 
 ## Local Contracts
 
@@ -71,10 +63,6 @@ shared reading experience.
   structure and one first-use path. Keep implementation details in disclosures,
   resource routing compact, and motion brief, optional, and reduced-motion
   aware.
-- Place both the FLOW package explorer’s and Jig execution demo’s captions below
-  their instruments using the shared caption styling. Supporting side visuals
-  use separated, lightly tinted elements and open space rather than a single
-  filled text panel. Retain a visible boundary where it explains containment.
 
 ## Verification
 

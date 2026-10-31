@@ -1,0 +1,4 @@
+FLOW emblem from the official jiggy/flow project.
+Source: https://github.com/jiggy/flow/blob/main/site/flow/public/mark.svg
+Source blob: 37a1c267e04c806fcbddbd9fe1dd1e8fa874d82f
+Geometry, viewBox and monochrome ink colour are unchanged.

@@ -213,6 +213,8 @@ operational baselines, and public-site assembly.
 - Site assembly verifies every public HTML page has indexed Markdown and
   full-text bundle coverage, rejects public `AGENTS.md` routes, and includes
   notices for bundled fonts.
+  It installs the standalone `docs/jig/index.html` homepage after rendering the
+  documentation. Its `index.md` companion retains the complete page meaning.
 - Site assembly requires Jig's home, guide, and understanding routes, plus its
   contact-import composition guide. FLOW owns its separate site and authoring
   guidance.
