@@ -1,402 +1,166 @@
-# Complete host qualification within the established PR scope; final checks always report.
-name: "macOS hosted candidates"
-"on":
-  pull_request: null
+name: macOS hosted candidates
+run-name: Bounded Mac volume experiment
+on:
   workflow_dispatch:
-    inputs:
-      include_startup_profile:
-        description: "Profile installed startup on Apple Silicon (optional, up to 30 minutes)"
-        type: "boolean"
-        default: false
-  push:
-    branches:
-      - "main"
 permissions:
-  contents: "read"
-concurrency:
-  group: "macos-hosted-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}"
-  cancel-in-progress: "${{ github.ref != 'refs/heads/main' }}"
+  contents: read
 jobs:
-  scope:
-    name: "Determine macos host scope"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 5
-    outputs:
-      required: "${{ steps.scope.outputs.required }}"
-      native_lane: "${{ steps.native-lane.outputs.lane }}"
+  volume-experiment:
+    name: Fresh Mac volume experiment
+    runs-on: macos-15
+    timeout-minutes: 10
     steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        name: "Determine whether complete host qualification is required"
-        id: "scope"
-        run: 'node scripts/ci/host-scope.mjs --scope macos --github-output "$GITHUB_OUTPUT"'
-      -
-        name: "Select a bounded main native lane"
-        id: "native-lane"
-        if: "github.ref == 'refs/heads/main'"
+      - name: Require an exact supported Apple Silicon host
+        shell: bash
         run: |
-          node --input-type=module - <<'JS'
-          import { appendFileSync } from 'node:fs'
-          const number = process.env.GITHUB_RUN_NUMBER
-          if (!/^[1-9][0-9]*$/.test(number ?? '')) throw Error('Missing exact workflow run number')
-          appendFileSync(process.env.GITHUB_OUTPUT, `lane=${BigInt(number) % 2n}\n`)
-          JS
-  host-artifacts:
-    name: "Acquire canonical macos host artifacts"
-    needs: "scope"
-    if: "${{ needs.scope.outputs.required == 'true' }}"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 45
-    permissions:
-      contents: "read"
-      actions: "read"
-    steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test "$(uname -r)" = 24.6.0
+          case "$(sw_vers -buildVersion)" in 24G830|24H232) ;; *) exit 1 ;; esac
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
-          persist-credentials: false
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        name: "Acquire the exact canonical CI candidates"
-        env:
-          GH_TOKEN: "${{ github.token }}"
+          node-version: '24'
+      - name: Measure fresh fixed-volume creation and attachment
+        shell: bash
         run: |
-          set -eu
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
-      -
-        name: "Retain exact macos host artifacts"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-host-artifacts"
-          retention-days: 7
-          if-no-files-found: "error"
-  prerequisites:
-    name: "Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}"
-    runs-on: "macos-15"
-    concurrency:
-      group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || github.run_id }}"
-      queue: "max"
-      cancel-in-progress: false
-    # ARM consolidates two former jobs: 60 < 2*35 minutes, or 90 < 35+65
-    # with the optional 30-minute profile. Individual test limits stay unchanged.
-    timeout-minutes: "${{ matrix.arch == 'arm64' && (inputs.include_startup_profile && 90 || 60) || (matrix.installed && inputs.include_startup_profile && 65 || 35) }}"
-    strategy:
-      fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          -
-            arch: "arm64"
-            shard: 0
-            installed: true
-    steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-      -
-        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
-        with:
-          bun-version: "1.4.2"
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
-        with:
-          just-version: "1.43.1"
-      -
-        name: "Record exact host and verify native process prerequisites"
-        env:
-          EXPECTED_ARCH: "${{ matrix.arch }}"
-        run: |
-          set -o pipefail
-          mkdir -p "$RUNNER_TEMP/mac-evidence"
-          git rev-parse HEAD > "$RUNNER_TEMP/mac-evidence/source.txt"
-          uname -a > "$RUNNER_TEMP/mac-evidence/host.txt"
-          sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
-          xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
-          bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
-          bun scripts/ci/probe-macos-host.ts --hosted | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
-      -
-        name: "Compile the native launcher and validate SDK descriptor layouts"
-        run: |
-          set -o pipefail
-          clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/mac-evidence/macos-exec"
-          clang -Wall -Wextra -Werror packages/jig/test/fixtures/macos-file-abi.c -o "$RUNNER_TEMP/mac-evidence/file-abi"
-          "$RUNNER_TEMP/mac-evidence/file-abi" | tee "$RUNNER_TEMP/mac-evidence/file-abi.txt"
-          file "$RUNNER_TEMP/mac-evidence/macos-exec" >> "$RUNNER_TEMP/mac-evidence/host.txt"
-      -
-        name: "Install build dependencies without lifecycle scripts"
-        run: "bun install --ignore-scripts"
-      -
-        name: "Build the source-test workspace packages"
-        run: "just --justfile packages/jig/justfile build"
-      -
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-host-artifacts"
-      -
-        name: "Verify exact canonical publication archives"
-        run: |
-          set -eu
-          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
-          printf 'JIG_CI_CANDIDATE_DIRECTORY=%s\n' "$RUNNER_TEMP/macos-host-artifacts" >> "$GITHUB_ENV"
-          cp "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/mac-evidence/CANDIDATE.json"
-          cp "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/mac-evidence/ARTIFACT.json"
-      -
-        name: "Test native containment and recovery"
-        if: "matrix.shard == 0"
-        env:
-          JIG_MACOS_PROCESS_TEST: "1"
-        run: |
-          set -o pipefail
-          snapshot() {
-            { launchctl list | awk 'NR > 1 && $3 ~ /^org\.jig\./ {print "job " $3}'; mount | awk '/jig-| on \/Volumes\/Jig-/ {print "mount " $0}'; } | LC_ALL=C sort
+          set -euo pipefail
+          node --input-type=module <<'JIG_VOLUME_EXPERIMENT'
+          import assert from 'node:assert/strict'
+          import { execFileSync } from 'node:child_process'
+          import { mkdtemp, mkdir, realpath, stat, statfs, writeFile, readFile, rm, chmod, lstat, open } from 'node:fs/promises'
+          import { join } from 'node:path'
+          import { performance } from 'node:perf_hooks'
+          
+          assert.equal(process.platform, 'darwin')
+          assert.equal(process.arch, 'arm64')
+          const sizes = [16 * 1024 * 1024, 512 * 1024 * 1024]
+          const work = await realpath(await mkdtemp(join(process.env.RUNNER_TEMP, 'jig-volume-benchmark-')))
+          await chmod(work, 0o700)
+          const deadline = performance.now() + 6 * 60_000
+          let cleaning = false
+          const tool = (path, args, input) => {
+            const remaining = deadline + (cleaning ? 60_000 : 0) - performance.now()
+            if (remaining <= 0) throw new Error('Benchmark command deadline expired')
+            return execFileSync(path, args, {
+            cwd: '/', env: { PATH: '/usr/bin:/bin', LC_ALL: 'C' }, input,
+            timeout: Math.max(1, Math.floor(Math.min(30_000, remaining))), killSignal: 'SIGKILL', maxBuffer: 1024 * 1024,
+            })
           }
-          snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
-          status=0
-          bun test packages/jig/test/macos/macos-process-controls.test.ts packages/jig/test/macos/macos-execution.test.ts packages/jig/test/macos/macos-descriptor-files.test.ts packages/jig/test/macos/macos-descriptor-handoff.test.ts packages/jig/test/macos/macos-volume.test.ts packages/jig/test/macos/macos-backend-state.test.ts packages/jig/test/macos/macos-native-backend.test.ts packages/jig/test/macos/macos-guardian.test.ts --bail=1 --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
-          snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
-          diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
-          exit "$status"
-      -
-        name: "Prepare genuine pinned clients for offline startup and refusal checks"
-        if: "matrix.installed"
-        run: "bun scripts/ci/install-macos-test-clients.ts \"$RUNNER_TEMP/jig-native-clients\" >> \"$GITHUB_ENV\""
-      -
-        name: "Qualify the complete rootless host and installed consumer"
-        env:
-          JIG_MACOS_TEST_TIMINGS_DIRECTORY: "${{ runner.temp }}/mac-evidence"
-          JIG_STARTUP_PROFILE_DIRECTORY: "${{ matrix.installed && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}"
-        run: |
-          set -o pipefail
-          scripts/ci/qualify-macos-host.sh --shard "${{ matrix.shard }}" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
-      -
-        name: "Verify canonical candidate metadata is unchanged"
-        if: "always()"
-        run: |
-          set -eu
-          node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
-          cmp "$RUNNER_TEMP/mac-evidence/CANDIDATE.json" "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json"
-          cmp "$RUNNER_TEMP/mac-evidence/ARTIFACT.json" "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json"
-      -
-        name: "Record successful shard"
-        run: "printf '%s %s %s\\n' '${{ github.sha }}' '${{ matrix.arch }}' '${{ matrix.shard }}' > \"$RUNNER_TEMP/mac-evidence/shard-${{ matrix.shard }}.complete\""
-      -
-        name: "Retain candidate prerequisite evidence"
-        if: "always()"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-prerequisites-${{ matrix.arch }}-${{ matrix.shard }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: |
-            ${{ runner.temp }}/mac-evidence/*.txt
-            ${{ runner.temp }}/mac-evidence/*.json
-            ${{ runner.temp }}/mac-evidence/*.xml
-            ${{ runner.temp }}/mac-evidence/*.complete
-          retention-days: 7
-      -
-        name: "Retain optional installed startup profile"
-        if: "${{ always() && matrix.installed && inputs.include_startup_profile }}"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-startup-profile-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/mac-startup-profile"
-          if-no-files-found: "ignore"
-          retention-days: 7
-    needs:
-      - "scope"
-      - "host-artifacts"
-    if: "${{ needs.scope.outputs.required == 'true' }}"
-  qualified-architecture:
-    name: "Native host qualification — ${{ matrix.arch }}"
-    if: "${{ always() && needs.scope.result == 'success' && needs.scope.outputs.required == 'true' }}"
-    needs:
-      - "scope"
-      - "host-artifacts"
-      - "prerequisites"
-    runs-on: "ubuntu-24.04"
-    permissions:
-      contents: "read"
-      actions: "read"
-    timeout-minutes: 5
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          -
-            arch: "arm64"
-            count: 1
-    steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        name: "Download this architecture's shard evidence"
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          pattern: "macos-prerequisites-${{ matrix.arch }}-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-evidence"
-      -
-        name: "Read this attempt's job timing evidence"
-        env:
-          GH_TOKEN: "${{ github.token }}"
-        run: |
-          gh api 'repos/${{ github.repository }}/actions/runs/${{ github.run_id }}/attempts/${{ github.run_attempt }}/jobs?per_page=100' --jq '.jobs' > "$RUNNER_TEMP/mac-job-timings.json" || {
-            rm -f "$RUNNER_TEMP/mac-job-timings.json"
-            echo 'Job timing API unavailable; qualification still requires complete test evidence.'
+          const plist = (data) => JSON.parse(tool('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], data))
+          const variants = [
+            { name: 'current', create: [], attach: [] },
+            { name: 'attach-noverify', create: [], attach: ['-noverify'] },
+            { name: 'small-initial-metadata', create: ['-fsargs', '-c c=1,e=1,a=1,b=1'], attach: [] },
+          ]
+          const imageInventory = () => plist(tool('/usr/bin/hdiutil', ['info', '-plist'])).images
+          const mappedImage = async (image, backing, bytes) => {
+            const candidates = imageInventory().filter(entry => entry['image-path'] === image)
+            assert(candidates.length <= 1)
+            if (!candidates.length) return undefined
+            const observed = await lstat(image, { bigint: true })
+            assert(observed.isFile() && observed.nlink === 1n && observed.dev === backing.dev && observed.ino === backing.ino)
+            const record = candidates[0]
+            assert.equal(record['owner-uid'], process.getuid())
+            assert.equal(record.blocksize, 512)
+            assert.equal(record.blockcount, bytes / 512)
+            assert.equal(record['image-encrypted'], false)
+            assert.equal(record['system-entities'].length, 1)
+            const device = record['system-entities'][0]['dev-entry']
+            assert(/^\/dev\/disk[1-9][0-9]{0,5}$/.test(device))
+            return device
           }
-      -
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-host-artifacts"
-      -
-        name: "Require complete exact-revision proof and summarize coverage"
-        if: "always()"
-        env:
-          EXPECTED_ARCH: "${{ matrix.arch }}"
-          EXPECTED_SHA: "${{ github.sha }}"
-          SHARD_COUNT: "${{ matrix.count }}"
-        run: |
-          set -eu
-          # The artifact download admits only this workflow run and current attempt.
-          # Normalize its directory names for the existing complete JUnit reconciler.
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          root = Path(os.environ["RUNNER_TEMP"]) / "macos-evidence"
-          arch, sha, run, attempt = (os.environ[key] for key in ("EXPECTED_ARCH", "EXPECTED_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"))
-          for shard in range(int(os.environ["SHARD_COUNT"])):
-              original = root / f"macos-prerequisites-{arch}-{shard}-{sha}-r{run}-a{attempt}"
-              normalized = root / f"macos-prerequisites-{arch}-{shard}-{sha}"
-              if not original.is_dir() or original.is_symlink() or normalized.exists():
-                  raise ValueError("missing or stale current-attempt Mac shard evidence")
-              original.rename(normalized)
-          PY
-          node --input-type=module - <<'JS'
-          import { readFile } from "node:fs/promises"
-          import { join } from "node:path"
-          import { candidateBinding, verifyCandidateBundle } from "./scripts/ci/candidate-provenance.mjs"
-          const root = process.env.RUNNER_TEMP
-          const bundle = join(root, "macos-host-artifacts")
-          const receipt = await verifyCandidateBundle(bundle, { sourceRevision: process.env.EXPECTED_SHA })
-          candidateBinding(receipt, JSON.parse(await readFile(join(bundle, "ARTIFACT.json"), "utf8")))
-          for (let shard = 0; shard < Number(process.env.SHARD_COUNT); shard++) {
-            const directory = join(root, "macos-evidence", `macos-prerequisites-${process.env.EXPECTED_ARCH}-${shard}-${process.env.EXPECTED_SHA}`)
-            for (const filename of ["CANDIDATE.json", "ARTIFACT.json"]) {
-              if (!(await readFile(join(directory, filename))).equals(await readFile(join(bundle, filename)))) throw Error("Mac shard used a different canonical candidate")
+          console.log(JSON.stringify({kind:'metadata', sourceRevision:process.env.GITHUB_SHA, build:tool('/usr/bin/sw_vers',['-buildVersion']).toString().trim(), sizes, rounds:5}))
+          const trials = []
+          const refused = new Set()
+          let complete = false
+          try {
+            for (const bytes of sizes) {
+            for (let round = 0; round < 5; round++) {
+              for (const variant of variants) {
+                if (refused.has(`${bytes}:${variant.name}`)) continue
+                const root = join(work, `${bytes}-${round}-${variant.name}`)
+                const mount = join(root, 'mount')
+                const image = join(root, 'volume.dmg')
+                await mkdir(root, { mode: 0o700 })
+                await mkdir(mount, { mode: 0o700 })
+                let backing
+                let phase = 'create'
+                try {
+                  const begin = performance.now()
+                  tool('/usr/bin/hdiutil', ['create', '-sectors', String(bytes / 512), '-fs',
+                    'Case-sensitive HFS+', '-volname', `Jig-${round}-${variant.name}`, '-type', 'UDIF',
+                    '-layout', 'NONE', '-nospotlight', ...variant.create, image])
+                  const handle = await open(image, 'r+')
+                  try { await handle.chmod(0o600); await handle.truncate(bytes); await handle.sync() } finally { await handle.close() }
+                  const created = performance.now()
+                  backing = await lstat(image, { bigint: true })
+                  assert.equal(backing.size, BigInt(bytes))
+                  assert.equal(backing.nlink, 1n)
+                  assert.equal(backing.uid, BigInt(process.getuid()))
+                  phase = 'attach'
+                  const attached = plist(tool('/usr/bin/hdiutil', ['attach', '-kernel', '-nobrowse',
+                    '-noautoopen', '-noautofsck', '-owners', 'on', '-mountpoint', mount, '-mount',
+                    'required', '-plist', ...variant.attach, image]))
+                  const mounted = performance.now()
+                  const entities = attached['system-entities']
+                  assert(Array.isArray(entities))
+                  const volume = entities.find(entry => entry['mount-point'] === mount)
+                  assert(volume && volume['volume-kind'] === 'hfs')
+                  const device = await mappedImage(image, backing, bytes)
+                  assert.equal(device, volume['dev-entry'])
+                  phase = 'validate'
+                  const filesystem = await statfs(mount, { bigint: true })
+                  const capacity = filesystem.bsize * filesystem.blocks
+                  assert(capacity > 0n && capacity <= BigInt(bytes))
+                  assert.equal((await stat(mount)).uid, process.getuid())
+                  await writeFile(join(mount, 'A'), 'upper', { flag: 'wx', mode: 0o600 })
+                  await assert.rejects(readFile(join(mount, 'a')), { code: 'ENOENT' })
+                  await writeFile(join(mount, 'a'), 'lower', { flag: 'wx', mode: 0o600 })
+                  assert.equal(await readFile(join(mount, 'A'), 'utf8'), 'upper')
+                  assert.equal(await readFile(join(mount, 'a'), 'utf8'), 'lower')
+                  phase = 'detach'
+                  tool('/usr/bin/hdiutil', ['detach', device])
+                  const detached = performance.now()
+                  assert.equal(await mappedImage(image, backing, bytes), undefined)
+                  const record = { variant: variant.name, round, bytes, status: 'passed', createMs: created - begin,
+                    attachMs: mounted - created, verifiedDetachMs: detached - mounted,
+                    totalMs: detached - begin, capacityBytes: String(capacity) }
+                  trials.push(record)
+                  console.log(JSON.stringify(record))
+                } catch (error) {
+                  if (variant.name === 'current') throw error
+                  refused.add(`${bytes}:${variant.name}`)
+                  const record = { variant: variant.name, round, bytes, status:'failed', phase,
+                    exitCode:Number.isInteger(error.status) ? error.status : null }
+                  trials.push(record)
+                  console.log(JSON.stringify(record))
+                } finally {
+                  cleaning = true
+                  // A successful attach can precede malformed command output. Derive
+                  // cleanup authority from its live exact image mapping, never a saved disk.
+                  if (!backing) {
+                    // Failed creation can still leave image-tool state. Unknown backing
+                    // has no detach authority and prevents recursive directory removal.
+                    assert(!imageInventory().some(entry => entry['image-path'] === image),
+                      'Failed creation left an unverified mounted image; retain evidence')
+                  }
+                  if (backing) {
+                    const device = await mappedImage(image, backing, bytes)
+                    if (device) tool('/usr/bin/hdiutil', ['detach', device])
+                    assert.equal(await mappedImage(image, backing, bytes), undefined)
+                  }
+                  await rm(root, { recursive: true })
+                  cleaning = false
+                }
+              }
             }
+            }
+            complete = true
+            console.log(JSON.stringify({ kind: 'summary', trials }))
+          } finally {
+            if (complete) await rm(work, { recursive: true })
+            else console.error('Failed experiment retained at', work)
           }
-          JS
-          python3 scripts/ci/macos-host-summary.py "$EXPECTED_ARCH" "$EXPECTED_SHA" "$SHARD_COUNT" \
-            "$RUNNER_TEMP/macos-evidence" "$RUNNER_TEMP/mac-job-timings.json" \
-            "$RUNNER_TEMP/mac-summary.json" >> "$GITHUB_STEP_SUMMARY"
-      -
-        name: "Retain coverage and timing summary"
-        if: "always()"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-summary-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/mac-summary.json"
-          if-no-files-found: "ignore"
-          retention-days: 7
-      -
-        name: "Bind complete native qualification to the canonical candidate"
-        env:
-          ARCHITECTURE: "${{ matrix.arch }}"
-        run: |
-          set -eu
-          mkdir "$RUNNER_TEMP/macos-qualification"
-          node scripts/ci/job-evidence.mjs --id "macos-$ARCHITECTURE" --summary "$RUNNER_TEMP/mac-summary.json" --artifacts --residue --output "$RUNNER_TEMP/macos-observed.json"
-          node scripts/ci/candidate-provenance.mjs qualification "$RUNNER_TEMP/macos-host-artifacts" "$RUNNER_TEMP/macos-qualification/QUALIFICATION.json" --kind macos --profile "$ARCHITECTURE"
-          cp "$RUNNER_TEMP/mac-summary.json" "$RUNNER_TEMP/macos-qualification/mac-summary.json"
-      -
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-qualification-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-qualification"
-          retention-days: 7
-          if-no-files-found: "error"
-      -
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-observed-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-observed.json"
-          retention-days: 7
-          if-no-files-found: "error"
-  affected-macos:
-    name: "affected-macos"
-    if: "always()"
-    needs:
-      - "scope"
-      - "host-artifacts"
-      - "prerequisites"
-      - "qualified-architecture"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 5
-    steps:
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        with:
-          persist-credentials: false
-          fetch-depth: 0
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        with:
-          node-version: "24"
-      -
-        name: "Revalidate host scope and every required job result"
-        env:
-          JOB_RESULTS: "${{ toJSON(needs) }}"
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify(Object.fromEntries(Object.entries(jobs).map(([id,job])=>[id,job.result]))));' "$RUNNER_TEMP/host-job-results.json"
-          node scripts/ci/host-scope.mjs --scope macos --results "$RUNNER_TEMP/host-job-results.json" > "$RUNNER_TEMP/affected-report.json"
-      -
-        name: "Download complete observed execution evidence"
-        if: "${{ needs.scope.outputs.required == 'true' }}"
-        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        with:
-          pattern: "macos-observed-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/observed-evidence"
-          merge-multiple: false
-      -
-        name: "Require complete observed host qualification"
-        if: "${{ needs.scope.outputs.required == 'true' }}"
-        env:
-          JOB_RESULTS: "${{ toJSON(needs) }}"
-        run: |
-          set -eu
-          node -e 'const fs=require("node:fs"),jobs=JSON.parse(process.env.JOB_RESULTS);fs.writeFileSync(process.argv[1],JSON.stringify({"macos-arm64":jobs["qualified-architecture"].result}));' "$RUNNER_TEMP/host-evidence-results.json"
-          node scripts/ci/job-evidence.mjs --directory "$RUNNER_TEMP/observed-evidence" --results "$RUNNER_TEMP/host-evidence-results.json" --scope macos --output "$RUNNER_TEMP/host-evidence.json"
-      -
-        name: "Retain host scope and complete qualification reconciliation"
-        if: "always()"
-        uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
-        with:
-          name: "macos-affected-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: |
-            ${{ runner.temp }}/affected-report.json
-            ${{ runner.temp }}/host-evidence.json
-          retention-days: 7
-          if-no-files-found: "ignore"
+          
+          JIG_VOLUME_EXPERIMENT
+          
