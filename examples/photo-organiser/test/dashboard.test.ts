@@ -75,7 +75,7 @@ test('captured originals appear before grouping and contact-sheet output remains
     presentation: {
       kind: 'gallery',
       media: 'image',
-      title: 'name',
+      title: 'caption',
       alt: 'caption',
       description: 'date',
     },

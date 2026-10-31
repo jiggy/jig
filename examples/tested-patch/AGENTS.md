@@ -77,7 +77,9 @@ after executed checks and independent acceptance.
 
 - The coordinator’s `dashboard.ts` projects a small typed state into one Patch
   review page with issue, scope, independently validated comparison and files
-  through `updates`. Extracted methods offer independent views through
+  through `updates`. Delivered patch references also render inline content.
+
+  Extracted methods offer independent views through
   `progress`. The repair specialist keeps provisional Repair and Checks views
   through `updates`. FLOW entrypoints own scoped publishers, activity and
   failure notices.

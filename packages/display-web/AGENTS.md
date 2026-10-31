@@ -10,7 +10,8 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - `src/client.ts` owns bounded synchronization, memory capability and preview
   requests. `src/navigation.ts` owns viewer-local semantic selection/references.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
-- `src/application.ts` composes authored sections and complete-column tables.
+- `src/application.ts` composes authored reading, media, gallery and comparison surfaces.
+  Gallery metadata uses a disclosure without dropping supplied columns.
   `src/app.ts`, `src/app.css` and `src/index.html` own inert browser
   rendering.
 - `scripts/build-assets.ts` emits fixed self-contained values for the declared
@@ -63,6 +64,9 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
   inspection destinations.
+- Follow [DESIGN.md](DESIGN.md) for the approved workbench hierarchy and material-specific acceptance criteria.
+- Preserve application selection through local filtering. Explain hidden selections and allow clearing filters without selecting another record.
+- Render captured text, delimited tables and diffs inline. Keep unavailable and clipped captures explicit.
 - Preserve list/context/expanded-evidence hierarchy, keyboard focus, compact
   navigation, diagnostic uncertainty and captured-file findings.
 - Routine replacement belongs in quiet synchronization. Actual loss remains

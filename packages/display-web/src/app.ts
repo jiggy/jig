@@ -13,7 +13,7 @@ import {
 import type { DetailBlock, MediaReference, Reference, Value } from '@jigging/reporting'
 import { type ComponentChildren, h, render } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
-import { ApplicationPage, FormattedReport } from './application.js'
+import { ApplicationPage, CapturedContent, FormattedReport } from './application.js'
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
 import {
   PrivateBrowserClock,
@@ -92,7 +92,16 @@ const records = (): PrivateBrowserRecord[] => {
   const selected = view()
   return selected ? privateBrowserRecords(selected, currentLocal()) : []
 }
-const selectedRecord = () => records().find((record) => record.key === currentLocal().selected)
+const selectedRecord = () => {
+  const selected = view()
+  const state = currentLocal()
+  return selected
+    ? privateBrowserRecords(
+        selected,
+        isApplicationPage() ? { ...state, filters: new Map() } : state,
+      ).find((record) => record.key === state.selected)
+    : undefined
+}
 const provenance = (value: DisplayAttribution): string =>
   value.provenance === 'recorded-claim'
     ? 'Recorded claim'
@@ -156,7 +165,11 @@ function redraw(): void {
           )
         )
           state.sorts.delete(key)
-      const nextRecords = privateBrowserRecords(item, state)
+      const application = tabs.some((tab) => tab.id === viewKey && tab.application)
+      const nextRecords = privateBrowserRecords(
+        item,
+        application ? { ...state, filters: new Map() } : state,
+      )
       const keys = nextRecords.map((record) => record.key)
       if (state.selected) {
         state.selected = privateBrowserSurvivingSelection(
@@ -265,6 +278,8 @@ function focusSelectedEntry(): void {
       '[data-record][aria-pressed=true], [data-call][aria-pressed=true]',
     )
     ?.focus()
+  if (!document.querySelector('[data-record][aria-pressed=true], [data-call][aria-pressed=true]'))
+    document.querySelector<HTMLButtonElement>('.selection-notice button')?.focus()
 }
 function focusDetailReturn(): void {
   const breakpoint = isApplicationPage() ? '(max-width: 1000px)' : '(max-width: 599px)'
@@ -473,26 +488,28 @@ function CapturedMedia({
   return h(
     'figure',
     { ref: element, class: 'captured-media' },
-    reply?.state === 'image' && reply.image
-      ? h('img', {
-          src: `data:${reply.image.mime};base64,${reply.image.base64}`,
-          alt: privateBrowserLiteral(alt),
-          width: reply.image.width,
-          height: reply.image.height,
-          loading: 'lazy',
-        })
-      : h(
-          'div',
-          { class: 'media-placeholder' },
-          !client?.referencesEnabled
-            ? 'Capture unavailable while observation is stale.'
-            : target?.kind !== 'artifact'
-              ? (target?.label ?? 'Captured content unavailable.')
-              : reply
-                ? 'Image preview unavailable. Open the captured evidence for details.'
-                : 'Captured preview not loaded. Open the captured evidence for details.',
-        ),
-    h('figcaption', {}, h(ReferenceButton, { value: reference, record })),
+    h(CapturedContent, {
+      reply,
+      path: reference.path,
+      alt,
+      unavailable: !client?.referencesEnabled
+        ? 'Capture unavailable while observation is stale.'
+        : target?.kind !== 'artifact'
+          ? (target?.label ?? 'Captured content unavailable.')
+          : reply
+            ? 'Preview unavailable. Open the captured source for details.'
+            : 'Captured preview not loaded. Open the captured source for details.',
+    }),
+    h(
+      'figcaption',
+      {},
+      h(
+        'details',
+        {},
+        h('summary', {}, 'Captured source'),
+        h(ReferenceButton, { value: reference, record }),
+      ),
+    ),
   )
 }
 
@@ -511,11 +528,16 @@ function Block({
       block.references?.map((value, index) => h(ReferenceButton, { key: index, value, record })),
     )
   if (block.kind === 'content')
-    return h(CapturedMedia, {
-      reference: block.reference,
-      record,
-      alt: block.title ?? block.reference.path,
-    })
+    return h(
+      'section',
+      { class: 'captured-block' },
+      block.title ? h('h4', {}, literal(block.title)) : null,
+      h(CapturedMedia, {
+        reference: block.reference,
+        record,
+        alt: block.title ?? block.reference.path,
+      }),
+    )
   if (block.kind === 'progress') return h(Progress, { block })
   return h(
     'dl',
@@ -722,13 +744,6 @@ function ApplicationList(): ComponentChildren {
       onFilter: (collection, query) => {
         humanNavigation = true
         state.filters.set(collection, query)
-        const next = records().map((record) => record.key)
-        state.selected = privateBrowserSurvivingSelection(
-          previousKeys.get(destinationKey) ?? [],
-          state.selected,
-          next,
-        )
-        previousKeys.set(destinationKey, next)
         redraw()
       },
       onSort: (collection, key, descending) => {
@@ -1027,6 +1042,17 @@ function SelectedDetail(): ComponentChildren {
       },
       { class: 'back-to-records' },
     ),
+    isApplicationPage() && !records().some((item) => item.key === record.key)
+      ? h(
+          'div',
+          { class: 'selection-notice selection-notice-detail', role: 'status' },
+          h('span', {}, 'This record is outside the current filters. Its details remain open.'),
+          button('Clear filters', () => {
+            state.filters.clear()
+            redraw()
+          }),
+        )
+      : null,
     h(
       'div',
       { class: 'detail-heading' },
@@ -1967,9 +1993,17 @@ function App(): ComponentChildren {
             ? 'JIG / APPLICATION VIEWS'
             : current.mode === 'recorded-packet'
               ? 'JIG / RECORDED RESULT'
-              : 'JIG / LOCAL RUN',
+              : current.workspace.target,
         ),
-        h('h1', {}, literal(current.workspace.target)),
+        h(
+          'h1',
+          {},
+          literal(
+            !panel && isApplicationPage()
+              ? (view()?.value.title ?? current.workspace.target)
+              : current.workspace.target,
+          ),
+        ),
         current.context
           ? h(
               'details',

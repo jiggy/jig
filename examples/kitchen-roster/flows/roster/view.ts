@@ -102,19 +102,36 @@ export function rosterView(state: RosterState): ViewSnapshot {
     },
   ]
 
-  for (const shift of state.scenario?.shifts ?? []) {
-    const cook = assignments.find((row) => row.shiftId === shift.id && row.role === 'cook')
-    const server = assignments.find((row) => row.shiftId === shift.id && row.role === 'serve')
-    sections.push({
-      title: `${clockTime(shift.from)}–${clockTime(shift.until)}`,
+  if (state.scenario) {
+    sections.unshift({
+      title: 'Saturday timetable',
       blocks: [
         {
-          kind: 'facts',
-          items: [
-            { label: 'Cook', value: cook?.name ?? 'Awaiting checked assignment' },
-            { label: 'Serve', value: server?.name ?? 'Awaiting checked assignment' },
-            { label: 'Coverage', value: cook && server ? 'Both roles checked' : 'Unassigned' },
+          kind: 'collection',
+          id: 'timetable',
+          title: 'Saturday timetable',
+          columns: [
+            { key: 'time', label: 'Time', type: 'text' },
+            { key: 'cook', label: 'Cook', type: 'text' },
+            { key: 'serve', label: 'Serve', type: 'text' },
+            { key: 'coverage', label: 'Coverage', type: 'text' },
           ],
+          rows: state.scenario.shifts.map((shift) => {
+            const cook = assignments.find((row) => row.shiftId === shift.id && row.role === 'cook')
+            const server = assignments.find(
+              (row) => row.shiftId === shift.id && row.role === 'serve',
+            )
+            return {
+              id: shift.id,
+              cells: {
+                time: `${clockTime(shift.from)}–${clockTime(shift.until)}`,
+                cook: cook?.name ?? 'Awaiting checked assignment',
+                serve: server?.name ?? 'Awaiting checked assignment',
+                coverage: cook && server ? 'Both roles checked' : 'Unassigned',
+              },
+            }
+          }),
+          total: state.scenario.shifts.length,
         },
       ],
     })

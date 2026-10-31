@@ -47,7 +47,7 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
       blocks: [
         {
           kind: 'report',
-          text: 'Open the contact sheet to see the original photo box beside its organised copies. The manifest records every destination.',
+          text: 'The checked collection preserves every original. Compare the grouping and review the destinations in the manifest.',
           references: [
             { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
             { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
@@ -84,57 +84,74 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
   })
 
   if (photos.length) {
-    sections.push({
-      title: 'Your photos',
-      blocks: [
-        {
-          kind: 'collection',
-          id: 'photos',
-          title: 'Original → organised copy',
-          presentation: { kind: 'table' },
-          columns: [
-            { key: 'original', label: 'Original', type: 'text' },
-            { key: 'date', label: 'Date', type: 'text' },
-            { key: 'group', label: 'Event', type: 'text' },
-            { key: 'copy', label: ready ? 'Copy' : 'Planned copy', type: 'text' },
-          ],
-          rows: photos.map((photo) => {
-            const checked = plan.find((entry) => entry.id === photo.id)
-            return {
-              id: photo.id,
-              cells: {
-                original: photo.file,
-                date: photo.date,
-                group: checked?.event ?? null,
-                copy: checked?.destination ?? null,
-              },
-              details: [
-                {
-                  kind: 'content',
-                  title: 'Original photo',
-                  reference: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+    const events = state.plan ? groups : ['Awaiting checked grouping']
+    for (const event of events) {
+      const members = photos.filter(
+        (photo) => !state.plan || plan.find((entry) => entry.id === photo.id)?.event === event,
+      )
+      sections.push({
+        title: event,
+        blocks: [
+          {
+            kind: 'collection',
+            id: `event-${sections.length}`,
+            title: event,
+            presentation: {
+              kind: 'gallery',
+              media: 'image',
+              title: 'caption',
+              alt: 'caption',
+              description: 'date',
+            },
+            columns: [
+              { key: 'caption', label: 'Caption', type: 'text' },
+              { key: 'image', label: 'Original photo', type: 'reference' },
+              { key: 'date', label: 'Date', type: 'text' },
+              { key: 'original', label: 'Original', type: 'text' },
+              { key: 'copy', label: ready ? 'Copy' : 'Planned copy', type: 'text' },
+            ],
+            rows: members.map((photo) => {
+              const checked = plan.find((entry) => entry.id === photo.id)
+              return {
+                id: photo.id,
+                cells: {
+                  caption: photo.caption,
+                  image: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+                  date: photo.date,
+                  original: photo.file,
+                  copy: checked?.destination ?? null,
                 },
-                {
-                  kind: 'report',
-                  text: photo.caption,
-                  references:
-                    ready && checked
-                      ? [
-                          {
-                            kind: 'artifact',
-                            attachment: 'copies',
-                            path: checked.destination.slice('copies/'.length),
-                          },
-                        ]
-                      : [],
-                },
-              ],
-            }
-          }),
-          total: photos.length,
-        },
-      ],
-    })
+                details: [
+                  {
+                    kind: 'content',
+                    title: 'Original photo',
+                    reference: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+                  },
+                  {
+                    kind: 'report',
+                    text: photo.caption,
+                    references:
+                      ready && checked
+                        ? [
+                            {
+                              kind: 'artifact',
+                              attachment: 'copies',
+                              path: checked.destination.slice('copies/'.length),
+                            },
+                          ]
+                        : [],
+                  },
+                ],
+              }
+            }),
+            total: members.length,
+          },
+        ],
+      })
+    }
+    // Material leads; status and caveats remain together below it.
+    const status = sections.findIndex((section) => section.title === 'Photo box status')
+    sections.push(...sections.splice(status, 1))
   }
 
   return {
@@ -183,7 +200,7 @@ export function photoGalleryView(state: PhotoBoxState): ViewSnapshot {
             presentation: {
               kind: 'gallery',
               media: 'image',
-              title: 'name',
+              title: 'caption',
               alt: 'caption',
               description: 'date',
             },

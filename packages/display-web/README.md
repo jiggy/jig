@@ -81,7 +81,11 @@ names and tooltips. System follows the browser preference by default; selection
 is local to the current viewer and does not change supplied observations.
 
 Application views preserve explicit gallery roles, literal report formats and captured content references.
-Gallery cards retain every supplied column and expose additional row context when supplied.
+Gallery cards lead with images and captions. A disclosure retains every supplied column.
+Reading surfaces preserve prose spacing. Captured text, CSV tables and patches appear inline.
+
+The shell identifies each page once. Collection filters preserve the inspected record and explain hidden selections.
+[DESIGN.md](DESIGN.md) records the approved prototype reference and acceptance criteria.
 Plain display pages need no inspection button. Related navigation uses the publisher and application subject.
 
 Captured inputs retain distinct provenance from delivered outputs.

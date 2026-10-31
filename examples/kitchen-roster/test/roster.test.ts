@@ -303,7 +303,11 @@ test('pure root projection preserves stages, acceptance and uncertain delivery',
       ...(index >= 3 ? { assignments: rows } : {}),
     }),
   )
-  expect(views.map((view) => view.sections[0]!.blocks[0])).toEqual([
+  expect(
+    views.map(
+      (view) => view.sections.find((section) => section.title === 'Roster status')!.blocks[0],
+    ),
+  ).toEqual([
     {
       kind: 'progress',
       label: 'Reading volunteer availability',
@@ -336,7 +340,10 @@ test('pure root projection preserves stages, acceptance and uncertain delivery',
   ])
   expect(JSON.stringify(views[2])).toContain('Awaiting checked assignment')
   expect(JSON.stringify(views[2])).not.toContain('Both roles checked')
-  expect(views[3]!.sections.slice(1, 5).map((section) => section.title)).toEqual([
+  const timetable = views[3]!.sections[0]!.blocks[0]
+  expect(timetable.kind).toBe('collection')
+  if (timetable.kind !== 'collection') throw new Error('The roster must present a timetable')
+  expect(timetable.rows.map((row) => row.cells.time)).toEqual([
     '09:00–10:00',
     '10:00–11:00',
     '11:00–12:00',

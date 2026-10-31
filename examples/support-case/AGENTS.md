@@ -51,7 +51,10 @@ eligibility and customer-facing claims.
 
 - The coordinator’s `dashboard.ts` projects a small typed state into one
   Support case page with request, relevant charges, provisional
-  interpretation, checked decision and draft reply. Its bounded charge excerpt
+  interpretation, checked decision and draft reply.
+
+  The request and draft lead the page, with policy and process facts below.
+  Its bounded charge excerpt
   always includes the proposed charge and a matching earlier payment.
   Its fixed target identifies the account and request independently of Run identity.
   `previewCollection` preserves complete selected charges and their full count. Child
