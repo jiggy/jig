@@ -70,6 +70,12 @@ consumer behavior.
 Feature linking and admission retain all ordinary source and native requirements.
 The portable profile must not replace that evaluator.
 
+`portable/project-evaluator-child.test.ts` checks bounded stdin framing and real
+subprocess settlement with controlled programs. Hostile request text, Unicode
+and prototype keys remain data. These checks do not qualify declaration
+evaluation, native admission, source capture or containment. Host authoring
+suites retain fresh declarations, captured support, deadlines and cleanup.
+
 Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
 Protected acceptance, replacement and save limits require actual SQLite ownership.
 Native command loss, independent fencing and installed recovery remain host gates.

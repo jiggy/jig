@@ -7,17 +7,14 @@ import {
 } from './project-evaluator-child.js'
 import { reachableAuthorModules } from './project-evaluator-modules.js'
 import {
-  PRIVATE_AUTHOR_EVALUATOR_DIRECTORY,
   PRIVATE_AUTHOR_EVALUATOR_MAX_ENTRIES,
+  PRIVATE_AUTHOR_EVALUATOR_MAX_REQUEST_BYTES,
   PRIVATE_AUTHOR_EVALUATOR_PROTOCOL,
 } from './project-evaluator-policy.js'
+import { readPrivateAuthorEvaluatorProgram } from './project-evaluator-program.js'
 
 const PROTOCOL = PRIVATE_AUTHOR_EVALUATOR_PROTOCOL
-const MAX_REQUEST_BYTES = 2 * 1024 * 1024
-const SDK_ENTRY =
-  process.env.JIG_EVALUATOR_SDK ??
-  `${PRIVATE_AUTHOR_EVALUATOR_DIRECTORY}/project-evaluator-sdk.bundle.js`
-delete process.env.JIG_EVALUATOR_SDK
+const bootstrap = readPrivateAuthorEvaluatorProgram()
 type AuthoringProfile = 'project-authoring/1'
 const EVALUATION_CODES = new Set([
   'PROJECT_AUTHORING_VALUE',
@@ -80,8 +77,6 @@ interface PluginBuilder {
 }
 
 interface BunRuntime {
-  readonly stdin: { arrayBuffer(): Promise<ArrayBuffer> }
-  file(path: string): { text(): Promise<string> }
   build(options: {
     readonly entrypoints: readonly string[]
     readonly format: 'cjs'
@@ -132,8 +127,8 @@ try {
 }
 
 async function readRequest(): Promise<WorkerRequest> {
-  const bytes = new Uint8Array(await runtime.stdin.arrayBuffer())
-  if (bytes.byteLength === 0 || bytes.byteLength > MAX_REQUEST_BYTES) {
+  const bytes = bootstrap.request
+  if (bytes.byteLength === 0 || bytes.byteLength > PRIVATE_AUTHOR_EVALUATOR_MAX_REQUEST_BYTES) {
     throw tagged('PROJECT_EVALUATION_LIMIT', 'evaluator request exceeds its byte bound')
   }
   let value: unknown
@@ -224,8 +219,7 @@ async function evaluateEntry(request: WorkerRequest, index: number): Promise<Jso
       entries: [entryProjectPath],
       modules: reachableAuthorModules(request.modules, entryProjectPath),
     } as unknown as JsonValue),
-    process.argv[1]!,
-    SDK_ENTRY,
+    bootstrap.support,
   )
   const response = decodeJson1(output)
   if (!isRecord(response) || response.protocol !== PROTOCOL) {
@@ -258,7 +252,7 @@ function exactKeys(value: object, expected: readonly string[]): boolean {
 }
 
 async function build(request: WorkerRequest, entryProjectPath: string): Promise<string> {
-  const sdkSource = await runtime.file(SDK_ENTRY).text()
+  const sdkSource = bootstrap.support.sdkSource
   const modules = new Map(request.modules.map((module) => [module.projectPath, module]))
   const edges = new Map<string, string>()
   for (const module of request.modules) {
