@@ -108,6 +108,22 @@ test('retry history records retained work without assuming receipt acceptance or
   assert.ok(report.notes.some((note) => note.includes('receipt acceptance')))
 })
 
+test('timestamps with mixed ISO precision retain chronological interval boundaries', () => {
+  const run = entry()
+  run.attempts[0].jobs[0].created_at = stamp(300).replace('.000Z', 'Z')
+  run.attempts[0].jobs[0].completed_at = stamp(480).replace('.000Z', 'Z')
+  run.attempts[0].jobs.push(
+    job(102, 'source', 1, {
+      created_at: stamp(300.1),
+      started_at: stamp(360.1),
+      completed_at: stamp(480.1),
+    }),
+  )
+  const report = analyzeCiPerformance(snapshot([run]))
+  assert.equal(report.attempts[0].preJobSeconds, 300)
+  assert.equal(report.attempts[0].elapsedSeconds, 480.1)
+})
+
 test('a newer failed execution cannot count an older success as retained work', () => {
   const run = entry()
   run.run.run_attempt = 2
