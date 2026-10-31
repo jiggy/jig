@@ -1,18 +1,29 @@
 // A retry may retain a job only inside the original pull-request workflow run.
 // The latest execution wins, including failures: never search backwards for green.
+const timestamp = (value) => typeof value === 'string' ? Date.parse(value) : Number.NaN
+
 function carriedCheck(job) {
   return job.status === 'completed' && job.conclusion === 'success' &&
-    Number.isFinite(Date.parse(job.created_at)) && Number.isFinite(Date.parse(job.completed_at)) &&
-    Date.parse(job.created_at) > Date.parse(job.completed_at)
+    Number.isFinite(timestamp(job.created_at)) && Number.isFinite(timestamp(job.completed_at)) &&
+    timestamp(job.created_at) > timestamp(job.completed_at)
 }
 
 function executionObservation(job) {
-  if (!Number.isFinite(Date.parse(job.started_at)) ||
-      Date.parse(job.started_at) > Date.parse(job.completed_at) ||
+  if (!Number.isFinite(timestamp(job.started_at)) ||
+      !Number.isFinite(timestamp(job.completed_at)) ||
+      timestamp(job.started_at) > timestamp(job.completed_at) ||
       !Number.isSafeInteger(job.runner_id) || job.runner_id <= 0 ||
       typeof job.runner_name !== 'string' || !job.runner_name ||
       !Array.isArray(job.labels) || !job.labels.length ||
+      job.labels.some((label) => typeof label !== 'string' || !label) ||
       !Array.isArray(job.steps) || !job.steps.length) return undefined
+  if (new Set(job.steps.map((step) => step?.number)).size !== job.steps.length ||
+      job.steps.some((step) => !step || !Number.isSafeInteger(step.number) || step.number < 1 ||
+        typeof step.name !== 'string' || !step.name || step.status !== 'completed' ||
+        typeof step.conclusion !== 'string' || !step.conclusion ||
+        !((step.conclusion === 'skipped' && step.started_at === null && step.completed_at === null) ||
+          (Number.isFinite(timestamp(step.started_at)) && Number.isFinite(timestamp(step.completed_at)) &&
+            timestamp(step.started_at) <= timestamp(step.completed_at))))) return undefined
   return JSON.stringify([job.started_at, job.completed_at, job.runner_id, job.runner_name, job.labels,
     job.steps.map((step) => [step.number, step.name, step.status, step.conclusion, step.started_at, step.completed_at])])
 }
@@ -35,8 +46,8 @@ export function latestJob(jobs, run, name, { completed = true } = {}) {
     const observation = executionObservation(job)
     const originals = matches.filter((earlier) => earlier.id !== job.id && earlier.run_attempt < job.run_attempt &&
       earlier.status === 'completed' && earlier.conclusion === 'success' &&
-      Number.isFinite(Date.parse(earlier.created_at)) &&
-      Date.parse(earlier.created_at) <= Date.parse(earlier.started_at) &&
+      Number.isFinite(timestamp(earlier.created_at)) &&
+      timestamp(earlier.created_at) <= timestamp(earlier.started_at) &&
       observation !== undefined && executionObservation(earlier) === observation)
     if (originals.length !== 1) throw new Error('Unverifiable carried merge check: ' + name)
     return false

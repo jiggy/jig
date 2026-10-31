@@ -148,6 +148,16 @@ test('GitHub carried checks retain the exact original execution identity across 
   ]) assert.throws(() => latestJob([original, { ...copy, ...change }], run, 'source'), /Unverifiable carried/)
   assert.throws(() => latestJob([copy], run, 'source'), /Unverifiable carried/)
   assert.throws(() => latestJob([original, { ...original, id: 9 }, copy], run, 'source'), /Unverifiable carried/)
+  for (const invalid of [{ steps: [{}] }, { labels: [null] },
+    { steps: [{ ...execution.steps[0], started_at: null }] },
+    { steps: [{ ...execution.steps[0], started_at: 0 }] },
+    { steps: [{ ...execution.steps[0], completed_at: [] }] },
+    { steps: [{ ...execution.steps[0], status: 'in_progress' }] },
+    { steps: [execution.steps[0], execution.steps[0]] },
+  ]) {
+    const incomplete = { ...original, ...invalid }
+    assert.throws(() => latestJob([incomplete, copiedCheck(incomplete, 2)], run, 'source'), /Unverifiable carried/)
+  }
   const laterFailure = job(4, 'source', 2, { ...execution, conclusion: 'failure' })
   assert.throws(() => latestJob([original, laterFailure, copiedCheck(original, 5, 3)], { ...run, run_attempt: 3 }, 'source'), /did not succeed/)
   assert.throws(() => latestJob([original, { ...copy, status: 'in_progress', conclusion: null }], run, 'source'), /did not succeed/)
