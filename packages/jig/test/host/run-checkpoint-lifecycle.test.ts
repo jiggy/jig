@@ -15,17 +15,28 @@ import {
   savePrivateAttemptRunCheckpoint,
 } from '../../src/internal/activation-admission-store.js'
 import { privateOwnFileCommand } from '../../src/internal/file-command.js'
+import { startHostTestTiming } from '../fixtures/host-test-timing.mjs'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
 const jig = join(suiteTestRoot, '../bin/jig')
 async function cli(root: string, args: string[]) {
+  const commandTiming = startHostTestTiming(
+    'checkpoint',
+    args[0] === 'review' ? 'review-command' : 'run-command',
+  )
   const process = Bun.spawn([jig, ...args], { cwd: root, stdout: 'pipe', stderr: 'pipe' })
-  const [code, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
-  ])
-  return { code, stdout, stderr }
+  try {
+    const [code, stdout, stderr] = await Promise.all([
+      process.exited,
+      new Response(process.stdout).text(),
+      new Response(process.stderr).text(),
+    ])
+    commandTiming()
+    return { code, stdout, stderr }
+  } catch (error) {
+    commandTiming('failed')
+    throw error
+  }
 }
 // An independently authored Run/0 peer controls only its own protocol reads.
 // After the selected save it never requests another input frame: a result may
@@ -80,6 +91,7 @@ await new Promise(()=>{});
 `
 
 async function fixture(validation = false, barrierChannel = false, unacknowledged = false) {
+  const setupTiming = startHostTestTiming('checkpoint', 'setup')
   const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-checkpoint-proof-')))
   for (const name of ['root', 'worker']) {
     const path = join(root, 'flows', name)
@@ -193,6 +205,7 @@ async function fixture(validation = false, barrierChannel = false, unacknowledge
     join(root, 'bindings/root.ts'),
     `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/root',slots:{worker:'flow:flows/worker'}});`,
   )
+  setupTiming()
   const review = await cli(root, ['review', '--yes'])
   if (review.code !== 0)
     throw new Error(`fixture review failed: ${review.stderr}\n${review.stdout}`)
@@ -375,6 +388,7 @@ describe.serial('root retained progress', () => {
         let stopped = false
         let finished = false
         const cancellation = new AbortController()
+        const recoveryTiming = startHostTestTiming('checkpoint', 'recovery-command')
         const execution = privateOwnFileCommand(
           [
             '/bin/sh',
@@ -464,7 +478,9 @@ describe.serial('root retained progress', () => {
           )
           if (phase === 'cancel') cancellation.abort()
           else process.kill(pid!, 'SIGKILL')
-          expect((await execution).signal).toBe('SIGKILL')
+          const recovered = await execution
+          recoveryTiming()
+          expect(recovered.signal).toBe('SIGKILL')
           const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
           expect(packet.status).toBe('lost')
           expect(packet.code).toBe('COORDINATOR_LOST')

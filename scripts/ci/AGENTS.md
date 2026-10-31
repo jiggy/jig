@@ -231,6 +231,11 @@ They consume frozen package exports with tracked test helpers and installed
   archives. Ordinary platform source builds remain separate. Full self-hosted
   local mode uses the owning local packers.
 
+  An existing `JIG_MACOS_TEST_TIMINGS_DIRECTORY` selection enables
+  `JIG_HOST_TEST_TIMING=1` for checkpoint, workspace and foundation fixture
+  diagnostics. Their closed wall intervals and bounded profile projections appear
+  in the existing job log. Timing changes no deadlines, inventories or outcomes.
+
   The workflow reallocates the former two Apple Silicon jobs' allowance to one
   complete host, with a smaller aggregate allowance and shared setup. Per-test
   and product deadlines stay unchanged. The exact allocations belong to

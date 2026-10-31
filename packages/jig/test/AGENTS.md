@@ -417,6 +417,18 @@ transcript prefix. Its command deadline reserves settlement inside the existing
 `fixtures/private-profile-diagnostics.ts` shares strict profile projection with the foundation fixtures.
 It preserves the 256 KiB input, 1026-record and forty-event limits.
 
+`JIG_HOST_TEST_TIMING=1` enables closed timing records for checkpoint, workspace
+and foundation host consumers. Each suite emits at most 96 wall observations and
+one truncation marker. Labels distinguish completed setup, command collection,
+interruption waiting, recovery commands and final verification. Application driver
+intervals include their reviewed Runs, observation and exports. Command intervals
+include their own setup and settlement. Nested intervals are not additive.
+
+Workspace and foundation consumers also project at most twelve existing private
+profiles per suite through the same bounded summary. The projection exposes
+existing review, execution and settlement events without raw paths or payloads.
+Returned command collection establishes neither a passing assertion nor native cleanup.
+
 Materialization timing separates byte and alias copying, directory freezing, and complete package verification.
 Portable profile tests observe actual lease creation and disposal in fresh subprocesses, with profiling enabled and disabled.
 These timings establish neither native admission nor payload execution.
