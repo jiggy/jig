@@ -26,6 +26,7 @@ function seconds(start, end, label) {
   if (result < 0) throw new Error(`Reversed ${label}`)
   return result
 }
+const timeOrder = (a, b) => Date.parse(a) - Date.parse(b)
 function identity(value, label) {
   if (!Number.isSafeInteger(value) || value <= 0) throw new Error(`Invalid ${label}`)
   return value
@@ -154,13 +155,13 @@ export function analyzeCiPerformance(snapshot) {
       const active = jobs.filter((job) => job.classification !== 'job-skipped')
       const firstCreatedAt = active
         .map((job) => job.createdAt)
-        .sort()
+        .sort(timeOrder)
         .at(0)
       const completedAt =
         active.length && active.every((job) => job.completedAt)
           ? active
               .map((job) => job.completedAt)
-              .sort()
+              .sort(timeOrder)
               .at(-1)
           : null
       latest = {
@@ -263,10 +264,10 @@ export function analyzeCiPerformance(snapshot) {
           : null,
       threeWorkflowEnvelopeSeconds: successful
         ? seconds(
-            group.map((run) => run.createdAt).sort()[0],
+            group.map((run) => run.createdAt).sort(timeOrder)[0],
             group
               .map((run) => run.completedAt)
-              .sort()
+              .sort(timeOrder)
               .at(-1),
             'three-workflow envelope',
           )
