@@ -1,6 +1,6 @@
 {
   "name": "@jigging/display-tui",
-  "version": "0.1.0-alpha.3",
+  "version": "0.1.0-alpha.4",
   "description": "Independent semantic terminal and inline displays",
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
@@ -43,7 +43,7 @@
     "THIRD_PARTY_NOTICES"
   ],
   "dependencies": {
-    "@jigging/display-model": "0.1.0-alpha.3",
+    "@jigging/display-model": "0.1.0-alpha.4",
     "@jigging/reporting": "0.1.0-alpha.3",
     "@opentui/core": "0.5.17",
     "web-tree-sitter": "0.25.10"

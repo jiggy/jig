@@ -1,6 +1,6 @@
 {
   "name": "@jigging/jig",
-  "version": "0.1.0-alpha.46",
+  "version": "0.1.0-alpha.47",
   "description": "A local, secure host for admitted FLOW packages",
   "license": "SEE LICENSE IN LICENSE.md",
   "repository": {
@@ -101,9 +101,9 @@
     "web-tree-sitter": "0.25.10"
   },
   "devDependencies": {
-    "@jigging/display-model": "0.1.0-alpha.3",
-    "@jigging/display-web": "0.1.0-alpha.3",
-    "@jigging/display-tui": "0.1.0-alpha.3",
+    "@jigging/display-model": "0.1.0-alpha.4",
+    "@jigging/display-web": "0.1.0-alpha.4",
+    "@jigging/display-tui": "0.1.0-alpha.4",
     "@jigging/reporting": "workspace:*",
     "@jigging/agent-acp": "workspace:*",
     "@jigging/agent-method": "workspace:*",
