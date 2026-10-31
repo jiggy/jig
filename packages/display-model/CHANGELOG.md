@@ -1,5 +1,11 @@
 # @jigging/display-model
 
+## 0.1.0-alpha.4
+
+### Patch Changes
+
+- f277e9a: Clarify the bundled license map for the new Jig homepage and its separately licensed fonts.
+
 ## 0.1.0-alpha.3
 
 ### Patch Changes
