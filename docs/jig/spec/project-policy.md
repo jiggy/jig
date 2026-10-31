@@ -35,10 +35,10 @@ read project configuration, or look up a version in the registry.
 
 ### Jig version requirements
 
-A project may declare one exact tested Jig version in `package.json` under `peerDependencies["@jigging/jig"]`.
+A project may declare one exact tested Jig version in `package.json` under `engines.jig`.
 The requirement uses an exact SemVer value, including any prerelease identifier.
 Ranges, tags, aliases and workspace selectors are invalid requirements.
-Set `peerDependenciesMeta["@jigging/jig"].optional` to `true` to avoid installing the host as a project dependency.
+The engine declaration records host compatibility independently of runtime dependency selection.
 
 Review reads this inert metadata before acquiring the execution host or evaluating declarations.
 `PROJECT_JIG_VERSION_MISMATCH` identifies different required and running versions.
@@ -58,7 +58,7 @@ the same explicit missing-lock resolution permission and review as any other
 package; initialization performs no installation, network requests, approval,
 or execution. A destination must not exist. Initialization never replaces files.
 
-Normal initialization writes a private root `package.json` with its build’s exact Jig version as an optional peer requirement.
+Normal initialization writes a private root `package.json` with its build’s exact Jig version in `engines.jig`.
 This metadata records the required host without installing it.
 Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
 

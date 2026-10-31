@@ -158,7 +158,7 @@ authored examples, not independent consumer evidence or promoted Starters.
 
 ## Verification
 
-- Every example declares the current exact Jig version as an optional peer requirement.
+- Every example declares the current exact Jig version in `engines.jig`.
   Review checks it before evaluating project declarations.
   Keep these pins synchronized through ordinary release generation.
 

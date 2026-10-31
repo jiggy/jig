@@ -280,7 +280,9 @@ export async function createProject(
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
       ['jig.ts', renderJigModule(agent)],
-      ...(!bare && agent === undefined ? [['package.json', renderProjectManifest()]] as const : []),
+      ...(!bare && agent === undefined
+        ? ([['package.json', renderProjectManifest()]] as const)
+        : []),
       ...(!bare
         ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
         : []),
@@ -342,10 +344,7 @@ function renderJigModule(agent?: ProjectInitAgent): string {
 
 function agentFiles(client: ProjectInitAgent): readonly (readonly [string, string])[] {
   return [
-    [
-      'package.json',
-      renderProjectManifest({ '@jigging/agent-acp': AGENT_ACP_VERSION }),
-    ],
+    ['package.json', renderProjectManifest({ '@jigging/agent-acp': AGENT_ACP_VERSION })],
     [
       'bindings/agent.ts',
       [
@@ -393,12 +392,17 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
 }
 
 function renderProjectManifest(dependencies?: Readonly<Record<string, string>>): string {
-  return JSON.stringify({
-    private: true,
-    ...(dependencies === undefined ? {} : { dependencies }),
-    peerDependencies: { '@jigging/jig': privateJigVersion },
-    peerDependenciesMeta: { '@jigging/jig': { optional: true } },
-  }, null, 2) + '\n'
+  return (
+    JSON.stringify(
+      {
+        private: true,
+        ...(dependencies === undefined ? {} : { dependencies }),
+        engines: { jig: privateJigVersion },
+      },
+      null,
+      2,
+    ) + '\n'
+  )
 }
 
 function greetingFiles(): readonly (readonly [string, string])[] {

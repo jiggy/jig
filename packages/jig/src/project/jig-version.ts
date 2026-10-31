@@ -11,7 +11,7 @@ import { captureDeclarationSource } from './declaration-source.js'
 import { openPrivateProjectRoot, type PrivateProjectRoot } from './root.js'
 
 const path = 'package.json'
-const pointer = '/peerDependencies/@jigging~1jig'
+const pointer = '/engines/jig'
 
 /** Inert, descriptor-confined metadata. No installation or authored evaluation. */
 export async function captureProjectJigRequirement(root: PrivateProjectRoot) {
@@ -27,7 +27,11 @@ export async function captureProjectJigRequirement(root: PrivateProjectRoot) {
           if (missing(error)) return
           throw error
         }
-        invalid('PROJECT_SOURCE_CHANGED', 'Project compatibility metadata appeared during capture.', path)
+        invalid(
+          'PROJECT_SOURCE_CHANGED',
+          'Project compatibility metadata appeared during capture.',
+          path,
+        )
       },
     }
   }
@@ -45,18 +49,24 @@ export async function captureProjectJigRequirement(root: PrivateProjectRoot) {
       path,
     )
   }
-  const peers = manifest.peerDependencies
-  if (peers !== undefined) {
-    if (peers === null || typeof peers !== 'object' || Array.isArray(peers)) invalidRequirement()
-    const required = (peers as JsonObject)['@jigging/jig']
+  const engines = manifest.engines
+  if (engines !== undefined) {
+    if (engines === null || typeof engines !== 'object' || Array.isArray(engines))
+      invalidRequirement()
+    const required = (engines as JsonObject).jig
     if (required !== undefined) {
       if (!privateExactJigVersion(required)) invalidRequirement()
       if (required !== privateJigVersion) {
         invalid(
           'PROJECT_JIG_VERSION_MISMATCH',
-          'This project requires Jig ' + required + '. The running executable is Jig ' +
-            privateJigVersion + '.\nExecutable: ' + privateJigExecutableLocation() +
-            '\nNo project code was evaluated.\n\n' + await privateJigVersionRecovery(required),
+          'This project requires Jig ' +
+            required +
+            '. The running executable is Jig ' +
+            privateJigVersion +
+            '.\nExecutable: ' +
+            privateJigExecutableLocation() +
+            '\nNo project code was evaluated.\n\n' +
+            (await privateJigVersionRecovery(required)),
           path,
           pointer,
         )
@@ -90,7 +100,7 @@ function missing(error: unknown): boolean {
 function invalidRequirement(): never {
   invalid(
     'PROJECT_JIG_REQUIREMENT_INVALID',
-    'Set peerDependencies["@jigging/jig"] to one exact tested Jig version in package.json. No project code was evaluated.',
+    'Set engines.jig to one exact tested Jig version in package.json. No project code was evaluated.',
     path,
     pointer,
   )

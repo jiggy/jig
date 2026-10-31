@@ -1,14 +1,14 @@
 import { afterAll, beforeAll, expect, test } from 'bun:test'
-import { ATTEMPT_REQUEST_BYTES } from '../../src/attempt-contract.js'
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
+import { ATTEMPT_REQUEST_BYTES } from '../../src/attempt-contract.js'
+import { settleTestCommand } from '../fixtures/bounded-command.js'
 import {
   foundationCommands,
   foundationEnvironment,
   freezeFoundationArchives,
 } from '../fixtures/host-foundation/materialize.js'
-import { settleTestCommand } from '../fixtures/bounded-command.js'
 
 // Review refusals precede host acquisition; unchanged installed commands and files only.
 const packageRoot = resolve(import.meta.dir, '../..')
@@ -203,8 +203,8 @@ test('installed greeting and Agent initialization create ordinary editable files
       'import { handle } from "@jigging/flow"',
     )
     const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
-    expect(projectManifest.peerDependencies).toEqual({ '@jigging/jig': current.version })
-    expect(projectManifest.peerDependenciesMeta).toEqual({ '@jigging/jig': { optional: true } })
+    expect(projectManifest.engines).toEqual({ jig: current.version })
+    expect(projectManifest.peerDependencies).toBeUndefined()
     if (client) {
       expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(
         `client: ${JSON.stringify(client)}`,
@@ -229,7 +229,7 @@ test('installed review explains incompatible versions before evaluating source o
       join(project, 'package.json'),
       JSON.stringify({
         private: true,
-        peerDependencies: { '@jigging/jig': required },
+        engines: { jig: required },
       }),
     )
     const before = await readdir(project)
@@ -255,7 +255,7 @@ test('installed review explains incompatible versions before evaluating source o
     await writeFile(
       join(project, 'package.json'),
       JSON.stringify({
-        peerDependencies: { '@jigging/jig': required },
+        engines: { jig: required },
       }),
     )
     const result = await invoke(['review'], project)
@@ -270,7 +270,7 @@ test('installed review explains incompatible versions before evaluating source o
   await writeFile(
     join(project, 'package.json'),
     JSON.stringify({
-      peerDependencies: { '@jigging/jig': current.version },
+      engines: { jig: current.version },
     }),
   )
   await writeFile(join(project, 'jig.ts'), 'export default {}\n')

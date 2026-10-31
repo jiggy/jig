@@ -109,6 +109,7 @@ async function fixture(t) {
       name: path.startsWith('examples') ? 'example-app' : 'fixture-app',
       private: true,
       version: '0.0.0',
+      engines: { jig: '0.1.0-alpha.37', node: '>=22' },
       dependencies: {
         '@jigging/agent-method': '0.1.0-alpha.9',
         '@jigging/agent-acp': '0.1.0-alpha.11',
@@ -319,6 +320,7 @@ test('real Changesets preserves independent alpha counters and synchronizes all 
   ]) {
     const value = await get(root, path)
     assert.equal(value.version, '0.0.0')
+    assert.deepEqual(value.engines, { jig: '0.1.0-alpha.38', node: '>=22' })
     assert.equal(value.dependencies['@jigging/agent-method'], '0.1.0-alpha.10')
     assert.equal(value.dependencies['@jigging/agent-acp'], '0.1.0-alpha.12')
     assert.equal(value.dependencies['@jigging/reporting'], '0.1.0-alpha.1')

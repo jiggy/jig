@@ -206,6 +206,13 @@ async function synchronizePins(root) {
         changed = true
       }
     }
+    if (
+      value.engines?.jig !== undefined &&
+      value.engines.jig !== packages.get('@jigging/jig').version
+    ) {
+      value.engines.jig = packages.get('@jigging/jig').version
+      changed = true
+    }
     if (changed) await writeFile(join(root, path), json(value))
   }
   const projectInit = 'packages/jig/src/project-init.ts'

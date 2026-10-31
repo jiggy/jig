@@ -11,8 +11,8 @@ need a different operating preference.
 
 ## Jig version requirements
 
-Projects can name the exact Jig version they were tested with in `package.json` under `peerDependencies["@jigging/jig"]`.
-An optional peer declaration records the host requirement without installing Jig into the project.
+Projects can name the exact Jig version they were tested with in `package.json` under `engines.jig`.
+Engine metadata records the host requirement without adding Jig to the project dependency graph.
 Generated projects and repository examples supply this metadata.
 Bare projects can omit it.
 
