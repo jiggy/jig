@@ -86,6 +86,17 @@ preparation never becomes a consumer requirement.
   is reported as unassigned. Missing observations never establish that cause.
   Observations cannot qualify execution, bypass evidence validation or change
   required job outcomes. API unavailability leaves them absent.
+- `ci-performance.mjs` reports workflow, queue and execution intervals from
+  read-only GitHub metadata. It separates pre-job delay from job queues and
+  preserves every attempt's observed conclusions. Job queues combine concurrency
+  and runner allocation waits without identifying either cause. Event-head groups provide
+  diagnostic workflow envelopes without establishing tested merge identity.
+
+  Earlier successful jobs retained in the latest history supply observed runner
+  time only. Receipt acceptance and hypothetical latency savings remain unproved.
+  The report infers no flake rate and changes no scheduling weights or qualification.
+  Collection refuses incomplete pagination, changing runs and excessive windows.
+  It requires GitHub CLI read access and permits windows of at most 31 days.
 - `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry
@@ -138,7 +149,7 @@ They consume frozen package exports with tracked test helpers and installed
   await that exact `candidate-build` job. Its run, attempt and head must match
   the selected producer.
 
-  Producer readiness has one absolute deadline, including runner queues.
+  Producer readiness has one absolute deadline, including job queues.
   Missing, queued or running jobs poll every 30 seconds. Failed, skipped,
   duplicate, stale or completed-but-missing proof refuses immediately. Hosted
   Mac also requires latest `Quick development checks` success through
@@ -378,6 +389,12 @@ They consume frozen package exports with tracked test helpers and installed
 - Review the matching host-conformance workflow in the same change.
 
 ## Verification
+
+- `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
+  execution, independent timing intervals, partial retries, failure classifications
+  and ambiguous or foreign metadata refusal.
+  Collect a report with `node scripts/ci/ci-performance.mjs --repository jiggy/jig --since 2026-10-30T00:00:00Z --until 2026-10-31T00:00:00Z`.
+  Use explicit UTC bounds and redirect output into `.tmp/` when retaining reports.
 
 - Workflow contract tests parse YAML 1.2 and check GitHub trigger keys and registry environments.
   They require the release-impact check in Quick and its existing aggregate.

@@ -175,6 +175,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   install commands, and docs. Preserve existing release notes on retries. Never
   present source archives as the installable package.
 - Keep FLOW and Jig site publication independent.
+- `workflows/ci-performance.yml` reports the previous seven complete UTC days,
+  daily at 03:17 UTC or by manual dispatch on main. It uses repository and
+  Actions read permission without builds, native allocation or publication.
+  Retain its JSON metadata and Markdown observations for fourteen days.
+  Reports establish no qualification, flake rate or automatic scheduling changes.
 - The CI site job checks documentation metadata, local links, source anchors,
   changed technical paragraphs, and the rendered Jig site before recording success.
   PR style checks use the base SHA. Push checks use the previous SHA.
