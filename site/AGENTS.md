@@ -8,9 +8,13 @@ Own this repository's Rspress configuration, assets, assembly, and direct GitHub
 
 - `../docs/jig/` owns public prose, specifications, and source diagrams.
 - `jig/` owns product navigation, public roots, origins, and assets.
+- `jig/public/landing/` contains the standalone homepage's styles, scripts,
+  illustrations, and font notices. `jig/landing-tests/` verifies its interactions.
+  Its canonical HTML and Markdown companion belong in `../docs/jig/`.
 - `theme/` and `landing.css` own independently copied presentation.
 - `package.json` and `bun.lock` pin site dependencies.
 - `../scripts/build-site.sh` owns fresh assembly, schema inventory, and Markdown publication checks.
+  It installs `../docs/jig/index.html` after Rspress builds the documentation.
 - Jig's client and evaluator references use `/spec/execution-client` and
   `/spec/project-evaluation`. Assembly publishes the exact evaluator invocation
   and recipe schema beside its human identity page. Downloads grant no authority.
@@ -26,6 +30,7 @@ A neighboring checkout is never a build input.
 ## Verification
 
 Run `scripts/build-site.sh jig .tmp/jig-site` with a fresh destination.
+The site build runs `just site::test-landing` before rendering documentation.
 Use `scripts/check-site.sh` for a deployed endpoint.
 
 ## Child DOX Index

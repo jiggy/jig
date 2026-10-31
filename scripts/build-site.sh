@@ -51,9 +51,12 @@ trap cleanup EXIT HUP INT TERM
 PUBLIC_SITE_OUTPUT="$staging" \
   just --justfile "$repository/site/justfile" "build-$site_name"
 cp -R -- "$repository/site/$site_name/public/." "$staging/"
+cp -- "$repository/docs/$site_name/index.html" "$staging/index.html"
 mkdir -p -- "$staging/schemas"
 mkdir -p -- "$staging/font-licenses"
 cp -- "$repository/site/theme/fonts/"*-LICENSE.txt "$staging/font-licenses/"
+mkdir -p -- "$staging/font-licenses/landing"
+cp -- "$repository/site/jig/public/landing/assets/"*-LICENSE.txt "$staging/font-licenses/landing/"
 
 # Human pages and agent resources are one publication, checked before promotion.
 "$javascript" - "$staging" "$site_name" <<'NODE'

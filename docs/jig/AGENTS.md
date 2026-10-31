@@ -89,11 +89,13 @@ use-case and orchestration hypotheses.
   from explicitly retained application views. Neither inspection starts execution. Agent setup recovery belongs in `guide/agents.md`. Settings and
   appearance belong in `guide/configuration.md`. The quickstart links to results
   after the first outcome.
-- `index.md` and `guide/understand.md` introduce Agent work inside applications
-  through the common Flow boundary and Jig's microkernel-inspired
-  responsibilities. The landing page follows a suggestion into application
-  checks, reveals Jig's execution boundary, and ends at a first run with visible
-  prerequisites.
+- `index.html` owns the standalone marketing page. `index.md` preserves its
+  complete meaning in generated Markdown, including every example, method
+  strategy, setup path, and qualification.
+  The page moves from familiar app ideas to code and Agent composition, control,
+  reusable Flows, architectural responsibilities, and a supported first run.
+  Keep these two representations synchronized. Neither defines normative contracts.
+  `guide/understand.md` explains the common Flow boundary and Jig’s responsibilities.
 - `guide/contact-import.md` owns the introductory CSV preview walkthrough: code,
   Agent and mixed mappers share one contract, and code validates the rows.
   Its declared preview artifact receives a fresh temporary packet. `--out` retains it.

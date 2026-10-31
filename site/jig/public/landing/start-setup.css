@@ -1,0 +1,23 @@
+/* Two ways to get started, with one copy action for the visible instructions. */
+.start-setup .setup-bar{gap:10px;padding:13px 16px;min-height:63px}
+.setup-tabs{display:flex;align-items:center;gap:4px;margin-right:auto;border:1px solid #303741;background:#0d1117;border-radius:8px;padding:3px}
+.setup-tabs button{justify-content:center;padding:7px 10px;min-height:34px;border-radius:5px;font-weight:650;line-height:1.5;white-space:nowrap}
+.start-setup .setup-tabs button{color:#aeb8c5}
+.start-setup .setup-tabs button[aria-selected=true]{color:#e4eed8;background:#2c4333}
+.start-setup .setup-tabs button:hover{color:#edf4e7}
+.start-setup #copy-start{padding:7px 3px;min-height:36px;flex:none;white-space:nowrap}
+.start-setup #copy-start .icon{width:16px;height:16px}
+.start-setup #copy-start:disabled{opacity:.65}
+.setup-window-dots{flex:none}
+.setup-panel{min-width:0}
+.setup-panel:focus-visible{outline:3px solid #b088e5;outline-offset:-3px}
+.setup-panel>p{font-size:12px;color:#9aa7b7;padding:16px 23px 21px;line-height:1.6;margin:0}
+.setup-agent-panel{background:#f5f5ed;color:#405139}
+.setup-agent-panel .setup-agent-intro{display:flex;align-items:center;gap:7px;padding:20px 23px 0;color:#4d6943;font-size:12px;font-weight:700;line-height:1.6}
+.setup-agent-intro .icon{width:16px;height:16px;color:#756184}
+.start-setup .setup-agent-prompt{font-family:Manrope,system-ui,sans-serif;font-size:14px;line-height:1.7;color:#405139;background:transparent;white-space:pre-wrap;overflow-wrap:anywhere;padding:16px 23px 19px}
+.setup-agent-panel .setup-agent-note{border-top:1px solid #dce2d3;color:#617257;padding:13px 23px 17px;font-size:12px;line-height:1.6}
+.setup-agent-note a{font-weight:700;color:#3e6635;text-decoration:underline;text-decoration-color:#a7bd96;text-underline-offset:3px}
+@media(max-width:1100px){.start-setup .setup-window-dots{display:none}.start-setup .setup-bar{padding-inline:14px}}
+@media(max-width:560px){.start-setup .setup-bar{padding:10px 12px;gap:7px;min-height:59px}.setup-tabs{gap:2px;padding:3px}.setup-tabs button{padding:7px 8px;font-size:12px}.setup-panel>p{padding:14px 15px 17px}.setup-agent-panel .setup-agent-intro{padding:18px 16px 0}.start-setup .setup-agent-prompt{font-size:13px;padding:14px 16px 18px}.setup-agent-panel .setup-agent-note{padding:12px 16px 15px}}
+@media(max-width:400px){.start-setup #copy-start>span{display:none}.start-setup #copy-start{padding-inline:4px;min-width:30px}}

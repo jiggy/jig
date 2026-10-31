@@ -1,8 +1,11 @@
 @default:
     just --list
 
-@build-jig:
+@build-jig: test-landing
     bun node_modules/@rspress/core/bin/rspress.js build -c jig/rspress.config.ts
+
+@test-landing:
+    node --test jig/landing-tests/*.cjs
 
 [positional-arguments]
 @dev-jig *args:
