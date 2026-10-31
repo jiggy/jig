@@ -32,7 +32,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   eligible generated release sources after successful Linux Host Conformance on `main`.
   A read-only scope job validates the exact triggering source's complete release metadata before protected jobs start.
   Each native checkout directly enforces successful same-repository main pushes or explicit manual main dispatch.
-  Checkout refs use the guarded event SHA directly, with credentials disabled.
+  Scope runs its validator from the trusted workflow revision and reads the triggering commit only as inert Git data.
+  Native tests check out the guarded source SHA directly. Both checkouts disable persisted credentials.
 
   Pending changesets, feature sources and stale plans omit live calls and create no qualification receipts.
   Explicit manual dispatch on `main` retains diagnostics for nonrelease main revisions using that revision's successful push-run host artifacts.

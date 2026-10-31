@@ -629,12 +629,14 @@ test('native live jobs require release scope while manual main diagnostics remai
     assert.equal(evaluate(scope.if, context), selected)
     for (const step of [checkout, nativeCheckout]) {
       assert.equal(evaluate(step.if, context), selected, 'Checkout must enforce trust independently')
-      if (selected) assert.equal(evaluate(step.with.ref.slice(3, -2), context), revision)
+      if (selected) assert.equal(evaluate(step.with.ref.slice(3, -2), context),
+        step === checkout ? context.sha : revision)
     }
   }
+  assert.equal(checkout.with.ref, '${{ github.sha }}')
+  assert.equal(nativeCheckout.with.ref,
+    "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}")
   for (const step of [checkout, nativeCheckout]) {
-    assert.equal(step.with.ref,
-      "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}")
     assert.equal(step.with['persist-credentials'], false)
   }
   assert.equal(job.needs, 'scope')

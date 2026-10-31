@@ -192,7 +192,9 @@ They consume frozen package exports with tracked test helpers and installed
   cannot qualify them.
 
   Native automation checks `releaseState` against the exact triggering source before allocating protected client jobs.
+  The scope validator executes from the trusted workflow revision, while release metadata comes from the exact triggering Git revision.
   Workflow tests reject fork, PR, failed and non-main events at each native checkout boundary.
+
   Only eligible generated releases start automatically. Explicit manual dispatch on main retains diagnostic qualification for nonrelease sources.
   Omission emits no native receipt and cannot satisfy publication. All three fresh clients and existing candidate and Linux lineage checks remain mandatory.
 
