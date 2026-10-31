@@ -22,17 +22,22 @@ preparation never becomes a consumer requirement.
 
   Production image decoding uses a disposable process. The portable suite owns
   its lifetime and fallback cases. Those checks do not qualify the thread experiment.
-- `host-scope.mjs` avoids native allocation only for a verified two-parent PR
-  merge with an entirely independent delta. That delta must contain only site
+- `host-scope.mjs` selects complete Linux and Apple Silicon qualification.
+  A verified two-parent PR merge can omit native jobs for an entirely independent delta. That delta must contain only site
   files, non-specification documentation, Python SDK/reporting files, or
   reviewed root/agent guidance. The shared Reporting descriptor remains a native
   input. Source, build, workflow, specification, mixed, unknown or unverifiable
-  inputs require complete Linux and Apple Silicon. Main and manual
-  execution are always full. Final `affected-linux` and `affected-macos` checks
+  inputs require complete Linux and Apple Silicon. Manual execution is always full.
+
+  Linux main pushes remain complete, preserving native diagnostics' upstream lineage.
+  Verified feature, pending and stale main sources omit Mac jobs.
+  Eligible generated releases and unknown eligibility require complete qualification.
+  The selector verifies the main ref, repository and exact push SHA before reading source-pinned release metadata.
+  Final `affected-linux` and `affected-macos` checks
   independently reconstruct this decision and require either every native job's
   success or every job's explicit omission.
 
-  An omitted PR creates no host qualification receipt. No native selection
+  An omitted PR or nonrelease Mac main source creates no host qualification receipt. No native selection
   modes, native result reuse or compact witnesses exist. Intel has separate nightly
   compatibility coverage.
 - `intel-nightly.mjs` selects published Jig and distinct main sources, or an
@@ -402,7 +407,7 @@ They consume frozen package exports with tracked test helpers and installed
   revision.
 
   Never reuse consumer installations, native execution, cleanup or live-client
-  qualification. Host, main and manual qualification still require complete
+  qualification. Every selected host qualification requires complete
   current-attempt coverage. Merge-only receipts cannot qualify publication.
   Native jobs omitted for an independent PR cannot qualify publication.
 - Canonical artifacts use `candidates-SHA-rRUN-aATTEMPT`. Host shard evidence

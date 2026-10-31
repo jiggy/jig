@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { appendFileSync, readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
+import { releaseState } from '../release/state.mjs'
 
 const revision = /^[0-9a-f]{40}$/
 const roles = {
@@ -22,7 +23,7 @@ export function independentHostInput(path) {
   return ['README.md', 'CONTRIBUTING.md', 'AGENTS.md'].includes(path)
 }
 
-export function hostScope({ repository = process.cwd(), env = process.env, event } = {}) {
+export async function hostScope({ scope, repository = process.cwd(), env = process.env, event } = {}) {
   const git = (args) =>
     execFileSync('git', ['-C', repository, ...args], {
       encoding: 'utf8',
@@ -34,8 +35,24 @@ export function hostScope({ repository = process.cwd(), env = process.env, event
   if (env.GITHUB_SHA !== undefined)
     assert.equal(source, env.GITHUB_SHA, 'Workflow checkout changed')
   const full = (reason) => ({ source, required: true, reason })
+  if (scope === 'macos' && env.GITHUB_EVENT_NAME === 'push' && env.GITHUB_REF === 'refs/heads/main') {
+    try {
+      event ??= JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
+      assert.equal(event.ref, 'refs/heads/main')
+      assert.equal(event.after, source)
+      assert.equal(event.deleted, false)
+      assert.ok(env.GITHUB_REPOSITORY)
+      assert.equal(event.repository?.full_name, env.GITHUB_REPOSITORY)
+      const state = await releaseState(repository, source)
+      if (state.eligible) return full('Eligible generated release requires complete host qualification')
+      assert.ok(['feature-source', 'pending-changesets', 'stale-release-plan'].includes(state.reason))
+      return { source, required: false, reason: `Nonrelease main source: ${state.reason}` }
+    } catch {
+      return full('A complete trusted main release comparison could not be established')
+    }
+  }
   if (env.GITHUB_EVENT_NAME !== 'pull_request')
-    return full('Main and manual runs require full host qualification')
+    return full('Manual and unverified events require complete host qualification')
   try {
     event ??= JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'))
     const base = event.pull_request?.base?.sha
@@ -96,7 +113,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       options[key] = value
     }
     assert.ok(roles[options['--scope']], 'Declare linux or macos scope')
-    const report = hostScope()
+    const report = await hostScope({ scope: options['--scope'] })
     if (options['--results'])
       checkHostJobs(
         options['--scope'],

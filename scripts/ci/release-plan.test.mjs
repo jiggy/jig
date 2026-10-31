@@ -216,6 +216,75 @@ test('automatic native scope selects exact generated releases and preserves manu
   assert.match(manual.summary, /Selected: explicit manual diagnostics/)
 })
 
+test('automatic Mac hosts select eligible releases while Linux and manual diagnostics remain complete', async (t) => {
+  const { root } = await fixture(t)
+  const directory = join(root, '.tmp/host-scope')
+  await mkdir(directory, { recursive: true })
+  const eventPath = join(directory, 'event.json')
+  const output = join(directory, 'output')
+  const results = join(directory, 'results.json')
+  const repositoryName = 'jiggy/host-scope-fixture'
+  async function select(scope, { env = {}, event = {}, statuses } = {}) {
+    const source = git(root, ['rev-parse', 'HEAD']).trim()
+    await writeFile(eventPath, json({
+      ref: 'refs/heads/main', after: source, deleted: false,
+      repository: { full_name: repositoryName }, ...event,
+    }))
+    await writeFile(output, '')
+    if (statuses) await writeFile(results, json(statuses))
+    const args = [join(repository, 'scripts/ci/host-scope.mjs'), '--scope', scope, '--github-output', output]
+    if (statuses) args.push('--results', results)
+    const stdout = execFileSync(process.execPath, args, {
+      cwd: root,
+      env: {
+        ...process.env, GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main',
+        GITHUB_REPOSITORY: repositoryName, GITHUB_SHA: source, GITHUB_EVENT_PATH: eventPath, ...env,
+      },
+      encoding: 'utf8', timeout: 15_000, stdio: 'pipe',
+    })
+    const report = JSON.parse(stdout)
+    assert.equal(await readFile(output, 'utf8'), `required=${report.required}\n`)
+    return report
+  }
+  const macJobs = (state) => ({
+    scope: 'success', 'host-artifacts': state, prerequisites: state, 'qualified-architecture': state,
+  })
+  const nonrelease = async (reason) => {
+    const report = await select('macos')
+    assert.equal(report.required, false)
+    assert.equal(report.reason, `Nonrelease main source: ${reason}`)
+    assert.deepEqual(await select('macos', { statuses: macJobs('skipped') }), report)
+    assert.equal((await select('linux')).required, true, 'Retain automatic Linux lineage for native diagnostics')
+    assert.equal((await select('macos', { env: { GITHUB_EVENT_NAME: 'workflow_dispatch' } })).required, true)
+    await assert.rejects(select('macos', { statuses: macJobs('success') }), /Unexpected host job result/)
+  }
+  await nonrelease('feature-source')
+  await note(root, 'mac-host-source', ['@jigging/jig'])
+  commit(root, 'Pending release')
+  await nonrelease('pending-changesets')
+  await versionRelease(root)
+  commit(root, 'Generated release')
+  assert.equal((await select('macos', { statuses: macJobs('success') })).required, true)
+  await assert.rejects(select('macos', { statuses: macJobs('skipped') }), /Unexpected host job result/)
+  await put(root, 'README.md', 'Nonrelease source after generated release.\n')
+  commit(root, 'Advance complete source')
+  await nonrelease('stale-release-plan')
+  for (const event of [
+    { ref: 'refs/heads/feature' },
+    { after: 'a'.repeat(40) },
+    { deleted: true },
+    { deleted: undefined },
+    { deleted: 'false' },
+    { repository: { full_name: 'fork/host-scope-fixture' } },
+    { repository: {} },
+  ]) assert.equal((await select('macos', { event })).required, true)
+  assert.equal((await select('macos', { env: { GITHUB_REF: 'refs/heads/feature' } })).required, true)
+  assert.equal((await select('macos', { env: { GITHUB_EVENT_PATH: join(directory, 'missing.json') } })).required, true)
+  await put(root, '.changeset/release.json', '{malformed\n')
+  commit(root, 'Malformed release metadata')
+  assert.equal((await select('macos')).required, true, 'Uncertain eligibility must allocate the complete host')
+})
+
 test('release Git joins real automatic maintenance before temporary repository cleanup', async (t) => {
   const { root } = await fixture(t)
   for (const [name, value] of [

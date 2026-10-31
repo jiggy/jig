@@ -51,6 +51,10 @@ After the feature PR merges:
 3. Review the generated changes and merge after required checks pass.
    With the default token, a maintainer must merge so the main-push workflows start.
 
+Feature PRs retain the applicable host checks. After merge, Linux main qualification remains complete for native diagnostic lineage.
+Verified nonrelease main commits omit automatic Apple Silicon qualification. Generated releases and uncertain sources retain complete host qualification.
+Manual host dispatch retains complete diagnostics for other sources. Omitted Mac jobs create no qualification evidence.
+
 The merged release must pass CI, complete Linux and Apple Silicon qualification,
 and native Agent qualification. Automatic native qualification runs only for exact eligible generated release sources after successful Linux qualification.
 Explicit manual dispatch on main retains diagnostics for other sources. Omitted automatic calls create no qualification evidence.

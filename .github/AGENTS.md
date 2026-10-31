@@ -115,7 +115,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   failures or rebuilt inputs invalidate earlier success. Record accepted job IDs
   and attempts in a merge-only receipt.
 
-  Main and manual runs remain fresh, complete current-attempt qualification.
+  Every executed main or manual qualification remains fresh and complete for the current attempt.
   Retain required job results before rejecting failures or cancellations, even
   after evidence download fails. Optional current-attempt runner observations
   explain allocation failures without granting execution or cleanup evidence.
@@ -179,8 +179,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   small verified-Git scope check can omit native jobs for independent site,
   non-specification documentation or Python changes. The shared Reporting
   descriptor, source, build, workflow, specifications, mixed and uncertain
-  changes run complete hosts. Main and manual runs are always complete. An
-  omission records its source and reason and creates no qualification receipt.
+  changes run complete hosts.
+
+  Linux main runs and all manual runs remain complete.
+  Verified nonrelease Mac main sources omit native jobs.
+  Eligible releases and uncertain source or release metadata require complete hosts.
+  An omission records its source and reason and creates no qualification receipt.
   Final gates reconstruct scope and reject any missing, failed or cancelled
   required job.
 
@@ -291,12 +295,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   variables. This candidate workflow does not replace Linux publication gates or
   claim live model/API qualification.
 - `workflows/macos-hosted-candidates.yml` requires one complete Apple Silicon
-  host on `macos-15` for applicable PRs and all main pushes. `affected-macos`
+  host on `macos-15` for applicable PRs, generated main releases, uncertain sources, and manual runs. `affected-macos`
   reconciles only this architecture. Linux and Apple Silicon remain release
   gates. Intel evidence never grants publication readiness.
 
-  Main and manual-main runs start scope and acquisition independently.
-  Their complete ARM jobs use one of two fixed concurrency lanes, selected by
+  Scope validates the exact main push and release metadata before automatic Mac acquisition.
+  Linux main qualification remains complete, preserving upstream proof for manual native diagnostics.
+  Selected main and manual-main ARM jobs use one of two fixed concurrency lanes, selected by
   workflow run-number parity. Each lane permits one running native job.
   This bounds main native execution at two jobs. PR runs also advance that
   number, so successive main jobs can select the same lane.

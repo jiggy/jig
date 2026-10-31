@@ -39,14 +39,14 @@ function mergeFixture(t, paths) {
   }
 }
 
-test('verified independent PR inputs avoid native jobs while source, mixed and unknown changes stay full', (t) => {
+test('verified independent PR inputs avoid native jobs while source, mixed and unknown changes stay full', async (t) => {
   for (const paths of [
     ['site/jig/public/new.svg'],
     ['docs/jig/guide/new.md'],
     ['packages/jiggy-flow/tests/new.py'],
     ['.agents/doctrine/jig.md'],
   ])
-    assert.equal(hostScope(mergeFixture(t, paths)).required, false)
+    assert.equal((await hostScope(mergeFixture(t, paths))).required, false)
   for (const paths of [
     ['packages/jig/src/change.ts'],
     ['scripts/ci/change.mjs'],
@@ -55,19 +55,19 @@ test('verified independent PR inputs avoid native jobs while source, mixed and u
     ['docs/jig/spec/new.md'],
     ['packages/jiggy-reporting/src/jiggy/reporting/reporting.json'],
   ])
-    assert.equal(hostScope(mergeFixture(t, paths)).required, true)
+    assert.equal((await hostScope(mergeFixture(t, paths))).required, true)
 })
 
-test('main, manual, unavailable and forged PR comparisons cannot omit host jobs', (t) => {
+test('unverified main, manual, unavailable and forged PR comparisons cannot omit host jobs', async (t) => {
   const f = mergeFixture(t, ['site/jig/public/new.svg'])
   for (const eventName of ['push', 'workflow_dispatch', 'merge_group'])
     assert.equal(
-      hostScope({ ...f, env: { ...f.env, GITHUB_EVENT_NAME: eventName } }).required,
+      (await hostScope({ ...f, env: { ...f.env, GITHUB_EVENT_NAME: eventName } })).required,
       true,
     )
-  assert.equal(hostScope({ ...f, event: {} }).required, true)
+  assert.equal((await hostScope({ ...f, event: {} })).required, true)
   assert.equal(
-    hostScope({
+    (await hostScope({
       ...f,
       event: {
         pull_request: {
@@ -75,10 +75,10 @@ test('main, manual, unavailable and forged PR comparisons cannot omit host jobs'
           head: f.event.pull_request.head,
         },
       },
-    }).required,
+    })).required,
     true,
   )
-  assert.throws(
+  await assert.rejects(
     () => hostScope({ ...f, env: { ...f.env, GITHUB_SHA: 'a'.repeat(40) } }),
     /checkout changed/,
   )
