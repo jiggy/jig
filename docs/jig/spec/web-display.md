@@ -204,6 +204,7 @@ A fixed disposable process accepts PNG/JPEG sources up to 8 MiB, 24 megapixels a
 SVG sources remain bounded to 64 KiB.
 Raster previews return PNG within 1,024 by 1,024 pixels and 2 MiB.
 SVG previews retain their 384-pixel width and 256 KiB output limits.
+SVG image upgrades retain the 512 KiB content ceiling, including reserved text fallbacks.
 
 Retained preview content has a 48 MiB aggregate allowance, separate from complete download bytes.
 Its main thread owns a five-second deadline and an open input-pipe lifetime lease.
