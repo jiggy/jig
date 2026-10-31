@@ -5,6 +5,7 @@
 `portable/jig-version.test.ts` checks exact requirement values, captured metadata and contributor identification.
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
 `portable/jig-development-build.test.ts` exercises the genuine launcher against matching, changed and incomplete contributor builds.
+It rejects changed checker source without executing that source.
 These checks grant no native execution or cleanup evidence.
 
 - `portable/` owns source checks without native host admission or model
