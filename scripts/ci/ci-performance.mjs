@@ -53,6 +53,42 @@ function classification(job) {
     }[job.conclusion] ?? 'incomplete'
   )
 }
+
+// A later attempt can receive a new successful check row for an earlier
+// execution. Its creation follows completion. Match only the observed execution
+// coordinates; these diagnostics do not authenticate a qualification receipt.
+function executionKey(job) {
+  if (
+    !job.started_at ||
+    !job.completed_at ||
+    !Number.isFinite(Date.parse(job.started_at)) ||
+    !Number.isFinite(Date.parse(job.completed_at)) ||
+    !Number.isSafeInteger(job.runner_id) ||
+    job.runner_id <= 0 ||
+    typeof job.runner_name !== 'string' ||
+    !job.runner_name ||
+    !Array.isArray(job.labels) ||
+    !job.labels.length ||
+    !Array.isArray(job.steps) ||
+    !job.steps.length
+  )
+    return null
+  return JSON.stringify([
+    job.started_at,
+    job.completed_at,
+    job.runner_id,
+    job.runner_name,
+    job.labels,
+    job.steps.map(({ number, name, status, conclusion, started_at, completed_at }) => [
+      number,
+      name,
+      status,
+      conclusion,
+      started_at,
+      completed_at,
+    ]),
+  ])
+}
 function summarize(values) {
   if (!values.length) return { count: 0, medianSeconds: null, p90Seconds: null }
   const sorted = [...values].sort((a, b) => a - b)
@@ -95,6 +131,7 @@ export function analyzeCiPerformance(snapshot) {
       throw new Error('Ambiguous, foreign or incomplete run inventory')
     runIds.add(run.id)
     const allJobs = []
+    const executionOrigins = []
     let latest
     for (const [index, attempt] of history.entries()) {
       if (attempt.number !== index + 1 || !Array.isArray(attempt.jobs))
@@ -117,27 +154,58 @@ export function analyzeCiPerformance(snapshot) {
           throw new Error('Ambiguous or foreign job inventory')
         jobIds.add(job.id)
         names.add(job.name)
-        const releasedAfterSeconds = seconds(attempt.startedAt, job.created_at, 'job release')
+        const carried =
+          attempt.number > 1 &&
+          job.status === 'completed' &&
+          job.conclusion === 'success' &&
+          job.completed_at &&
+          time(job.created_at, 'check creation') > time(job.completed_at, 'check completion')
+        const key = carried ? executionKey(job) : null
+        const originals =
+          carried && key !== null
+            ? executionOrigins.filter(
+                ({ raw }) =>
+                  raw.name === job.name &&
+                  raw.run_attempt < job.run_attempt &&
+                  executionKey(raw) === key,
+              )
+            : []
+        const carriedExecution = carried
+          ? {
+              origin:
+                originals.length === 1
+                  ? 'matched'
+                  : originals.length > 1
+                    ? 'ambiguous'
+                    : 'unobserved',
+              originJobId: originals.length === 1 ? originals[0].observation.id : null,
+              originAttempt: originals.length === 1 ? originals[0].observation.attempt : null,
+            }
+          : null
+        const releasedAfterSeconds = carried
+          ? null
+          : seconds(attempt.startedAt, job.created_at, 'job release')
         const skipped = job.conclusion === 'skipped'
         const unassigned = job.runner_name === '' && job.steps?.length === 0
         const jobQueueSeconds =
-          !skipped && !unassigned && job.started_at
+          !carried && !skipped && !unassigned && job.started_at
             ? seconds(job.created_at, job.started_at, 'job queue')
             : null
         const executionSeconds =
-          !skipped && !unassigned && job.started_at && job.completed_at
+          !carried && !skipped && !unassigned && job.started_at && job.completed_at
             ? seconds(job.started_at, job.completed_at, 'job execution')
             : null
         const unassignedSeconds =
-          unassigned && job.completed_at
+          !carried && unassigned && job.completed_at
             ? seconds(job.created_at, job.completed_at, 'unassigned job wait')
             : null
-        if (job.completed_at) seconds(job.created_at, job.completed_at, 'job completion')
-        return {
+        if (!carried && job.completed_at)
+          seconds(job.created_at, job.completed_at, 'job completion')
+        const observation = {
           id: job.id,
           name: job.name,
           attempt: attempt.number,
-          classification: classification(job),
+          classification: carried ? 'carried-success-check' : classification(job),
           conclusion: job.conclusion ?? null,
           createdAt: job.created_at,
           startedAt: job.started_at ?? null,
@@ -146,13 +214,19 @@ export function analyzeCiPerformance(snapshot) {
           jobQueueSeconds,
           executionSeconds,
           unassignedSeconds,
+          carriedExecution,
           failedSteps: Array.isArray(job.steps)
             ? job.steps.filter((step) => step.conclusion === 'failure').map((step) => step.name)
             : null,
         }
+        if (!carried && job.conclusion === 'success' && executionSeconds !== null)
+          executionOrigins.push({ raw: job, observation })
+        return observation
       })
       allJobs.push(...jobs)
-      const active = jobs.filter((job) => job.classification !== 'job-skipped')
+      const active = jobs.filter(
+        (job) => !['job-skipped', 'carried-success-check'].includes(job.classification),
+      )
       const firstCreatedAt = active
         .map((job) => job.createdAt)
         .sort(timeOrder)
@@ -188,7 +262,14 @@ export function analyzeCiPerformance(snapshot) {
     if (run.conclusion !== latest.conclusion)
       throw new Error('Latest workflow conclusion differs from its attempt')
     const newest = new Map()
-    for (const job of allJobs) newest.set(job.name, job)
+    for (const job of allJobs) {
+      if (
+        job.carriedExecution?.origin === 'matched' &&
+        newest.get(job.name)?.id === job.carriedExecution.originJobId
+      )
+        continue
+      newest.set(job.name, job)
+    }
     const retained = [...newest.values()].filter(
       (job) => job.attempt < count && job.conclusion === 'success',
     )
@@ -288,6 +369,7 @@ export function analyzeCiPerformance(snapshot) {
       'Job release offsets include dependency and scheduling delay; they are not job queue time.',
       'Job queues combine concurrency and runner allocation waits; metadata does not distinguish their causes.',
       'Observed retained runner time requires no new execution; receipt acceptance and wall-clock savings are not established.',
+      'Carried successful checks add no execution time; missing or ambiguous execution origins remain explicit.',
       'Event head groups do not establish an exact tested PR merge source or branch-policy readiness.',
       'Conclusions and failed steps classify observations; no flake rate is inferred.',
       'Reports grant no qualification and never update scheduling weights.',

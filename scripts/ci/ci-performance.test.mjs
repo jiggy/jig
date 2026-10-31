@@ -144,6 +144,137 @@ test('a newer failed execution cannot count an older success as retained work', 
   assert.equal(analyzeCiPerformance(snapshot([run])).latestRuns[0].observedRetainedRunnerSeconds, 0)
 })
 
+function copiedCheckSnapshot() {
+  const run = entry()
+  run.run.created_at = '2026-10-31T05:31:36Z'
+  run.run.id = 41172855617
+  run.run.run_attempt = 2
+  const original = job(124455277111, 'Source and package tests', 1, {
+    status: 'completed',
+    run_id: run.run.id,
+    created_at: '2026-10-31T05:35:14Z',
+    started_at: '2026-10-31T05:54:42Z',
+    completed_at: '2026-10-31T05:59:34Z',
+    runner_id: 19,
+    runner_name: 'GitHub Actions 1000017883',
+    labels: ['ubuntu-24.04'],
+    runner_group_id: 0,
+    steps: [
+      {
+        number: 1,
+        name: 'Run source tests',
+        status: 'completed',
+        conclusion: 'success',
+        started_at: '2026-10-31T05:54:42Z',
+        completed_at: '2026-10-31T05:59:34Z',
+      },
+    ],
+  })
+  run.attempts = [
+    { number: 1, startedAt: run.run.created_at, conclusion: 'success', jobs: [original] },
+    {
+      number: 2,
+      startedAt: '2026-10-31T06:01:00Z',
+      conclusion: 'success',
+      jobs: [
+        {
+          ...structuredClone(original),
+          id: 124460177041,
+          run_attempt: 2,
+          created_at: '2026-10-31T06:01:02Z',
+          runner_group_id: null,
+        },
+        job(124460177042, 'Quick development checks', 2, {
+          run_id: run.run.id,
+          created_at: '2026-10-31T06:01:03Z',
+          started_at: '2026-10-31T06:01:05Z',
+          completed_at: '2026-10-31T06:03:05Z',
+        }),
+      ],
+    },
+  ]
+  return {
+    repository: 'jiggy/jig',
+    since: '2026-10-31T00:00:00Z',
+    until: '2026-11-01T00:00:00Z',
+    runs: [run],
+  }
+}
+
+test('GitHub copied successful checks retain the original execution once without reversed timing', () => {
+  const report = analyzeCiPerformance(copiedCheckSnapshot())
+  const copy = report.attempts[1].jobs[0]
+  assert.equal(copy.classification, 'carried-success-check')
+  assert.deepEqual(copy.carriedExecution, {
+    origin: 'matched',
+    originJobId: 124455277111,
+    originAttempt: 1,
+  })
+  assert.equal(copy.releasedAfterSeconds, null)
+  assert.equal(copy.jobQueueSeconds, null)
+  assert.equal(copy.executionSeconds, null)
+  assert.equal(report.attempts[0].runnerSeconds, 292)
+  assert.equal(report.attempts[1].runnerSeconds, 120)
+  assert.equal(report.attempts[1].elapsedSeconds, 125)
+  assert.equal(report.latestRuns[0].observedRetainedRunnerSeconds, 292)
+  assert.deepEqual(
+    report.latestRuns[0].observedRetainedSuccessfulJobs.map((job) => job.id),
+    [124455277111],
+  )
+})
+
+test('copied success with missing or ambiguous execution origins stays explicit without timing credit', () => {
+  const missing = copiedCheckSnapshot()
+  missing.runs[0].attempts[0].jobs = []
+  const report = analyzeCiPerformance(missing)
+  assert.equal(report.attempts[1].jobs[0].carriedExecution.origin, 'unobserved')
+  assert.equal(report.latestRuns[0].observedRetainedRunnerSeconds, 0)
+  const ambiguous = copiedCheckSnapshot()
+  const run = ambiguous.runs[0]
+  const copyAttempt = run.attempts.pop()
+  const repeated = structuredClone(run.attempts[0])
+  repeated.number = 2
+  repeated.jobs[0].id++
+  repeated.jobs[0].run_attempt = 2
+  run.attempts.push(repeated)
+  copyAttempt.number = 3
+  for (const job of copyAttempt.jobs) job.run_attempt = 3
+  run.attempts.push(copyAttempt)
+  run.run.run_attempt = 3
+  const result = analyzeCiPerformance(ambiguous)
+  assert.equal(result.attempts[2].jobs[0].carriedExecution.origin, 'ambiguous')
+  assert.equal(result.latestRuns[0].observedRetainedRunnerSeconds, 0)
+})
+
+test('a later failure or pending real job supersedes copied success observations', () => {
+  for (const conclusion of ['failure', null]) {
+    const input = copiedCheckSnapshot()
+    const run = input.runs[0]
+    run.run.run_attempt = 3
+    run.run.conclusion = conclusion
+    run.attempts.push({
+      number: 3,
+      startedAt: '2026-10-31T06:05:00Z',
+      conclusion,
+      jobs: [
+        job(124460177043, 'Source and package tests', 3, {
+          run_id: run.run.id,
+          conclusion,
+          created_at: '2026-10-31T06:05:02Z',
+          started_at: '2026-10-31T06:05:03Z',
+          completed_at: conclusion ? '2026-10-31T06:05:30Z' : null,
+        }),
+      ],
+    })
+    assert.equal(
+      analyzeCiPerformance(input).latestRuns[0].observedRetainedSuccessfulJobs.some(
+        (job) => job.name === 'Source and package tests',
+      ),
+      false,
+    )
+  }
+})
+
 test('approval, no-runner cancellation, generic failures and skipped jobs retain their distinct evidence', () => {
   const run = entry()
   run.attempts[0].conclusion = 'cancelled'

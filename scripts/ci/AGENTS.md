@@ -94,6 +94,9 @@ preparation never becomes a consumer requirement.
 
   Earlier successful jobs retained in the latest history supply observed runner
   time only. Receipt acceptance and hypothetical latency savings remain unproved.
+  Copied successful checks contribute no execution time. Their unique observed
+  origin, missing origin or ambiguous origins remain explicit diagnostics.
+
   The report infers no flake rate and changes no scheduling weights or qualification.
   Collection refuses incomplete pagination, changing runs and excessive windows.
   It requires GitHub CLI read access and permits windows of at most 31 days.
@@ -408,7 +411,7 @@ They consume frozen package exports with tracked test helpers and installed
 ## Verification
 
 - `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
-  execution, independent timing intervals, partial retries, failure classifications
+  execution, independent timing intervals, partial retries, copied checks, failure classifications
   and ambiguous or foreign metadata refusal.
   Collect a report with `node scripts/ci/ci-performance.mjs --repository jiggy/jig --since 2026-10-30T00:00:00Z --until 2026-10-31T00:00:00Z`.
   Use explicit UTC bounds and redirect output into `.tmp/` when retaining reports.
