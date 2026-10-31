@@ -10,7 +10,8 @@ export const PERFORMANCE_WORKFLOWS = Object.freeze([
 ])
 const MAX_RUNS = 1000
 const MAX_ATTEMPTS = 10
-const MAX_REQUESTS = 4000
+const MAX_REQUESTS = 200
+const QUALIFICATION_REQUEST_RESERVE = 500
 const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000
 const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 
@@ -263,15 +264,11 @@ export function analyzeCiPerformance(snapshot) {
       throw new Error('Latest workflow conclusion differs from its attempt')
     const newest = new Map()
     for (const job of allJobs) {
-      if (
-        job.carriedExecution?.origin === 'matched' &&
-        newest.get(job.name)?.id === job.carriedExecution.originJobId
-      )
-        continue
+      if (job.carriedExecution?.origin === 'matched') continue
       newest.set(job.name, job)
     }
     const retained = [...newest.values()].filter(
-      (job) => job.attempt < count && job.conclusion === 'success',
+      (job) => job.attempt < count && job.conclusion === 'success' && !job.carriedExecution,
     )
     latestRuns.push({
       ...latest,
@@ -377,12 +374,44 @@ export function analyzeCiPerformance(snapshot) {
   }
 }
 
+export function performanceRequestBudget(rateLimit) {
+  const core = rateLimit?.resources?.core
+  if (
+    !Number.isSafeInteger(core?.remaining) ||
+    core.remaining < 0 ||
+    !Number.isSafeInteger(core.limit) ||
+    core.limit <= 0 ||
+    core.remaining > core.limit
+  )
+    throw new Error('Missing GitHub core rate budget; refusing performance collection')
+  const budget = Math.min(MAX_REQUESTS, core.remaining - QUALIFICATION_REQUEST_RESERVE)
+  if (budget < 1)
+    throw new Error(
+      'Preserve 500 GitHub core requests for qualification; retry after the budget resets',
+    )
+  return budget
+}
+
+export function requireCollectionBudget(runs, requests, budget) {
+  const minimum = runs.reduce((sum, run) => {
+    identity(run.id, 'run ID')
+    const attempt = identity(run.run_attempt, 'run attempt')
+    if (attempt > MAX_ATTEMPTS) throw new Error('Performance attempt limit exceeded')
+    return sum + 2 + attempt - 1
+  }, 0)
+  if (requests + minimum > budget)
+    throw new Error(
+      'Complete performance window exceeds the reserved API budget; use a narrower window',
+    )
+}
+
 export async function collectCiPerformance({ repository, since, until }) {
   window(repository, since, until)
   let requests = 0
+  let requestLimit = 1
   const deadline = Date.now() + 15 * 60_000
   const api = (path) => {
-    if (++requests > MAX_REQUESTS || Date.now() >= deadline)
+    if (++requests > requestLimit || Date.now() >= deadline)
       throw new Error('Performance collection budget exceeded; use a narrower window')
     return JSON.parse(
       execFileSync('gh', ['api', path], {
@@ -392,6 +421,7 @@ export async function collectCiPerformance({ repository, since, until }) {
       }),
     )
   }
+  requestLimit = performanceRequestBudget(api('rate_limit'))
   const pages = (path, key) => {
     const rows = []
     let expected
@@ -415,7 +445,7 @@ export async function collectCiPerformance({ repository, since, until }) {
     }
     throw new Error('Incomplete performance pagination; use a narrower window')
   }
-  const runs = []
+  const selectedRuns = []
   for (const workflow of PERFORMANCE_WORKFLOWS) {
     const path = `repos/${repository}/actions/workflows/${workflow.split('/').at(-1)}/runs`
     for (const run of pages(
@@ -423,33 +453,38 @@ export async function collectCiPerformance({ repository, since, until }) {
       'workflow_runs',
     )) {
       if (time(run.created_at, 'run creation') >= time(until, 'window end')) continue
-      if (runs.length >= MAX_RUNS || run.run_attempt > MAX_ATTEMPTS)
+      if (selectedRuns.length >= MAX_RUNS || run.run_attempt > MAX_ATTEMPTS)
         throw new Error('Performance run or attempt limit exceeded; use a narrower window')
-      const jobs = pages(`repos/${repository}/actions/runs/${run.id}/jobs?filter=all`, 'jobs')
-      const attempts = []
-      for (let number = 1; number <= run.run_attempt; number++) {
-        const metadata =
-          number === run.run_attempt
-            ? run
-            : api(`repos/${repository}/actions/runs/${run.id}/attempts/${number}`)
-        if (
-          metadata.id !== run.id ||
-          metadata.run_attempt !== number ||
-          metadata.head_sha !== run.head_sha
-        )
-          throw new Error('Workflow attempt changed during performance collection')
-        attempts.push({
-          number,
-          startedAt: metadata.run_started_at,
-          conclusion: metadata.conclusion,
-          jobs: jobs.filter((job) => job.run_attempt === number),
-        })
-      }
-      const after = api(`repos/${repository}/actions/runs/${run.id}`)
-      if (after.run_attempt !== run.run_attempt || after.updated_at !== run.updated_at)
-        throw new Error('Workflow changed during performance collection; retry after it settles')
-      runs.push({ run, attempts })
+      selectedRuns.push(run)
     }
+  }
+  requireCollectionBudget(selectedRuns, requests, requestLimit)
+  const runs = []
+  for (const run of selectedRuns) {
+    const jobs = pages(`repos/${repository}/actions/runs/${run.id}/jobs?filter=all`, 'jobs')
+    const attempts = []
+    for (let number = 1; number <= run.run_attempt; number++) {
+      const metadata =
+        number === run.run_attempt
+          ? run
+          : api(`repos/${repository}/actions/runs/${run.id}/attempts/${number}`)
+      if (
+        metadata.id !== run.id ||
+        metadata.run_attempt !== number ||
+        metadata.head_sha !== run.head_sha
+      )
+        throw new Error('Workflow attempt changed during performance collection')
+      attempts.push({
+        number,
+        startedAt: metadata.run_started_at,
+        conclusion: metadata.conclusion,
+        jobs: jobs.filter((job) => job.run_attempt === number),
+      })
+    }
+    const after = api(`repos/${repository}/actions/runs/${run.id}`)
+    if (after.run_attempt !== run.run_attempt || after.updated_at !== run.updated_at)
+      throw new Error('Workflow changed during performance collection; retry after it settles')
+    runs.push({ run, attempts })
   }
   return { repository, since, until, runs }
 }

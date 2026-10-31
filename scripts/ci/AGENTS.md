@@ -100,6 +100,12 @@ preparation never becomes a consumer requirement.
   The report infers no flake rate and changes no scheduling weights or qualification.
   Collection refuses incomplete pagination, changing runs and excessive windows.
   It requires GitHub CLI read access and permits windows of at most 31 days.
+
+  Collection sets its budget from remaining core API requests at startup,
+  leaving 500 for qualification and permitting at most 200 reads.
+  It checks the window's minimum request cost
+  before collecting individual run histories. Insufficient budget refuses the
+  complete report without sampling. Use a narrower manual window after refusal.
 - `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry
