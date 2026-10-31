@@ -17,6 +17,10 @@ for (const scenario of [
   'immediate-follow-up-start-before-reply',
   'immediate-follow-up-start-after-reply',
   'completion-before-reply',
+  'http-status-503',
+  'http-status-429',
+  'http-status-invalid',
+  'http-status-600',
 ]) {
   test(`Codex ACP accounts for requested turns and native shutdown: ${scenario}`, async () => {
     const root = await mkdtemp(join(tmpdir(), 'jig-codex-acp-dispatch-'))
@@ -103,7 +107,14 @@ for (const scenario of [
         return
       }
       expect(
-        (await request(1, 'initialize', { protocolVersion: 1, clientCapabilities: {} })).error,
+        (
+          await request(1, 'initialize', {
+            protocolVersion: 1,
+            clientCapabilities: scenario.startsWith('http-status-')
+              ? { _meta: { jetbrains: { air: { version: 1, capabilities: ['sessionFailure'] } } } }
+              : {},
+          })
+        ).error,
       ).toBeUndefined()
       const opened = await request(2, 'session/new', { cwd: root, mcpServers: [] })
       expect(opened.error).toBeUndefined()
@@ -117,6 +128,15 @@ for (const scenario of [
       })
       if (scenario === 'rejected') expect(answer.error).toBeDefined()
       else expect(answer.result?.stopReason).toBe('end_turn')
+      if (scenario.startsWith('http-status-')) {
+        const failure = answer.result?._meta?.jetbrains?.air?.sessionFailure
+        expect(failure?.severity).toBe('error')
+        expect(failure?.httpStatusCode).toBe(
+          ['http-status-503', 'http-status-429'].includes(scenario)
+            ? Number(scenario.slice('http-status-'.length))
+            : undefined,
+        )
+      }
       if (scenario.startsWith('immediate-follow-up')) {
         const followup = await request(
           5,
@@ -136,6 +156,7 @@ for (const scenario of [
         scenario === 'completed' ||
         scenario === 'completion-before-reply' ||
         scenario === 'rejected' ||
+        scenario.startsWith('http-status-') ||
         scenario.startsWith('immediate-follow-up')
       )
         expect(exit, await diagnostics).toBe(0)

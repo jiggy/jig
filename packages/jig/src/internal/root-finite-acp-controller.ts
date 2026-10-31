@@ -534,7 +534,12 @@ async function executeOwnedProvider(
       error instanceof PrivateFiniteAcpPolicyError &&
       error.reason === 'native-session' &&
       error.nativeCategory !== undefined
-        ? { category: error.nativeCategory }
+        ? {
+            category: error.nativeCategory,
+            ...(error.nativeHttpStatusCode === undefined
+              ? {}
+              : { httpStatusCode: error.nativeHttpStatusCode }),
+          }
         : undefined
     return attemptedDispatch
       ? failed(

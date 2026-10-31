@@ -15,7 +15,51 @@ diff --git a/dist/index.js b/dist/index.js
      connection.dispose();
    });
    return { connection, process: codex };
-@@ -27900,9 +27905,21 @@
+@@ -24211,7 +24216,8 @@
+       "error",
+       notification.params.error.message,
+       void 0,
+-      false
++      false,
++      this.getHttpStatusCode(notification.params.error.codexErrorInfo)
+     );
+     await this.session.update(this.createSessionFailureUpdate(failure));
+   }
+@@ -24894,7 +24900,10 @@
+           this.sessionFailureKind(params.error.codexErrorInfo),
+           params.turnId,
+           "error",
+-          params.error.message
++          params.error.message,
++          void 0,
++          true,
++          this.getHttpStatusCode(params.error.codexErrorInfo)
+         );
+         return this.createSessionFailureUpdate(failure);
+       }
+@@ -24931,9 +24940,9 @@
+   }
+   recordTypedSessionFailure(params) {
+     const kind = this.sessionFailureKind(params.error.codexErrorInfo);
+-    this.recordSessionFailure(kind, params.turnId, "error", params.error.message);
++    this.recordSessionFailure(kind, params.turnId, "error", params.error.message, void 0, true, this.getHttpStatusCode(params.error.codexErrorInfo));
+   }
+-  recordSessionFailure(kind, turnId, severity, title, actionsOverride, attributeToTurn = true) {
++  recordSessionFailure(kind, turnId, severity, title, actionsOverride, attributeToTurn = true, httpStatusCode) {
+     const policy = SESSION_FAILURE_POLICY[kind];
+     const scope = turnId ?? this.sessionState.sessionId;
+     const id = this.activeFailureIdByScope.get(scope) ?? this.allocateFailureId(scope, turnId);
+@@ -24944,7 +24953,8 @@
+       category: policy.category,
+       severity,
+       title,
+-      actions: actionsOverride ?? policy.actions
++      actions: actionsOverride ?? policy.actions,
++      ...Number.isInteger(httpStatusCode) && httpStatusCode >= 400 && httpStatusCode <= 599 ? { httpStatusCode } : {}
+     };
+     this.failuresById.set(id, failure);
+     this.failureTurnIdById.set(id, attributeToTurn ? turnId : void 0);
+@@ -27900,9 +27910,21 @@
  var CUSTOM_GATEWAY_PROVIDER_ID = "custom-gateway";
  var OPENAI_PROVIDER_ID = "openai";
  var DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -37,7 +81,7 @@ diff --git a/dist/index.js b/dist/index.js
  var CodexAcpClient = class {
    codexClient;
    config;
-@@ -27941,6 +27958,16 @@
+@@ -27941,6 +27963,16 @@
          title: request.clientInfo?.title ?? this.defaultClientInfo.title
        }
      });
@@ -54,7 +98,7 @@ diff --git a/dist/index.js b/dist/index.js
      this.configPath = response?.codexHome ?? null;
    }
    getHomePath() {
-@@ -29071,7 +29098,7 @@
+@@ -29071,7 +29103,7 @@
        if (this.handleStaleTurnNotification(serverNotification, routing)) {
          return;
        }
@@ -63,7 +107,7 @@ diff --git a/dist/index.js b/dist/index.js
        if (this.handleStaleTurnNotification(serverNotification, routing)) {
          return;
        }
-@@ -29150,19 +29177,33 @@
+@@ -29150,19 +29182,33 @@
    }
    async runTurn(params, onTurnStarted) {
      const capturedCompletions = [];
@@ -103,7 +147,7 @@ diff --git a/dist/index.js b/dist/index.js
        releaseCapture();
      }
    }
-@@ -29596,7 +29637,7 @@
+@@ -29596,7 +29642,7 @@
        capture();
      }
    }
@@ -112,7 +156,7 @@ diff --git a/dist/index.js b/dist/index.js
      if (routing.threadId === null || routing.turnId === null) {
        return;
      }
-@@ -29605,7 +29646,7 @@
+@@ -29605,7 +29651,7 @@
        return;
      }
      for (const capture of captures) {
@@ -121,7 +165,7 @@ diff --git a/dist/index.js b/dist/index.js
      }
    }
    handleStaleTurnNotification(notification, routing) {
-@@ -33448,6 +33489,7 @@
+@@ -33448,6 +33494,7 @@
        }
        return pendingTurnStart;
      };
@@ -129,7 +173,7 @@ diff --git a/dist/index.js b/dist/index.js
      const disposePromptRequestCancellation = this.observePromptRequestCancellation(signal, sessionState, activePrompt);
      let eventHandler = null;
      let promptNotificationsActive = true;
-@@ -33773,10 +33815,6 @@
+@@ -33773,10 +33820,6 @@
          agentFileChangeReportTurnId = turnCompleted.turn.id;
        }
        await clearRecoveredSessionFailure(eventHandler);
@@ -140,7 +184,7 @@ diff --git a/dist/index.js b/dist/index.js
        await this.publishFallbackSessionTitle(
          sessionState,
          this.createPromptFallbackTitle(params.prompt)
-@@ -34198,13 +34236,17 @@
+@@ -34198,13 +34241,17 @@
      stderr: ""
    };
    process.stdin.on("close", () => {

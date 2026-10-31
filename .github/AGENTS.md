@@ -36,6 +36,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Claude and Pi use Mistral BYOK through their native API protocols. These are
   qualification inputs, not product defaults.
 
+  Codex failure diagnostics retain only the closed native category and an
+  optional native-reported HTTP error status. Statuses are integers from 400
+  through 599. These reports do not prove a provider cause or authorize retries.
+  Native failures still block publication and require fresh complete qualification.
+
   Keep the OpenRouter key only in the dedicated test step of the protected
   `native-agent-api` environment. Never expose it to PRs or artifact builds.
   Configure Mistral BYOK to never use shared capacity for that provider so

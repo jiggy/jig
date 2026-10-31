@@ -114,13 +114,24 @@ function nativeRequest(details: unknown) {
   return { method, code, reason: 'managed-preferences-unavailable' }
 }
 
-function nativeSessionCategory(details: unknown) {
+function nativeSession(details: unknown) {
   try {
     if (!exactRecord(details, ['nativeSession'])) return undefined
     const session = ownValue(details, 'nativeSession')
-    if (!exactRecord(session, ['category'])) return undefined
+    if (
+      !exactRecord(session, ['category']) &&
+      !exactRecord(session, ['category', 'httpStatusCode'])
+    )
+      return undefined
     const category = ownValue(session, 'category')
-    return typeof category === 'string' && nativeCategories.has(category) ? category : undefined
+    if (typeof category !== 'string' || !nativeCategories.has(category)) return undefined
+    const status = ownValue(session, 'httpStatusCode')
+    return {
+      category,
+      ...(typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599
+        ? { httpStatusCode: status }
+        : {}),
+    }
   } catch {
     return undefined
   }
@@ -137,13 +148,13 @@ function projectError(error: unknown) {
         if (code === 'UNCERTAIN') {
           const native = nativeFailure(ownValue(error, 'message'))
           if (native !== undefined) {
-            const category =
+            const session =
               native.reason === 'native-session'
-                ? nativeSessionCategory(ownValue(error, 'details'))
+                ? nativeSession(ownValue(error, 'details'))
                 : undefined
             return {
               ...projection,
-              native: { ...native, ...(category === undefined ? {} : { category }) },
+              native: { ...native, ...session },
             }
           }
         }

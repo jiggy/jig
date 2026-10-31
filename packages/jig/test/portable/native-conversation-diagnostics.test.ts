@@ -171,6 +171,62 @@ test('native session diagnostics retain only exact categories with the matching 
   }
 })
 
+test('native HTTP diagnostics keep reported error statuses and discard malformed optional values', () => {
+  for (const status of [
+    400,
+    401,
+    402,
+    429,
+    500,
+    503,
+    599,
+    399,
+    600,
+    500.5,
+    '503',
+    null,
+    {},
+    privateText,
+  ]) {
+    const expected =
+      typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599
+        ? { httpStatusCode: status }
+        : {}
+    const details = { nativeSession: { category: 'service', httpStatusCode: status } }
+    const diagnostic = project(sessionError(details))
+    expect(diagnostic.errors).toEqual([
+      {
+        kind: 'operation',
+        code: 'UNCERTAIN',
+        native: {
+          phase: 'exchange-messages',
+          reason: 'native-session',
+          category: 'service',
+          ...expected,
+        },
+      },
+    ])
+    expect(JSON.stringify(diagnostic)).not.toContain(privateText)
+    const cancelled = new OperationError('CANCELLED', uncertainPrefix, details)
+    expect(project(cancelled).errors).toEqual([{ kind: 'operation', code: 'CANCELLED' }])
+  }
+  let reads = 0
+  const session = Object.defineProperty({ category: 'service' }, 'httpStatusCode', {
+    get() {
+      reads++
+      throw Error(privateText)
+    },
+  })
+  expect(project(sessionError({ nativeSession: session })).errors).toEqual([
+    {
+      kind: 'operation',
+      code: 'UNCERTAIN',
+      native: { phase: 'exchange-messages', reason: 'native-session' },
+    },
+  ])
+  expect(reads).toBe(0)
+})
+
 test('native session diagnostics reject unknown fields and malformed category records', () => {
   const session = { category: 'connection' }
   const unexpected = [

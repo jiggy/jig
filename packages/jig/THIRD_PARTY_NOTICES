@@ -143,7 +143,9 @@ so immediate cancellation waits for and interrupts the correct native turn.
 The adapter waits for the matching native turn-start notification before
 exposing the turn as interruptible; a start reply alone does not establish it.
 It also accepts Jig’s one-use in-memory ChatGPT token bootstrap so subscription
-credentials need no sandbox-readable file. See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
+credentials need no sandbox-readable file. Typed native session failures retain
+an optional validated HTTP error status without raw provider data.
+See `packages/jig/patches/codex-acp@1.8.0.patch` and its companion
 note for the correction and removal condition.
 
 Copyright 2025 JetBrains s.r.o.

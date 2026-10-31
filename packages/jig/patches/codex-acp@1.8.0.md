@@ -49,25 +49,41 @@ remains live while waiting; no retry, timer extension, or manufactured
 settlement is needed. This was reproduced with the native client as well as the
 recording peer; no exact upstream fix is established.
 
+The adapter's typed session failures previously discarded native HTTP status
+metadata while retaining only a broad category. The patch retains an optional
+integer `httpStatusCode` from 400 through 599 from the native `codexErrorInfo`
+record. It never parses error text. The host independently validates that field
+and withholds raw provider data before exposing attributed failure details.
+
+A retained status describes the native report. It does not establish the
+underlying provider cause or permit retry. Missing or malformed statuses leave
+the original native failure unchanged.
+
 ## Verification
 
-`bun test packages/jig/test/codex-acp-dispatch.test.ts` launches the actual
+`bun test packages/jig/test/portable/codex-acp-dispatch.test.ts` launches the actual
 installed adapter against a bounded recording app-server peer. Successful
 completion and rejected turns each issue exactly one model turn, with the
 selected model, and no ephemeral title thread. The peer accepts unexpected
 threads so it does not accidentally hide the defect. This is adapter behavior,
 not proof about native Codex's internal network retries or compaction.
+
+HTTP failure cases retain native-reported 503 and 429 statuses on the actual
+adapter result. Malformed and out-of-range values remain absent. Host-policy
+cases require every such session to fail and discard private metadata.
+
 The same recording peer covers clean EOF, nonzero exit, signal termination,
 and ignored EOF followed by a forced zero exit. Clean shutdown does not wait
-for the obsolete timer. This is not a persisted-session or clean-state receipt;
-native state collection and restoration need their own qualified boundary.
+for the obsolete timer. This is not a persisted-session or clean-state receipt.
+Native state collection and restoration need their own qualified boundary.
 The same suite launches Jig's credential bridge, verifies the exact in-memory
 login request, checks the ephemeral store setting, and proves that no
 `auth.json` is created.
+
 An immediate-follow-up case sends prompt and cancellation together and delays
 the native turn-start reply. It requires an interrupt naming the second turn,
-the actual cancelled response and clean shutdown. The unpatched race times out;
-the correction settles normally. Additional cases deliver the native start
+the actual cancelled response and clean shutdown. The unpatched race times out.
+The correction settles normally. Additional cases deliver the native start
 notification before or after the reply, reject interruption before activation,
 and include unrelated thread/turn notifications. Completion before the start
 reply remains authoritative even without a start notification.
@@ -75,8 +91,15 @@ reply remains authoritative even without a start notification.
 ## Removal condition
 
 Remove both files and the manifest entry when the selected upstream adapter
-provides verified no-implicit-model-work behavior, immediate interruption, a supported secret-free external-token bootstrap and
-truthful bounded child shutdown. Individual hunks may be removed when their own
+provides all these verified properties:
+
+- No implicit model work.
+- Immediate interruption.
+- A supported secret-free external-token bootstrap.
+- Truthful bounded child shutdown.
+- The validated native HTTP error status.
+
+Individual hunks may be removed when their own
 upstream correction is verified. Keep the behavioral dispatch, interruption and
 shutdown regressions, rebuild the installed
 adapter, and qualify the same bounded native conversation path. A version bump
