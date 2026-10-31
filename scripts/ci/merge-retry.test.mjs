@@ -40,6 +40,17 @@ const artifact = (id, name) => ({
   id, name, expired: false, expires_at: '2099-01-01T00:00:00Z',
   digest: 'sha256:' + 'a'.repeat(64), workflow_run: { id: 100, head_sha: head },
 })
+const execution = {
+  created_at: '2026-10-31T05:35:14Z', started_at: '2026-10-31T05:54:42Z',
+  completed_at: '2026-10-31T05:59:34Z', runner_id: 7, runner_name: 'runner-7',
+  runner_group_id: 0, labels: ['ubuntu-24.04'],
+  steps: [{ name: 'Execute complete suite', number: 1, status: 'completed', conclusion: 'success',
+    started_at: '2026-10-31T05:54:45Z', completed_at: '2026-10-31T05:59:30Z' }],
+}
+const copiedCheck = (original, id, attempt = 2) => ({
+  ...structuredClone(original), id, run_attempt: attempt, created_at: '2026-10-31T06:01:02Z',
+  runner_group_id: null,
+})
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'jig-merge-retry-'))
@@ -122,6 +133,37 @@ test('merge retry uses latest execution and never falls back from a later failur
     [job(1, 'test', 3)], [job(1, 'test', 1, { run_id: 101 })],
     [job(1, 'test', 1, { head_sha: source })], [job(1, 'test'), job(2, 'test')], [],
   ]) assert.throws(() => latestJob(changed, run, 'test'))
+})
+
+test('GitHub carried checks retain the exact original execution identity across retries', () => {
+  const original = job(1, 'source', 1, execution)
+  const copy = copiedCheck(original, 2)
+  assert.equal(latestJob([original, copy], run, 'source'), original)
+  assert.equal(latestJob([original, copy, copiedCheck(original, 3, 3)], { ...run, run_attempt: 3 }, 'source'), original)
+  for (const change of [
+    { started_at: '2026-10-31T05:54:43Z' }, { completed_at: '2026-10-31T05:59:33Z' },
+    { runner_id: 8 }, { runner_name: 'other' }, { labels: ['windows-2022'] }, { steps: [] },
+    { steps: [{ ...execution.steps[0], conclusion: 'failure' }] },
+    { steps: [{ ...execution.steps[0], completed_at: '2026-10-31T05:59:29Z' }] },
+  ]) assert.throws(() => latestJob([original, { ...copy, ...change }], run, 'source'), /Unverifiable carried/)
+  assert.throws(() => latestJob([copy], run, 'source'), /Unverifiable carried/)
+  assert.throws(() => latestJob([original, { ...original, id: 9 }, copy], run, 'source'), /Unverifiable carried/)
+  const laterFailure = job(4, 'source', 2, { ...execution, conclusion: 'failure' })
+  assert.throws(() => latestJob([original, laterFailure, copiedCheck(original, 5, 3)], { ...run, run_attempt: 3 }, 'source'), /did not succeed/)
+  assert.throws(() => latestJob([original, { ...copy, status: 'in_progress', conclusion: null }], run, 'source'), /did not succeed/)
+})
+
+test('real ZIP collection accepts copied GitHub checks only through their original job receipts', async (t) => {
+  const f = await fixture(t)
+  const originals = f.jobs.filter((job) => job.run_attempt === 1)
+  for (const job of originals) Object.assign(job, structuredClone(execution))
+  f.jobs.push(...originals.map((job) => copiedCheck(job, 1000 + job.id)))
+  const receipt = await acquireMergeEvidence({ directory: join(f.root, 'copied'), output: join(f.root, 'copied.json'), env: f.env, client: f.client })
+  assert.equal(receipt.jobs.filter((job) => job.attempt === 1).length, MERGE_JOBS.length - 1)
+  for (const retained of receipt.jobs.filter((job) => job.attempt === 1)) {
+    assert.equal(retained.jobId, originals.find((job) => job.name === retained.name).id)
+    assert.ok(retained.jobId < 1000)
+  }
 })
 
 test('partial PR retry combines immutable successful jobs and the freshly retried matrix job', async (t) => {

@@ -277,6 +277,12 @@ They consume frozen package exports with tracked test helpers and installed
   Hosted runner family and architecture must match the job's fixed label.
   Exact image build versions are retained observations of that execution.
 
+  GitHub may copy successful checks into later attempts with new IDs after
+  their original execution ended. Such copies require one earlier successful
+  execution with identical timestamps, runner identity, labels and complete step
+  observations. Receipts retain that original job ID and attempt. Missing or
+  ambiguous origins refuse reuse. Later actual failures remain authoritative.
+
   After verifying merge identity, runtime profiles, target coverage and immutable
   inputs, the collector summarizes current and retained job executions.
   It records their attempts, job IDs and evidence artifact IDs.
