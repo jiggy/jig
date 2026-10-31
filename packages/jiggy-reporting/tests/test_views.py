@@ -9,6 +9,21 @@ def view():
 
 
 class Views(unittest.IsolatedAsyncioTestCase):
+    def test_document_presentation_preserves_captured_sources_and_labels(self):
+        original = view()
+        original.update(application='Photo studio', target={'definitionId': 'yearbook', 'instanceKey': 'family', 'label': 'Family moments', 'scopeLabel': 'Album'}, presentation={'kind': 'document', 'title': 'Family moments', 'cover': {'kind': 'input-artifact', 'attachment': 'photos', 'path': 'cover.jpg'}, 'download': {'label': 'Download PDF', 'reference': {'kind': 'artifact', 'attachment': 'book', 'path': 'yearbook.pdf'}}})
+        original['sections'][0]['label'] = '01–02'
+        accepted = validate_reporting_message(original)
+        original['presentation']['download']['label'] = 'Changed'
+        self.assertEqual(accepted['presentation']['download']['label'], 'Download PDF')
+        self.assertEqual(accepted['target']['scopeLabel'], 'Album')
+        self.assertEqual(accepted['sections'][0]['label'], '01–02')
+        for cover in [{'kind': 'call', 'operationId': 'bad'}, {'kind': 'record', 'viewId': 'a', 'collectionId': 'b', 'rowId': 'c'}]:
+            invalid = copy.deepcopy(accepted)
+            invalid['presentation']['cover'] = cover
+            with self.assertRaises(TypeError):
+                validate_reporting_message(invalid)
+
     def test_closed_snapshot_and_semantic_limits(self):
         original=view()
         snapshot=validate_reporting_message(original)

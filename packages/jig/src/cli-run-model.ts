@@ -530,7 +530,8 @@ export class PrivateRunModel {
     const old = source.views.get(value.id)
     if (
       old &&
-      (old.value.operationId !== value.operationId ||
+      (old.value.application !== value.application ||
+        old.value.operationId !== value.operationId ||
         old.value.landing !== value.landing ||
         JSON.stringify(old.value.target) !== JSON.stringify(value.target))
     )

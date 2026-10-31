@@ -339,6 +339,9 @@ buffers. Blocked-stream expiry retains admission until abort/cancel
 acknowledgement. Closing inspection releases preview waiters.
 
 Full-file downloads resolve exact captured identities and generations through authenticated transport.
+
+Forwarded outputs retain verified publisher, attachment and relative-path bindings separately from their packet paths.
+Document cover and download roles participate in the same scoped reference discovery.
 They remain independent of clipped previews and mutable destinations.
 Input media comes only from exact original captured members.
 Its detached map releases original input capabilities before source capture closes.

@@ -83,6 +83,7 @@ export function supportCaseOptions(input: SupportState['input']): ViewOptions {
     .digest('hex')
   return {
     title: 'Support case',
+    application: 'Support',
     landing: true,
     target: { definitionId: 'support-case', instanceKey: caseKey, subjectKey: accountKey },
   }

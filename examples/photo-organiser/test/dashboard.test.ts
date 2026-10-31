@@ -4,7 +4,7 @@ import {
   type PhotoBoxState,
   photoAlbumKey,
   photoBoxView,
-  photoContactSheetView,
+  photoYearbookView,
   photoGalleryView,
   photoViewOptions,
 } from '../flows/organise/view.ts'
@@ -86,19 +86,27 @@ test('captured originals appear before grouping and contact-sheet output remains
       },
     ],
   })
-  const pending = photoContactSheetView(state)
+  const pending = photoYearbookView(state)
   expect(JSON.stringify(pending)).not.toContain('"kind":"artifact"')
-  const ready = photoContactSheetView({ phase: 'ready', photos: [photo], plan: [planned] })
+  const ready = photoYearbookView({
+    phase: 'ready',
+    albumTitle: 'Family moments',
+    photos: [photo],
+    plan: [planned],
+    yearbook: { pages: 5, bytes: 1200 },
+  })
   validateReportingMessage({
     kind: 'view',
     id: 'sheet',
-    ...photoViewOptions('family').contactSheet,
+    ...photoViewOptions('family').yearbook,
     ...ready,
   })
-  expect(ready.sections[0]?.blocks[0]).toMatchObject({
-    kind: 'content',
-    reference: { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+  expect(ready.presentation).toMatchObject({
+    kind: 'document',
+    title: 'Family moments',
+    download: { reference: { kind: 'artifact', attachment: 'book', path: 'yearbook.pdf' } },
   })
+  expect(ready.sections[0]?.label).toBe('01–02')
 })
 
 test('two catalogues produce six independently identified application views', () => {

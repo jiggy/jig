@@ -50,19 +50,31 @@ export type Collection = Readonly<{
   presentation?: CollectionPresentation
 }>
 export type Block = DetailBlock | Collection
-export type Section = Readonly<{ title?: string; blocks: readonly Block[] }>
+export type Section = Readonly<{ title?: string; label?: string; blocks: readonly Block[] }>
+export type DocumentPresentation = Readonly<{
+  kind: 'document'
+  title: string
+  subtitle?: string
+  label?: string
+  cover?: MediaReference
+  download?: Readonly<{ reference: MediaReference; label: string; detail?: string }>
+}>
 export type ViewSnapshot = Readonly<{
   title?: string
   summary: string
+  presentation?: DocumentPresentation
   sections: readonly Section[]
 }>
 export type ViewTarget = Readonly<{
   definitionId: string
   instanceKey: string
   subjectKey?: string
+  label?: string
+  scopeLabel?: string
 }>
 export type ViewOptions = Readonly<{
   title: string
+  application?: string
   landing?: true
   operationId?: string
   target?: ViewTarget
@@ -89,10 +101,20 @@ export const VIEW_LIMITS = Object.freeze({
 })
 
 export function validateViewTarget(input: unknown): ViewTarget {
-  const target = dataRecord(input, ['definitionId', 'instanceKey', 'subjectKey'])
+  const target = dataRecord(input, [
+    'definitionId',
+    'instanceKey',
+    'subjectKey',
+    'label',
+    'scopeLabel',
+  ])
   return Object.freeze({
     definitionId: identityText(target.definitionId, 64),
     instanceKey: identityText(target.instanceKey, 64),
+    ...(Object.hasOwn(target, 'label') ? { label: scalarText(target.label, 128, true) } : {}),
+    ...(Object.hasOwn(target, 'scopeLabel')
+      ? { scopeLabel: scalarText(target.scopeLabel, 32, true) }
+      : {}),
     ...(Object.hasOwn(target, 'subjectKey')
       ? { subjectKey: identityText(target.subjectKey, 64) }
       : {}),
@@ -421,11 +443,43 @@ function validateBlock(input: unknown, budget: Budget, detail = false): Block {
       throw new TypeError('Unknown view block kind')
   }
 }
+function validateDocument(input: unknown): DocumentPresentation {
+  const value = dataRecord(input, ['kind', 'title', 'subtitle', 'label', 'cover', 'download'])
+  if (value.kind !== 'document') throw new TypeError('Unknown view presentation')
+  const media = (input: unknown): MediaReference => {
+    const reference = validateReference(input)
+    if (reference.kind !== 'artifact' && reference.kind !== 'input-artifact')
+      throw new TypeError('Document content requires a captured file reference')
+    return reference
+  }
+  let download: DocumentPresentation['download']
+  if (Object.hasOwn(value, 'download')) {
+    const item = dataRecord(value.download, ['reference', 'label', 'detail'])
+    download = Object.freeze({
+      reference: media(item.reference),
+      label: scalarText(item.label, 128, true),
+      ...(Object.hasOwn(item, 'detail') ? { detail: scalarText(item.detail, 256, true) } : {}),
+    })
+  }
+  return Object.freeze({
+    kind: 'document',
+    title: scalarText(value.title, 128, true),
+    ...(Object.hasOwn(value, 'subtitle')
+      ? { subtitle: scalarText(value.subtitle, 256, true) }
+      : {}),
+    ...(Object.hasOwn(value, 'label') ? { label: scalarText(value.label, 128, true) } : {}),
+    ...(Object.hasOwn(value, 'cover') ? { cover: media(value.cover) } : {}),
+    ...(download ? { download } : {}),
+  })
+}
+
 export function validateView(input: unknown): ViewItem {
   const v = dataRecord(input, [
     'kind',
     'id',
     'title',
+    'application',
+    'presentation',
     'summary',
     'landing',
     'operationId',
@@ -439,15 +493,20 @@ export function validateView(input: unknown): ViewItem {
     kind: 'view',
     id: scalarText(v.id, 64, true),
     title: scalarText(v.title, 128, true),
+    ...(Object.hasOwn(v, 'application')
+      ? { application: scalarText(v.application, 128, true) }
+      : {}),
+    ...(Object.hasOwn(v, 'presentation') ? { presentation: validateDocument(v.presentation) } : {}),
     summary: scalarText(v.summary, 1024),
     ...(Object.hasOwn(v, 'landing') ? { landing: true as const } : {}),
     ...(Object.hasOwn(v, 'operationId') ? { operationId: operationId(v.operationId) } : {}),
     ...(Object.hasOwn(v, 'target') ? { target: validateViewTarget(v.target) } : {}),
     sections: Object.freeze(
       array(v.sections, VIEW_LIMITS.sections).map((item) => {
-        const s = dataRecord(item, ['title', 'blocks'])
+        const s = dataRecord(item, ['title', 'label', 'blocks'])
         return Object.freeze({
           ...(Object.hasOwn(s, 'title') ? { title: scalarText(s.title, 128, true) } : {}),
+          ...(Object.hasOwn(s, 'label') ? { label: scalarText(s.label, 64, true) } : {}),
           blocks: Object.freeze(array(s.blocks, 32).map((b) => validateBlock(b, budget))),
         })
       }),

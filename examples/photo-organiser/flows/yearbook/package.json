@@ -1,0 +1,10 @@
+{
+  "name": "photo-yearbook-flow",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@jigging/flow": "0.1.0-alpha.15",
+    "@jigging/reporting": "0.1.0-alpha.3",
+    "pdf-lib": "1.17.1"
+  }
+}

@@ -27,6 +27,7 @@ with their producer. This package owns readonly display data and pure meaning.
   or network operations belong in model source.
 - Input captures retain `captured-input` provenance separately from delivered outputs.
   Each retained file may bind its exact source and attachment.
+  Delivered files can retain multiple verified source/attachment/relative-path bindings independently of their packet path.
   Retained application views have no invented execution or activity destinations.
 - Snapshot replacement is atomic. Validation returns an owned immutable value,
   rejects malformed/oversized data and does not claim to authenticate evidence.

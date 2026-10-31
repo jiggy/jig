@@ -67,6 +67,11 @@ photos.update({
 Repeated retirement is harmless, but retired identifiers never revive.
 Each scope can claim sixteen view handles.
 
+A view may declare an application label and readable target `label` and `scopeLabel` fields.
+These labels never establish identity, ancestry or evidence access.
+A document presentation supplies a title, optional subtitle, cover and captured download reference.
+Section labels provide chapter locators, while the renderer owns the document layout.
+
 The optional target separates a view definition from an application instance.
 Its `subjectKey` relates views about the same subject without merging their content.
 Targets, landing hints and call associations remain fixed for the handle's lifetime.

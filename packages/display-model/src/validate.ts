@@ -205,6 +205,7 @@ function capture(value: unknown, input: boolean): void {
       'sourceId',
       'attachment',
       'downloadable',
+      'bindings',
     ])
     identity(file.id)
     text(file.path, 512, 1)
@@ -214,6 +215,19 @@ function capture(value: unknown, input: boolean): void {
     optional(file.sourceId, identity)
     optional(file.attachment, (value) => text(value, 64, 1))
     optional(file.downloadable, flag)
+    if (file.bindings !== undefined) {
+      if (input) fail()
+      for (const value of list(file.bindings, 1024)) {
+        const binding = record(value, ['sourceId', 'attachment', 'path'])
+        identity(binding.sourceId)
+        text(binding.attachment, 64, 1)
+        text(binding.path, 512, 1)
+        if (!attachments.includes(binding.attachment)) fail()
+        const key = JSON.stringify([binding.sourceId, binding.attachment, binding.path])
+        if (joins.has(key)) fail()
+        joins.add(key)
+      }
+    }
     if (file.attachment !== undefined && !attachments.includes(file.attachment)) fail()
     const path = JSON.stringify([file.sourceId ?? data.sourceId, file.path])
     const bindings = paths.get(path) ?? new Set<unknown>()
@@ -225,8 +239,10 @@ function capture(value: unknown, input: boolean): void {
       file.attachment ?? null,
       file.path,
     ])
-    if (joins.has(join)) fail()
-    joins.add(join)
+    if (file.bindings === undefined) {
+      if (joins.has(join)) fail()
+      joins.add(join)
+    }
   })
 }
 

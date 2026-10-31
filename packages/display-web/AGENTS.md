@@ -10,7 +10,7 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - `src/client.ts` owns bounded synchronization, memory capability and preview
   requests. `src/navigation.ts` owns viewer-local semantic selection/references.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
-- `src/application.ts` composes authored reading, media, gallery and comparison surfaces.
+- `src/application.ts` composes authored reading, media, gallery, document and comparison surfaces.
   Gallery metadata uses a disclosure without dropping supplied columns.
   `src/app.ts`, `src/app.css` and `src/index.html` own inert browser
   rendering.
@@ -60,6 +60,8 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - Appearance uses fixed accessible icon buttons with names, tooltips, focus
   and pressed state. Default System follows browser preference. Choices are
   viewer-local.
+- The compact application frame puts routine host facts in Run details while retaining visible attention and Close.
+- Document covers and downloads use exact current capture bindings and generation checks.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all

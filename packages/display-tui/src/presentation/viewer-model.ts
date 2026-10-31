@@ -128,6 +128,7 @@ type CaptureFile = {
   clipped: boolean
   sourceId?: string
   attachment?: string
+  bindings?: readonly { sourceId: string; attachment: string; path: string }[]
 }
 type Capture = {
   generation: string
@@ -544,7 +545,7 @@ export class ViewerModel {
         key: view.id,
         title: view.value.title,
         source: view.value.target
-          ? `${view.sourceLabel} · ${view.value.target.instanceKey}`
+          ? `${view.sourceLabel} · ${view.value.target.label ?? view.value.target.instanceKey}`
           : view.sourceLabel,
         sourceId: view.publisher,
         role: view.role,
@@ -594,8 +595,29 @@ export class ViewerModel {
           key: 'summary',
           kind: 'summary',
           publisher: selected.publisher,
-          text: selected.value.summary,
-          signature: JSON.stringify(selected.value.summary),
+          text: selected.value.presentation
+            ? [
+                selected.value.presentation.title,
+                selected.value.presentation.subtitle,
+                selected.value.presentation.label,
+                selected.value.summary,
+              ]
+                .filter(Boolean)
+                .join('\n')
+            : selected.value.summary,
+          signature: JSON.stringify([selected.value.summary, selected.value.presentation]),
+          ...(selected.value.presentation
+            ? {
+                block: {
+                  kind: 'report' as const,
+                  text: selected.value.summary,
+                  references: [
+                    selected.value.presentation.cover,
+                    selected.value.presentation.download?.reference,
+                  ].filter((value): value is NonNullable<typeof value> => value !== undefined),
+                },
+              }
+            : {}),
         },
       ]
       selected.value.sections.forEach((section, si) => {
@@ -609,7 +631,9 @@ export class ViewerModel {
                 kind: 'empty',
                 publisher: selected.publisher,
                 collection: block,
-                ...(section.title === undefined ? {} : { section: section.title }),
+                ...(!section.title && !section.label
+                  ? {}
+                  : { section: [section.label, section.title].filter(Boolean).join(' · ') }),
                 signature: '',
               })
             for (const row of rows)
@@ -619,7 +643,9 @@ export class ViewerModel {
                 publisher: selected.publisher,
                 collection: block,
                 row,
-                ...(section.title === undefined ? {} : { section: section.title }),
+                ...(!section.title && !section.label
+                  ? {}
+                  : { section: [section.label, section.title].filter(Boolean).join(' · ') }),
                 signature: JSON.stringify([block.columns, row]),
               })
           } else
@@ -628,7 +654,9 @@ export class ViewerModel {
               kind: block.kind,
               publisher: selected.publisher,
               block,
-              ...(section.title === undefined ? {} : { section: section.title }),
+              ...(!section.title && !section.label
+                ? {}
+                : { section: [section.label, section.title].filter(Boolean).join(' · ') }),
               signature: JSON.stringify(block),
             })
         })
@@ -908,11 +936,17 @@ export class ViewerModel {
     }
     const capture = ref.kind === 'input-artifact' ? this.#inputs : this.#capture
     const matches =
-      capture?.files.filter(
-        (file) =>
-          file.path === ref.path &&
-          (file.sourceId ?? capture.sourcePublisher) === publisher &&
-          (file.attachment === undefined || file.attachment === ref.attachment),
+      capture?.files.filter((file) =>
+        file.bindings !== undefined
+          ? file.bindings.some(
+              (binding) =>
+                binding.sourceId === publisher &&
+                binding.attachment === ref.attachment &&
+                binding.path === ref.path,
+            )
+          : file.path === ref.path &&
+            (file.sourceId ?? capture.sourcePublisher) === publisher &&
+            (file.attachment === undefined || file.attachment === ref.attachment),
       ) ?? []
     const file = matches.length === 1 ? matches[0] : undefined
     return capture?.phase === 'ready' &&

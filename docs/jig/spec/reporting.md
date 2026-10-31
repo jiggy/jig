@@ -232,10 +232,11 @@ tools. The same child invoked directly can provide its own primary page.
 Presentation never changes the invocation result, host status or evidence
 access.
 
-`view` contains `id`, `title`, `summary`, `sections`, optional `target`,
+`view` contains `id`, `title`, `summary`, `sections`, optional `application`, `presentation`, `target`,
 optional `landing: true` and optional own-call `operationId`.
 `retire-view` contains `id`.
-A section contains an optional title and ordered blocks.
+A section contains optional title and label fields and ordered blocks.
+A label identifies a chapter range or another short domain locator.
 Blocks are literal reports, facts, explicit count progress, captured content or typed collections.
 Collections retain stable row IDs, exact cells and optional non-collection row details.
 
@@ -252,7 +253,15 @@ Roles name existing column keys rather than duplicating row values.
 Every gallery media cell must contain an artifact or input-artifact reference.
 All columns and supplied details remain inspectable regardless of the presentation choice.
 
-An optional target contains `definitionId`, `instanceKey` and optional `subjectKey`.
+An optional document presentation contains `kind: 'document'`, `title`, optional `subtitle`, `label`, `cover` and `download`.
+Cover and download references must name captured input or output artifacts.
+A download contains `reference`, `label` and optional `detail`.
+Sections remain the document body, while the renderer owns the cover, outline and chapter layout.
+Authored presentation supplies no browser markup, styles or callbacks.
+The optional application label names the application in the renderer's navigation.
+
+An optional target contains `definitionId`, `instanceKey`, optional `subjectKey`, `label` and `scopeLabel`.
+Readable labels name the selected instance and its scope, without granting identity or authority.
 The first two fields identify an application projection and its instance.
 A subject key relates views across definitions without aggregating their contents or changing actual publisher attribution.
 Definitions and instances remain application identities, separate from the publishing Run.
@@ -260,7 +269,7 @@ A child keeps its own useful views while the root application deliberately proje
 
 Full view replacement is atomic after validation and capacity reservation.
 A rejected replacement preserves the last complete snapshot and marks the source incomplete.
-Source, target, landing and call association stay fixed for a view lifetime.
+Source, application label, target, landing and call association stay fixed for a view lifetime.
 Title, summary and content may change.
 Omission removes optional old content.
 Retired IDs never revive.

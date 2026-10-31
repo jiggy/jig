@@ -264,7 +264,20 @@ function navigate(id: string): void {
   const body = document.getElementById('view-panel')
   if (body && !panel) scrollPositions.set(destinationKey, body.scrollTop)
   humanNavigation = true
-  destinationKey = id
+  const before = view()
+  const requested = privateBrowserView(client?.body, id)
+  const related =
+    requested?.sourceId === before?.sourceId &&
+    before?.value.target?.subjectKey &&
+    requested?.value.target?.definitionId !== before.value.target.definitionId
+      ? client?.body?.views.find(
+          (item) =>
+            item.sourceId === requested?.sourceId &&
+            item.value.target?.definitionId === requested.value.target?.definitionId &&
+            item.value.target?.subjectKey === before.value.target?.subjectKey,
+        )
+      : undefined
+  destinationKey = related ? displayViewKey(related.id) : id
   panel = undefined
   client?.setPreview(undefined)
   feedback = ''
@@ -722,21 +735,14 @@ function ApplicationList(): ComponentChildren {
   const selected = view()
   if (!selected) return null
   const state = currentLocal()
-  const related = client?.body ? privateBrowserRelatedViews(client.body, selected) : []
   return h(
     'div',
     {},
-    related.length
-      ? h(
-          'nav',
-          { class: 'related-views', 'aria-label': 'Related application views' },
-          related.map((item) =>
-            button(literal(item.value.title), () => navigate(displayViewKey(item.id))),
-          ),
-        )
-      : null,
     h(ApplicationPage, {
       view: selected,
+      scope: h(ApplicationScope, {}),
+      renderDownload: (reference, record, label) =>
+        h(DownloadReference, { reference, record, label }),
       local: state,
       records: records(),
       onSelect: select,
@@ -1784,12 +1790,188 @@ function Panel({ current }: { current: DisplaySnapshotEnvelope }): ComponentChil
   )
 }
 
+function applicationName(): string {
+  const body = client?.body
+  return (
+    view()?.value.application ??
+    body?.views.find((item) => item.sourceId === body.rootSourceId)?.value.application ??
+    client?.current?.workspace.target ??
+    'Application'
+  )
+}
+function Icon({
+  kind,
+}: {
+  kind:
+    | 'image'
+    | 'document'
+    | 'table'
+    | 'run'
+    | 'activity'
+    | 'files'
+    | 'folder'
+    | 'settings'
+    | 'close'
+}): ComponentChildren {
+  const paths = {
+    image: 'M3 3h18v18H3z M3 16l5-5 4 4 3-3 6 6 M7 7h.01',
+    document: 'M6 3h8l4 4v14H6z M14 3v5h5 M9 12h6 M9 16h6',
+    table: 'M3 3h18v18H3z M3 9h18 M9 3v18',
+    run: 'M2 12h4l3-8 5 16 3-8h5',
+    activity: 'M4 6h16 M4 12h16 M4 18h16',
+    files: 'M4 3h12v15H4z M8 18v3h12V7h-4',
+    folder: 'M3 6h7l2 3h9v12H3z',
+    settings: 'M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6',
+    close: 'M6 6l12 12 M18 6L6 18',
+  }
+  return h(
+    'svg',
+    {
+      viewBox: '0 0 24 24',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': 1.5,
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round',
+      'aria-hidden': true,
+    },
+    h('path', { d: paths[kind] }),
+  )
+}
+function ApplicationScope(): ComponentChildren {
+  const selected = view()
+  const target = selected?.value.target
+  if (!selected || !target) return null
+  const choices =
+    client?.body?.views.filter(
+      (item) =>
+        item.sourceId === selected.sourceId &&
+        item.value.target?.definitionId === target.definitionId,
+    ) ?? []
+  return h(
+    'label',
+    { class: 'application-scope' },
+    h('span', {}, literal(target.scopeLabel ?? 'Instance')),
+    choices.length > 1
+      ? h(
+          'select',
+          {
+            value: selected.id,
+            'aria-label': target.scopeLabel ?? 'View instance',
+            onChange: (event: Event) =>
+              navigate(displayViewKey((event.target as HTMLSelectElement).value)),
+          },
+          choices.map((item) =>
+            h(
+              'option',
+              { key: item.id, value: item.id },
+              literal(item.value.target?.label ?? item.value.target!.instanceKey),
+            ),
+          ),
+        )
+      : h('strong', {}, literal(target.label ?? target.instanceKey)),
+  )
+}
+function DownloadReference({
+  reference,
+  record,
+  label,
+}: {
+  reference: MediaReference
+  record: PrivateBrowserRecord
+  label: string
+}): ComponentChildren {
+  const target = client?.body
+    ? privateBrowserResolve(client.body, record.sourceId, reference)
+    : undefined
+  const inventory =
+    reference.kind === 'input-artifact' ? client?.body?.inputs : client?.body?.artifacts
+  const file =
+    target?.kind === 'artifact'
+      ? inventory?.files.find((item) => item.id === target.artifactId)
+      : undefined
+  if (target?.kind !== 'artifact' || file?.downloadable !== true || !client?.referencesEnabled)
+    return h(
+      'span',
+      { class: 'secondary' },
+      target?.kind === 'unavailable'
+        ? literal(target.label)
+        : 'Captured download currently unavailable',
+    )
+  return button(
+    literal(label),
+    () => {
+      void client
+        ?.download({
+          artifactId: target.artifactId,
+          captureGeneration: target.captureGeneration,
+          signature: JSON.stringify([record.sourceId, reference]),
+        })
+        .then((bytes) => {
+          if (!bytes) {
+            feedback = 'Captured download unavailable.'
+            redraw()
+            return
+          }
+          const url = URL.createObjectURL(
+            new Blob([Uint8Array.from(bytes).buffer], { type: 'application/octet-stream' }),
+          )
+          const anchor = document.createElement('a')
+          anchor.href = url
+          anchor.download = reference.path.split('/').at(-1) ?? 'artifact'
+          anchor.click()
+          setTimeout(() => URL.revokeObjectURL(url), 0)
+        })
+    },
+    { class: 'document-download-button' },
+  )
+}
+
 function Tabs(): ComponentChildren {
-  const tabs = privateBrowserTabs(client?.body, client?.current?.mode)
+  const allTabs = privateBrowserTabs(client?.body, client?.current?.mode)
+  const seen = new Set<string>()
+  const selected = view()
+  const tabs = allTabs.filter((tab) => {
+    const candidate = privateBrowserView(client?.body, tab.id)
+    if (!tab.application || !candidate?.value.target) return true
+    const group = JSON.stringify([candidate.sourceId, candidate.value.target.definitionId])
+    if (seen.has(group)) return false
+    const peers = allTabs.filter((item) => {
+      const itemView = privateBrowserView(client?.body, item.id)
+      return (
+        itemView?.sourceId === candidate.sourceId &&
+        itemView?.value.target?.definitionId === candidate.value.target?.definitionId
+      )
+    })
+    const preferred =
+      peers.find((item) => item.id === destinationKey) ??
+      peers.find(
+        (item) =>
+          privateBrowserView(client?.body, item.id)?.value.target?.subjectKey ===
+          selected?.value.target?.subjectKey,
+      ) ??
+      peers[0]
+    if (preferred?.id !== tab.id) return false
+    seen.add(group)
+    return true
+  })
   const focusId = tabs.some((item) => item.id === destinationKey) ? destinationKey : tabs[0]?.id
   return h(
     'aside',
     { class: 'navigation' },
+    h(
+      'div',
+      { class: 'workbench-brand' },
+      h('span', { class: 'jig-mark', 'aria-hidden': true }, 'j'),
+      h('strong', {}, 'jig'),
+      h('span', {}, 'local workbench'),
+    ),
+    h(
+      'div',
+      { class: 'application-identity' },
+      h(Icon, { kind: 'folder' }),
+      h('strong', {}, literal(applicationName())),
+    ),
     tabs.length
       ? h(
           'nav',
@@ -1808,22 +1990,45 @@ function Tabs(): ComponentChildren {
                     'p',
                     { class: 'nav-group', role: 'presentation' },
                     tab.application
-                      ? 'Application'
+                      ? null
                       : client?.current?.mode === 'recorded-packet'
                         ? 'Recorded packet'
-                        : 'Inspector',
+                        : 'Execution',
                   )
                 : null,
               button(
                 h(
                   'span',
                   { class: 'nav-entry' },
-                  h('span', { class: 'nav-icon', 'aria-hidden': true }, tab.icon),
+                  h(
+                    'span',
+                    { class: 'nav-icon' },
+                    h(Icon, {
+                      kind: tab.application
+                        ? privateBrowserView(client?.body, tab.id)?.value.presentation
+                          ? 'document'
+                          : privateBrowserView(client?.body, tab.id)?.value.sections.some(
+                                (section) =>
+                                  section.blocks.some(
+                                    (block) =>
+                                      block.kind === 'collection' &&
+                                      block.presentation?.kind === 'gallery',
+                                  ),
+                              )
+                            ? 'image'
+                            : 'table'
+                        : tab.id === 'overview'
+                          ? 'run'
+                          : tab.id === 'activity'
+                            ? 'activity'
+                            : 'files',
+                    }),
+                  ),
                   h(
                     'span',
                     {},
                     literal(tab.title),
-                    tab.source ? h('small', {}, literal(tab.source)) : null,
+                    !tab.application && tab.source ? h('small', {}, literal(tab.source)) : null,
                   ),
                 ),
                 () => navigate(tab.id),
@@ -1985,56 +2190,95 @@ function App(): ComponentChildren {
       { class: 'shell' },
       h(
         'div',
-        { class: 'identity' },
-        h(
-          'small',
-          {},
-          current.mode === 'retained-views'
-            ? 'JIG / APPLICATION VIEWS'
-            : current.mode === 'recorded-packet'
-              ? 'JIG / RECORDED RESULT'
-              : current.workspace.target,
-        ),
+        { class: 'workbench-breadcrumb' },
+        h('span', {}, literal(applicationName())),
+        h('span', { 'aria-hidden': true }, '›'),
         h(
           'h1',
           {},
           literal(
-            !panel && isApplicationPage()
-              ? (view()?.value.title ?? current.workspace.target)
-              : current.workspace.target,
+            panel === 'help'
+              ? 'Help & shortcuts'
+              : panel === 'diagnostics'
+                ? 'Diagnostics'
+                : panel === 'attention'
+                  ? 'Needs attention'
+                  : (privateBrowserTabs(client?.body).find((tab) => tab.id === destinationKey)
+                      ?.title ?? 'Application views'),
           ),
-        ),
-        current.context
-          ? h(
-              'details',
-              { class: 'run-context' },
-              h('summary', {}, 'Observation context'),
-              h('p', { class: 'source' }, literal(current.context)),
-            )
-          : null,
-        h(
-          'p',
-          { class: 'host-stage' },
-          current.mode === 'retained-views'
-            ? 'Retained application projections · currency unknown'
-            : current.mode === 'recorded-packet'
-              ? 'Recorded claims · nothing is running'
-              : live
-                ? literal(current.workspace.hostStage)
-                : 'Settled inspection · nothing is running',
         ),
       ),
       h(
         'div',
-        { class: 'shell-actions' },
-        h('strong', {}, live ? 'Execution running' : 'Read-only inspection'),
-        current.mode !== 'live-run'
-          ? null
-          : h(
-              'span',
+        { class: 'workbench-tools' },
+        h(
+          'span',
+          { class: 'workspace-observation' },
+          live
+            ? 'Execution running'
+            : current.mode === 'retained-views'
+              ? 'Retained views · currency unknown'
+              : current.mode === 'recorded-packet'
+                ? 'Recorded result'
+                : 'Settled run',
+        ),
+        h(
+          'details',
+          { class: 'run-context-menu' },
+          h(
+            'summary',
+            { title: 'Run details and execution facts' },
+            h(Icon, { kind: 'settings' }),
+            h('span', { class: 'visually-hidden' }, 'Run details'),
+          ),
+          h(
+            'div',
+            { class: 'run-context-content' },
+            h('strong', {}, literal(current.workspace.target)),
+            h('p', {}, literal(current.workspace.hostStage)),
+            current.context ? h('p', {}, literal(current.context)) : null,
+            current.mode === 'live-run'
+              ? h(
+                  'p',
+                  {},
+                  `Elapsed ${Math.floor(seconds / 60)}m ${seconds % 60}s${current.workspace.limitMs === undefined ? '' : ` · limit ${Math.floor(current.workspace.limitMs / 1000)}s`}`,
+                )
+              : null,
+            current.workspace.facts
+              ? h(
+                  'dl',
+                  { class: 'host-facts' },
+                  Object.entries(current.workspace.facts).map(([name, fact]) =>
+                    h(
+                      'div',
+                      { key: name },
+                      h('dt', {}, name[0]!.toUpperCase() + name.slice(1)),
+                      h(
+                        'dd',
+                        {},
+                        literal(fact.value),
+                        h(
+                          'small',
+                          {},
+                          fact.provenance === 'host-observed'
+                            ? 'Host observed'
+                            : fact.provenance === 'recorded-claim'
+                              ? 'Recorded claim'
+                              : 'Application reported',
+                        ),
+                        fact.clipped ? ' · clipped' : '',
+                      ),
+                    ),
+                  ),
+                )
+              : null,
+            h(
+              'p',
               { class: 'secondary' },
-              `Elapsed ${Math.floor(seconds / 60)}m ${seconds % 60}s${current.workspace.limitMs === undefined ? '' : ` · limit ${Math.floor(current.workspace.limitMs / 1000)}s`}`,
+              'Close inspection closes all viewers for this command. It does not cancel execution.',
             ),
+          ),
+        ),
         button(
           closing ? 'Closing…' : 'Close inspection',
           () => {
@@ -2054,45 +2298,8 @@ function App(): ComponentChildren {
             title: 'Closes inspection for this command and all viewers. Does not cancel execution.',
           },
         ),
-        h(
-          'small',
-          {},
-          live
-            ? 'Closes all viewers; work continues in the terminal.'
-            : current.mode === 'retained-views'
-              ? 'Closes all viewers; preserves retained material.'
-              : 'Closes all viewers; preserves the admitted outcome.',
-        ),
       ),
     ),
-    current.workspace.facts
-      ? h(
-          'dl',
-          { class: 'host-facts' },
-          Object.entries(current.workspace.facts).map(([name, fact]) =>
-            h(
-              'div',
-              { key: name },
-              h('dt', {}, name[0]!.toUpperCase() + name.slice(1)),
-              h(
-                'dd',
-                {},
-                literal(fact.value),
-                h(
-                  'small',
-                  {},
-                  fact.provenance === 'host-observed'
-                    ? 'Host observed'
-                    : fact.provenance === 'recorded-claim'
-                      ? 'Recorded claim'
-                      : 'Application reported',
-                ),
-                fact.clipped ? ' · clipped' : '',
-              ),
-            ),
-          ),
-        )
-      : null,
     h(
       'section',
       { class: 'attention-shell', 'aria-label': 'Attention and inspection controls' },
@@ -2201,7 +2408,17 @@ function App(): ComponentChildren {
     h(
       'footer',
       {},
-      h('span', {}, 'Closing this browser tab disconnects only this viewer.'),
+      h(
+        'span',
+        {},
+        current.mode === 'recorded-packet'
+          ? 'Recorded result'
+          : current.mode === 'retained-views'
+            ? 'Retained application projection'
+            : live
+              ? 'Live observation'
+              : 'Settled inspection',
+      ),
       h(
         'span',
         {

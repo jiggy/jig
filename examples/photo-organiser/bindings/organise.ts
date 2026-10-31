@@ -11,6 +11,10 @@ export default defineBinding({
         files: { create: true },
       },
     },
+    yearbook: {
+      target: 'flow:flows/yearbook',
+      attachments: { source: { from: 'source' }, files: { create: true } },
+    },
     'contact-sheet': {
       target: 'flow:flows/contact-sheet',
       attachments: {
