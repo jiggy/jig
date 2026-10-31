@@ -630,7 +630,7 @@ export async function writeSpecialistParent(root: string): Promise<void> {
 export function flowProgram(): string {
   return [
     '#!/usr/bin/env bun',
-    'import { handle } from "./flow-sdk/index.js";',
+    'import { handle, OperationError } from "./flow-sdk/index.js";',
     'async function selectedSkills() {',
     '  const root = new URL("./skills/selected/", import.meta.url);',
     '  const files = [];',
@@ -679,6 +679,8 @@ export function flowProgram(): string {
     '        process.env.ANTHROPIC_AUTH_TOKEN !== undefined ||',
     '        process.env.PI_API_KEY !== undefined } };',
     '  } catch (error) {',
+    '    if ((input.scenario === "api-text" || input.scenario === "api-structured") &&',
+    '        error instanceof OperationError) throw error;',
     '    const code = typeof error === "object" && error !== null && "code" in error',
     '      ? String((error as { code: unknown }).code) : "UNKNOWN";',
     '    return { outcome: "done", output: { status: "failed", code } };',
