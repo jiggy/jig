@@ -449,6 +449,15 @@ The Codex Responses text check requires exactly the requested readiness word,
 ignoring capitalization and surrounding whitespace. Live qualification still
 requires successful execution, credential isolation, settlement and cleanup.
 
+The shared Agent fixture rethrows operation failures from its live `api-text` and
+`api-structured` scenarios. Preserve the original operation code, message and
+details through the ordinary SDK terminal. Deterministic negative scenarios
+retain their explicit failed-result values.
+
+Portable Run-session tests exercise this distinction through real SDK subprocesses
+and the production host's absent-dispatch refusal. These tests establish no native
+execution, fencing or provider-cause evidence.
+
 The installed native conversation requires frozen Jig, ACP, method and FLOW SDK
 archives. Its library workspace preserves extracted package bytes and uses
 ordinary declared dependencies. `portable/root-agent-fixtures.test.ts` verifies
