@@ -179,6 +179,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   daily at 03:17 UTC or by manual dispatch on main. It uses repository and
   Actions read permission without builds, native allocation or publication.
   Retain its JSON metadata and Markdown observations for fourteen days.
+  Collection preserves the qualification API reserve and refuses incomplete windows.
+  Manual dispatch permits one, three or seven complete days after budget refusal.
   Reports establish no qualification, flake rate or automatic scheduling changes.
 - The CI site job checks documentation metadata, local links, source anchors,
   changed technical paragraphs, and the rendered Jig site before recording success.

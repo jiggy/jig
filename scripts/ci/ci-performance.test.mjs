@@ -5,7 +5,12 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
-import { analyzeCiPerformance, PERFORMANCE_WORKFLOWS } from './ci-performance.mjs'
+import {
+  analyzeCiPerformance,
+  PERFORMANCE_WORKFLOWS,
+  performanceRequestBudget,
+  requireCollectionBudget,
+} from './ci-performance.mjs'
 
 const base = Date.parse('2026-10-30T12:00:00Z')
 const stamp = (seconds) => new Date(base + seconds * 1000).toISOString()
@@ -275,6 +280,70 @@ test('a later failure or pending real job supersedes copied success observations
   }
 })
 
+test('a matched copy of older green cannot mask an intervening real failure on a later attempt', () => {
+  const input = copiedCheckSnapshot()
+  const run = input.runs[0]
+  const copiedAttempt = run.attempts.pop()
+  run.attempts.push({
+    number: 2,
+    startedAt: '2026-10-31T06:00:00Z',
+    conclusion: 'failure',
+    jobs: [
+      job(124460177043, 'Source and package tests', 2, {
+        run_id: run.run.id,
+        conclusion: 'failure',
+        created_at: '2026-10-31T06:00:01Z',
+        started_at: '2026-10-31T06:00:02Z',
+        completed_at: '2026-10-31T06:00:30Z',
+      }),
+    ],
+  })
+  copiedAttempt.number = 3
+  for (const job of copiedAttempt.jobs) job.run_attempt = 3
+  run.attempts.push(copiedAttempt)
+  run.run.run_attempt = 4
+  run.attempts.push({
+    number: 4,
+    startedAt: '2026-10-31T06:06:00Z',
+    conclusion: 'success',
+    jobs: [
+      job(124460177044, 'Other check', 4, {
+        run_id: run.run.id,
+        created_at: '2026-10-31T06:06:01Z',
+        started_at: '2026-10-31T06:06:02Z',
+        completed_at: '2026-10-31T06:06:30Z',
+      }),
+    ],
+  })
+  const report = analyzeCiPerformance(input)
+  assert.equal(report.attempts[2].jobs[0].carriedExecution.origin, 'matched')
+  assert.equal(
+    report.latestRuns[0].observedRetainedSuccessfulJobs.some(
+      (job) => job.name === 'Source and package tests',
+    ),
+    false,
+  )
+})
+
+test('collection preserves qualification rate budget and preflights the complete window', () => {
+  const rate = (remaining, limit = 1000) => ({ resources: { core: { remaining, limit } } })
+  assert.equal(performanceRequestBudget(rate(1000)), 200)
+  assert.equal(performanceRequestBudget(rate(550)), 50)
+  assert.equal(performanceRequestBudget(rate(15000, 15000)), 200)
+  for (const invalid of [rate(500), rate(20), rate(1100), {}, rate('900')])
+    assert.throws(() => performanceRequestBudget(invalid))
+  const runs = Array.from({ length: 98 }, (_, i) => ({ id: i + 1, run_attempt: 1 }))
+  assert.doesNotThrow(() => requireCollectionBudget(runs, 4, 200))
+  assert.throws(
+    () => requireCollectionBudget([...runs, { id: 99, run_attempt: 1 }], 4, 200),
+    /Complete performance window exceeds/,
+  )
+  assert.throws(
+    () => requireCollectionBudget([{ id: 1, run_attempt: 2 }], 4, 6),
+    /Complete performance window exceeds/,
+  )
+})
+
 test('approval, no-runner cancellation, generic failures and skipped jobs retain their distinct evidence', () => {
   const run = entry()
   run.attempts[0].conclusion = 'cancelled'
@@ -438,7 +507,9 @@ test('daily observation workflow stays read-only, bounded and separate from qual
   assert.equal(job['timeout-minutes'], 20)
   assert.equal(job.steps[0].with['persist-credentials'], false)
   const collect = job.steps.find((step) => step.run?.includes('--since'))
-  assert.ok(collect.run.includes('7*24*60*60*1000'))
+  assert.ok(collect.run.includes('days*24*60*60*1000'))
+  assert.ok(collect.run.includes('[1,3,7].includes(days)'))
+  assert.deepEqual(workflow.on.workflow_dispatch.inputs.days.options, ['1', '3', '7'])
   assert.ok(collect.run.includes('setUTCHours(0,0,0,0)'))
   assert.ok(collect.run.includes('--report'))
   assert.equal(collect.env.GH_TOKEN, '$' + '{{ github.token }}')
