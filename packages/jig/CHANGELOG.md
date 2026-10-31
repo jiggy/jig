@@ -1,5 +1,11 @@
 # @jigging/jig
 
+## 0.1.0-alpha.46
+
+### Patch Changes
+
+- 28d20a4: Explain incompatible project requirements before evaluation and detect stale contributor builds on invocation. Projects declare tested host versions in engines.jig without adding runtime dependencies. Installed users receive bun/npm installation guidance. Contributor builds receive repository rebuild guidance.
+
 ## 0.1.0-alpha.45
 
 ### Patch Changes
