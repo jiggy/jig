@@ -582,12 +582,15 @@ test('native live jobs require release scope while manual main diagnostics remai
     await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'),
   )
   const scope = workflow.jobs.scope
-  const selects = (github) => Function('github', 'return (' + scope.if + ')')(github)
+  const evaluate = (expression, github) => Function('github', 'return (' + expression + ')')(github)
   const event = (changes = {}) => ({
     event_name: 'workflow_run',
+    ref: 'refs/heads/main',
+    sha: 'b'.repeat(40),
     repository: 'jiggy/jig',
     event: {
       workflow_run: {
+        head_sha: 'a'.repeat(40),
         conclusion: 'success',
         event: 'push',
         head_branch: 'main',
@@ -596,24 +599,44 @@ test('native live jobs require release scope while manual main diagnostics remai
       },
     },
   })
-  assert.equal(selects(event()), true)
-  for (const changes of [
-    { conclusion: 'failure' },
-    { event: 'pull_request' },
-    { head_branch: 'feature' },
-    { head_repository: { full_name: 'fork/jig' } },
-  ])
-    assert.equal(selects(event(changes)), false)
-  assert.equal(selects({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }), true)
-  assert.equal(selects({ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }), false)
+  const contexts = [
+    [event(), true, 'a'.repeat(40)],
+    [{ event_name: 'workflow_dispatch', ref: 'refs/heads/main', sha: 'c'.repeat(40) }, true, 'c'.repeat(40)],
+    [{ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }, false],
+    [{ event_name: 'pull_request' }, false],
+    [{ event_name: 'pull_request_target' }, false],
+    [{ event_name: 'issue_comment' }, false],
+    ...[
+      { conclusion: 'failure' },
+      { conclusion: 'cancelled' },
+      { conclusion: null },
+      { event: 'pull_request' },
+      { event: 'pull_request_target' },
+      { event: 'workflow_dispatch' },
+      { head_branch: 'feature' },
+      { head_repository: { full_name: 'fork/jig' } },
+      { event: 'pull_request', head_branch: 'main', head_repository: { full_name: 'fork/jig' } },
+    ].map((changes) => [event(changes), false]),
+  ]
   assert.equal(scope.environment, undefined)
   assert.doesNotMatch(JSON.stringify(scope), /secrets\.|OPENROUTER_API_KEY/)
   assert.equal(scope.outputs.qualify, '${{ steps.release.outputs.qualify }}')
   const checkout = scope.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
-  assert.equal(checkout.with.ref, '${{ env.SOURCE_REVISION }}')
   assert.equal(checkout.with['fetch-depth'], 0)
-  assert.equal(checkout.with['persist-credentials'], false)
   const job = workflow.jobs.qualification
+  const nativeCheckout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
+  for (const [context, selected, revision] of contexts) {
+    assert.equal(evaluate(scope.if, context), selected)
+    for (const step of [checkout, nativeCheckout]) {
+      assert.equal(evaluate(step.if, context), selected, 'Checkout must enforce trust independently')
+      if (selected) assert.equal(evaluate(step.with.ref.slice(3, -2), context), revision)
+    }
+  }
+  for (const step of [checkout, nativeCheckout]) {
+    assert.equal(step.with.ref,
+      "${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}")
+    assert.equal(step.with['persist-credentials'], false)
+  }
   assert.equal(job.needs, 'scope')
   assert.equal(job.if, "needs.scope.outputs.qualify == 'true'")
   assert.deepEqual(

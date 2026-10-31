@@ -31,6 +31,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - The separate Native Agent API Qualification workflow automatically selects
   eligible generated release sources after successful Linux Host Conformance on `main`.
   A read-only scope job validates the exact triggering source's complete release metadata before protected jobs start.
+  Each native checkout directly enforces successful same-repository main pushes or explicit manual main dispatch.
+  Checkout refs use the guarded event SHA directly, with credentials disabled.
+
   Pending changesets, feature sources and stale plans omit live calls and create no qualification receipts.
   Explicit manual dispatch on `main` retains diagnostics for nonrelease main revisions using that revision's successful push-run host artifacts.
   Selection grants no publication readiness. Every release still requires all three fresh native clients against the exact canonical candidate.
