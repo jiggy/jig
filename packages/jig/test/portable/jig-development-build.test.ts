@@ -135,6 +135,43 @@ test('changed generated evaluators and incomplete output refuse the real launche
 }, 30_000)
 
 for (const input of [
+  'scripts/jig-development-build.ts',
+  'packages/jig/src/development-checkout.ts',
+]) {
+  test(`launch never evaluates mutable checker source ${input}`, async () => {
+    const path = join(root, input)
+    const original = await readFile(path)
+    const executed = join(consumer, 'MUTABLE_CHECKER_EXECUTED')
+    try {
+      await writeFile(path, `await Bun.write(${JSON.stringify(executed)}, "unsafe");\n`)
+      const result = await launch()
+      expect(result.code).toBe(2)
+      expect(result.stderr).toContain('JIG_BUILD_STALE')
+      await expect(readFile(executed)).rejects.toMatchObject({ code: 'ENOENT' })
+    } finally {
+      await writeFile(path, original)
+    }
+    expect((await launch()).code).toBe(0)
+  }, 30_000)
+}
+
+for (const input of ['src/installed-cli.ts', 'libexec/development-build-check.js']) {
+  test(`missing contributor file ${input} cannot bypass freshness checks`, async () => {
+    const path = join(release, input)
+    const original = await readFile(path)
+    try {
+      await rm(path)
+      const result = await launch()
+      expect(result.code).toBe(2)
+      expect(result.stderr).toContain('JIG_BUILD_STALE')
+    } finally {
+      await writeFile(path, original)
+    }
+    expect((await launch()).code).toBe(0)
+  }, 30_000)
+}
+
+for (const input of [
   ...[
     'jig',
     'agent-method',

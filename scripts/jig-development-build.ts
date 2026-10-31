@@ -103,7 +103,10 @@ async function digestFiles(root: string, paths: string[]): Promise<string> {
 /** The launcher selects its own contributor source, never application code. */
 export async function jigDevelopmentBuild(operation: string, release: string): Promise<void> {
   const root = await privateJigDevelopmentCheckout(release)
-  if (root === undefined) return
+  if (root === undefined) {
+    if (operation === 'check') throw new Error('Contributor checkout metadata is missing')
+    return
+  }
   const manifest = JSON.parse(await readFile(join(release, 'package.json'), 'utf8'))
   const current = { version: manifest.version, source: await sourceDigest(root) }
   if (operation === 'begin') {

@@ -106,7 +106,7 @@ These links locate module rules. All selected domain requirements still apply.
   `--version` and top-level help remain available for diagnosis.
   Internal owner reexecution preserves admitted work without repeating this development check.
 
-  Build records remain generated checkout metadata and never enter npm archives.
+  The generated checker and build record stay outside npm archives.
   Source changes during a build prevent recording success.
   Ordinary installed users receive bun/npm installation recovery, never repository build instructions.
 

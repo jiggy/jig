@@ -84,6 +84,13 @@ test('installed help is focused and version matches the installed manifest', asy
   const manifest = JSON.parse(
     await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'),
   )
+  for (const path of ['development-build-check.js', 'development-build.json']) {
+    await expect(
+      lstat(join(root, 'node_modules/@jigging/jig/libexec', path)),
+    ).rejects.toMatchObject({
+      code: 'ENOENT',
+    })
+  }
   expect(await invoke(['--version'])).toMatchObject({
     code: 0,
     stdout: `${manifest.version}\n`,

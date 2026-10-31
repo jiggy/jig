@@ -104,10 +104,18 @@ unset BUN_BE_BUN BUN_OPTIONS NODE_OPTIONS
 case "${1:-}" in
   --version|--help|-h|'') ;;
   *)
-    if [ -f "$release/src/installed-cli.ts" ] &&
-       [ -f "$release/../../scripts/jig-development-build.ts" ]; then
+    checker=$release/libexec/development-build-check.js
+    if [ -f "$checker" ] || [ -f "$release/src/installed-cli.ts" ] ||
+       [ -f "$release/libexec/development-build.json" ]; then
+      if [ ! -f "$checker" ]; then
+        printf '%s\n' 'Error: Jig needs to be rebuilt' '' \
+          '  This checkout has changed, or its generated build is incomplete.' '' \
+          '  Next step: From the repository root, run just jig::build, then retry review.' '' \
+          '  Diagnostic code: JIG_BUILD_STALE' >&2
+        exit 2
+      fi
       "$runtime" --no-env-file --no-install --config=/dev/null \
-        "$release/../../scripts/jig-development-build.ts" check "$release" || exit 2
+        "$checker" check "$release" || exit 2
     fi ;;
 esac
 [ -f "$entry" ] || fail
