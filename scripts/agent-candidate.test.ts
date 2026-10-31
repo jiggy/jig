@@ -862,6 +862,7 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
     await Bun.file(join(root, '.github/workflows/npm-publish.yml')).text(),
   ) as any
   const trigger = workflowTriggers(live).workflow_run
+  const scope = live.jobs.scope
   const qualification = live.jobs.qualification
   const matrix = qualification.strategy.matrix.include
   const codexInstall = qualification.steps.find(
@@ -891,14 +892,16 @@ test('native API qualification is automatic, exact-revision, and scoped to suppo
   expect(live['run-name']).toContain('github.event.workflow_run.head_sha')
   expect(live['run-name']).toContain('github.sha')
   expect(live.env.JIG_NATIVE_API_MODEL).toBeUndefined()
-  expect(qualification.if).toContain("github.event.workflow_run.conclusion == 'success'")
-  expect(qualification.if).toContain("github.event_name == 'workflow_dispatch'")
-  expect(qualification.if).toContain("github.ref == 'refs/heads/main'")
-  expect(qualification.if).toContain("github.event.workflow_run.event == 'push'")
-  expect(qualification.if).toContain("github.event.workflow_run.head_branch == 'main'")
-  expect(qualification.if).toContain(
+  expect(scope.if).toContain("github.event.workflow_run.conclusion == 'success'")
+  expect(scope.if).toContain("github.event_name == 'workflow_dispatch'")
+  expect(scope.if).toContain("github.ref == 'refs/heads/main'")
+  expect(scope.if).toContain("github.event.workflow_run.event == 'push'")
+  expect(scope.if).toContain("github.event.workflow_run.head_branch == 'main'")
+  expect(scope.if).toContain(
     'github.event.workflow_run.head_repository.full_name == github.repository',
   )
+  expect(qualification.needs).toBe('scope')
+  expect(qualification.if).toBe("needs.scope.outputs.qualify == 'true'")
   expect(qualification.environment).toBe('native-agent-api')
   expect(qualification.permissions).toEqual({ actions: 'read', contents: 'read' })
   expect(qualification.strategy['max-parallel']).toBe(3)
