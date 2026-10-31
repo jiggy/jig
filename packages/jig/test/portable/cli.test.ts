@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { ATTEMPT_REQUEST_BYTES } from '../../src/attempt-contract.js'
 import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import {
   foundationCommands,
   foundationEnvironment,
@@ -10,7 +10,8 @@ import {
 } from '../fixtures/host-foundation/materialize.js'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
 
-// No review or execution: unchanged installed commands and actual files only.
+// Review refusals precede host acquisition; unchanged installed commands and files only.
+const packageRoot = resolve(import.meta.dir, '../..')
 let root: string
 let cli: string
 let sequence = 0
@@ -19,15 +20,27 @@ beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'jig-installed-cli-portable-'))
   const setup = foundationCommands(join(root, 'setup'))
   const archives = await freezeFoundationArchives(root, setup)
-  await writeFile(join(root, 'package.json'), JSON.stringify({
-    private: true,
-    dependencies: { '@jigging/jig': `file:${archives.jig}` },
-  }))
-  await setup([process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'], root, 120_000)
+  await writeFile(
+    join(root, 'package.json'),
+    JSON.stringify({
+      private: true,
+      dependencies: { '@jigging/jig': `file:${archives.jig}` },
+    }),
+  )
+  await setup(
+    [process.execPath, 'install', '--ignore-scripts', '--no-progress', '--backend', 'copyfile'],
+    root,
+    120_000,
+  )
   cli = join(root, 'node_modules/.bin/jig')
 }, 300_000)
 
-async function invoke(args: string[], cwd = root, input?: string, environment: NodeJS.ProcessEnv = {}) {
+async function invoke(
+  args: string[],
+  cwd = root,
+  input?: string,
+  environment: NodeJS.ProcessEnv = {},
+) {
   const child = Bun.spawn([cli, ...args], {
     cwd,
     env: { ...foundationEnvironment(), ...environment },
@@ -42,7 +55,13 @@ async function invoke(args: string[], cwd = root, input?: string, environment: N
 }
 
 test('installed help is focused and version matches the installed manifest', async () => {
-  for (const args of [['--help'], ['init', '--help'], ['review', '-h'], ['run', '--help'], ['inspect', '--help']]) {
+  for (const args of [
+    ['--help'],
+    ['init', '--help'],
+    ['review', '-h'],
+    ['run', '--help'],
+    ['inspect', '--help'],
+  ]) {
     const result = await invoke(args)
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
@@ -62,11 +81,21 @@ test('installed help is focused and version matches the installed manifest', asy
       expect(result.stdout).toContain('Fast can miss changed tool bytes')
     }
   }
-  const manifest = JSON.parse(await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'))
-  expect(await invoke(['--version'])).toMatchObject({ code: 0, stdout: `${manifest.version}\n`, stderr: '' })
-  expect(await invoke(['--version'], root, undefined, {
-    PATH: '/nonexistent', BUN_OPTIONS: 'invalid', NODE_OPTIONS: 'invalid',
-  })).toMatchObject({ code: 0, stdout: `${manifest.version}\n`, stderr: '' })
+  const manifest = JSON.parse(
+    await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'),
+  )
+  expect(await invoke(['--version'])).toMatchObject({
+    code: 0,
+    stdout: `${manifest.version}\n`,
+    stderr: '',
+  })
+  expect(
+    await invoke(['--version'], root, undefined, {
+      PATH: '/nonexistent',
+      BUN_OPTIONS: 'invalid',
+      NODE_OPTIONS: 'invalid',
+    }),
+  ).toMatchObject({ code: 0, stdout: `${manifest.version}\n`, stderr: '' })
   passed++
 })
 
@@ -76,8 +105,13 @@ test('installed invalid grammar refuses without disclosing rejected private valu
     ['unknown-command'],
     ['run', 'flow:../private'],
     ['run', 'flow:flows/hello', '--input', '{"secret":'],
-    ...['0', '-1', 'NaN', '9007199254740992ms', '25h'].map(value => ['run', 'flow:flows/hello', '--timeout', value]),
-    ...[['review'], ['inspect'], ['run', 'flow:flows/hello']].flatMap(prefix => [
+    ...['0', '-1', 'NaN', '9007199254740992ms', '25h'].map((value) => [
+      'run',
+      'flow:flows/hello',
+      '--timeout',
+      value,
+    ]),
+    ...[['review'], ['inspect'], ['run', 'flow:flows/hello']].flatMap((prefix) => [
       [...prefix, '--verification'],
       [...prefix, '--verification', 'private-invalid-value'],
       [...prefix, '--verification', 'fast', '--verification', 'strict'],
@@ -91,15 +125,16 @@ test('installed invalid grammar refuses without disclosing rejected private valu
   for (const args of cases) {
     const result = await invoke(args, project)
     expect(result.stdout).toBe('')
-    const code = args[0] === '--version' || args[0] === 'unknown-command'
-      ? 'JIG_UNKNOWN_COMMAND'
-      : args.includes('--timeout')
-      ? 'JIG_RUN_TIMEOUT_INVALID'
-      : args[1] === 'flow:../private'
-      ? 'JIG_RUN_TARGET_INVALID'
-      : args.includes('{"secret":')
-        ? 'JIG_RUN_INPUT_INVALID'
-        : 'JIG_USAGE'
+    const code =
+      args[0] === '--version' || args[0] === 'unknown-command'
+        ? 'JIG_UNKNOWN_COMMAND'
+        : args.includes('--timeout')
+          ? 'JIG_RUN_TIMEOUT_INVALID'
+          : args[1] === 'flow:../private'
+            ? 'JIG_RUN_TARGET_INVALID'
+            : args.includes('{"secret":')
+              ? 'JIG_RUN_INPUT_INVALID'
+              : 'JIG_USAGE'
     expect(result.code, JSON.stringify(args)).toBe(code.startsWith('JIG_RUN_') ? 1 : 2)
     expect(result.stderr).toContain(code)
     expect(result.stderr).not.toContain('private-invalid-value')
@@ -118,15 +153,17 @@ test('installed bare init writes only the inert envelope and preserves existing 
   expect(await readdir(join(project, 'flows'))).toEqual([])
   expect(await readdir(join(project, 'bindings'))).toEqual([])
   expect(await readFile(join(project, '.gitignore'), 'utf8')).toBe('.jig/\n')
-  expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe([
-    'import { defineJig, discover } from "@jigging/jig";',
-    '',
-    'export default defineJig({',
-    '  flows: discover("./flows"),',
-    '  bindings: discover("./bindings"),',
-    '});',
-    '',
-  ].join('\n'))
+  expect(await readFile(join(project, 'jig.ts'), 'utf8')).toBe(
+    [
+      'import { defineJig, discover } from "@jigging/jig";',
+      '',
+      'export default defineJig({',
+      '  flows: discover("./flows"),',
+      '  bindings: discover("./bindings"),',
+      '});',
+      '',
+    ].join('\n'),
+  )
   await writeFile(join(project, 'owned.txt'), 'keep\n')
   const refused = await invoke(['init', '--bare', project])
   expect(refused.code).toBe(1)
@@ -147,25 +184,31 @@ test('concurrent installed bare initializers have exactly one winner', async () 
     invoke(['init', '--bare', destination]),
     invoke(['init', '--bare', destination]),
   ])
-  expect(results.map(result => result.code).sort()).toEqual([0, 1])
+  expect(results.map((result) => result.code).sort()).toEqual([0, 1])
   expect((await readdir(destination)).sort()).toEqual(['.gitignore', 'bindings', 'flows', 'jig.ts'])
   passed++
 })
 
 test('installed greeting and Agent initialization create ordinary editable files without authority', async () => {
-  const current = JSON.parse(await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'))
+  const current = JSON.parse(
+    await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'),
+  )
   for (const client of [undefined, 'codex', 'claude', 'pi']) {
     const project = join(root, client ?? 'greeting')
     const result = await invoke(['init', project, ...(client ? ['--agent', client] : [])])
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
     expect(result.stdout).not.toContain('\u001b')
-    expect(await readFile(join(project, 'flows/hello/FLOW.ts'), 'utf8')).toContain('import { handle } from "@jigging/flow"')
+    expect(await readFile(join(project, 'flows/hello/FLOW.ts'), 'utf8')).toContain(
+      'import { handle } from "@jigging/flow"',
+    )
     const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
     expect(projectManifest.peerDependencies).toEqual({ '@jigging/jig': current.version })
     expect(projectManifest.peerDependenciesMeta).toEqual({ '@jigging/jig': { optional: true } })
     if (client) {
-      expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(`client: ${JSON.stringify(client)}`)
+      expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(
+        `client: ${JSON.stringify(client)}`,
+      )
       expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('defaultProviders:')
     } else {
       expect(result.stdout).toContain('jig review --allow-resolution-network')
@@ -182,9 +225,13 @@ test('installed review explains incompatible versions before evaluating source o
   await mkdir(project)
   await writeFile(join(project, 'jig.ts'), 'throw new Error("MUST_NEVER_EVALUATE_PRIVATE")\n')
   for (const required of ['0.0.0-alpha.1', '999.0.0']) {
-    await writeFile(join(project, 'package.json'), JSON.stringify({
-      private: true, peerDependencies: { '@jigging/jig': required },
-    }))
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({
+        private: true,
+        peerDependencies: { '@jigging/jig': required },
+      }),
+    )
     const before = await readdir(project)
     const result = await invoke(['review', '--allow-resolution-network'], project)
     expect(result.code).toBe(1)
@@ -205,24 +252,34 @@ test('installed review explains incompatible versions before evaluating source o
   expect(fromRepository.stderr).toContain('npm install --global')
   expect(fromRepository.stderr).not.toContain('just jig::build')
   for (const required of ['*', '^0.1.0', 'PRIVATE_SECRET; touch /private/credential', null]) {
-    await writeFile(join(project, 'package.json'), JSON.stringify({
-      peerDependencies: { '@jigging/jig': required },
-    }))
+    await writeFile(
+      join(project, 'package.json'),
+      JSON.stringify({
+        peerDependencies: { '@jigging/jig': required },
+      }),
+    )
     const result = await invoke(['review'], project)
     expect(result.code).toBe(1)
     expect(result.stderr).toContain('PROJECT_JIG_REQUIREMENT_INVALID')
     expect(result.stderr).not.toContain('PRIVATE_SECRET')
     expect(result.stderr).not.toContain('MUST_NEVER_EVALUATE_PRIVATE')
   }
-  const current = JSON.parse(await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'))
-  await writeFile(join(project, 'package.json'), JSON.stringify({
-    peerDependencies: { '@jigging/jig': current.version },
-  }))
+  const current = JSON.parse(
+    await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'),
+  )
+  await writeFile(
+    join(project, 'package.json'),
+    JSON.stringify({
+      peerDependencies: { '@jigging/jig': current.version },
+    }),
+  )
   await writeFile(join(project, 'jig.ts'), 'export default {}\n')
   const recovered = await invoke(['new', 'recovered'], project)
   expect(recovered.code).toBe(0)
   expect(recovered.stderr).toBe('')
-  expect(await readFile(join(project, 'flows/recovered/FLOW.ts'), 'utf8')).toContain('@jigging/flow')
+  expect(await readFile(join(project, 'flows/recovered/FLOW.ts'), 'utf8')).toContain(
+    '@jigging/flow',
+  )
   passed++
 }, 60_000)
 
@@ -233,14 +290,23 @@ test('installed inspection is read-only and returns exact machine JSON', async (
     const result = await invoke(args, project)
     expect(result.code).toBe(0)
     expect(result.stderr).toBe('')
-    if (!args.includes('--help')) expect(result.stdout).toBe('{"state":"unreviewed","targets":[]}\n')
+    if (!args.includes('--help'))
+      expect(result.stdout).toBe('{"state":"unreviewed","targets":[]}\n')
     expect(await readdir(project)).toEqual([])
   }
   passed++
 })
 
 test('installed attempt help and malformed requests retain exact private-safe framing', async () => {
-  for (const operation of ['inspect', 'prepare', 'submit', 'lookup', 'cancel', 'result', 'export']) {
+  for (const operation of [
+    'inspect',
+    'prepare',
+    'submit',
+    'lookup',
+    'cancel',
+    'result',
+    'export',
+  ]) {
     const help = await invoke(['attempt', operation, '--help'])
     expect(help.code).toBe(0)
     expect(help.stdout).toContain('not permission')
@@ -257,7 +323,10 @@ test('installed attempt help and malformed requests retain exact private-safe fr
     const result = await invoke(['attempt', 'lookup', '--json'], project, input)
     expect(result.code).toBe(1)
     expect(JSON.parse(result.stdout)).toMatchObject({
-      protocolVersion: 1, operation: 'lookup', event: 'error', code: 'INVALID_REQUEST',
+      protocolVersion: 1,
+      operation: 'lookup',
+      event: 'error',
+      code: 'INVALID_REQUEST',
     })
     expect(result.stdout.trim().split('\n')).toHaveLength(1)
     expect(result.stdout + result.stderr).not.toContain('secret-marker')

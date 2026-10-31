@@ -9,6 +9,8 @@ operational baselines, and public-site assembly.
 
 - `jig-development-build.ts` checks contributor source and generated output on launcher invocation.
   Build records bind the inputs observed before and after a successful build.
+  Inputs include package compiler configurations and the web asset builder.
+  Fingerprinting validates and reads regular files through the same no-follow descriptor.
   Changed source, output or incomplete builds require rebuilding.
   Packaged installations never select contributor recovery from their working directory.
 
