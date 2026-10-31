@@ -53,6 +53,11 @@ with platform context. They are not unfamiliar-consumer usability qualification.
   Read at most 256 KiB and 1026 records. Retain the final events when projection truncates.
   Trace observation never replaces command failure.
 
+  Host timing additionally projects successful command profiles when
+  `JIG_HOST_TEST_TIMING=1`. Setup wall time ends before review. Final verification
+  follows the installed client and includes independent residue and archive checks.
+  Command observations include collection and cannot isolate payload CPU time.
+
   Evaluation review includes operand capture, preparation, normalization and disposal.
   Its nested dependency phase observes only actual preparation.
 - Decode failure records through `normalizePrivateProfileFailure` before filtering timing phases.

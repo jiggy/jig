@@ -4,9 +4,11 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { settleTestCommand } from '../fixtures/bounded-command.js'
+import { startHostTestTiming } from '../fixtures/host-test-timing.mjs'
 import { caller, cli, contract, peer } from '../fixtures/installed-provider.js'
 import {
   profilePhaseSummary,
+  reportHostTestProfile,
   reviewCommandEnvironment,
 } from '../fixtures/private-profile-diagnostics.js'
 
@@ -26,6 +28,7 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const rootApplication = location === 'root'
     const nested = location === 'nested'
     const directory = await mkdtemp(join(tmpdir(), 'jig-npm-consumer-'))
+    const setupTiming = startHostTestTiming('workspace', 'setup')
     const evidence = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-review-profile-')))
     // Keep command interruption, exit escalation and pipe drain inside the
     // existing 240-second case allowance, including the original cancellation.
@@ -42,6 +45,14 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const putApp = (path: string, value: unknown) =>
       put(rootApplication ? path : `apps/consumer/${path}`, value)
     const run = async (args: string[], interrupt = false) => {
+      const commandTiming = startHostTestTiming(
+        'workspace',
+        args[0] === 'review'
+          ? 'review-command'
+          : args[0] === 'run'
+            ? 'run-command'
+            : 'inspect-command',
+      )
       const timeoutMs = commandDeadline - performance.now()
       if (timeoutMs <= 0) throw new Error('Workspace consumer command allowance exhausted')
       const env = reviewCommandEnvironment(args[0], join(evidence, `${++sequence}.review.jsonl`), {
@@ -58,19 +69,25 @@ for (const location of ['member', 'root', 'nested'] as const) {
       // The host may retain Flow stderr until settlement, so it is not a
       // reliable signal that the held Run is still active.
       let interruptEvidence: { sent: boolean; error?: string } | undefined
+      const interruptionTiming = interrupt
+        ? startHostTestTiming('workspace', 'interruption-wait')
+        : undefined
       const interruptTimer = interrupt
         ? setTimeout(() => {
             try {
               process.kill(child.pid, 'SIGTERM')
               interruptEvidence = { sent: true }
+              interruptionTiming?.()
             } catch (error) {
               interruptEvidence = {
                 sent: false,
                 error: error instanceof Error ? error.message : String(error),
               }
+              interruptionTiming?.('failed')
             }
           }, 20_000)
         : undefined
+      let collected = false
       try {
         const {
           code: exit,
@@ -80,6 +97,9 @@ for (const location of ['member', 'root', 'nested'] as const) {
           evidence: join(evidence, `${sequence}.command`),
           timeoutMs,
         })
+        collected = true
+        if (env.JIG_PRIVATE_PROFILE_FILE !== undefined)
+          await reportHostTestProfile('workspace', 'review', env.JIG_PRIVATE_PROFILE_FILE)
         const profile =
           exit !== 0 && env.JIG_PRIVATE_PROFILE_FILE !== undefined
             ? await profilePhaseSummary(env.JIG_PRIVATE_PROFILE_FILE, 'review')
@@ -92,6 +112,7 @@ for (const location of ['member', 'root', 'nested'] as const) {
         }
       } finally {
         if (interruptTimer !== undefined) clearTimeout(interruptTimer)
+        commandTiming(collected ? 'returned' : 'failed')
       }
     }
     let passed = false
@@ -164,6 +185,7 @@ for (const location of ['member', 'root', 'nested'] as const) {
       })
       await put('packages/echo/FLOW.ts', peer)
       await put('packages/echo/FLOW.contract.json', contract)
+      setupTiming()
       const review = await run(['review', '--yes', '--allow-resolution-network'])
       expect(review.exit, review.stdout + review.stderr).toBe(0)
       const result = await run([

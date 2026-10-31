@@ -14,9 +14,11 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { settleTestCommand } from '../bounded-command.js'
 import { flowSdkDirectory } from '../flow-dependency.js'
+import { startHostTestTiming } from '../host-test-timing.mjs'
 import {
   foundationEvaluationFailureSummary,
   profilePhaseSummary,
+  reportHostTestProfile,
 } from '../private-profile-diagnostics.js'
 
 export type FoundationApplication = 'adaptive' | 'documents' | 'evaluation-deadline'
@@ -158,14 +160,32 @@ function resultPhaseSummary(stderr: string): string | undefined {
   }
 }
 
-export function foundationCommands(evidence: string) {
+export function foundationCommands(evidence: string, timing = false) {
   let sequence = 0
-  return async (args: string[], cwd: string, timeoutMs = 195_000, profile?: 'run') => {
+  return async (
+    args: string[],
+    cwd: string,
+    timeoutMs = 195_000,
+    profile?: 'run',
+    role?: 'application',
+  ) => {
     await mkdir(evidence, { recursive: true, mode: 0o700 })
     const commandEvidence = join(evidence, String(++sequence).padStart(3, '0'))
     const reviewProfile =
       args[1] === 'review' ? resolve(`${commandEvidence}.review.jsonl`) : undefined
     const runProfile = profile === 'run' ? resolve(`${commandEvidence}.run.jsonl`) : undefined
+    const commandTiming = timing
+      ? startHostTestTiming(
+          'foundation',
+          reviewProfile !== undefined
+            ? 'review-command'
+            : role === 'application'
+              ? 'application-command'
+              : args[1] === 'run'
+                ? 'run-command'
+                : 'fixture-command',
+        )
+      : () => {}
     const child = Bun.spawn(args, {
       cwd,
       env: {
@@ -177,11 +197,22 @@ export function foundationCommands(evidence: string) {
       stdout: 'pipe',
       stderr: 'pipe',
     })
-    const result = await settleTestCommand(child, {
-      evidence: commandEvidence,
-      timeoutMs,
-      graceMs: 10_000,
-    })
+    let result: Awaited<ReturnType<typeof settleTestCommand>>
+    try {
+      result = await settleTestCommand(child, {
+        evidence: commandEvidence,
+        timeoutMs,
+        graceMs: 10_000,
+      })
+      commandTiming()
+    } catch (error) {
+      commandTiming('failed')
+      throw error
+    }
+    if (timing && reviewProfile !== undefined)
+      await reportHostTestProfile('foundation', 'review', reviewProfile)
+    if (timing && runProfile !== undefined)
+      await reportHostTestProfile('foundation', 'run', runProfile)
     const diagnostic = /Diagnostic code: ([A-Z][A-Z0-9_]{0,63})\b/.exec(result.stderr)?.[1]
     const clientFailure = clientFailureSummary(result.stderr)
     const resultPhases = resultPhaseSummary(result.stderr)
@@ -552,8 +583,9 @@ async function runFoundationApplication(
   barrierURL: string,
 ): Promise<void> {
   const { directory, application, archives, qualification } = options
+  const setupTiming = startHostTestTiming('foundation', 'setup')
   await mkdir(directory)
-  const command = foundationCommands(join(directory, 'commands'))
+  const command = foundationCommands(join(directory, 'commands'), true)
   const residueBefore = await foundationResidue(qualification, command, directory)
   await writeFile(join(directory, 'residue-before.json'), JSON.stringify(residueBefore), {
     flag: 'wx',
@@ -609,6 +641,7 @@ async function runFoundationApplication(
   // Review the operator recipe once. All candidate iterations happen inside this admission.
   // Lock the ordinary workspace before review of the frozen public SDK.
   const sourceLock = await lockFoundationWorkspace(project, command)
+  setupTiming()
   await command([cli, 'review', '--yes', '--allow-authority-changes'], project)
   assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   const lock = await digest(join(project, 'jig.lock'))
@@ -624,7 +657,9 @@ async function runFoundationApplication(
     project,
     application === 'adaptive' ? 300_000 : 600_000,
     application === 'adaptive' ? 'run' : undefined,
+    'application',
   )
+  const verificationTiming = startHostTestTiming('foundation', 'verification')
   assert.equal(await digest(join(project, 'jig.lock')), lock)
   const verified = JSON.parse(await readFile(join(project, 'verified.json'), 'utf8'))
   assert.equal(verified.application, application)
@@ -671,4 +706,5 @@ async function runFoundationApplication(
   assert.deepEqual(residueAfter, residueBefore, 'Installed consumer left native owner residue')
   assert.equal(await digest(archives.jig), archives.jigDigest)
   assert.equal(await digest(archives.flow), archives.flowDigest)
+  verificationTiming()
 }

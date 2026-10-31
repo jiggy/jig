@@ -1,6 +1,27 @@
 import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { normalizePrivateProfileFailure } from '../../src/internal/private-profile.js'
+import { hostTestTimingEnabled } from './host-test-timing.mjs'
+
+const timingProfiles = new Map<string, number>()
+
+/** Reuse the existing closed projection for successful opt-in timing observations. */
+export async function reportHostTestProfile(
+  suite: 'workspace' | 'foundation',
+  kind: 'review' | 'run',
+  path: string,
+): Promise<void> {
+  if (!hostTestTimingEnabled()) return
+  const count = timingProfiles.get(suite) ?? 0
+  if (count >= 12) return
+  timingProfiles.set(suite, count + 1)
+  try {
+    const summary = JSON.parse(await profilePhaseSummary(path, kind))
+    console.error(`host-test-profile ${JSON.stringify({ suite, kind, summary })}`)
+  } catch {
+    // Optional timing observations never replace command or cleanup assertions.
+  }
+}
 
 export function reviewCommandEnvironment(
   command: string | undefined,
