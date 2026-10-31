@@ -9,12 +9,7 @@
     "@jigging/flow": "0.1.0-alpha.15",
     "@jigging/reporting": "0.1.0-alpha.3"
   },
-  "peerDependencies": {
-    "@jigging/jig": "0.1.0-alpha.45"
-  },
-  "peerDependenciesMeta": {
-    "@jigging/jig": {
-      "optional": true
-    }
+  "engines": {
+    "jig": "0.1.0-alpha.45"
   }
 }

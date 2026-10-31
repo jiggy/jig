@@ -11,6 +11,7 @@ type Manifest = {
   devDependencies?: Record<string, string>
   optionalDependencies?: Record<string, string>
   peerDependencies?: Record<string, string>
+  engines?: Record<string, string>
 }
 
 const repository = resolve(import.meta.dir, '..')
@@ -62,6 +63,10 @@ test('example Jig dependencies match current public package versions', async () 
 
   for (const path of examplePaths) {
     const manifest = await loadManifest(path)
+    if (/^examples\/[^/]+\/package\.json$/.test(path)) {
+      expect(manifest.engines?.jig, path).toBe(jig.version)
+      expect(manifest.peerDependencies?.['@jigging/jig'], path).toBeUndefined()
+    }
     for (const section of dependencySections) {
       for (const [name, actual] of Object.entries(manifest[section] ?? {})) {
         if (!name.startsWith('@jigging/')) continue

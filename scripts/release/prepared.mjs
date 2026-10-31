@@ -168,6 +168,7 @@ export async function validatePrepared(root, prepared, identity) {
           expected[section][name] = versions.get(name)
       }
     }
+    if (expected.engines?.jig !== undefined) expected.engines.jig = versions.get('@jigging/jig')
     expectedManifests.set(path, expected)
     if (!isDeepStrictEqual(before, expected)) requiredManifests.add(path)
   }

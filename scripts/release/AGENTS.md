@@ -23,6 +23,7 @@ Turn reviewed package changesets into independent alpha versions before canonica
 - Let the installed Changesets CLI calculate versions. Do not duplicate prerelease arithmetic.
 - Reject top-level `AGENTS.md`, `CLAUDE.md`, and `GEMINI.md` in `.changeset/`, regardless of case. Keep their instructions outside that directory.
 - Generate all version-derived pins before candidate construction.
+- Synchronize existing `engines.jig` requirements while preserving every other engine declaration.
 - Synchronize the exact Reporting version in `packages/display-model/THIRD_PARTY_NOTICES`. Preserve all other notice text.
 - Validate generated release PRs by replaying the real version command from their exact base.
 - Bind release metadata to the complete versioned source, excluding only the metadata file itself.
