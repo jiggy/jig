@@ -1,0 +1,41 @@
+name: CI performance observations
+'on':
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ci-performance-observations
+  cancel-in-progress: false
+jobs:
+  report:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Report the previous seven complete UTC days
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          end=$(node -p 'new Date(new Date().setUTCHours(0,0,0,0)).toISOString()')
+          start=$(node -p 'new Date(new Date().setUTCHours(0,0,0,0)-7*24*60*60*1000).toISOString()')
+          node scripts/ci/ci-performance.mjs --repository "$GITHUB_REPOSITORY" --since "$start" --until "$end" > "$RUNNER_TEMP/ci-performance.json"
+          node scripts/ci/ci-performance.mjs --report "$RUNNER_TEMP/ci-performance.json" > "$RUNNER_TEMP/ci-performance.md"
+          cat "$RUNNER_TEMP/ci-performance.md" >> "$GITHUB_STEP_SUMMARY"
+      - name: Retain the bounded metadata report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ci-performance-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ci-performance.json
+            ${{ runner.temp }}/ci-performance.md
+          retention-days: 14
+          if-no-files-found: error
