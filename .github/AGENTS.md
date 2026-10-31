@@ -260,6 +260,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   reconciles only this architecture. Linux and Apple Silicon remain release
   gates. Intel evidence never grants publication readiness.
 
+  Main and manual-main runs start scope and acquisition independently.
+  Their complete ARM jobs alternate between two fixed concurrency lanes by
+  workflow run number. Each lane permits one running native job.
+  This bounds main native execution at two jobs. Other PR branches retain their
+  existing cancellation groups and runner allocation behavior.
+
+  Each lane uses GitHub's `queue: max` to retain up to 100 pending jobs.
+  GitHub cancels submissions beyond that limit, which cannot qualify publication.
+  Running main jobs are never cancelled by a newer source. Runner availability
+  can still delay either lane. Protected publication keeps its separate serialization.
+
   Linux and required hosted Mac acquisition wait for the exact canonical
   `candidate-build` job before starting the artifact transfer bound. PR retries
   select its latest successful execution within that run. Main/manual runs

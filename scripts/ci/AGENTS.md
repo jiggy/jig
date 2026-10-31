@@ -392,6 +392,9 @@ They consume frozen package exports with tracked test helpers and installed
   without credentials or API calls. Generic failures must not imply an
   authentication or policy cause.
 
+  They execute main Mac lane selection with real Node and check bounded native
+  queues, independent workflow admission and preserved PR cancellation.
+
 - `node --test scripts/ci/release-base.test.mjs` exercises real Git comparisons,
   advancing PR bases, push ranges, manual parents, and invalid event identities.
   Release-plan integration tests reject stale generated plans after an empty
