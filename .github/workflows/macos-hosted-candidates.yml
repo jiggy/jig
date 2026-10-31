@@ -1,5 +1,5 @@
 name: macOS hosted candidates
-run-name: Bounded Mac volume experiment
+run-name: Rootless Mac volume creation experiment
 on:
   workflow_dispatch:
 permissions:
@@ -48,9 +48,8 @@ jobs:
           }
           const plist = (data) => JSON.parse(tool('/usr/bin/plutil', ['-convert', 'json', '-o', '-', '-'], data))
           const variants = [
-            { name: 'current', create: [], attach: [] },
-            { name: 'attach-noverify', create: [], attach: ['-noverify'] },
-            { name: 'small-initial-metadata', create: ['-fsargs', '-c c=1,e=1,a=1,b=1'], attach: [] },
+            { name: 'current' },
+            { name: 'raw-format-mount' },
           ]
           const imageInventory = () => plist(tool('/usr/bin/hdiutil', ['info', '-plist'])).images
           const mappedImage = async (image, backing, bytes) => {
@@ -77,7 +76,7 @@ jobs:
             for (const bytes of sizes) {
             for (let round = 0; round < 5; round++) {
               for (const variant of variants) {
-                if (refused.has(`${bytes}:${variant.name}`)) continue
+                if (refused.has(variant.name)) continue
                 const root = join(work, `${bytes}-${round}-${variant.name}`)
                 const mount = join(root, 'mount')
                 const image = join(root, 'volume.dmg')
@@ -87,10 +86,11 @@ jobs:
                 let phase = 'create'
                 try {
                   const begin = performance.now()
-                  tool('/usr/bin/hdiutil', ['create', '-sectors', String(bytes / 512), '-fs',
-                    'Case-sensitive HFS+', '-volname', `Jig-${round}-${variant.name}`, '-type', 'UDIF',
-                    '-layout', 'NONE', '-nospotlight', ...variant.create, image])
-                  const handle = await open(image, 'r+')
+                  if (variant.name === 'current')
+                    tool('/usr/bin/hdiutil', ['create', '-sectors', String(bytes / 512), '-fs',
+                      'Case-sensitive HFS+', '-volname', `Jig-${round}-${variant.name}`, '-type', 'UDIF',
+                      '-layout', 'NONE', '-nospotlight', image])
+                  const handle = await open(image, variant.name === 'current' ? 'r+' : 'wx+', 0o600)
                   try { await handle.chmod(0o600); await handle.truncate(bytes); await handle.sync() } finally { await handle.close() }
                   const created = performance.now()
                   backing = await lstat(image, { bigint: true })
@@ -98,17 +98,57 @@ jobs:
                   assert.equal(backing.nlink, 1n)
                   assert.equal(backing.uid, BigInt(process.getuid()))
                   phase = 'attach'
-                  const attached = plist(tool('/usr/bin/hdiutil', ['attach', '-kernel', '-nobrowse',
-                    '-noautoopen', '-noautofsck', '-owners', 'on', '-mountpoint', mount, '-mount',
-                    'required', '-plist', ...variant.attach, image]))
+                  let device
+                  let volume
+                  let attachedAt
+                  let formattedAt
+                  if (variant.name === 'current') {
+                    const attached = plist(tool('/usr/bin/hdiutil', ['attach', '-kernel', '-nobrowse',
+                      '-noautoopen', '-noautofsck', '-owners', 'on', '-mountpoint', mount, '-mount',
+                      'required', '-plist', image]))
+                    attachedAt = performance.now()
+                    const entities = attached['system-entities']
+                    assert(Array.isArray(entities))
+                    volume = entities.find(entry => entry['mount-point'] === mount)
+                    assert(volume && volume['volume-kind'] === 'hfs')
+                    device = await mappedImage(image, backing, bytes)
+                    assert.equal(device, volume['dev-entry'])
+                    formattedAt = attachedAt
+                  } else {
+                    const attached = plist(tool('/usr/bin/hdiutil', ['attach', '-kernel', '-nobrowse',
+                      '-noautoopen', '-noautofsck', '-nomount', '-plist', '-imagekey',
+                      'diskimage-class=CRawDiskImage', image]))
+                    attachedAt = performance.now()
+                    device = await mappedImage(image, backing, bytes)
+                    assert.equal(attached['system-entities'].length, 1)
+                    assert.equal(attached['system-entities'][0]['dev-entry'], device)
+                    assert(device && /^\/dev\/disk[1-9][0-9]{0,5}$/.test(device))
+                    assert((await lstat(device)).isBlockDevice())
+                    phase = 'format'
+                    // Only the freshly authenticated, currently mapped image's block
+                    // device can reach the formatter. No privilege escalation or retries.
+                    tool('/sbin/newfs_hfs', ['-s', '-U', String(process.getuid()), '-G',
+                      String(process.getgid()), '-M', '700', '-v', `Jig-${round}-raw`, device])
+                    formattedAt = performance.now()
+                    assert.equal(await mappedImage(image, backing, bytes), device)
+                    phase = 'mount'
+                    tool('/sbin/mount_hfs', ['-o', 'nobrowse,nosuid,nodev', device, mount])
+                  }
                   const mounted = performance.now()
-                  const entities = attached['system-entities']
-                  assert(Array.isArray(entities))
-                  const volume = entities.find(entry => entry['mount-point'] === mount)
-                  assert(volume && volume['volume-kind'] === 'hfs')
-                  const device = await mappedImage(image, backing, bytes)
-                  assert.equal(device, volume['dev-entry'])
                   phase = 'validate'
+                  const liveImage = imageInventory().filter(entry => entry['image-path'] === image)
+                  assert.equal(liveImage.length, 1)
+                  assert.equal(liveImage[0]['system-entities'].length, 1)
+                  const liveVolume = liveImage[0]['system-entities'][0]
+                  assert.equal(liveVolume['dev-entry'], device)
+                  assert.equal(liveVolume['volume-kind'], 'hfs')
+                  assert.equal(liveVolume['mount-point'], mount)
+                  const mountLine = tool('/sbin/mount', []).toString().split('\n')
+                    .filter(line => line.startsWith(`${device} on ${mount} (`))
+                  assert.equal(mountLine.length, 1)
+                  const flags = mountLine[0].slice(`${device} on ${mount} (`.length, -1).split(', ')
+                  assert(flags.includes('hfs') && flags.includes('nosuid') && flags.includes('nodev'))
+                  assert(!flags.includes('read-only') && !flags.includes('noowners'))
                   const filesystem = await statfs(mount, { bigint: true })
                   const capacity = filesystem.bsize * filesystem.blocks
                   assert(capacity > 0n && capacity <= BigInt(bytes))
@@ -123,13 +163,14 @@ jobs:
                   const detached = performance.now()
                   assert.equal(await mappedImage(image, backing, bytes), undefined)
                   const record = { variant: variant.name, round, bytes, status: 'passed', createMs: created - begin,
-                    attachMs: mounted - created, verifiedDetachMs: detached - mounted,
+                    attachMs: attachedAt - created, formatMs: formattedAt - attachedAt,
+                    mountAndVerificationMs: mounted - formattedAt, verifiedDetachMs: detached - mounted,
                     totalMs: detached - begin, capacityBytes: String(capacity) }
                   trials.push(record)
                   console.log(JSON.stringify(record))
                 } catch (error) {
                   if (variant.name === 'current') throw error
-                  refused.add(`${bytes}:${variant.name}`)
+                  refused.add(variant.name)
                   const record = { variant: variant.name, round, bytes, status:'failed', phase,
                     exitCode:Number.isInteger(error.status) ? error.status : null }
                   trials.push(record)
