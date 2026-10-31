@@ -254,7 +254,7 @@ These links locate module rules. All selected domain requirements still apply.
   remaining allowance for retirement.
 
   Keep at most 64 UTF-8 excerpts of 4 KiB
-  each and 512 KiB aggregate retained preview content. Charge text as UTF-16 storage.
+  each and 48 MiB aggregate retained preview content. Charge text as UTF-16 storage.
   Complete download bytes have a separate 16 MiB aggregate allowance. Verify their size and digest before transferring ownership.
 
   Completion and inspection callbacks recheck their captured absolute
@@ -285,7 +285,9 @@ These links locate module rules. All selected domain requirements still apply.
   SVG sources allow 64 KiB and five MiB of Wasm memory.
 
   Raster copies and decoded text each allow 32 MiB. SVG copies and decoded text each allow one MiB.
-  Thumbnail output allows 256 KiB within 384 by 1024 pixels.
+  Raster preview output allows 2 MiB within 1024 by 1024 pixels.
+  SVG output retains its 256 KiB and 384-pixel width limits.
+  Selected input raster previews share an eight-MiB LRU cache.
   Pinned Wasm, copy and decoded-text limits bound content, not total Bun RSS.
 
   Saved-image preparation has a ten-second aggregate limit. Worker, renderer

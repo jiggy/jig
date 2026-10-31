@@ -132,7 +132,10 @@ function redraw(): void {
     if (!eligible.has(destinationKey)) {
       const first = tabs[0]
       destinationKey = first?.id ?? ''
-      feedback = first ? `The selected view is unavailable; showing ${first.title}.` : ''
+      feedback =
+        first && lastBodyRevision > 0
+          ? `The selected view is unavailable; showing ${first.title}.`
+          : ''
     }
     if (!humanNavigation) {
       const rootViews = snapshot.views.filter(

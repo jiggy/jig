@@ -156,12 +156,15 @@ export class PrivateInputInspectionCapture {
         if (this.#closed || this.#entries.get(key) !== entry) return undefined
         if (!image) return fallback
         const charge = privatePreviewStringBytes(image.base64)
-        while (this.#imageBytes + charge > 2 * 1024 * 1024 && this.#images.size) {
+        while (
+          this.#imageBytes + charge > PRIVATE_PREVIEW_LIMITS.inputCacheBytes &&
+          this.#images.size
+        ) {
           const [oldKey, oldImage] = this.#images.entries().next().value!
           this.#images.delete(oldKey)
           this.#imageBytes -= privatePreviewStringBytes(oldImage.base64)
         }
-        if (charge > 2 * 1024 * 1024) return fallback
+        if (charge > PRIVATE_PREVIEW_LIMITS.inputCacheBytes) return fallback
         this.#images.set(key, image)
         this.#imageBytes += charge
         return { text: '', bytes: entry.bytes.length, clipped: false, image }
