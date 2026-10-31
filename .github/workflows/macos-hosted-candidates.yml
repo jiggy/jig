@@ -91,7 +91,17 @@ jobs:
                       'Case-sensitive HFS+', '-volname', `Jig-${round}-${variant.name}`, '-type', 'UDIF',
                       '-layout', 'NONE', '-nospotlight', image])
                   const handle = await open(image, variant.name === 'current' ? 'r+' : 'wx+', 0o600)
-                  try { await handle.chmod(0o600); await handle.truncate(bytes); await handle.sync() } finally { await handle.close() }
+                  let preTruncateBytes
+                  let createdBytes
+                  try {
+                    preTruncateBytes = (await handle.stat({ bigint: true })).size
+                    if (variant.name === 'current') assert.equal(preTruncateBytes, BigInt(bytes))
+                    else await handle.truncate(bytes)
+                    await handle.chmod(0o600)
+                    await handle.sync()
+                    createdBytes = (await handle.stat({ bigint: true })).size
+                    assert.equal(createdBytes, BigInt(bytes))
+                  } finally { await handle.close() }
                   const created = performance.now()
                   backing = await lstat(image, { bigint: true })
                   assert.equal(backing.size, BigInt(bytes))
@@ -163,6 +173,7 @@ jobs:
                   const detached = performance.now()
                   assert.equal(await mappedImage(image, backing, bytes), undefined)
                   const record = { variant: variant.name, round, bytes, status: 'passed', createMs: created - begin,
+                    preTruncateBytes: String(preTruncateBytes), createdBytes: String(createdBytes),
                     attachMs: attachedAt - created, formatMs: formattedAt - attachedAt,
                     mountAndVerificationMs: mounted - formattedAt, verifiedDetachMs: detached - mounted,
                     totalMs: detached - begin, capacityBytes: String(capacity) }
