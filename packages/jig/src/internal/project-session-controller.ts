@@ -1147,7 +1147,11 @@ export function projectError(
       try {
         return new ProjectAdministrationError(
           'INVALID_CANDIDATE',
-          error.code === 'AUTHORING_COMPILE' ? error.message : 'project candidate is invalid',
+          [
+            'AUTHORING_COMPILE',
+            'PROJECT_JIG_VERSION_MISMATCH',
+            'PROJECT_JIG_REQUIREMENT_INVALID',
+          ].includes(error.code) ? error.message : 'project candidate is invalid',
           {
             code: error.code,
             path: error.path,
@@ -1267,7 +1271,12 @@ function isUnavailableDiagnosticCode(code: string): boolean {
 
 function isCandidateDiagnosticCode(code: string): boolean {
   return (
-    ['AUTHORING_COMPILE', 'AUTHORING_CONFLICT'].includes(code) ||
+    [
+      'AUTHORING_COMPILE',
+      'AUTHORING_CONFLICT',
+      'PROJECT_JIG_VERSION_MISMATCH',
+      'PROJECT_JIG_REQUIREMENT_INVALID',
+    ].includes(code) ||
     code.startsWith('CONTRACT_') ||
     code.startsWith('MARKDOWN_') ||
     code.startsWith('METADATA_') ||

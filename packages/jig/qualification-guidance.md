@@ -101,6 +101,15 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Local Contracts
 
+- The contributor launcher checks a successful build against current source and generated output.
+  It identifies its own source installation independently of the application directory.
+  `--version` and top-level help remain available for diagnosis.
+  Internal owner reexecution preserves admitted work without repeating this development check.
+
+  Build records remain generated checkout metadata and never enter npm archives.
+  Source changes during a build prevent recording success.
+  Ordinary installed users receive bun/npm installation recovery, never repository build instructions.
+
 - The installed launcher checks OS/CPU pairs before selecting the pinned
   runtime: Linux x86_64 and Darwin x86_64/arm64 only. npm's independent OS and
   CPU allowlists cannot exclude Linux arm64 while admitting both Mac

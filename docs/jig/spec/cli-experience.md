@@ -26,6 +26,18 @@ makes usable control an observable requirement;
 
 ## Required experience
 
+### Installation compatibility
+
+Known version incompatibility must identify the required and running Jig versions before project code evaluates.
+Recovery for packaged installations gives bun/npm installation commands for the exact required version.
+Contributor rebuild guidance requires the executable’s own Jig source installation, independently of the project directory.
+Unknown evaluation failures must not be reclassified as version incompatibility.
+
+Contributor launchers refuse source or generated output that differs from the successful build.
+They retain top-level help and version reporting for diagnosis.
+Development checks cannot interrupt an already-admitted owner continuation.
+These checks do not contact a registry or update software automatically.
+
 ### Contract import
 
 `jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>` is explicit offline

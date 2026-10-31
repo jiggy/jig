@@ -12,6 +12,7 @@ import {
 } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { CheckError } from './diagnostics.js'
+import { privateJigVersion } from './installation-version.js'
 import { importContract } from './internal/contract-import.js'
 import { openPrivateChild } from './internal/descriptor-files.js'
 import { privatePublishDirectory } from './internal/file-input.js'
@@ -279,6 +280,7 @@ export async function createProject(
     const files: readonly (readonly [string, string])[] = [
       ['.gitignore', '.jig/\n'],
       ['jig.ts', renderJigModule(agent)],
+      ...(!bare && agent === undefined ? [['package.json', renderProjectManifest()]] as const : []),
       ...(!bare
         ? greetingFiles().filter(([path]) => agent === undefined || path !== 'README.md')
         : []),
@@ -342,7 +344,7 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
   return [
     [
       'package.json',
-      `${JSON.stringify({ private: true, dependencies: { '@jigging/agent-acp': AGENT_ACP_VERSION } }, null, 2)}\n`,
+      renderProjectManifest({ '@jigging/agent-acp': AGENT_ACP_VERSION }),
     ],
     [
       'bindings/agent.ts',
@@ -388,6 +390,15 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
       ].join('\n'),
     ],
   ]
+}
+
+function renderProjectManifest(dependencies?: Readonly<Record<string, string>>): string {
+  return JSON.stringify({
+    private: true,
+    ...(dependencies === undefined ? {} : { dependencies }),
+    peerDependencies: { '@jigging/jig': privateJigVersion },
+    peerDependenciesMeta: { '@jigging/jig': { optional: true } },
+  }, null, 2) + '\n'
 }
 
 function greetingFiles(): readonly (readonly [string, string])[] {

@@ -72,7 +72,6 @@ bin=${launcher%/*}
 [ "${bin##*/}" = bin ] || fail
 release=${bin%/*}
 entry=$release/libexec/installed-cli.js
-[ -f "$entry" ] || fail
 
 case $($uname_command -s 2>/dev/null) in
   Darwin)
@@ -100,4 +99,16 @@ fi
 runtime=$(resolve_file "$runtime") || fail
 
 unset BUN_BE_BUN BUN_OPTIONS NODE_OPTIONS
+# Only this executable's own checkout selects contributor build checks.
+# Internal owner reexecution retains its already-admitted lifecycle directly.
+case "${1:-}" in
+  --version|--help|-h|'') ;;
+  *)
+    if [ -f "$release/src/installed-cli.ts" ] &&
+       [ -f "$release/../../scripts/jig-development-build.ts" ]; then
+      "$runtime" --no-env-file --no-install --config=/dev/null \
+        "$release/../../scripts/jig-development-build.ts" check "$release" || exit 2
+    fi ;;
+esac
+[ -f "$entry" ] || fail
 exec "$runtime" --no-env-file --no-install --config=/dev/null "$entry" "$@"

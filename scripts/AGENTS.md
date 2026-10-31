@@ -7,6 +7,11 @@ operational baselines, and public-site assembly.
 
 ## Ownership
 
+- `jig-development-build.ts` checks contributor source and generated output on launcher invocation.
+  Build records bind the inputs observed before and after a successful build.
+  Changed source, output or incomplete builds require rebuilding.
+  Packaged installations never select contributor recovery from their working directory.
+
 - Root scripts own unprivileged source, package, release, and site operations.
 - `example-inventory.mjs` reconciles every example directory with application
   tests, installed-host suites and the mandatory Linux end-to-end suite.

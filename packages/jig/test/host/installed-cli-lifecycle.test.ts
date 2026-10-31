@@ -51,6 +51,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       '.gitignore',
       'README.md',
       'jig.ts',
+      'package.json',
       'flows/hello/package.json',
       'flows/hello/FLOW.meta.json',
       'flows/hello/FLOW.ts',
@@ -79,7 +80,6 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       for (const [index, path] of authoredPaths.entries())
         expect(await readFile(join(project, path))).toEqual(authoredBytes[index])
       for (const path of [
-        'package.json',
         'bun.lock',
         'node_modules',
         '.git',

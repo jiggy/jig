@@ -19,6 +19,12 @@ All selected domain requirements still apply.
 
 ## Local Contracts
 
+- Review checks static Jig requirements before host acquisition or source evaluation.
+  Version mismatches identify the required and running versions with exact installation commands.
+  Repository rebuild advice requires identifying the executable’s own Jig source installation.
+  An application directory, repository name or ambient flag cannot select contributor recovery.
+  Observational commands and admitted Run continuation retain their existing behavior.
+
 ### Installed-host client
 
 - `src/client.ts` and pure `src/attempt-contract.ts` own the separate

@@ -42,6 +42,7 @@ import {
 import { captureGrantSource } from './grant-source.js'
 import type { AcpGrant, GrantPolicy } from './grants.js'
 import type { JigLimits } from './limits.js'
+import { captureProjectJigRequirement } from './jig-version.js'
 import { linkPackageProject, type PackageProjectValue } from './package-project.js'
 import { npmPackageName } from './package-selector.js'
 import { type RetainedAuthorClosure, retainAuthorClosure } from './retained-author-closure.js'
@@ -149,6 +150,7 @@ export async function retainOpenedPackageProject(
   let dependencies: CapturedFlowSource | undefined
   let operationFailure: unknown
   try {
+    const jigRequirement = await captureProjectJigRequirement(root)
     const bootstrapClosure = await captureOpenedAuthorClosure(root, [entry])
     bootstrap = bootstrapClosure
     const bootstrapProject = (await privateProfileSpan('author-configuration-evaluation', () =>
@@ -374,6 +376,7 @@ export async function retainOpenedPackageProject(
         clients,
       )
     }
+    await jigRequirement.verify()
     const rootIdentity = Object.freeze({
       device: root.information.dev.toString(),
       inode: root.information.ino.toString(),

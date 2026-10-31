@@ -153,6 +153,7 @@ test('concurrent installed bare initializers have exactly one winner', async () 
 })
 
 test('installed greeting and Agent initialization create ordinary editable files without authority', async () => {
+  const current = JSON.parse(await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'))
   for (const client of [undefined, 'codex', 'claude', 'pi']) {
     const project = join(root, client ?? 'greeting')
     const result = await invoke(['init', project, ...(client ? ['--agent', client] : [])])
@@ -160,6 +161,9 @@ test('installed greeting and Agent initialization create ordinary editable files
     expect(result.stderr).toBe('')
     expect(result.stdout).not.toContain('\u001b')
     expect(await readFile(join(project, 'flows/hello/FLOW.ts'), 'utf8')).toContain('import { handle } from "@jigging/flow"')
+    const projectManifest = JSON.parse(await readFile(join(project, 'package.json'), 'utf8'))
+    expect(projectManifest.peerDependencies).toEqual({ '@jigging/jig': current.version })
+    expect(projectManifest.peerDependenciesMeta).toEqual({ '@jigging/jig': { optional: true } })
     if (client) {
       expect(await readFile(join(project, 'bindings/agent.ts'), 'utf8')).toContain(`client: ${JSON.stringify(client)}`)
       expect(await readFile(join(project, 'jig.ts'), 'utf8')).toContain('defaultProviders:')
@@ -172,6 +176,55 @@ test('installed greeting and Agent initialization create ordinary editable files
   }
   passed++
 })
+
+test('installed review explains incompatible versions before evaluating source or acquiring state', async () => {
+  const project = join(root, 'version-requirement')
+  await mkdir(project)
+  await writeFile(join(project, 'jig.ts'), 'throw new Error("MUST_NEVER_EVALUATE_PRIVATE")\n')
+  for (const required of ['0.0.0-alpha.1', '999.0.0']) {
+    await writeFile(join(project, 'package.json'), JSON.stringify({
+      private: true, peerDependencies: { '@jigging/jig': required },
+    }))
+    const before = await readdir(project)
+    const result = await invoke(['review', '--allow-resolution-network'], project)
+    expect(result.code).toBe(1)
+    expect(result.stdout).toBe('')
+    expect(result.stderr).toContain('PROJECT_JIG_VERSION_MISMATCH')
+    expect(result.stderr).toContain('requires Jig ' + required)
+    expect(result.stderr).toContain('Executable:')
+    expect(result.stderr).toContain('bun install --global @jigging/jig@' + required)
+    expect(result.stderr).toContain('npm install --global @jigging/jig@' + required)
+    expect(result.stderr).not.toContain('just jig::build')
+    expect(result.stderr).not.toContain('MUST_NEVER_EVALUATE_PRIVATE')
+    expect(await readdir(project)).toEqual(before)
+  }
+  // A packaged executable running from Jig's real repository still owns
+  // installation recovery. The working directory cannot choose rebuild advice.
+  const fromRepository = await invoke(['review', project], packageRoot)
+  expect(fromRepository.stderr).toContain('PROJECT_JIG_VERSION_MISMATCH')
+  expect(fromRepository.stderr).toContain('npm install --global')
+  expect(fromRepository.stderr).not.toContain('just jig::build')
+  for (const required of ['*', '^0.1.0', 'PRIVATE_SECRET; touch /private/credential', null]) {
+    await writeFile(join(project, 'package.json'), JSON.stringify({
+      peerDependencies: { '@jigging/jig': required },
+    }))
+    const result = await invoke(['review'], project)
+    expect(result.code).toBe(1)
+    expect(result.stderr).toContain('PROJECT_JIG_REQUIREMENT_INVALID')
+    expect(result.stderr).not.toContain('PRIVATE_SECRET')
+    expect(result.stderr).not.toContain('MUST_NEVER_EVALUATE_PRIVATE')
+  }
+  const current = JSON.parse(await readFile(join(root, 'node_modules/@jigging/jig/package.json'), 'utf8'))
+  await writeFile(join(project, 'package.json'), JSON.stringify({
+    peerDependencies: { '@jigging/jig': current.version },
+  }))
+  await writeFile(join(project, 'jig.ts'), 'export default {}\n')
+  const recovered = await invoke(['new', 'recovered'], project)
+  expect(recovered.code).toBe(0)
+  expect(recovered.stderr).toBe('')
+  expect(await readFile(join(project, 'flows/recovered/FLOW.ts'), 'utf8')).toContain('@jigging/flow')
+  passed++
+}, 60_000)
 
 test('installed inspection is read-only and returns exact machine JSON', async () => {
   const project = join(root, 'inspect')
@@ -214,6 +267,6 @@ test('installed attempt help and malformed requests retain exact private-safe fr
 })
 
 afterAll(async () => {
-  if (passed === 7) await rm(root, { recursive: true, force: true })
+  if (passed === 8) await rm(root, { recursive: true, force: true })
   else if (root) console.error(`Installed CLI portable evidence retained at ${root}`)
 })

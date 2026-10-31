@@ -16,6 +16,10 @@ These links locate module rules. All selected domain requirements still apply.
 
 ## Ownership
 
+Project requirement failures preserve only validated exact Jig versions and trusted recovery text.
+The two closed `PROJECT_JIG_*` diagnostics survive project planning without rendering authored exceptions or arbitrary dependency requests.
+Version metadata is checked before evaluation and reverified before capture completes.
+
 ### Prepared attempts and retention
 
 - `prepared-attempt-store.ts` owns protected ticket domain/key records, canonical
