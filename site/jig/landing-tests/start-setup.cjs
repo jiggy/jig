@@ -20,8 +20,17 @@ for (const token of html.matchAll(/<!--[\s\S]*?-->|<\/?([a-zA-Z][\w:-]*)([^<>]*?
   if (!voids.has(tag) && !token[0].endsWith('/>')) stack.push(index);
 }
 const byId = id => nodes.find(n => n.attrs.id === id);
-const decode = value => value.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
-const text = n => decode(html.slice(n.openEnd, n.end).replace(/<[^>]*>/g, ''));
+const decode = value => value.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+const stripTagsSafely = value => {
+  let previous;
+  let current = value;
+  do {
+    previous = current;
+    current = current.replace(/<[^>]*>/g, '');
+  } while (current !== previous);
+  return current;
+};
+const text = n => decode(stripTagsSafely(html.slice(n.openEnd, n.end)));
 let focused = null;
 class Element {
   constructor(node = { attrs: {} }) {
