@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { PrivateExecutionProcess } from '../../src/internal/execution-process.js'
 import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import { ChannelBroker } from '../../src/run/channels.js'
@@ -9,14 +12,18 @@ import {
   RunHostSession,
 } from '../../src/run/session.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
+import { writeProject } from '../fixtures/root-agent-lifecycle.js'
 
 // Reaping these finite, descendant-free peers is NOT native fencing evidence.
-function launch(mode: string) {
+function launch(
+  mode: string | undefined,
+  entrypoint = `${import.meta.dir}/../run-session-peer.fixture.ts`,
+) {
   const child = Bun.spawn(
     [
       installedBunLocation.executablePath,
-      `${import.meta.dir}/../run-session-peer.fixture.ts`,
-      mode,
+      entrypoint,
+      ...(mode === undefined ? [] : [mode]),
     ],
     { stdin: 'pipe', stdout: 'pipe', stderr: 'pipe' },
   )
@@ -92,6 +99,37 @@ async function exchange(mode: string, input = invocation(), limits = {}) {
   }
 }
 describe('RunHostSession with actual bounded protocol subprocesses', () => {
+  for (const scenario of ['api-text', 'api-structured', 'success']) {
+    test(`Agent fixture preserves the real absent-dispatch failure for ${scenario}`, async () => {
+      const root = await mkdtemp(join(tmpdir(), 'jig-agent-failure-propagation-'))
+      let peer: ReturnType<typeof launch> | undefined
+      try {
+        await writeProject(root)
+        peer = launch(undefined, join(root, 'flows/router/FLOW.ts'))
+        const terminal = await new RunHostSession(peer.process, {
+          ...invocation(),
+          input: { scenario },
+        }).run()
+        expect(peer.child.exitCode).toBe(0)
+        expect(peer.child.signalCode).toBeNull()
+        const replies = peer.frames().filter((frame) => frame.id === 'host:1')
+        expect(replies).toHaveLength(1)
+        if (scenario === 'success') {
+          expect(replies[0].result.output).toEqual({ status: 'failed', code: 'UNAVAILABLE' })
+        } else {
+          expect(replies[0].error.data.code).toBe('UNAVAILABLE')
+          expect(replies[0].result).toBeUndefined()
+        }
+        expect(terminal).toMatchObject(unfenced)
+      } finally {
+        try {
+          await peer?.dispose()
+        } finally {
+          await rm(root, { recursive: true, force: true })
+        }
+      }
+    })
+  }
   for (const nested of [false, true]) {
     test(`credential matching stops ${nested ? 'nested and root' : 'root'} peers before they can return a guess`, async () => {
       const root = launch(nested ? 'sdk-catch-child' : 'sdk-credential-oracle')
