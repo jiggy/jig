@@ -14,29 +14,54 @@ beforeAll(async () => {
   release = join(root, 'packages/jig')
   consumer = join(root, 'unrelated-consumer')
   const paths = [
-    'package.json', 'justfile', 'LICENSE.md', 'LICENSES.md', 'PRICING.md', 'LICENSES',
-    'scripts/jig-development-build.ts', 'docs/jig/spec/contracts',
+    'package.json',
+    'justfile',
+    'LICENSE.md',
+    'LICENSES.md',
+    'PRICING.md',
+    'LICENSES',
+    'scripts/jig-development-build.ts',
+    'docs/jig/spec/contracts',
     'docs/jig/spec/machine/project-authoring-1.schema.json',
   ]
   for (const name of [
-    'jig', 'agent-method', 'agent-acp', 'reporting',
-    'display-model', 'display-web', 'display-tui',
+    'jig',
+    'agent-method',
+    'agent-acp',
+    'reporting',
+    'display-model',
+    'display-web',
+    'display-tui',
   ]) {
-    paths.push('packages/' + name + '/src', 'packages/' + name + '/package.json',
-      'packages/' + name + '/justfile')
+    paths.push(
+      'packages/' + name + '/src',
+      'packages/' + name + '/package.json',
+      'packages/' + name + '/justfile',
+      'packages/' + name + '/tsconfig.json',
+    )
   }
-  paths.push('packages/jig/scripts', 'packages/jig/support', 'packages/jig/patches',
-    'packages/jig/bin', 'packages/jig/libexec', 'packages/jig/dist')
+  paths.push(
+    'packages/jig/scripts',
+    'packages/display-web/scripts',
+    'packages/jig/support',
+    'packages/jig/patches',
+    'packages/jig/bin',
+    'packages/jig/libexec',
+    'packages/jig/dist',
+  )
   for (const path of paths) {
     await mkdir(dirname(join(root, path)), { recursive: true })
     await cp(join(source, path), join(root, path), {
       recursive: true,
-      filter: path => basename(path) !== 'node_modules' && basename(path) !== '.tmp',
+      filter: (path) => basename(path) !== 'node_modules' && basename(path) !== '.tmp',
     })
   }
-  const name = process.platform === 'darwin'
-    ? (process.arch === 'arm64' ? 'bun-darwin-aarch64' : 'bun-darwin-x64-baseline')
-    : 'bun-linux-x64-baseline'
+  const name =
+    process.platform === 'darwin'
+      ? process.arch === 'arm64'
+        ? 'bun-darwin-aarch64'
+        : 'bun-darwin-x64-baseline'
+      : 'bun-linux-x64-baseline'
   const bin = join(release, 'node_modules/@oven', name, 'bin')
   await mkdir(bin, { recursive: true })
   await symlink(process.execPath, join(bin, 'bun'))
@@ -47,10 +72,14 @@ async function launch(args = ['completion', 'bash']) {
   const child = Bun.spawn([join(release, 'bin/jig'), ...args], {
     cwd: consumer,
     env: { PATH: '/nonexistent', BUN_OPTIONS: 'invalid', NODE_OPTIONS: 'invalid' },
-    stdin: 'ignore', stdout: 'pipe', stderr: 'pipe',
+    stdin: 'ignore',
+    stdout: 'pipe',
+    stderr: 'pipe',
   })
   const [code, stdout, stderr] = await Promise.all([
-    child.exited, new Response(child.stdout).text(), new Response(child.stderr).text(),
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
   ])
   return { code, stdout, stderr }
 }
@@ -66,14 +95,20 @@ test('same-version source edits fail before launch and restoration recovers ordi
   const path = join(release, 'src/project/author.ts')
   const original = await readFile(path)
   try {
-    await writeFile(path, Buffer.concat([
-      original, Buffer.from('\n// A new source revision, with the same package version.\n'),
-    ]))
+    await writeFile(
+      path,
+      Buffer.concat([
+        original,
+        Buffer.from('\n// A new source revision, with the same package version.\n'),
+      ]),
+    )
     const result = await launch()
     expect(result.code).toBe(2)
     expect(result.stdout).toBe('')
     expect(result.stderr).toContain('JIG_BUILD_STALE')
-    expect(result.stderr).toContain('From the repository root, run just jig::build, then retry review.')
+    expect(result.stderr).toContain(
+      'From the repository root, run just jig::build, then retry review.',
+    )
     expect((await launch(['--version'])).code).toBe(0)
     expect((await launch(['--help'])).code).toBe(0)
   } finally {
@@ -86,11 +121,68 @@ test('changed generated evaluators and incomplete output refuse the real launche
   const path = join(release, 'libexec/evaluator/project-evaluator-sdk.bundle.js')
   const original = await readFile(path)
   try {
-    await writeFile(path, Buffer.concat([original, Buffer.from('\n// Changed generated output.\n')]))
+    await writeFile(
+      path,
+      Buffer.concat([original, Buffer.from('\n// Changed generated output.\n')]),
+    )
     expect((await launch()).stderr).toContain('JIG_BUILD_STALE')
     await rm(path)
     expect((await launch()).code).toBe(2)
   } finally {
+    await writeFile(path, original)
+  }
+  expect((await launch()).code).toBe(0)
+}, 30_000)
+
+for (const input of [
+  ...[
+    'jig',
+    'agent-method',
+    'agent-acp',
+    'reporting',
+    'display-model',
+    'display-web',
+    'display-tui',
+  ].map((name) => 'packages/' + name + '/tsconfig.json'),
+  'packages/display-web/scripts/build-assets.ts',
+]) {
+  test(`changed build input ${input} refuses launch until rebuilt`, async () => {
+    const path = join(root, input)
+    const original = await readFile(path)
+    try {
+      await jigDevelopmentBuild('begin', release)
+      await writeFile(path, Buffer.concat([original, Buffer.from('\n')]))
+      expect((await launch()).stderr).toContain('JIG_BUILD_STALE')
+      await expect(jigDevelopmentBuild('finish', release)).rejects.toThrow(
+        'Source changed during the build',
+      )
+      // The build record is published only after observing the changed inputs twice.
+      await jigDevelopmentBuild('begin', release)
+      await jigDevelopmentBuild('finish', release)
+      expect((await launch()).code).toBe(0)
+    } finally {
+      await writeFile(path, original)
+      await jigDevelopmentBuild('begin', release)
+      await jigDevelopmentBuild('finish', release)
+    }
+    expect((await launch()).code).toBe(0)
+  }, 30_000)
+}
+
+test('fingerprinting rejects symbolic links and non-regular build inputs', async () => {
+  const path = join(release, 'tsconfig.json')
+  const original = await readFile(path)
+  const marker = await readFile(join(release, 'libexec/development-build.json'))
+  try {
+    await rm(path)
+    await symlink(join(source, 'packages/jig/tsconfig.json'), path)
+    await expect(jigDevelopmentBuild('check', release)).rejects.toThrow()
+    await rm(path)
+    await mkdir(path)
+    await expect(jigDevelopmentBuild('check', release)).rejects.toThrow('not a regular file')
+    expect(await readFile(join(release, 'libexec/development-build.json'))).toEqual(marker)
+  } finally {
+    await rm(path, { recursive: true, force: true })
     await writeFile(path, original)
   }
   expect((await launch()).code).toBe(0)
@@ -103,7 +195,9 @@ test('a source change during build cannot publish a successful build marker', as
   const marker = await readFile(join(release, 'libexec/development-build.json'))
   try {
     await writeFile(path, Buffer.concat([original, Buffer.from('\n// Changed while building.\n')]))
-    await expect(jigDevelopmentBuild('finish', release)).rejects.toThrow('Source changed during the build')
+    await expect(jigDevelopmentBuild('finish', release)).rejects.toThrow(
+      'Source changed during the build',
+    )
     expect(await readFile(join(release, 'libexec/development-build.json'))).toEqual(marker)
   } finally {
     await writeFile(path, original)

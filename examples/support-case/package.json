@@ -10,7 +10,7 @@
     "@jigging/reporting": "0.1.0-alpha.3"
   },
   "peerDependencies": {
-    "@jigging/jig": "0.1.0-alpha.43"
+    "@jigging/jig": "0.1.0-alpha.45"
   },
   "peerDependenciesMeta": {
     "@jigging/jig": {
