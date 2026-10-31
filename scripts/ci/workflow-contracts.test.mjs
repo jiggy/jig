@@ -577,6 +577,80 @@ test('npm readiness ignores PRs and skipped descendants while retaining failed m
   assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }), false)
 })
 
+test('native live jobs require release scope while manual main diagnostics remain explicit', async () => {
+  const workflow = parse(
+    await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'),
+  )
+  const scope = workflow.jobs.scope
+  const selects = (github) => Function('github', 'return (' + scope.if + ')')(github)
+  const event = (changes = {}) => ({
+    event_name: 'workflow_run',
+    repository: 'jiggy/jig',
+    event: {
+      workflow_run: {
+        conclusion: 'success',
+        event: 'push',
+        head_branch: 'main',
+        head_repository: { full_name: 'jiggy/jig' },
+        ...changes,
+      },
+    },
+  })
+  assert.equal(selects(event()), true)
+  for (const changes of [
+    { conclusion: 'failure' },
+    { event: 'pull_request' },
+    { head_branch: 'feature' },
+    { head_repository: { full_name: 'fork/jig' } },
+  ])
+    assert.equal(selects(event(changes)), false)
+  assert.equal(selects({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }), true)
+  assert.equal(selects({ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }), false)
+  assert.equal(scope.environment, undefined)
+  assert.doesNotMatch(JSON.stringify(scope), /secrets\.|OPENROUTER_API_KEY/)
+  assert.equal(scope.outputs.qualify, '${{ steps.release.outputs.qualify }}')
+  const checkout = scope.steps.find((step) => step.uses?.startsWith('actions/checkout@'))
+  assert.equal(checkout.with.ref, '${{ env.SOURCE_REVISION }}')
+  assert.equal(checkout.with['fetch-depth'], 0)
+  assert.equal(checkout.with['persist-credentials'], false)
+  const job = workflow.jobs.qualification
+  assert.equal(job.needs, 'scope')
+  assert.equal(job.if, "needs.scope.outputs.qualify == 'true'")
+  assert.deepEqual(
+    job.strategy.matrix.include.map(({ client }) => client),
+    ['codex', 'claude', 'pi'],
+  )
+  assert.equal(job.strategy['fail-fast'], false)
+  assert.equal(job.environment, 'native-agent-api')
+  assert.ok(job.steps.find((step) => step.id === 'host-run').run.includes('acquire-linux'))
+  assert.ok(job.steps.some((step) => step.run?.includes('--upstream-receipt')))
+  const native = job.steps.find((step) => step.id === 'native-api').run
+  assert.ok(native.includes('--timeout 420000 "${test_arguments[@]}"'))
+  const selection = native.slice(native.indexOf('test_arguments=()'), native.indexOf('set +e'))
+  for (const client of ['codex', 'claude', 'pi']) {
+    const result = spawnSync(
+      '/bin/bash',
+      [
+        '-e',
+        '-o',
+        'pipefail',
+        '-c',
+        selection + '\nprintf "%s:%s" "${#test_arguments[@]}" "${test_arguments[*]}"',
+      ],
+      {
+        env: {
+          JIG_NATIVE_API_CLIENT: client,
+          JIG_NATIVE_API_MODEL: 'selected-model',
+          NATIVE_AGENT_PATH: '/native',
+        },
+        encoding: 'utf8',
+      },
+    )
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.stdout, client === 'codex' ? '1:--bail=1' : '0:')
+  }
+})
+
 test('native recovery summary preserves failures without exposing credentials', async () => {
   const workflow = parse(await readFile(new URL('native-agent-api-qualification.yml', workflows), 'utf8'))
   const job = workflow.jobs.qualification

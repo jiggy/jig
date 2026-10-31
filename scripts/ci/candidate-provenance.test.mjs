@@ -716,6 +716,50 @@ test('readiness accepts complete canonical qualification even when native descen
   )
 })
 
+test('native source selection adds no qualification credit and cannot replace a client', async () => {
+  const fixture = readinessFixture()
+  const scope = {
+    id: 4999,
+    name: 'Select native qualification source',
+    status: 'completed',
+    conclusion: 'success',
+    run_attempt: 1,
+  }
+  fixture.jobs.get(400).unshift(scope)
+  const complete = await fixture.check()
+  assert.equal(complete.readyHost, true)
+  assert.deepEqual(
+    complete.hostSnapshot.runs.find((entry) => entry.runId === 400).jobs.map((job) => job.name),
+    ['codex', 'claude', 'pi'].map((client) => `${client} — Ubuntu 24.04`),
+  )
+  fixture.jobs.get(400).find((job) => job.name === 'codex — Ubuntu 24.04').conclusion = 'skipped'
+  assert.equal((await fixture.check()).readyHost, false)
+})
+
+test('successful source omission without native receipts cannot route or qualify publication', async () => {
+  const fixture = readinessFixture()
+  fixture.artifacts.set(400, [])
+  fixture.jobs.set(400, [
+    {
+      id: 4999,
+      name: 'Select native qualification source',
+      status: 'completed',
+      conclusion: 'success',
+      run_attempt: 1,
+    },
+    ...fixture.jobs.get(400).map((job) => ({ ...job, conclusion: 'skipped' })),
+  ])
+  assert.equal(
+    await resolveTriggerSource({ client: fixture.client, repository, triggerRunId: 400 }),
+    undefined,
+  )
+  const result = await fixture.check({ sourceRevision: undefined, triggerRunId: 400 })
+  assert.equal(result.state, 'ignored')
+  assert.equal(result.readyHost, false)
+  assert.equal(result.hostSnapshot, null)
+  assert.equal((await fixture.check()).readyHost, false)
+})
+
 test('complete qualification cannot publish feature, pending or stale versioned source', async () => {
   for (const reason of ['feature-source', 'pending-changesets', 'stale-release-plan']) {
     const fixture = readinessFixture()

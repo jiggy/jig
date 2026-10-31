@@ -52,7 +52,10 @@ After the feature PR merges:
    With the default token, a maintainer must merge so the main-push workflows start.
 
 The merged release must pass CI, complete Linux and Apple Silicon qualification,
-and native Agent qualification. Intel Mac compatibility runs nightly and on
+and native Agent qualification. Automatic native qualification runs only for exact eligible generated release sources after successful Linux qualification.
+Explicit manual dispatch on main retains diagnostics for other sources. Omitted automatic calls create no qualification evidence.
+
+Intel Mac compatibility runs nightly and on
 manual request. An Intel regression can reach a release before the next nightly
 check. It does not block publication.
 

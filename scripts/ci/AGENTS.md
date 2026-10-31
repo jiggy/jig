@@ -191,6 +191,12 @@ They consume frozen package exports with tracked test helpers and installed
   receipt. Early native input receipts route pending/failing descendants but
   cannot qualify them.
 
+  Native automation checks `releaseState` against the exact triggering source before allocating protected client jobs.
+  Only eligible generated releases start automatically. Explicit manual dispatch on main retains diagnostic qualification for nonrelease sources.
+  Omission emits no native receipt and cannot satisfy publication. All three fresh clients and existing candidate and Linux lineage checks remain mandatory.
+
+  Codex stops after its first failing case. A successful file still requires its complete inventory, including the installed conversation case.
+
   After canonical CI validation, inspect all host run states before receipt
   validation. Report simultaneous pending and failed gates with current-attempt
   links and candidate versions. Diagnostics never grant publication authority.

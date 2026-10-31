@@ -28,9 +28,14 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Do not replace the npm installation performing the install.
 - Grant each job only the authority it needs. Build jobs must not inherit
   publication or Git-write authority.
-- The separate Native Agent API Qualification workflow runs after successful
-  Linux Host Conformance on each `main` push. Manual dispatch on `main` uses
-  that revision's successful push-run host artifacts. It qualifies Codex and
+- The separate Native Agent API Qualification workflow automatically selects
+  eligible generated release sources after successful Linux Host Conformance on `main`.
+  A read-only scope job validates the exact triggering source's complete release metadata before protected jobs start.
+  Pending changesets, feature sources and stale plans omit live calls and create no qualification receipts.
+  Explicit manual dispatch on `main` retains diagnostics for nonrelease main revisions using that revision's successful push-run host artifacts.
+  Selection grants no publication readiness. Every release still requires all three fresh native clients against the exact canonical candidate.
+
+  The workflow qualifies Codex and
   Claude Code from `@latest` and the currently supported Pi 0.84.4 standalone
   profile. Codex uses free OpenRouter routing for uncapped Responses requests.
   Claude and Pi use Mistral BYOK through their native API protocols. These are
@@ -40,6 +45,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   optional native-reported HTTP error status. Statuses are integers from 400
   through 599. These reports do not prove a provider cause or authorize retries.
   Native failures still block publication and require fresh complete qualification.
+
+  Codex stops its test file after the first failure to avoid repeating the failed initial provider turn.
+  Successful qualification still requires both cases and all three clients.
 
   After a failed Codex test command, that same protected step performs one
   fixed-input probe of the existing free Responses route. The probe has a
