@@ -15,8 +15,8 @@ permissions:
   contents: read
 
 jobs:
-  qualification:
-    name: ${{ matrix.client }} — Ubuntu 24.04
+  scope:
+    name: Select native qualification source
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'workflow_run' &&
@@ -24,6 +24,41 @@ jobs:
        github.event.workflow_run.event == 'push' &&
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      qualify: ${{ steps.release.outputs.qualify }}
+    steps:
+      - name: Check out the exact source and release history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REVISION }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Select generated releases or explicit manual diagnostics
+        id: release
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFile } from 'node:fs/promises'
+          import { releaseState } from './scripts/release/state.mjs'
+          const manual = process.env.GITHUB_EVENT_NAME === 'workflow_dispatch'
+          const state = manual ? undefined : await releaseState(process.cwd(), process.env.SOURCE_REVISION)
+          const qualify = manual || state.eligible
+          const reason = manual ? 'explicit manual diagnostics' : state.reason
+          await appendFile(process.env.GITHUB_OUTPUT, `qualify=${qualify}\n`)
+          await appendFile(process.env.GITHUB_STEP_SUMMARY,
+            `## Native qualification source\n\nSource: ${process.env.SOURCE_REVISION}\n\n` +
+            `${qualify ? 'Selected' : 'Omitted'}: ${reason}.\n\n` +
+            'Source selection creates no qualification evidence. Publication still requires all three native clients.\n')
+          NODE
+
+  qualification:
+    name: ${{ matrix.client }} — Ubuntu 24.04
+    needs: scope
+    if: needs.scope.outputs.qualify == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     environment: native-agent-api
@@ -248,8 +283,10 @@ jobs:
             echo "Configure OPENROUTER_API_KEY in the protected native-agent-api environment." >&2
             exit 1
           fi
+          test_arguments=()
           case "$JIG_NATIVE_API_CLIENT" in
             codex)
+              test_arguments=(--bail=1)
               client_environment=(
                 "JIG_CODEX_PROOF_PATH=$NATIVE_AGENT_PATH"
                 "JIG_CODEX_RESPONSES_MODEL=$JIG_NATIVE_API_MODEL"
@@ -289,7 +326,7 @@ jobs:
             "JIG_NATIVE_API_CLIENT=$JIG_NATIVE_API_CLIENT" \
             "${client_environment[@]}" \
             "$JIG_CI_BUN" test "$JIG_NATIVE_API_TEST_FILE" \
-            --timeout 420000 2>&1 | tee "$RUNNER_TEMP/native-api-tests.txt"
+            --timeout 420000 "${test_arguments[@]}" 2>&1 | tee "$RUNNER_TEMP/native-api-tests.txt"
           qualification_status=("${PIPESTATUS[@]}")
           set -e
           if (( qualification_status[0] != 0 )); then

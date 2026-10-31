@@ -4,6 +4,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import test from 'node:test'
+import { parse } from 'yaml'
 import { PACKAGES } from '../release/catalog.mjs'
 import { checkRelease, releasePlan, versionRelease } from '../release/cli.mjs'
 import { git, releaseState, sourceDigest } from '../release/state.mjs'
@@ -129,6 +130,79 @@ async function fixture(t) {
   )
   return { root, base: commit(root, 'Initial fixture') }
 }
+
+test('automatic native scope selects exact generated releases and preserves manual diagnostics', async (t) => {
+  const { root } = await fixture(t)
+  for (const name of ['state.mjs', 'catalog.mjs'])
+    await put(
+      root,
+      `scripts/release/${name}`,
+      await readFile(join(repository, 'scripts/release', name), 'utf8'),
+    )
+  const workflow = parse(
+    await readFile(
+      join(repository, '.github/workflows/native-agent-api-qualification.yml'),
+      'utf8',
+    ),
+  )
+  const step = workflow.jobs.scope.steps.find((entry) => entry.id === 'release')
+  const directory = join(root, '.tmp/native-scope')
+  await mkdir(directory, { recursive: true })
+  const output = join(directory, 'output')
+  const summary = join(directory, 'summary')
+  async function select(source, event = 'workflow_run') {
+    await writeFile(output, '')
+    await writeFile(summary, '')
+    execFileSync('/bin/bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', step.run], {
+      cwd: root,
+      env: {
+        ...process.env,
+        PATH: `${dirname(process.execPath)}:${process.env.PATH}`,
+        GITHUB_EVENT_NAME: event,
+        SOURCE_REVISION: source,
+        GITHUB_OUTPUT: output,
+        GITHUB_STEP_SUMMARY: summary,
+      },
+      encoding: 'utf8',
+      timeout: 10_000,
+      stdio: 'pipe',
+    })
+    return { output: await readFile(output, 'utf8'), summary: await readFile(summary, 'utf8') }
+  }
+  const feature = commit(root, 'Native scope source')
+  assert.deepEqual(await select(feature), {
+    output: 'qualify=false\n',
+    summary: `## Native qualification source\n\nSource: ${feature}\n\nOmitted: feature-source.\n\nSource selection creates no qualification evidence. Publication still requires all three native clients.\n`,
+  })
+  await note(root, 'native-scope-change', ['@jigging/jig'])
+  const pending = commit(root, 'Pending release')
+  assert.equal((await select(pending)).output, 'qualify=false\n')
+  assert.match((await select(pending)).summary, /Omitted: pending-changesets/)
+  await versionRelease(root)
+  const release = commit(root, 'Generated release')
+  assert.equal((await select(release)).output, 'qualify=true\n')
+  await put(root, 'README.md', 'Unrelated documentation changes.\n')
+  const stale = commit(root, 'Advance complete source')
+  assert.equal((await select(stale)).output, 'qualify=false\n')
+  assert.match((await select(stale)).summary, /Omitted: stale-release-plan/)
+  assert.equal(
+    (await select(release)).output,
+    'qualify=true\n',
+    'Select the triggering source, not the newer checkout',
+  )
+  assert.equal((await select(stale, 'workflow_dispatch')).output, 'qualify=true\n')
+  await put(root, '.changeset/release.json', '{malformed\n')
+  const malformed = commit(root, 'Malformed release metadata')
+  await assert.rejects(select(malformed))
+  assert.equal(
+    await readFile(output, 'utf8'),
+    '',
+    'Invalid automatic source cannot select live jobs',
+  )
+  const manual = await select(malformed, 'workflow_dispatch')
+  assert.equal(manual.output, 'qualify=true\n')
+  assert.match(manual.summary, /Selected: explicit manual diagnostics/)
+})
 
 test('release Git joins real automatic maintenance before temporary repository cleanup', async (t) => {
   const { root } = await fixture(t)
