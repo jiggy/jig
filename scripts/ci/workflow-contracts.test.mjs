@@ -4,6 +4,7 @@ import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
 import { parse } from 'yaml'
 import { CI_QUALIFICATION_JOBS, LINUX_QUALIFICATION_JOBS } from './release-readiness.mjs'
 
@@ -134,6 +135,86 @@ test('release readiness requires every canonical Linux shard including example e
     'rootless-linux',
     ...shards.map((suite) => `Linux host — ${suite}`),
   ])
+})
+
+test('main Mac qualification admits independent runs through two bounded native queues', async () => {
+  const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
+  assert.equal(mac.concurrency.group,
+    "macos-hosted-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}")
+  assert.equal(mac.concurrency['cancel-in-progress'], "${{ github.ref != 'refs/heads/main' }}")
+  assert.equal(mac.jobs.scope.outputs.native_lane, '${{ steps.native-lane.outputs.lane }}')
+  const native = mac.jobs.prerequisites
+  assert.deepEqual(native.concurrency, {
+    group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || github.run_id }}",
+    queue: 'max',
+    'cancel-in-progress': false,
+  })
+  const evaluate = (template, ref, run, lane) => template.replace(/\$\{\{([\s\S]*?)\}\}/g,
+    (_, expression) => String(runInNewContext(expression, {
+      github: { ref, run_id: run },
+      needs: { scope: { outputs: { native_lane: lane } } },
+      format: (pattern, value) => pattern.replace('{0}', value),
+    })),
+  )
+  assert.notEqual(
+    evaluate(mac.concurrency.group, 'refs/heads/main', '100', '0'),
+    evaluate(mac.concurrency.group, 'refs/heads/main', '101', '1'),
+  )
+  assert.equal(
+    evaluate(mac.concurrency.group, 'refs/pull/1/merge', '100', ''),
+    evaluate(mac.concurrency.group, 'refs/pull/1/merge', '101', ''),
+  )
+  assert.notEqual(
+    evaluate(mac.concurrency.group, 'refs/pull/1/merge', '100', ''),
+    evaluate(mac.concurrency.group, 'refs/pull/2/merge', '101', ''),
+  )
+  const nativeGroups = [0, 1, 2, 3].map((run) =>
+    evaluate(native.concurrency.group, 'refs/heads/main', String(run), String(run % 2)),
+  )
+  assert.deepEqual([...new Set(nativeGroups)].sort(), [
+    'macos-hosted-native-main-0', 'macos-hosted-native-main-1',
+  ])
+  assert.notEqual(
+    evaluate(native.concurrency.group, 'refs/pull/1/merge', '100', ''),
+    evaluate(native.concurrency.group, 'refs/pull/2/merge', '101', ''),
+  )
+  // Each run owns one complete ARM worker. Two groups therefore bound main
+  // native execution without changing its qualification inventory or evidence.
+  assert.deepEqual(native.strategy.matrix.include, [{ arch: 'arm64', shard: 0, installed: true }])
+  assert.ok(native.needs.includes('scope'))
+  assert.ok(native.needs.includes('host-artifacts'))
+  for (const id of ['scope', 'host-artifacts', 'qualified-architecture', 'affected-macos'])
+    assert.equal(mac.jobs[id].concurrency, undefined, id)
+  const select = mac.jobs.scope.steps.find((step) => step.id === 'native-lane')
+  assert.equal(select.if, "github.ref == 'refs/heads/main'")
+  const directory = await mkdtemp(join(tmpdir(), 'jig-mac-native-lane-'))
+  try {
+    const lanes = new Set()
+    for (const [number, expected] of [['1', '1'], ['2', '0'], ['101', '1'], ['9007199254740993', '1']]) {
+      const output = join(directory, number)
+      const result = spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', select.run], {
+        env: { PATH: process.env.PATH, GITHUB_RUN_NUMBER: number, GITHUB_OUTPUT: output },
+        encoding: 'utf8', timeout: 5_000,
+      })
+      assert.ifError(result.error)
+      assert.equal(result.status, 0, result.stderr)
+      assert.equal(await readFile(output, 'utf8'), `lane=${expected}\n`)
+      lanes.add(expected)
+    }
+    assert.deepEqual([...lanes].sort(), ['0', '1'])
+    for (const number of ['', '0', '-1', '1.5', '1\nlane=unbounded']) {
+      const output = join(directory, 'invalid')
+      const result = spawnSync('/bin/bash', ['-e', '-o', 'pipefail', '-c', select.run], {
+        env: { PATH: process.env.PATH, GITHUB_RUN_NUMBER: number, GITHUB_OUTPUT: output },
+        encoding: 'utf8', timeout: 5_000,
+      })
+      assert.ifError(result.error)
+      assert.notEqual(result.status, 0)
+      await assert.rejects(readFile(output), { code: 'ENOENT' })
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
 
 test('every workflow declares GitHub triggers using YAML 1.2 keys', async () => {

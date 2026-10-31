@@ -14,7 +14,7 @@ name: "macOS hosted candidates"
 permissions:
   contents: "read"
 concurrency:
-  group: "macos-hosted-${{ github.ref }}"
+  group: "macos-hosted-${{ github.ref != 'refs/heads/main' && github.ref || github.run_id }}"
   cancel-in-progress: "${{ github.ref != 'refs/heads/main' }}"
 jobs:
   scope:
@@ -23,6 +23,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       required: "${{ steps.scope.outputs.required }}"
+      native_lane: "${{ steps.native-lane.outputs.lane }}"
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -37,6 +38,17 @@ jobs:
         name: "Determine whether complete host qualification is required"
         id: "scope"
         run: 'node scripts/ci/host-scope.mjs --scope macos --github-output "$GITHUB_OUTPUT"'
+      -
+        name: "Select a bounded main native lane"
+        id: "native-lane"
+        if: "github.ref == 'refs/heads/main'"
+        run: |
+          node --input-type=module - <<'JS'
+          import { appendFileSync } from 'node:fs'
+          const number = process.env.GITHUB_RUN_NUMBER
+          if (!/^[1-9][0-9]*$/.test(number ?? '')) throw Error('Missing exact workflow run number')
+          appendFileSync(process.env.GITHUB_OUTPUT, `lane=${BigInt(number) % 2n}\n`)
+          JS
   host-artifacts:
     name: "Acquire canonical macos host artifacts"
     needs: "scope"
@@ -73,6 +85,10 @@ jobs:
   prerequisites:
     name: "Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}"
     runs-on: "macos-15"
+    concurrency:
+      group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || github.run_id }}"
+      queue: "max"
+      cancel-in-progress: false
     # ARM consolidates two former jobs: 60 < 2*35 minutes, or 90 < 35+65
     # with the optional 30-minute profile. Individual test limits stay unchanged.
     timeout-minutes: "${{ matrix.arch == 'arm64' && (inputs.include_startup_profile && 90 || 60) || (matrix.installed && inputs.include_startup_profile && 65 || 35) }}"
