@@ -43,6 +43,7 @@ export class PrivateFiniteAcpPolicyError extends Error {
     message: string,
     readonly reason: 'protocol' | 'native-session' = 'protocol',
     readonly nativeCategory?: (typeof nativeCategories)[number],
+    readonly nativeHttpStatusCode?: number,
   ) {
     super(message)
     this.name = 'PrivateFiniteAcpPolicyError'
@@ -516,12 +517,22 @@ export class PrivateFiniteAcpPolicy {
     // Never ignore an authoritative native error, including a late error or
     // one carried only on the correlated result. Raw titles/actions can hold
     // private paths or credentials and must not cross this boundary.
-    if (notice.severity === 'error')
+    if (notice.severity === 'error') {
+      const category = nativeCategories.find((value) => value === notice.category)
+      const status = notice.httpStatusCode
       throw new PrivateFiniteAcpPolicyError(
         'Native ACP reported a session failure',
         'native-session',
-        nativeCategories.find((category) => category === notice.category),
+        category,
+        category !== undefined &&
+          typeof status === 'number' &&
+          Number.isInteger(status) &&
+          status >= 400 &&
+          status <= 599
+          ? status
+          : undefined,
       )
+    }
     if (notice.severity !== 'warning') fail('Invalid native ACP diagnostic severity')
     return true
   }

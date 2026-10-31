@@ -85,6 +85,29 @@ for await (const line of createInterface({ input: process.stdin })) {
       }
       const turn = { id: `turn-${++turns}`, items: [], status: 'completed', error: null }
       const scenario = process.env.RECORD_SCENARIO
+      if (scenario?.startsWith('http-status-')) {
+        const value = scenario.slice('http-status-'.length)
+        const httpStatusCode = value === 'invalid' ? '503' : Number(value)
+        const error = {
+          message: '/private/native secret-token',
+          codexErrorInfo: { httpConnectionFailed: { httpStatusCode } },
+          additionalDetails: null,
+        }
+        ok({ turn: { ...turn, status: 'inProgress' } })
+        reply({
+          method: 'turn/started',
+          params: { threadId: request.params.threadId, turn: { ...turn, status: 'inProgress' } },
+        })
+        reply({
+          method: 'error',
+          params: { threadId: request.params.threadId, turnId: turn.id, willRetry: false, error },
+        })
+        reply({
+          method: 'turn/completed',
+          params: { threadId: request.params.threadId, turn: { ...turn, status: 'failed', error } },
+        })
+        break
+      }
       const started = () => {
         interruptible = { threadId: request.params.threadId, turn }
         reply({

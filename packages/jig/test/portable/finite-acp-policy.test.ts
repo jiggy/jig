@@ -163,6 +163,43 @@ describe('finite ACP authority policy', () => {
       }
     }
   })
+  test('native HTTP failures retain only integer error statuses without granting success', () => {
+    for (const status of [400, 401, 402, 429, 500, 503, 599, 399, 600, 500.5, '503', null, {}]) {
+      const policy = session()
+      prompt(policy)
+      const metadata = diagnostic('error')
+      let failure: unknown
+      try {
+        policy.fromClient(
+          update({
+            sessionUpdate: 'session_info_update',
+            _meta: {
+              jetbrains: {
+                air: {
+                  ...metadata.jetbrains.air,
+                  sessionFailure: {
+                    ...metadata.jetbrains.air.sessionFailure,
+                    httpStatusCode: status,
+                  },
+                },
+              },
+            },
+          }),
+        )
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+      const expected =
+        typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599
+          ? status
+          : undefined
+      expect((failure as PrivateFiniteAcpPolicyError).nativeHttpStatusCode).toBe(expected)
+      expect((failure as PrivateFiniteAcpPolicyError).nativeCategory).toBe('unknown')
+      expect(() => policy.assertSettled()).toThrow('closed after failure')
+      expect(JSON.stringify(failure)).not.toMatch(/private|secret-token/)
+    }
+  })
   test('missing and malformed native categories cannot suppress or reclassify session errors', () => {
     for (const category of [
       undefined,
@@ -177,6 +214,7 @@ describe('finite ACP authority policy', () => {
       const policy = session()
       prompt(policy)
       const metadata = diagnostic('error')
+      Object.assign(metadata.jetbrains.air.sessionFailure, { httpStatusCode: 503 })
       let failure: unknown
       try {
         policy.fromClient(
@@ -198,6 +236,7 @@ describe('finite ACP authority policy', () => {
       expect(failure).toBeInstanceOf(PrivateFiniteAcpPolicyError)
       expect((failure as PrivateFiniteAcpPolicyError).reason).toBe('native-session')
       expect((failure as PrivateFiniteAcpPolicyError).nativeCategory).toBeUndefined()
+      expect((failure as PrivateFiniteAcpPolicyError).nativeHttpStatusCode).toBeUndefined()
       expect(JSON.stringify(failure)).not.toMatch(/private|secret-token/)
       expect(() => policy.assertSettled()).toThrow('closed after failure')
     }
