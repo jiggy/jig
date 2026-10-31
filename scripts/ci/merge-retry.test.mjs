@@ -127,6 +127,7 @@ test('merge retry uses latest execution and never falls back from a later failur
 test('partial PR retry combines immutable successful jobs and the freshly retried matrix job', async (t) => {
   const f = await fixture(t)
   const directory = join(f.root, 'evidence'), output = join(f.root, 'MERGE_RETRY.json')
+  f.env.GITHUB_STEP_SUMMARY = join(f.root, 'summary.md')
   const receipt = await acquireMergeEvidence({ directory, output, env: f.env, client: f.client })
   assert.equal(receipt.mergeOnly, true)
   assert.deepEqual(Object.keys(receipt.jobResults).sort(), ['candidate-build', 'quick-checks', 'sites', 'python-build', 'source-tests', 'python-installed', 'npm-candidate'].sort())
@@ -140,6 +141,31 @@ test('partial PR retry combines immutable successful jobs and the freshly retrie
   await collectJobEvidence({ directory, output: join(f.root, 'combined.json'), resultsPath: join(f.root, 'statuses.json') })
   const combined = JSON.parse(await readFile(join(f.root, 'combined.json')))
   assert.equal(combined.results.length, Object.keys(statuses).length)
+  const summary = await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')
+  assert.ok(summary.includes(`Tested merge source: \`${source}\``))
+  assert.ok(summary.includes('**1 current-attempt** and **13 retained from earlier attempts**'))
+  for (const accepted of receipt.jobs) {
+    assert.ok(summary.includes(`| ${accepted.name} | ${accepted.attempt} |`))
+    assert.ok(summary.includes(`/actions/runs/100/job/${accepted.jobId})`))
+    assert.ok(summary.includes(`/actions/runs/100/artifacts/${accepted.artifactId})`))
+  }
+})
+
+test('first-attempt summaries identify fresh jobs and unavailable summaries preserve verified receipts', async (t) => {
+  const f = await fixture(t)
+  f.snapshot.run.run_attempt = 1
+  f.env.GITHUB_RUN_ATTEMPT = '1'
+  f.env.GITHUB_STEP_SUMMARY = join(f.root, 'summary.md')
+  for (const job of f.jobs) job.run_attempt = 1
+  for (const reports of f.reports.values())
+    for (const report of reports) report.mergeRetry.attempt = 1
+  await f.pack()
+  await acquireMergeEvidence({ directory: join(f.root, 'fresh'), output: join(f.root, 'fresh.json'), env: f.env, client: f.client })
+  assert.ok((await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')).includes('**14 current-attempt** and **0 retained from earlier attempts**'))
+  f.env.GITHUB_STEP_SUMMARY = f.root
+  const output = join(f.root, 'unavailable-summary.json')
+  const receipt = await acquireMergeEvidence({ directory: join(f.root, 'unavailable-summary'), output, env: f.env, client: f.client })
+  assert.deepEqual(JSON.parse(await readFile(output, 'utf8')), receipt)
 })
 
 test('merge receipt rejects source, workflow, job, profile, runtime and immutable-input drift', async (t) => {
@@ -177,8 +203,10 @@ test('runner image families and valid-but-wrong architectures refuse qualificati
 
 test('a newer failed job or a rebuilt input cannot inherit an earlier successful report', async (t) => {
   const f = await fixture(t), spec = MERGE_JOBS[0]
+  f.env.GITHUB_STEP_SUMMARY = join(f.root, 'summary.md')
   f.jobs.push(job(900, spec.name, 2, { conclusion: 'failure' }))
   await assert.rejects(acquireMergeEvidence({ directory: join(f.root, 'failed'), output: join(f.root, 'failed.json'), env: f.env, client: f.client }), /Latest merge job did not succeed/)
+  await assert.rejects(readFile(f.env.GITHUB_STEP_SUMMARY), { code: 'ENOENT' })
   f.jobs.pop()
   f.jobs.push(job(901, 'candidate-build', 2))
   f.artifacts.push(artifact(902, 'candidates-' + source + '-r100-a2'))

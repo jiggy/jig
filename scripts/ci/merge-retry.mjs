@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdir, readdir, writeFile } from 'node:fs/promises'
+import { appendFile, mkdir, readdir, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -249,6 +249,27 @@ export async function acquireMergeEvidence({ directory, output, env = process.en
   const receipt = { schemaVersion: 1, mergeOnly: true, source: snapshot.source, runId: snapshot.run.id,
     attempt: snapshot.run.run_attempt, workflowDigest, jobs: retained, jobResults }
   await writeFile(output, JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx' })
+  if (env.GITHUB_STEP_SUMMARY) {
+    const earlier = retained.filter((job) => job.attempt < receipt.attempt).length
+    const repository = snapshot.context.repository
+    const summary = [
+      '## Verified PR CI executions', '',
+      `Tested merge source: \`${receipt.source}\`. Current workflow attempt: **${receipt.attempt}**.`, '',
+      `Accepted ${retained.length} successful job executions: **${retained.length - earlier} current-attempt** and **${earlier} retained from earlier attempts**.`, '',
+      '| Job | Execution attempt | Job ID | Evidence artifact ID |',
+      '| --- | ---: | --- | --- |',
+      ...retained.map((job) => `| ${job.name} | ${job.attempt} | [${job.jobId}](https://github.com/${repository}/actions/runs/${receipt.runId}/job/${job.jobId}) | [${job.artifactId}](https://github.com/${repository}/actions/runs/${receipt.runId}/artifacts/${job.artifactId}) |`),
+      '',
+      'All selected reports passed source, workflow, runtime, target inventory and immutable-input verification.',
+      'The required aggregate separately validates the complete observed physical suite inventories.',
+      'This merge-only receipt supplies PR CI evidence. Host and publication qualification require fresh execution.', '',
+    ].join('\n')
+    try {
+      await appendFile(env.GITHUB_STEP_SUMMARY, summary)
+    } catch {
+      console.error('PR CI execution summary unavailable; the verified merge receipt remains retained.')
+    }
+  }
   return receipt
 }
 

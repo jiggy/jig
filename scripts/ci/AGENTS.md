@@ -271,6 +271,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   Hosted runner family and architecture must match the job's fixed label.
   Exact image build versions are retained observations of that execution.
+
+  After verifying merge identity, runtime profiles, target coverage and immutable
+  inputs, the collector summarizes current and retained job executions.
+  It records their attempts, job IDs and evidence artifact IDs.
+  Summary output is diagnostic. Its absence cannot alter the retained receipt
+  or grant execution credit. No saved-duration estimate is inferred.
 - `test-reports.mjs` owns the shared JUnit case reader for source/job evidence
   and Mac reports. It rejects empty, failed, skipped, incomplete or
   duplicate-case reports. Each consumer enforces its owning file inventory. The
