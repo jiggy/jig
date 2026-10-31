@@ -177,8 +177,20 @@ test('automatic native scope selects exact generated releases and preserves manu
   const pending = commit(root, 'Pending release')
   assert.equal((await select(pending)).output, 'qualify=false\n')
   assert.match((await select(pending)).summary, /Omitted: pending-changesets/)
+  await put(
+    root,
+    'scripts/release/state.mjs',
+    'throw new Error("Triggered verifier must not execute")\n',
+  )
+  commit(root, 'Untrusted verifier in triggering source')
   await versionRelease(root)
   const release = commit(root, 'Generated release')
+  await put(
+    root,
+    'scripts/release/state.mjs',
+    await readFile(join(repository, 'scripts/release/state.mjs'), 'utf8'),
+  )
+  commit(root, 'Trusted workflow verifier')
   assert.equal((await select(release)).output, 'qualify=true\n')
   await put(root, 'README.md', 'Unrelated documentation changes.\n')
   const stale = commit(root, 'Advance complete source')
