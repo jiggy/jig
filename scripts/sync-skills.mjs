@@ -139,14 +139,6 @@ async function rewriteMarkdown(text, rewrite) {
   return lines.join('')
 }
 
-function generatedNotice(text, source) {
-  const notice = `<!-- Generated from ${source}. Edit the source, then run just sync-skills. -->\n\n`
-  const frontmatter = /^(---\r?\n[\s\S]*?\r?\n---\r?\n)/.exec(text)
-  return frontmatter
-    ? frontmatter[1] + '\n' + notice + text.slice(frontmatter[1].length)
-    : notice + text
-}
-
 async function validateSkill(root, name, references) {
   const skillSource = `skills/${name}/SKILL.md`
   const skill = decodeText(await sourceBytes(root, skillSource), skillSource)
@@ -236,7 +228,7 @@ async function referenceFiles(root, name, references, manifestBytes) {
           return `https://jig.md/${encodePath(linkedSource.slice(docsPrefix.length).replace(/\.mdx$/, '.md'))}${suffix}`
         return `${repositoryURL}/${stat.isDirectory() ? 'tree' : 'blob'}/main/${encodePath(linkedSource)}${suffix}`
       })
-      output = Buffer.from(source.startsWith('docs/') ? generatedNotice(text, source) : text)
+      output = Buffer.from(text)
     }
     files.set(destination, output)
     records.push({ source, destination, sourceSha256: digest(bytes), outputSha256: digest(output) })

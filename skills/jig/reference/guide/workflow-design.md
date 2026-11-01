@@ -2,9 +2,6 @@
 title: Choosing a workflow structure
 ---
 
-<!-- Generated from docs/jig/guide/workflow-design.md. Edit the source, then run just sync-skills. -->
-
-
 # Choosing a workflow structure
 
 Use the smallest structure that makes the important correctness, information,

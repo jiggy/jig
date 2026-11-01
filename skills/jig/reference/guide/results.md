@@ -2,9 +2,6 @@
 title: Results and recovery
 ---
 
-<!-- Generated from docs/jig/guide/results.md. Edit the source, then run just sync-skills. -->
-
-
 # Results and recovery
 
 Read the execution status, method outcome, delivered output and cleanup evidence

@@ -2,9 +2,6 @@
 title: Hand work to a fresh Agent conversation
 ---
 
-<!-- Generated from docs/jig/guide/conversation-handoff.md. Edit the source, then run just sync-skills. -->
-
-
 # Hand work to a fresh Agent conversation
 
 Transfer validated context and a summary when the application needs a new

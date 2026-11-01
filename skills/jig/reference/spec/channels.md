@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/channels.md. Edit the source, then run just sync-skills. -->
-
 # Jig channels
 
 *Status: experimental direct and isolated-broadcast implementation.*

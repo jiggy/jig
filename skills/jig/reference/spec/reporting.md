@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/reporting.md. Edit the source, then run just sync-skills. -->
-
 # Reporting
 
 *Status: experimental reporting profile, provisional 0.1.0.*

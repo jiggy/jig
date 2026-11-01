@@ -10,181 +10,181 @@
       "source": "docs/jig/guide/index.md",
       "destination": "guide/index.md",
       "sourceSha256": "ac2f359727b35b126eb5b53aa737178057848695653bb168126584681735f953",
-      "outputSha256": "1ee29af764a601a1add755544f7ca173994b011247c08f3ee25636250652d164"
+      "outputSha256": "b127ab214238945f89281c375104df05ca927d2c634bb6194181ff9d848ec3b5"
     },
     {
       "source": "docs/jig/guide/for-agents.md",
       "destination": "guide/for-agents.md",
       "sourceSha256": "43f640c67feb54277be19cafe5ef8a2612663b4871fcdf4b5f75399a51877c7e",
-      "outputSha256": "362bfce3227d2d76ef341abe118330fec895c3c2e2889408cb8c8df1b55582d8"
+      "outputSha256": "d1c6e153870ec0cf99e1500391b2bfc3a7867368b5e326fffdd6461cd2d0c629"
     },
     {
       "source": "docs/jig/guide/design.md",
       "destination": "guide/design.md",
       "sourceSha256": "dfa3f67b43a83b7921145eafa9655a3e4506767392652df0647f69e868f234fb",
-      "outputSha256": "751226ab72fd66ff287929e7b7e0bd6baaafae42291d2a9996c522b8f2603edd"
+      "outputSha256": "dfa3f67b43a83b7921145eafa9655a3e4506767392652df0647f69e868f234fb"
     },
     {
       "source": "docs/jig/spec/project-sdk.md",
       "destination": "spec/project-sdk.md",
       "sourceSha256": "8844381d4c1c56e3c496212f7aa092d414627bc1418d33cd6ee9e85225f6fad6",
-      "outputSha256": "4c8f53f9342863f7cb0e108991fdbf32512d943d78520f3f408b6cb916399caa"
+      "outputSha256": "3f20d50569c0d0fb29892213c2aff66fe693eb810d6a93ab5195f2ca292b9de1"
     },
     {
       "source": "docs/jig/guide/dependencies.md",
       "destination": "guide/dependencies.md",
       "sourceSha256": "9de7136bce9580df89e797c3b2a53abf40ed60a904a8f7cf69354e38549af0ee",
-      "outputSha256": "290342131ddbf95d70bbdd0a0635fea24ad708e1ec9f0592a3aed90dee2af439"
+      "outputSha256": "9de7136bce9580df89e797c3b2a53abf40ed60a904a8f7cf69354e38549af0ee"
     },
     {
       "source": "docs/jig/guide/configuration.md",
       "destination": "guide/configuration.md",
       "sourceSha256": "5c6b9a23a296c0727c9427637226450779a8c84ebcc3362d8ae243cd60bf775e",
-      "outputSha256": "a2084529922e92f16b7a568f4489688e1d922b214b3a0c224400d85200177912"
+      "outputSha256": "08c7a47f739fd771fabcb1de6091b6c5db47d81846269f5e3ebbc6b0d9d47c46"
     },
     {
       "source": "docs/jig/guide/workflow-design.md",
       "destination": "guide/workflow-design.md",
       "sourceSha256": "76bf098394d1dfd9d6a7c4bf9db528947e9d4f5467c86bd90a0a4ef46ffcb1cf",
-      "outputSha256": "4dbe33622802519f2f0cea27bc901a4b3ff254e804f1861ff960dc4ff0387523"
+      "outputSha256": "b7ae8f857ab681600e7bd2ee881c990195ae1e2391538ff4e7c4f0cc816e3d87"
     },
     {
       "source": "docs/jig/guide/agents.md",
       "destination": "guide/agents.md",
       "sourceSha256": "ed56c4efb723030d528674077f545a1a9a8c24edb9dbf816bd831f6877d8590e",
-      "outputSha256": "73f364b1589a34913caabf68b940c1f66106179d8ad3eaa8b596ba570884e82e"
+      "outputSha256": "ed56c4efb723030d528674077f545a1a9a8c24edb9dbf816bd831f6877d8590e"
     },
     {
       "source": "docs/jig/spec/agent-run.md",
       "destination": "spec/agent-run.md",
       "sourceSha256": "e386d08953b09f2c1c995fd75d24069c59a3c10c71239b282780361017124e25",
-      "outputSha256": "59f01563d61a9c055fe719b6e9283f1cb0248006629ec357e79082f4d769d2a2"
+      "outputSha256": "bd7ad92c9e1db5856199a275265365b277d2d5088e11a241560f11d20a1154b1"
     },
     {
       "source": "docs/jig/guide/agent-method.md",
       "destination": "guide/agent-method.md",
       "sourceSha256": "117281d6ac03ee8f12548a326b470dcf4831efab9f2a2ca3de592f754ff4dd4c",
-      "outputSha256": "f2fe72f1fd3b5bb4423e83f7db7ffa4400789fa9d40ff0bf83034e067a7bbcdd"
+      "outputSha256": "117281d6ac03ee8f12548a326b470dcf4831efab9f2a2ca3de592f754ff4dd4c"
     },
     {
       "source": "docs/jig/guide/markdown.md",
       "destination": "guide/markdown.md",
       "sourceSha256": "814e462ae34fc6f8333f2b08abfaa9ff2396ae9561a0aa8274c827ca5bbdfb12",
-      "outputSha256": "483f4d7be80b28d3edb1183e47c582eb56caac01fac69ee6e71089002d38cfe6"
+      "outputSha256": "814e462ae34fc6f8333f2b08abfaa9ff2396ae9561a0aa8274c827ca5bbdfb12"
     },
     {
       "source": "docs/jig/guide/files.md",
       "destination": "guide/files.md",
       "sourceSha256": "68745c322d138817155cab9214db8c317095f1356a18437f1413f7f59b68afca",
-      "outputSha256": "c051325932e8422da570e7cf48333fd92ff439b6de76905a8a107fc6f8d11f00"
+      "outputSha256": "4ea75bc412b3de55e5034c5254724a28581e3a709596034a0de489c789f0683b"
     },
     {
       "source": "docs/jig/spec/project-policy.md",
       "destination": "spec/project-policy.md",
       "sourceSha256": "fcdfff0aa5355136c49fe25c8eaecf2f6d97059d1ee27a6e4cec5678bb35ff06",
-      "outputSha256": "b6768734fd7da324a33233cc6aa98645379fe2fc4044fcdf83a0f57c4cddde10"
+      "outputSha256": "a7c869e994134a43029859d34168aeb2910a336c32ef861aa59e1c8280523159"
     },
     {
       "source": "docs/jig/guide/http.md",
       "destination": "guide/http.md",
       "sourceSha256": "9ef67fa43a3495ea654a2ea0f2d382450a801b1dc40952f73fe6e7a6295bf6a4",
-      "outputSha256": "f16209570eddcaad4e73a2c42358a488c97bb44f9afa1a5b71628c6d1fe205df"
+      "outputSha256": "850669052bda592a6fe80609c7b51ec9328dea1c993ccabd93e9eee667237c24"
     },
     {
       "source": "docs/jig/spec/http-request.md",
       "destination": "spec/http-request.md",
       "sourceSha256": "88b4c97d69076b310d84a8c76895509d4dd7b24a0d91901db1a1958e019cf553",
-      "outputSha256": "573a637638c178fdd71c4e7011183a109ef76f2847e4b1423d6633dc62b1486e"
+      "outputSha256": "88b4c97d69076b310d84a8c76895509d4dd7b24a0d91901db1a1958e019cf553"
     },
     {
       "source": "docs/jig/spec/project-command.md",
       "destination": "spec/project-command.md",
       "sourceSha256": "7ee3cf8cb3498552d29e4870cf6662a312bad2aa3b456bc5f5aea7cf63445b3a",
-      "outputSha256": "f8428ebf320bf83123400134e236a50da7784a9b883e6db73fd18ea4c24626e7"
+      "outputSha256": "7ee3cf8cb3498552d29e4870cf6662a312bad2aa3b456bc5f5aea7cf63445b3a"
     },
     {
       "source": "docs/jig/spec/grants.md",
       "destination": "spec/grants.md",
       "sourceSha256": "4983d6cf76e4327cbc7be575379d8aa9aeded0fe2d34c44aab7f0c2c4fa77fb1",
-      "outputSha256": "da6a29fb1ce26a7c17a73deb60982801082e00177a88d211382754cee1da849f"
+      "outputSha256": "d2a8d91cddd2cc271c2b167ca79d2450eca3aa7bf1a6c3b4faa8b3ea16576686"
     },
     {
       "source": "docs/jig/guide/contracts.md",
       "destination": "guide/contracts.md",
       "sourceSha256": "8ae2c781f26858031784b97481712d9cc84d5e15947b21b0421bd15b99662631",
-      "outputSha256": "881c1d82b1d1b86d6475ef79d37749ec6ae8d84043f6272765777f4b41c606a2"
+      "outputSha256": "a2639ff4a51dc4207c5b1f487d643ef9b4a5a82dd276da784a8eda5b5120cb0a"
     },
     {
       "source": "docs/jig/spec/contract-authoring.md",
       "destination": "spec/contract-authoring.md",
       "sourceSha256": "ab36d5edb419d7fcaead39d35c5da8f5d3a2fb51524891545d5a9f5efc884298",
-      "outputSha256": "9a6e21c3f5d90ec01b1a41c9244f74ec018775d503fc1f2dcb5d1634f39e233c"
+      "outputSha256": "ab36d5edb419d7fcaead39d35c5da8f5d3a2fb51524891545d5a9f5efc884298"
     },
     {
       "source": "docs/jig/guide/channels.md",
       "destination": "guide/channels.md",
       "sourceSha256": "9b59c5eef3d27bb20edfdb5c93b90cb49b2ae70e62b1e51fb65e45c3e1386537",
-      "outputSha256": "a68364cc57fa7db213133ba94fc59777711fc94b679c4a6699c326f86779d823"
+      "outputSha256": "cc51eb9636c5b3bbbdba339612f224653a2d8958fc2c573ca2fde6960b2c7d6b"
     },
     {
       "source": "docs/jig/spec/channels.md",
       "destination": "spec/channels.md",
       "sourceSha256": "aa06400eaff19737ae447fcbac3402a6c136cddac2f7a6ca50acd852ef1ba2b1",
-      "outputSha256": "37fff97af9b6d46a74712b5dc57a4d39ddc152cbb52d2ec7c7c9f3905a0a53d8"
+      "outputSha256": "ee21699f8385f242a97763af903ff5093cf5ba38305309d6a067e5ca84991a1e"
     },
     {
       "source": "docs/jig/spec/reporting.md",
       "destination": "spec/reporting.md",
       "sourceSha256": "691ebe18283d594453af4628bbf5738f3623e376b22a70a0e2970cd3b2483a9f",
-      "outputSha256": "6134605c721a208a1f238c9f89c4c44446766a20630e8f60f37408b1def326c5"
+      "outputSha256": "bea361f0e01f1166f48054c8d2b84c1439e37694f759611a920d8ed62711f680"
     },
     {
       "source": "docs/jig/guide/conversations.md",
       "destination": "guide/conversations.md",
       "sourceSha256": "135c8eb0dc2c48d2a04a689ba567172e872aaa4a9fd5fce379b9a8c326b00d29",
-      "outputSha256": "a911791c1138db57cf587c88a973dcaf80b521ff0005c84730b250018315e543"
+      "outputSha256": "5c92c3c15eefb8c6ca9705240ab1608b71b61d15ffa6ca3fd18b8de609795980"
     },
     {
       "source": "docs/jig/guide/conversation-control.md",
       "destination": "guide/conversation-control.md",
       "sourceSha256": "51349b65206dd36cf76329ced04d9a8c047ad3645ef1a79ea8178cd4cf52010e",
-      "outputSha256": "4c51d59a1f2c0232ea7f2b0cb222935787ae649d84a22914cbb367056cb12157"
+      "outputSha256": "51349b65206dd36cf76329ced04d9a8c047ad3645ef1a79ea8178cd4cf52010e"
     },
     {
       "source": "docs/jig/spec/finite-acp.md",
       "destination": "spec/finite-acp.md",
       "sourceSha256": "eb99d319c6f3ef92a136c5cff958dc83c1f0e74462d5c626c3f349b55af33889",
-      "outputSha256": "8f80648e093eadd009827ddb14fb97a1b461030a01f66954306007bbb8ca6561"
+      "outputSha256": "eb99d319c6f3ef92a136c5cff958dc83c1f0e74462d5c626c3f349b55af33889"
     },
     {
       "source": "docs/jig/guide/conversation-handoff.md",
       "destination": "guide/conversation-handoff.md",
       "sourceSha256": "ee7d5d69b66954ead91ba6fb6e5668161dafe9e72d94e2b2216d2de2adec940b",
-      "outputSha256": "06542dd522e9af22590450b76d0d4f12c3274c66c47aac1392895ff998d9b4e1"
+      "outputSha256": "ee7d5d69b66954ead91ba6fb6e5668161dafe9e72d94e2b2216d2de2adec940b"
     },
     {
       "source": "docs/jig/guide/conversation-restoration.md",
       "destination": "guide/conversation-restoration.md",
       "sourceSha256": "f4b4c9c3ee4a8e38ebcc1cb433ad587dda128a7adbdb35f0d3c4f166e7ac9559",
-      "outputSha256": "66640159afeb72d3acea43f9331262064e42dcf1553b7e78ac6d5e4bb5bf49d4"
+      "outputSha256": "f4b4c9c3ee4a8e38ebcc1cb433ad587dda128a7adbdb35f0d3c4f166e7ac9559"
     },
     {
       "source": "docs/jig/guide/limits.md",
       "destination": "guide/limits.md",
       "sourceSha256": "08bc33ab1ec7454e6fdfc53fb19df4b8b1cea4da37aaa67139952de3680ea6d8",
-      "outputSha256": "178430ed4d393f5da50c61b131cc7b5f33ad9e593fc19771d22177461e266c60"
+      "outputSha256": "a3f76d44463f434d25753b78fa684417726450c22c259bd232bb403858669c7d"
     },
     {
       "source": "docs/jig/spec/execution-client.md",
       "destination": "spec/execution-client.md",
       "sourceSha256": "8806c79a71ba6727a4c676ef60eb96a3b0fc00308cb43cee17c85ece949b5f9c",
-      "outputSha256": "ab9863eefdc4452cef1f3c3c1dabc5c3ff12c104af712ae64d3cf8104487f116"
+      "outputSha256": "094eabfc19284901ab9f1934ea40a16bed9dbceb5764d40ad33d98f54f7a75b6"
     },
     {
       "source": "docs/jig/guide/results.md",
       "destination": "guide/results.md",
       "sourceSha256": "7f505fcb2ae4228d3f3ad2f76e5198f7bcc8ba05cdba90324ca500adc69ee7f5",
-      "outputSha256": "57b2c0905e3a28066561ce86ff6d18da78395d7f20c42c1a0a36d15b6bcccc68"
+      "outputSha256": "3656e26822700d6c0a154981cecdcae4a7579da65177b44fe4cbb57656a4685c"
     },
     {
       "source": "docs/jig/spec/machine/jig-lock-1.schema.json",

@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/guide/markdown.md. Edit the source, then run just sync-skills. -->
-
 # Run a Markdown method
 
 A Flow can be one `FLOW.md` file. Jig runs it through its installed interpreter:

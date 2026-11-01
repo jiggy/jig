@@ -3,9 +3,6 @@ title: Documentation for agents
 description: Install FLOW and Jig authoring skills, or read focused Markdown documentation for your task.
 ---
 
-<!-- Generated from docs/jig/guide/for-agents.md. Edit the source, then run just sync-skills. -->
-
-
 # Give your Agent the right context
 
 The same documentation is available to people and software. Fetch a focused

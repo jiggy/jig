@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/execution-client.md. Edit the source, then run just sync-skills. -->
-
 # Jig application execution
 
 **Status:** prerelease contract.

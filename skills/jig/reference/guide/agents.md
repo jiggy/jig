@@ -2,9 +2,6 @@
 title: Choose an Agent
 ---
 
-<!-- Generated from docs/jig/guide/agents.md. Edit the source, then run just sync-skills. -->
-
-
 # Choose an Agent
 
 An Agent-capable Flow delegates intelligent work through an agreed interface.

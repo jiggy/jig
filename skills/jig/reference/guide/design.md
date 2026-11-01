@@ -3,9 +3,6 @@ title: Design understandable Jig projects
 description: Compose useful methods with clear local configuration, operator choices, portable source, and evidence for the application's result.
 ---
 
-<!-- Generated from docs/jig/guide/design.md. Edit the source, then run just sync-skills. -->
-
-
 # Design understandable Jig projects
 
 Build a project whose purpose, components, configuration, and results are easy to explain and change.

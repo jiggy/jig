@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/finite-acp.md. Edit the source, then run just sync-skills. -->
-
 # Finite ACP resource
 
 **Status:** experimental alpha candidate. Native restoration requires matching

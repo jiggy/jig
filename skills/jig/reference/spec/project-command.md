@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/project-command.md. Edit the source, then run just sync-skills. -->
-
 # Project Command native invocation
 
 *Status: prerelease implementation candidate.*

@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/agent-run.md. Edit the source, then run just sync-skills. -->
-
 # Jig Agent Run invocation
 
 **Status:** experimental alpha candidate.

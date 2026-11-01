@@ -2,9 +2,6 @@
 title: Working with files
 ---
 
-<!-- Generated from docs/jig/guide/files.md. Edit the source, then run just sync-skills. -->
-
-
 # Working with files
 
 Give a Flow read access to selected files and collect its output in a new result

@@ -3,9 +3,6 @@ title: Settings and configuration
 description: Configure Jig’s startup verification, terminal appearance, Agent selection, and project settings.
 ---
 
-<!-- Generated from docs/jig/guide/configuration.md. Edit the source, then run just sync-skills. -->
-
-
 # Settings and configuration
 
 Use this reference to adjust Jig for your terminal, host, and application. The

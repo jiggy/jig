@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/project-policy.md. Edit the source, then run just sync-skills. -->
-
 # Jig project policy and admission
 
 **Status:** direct-alpha specification candidate.

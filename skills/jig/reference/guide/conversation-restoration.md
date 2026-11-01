@@ -2,9 +2,6 @@
 title: Retain and restore an Agent conversation
 ---
 
-<!-- Generated from docs/jig/guide/conversation-restoration.md. Edit the source, then run just sync-skills. -->
-
-
 # Retain and restore an Agent conversation
 
 Keep qualified native conversation state for a later authorized invocation. Use

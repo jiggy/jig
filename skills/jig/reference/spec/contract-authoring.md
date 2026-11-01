@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/contract-authoring.md. Edit the source, then run just sync-skills. -->
-
 # Managed contract authoring
 
 Jig's optional authoring operation serves editable, portable methods without
