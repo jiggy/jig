@@ -113,6 +113,9 @@ use-case and orchestration hypotheses.
 - `guide/overview.md` owns task-based discovery. `guide/for-agents.md` owns
   machine-readable entry paths. `guide/concepts.md` owns introductory vocabulary
   and common questions. These guides defer to the linked exact contracts.
+- `guide/design.md` owns project design guidance for responsibility boundaries,
+  local configuration, operator choices, relocation, and verification.
+  It routes component design to FLOW and method selection to `guide/workflow-design.md`.
 - `guide/teams.md` explains collaboration through shared methods and explicit
   responsibility, without implying a hosted team product.
 
@@ -168,6 +171,9 @@ use-case and orchestration hypotheses.
 - Preserve the current uniform record shape within each catalogue.
 
 ## Work Guidance
+
+- Label illustrative design choices as examples and state the assumptions behind them.
+- Keep shared component principles in FLOW guidance and Jig project practices in their canonical guide.
 
 - Start task guides with prerequisites, one complete example, expected results,
   and recovery. Put optional configuration and exact reference details afterward.
