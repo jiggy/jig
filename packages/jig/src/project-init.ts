@@ -35,6 +35,14 @@ const DEFAULT_FILE_SYSTEM: ProjectInitFileSystem = {
 // Pair the generated source with its tested SDK, not a moving registry tag.
 const GREETING_SDK_VERSION = '0.1.0-alpha.15'
 const AGENT_ACP_VERSION = '0.1.0-alpha.12'
+const AUTHORING_SKILLS_README = [
+  '## Develop with an Agent',
+  '',
+  'Install the FLOW and Jig authoring skills for your development assistant.',
+  'FLOW teaches reusable method design. Jig teaches project creation, configuration and use.',
+  'See [Install authoring skills](https://jig.md/guide/for-agents#install-authoring-skills).',
+  '',
+] as const
 export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
 
 export type ProjectInitErrorCode =
@@ -386,6 +394,7 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
         'Local readiness does not establish remote model availability. The result',
         'and selected live updates are separate; cancellation does not undo remote work.',
         '',
+        ...AUTHORING_SKILLS_README,
       ].join('\n'),
     ],
   ]
@@ -454,6 +463,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         '',
         'Help: `jig review --help`, `jig run --help`, https://jig.md/guide/',
         '',
+        ...AUTHORING_SKILLS_README,
       ].join('\n'),
     ],
   ]
