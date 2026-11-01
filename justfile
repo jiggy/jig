@@ -28,6 +28,10 @@ build: jig::build
 @format *paths:
     bun x --no-install biome format --write --files-ignore-unknown=true --no-errors-on-unmatched "$@"
 
+# Synchronize committed installable-skill references from canonical documentation
+@sync-skills:
+    node scripts/sync-skills.mjs
+
 # Record package release intent without editing numeric versions
 [positional-arguments]
 @changeset *args:
@@ -54,6 +58,10 @@ build: jig::build
 [positional-arguments]
 @lint *paths:
     bun x --no-install biome lint --files-ignore-unknown=true --no-errors-on-unmatched "$@"
+
+# Check installable-skill references without writing
+@check-skills:
+    node scripts/sync-skills.mjs --check
 
 # Validate release coverage against an explicit Git baseline
 [positional-arguments]
