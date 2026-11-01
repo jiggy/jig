@@ -48,7 +48,7 @@ try {
   const project = join(root, 'project')
   await mkdir(home)
   await mkdir(project)
-  const features = { apps: false, code_mode: false, code_mode_host: false, plugins: false, remote_plugin: false, tool_suggest: false }
+  const features = { multi_agent: false, apps: false, code_mode: false, code_mode_host: false, plugins: false, remote_plugin: false, tool_suggest: false }
   await writeFile(join(home, 'config.toml'), `cli_auth_credentials_store = "ephemeral"\nmodel_provider = "custom-gateway"\n[model_providers.custom-gateway]\nname = "local-only"\nbase_url = "http://127.0.0.1:${peer.address().port}/v1"\nwire_api = "responses"\n[features]\n${Object.entries(features).map(([key, value]) => `${key} = ${value}`).join('\n')}\n`)
   const wrapper = join(root, 'native-wrapper')
   await writeFile(wrapper, `#!${process.execPath}\nimport { spawn } from 'node:child_process'; import { createInterface } from 'node:readline'; const child = spawn(process.env.NATIVE_CODEX, process.argv.slice(2), { stdio: ['pipe', 'pipe', 'inherit'] }); process.stdin.pipe(child.stdin); for await (const line of createInterface({ input: child.stdout })) { const frame = JSON.parse(line); if (frame.method === 'error' || frame.params?.turn?.error) process.stderr.write('NATIVE_LOCAL_ERROR ' + line + '\\n'); process.stdout.write(line + '\\n'); } child.on('close', code => {process.exitCode = code});`, { mode: 0o700 })
