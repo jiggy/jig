@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/guide/channels.md. Edit the source, then run just sync-skills. -->
-
 # Add progress to a Flow
 
 A method can tell its caller what it is doing before its result arrives. Use

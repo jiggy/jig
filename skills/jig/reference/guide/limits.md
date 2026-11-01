@@ -3,9 +3,6 @@ title: Limits and defaults
 description: Find Jig's resource limits, supported overrides, fixed constraints, and policy owners.
 ---
 
-<!-- Generated from docs/jig/guide/limits.md. Edit the source, then run just sync-skills. -->
-
-
 # Limits and defaults
 
 Use this reference when a review or Run reaches a resource limit. Find the

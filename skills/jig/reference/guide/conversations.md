@@ -2,9 +2,6 @@
 title: Revise work in one Agent conversation
 ---
 
-<!-- Generated from docs/jig/guide/conversations.md. Edit the source, then run just sync-skills. -->
-
-
 # Revise work in one Agent conversation
 
 An application can ask an Agent to draft an incident brief, supply a correction,

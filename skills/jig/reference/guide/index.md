@@ -2,9 +2,6 @@
 title: Get started with Jig
 ---
 
-<!-- Generated from docs/jig/guide/index.md. Edit the source, then run just sync-skills. -->
-
-
 # Get started with Jig
 
 Jig runs methods that use code, Agent judgment, or both through the same

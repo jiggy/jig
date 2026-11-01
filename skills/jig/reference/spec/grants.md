@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/grants.md. Edit the source, then run just sync-skills. -->
-
 # Grants: power through ordinary slots
 
 *Status: prerelease implementation candidate.*

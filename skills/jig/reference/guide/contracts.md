@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/guide/contracts.md. Edit the source, then run just sync-skills. -->
-
 # Author contracts once
 
 Jig can generate validation contracts and TypeScript types from one TypeSpec

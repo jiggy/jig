@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/guide/http.md. Edit the source, then run just sync-skills. -->
-
 # Use a service without handing over its credential
 
 A Flow may need a private document, a notification endpoint, or a model API.

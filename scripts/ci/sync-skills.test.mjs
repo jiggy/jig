@@ -76,15 +76,19 @@ async function snapshot(root, prefix = '') {
   return entries
 }
 
-test('synchronizes standalone references while preserving the skill, machine bytes, examples, and notices', async (t) => {
+test('synchronizes standalone references while preserving the skill, machine bytes, examples, and license notices', async (t) => {
   const root = await fixture(t)
   const output = join(root, 'skills/jig/reference')
   const skill = await readFile(join(root, 'skills/jig/SKILL.md'))
   assert.ok((await syncSkills({ root })).length > 0)
   assert.deepEqual(await readFile(join(root, 'skills/jig/SKILL.md')), skill)
   const generated = await readFile(join(output, 'guide/create.md'), 'utf8')
-  assert.ok(generated.startsWith('---\ntitle: Create\n---\n'))
-  assert.match(generated, /Generated from docs\/jig\/guide\/create\.md/)
+  assert.ok(generated.startsWith('---\ntitle: Create\n---\n\n# Create\n'))
+  assert.doesNotMatch(generated, /<!-- Generated from|Edit the source|just sync-skills/)
+  assert.deepEqual(
+    await readFile(join(output, 'spec/package.md')),
+    await readFile(join(root, 'docs/jig/spec/package.md')),
+  )
   assert.match(generated, /\[`Package`\]\(\.\.\/spec\/package\.md#metadata\)/)
   assert.match(generated, /\[More\]\(https:\/\/jig\.md\/guide\/more\.md\)/)
   assert.ok(generated.includes('https://github.com/jiggy/jig/blob/main/packages/example/source.ts'))

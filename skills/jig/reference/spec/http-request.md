@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/http-request.md. Edit the source, then run just sync-skills. -->
-
 # HTTP Request: delegated endpoint access
 
 *Status: prerelease implementation candidate.*

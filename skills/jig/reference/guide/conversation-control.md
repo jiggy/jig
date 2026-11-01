@@ -2,9 +2,6 @@
 title: Control an Agent conversation
 ---
 
-<!-- Generated from docs/jig/guide/conversation-control.md. Edit the source, then run just sync-skills. -->
-
-
 # Control an Agent conversation
 
 Use this guide to interrupt an active turn or connect the public conversation

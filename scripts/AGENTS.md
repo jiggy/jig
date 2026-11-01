@@ -39,7 +39,7 @@ operational baselines, and public-site assembly.
   It preserves machine files, examples, license texts, and source hashes.
   It rewrites prose links for standalone installation and validates every source before writing.
   `--check` detects drift without writing. `--root` selects inert source data for trusted CI tooling.
-  Keep authored skill instructions outside the generated subtree.
+  Keep authored skill instructions and repository maintenance guidance outside generated references.
 - `limit-reference.ts` owns typed documentation metadata for user-facing limits.
   Import values from implementation policy owners instead of defining runtime
   policy here. Its `--write` command refreshes the marked tables in

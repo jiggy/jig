@@ -1,5 +1,3 @@
-<!-- Generated from docs/jig/spec/project-sdk.md. Edit the source, then run just sync-skills. -->
-
 # Jig Project Authoring SDK/1
 
 **Status:** prerelease candidate.

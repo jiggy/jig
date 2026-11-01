@@ -2,9 +2,6 @@
 title: Reuse the Agent method
 ---
 
-<!-- Generated from docs/jig/guide/agent-method.md. Edit the source, then run just sync-skills. -->
-
-
 # Reuse the Agent method
 
 Ask your project's Agent for one answer.

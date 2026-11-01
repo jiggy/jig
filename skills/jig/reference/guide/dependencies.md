@@ -2,9 +2,6 @@
 title: Flow dependencies
 ---
 
-<!-- Generated from docs/jig/guide/dependencies.md. Edit the source, then run just sync-skills. -->
-
-
 # Flow dependencies
 
 Use a library from an approved Flow. This example escapes HTML characters
