@@ -4,8 +4,11 @@ import { JSON_1_LIMITS } from '../json.js'
 import {
   PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS,
   PRIVATE_AUTHOR_EVALUATOR_MACOS_ENTRY_MS,
-  PRIVATE_AUTHOR_EVALUATOR_WORKER,
 } from './project-evaluator-policy.js'
+import {
+  type PrivateAuthorEvaluatorSupport,
+  privateAuthorEvaluatorProgram,
+} from './project-evaluator-program.js'
 
 export class PrivateAuthorEvaluatorChildError extends Error {
   constructor(
@@ -20,21 +23,22 @@ export class PrivateAuthorEvaluatorChildError extends Error {
 /** Trusted review work only. Runs inside the already-contained batch manager. */
 export async function runPrivateAuthorEvaluatorChild(
   request: Uint8Array,
-  // Package-private fault-test seam; authored declarations cannot select this.
-  workerPath = PRIVATE_AUTHOR_EVALUATOR_WORKER,
-  sdkPath?: string,
+  support: PrivateAuthorEvaluatorSupport,
 ): Promise<Uint8Array> {
+  const started = performance.now()
   const entryWallClockCeilingMs =
     process.platform === 'darwin'
       ? PRIVATE_AUTHOR_EVALUATOR_MACOS_ENTRY_MS
       : PRIVATE_AUTHOR_EVALUATOR_ENTRY_MS
-  const started = performance.now()
+  const program = privateAuthorEvaluatorProgram(request, support)
+  if (performance.now() - started >= entryWallClockCeilingMs)
+    throw failure('PROJECT_EVALUATOR_DEADLINE', 'declaration reached its hard wall deadline')
   const child = spawn(
     process.execPath,
-    ['--no-env-file', '--no-install', '--config=/dev/null', workerPath],
+    ['--no-env-file', '--no-install', '--config=/dev/null', 'run', '-'],
     {
       stdio: ['pipe', 'pipe', 'pipe'],
-      env: sdkPath === undefined ? process.env : { ...process.env, JIG_EVALUATOR_SDK: sdkPath },
+      env: process.env,
     },
   )
   let timedOut = false
@@ -46,15 +50,18 @@ export async function runPrivateAuthorEvaluatorChild(
       resolve({ code, signal })
     })
   })
-  const timer = setTimeout(() => {
-    timedOut = true
-    child.kill('SIGKILL')
-  }, entryWallClockCeilingMs)
+  const timer = setTimeout(
+    () => {
+      timedOut = true
+      child.kill('SIGKILL')
+    },
+    Math.max(0, entryWallClockCeilingMs - (performance.now() - started)),
+  )
   const stdout = collect(child.stdout, JSON_1_LIMITS.bytes)
   const stderr = collect(child.stderr, 64 * 1024)
   const input = new Promise<void>((resolve, reject) => {
     child.stdin.once('error', reject)
-    child.stdin.end(request, () => resolve())
+    child.stdin.end(program, () => resolve())
   })
   try {
     const [output, , exit] = await Promise.all([stdout, stderr, exited, input])
