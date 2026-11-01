@@ -90,6 +90,10 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
   if (photos.length) {
     const events = state.plan ? groups : ['Awaiting checked grouping']
     for (const event of events) {
+      // Event identity survives phase changes and reordered groups.
+      const collectionId = state.plan
+        ? `event-${createHash('sha256').update(event).digest('base64url')}`
+        : 'ungrouped-photos'
       const members = photos.filter(
         (photo) => !state.plan || plan.find((entry) => entry.id === photo.id)?.event === event,
       )
@@ -98,7 +102,7 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
         blocks: [
           {
             kind: 'collection',
-            id: `event-${sections.length}`,
+            id: collectionId,
             title: event,
             presentation: {
               kind: 'gallery',

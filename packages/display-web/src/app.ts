@@ -755,6 +755,12 @@ function ApplicationList(): ComponentChildren {
         state.filters.set(collection, query)
         redraw()
       },
+      onClearFilters: () => {
+        humanNavigation = true
+        state.filters.clear()
+        redraw()
+        focusSelectedEntry()
+      },
       onSort: (collection, key, descending) => {
         humanNavigation = true
         if (key) state.sorts.set(collection, { key, descending })
@@ -1059,6 +1065,7 @@ function SelectedDetail(): ComponentChildren {
           button('Clear filters', () => {
             state.filters.clear()
             redraw()
+            focusDetailReturn()
           }),
         )
       : null,
