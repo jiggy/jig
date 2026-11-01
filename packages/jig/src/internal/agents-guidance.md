@@ -165,6 +165,11 @@ These links locate module rules. All selected domain requirements still apply.
   Mode and its helper host. Unsupported optional tool startup must not inject
   private-path warnings into Agent answers.
 
+- Codex Responses access selects the ACP gateway provider before native app-server startup.
+  Startup retains only the reviewed HTTPS endpoint, provider name and Responses protocol.
+  Gateway headers and credentials remain in the private ACP authentication exchange.
+  Native startup and thread configuration must select the same provider.
+
 - Codex's nested sandbox uses an unprivileged Bubblewrap. Selection uses its
   declarative binary wrapper's PATH prefix and operator PATH, excluding project
   routes. If no eligible PATH helper exists, selection uses the matching bundled

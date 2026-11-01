@@ -367,7 +367,7 @@ export async function createPrivateCodexOpenAIApiAgentProvider(
     sandboxAdapterPath: SANDBOX_LAUNCHER_PATH,
     executablePath: value.executablePath,
     sandboxExecutablePath: value.executablePath,
-    environment: codexEnvironment(false, value.model, value),
+    environment: codexEnvironment(false, value.model, value, baseURL),
     configuration: [{ configId: 'model', value: value.model }],
     modeId: 'read-only',
     nestedUserNamespaces: true,
@@ -423,6 +423,7 @@ function codexEnvironment(
   subscription: boolean,
   model: string | undefined,
   support: PrivateCodexAgentSupport,
+  baseURL?: string,
 ): Readonly<Record<string, string>> {
   return Object.freeze({
     HOME: '/tmp',
@@ -440,6 +441,18 @@ function codexEnvironment(
       history: { persistence: 'none' },
       log_dir: '/tmp/codex-log',
       ...(model === undefined ? {} : { model }),
+      ...(baseURL === undefined
+        ? {}
+        : {
+            model_provider: 'custom-gateway',
+            model_providers: {
+              'custom-gateway': {
+                name: 'OpenAI Responses-compatible endpoint',
+                base_url: baseURL,
+                wire_api: 'responses',
+              },
+            },
+          }),
       sqlite_home: '/tmp/codex-state',
     }),
     CODEX_HOME: SANDBOX_CODEX_HOME,

@@ -23,21 +23,21 @@ client=$fixture/client
 mkdir "$client"
 
 # Complete official package: keep the genuine executable and its resource layout.
-# Digest is the rust-v0.152.1 release asset identity, not a floating installer.
+# Digest is the rust-v0.166.0 release asset identity, not a floating installer.
 archive=$fixture/codex-package.tar.gz
 curl --fail --location --proto '=https' --tlsv1.2 \
   --connect-timeout 15 --max-time 120 --retry 2 --retry-max-time 240 \
   --output "$archive" \
-  https://github.com/openai/codex/releases/download/rust-v0.152.1/codex-package-x86_64-unknown-linux-musl.tar.gz
+  https://github.com/openai/codex/releases/download/rust-v0.166.0/codex-package-x86_64-unknown-linux-musl.tar.gz
 printf '%s  %s\n' \
-  2aeea68239b4d96081b3e7fe91d0d64e4875b224668c381985d22bb31d7566b9 "$archive" |
+  1d44b28bc4ac9937d7d3532264baa68a507ce364956a0d4ebb856f331cdee254 "$archive" |
   sha256sum --check --strict -
 tar -xzf "$archive" -C "$client"
 codex=$client/bin/codex
 [ -f "$codex" ] && [ ! -L "$codex" ] && [ -x "$codex" ] || {
   echo "The pinned Codex package has no ordinary executable" >&2; exit 1;
 }
-[ "$(env -i PATH=/usr/bin:/bin "$codex" --version)" = 'codex-cli 0.152.1' ] || {
+[ "$(env -i PATH=/usr/bin:/bin "$codex" --version)" = 'codex-cli 0.166.0' ] || {
   echo "The pinned Codex version does not match" >&2; exit 1;
 }
 

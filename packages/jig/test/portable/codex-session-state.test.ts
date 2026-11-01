@@ -3,7 +3,7 @@ import { link, mkdir, mkdtemp, open, rm, symlink, writeFile } from 'node:fs/prom
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { capturePrivateOutput } from '../../src/internal/captured-output.js'
-import { codexStartupFeatures } from '../../src/internal/codex-agent-launcher.js'
+import { codexStartupConfiguration } from '../../src/internal/codex-agent-launcher.js'
 import {
   collectPrivateCodexSession,
   PRIVATE_CODEX_SESSION_BYTES,
@@ -149,7 +149,7 @@ test('expected missing history has a reason; descriptor failures remain errors',
 })
 test('native startup receives the same inert feature flags before thread creation', () => {
   expect(
-    codexStartupFeatures(
+    codexStartupConfiguration(
       JSON.stringify({
         features: { code_mode: false, code_mode_host: false },
         model: 'not copied',
@@ -166,7 +166,45 @@ test('native startup receives the same inert feature flags before thread creatio
     { code_mode: 'false' },
     { code_mode: {} },
   ])
-    expect(() => codexStartupFeatures(JSON.stringify({ features }))).toThrow()
+    expect(() => codexStartupConfiguration(JSON.stringify({ features }))).toThrow()
+})
+test('native startup selects the same credential-free gateway as the ACP session', () => {
+  const provider = {
+    name: 'OpenAI Responses-compatible endpoint',
+    base_url: 'https://gateway.example/v1',
+    wire_api: 'responses',
+  }
+  const configuration = {
+    features: { code_mode: false },
+    model_provider: 'custom-gateway',
+    model_providers: { 'custom-gateway': provider },
+  }
+  expect(codexStartupConfiguration(JSON.stringify(configuration))).toBe(
+    'cli_auth_credentials_store = "ephemeral"\n' +
+      'model_provider = "custom-gateway"\n\n[model_providers.custom-gateway]\n' +
+      'name = "OpenAI Responses-compatible endpoint"\n' +
+      'base_url = "https://gateway.example/v1"\nwire_api = "responses"\n' +
+      '\n[features]\ncode_mode = false\n',
+  )
+  for (const invalid of [
+    { ...provider, http_headers: { Authorization: 'Bearer private-secret' } },
+    { ...provider, env_key: 'PRIVATE_API_KEY' },
+    { ...provider, base_url: 'https://private-secret@gateway.example/v1' },
+    { ...provider, base_url: 'https://gateway.example/v1?key=private-secret' },
+    { ...provider, base_url: 'http://gateway.example/v1' },
+    { ...provider, wire_api: 'chat' },
+  ])
+    expect(() =>
+      codexStartupConfiguration(
+        JSON.stringify({ ...configuration, model_providers: { 'custom-gateway': invalid } }),
+      ),
+    ).toThrow()
+  for (const invalid of [
+    { ...configuration, model_provider: 'openai' },
+    { ...configuration, model_providers: undefined },
+    { ...configuration, model_providers: { 'custom-gateway': provider, other: provider } },
+  ])
+    expect(() => codexStartupConfiguration(JSON.stringify(invalid))).toThrow()
 })
 test('credential screening includes bare tokens without treating endpoint metadata as secrets', () => {
   const values = privateCodexSessionSecrets(

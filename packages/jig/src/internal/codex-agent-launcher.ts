@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   delete process.env.JIG_AGENT_HOME
   delete process.env.JIG_OUTPUT_ROOT
   mkdirSync(CODEX_HOME, { mode: 0o700 })
-  materializeStartupFeatures()
+  materializeStartupConfiguration()
   const startup = process.env.JIG_CODEX_STARTUP_INPUT
   if (startup !== undefined && startup !== 'subscription') {
     throw new Error('Codex startup input mode is invalid')
@@ -33,10 +33,11 @@ async function main(): Promise<void> {
 
 // CODEX_CONFIG is passed by the adapter to thread creation, after the native
 // app server has already initialized optional helpers. Apply the same trusted
-// feature flags at startup too, without importing the operator's configuration.
-export function codexStartupFeatures(configuration: string): string {
+// feature flags and selected gateway at startup, without copying credentials.
+export function codexStartupConfiguration(configuration: string): string {
   if (configuration.length > STARTUP_INPUT_BYTES) throw new Error('Codex configuration is invalid')
-  const features = JSON.parse(configuration).features
+  const parsed = JSON.parse(configuration)
+  const features = parsed.features
   if (features === null || typeof features !== 'object' || Array.isArray(features))
     throw new Error('Codex features are invalid')
   const entries = Object.entries(features)
@@ -45,13 +46,51 @@ export function codexStartupFeatures(configuration: string): string {
     entries.some(([key, value]) => !/^[a-z_]+(?![\s\S])/.test(key) || typeof value !== 'boolean')
   )
     throw new Error('Codex features are invalid')
-  return `cli_auth_credentials_store = "ephemeral"\n\n[features]\n${entries.map(([key, value]) => `${key} = ${value}`).join('\n')}\n`
+  return `cli_auth_credentials_store = "ephemeral"\n${gatewayStartupConfiguration(parsed)}\n[features]\n${entries.map(([key, value]) => `${key} = ${value}`).join('\n')}\n`
 }
 
-function materializeStartupFeatures(): void {
+function gatewayStartupConfiguration(configuration: Record<string, unknown>): string {
+  if (configuration.model_provider === undefined && configuration.model_providers === undefined)
+    return ''
+  const providers = configuration.model_providers
+  if (
+    configuration.model_provider !== 'custom-gateway' ||
+    providers === null ||
+    typeof providers !== 'object' ||
+    Array.isArray(providers) ||
+    Object.keys(providers).length !== 1
+  )
+    throw new Error('Codex gateway configuration is invalid')
+  const provider = (providers as Record<string, unknown>)['custom-gateway']
+  if (
+    provider === null ||
+    typeof provider !== 'object' ||
+    Array.isArray(provider) ||
+    Object.keys(provider).length !== 3 ||
+    !('name' in provider) ||
+    provider.name !== 'OpenAI Responses-compatible endpoint' ||
+    !('wire_api' in provider) ||
+    provider.wire_api !== 'responses' ||
+    !('base_url' in provider) ||
+    typeof provider.base_url !== 'string'
+  )
+    throw new Error('Codex gateway configuration is invalid')
+  const url = new URL(provider.base_url)
+  if (
+    url.protocol !== 'https:' ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.search !== '' ||
+    url.hash !== ''
+  )
+    throw new Error('Codex gateway configuration is invalid')
+  return `model_provider = "custom-gateway"\n\n[model_providers.custom-gateway]\nname = "OpenAI Responses-compatible endpoint"\nbase_url = ${JSON.stringify(url.href)}\nwire_api = "responses"\n`
+}
+
+function materializeStartupConfiguration(): void {
   const configuration = process.env.CODEX_CONFIG
   if (configuration === undefined) throw new Error('Codex configuration is missing')
-  const bytes = new TextEncoder().encode(codexStartupFeatures(configuration))
+  const bytes = new TextEncoder().encode(codexStartupConfiguration(configuration))
   const descriptor = openSync(`${CODEX_HOME}/config.toml`, 'wx', 0o600)
   try {
     writeExactly(descriptor, bytes)

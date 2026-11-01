@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { privateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
-import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
@@ -12,6 +11,7 @@ import {
   PRIVATE_CODEX_DEFAULT_OPENAI_BASE_URL,
   projectPrivateCodexSubscriptionCredential,
 } from '../../src/internal/codex-agent-provider.js'
+import { assertPrivateFiniteAcpPublicOutput } from '../../src/internal/finite-acp-resource.js'
 import {
   credentialBytes,
   credentialValue,
@@ -251,6 +251,15 @@ describe('private native Codex Agent provider', () => {
     })
     const runtime = privateAcpAgentRuntime(first)
     await rejectsCredentialOutput(runtime, 'first-secret')
+    const nativeConfiguration = JSON.parse(runtime.environment.CODEX_CONFIG ?? '{}')
+    expect(nativeConfiguration.model_provider).toBe('custom-gateway')
+    expect(nativeConfiguration.model_providers).toEqual({
+      'custom-gateway': {
+        name: 'OpenAI Responses-compatible endpoint',
+        base_url: 'https://gateway.example/v1',
+        wire_api: 'responses',
+      },
+    })
 
     expect(first).toMatchObject({
       client: 'openai-codex',
