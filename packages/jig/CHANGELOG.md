@@ -1,5 +1,12 @@
 # @jigging/jig
 
+## 0.1.0-alpha.49
+
+### Patch Changes
+
+- a6ddb50: Select the reviewed Responses gateway before native Codex starts, preventing provider mismatch failures while keeping credentials in the private ACP exchange.
+- b594473: Run captured declaration evaluators directly from bounded stdin programs, avoiding unnecessary Mac filesystem images during review while preserving fresh isolated evaluation and cleanup.
+
 ## 0.1.0-alpha.48
 
 ### Patch Changes

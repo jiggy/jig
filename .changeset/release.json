@@ -1,19 +1,23 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "fff63329d24e5961ebdff24b5b96f0ba17d2eda5",
-  "sourceDigest": "f9280126c1a8eed8115fa683fa32e994d80552e9efb6dc21c96c0e736721683b",
+  "baseRevision": "a6ddb503c207f916d94b75457cdb938ee26fbc87",
+  "sourceDigest": "2e22b09274f9d050064ecb6bd9522b020ddfda515a477b270d3e09977865a1ee",
   "changesets": [
     {
-      "id": "native-session-failure-reasons",
-      "sha256": "508ec6b7826db3a817ce24091d15561365874ae31bb4d0bbcd5ec8540e5aee03"
+      "id": "align-codex-gateway-startup",
+      "sha256": "4b51f4ca731506e8f8114f7b2e74abe84ffd60859c337b4c12cd96da0aa39e75"
+    },
+    {
+      "id": "tidy-author-evaluator",
+      "sha256": "a5f6b600fa7533843bd710abf270c2fb84860e735d9e6d30ce615051dbce5106"
     }
   ],
   "releases": [
     {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.47",
-      "newVersion": "0.1.0-alpha.48"
+      "oldVersion": "0.1.0-alpha.48",
+      "newVersion": "0.1.0-alpha.49"
     }
   ]
 }
