@@ -444,6 +444,10 @@ They consume frozen package exports with tracked test helpers and installed
 
 ## Verification
 
+- `node --test scripts/ci/sync-skills.test.mjs` exercises deterministic reference generation, drift detection, and standalone links.
+  It verifies preserved examples, machine bytes, licenses, source hashes, private-source refusals, and symbolic-link refusals.
+  Trusted-tooling checks process a separate source checkout without executing its scripts.
+
 - `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
   execution, independent timing intervals, partial retries, copied checks, failure classifications
   and ambiguous or foreign metadata refusal.

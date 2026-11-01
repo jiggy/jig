@@ -33,6 +33,11 @@ operational baselines, and public-site assembly.
   New technical paragraphs receive all mechanical style checks.
   `docs/jig/AGENTS.md` owns the temporary software-factory style exclusion.
   It makes no network requests and does not certify ASD-STE100 compliance.
+- `sync-skills.mjs` generates committed references under `skills/*/reference/` from `skills/references.json` and canonical Jig documentation.
+  It preserves machine files, examples, license texts, and source hashes.
+  It rewrites prose links for standalone installation and validates every source before writing.
+  `--check` detects drift without writing. `--root` selects inert source data for trusted CI tooling.
+  Keep authored skill instructions outside the generated subtree.
 - `limit-reference.ts` owns typed documentation metadata for user-facing limits.
   Import values from implementation policy owners instead of defining runtime
   policy here. Its `--write` command refreshes the marked tables in
@@ -280,6 +285,7 @@ operational baselines, and public-site assembly.
   It verifies every example installation, source smoke and source-checked report.
 - `bun test scripts/check-docs.test.ts` verifies documentation refusal and baseline handling.
 - `bun scripts/check-docs.ts` checks current source documentation.
+- `just sync-skills` refreshes generated references. `just check-skills` verifies their committed freshness.
 
 - Run the changed script against a fresh temporary destination and exercise at
   least one expected failure path.
