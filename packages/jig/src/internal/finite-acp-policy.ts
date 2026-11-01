@@ -3,6 +3,10 @@ import {
   isPrivateNativeTurnAllowance,
   PRIVATE_NATIVE_TURN_POLICY,
 } from './native-agent-turn-policy.js'
+import {
+  type PrivateNativeSessionReportedReason,
+  privateNativeSessionReportedReason,
+} from './native-session-diagnostics.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
 
 export const PRIVATE_FINITE_ACP_LIMITS = Object.freeze({
@@ -44,6 +48,7 @@ export class PrivateFiniteAcpPolicyError extends Error {
     readonly reason: 'protocol' | 'native-session' = 'protocol',
     readonly nativeCategory?: (typeof nativeCategories)[number],
     readonly nativeHttpStatusCode?: number,
+    readonly nativeReportedReason?: PrivateNativeSessionReportedReason,
   ) {
     super(message)
     this.name = 'PrivateFiniteAcpPolicyError'
@@ -531,6 +536,7 @@ export class PrivateFiniteAcpPolicy {
           status <= 599
           ? status
           : undefined,
+        category === undefined ? undefined : privateNativeSessionReportedReason(notice.title),
       )
     }
     if (notice.severity !== 'warning') fail('Invalid native ACP diagnostic severity')

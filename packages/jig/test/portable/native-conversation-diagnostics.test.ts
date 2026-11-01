@@ -441,3 +441,42 @@ test('native diagnostics cap projection at eight errors while retaining the obse
   expect(project().errorsTruncated).toBeFalse()
   expect(project(...errors.slice(0, 8)).errorsTruncated).toBeFalse()
 })
+
+test('exact native failure reasons survive the closed live diagnostic without private text', () => {
+  for (const reason of [
+    'unsupported-namespace-tools',
+    'invalid-responses-request',
+    'unsupported-reasoning-summary',
+    privateText,
+    {},
+    null,
+  ]) {
+    for (const status of [undefined, 503]) {
+      const diagnostic = project(
+        sessionError({
+          nativeSession: {
+            category: 'service',
+            reportedReason: reason,
+            ...(status === undefined ? {} : { httpStatusCode: status }),
+          },
+        }),
+      )
+      expect(diagnostic.errors).toEqual([
+        {
+          kind: 'operation',
+          code: 'UNCERTAIN',
+          native: {
+            phase: 'exchange-messages',
+            reason: 'native-session',
+            category: 'service',
+            ...(typeof reason === 'string' && reason !== privateText
+              ? { reportedReason: reason }
+              : {}),
+            ...(status === undefined ? {} : { httpStatusCode: status }),
+          },
+        },
+      ])
+      expect(JSON.stringify(diagnostic)).not.toContain(privateText)
+    }
+  }
+})

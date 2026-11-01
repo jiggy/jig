@@ -163,6 +163,50 @@ describe('finite ACP authority policy', () => {
       }
     }
   })
+  test('the exact failed native exchange retains only recognized private-title reasons', () => {
+    for (const [title, reason] of [
+      [
+        'No endpoints found that support the native `namespace` tool type. /private secret-token',
+        'unsupported-namespace-tools',
+      ],
+      [
+        JSON.stringify({ error: { code: 'invalid_prompt', message: 'private secret-token' } }),
+        'invalid-responses-request',
+      ],
+      ['Invalid Responses API request /private secret-token', 'invalid-responses-request'],
+      [
+        "Unsupported parameter: 'reasoning.summary' private secret-token",
+        'unsupported-reasoning-summary',
+      ],
+      ['private secret-token', undefined],
+      ['unexpected status 429: private secret-token', undefined],
+      ['Invalid Responses API request' + 'x'.repeat(16384), undefined],
+    ] as const) {
+      for (const phase of ['turn', 'result', 'late']) {
+        const policy = session()
+        prompt(policy)
+        if (phase === 'late') policy.fromClient(reply(10, { stopReason: 'end_turn' }))
+        const metadata = diagnostic('error')
+        metadata.jetbrains.air.sessionFailure.category = 'service'
+        metadata.jetbrains.air.sessionFailure.title = title
+        let failure: unknown
+        try {
+          policy.fromClient(
+            phase === 'result'
+              ? reply(10, { stopReason: 'end_turn', _meta: metadata })
+              : update({ sessionUpdate: 'session_info_update', _meta: metadata }),
+          )
+        } catch (error) {
+          failure = error
+        }
+        expect(failure).toBeInstanceOf(PrivateFiniteAcpPolicyError)
+        expect((failure as PrivateFiniteAcpPolicyError).nativeReportedReason).toBe(reason)
+        expect((failure as PrivateFiniteAcpPolicyError).nativeHttpStatusCode).toBeUndefined()
+        expect(JSON.stringify(failure)).not.toMatch(/private|secret-token/)
+        expect(() => policy.assertSettled()).toThrow('closed after failure')
+      }
+    }
+  })
   test('native HTTP failures retain only integer error statuses without granting success', () => {
     for (const status of [400, 401, 402, 429, 500, 503, 599, 399, 600, 500.5, '503', null, {}]) {
       const policy = session()

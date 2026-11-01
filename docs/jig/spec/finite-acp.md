@@ -275,15 +275,21 @@ Cancellation, deadline and cleanup failure keep their existing precedence.
 An explanation neither proves whether remote work occurred nor permits retry.
 
 For a reported native session failure, error `details` may contain exactly
-`{nativeSession:{category,httpStatusCode?}}`. The host accepts only `connection`,
+`{nativeSession:{category,httpStatusCode?,reportedReason?}}`. The host accepts only `connection`,
 `access`, `limit`, `request`, `service`, or `unknown` as the category.
 Missing or unrecognized categories omit this detail without changing the failure.
 The optional `httpStatusCode` retains only a native-reported integer from 400
 through 599. Missing or malformed status values are omitted independently.
 
+The optional `reportedReason` classifies the exact failed native exchange using fixed recognized messages.
+Its values are `unsupported-namespace-tools`, `invalid-responses-request`, and `unsupported-reasoning-summary`.
+The host inspects at most 16,384 title characters and retains no source text.
+Unknown or oversized titles omit this field without changing the failure.
+
 These fields describe the native client's report, not a proved provider cause.
-The host never derives a status from error text. Neither field supplies exit
-evidence or retry permission. Raw titles, details, and actions remain private.
+The host never derives a status from error text.
+No diagnostic field supplies exit evidence or retry permission.
+Raw titles, details, and actions remain private.
 
 Response framing must finish and its writer must close before the resource
 returns. Essential channel failure cancels/fences the resource and waits for
