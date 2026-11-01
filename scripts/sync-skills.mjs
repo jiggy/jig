@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readFile, readdir, rm, rmdir, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { parse } from 'yaml'

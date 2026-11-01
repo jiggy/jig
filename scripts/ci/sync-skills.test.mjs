@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 import { syncSkills } from '../sync-skills.mjs'
 
 const repository = new URL('../../', import.meta.url)
