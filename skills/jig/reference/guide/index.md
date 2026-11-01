@@ -1,0 +1,237 @@
+---
+title: Get started with Jig
+---
+
+<!-- Generated from docs/jig/guide/index.md. Edit the source, then run just sync-skills. -->
+
+
+# Get started with Jig
+
+Jig runs methods that use code, Agent judgment, or both through the same
+callable boundary. This guide starts with a small code-only Flow and the
+review-and-run loop. Then [use one caller with three implementations](https://jig.md/guide/contact-import.md)
+to see how Agent work fits into the same model.
+
+## Install
+
+Use a [supported host](#supported-host). Linux may need the isolation
+configuration listed below; if you do not administer that host, ask its
+administrator to check it. The qualified Mac path needs no administrator setup
+or `sudo`. Jig reports missing execution support rather than weakening its
+boundary.
+
+Install the CLI:
+
+```sh
+npm install --global @jigging/jig@alpha
+```
+
+npm also installs Jig's exact Bun runtime dependency. You do not need a separate
+Bun installation for this tutorial. To use a source checkout,
+follow the [development instructions](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
+
+For Agent-assisted development, install the [FLOW and Jig authoring skills](for-agents.md#install-authoring-skills) in your new project.
+They cover reusable method design and Jig's project workflow.
+
+## Your first Flow
+
+Create a project, review its changes, approve it, then run its greeting Flow:
+
+```sh
+jig init hello-jig
+cd hello-jig
+jig review --allow-resolution-network
+jig run flow:flows/hello --input '"Ada"'
+```
+
+During `jig review`, inspect the generated source with your editor and read
+the displayed changes and policy. The summary does not replace source review.
+The terminal then asks:
+
+```text
+Approve this exact revision for execution? [y/N]
+```
+
+Enter `y` to authorize that revision, or decline to leave it unapproved. Only
+run the next command after approval.
+
+`init` writes ordinary editable files: `jig.ts`, `flows/hello/FLOW.meta.json`,
+`flows/hello/package.json`, and `flows/hello/FLOW.ts`, plus a README and empty
+Bindings directory. It installs nothing, makes no network requests, and
+approves nothing. Use `jig init --bare <directory>` when you want an empty
+project instead.
+
+The greeting names the exact FLOW SDK revision tested with its Jig build,
+not a moving registry tag. Review resolves and retains
+its dependencies privately, so no per-Flow `bun install` is needed.
+Keep the SDK declaration in `flows/hello/package.json`.
+An application-root SDK dependency does not replace the Flow's declaration.
+
+`--allow-resolution-network` permits dependency-selected network requests
+before approval. Declining cannot undo those requests. It does not give Runs
+network access. Supplied dependency locks remain frozen. See
+[dependency review](dependencies.md) for reusable locked packages.
+
+The generated `FLOW.ts` is ordinary SDK code you can edit:
+
+```ts
+import { handle } from "@jigging/flow";
+
+await handle(async (run) => {
+  const name = typeof run.input === "string" ? run.input : "world";
+  return { outcome: "done", output: { message: `Hello, ${name}!` } };
+});
+```
+
+The result includes `status: "succeeded"`, `outcome: "done"`, and
+`output: { "message": "Hello, Ada!" }`, alongside bounded diagnostics.
+The input is a JSON string; other input values use `"world"`.
+This Flow needs no Agent configuration.
+
+## Make one change
+
+In `flows/hello/FLOW.ts`, change `Hello,` to `Welcome,`. Review and run again:
+
+```sh
+jig review --allow-resolution-network
+jig run flow:flows/hello --input '"Ada"'
+```
+
+Approve the source change only after reviewing it. The new output contains
+`{"message":"Welcome, Ada!"}`. Until you approve, runs continue using the
+previously accepted version. The network flag has the same dependency-resolution
+meaning described above; it does not authorize the Flow to access the network.
+
+You have now created, run, and adapted a method. Next,
+[choose an ordinary Agent for this same project](agents.md), or see
+[one caller use code, an Agent, or both](https://jig.md/guide/contact-import.md). The method boundary
+stays consistent as the implementation changes. Read [how Jig works](https://jig.md/guide/understand.md)
+for the architecture behind it, or try [a tested patch](https://jig.md/guide/tested-patch.md)
+for one repair or [a small software factory](https://jig.md/guide/software-factory.md) for a fixed
+two-issue set.
+
+## Review, run, improve
+
+![Editable source goes through jig review and approval before jig run executes the accepted revision. Jig validates the result and settles owned work before returning an outcome or failure.](https://github.com/jiggy/jig/blob/main/docs/jig/guide/review-run.svg)
+
+`jig review` leads with added, changed, and removed packages, Bindings, and
+execution policy, then lists the targets you can run. Changed fields show their
+previous and proposed values; unchanged policy is omitted. Use
+`jig review --details` to include that unchanged context. For ACP grants, the
+review also names the selected non-secret native client configuration.
+Inspect the source with your usual tools, then approve the review. In a
+noninteractive environment, `--yes` records your explicit approval; it does not
+grant resolution-network permission.
+
+`jig run` uses the approved revision. Edit the source and review again to run
+your changes. Declining a review leaves the previously approved revision intact.
+For the unlocked greeting, repeat `jig review --allow-resolution-network` after
+editing; code-only edits can require fresh resolution too. An unchanged review
+reuses the admitted bytes. An authored lock avoids fresh dependency selection.
+
+Use `flow:<path>` for a package or `binding:<id>` for a configured invocation.
+Use `jig inspect` to list the approved targets, or `jig inspect <target>` to
+read a target's retained schemas and configuration without performing a review.
+Inspection also reports whether current local execution identities match that
+approval, require review, or could not be verified. It does not check source edits
+or promise a later Run will succeed.
+A Binding supplies application settings and exact dependencies; see
+[project authoring](../spec/project-sdk.md). Omitting `--input` supplies `{}`.
+Use `@FILE` for JSON input from a file and `--timeout 2m` for a longer Run.
+See [execution policy](../spec/project-policy.md) for current limits and
+lifecycle guarantees.
+
+## Read the result
+
+The greeting returns execution status, the method's outcome, and its output.
+Other methods can complete execution successfully while returning an application
+outcome such as `blocked`. Inspect the outcome as well as the CLI exit status.
+
+Terminal stdout shows a readable result; redirected stdout or `--json` carries
+the machine-readable result. Stderr carries diagnostics and status. Ctrl-C
+requests cancellation. Wait for cleanup before starting new work, and do not
+blindly retry an interrupted or uncertain operation.
+
+See [results and recovery](results.md) for output delivery, scripting,
+protocol failures, and retained-state recovery.
+
+## Next steps
+
+Add a second Flow from the project directory:
+
+```sh
+jig new summarize
+```
+
+Edit `flows/summarize/FLOW.ts`, then use the ordinary
+`jig review` and `jig run flow:flows/summarize` path. This creates source only:
+no installation, approval, or execution. Default discovery includes the new
+directory; if you selected explicit members in `jig.ts`, add it there first.
+Dependency resolution still requires your explicit network permission when
+needed, as described in [dependencies](dependencies.md).
+
+Use `jig new worker --use agent=npm:@jigging/agent-acp`
+after installing that declared dependency. It copies the complete selected
+contract and declares the slot, leaving the method's code, provider selection
+and grants with you. See [conversations](conversations.md) for a complete caller.
+
+- [Add an ordinary Agent](agents.md) in the project you just created.
+- [Compose code and Agent methods](https://jig.md/guide/contact-import.md) through one caller.
+- [Run a Markdown method](markdown.md) without an SDK dependency.
+- [Choose an Agent](agents.md) using an API or a supported local client.
+- [Work with files](files.md) to capture inputs and export one result packet.
+- [Configure Jig](configuration.md) for terminal appearance, startup verification, and operator settings.
+- [Manage dependencies](dependencies.md) for reusable Flow packages.
+- [Author contracts once](contracts.md) to generate validation and editor types together.
+- [Repair a project](https://jig.md/guide/tested-patch.md), run a [small software factory](https://jig.md/guide/software-factory.md),
+  or [handle a disputed charge](https://jig.md/guide/support-case.md).
+- [Choose a workflow structure](workflow-design.md) for your application.
+- [Design an understandable project](design.md) with clear configuration, ownership, and results.
+
+## Supported host
+
+Jig qualifies Linux x86_64 and selected native Macs. It checks the exact host
+mechanism before execution and refuses unqualified kernels or missing support.
+
+On Linux, Jig is developed primarily on NixOS and qualified in automated CI on
+provisioned Ubuntu 24.04 x86_64. This host needs:
+
+- Linux x86_64, glibc 2.17 or newer, and an SSE4.2-capable CPU.
+- Bubblewrap 0.12 or newer and GNU `readlink -f`.
+- cgroup v2 with delegated `cpu`, `memory`, and `pids` controllers.
+- A systemd user manager supporting transient scopes with `Delegate=yes`.
+- Unprivileged user, mount, PID, network, IPC, UTS, and cgroup namespaces.
+
+On Mac, Jig selects Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
+Each released profile requires complete native qualification. Other kernel builds are unsupported.
+
+Install through the same npm command above. npm selects the matching pinned Bun runtime. No privileged
+helper, managed execution account, separate Bun installation, or `sudo` is
+required. Jig uses a private native sandbox and an owned process coalition to
+contain and stop work. Resource limits are supervised and sampled on Mac, so
+CPU, memory, and process use can briefly exceed the requested ceiling before
+Jig terminates the scope. See the [security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)
+when deciding whether this tradeoff fits your workload.
+
+Linux and Apple Silicon checks must pass before a release is published. Intel
+Mac support has complete nightly compatibility checks, so a new release can
+contain an Intel regression before the next check. See the
+[Intel compatibility policy](https://github.com/jiggy/jig/blob/main/RELEASING.md#intel-mac-compatibility)
+for the tested versions, results and manual checks.
+
+Jig's host-tool lookup currently uses `/usr/bin`, `/bin`, and
+`/run/current-system/sw/bin`, not your shell's `PATH`.
+If Bubblewrap is installed elsewhere, configure its absolute path before review.
+See [host configuration](configuration.md#host-configuration) for the command.
+The host validates the selected tool. An invalid explicit selection fails
+rather than falling back.
+
+On NixOS, enable `programs.nix-ld.enable` for npm's runtime binary. Jig resolves
+glibc through `/run/current-system/sw/share/nix-ld/lib/ld.so` and gives Runs
+only the required loader and libraries. Automated CI conformance on NixOS
+remains unconfigured.
+
+`review` and `run` acquire their delegated scopes without `sudo`. Jig verifies
+the package-local Bun runtime before execution. See the
+[security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md) for
+isolation details and the private reporting channel.

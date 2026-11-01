@@ -227,5 +227,7 @@ Default section order:
   implementations, with their package-local tests and artifacts.
 - [scripts/AGENTS.md](scripts/AGENTS.md) — Build, verification,
   release-candidate, and site-assembly entrypoints.
+- [skills/AGENTS.md](skills/AGENTS.md) — Installable Jig project skills and
+  committed references generated from canonical documentation.
 - [site/AGENTS.md](site/AGENTS.md) — Jig public-site configuration, static root
   files, shared tooling, and deployment topology.

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://flow.jig.md/schemas/invocation-contract-0.schema.json",
+  "id": "https://jig.md/contracts/project-command",
+  "version": "0.1.0",
+  "input": {
+    "$ref": "#/$defs/Input"
+  },
+  "result": {
+    "type": "object",
+    "properties": {
+      "outcome": {
+        "const": "done"
+      },
+      "output": {
+        "allOf": [
+          {
+            "$ref": "#/$defs/CommandEvidence"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "stopReason": {
+                "const": "exited"
+              }
+            }
+          }
+        ]
+      }
+    },
+    "required": ["outcome", "output"],
+    "additionalProperties": false
+  },
+  "$defs": {
+    "Input": {
+      "type": "object",
+      "properties": {
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "maxLength": 262144
+          },
+          "maxProperties": 64
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "maxItems": 32
+        },
+        "stdin": {
+          "type": "string",
+          "maxLength": 16384
+        }
+      },
+      "required": ["files"],
+      "additionalProperties": false
+    },
+    "CommandEvidence": {
+      "type": "object",
+      "properties": {
+        "candidateDigest": {
+          "type": "string",
+          "maxLength": 71
+        },
+        "invocation": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stdinDigest": {
+          "type": "string",
+          "maxLength": 71
+        },
+        "stdout": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": ["text", "truncated"],
+          "additionalProperties": false
+        },
+        "stderr": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "maxLength": 65536
+            },
+            "truncated": {
+              "type": "boolean"
+            }
+          },
+          "required": ["text", "truncated"],
+          "additionalProperties": false
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "signal": {
+          "type": ["string", "null"]
+        },
+        "stopReason": {
+          "enum": ["exited", "deadline", "cancelled"]
+        },
+        "cleanup": {
+          "const": "complete"
+        }
+      },
+      "required": [
+        "candidateDigest",
+        "invocation",
+        "stdinDigest",
+        "stdout",
+        "stderr",
+        "exitCode",
+        "signal",
+        "stopReason",
+        "cleanup"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

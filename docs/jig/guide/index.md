@@ -27,6 +27,9 @@ npm also installs Jig's exact Bun runtime dependency. You do not need a separate
 Bun installation for this tutorial. To use a source checkout,
 follow the [development instructions](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
 
+For Agent-assisted development, install the [FLOW and Jig authoring skills](for-agents.md#install-authoring-skills) in your new project.
+They cover reusable method design and Jig's project workflow.
+
 ## Your first Flow
 
 Create a project, review its changes, approve it, then run its greeting Flow:
@@ -180,6 +183,7 @@ and grants with you. See [conversations](./conversations.md) for a complete call
 - [Repair a project](./tested-patch.md), run a [small software factory](./software-factory.md),
   or [handle a disputed charge](./support-case.md).
 - [Choose a workflow structure](./workflow-design.md) for your application.
+- [Design an understandable project](./design.md) with clear configuration, ownership, and results.
 
 ## Supported host
 

@@ -1,0 +1,143 @@
+<!-- Generated from docs/jig/spec/project-command.md. Edit the source, then run just sync-skills. -->
+
+# Project Command native invocation
+
+*Status: prerelease implementation candidate.*
+
+Run a reviewed Bun command against an exact supplied project, without giving
+the Flow a shell or the candidate access to an Agent provider. The command
+returns host-collected output and termination. Application code decides what
+that evidence means.
+
+This is a Jig-owned native invocation carried by ordinary FLOW Run/0 `flow/call`.
+It adds no FLOW protocol method or requirement on other hosts. Its exact
+[descriptor](https://jig.md/contracts/project-command/contract.json) has ID
+`https://jig.md/contracts/project-command`, version `0.1.0`, and digest
+`sha256:b6bdad9771000d2fb41963634a463c9e9289f95275a9b29056376e93252e817e`.
+
+## Reviewed authority
+
+The Flow declares the companion for each command slot, alongside Agent Run if needed, in `FLOW.meta.json`
+(or optional `FLOW.md` frontmatter):
+
+```json
+{"uses":{"tests":{"contract":"./contracts/project-command/contract.json"},"cli":{"contract":"./contracts/project-command/contract.json"}}}
+```
+
+The operator configures the permitted invocations in a Binding:
+
+```ts
+export default defineBinding({
+  package: 'flows/repair',
+  slots: {
+    tests: { kind: 'command', test: ['test/project.test.ts'] },
+    cli: { kind: 'command', run: 'src/cli.ts' },
+  },
+})
+```
+
+Each command slot receives a [grant](grants.md), inline or named, with
+`kind: "command"` and exactly one of `run` (one `.ts` or `.js` entrypoint) or `test` (1–16 distinct
+`.test.ts`, `.test.js`, `.spec.ts`, or `.spec.js` paths). Paths are canonical
+relative ASCII names, at most 256 bytes and 16 components, without traversal,
+backslashes, empty components, or shell syntax. The named files must exist
+in the supplied candidate. There is no package-script expansion, search path,
+shell command, executable selector, environment map, or runtime registry.
+
+Command policy participates in review, the portable lock, admission identity,
+and the exact execution recipe. Editing it requires review and admission.
+At most eight command grants may be selected by one Binding. Missing or
+incompatible slot grants reject the candidate; no implicit command authority
+is supplied.
+
+A root or exact child Binding can use its own command policy. Direct `flow:`
+targets have no command policy. A child receives neither parent commands nor
+attachments. A command is exclusive in its context. The root may instead run
+two sibling Flows, each with its own effect capacity. Sequential commands are
+allowed; [root reservations](project-policy.md) bound their combined resources.
+
+## Request
+
+```ts
+const result = await run.call({
+  operationId: 'candidate-tests',
+  slot: 'tests',
+  input: {
+    files: {
+      'src/value.ts': 'export const value = 2',
+      'test/project.test.ts': 'import { test, expect } from "bun:test"; import { value } from "../src/value.ts"; test("value", () => expect(value).toBe(2))',
+    },
+  },
+})
+```
+
+- `files` is a map of 1–64 paths to Unicode text, totaling at most 256 KiB in
+  UTF-8. File/directory collisions and `.git`, `.jig`, or `node_modules` path
+  components are invalid. These are candidate bytes, not live host paths.
+- Optional `args` supplies at most 32 argument strings, each at most 1,024
+  UTF-8 bytes and without NUL. Arguments follow the approved entrypoint and
+  do not become Bun options. Test invocations accept no variable arguments.
+- Optional `stdin` supplies at most 16 KiB of text. Omission means empty input.
+- Unknown fields, unsupported values, absent commands, and exceeded bounds
+  fail before candidate execution. No dependency is fetched or repaired.
+
+Jig fixes Bun's runtime and configuration posture, uses the candidate root
+as the working directory, and invokes the selected entrypoint or exact test
+paths. Dependencies must already be source-local or supported Bun/Node built-ins.
+The native invocation does not run the Flow package's prepared dependencies.
+
+## Evidence
+
+The SDK returns `{ outcome: 'done', output: evidence }`. The evidence contains:
+
+| Field | Meaning |
+| --- | --- |
+| `candidateDigest` | SHA-256 of the canonical JSON/0 `files` map, prefixed `sha256:`. No trailing newline is hashed. |
+| `invocation` | Logical argument vector beginning with `bun`; no host paths. The application already knows which slot it called. |
+| `stdinDigest` | SHA-256 of the UTF-8 stdin bytes, prefixed `sha256:`. |
+| `stdout`, `stderr` | `{text, truncated}` for the first 64 KiB of each stream. The collector drains the rest. |
+| `exitCode`, `signal` | Actual collected termination, with unavailable alternatives represented by `null`. |
+| `stopReason` | `exited`, `deadline`, or `cancelled`. |
+| `cleanup` | `complete`, only after confirmed whole-tree fencing and owned-resource release. |
+
+Output is decoded as UTF-8 with replacement for invalid or cut-off sequences;
+it is not a lossless binary channel. Truncation means the retained prefix is
+not complete evidence. Collected text remains untrusted candidate output.
+
+A completed command, including a nonzero exit or process signal, is a
+completed invocation carrying process evidence—not a successful repair.
+Cancellation and deadline expiry are operational failures; collected evidence
+may appear at `details.command` when available. Missing evidence is never
+invented. The invocation declares only `done`; operational failures do not become domain outcomes.
+
+Host collection establishes what the process emitted and how it terminated.
+It does not establish that repository tests ran honestly: imported candidate
+code can interfere with their runner. Independent application assertions must
+inspect captured behavior without importing candidate source or accepting its
+own `passed` flag. Finite successful assertions do not prove general correctness.
+
+## Execution and lifetime
+
+Each command has its own completed rootless containment envelope before code
+starts: immutable candidate text, installed runtime only, isolated network,
+no credentials, no ambient PATH, no writable cgroup controls, and bounded
+scratch. Source cannot be edited during the invocation. A subsequent candidate
+is a new request with its own identity, not mutation of a running workspace.
+
+The private trusted collector remains outside the candidate envelope. The
+command has at most ten seconds, additionally bounded by the containing child
+and root deadlines, with the current 256 MiB, 64-task, and half-core envelope
+ceilings. Fixed root reservations bound the combined envelopes without a
+run-wide scheduler or borrowing unused capacity.
+
+Jig records ownership before dispatch. Cancellation, parent settlement, and
+coordinator loss fence all owned descendants before release. Independent
+supervision survives coordinator failure; later recovery closes retained
+ownership without redispatch. Cleanup failure cannot become `cleanup: complete`.
+An uncertain command is not retried automatically. Run/0 operation identity
+and exact-replay conflict rules apply.
+
+No writable repository, native Agent workspace tools, shell service, package
+installation, credentials, arbitrary network, or detached job is authorized
+by this native invocation. It returns observations; the application owns patch policy,
+acceptance, and the human decision to apply or merge.

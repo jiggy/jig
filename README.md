@@ -58,12 +58,15 @@ jig run flow:flows/hello --input '"Ada"'
 approved revision, returns its result, and settles owned work. Later source
 changes need another review.
 
+For Agent-assisted development, install the [FLOW and Jig authoring skills](docs/jig/guide/for-agents.md#install-authoring-skills) in your project.
+They teach portable Flow design and Jig's project workflow.
+
 ## Documentation
 
 - [Get started and supported hosts](docs/jig/guide/index.md)
 - [Choose an Agent](docs/jig/guide/agents.md)
 - [Working with files](docs/jig/guide/files.md) and [dependencies](docs/jig/guide/dependencies.md)
-- [Workflow design](docs/jig/guide/workflow-design.md) and [use cases](docs/jig/use-cases.md)
+- [Project design](docs/jig/guide/design.md), [workflow structure](docs/jig/guide/workflow-design.md), and [use cases](docs/jig/use-cases.md)
 - [Project authoring](docs/jig/spec/project-sdk.md) and [execution policy](docs/jig/spec/project-policy.md)
 - [FLOW specifications](https://flow.jig.md/)
 - [Security](SECURITY.md), [contributing](CONTRIBUTING.md), and [release process](RELEASING.md)

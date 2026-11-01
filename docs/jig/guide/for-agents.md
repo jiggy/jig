@@ -1,6 +1,6 @@
 ---
 title: Documentation for agents
-description: Read Jig's public documentation as Markdown. Select context for your task and preserve authority and support boundaries.
+description: Install FLOW and Jig authoring skills, or read focused Markdown documentation for your task.
 ---
 
 # Give your Agent the right context
@@ -8,6 +8,33 @@ description: Read Jig's public documentation as Markdown. Select context for you
 The same documentation is available to people and software. Fetch a focused
 guide for one task, or use the full bundle when you need broad context.
 You need no account, API key, or JavaScript execution to read these files.
+
+## Install authoring skills
+
+For a new Jig project, install the FLOW and Jig skills for your development Agent.
+Run the standard skills CLI from the project's directory:
+
+```sh
+npx skills add jiggy/flow --skill flow
+npx skills add jiggy/jig --skill jig
+```
+
+The FLOW skill teaches portable method design, naming, decomposition, composition, and implementation.
+The Jig skill teaches project creation, local configuration, review, execution, and recovery.
+Use both when building a Jig application from reusable Flows.
+Use Jig's skill alone for host tasks that do not change those methods.
+
+Each skill bundles its references inside its installable directory.
+Agents can load the relevant guidance when the task needs it.
+Your project's instructions still own its domain, acceptance criteria, and delegated authority.
+Start project decisions with [project design](design.md).
+
+These skills guide your development Agent.
+To configure an Agent used by a running Flow, follow [Agent setup](agents.md).
+To supply Skill contents during a method invocation, follow [Agent method guidance](agent-method.md).
+Installing an authoring skill grants no execution authority.
+
+## Read documentation as Markdown
 
 | Resource | Use it for |
 | --- | --- |
@@ -54,9 +81,10 @@ supply that authority.
 
 ## Select context by responsibility
 
-- **Authoring:** [first Flow](./index.md), [dependencies](./dependencies.md), and [project SDK](../spec/project-sdk.md).
+- **Authoring:** [project design](./design.md), [first Flow](./index.md), [dependencies](./dependencies.md), and [project SDK](../spec/project-sdk.md).
 - **Agent setup:** [operator configuration](./agents.md) and [Agent Run contract](../spec/agent-run.md).
 - **Application integration:** [files](./files.md), [progress](./channels.md), and [results](./results.md).
+- **Programmatic execution:** [application client](../spec/execution-client.md) for invoking Jig and recovering retained attempts.
 - **Review and execution:** [execution policy](../spec/project-policy.md).
 - **Portable FLOW meaning:** use [FLOW's separate index](https://flow.jig.md/llms.txt).
 

@@ -1,0 +1,1519 @@
+<!-- Generated from docs/jig/spec/project-policy.md. Edit the source, then run just sync-skills. -->
+
+# Jig project policy and admission
+
+**Status:** direct-alpha specification candidate.
+
+A Jig project is ordinary editable source plus protected local host state. An
+edit proposes a new project meaning; it does not grant execution authority.
+Jig captures and reviews one complete candidate, then explicitly admits those
+exact bytes.
+
+The governing rule is:
+
+> Source proposes. One aggregate compare-and-set admits. Immutable generations
+> execute.
+
+## Find the relevant policy
+
+| Task | Required sections |
+| --- | --- |
+| Author a project | [Layout](#1-project-layout), [sources](#2-project-sources), [declarations](#3-author-declarations) |
+| Select packages and prepare dependencies | [Flow members and targets](#4-flow-members-and-direct-targets), [workspace capture](#workspace-dependency-capture), [prepared execution](#prepared-execution-and-limits) |
+| Configure a reusable target | [Bindings](#5-bindings), [default providers](#default-providers-by-contract), [resource grants](#resource-grants) |
+| Review a change | [Candidate and planning](#6-candidate-and-planning), [review client selection](#review-client-selection), [editing behavior](#10-editing-behavior) |
+| Admit reviewed bytes | [Lock and local admission](#7-lock-and-local-admission) |
+| Execute and settle work | [Direct Run](#8-direct-run), [execution envelope](#9-execution-envelope) |
+| Supply or retain files | [Child file runs](#child-file-runs), [Binding attachments](#reviewed-binding-attachments), [root file Runs](#root-file-runs) |
+| Verify host enforcement | [Installation verification](#installation-verification-policy), [containment and lifetime](#containment-and-lifetime), [required conformance](#11-required-conformance) |
+
+These routes identify related requirements. Requirements accumulate across the selected lifecycle.
+
+## 1. Project layout
+
+`jig --version` writes the package version embedded at build time followed by
+a newline and exits successfully. It does not acquire a project or sandbox,
+read project configuration, or look up a version in the registry.
+
+### Jig version requirements
+
+A project may declare one exact tested Jig version in `package.json` under `engines.jig`.
+The requirement uses an exact SemVer value, including any prerelease identifier.
+Ranges, tags, aliases and workspace selectors are invalid requirements.
+The engine declaration records host compatibility independently of runtime dependency selection.
+
+Review reads this inert metadata before acquiring the execution host or evaluating declarations.
+`PROJECT_JIG_VERSION_MISMATCH` identifies different required and running versions.
+`PROJECT_JIG_REQUIREMENT_INVALID` identifies malformed requirement metadata without displaying rejected values.
+Checks require no registry lookup, automatic update or package installation.
+Missing manifests and missing requirements remain supported.
+
+Project capture repeats the check beneath its held root descriptor and rechecks captured metadata before completion.
+This requirement does not authorize execution or change an approved Run.
+The current prerelease policy requires the exact tested version and makes no broader compatibility promise.
+
+`jig init <directory>` creates an ordinary editable greeting package under
+`flows/hello`, a short project README, and the project skeleton below. Its
+package-local manifest names the exact `@jigging/flow` revision tested with the
+Jig build, rather than a moving registry tag. It uses
+the same explicit missing-lock resolution permission and review as any other
+package; initialization performs no installation, network requests, approval,
+or execution. A destination must not exist. Initialization never replaces files.
+
+Normal initialization writes a private root `package.json` with its build’s exact Jig version in `engines.jig`.
+This metadata records the required host without installing it.
+Bare initialization retains the smaller skeleton below unless Agent selection already requires a manifest.
+
+`jig init --bare <directory>` creates only:
+
+```text
+project/
+├── .gitignore       contains `.jig/`
+├── jig.ts
+├── flows/
+└── bindings/
+```
+
+The generated `jig.ts` makes its conventional membership explicit:
+
+```ts
+import { defineJig, discover } from "@jigging/jig";
+
+export default defineJig({
+  flows: discover("./flows"),
+  bindings: discover("./bindings"),
+});
+```
+
+Hand-authored and bare projects need no `package.json`, compiler configuration, setup
+command, or visible lock. Jig creates protected `.jig/` state as needed. The
+first approved project change creates `jig.lock`.
+
+`jig.ts`, Flow packages, Binding declarations, and `jig.lock` are user-owned
+files. `.jig/` contains local admission and lifecycle state. It is not project
+source, is not portable, and is never exposed to package code.
+
+`PROJECT_STATE_INVALID` reports retained state whose format or contents cannot
+be validated by this build. It is distinct from unsafe filesystem ownership or
+permissions (`PROJECT_UNSAFE`). Failed acquisition preserves the retained state;
+it does not reset admission, migrate records, or bypass pending cleanup.
+
+## 2. Project sources
+
+`defineJig()` accepts the independently optional `flows`, `bindings`, and
+`grants` membership sources, the contract-keyed `defaultProviders` map, and
+the optional string `entrypoint` described by [Project Authoring SDK/1](project-sdk.md#project-entrypoint).
+Omitted membership means an empty source, not implicit discovery. Omitted
+provider mappings impose no explicit preference; [default providers](#default-providers-by-contract)
+defines sole-match selection and the separate resolution rules.
+
+`discover()` selects shallow membership beneath one or more project-relative
+directories. It is not a glob language. `*`, `?`, `[`, `]`, `{`, and `}` are
+invalid in discovery roots.
+
+```ts
+export default defineJig({
+  flows: discover(["./flows", "./vendor"]),
+  bindings: discover("./bindings"),
+});
+```
+
+For `flows`, Jig selects immediate child directories containing exact-case
+`FLOW.<ext>` entrypoints. For `bindings`, it selects immediate regular files named
+`<LocalName>.ts`. For `grants`, it selects immediate regular `<LocalName>.json`
+policies under the [grant contract](grants.md). Discovery does not recurse or follow symlinks. A missing
+valid discovery root contributes an empty set. Other entries are inert.
+
+An exact member list is the fail-closed alternative:
+
+```ts
+export default defineJig({
+  flows: ["./flows/build", "./flows/review"],
+  bindings: ["./bindings/reviewer.ts"],
+});
+```
+
+Discovery and exact-list forms are mutually exclusive for one field. An exact
+member must exist and have the required kind. Missing, duplicate, escaping,
+symlinked, wrong-kind, NFC-colliding, or case-fold-colliding exact members
+invalidate the complete candidate.
+
+Project paths use `/`, are relative Unicode 15.1 NFC strings, and contain no
+NUL, backslash, empty, `.`, or `..` segment. One leading `./` is accepted as
+authoring convenience and removed during normalization. `.jig` and every path
+beneath it are protected and cannot be selected.
+
+Multiple roots form an unordered union. They have no precedence. Duplicate or
+overlapping canonical membership invalidates the candidate.
+
+## 3. Author declarations
+
+`jig.ts` and Binding files are TypeScript modules with one default-exported
+inert value. They may import `@jigging/jig` and a bounded, acyclic graph of
+explicit relative `.ts` modules. Other bare imports, dynamic imports, and
+implicit suffix resolution are invalid.
+
+Jig captures the complete static module graph before evaluation. Evaluation
+runs with bounded resources and no project filesystem, environment, network,
+host IPC, or process authority. Only the captured modules and the inert
+authoring SDK are visible. The result must be a bounded canonical value; it
+cannot carry callbacks, open handles, classes, or host paths.
+
+Evaluation is not claimed to be mathematically deterministic. Clock and
+randomness may affect ordinary language code. Safety comes from capture: Jig
+retains the exact evaluated output and source closure, and apply never
+reevaluates either.
+
+Review may share finite evaluator setup across the complete project declaration
+and its Bindings. Each declaration still receives a fresh guest realm, module
+graph and authoring SDK, with a three-second wall ceiling on Linux and a
+ten-second ceiling on Mac. In a batch, each declaration child receives only
+the captured modules reachable from its entry.
+A trusted contained manager enforces each declaration ceiling independently of
+authored code. The independent supervisor bounds a multi-declaration batch by
+the sum of those ceilings, plus two seconds and 500 ms per declaration for
+setup and settlement. A single declaration retains its host's total ceiling.
+The batch shares the existing 256 MiB memory, 64-task and half-core CPU limits,
+never a separate resource allowance per declaration. Bootstrap discovery and
+the complete-closure consistency evaluation remain distinct. No evaluated
+result is cached by source identity. A failed batch supplies no admissible
+declarations; fencing and cleanup precede successful collection.
+
+If source changes during capture, Jig retries a bounded number of times and
+then reports the project busy or unavailable. It never combines an evaluated
+declaration with a different package tree.
+
+## 4. Flow members and direct targets
+
+Every selected Flow directory is captured and inspected as one immutable
+FLOW Package/0 tree. Package paths and digests enter the project candidate.
+
+A Flow is a direct Run target only when it:
+
+- has one qualified `FLOW.<ext>` entrypoint and invocation profile;
+- has all invocation requirements resolved through matching ordinary project
+  defaults or qualified root Run Checkpoint support;
+- declares at most eight attachments, at most one writable; and
+- accepts `{}` as settings.
+
+Direct eligibility is structural. Host execution support is planned
+separately, so an eligible target can still be unavailable on this host.
+SDK planning represents a recognized ACP prerequisite refusal as selected-target
+unavailability and propagates it through the exact selected Flow routes, including
+mixed implementations whose particular input might avoid the Agent branch.
+Unrelated targets retain their own readiness. CLI `jig review` nevertheless
+refuses the complete review on any observed typed selected ACP prerequisite,
+before apply or otherwise unchanged success; it does not approve the ready
+subset. This CLI policy leaves SDK per-target plan/apply semantics intact and
+does not broaden refusal to unrelated feature qualification failures.
+There is no alternate-client fallback.
+Refusal retains a closed client/slot cause bound to the captured request and
+policy, or an exact selected dependency cause bound to that child's retained
+refusal. Admission validates this evidence and cannot admit a ready parent of an
+unavailable child. Arbitrary errors, interrupted qualification, integrity faults
+and unconfirmed cleanup fail planning rather than becoming optional availability.
+Installing a missing client does not change a retained unavailable target; a new
+exact review must qualify and approve it.
+
+An unsatisfied requirement, including an incompatible ordinary default, removes
+the automatic direct target; the package can still be configured through a
+valid explicit Binding. A direct Flow may call other reviewed Flow or Binding
+targets; it is not necessarily a leaf in the admitted child graph.
+Project Command, HTTP Request and Finite ACP require a Binding's reviewed
+resource grants at the declared invocation slots. Packages requiring those
+resources are invoked through configured Bindings, not direct targets.
+
+[Run Checkpoint](https://jig.md/spec/run-checkpoint.md) is root-only but requires neither a writable
+attachment nor an output destination. Its accepted aggregate belongs to the
+original protected attempt and survives client or command loss under that
+attempt's bounded retention contract. File delivery independently owns any
+publication and requires confirmed native fencing and cleanup.
+
+Jig qualifies `FLOW.ts` through installed Bun and `FLOW.md` through the
+bundled [Markdown interpreter](https://flow.jig.md/spec/markdown-runtime),
+both inside the same rootless execution envelope. Other valid formats and
+named-operation contracts are unavailable, not silently substituted.
+Every Markdown package, including a recipe-only body, derives
+the typed `markdown-agent` requirement. Review pins an explicit matching Agent
+Flow route from its Binding or project defaults, or the qualified native
+implementation when no ordinary route was selected. Markdown
+resources are inert: their `package.json` does not initiate Bun preparation.
+
+A TypeScript package with production dependencies supplies
+ordinary root `package.json` and optionally supplies a text `bun.lock`.
+Project Flow capture excludes generated `node_modules` paths, without following
+their links; dependency preparation never trusts a development installation.
+Package-local source modules imported by relative
+path need no dependency entry. During planning, Jig prepares the frozen
+production tree with the fixed Bun installer through the same containment and ownership
+mechanism used by a Run, lifecycle scripts disabled, and only default-registry
+integrity-pinned sources accepted. Unlike a Run, the trusted preparation scope
+has network access. Unsupported dependency sources fail closed before an
+applicable Plan is published. A supplied lock is always validated and installed
+frozen; missing, stale, and invalid are distinct states, not repair modes.
+The Linux preparer accepts Bun text lock version 1. The Mac preparer accepts
+versions 1 and 2, both read by its pinned Bun runtime. Validation applies the
+same source and integrity policy to either format. Supplied bytes remain
+unchanged; Jig never converts a lock. Other formats are unavailable with
+`PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED`.
+
+For a package with runtime dependencies but no authored lock, the operator may
+pass `jig review --allow-resolution-network`. Without it, planning returns
+`PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED` at the affected manifest before
+resolving that package. `--yes` grants final revision admission, not resolution networking or new resource delegations.
+The flag is local to the current review, not a project value, portable lock
+field, or retained permission. It grants no Run authority by itself.
+
+Before each new resolution, the CLI displays the escaped package path and
+warns that Bun may contact dependency-selected public, private-network, or
+loopback services reachable from the host before graph validation. Such
+requests cannot be undone by failure or declined approval. The flag is not a
+network destination filter. Jig first rejects known unsupported root sources;
+standalone missing-lock manifests with workspaces, patches, overrides, or resolutions
+are unsupported. It then uses the fixed Bun's lockfile-only resolution,
+validates the generated graph against the same source/integrity policy, and
+only then performs a frozen install. Unsupported transitive sources can
+therefore fail after permitted network activity, not become executable through
+the flag. Resolution and installation share the existing preparation limits.
+
+Preparation ignores ambient configuration: the worker and installer receive
+no ambient variables or env file, only fixed loader support, `/dev/null` as
+Bun configuration, the exact runtime selected by Jig, and an explicit npm
+registry. A package-local root `.npmrc` is rejected because Bun treats it as a
+separate configuration input.
+Only captured manifests, any supplied root `bun.lock`, and declared workspace
+patch files are staged for Bun; other authored files are materialized after
+installation. Foreign locks,
+preloads, and configuration therefore cannot influence resolution or install.
+Git, GitHub, tarball, file, undeclared workspace, custom-registry, and non-integrity entries
+in a supplied lock are rejected before the trusted installer starts a fetch.
+A default-registry npm alias is accepted
+only when the resolved lock tuple names that registry and carries supported
+SRI integrity.
+
+### Workspace dependency capture
+
+A Flow may declare `workspace:` dependencies when both it and its libraries
+are members of an ancestor Bun workspace. The Jig application may also select
+workspace Flow dependencies directly from the workspace root. That selection
+captures root package metadata, not unrelated repository files. Jig captures the root manifest and
+text lock, declared member manifests, and the transitive local runtime dependency
+sources. Workspace names must be unique; paths and workspace patterns must stay
+relative to that root, without symlink traversal. The workspace root may be above
+the Jig application; this grants capture of declared dependencies, not arbitrary
+ancestor contents. Explicit workspace requirements never fall back to a registry.
+
+A member may also declare `workspaces` for use as a standalone project. During
+an ancestor-root installation, Bun uses only that root's membership patterns.
+Jig retains member declarations unchanged; they do not add nested packages to
+the captured workspace or invalidate unrelated members.
+When a selected package belongs to a workspace above the Jig application,
+Jig uses the nearest such root before workspace declarations inside the
+application. The selected package must itself match that root's patterns;
+application membership alone does not declare its Flows. If no outer root
+declares the selected package, its nearest enclosing application workspace
+or its own workspace supplies the standalone context.
+
+Library `files` paths and glob patterns select source when present, including
+`package.json`, README and license files. Otherwise ordinary package files are
+selected. `.git` and `node_modules` are excluded. Literal exported files must be
+present; Jig runs no author build. Workspace metadata is rechecked after source
+capture. Discovery is bounded to 256 members, 32,768 entries, and 32 levels;
+metadata is bounded to 1 MiB per manifest and 2 MiB for the root lock. Existing
+aggregate preparation limits apply to the captured workspace.
+
+Bun installs the captured target with `--filter`, script execution disabled,
+and the supplied root lock frozen, or with explicitly permitted lock
+resolution. Workspace lock entries must name captured members and agree with
+their manifests. Workspace-root name/version metadata is not compared against
+the lock: Bun does not reliably maintain it, and it does not select dependency
+versions. Member names/versions, root and member dependency declarations, and
+patches remain checked.
+
+Root manifest edits still participate in reviewed source identity. Only
+selected members' code is staged, after installation. Preparation uses the
+pinned Bun hoisted linker and preserves workspace-relative source paths and
+installed dependency scopes. Exact installer aliases to selected member roots
+are retained as bounded private layout metadata, not Package/0 file records.
+
+This preserves nested versions and canonical module identity, including cyclic
+imports. Unselected member links are omitted. Unknown links, aliases
+traversing aliases, and source-path collisions fail closed. Preparation
+defaults to 4,096 combined file/alias records and 32 MiB of file content
+plus layout JSON. [Dependency preparation limits](project-sdk.md#dependency-preparation-limits) can change these two production budgets.
+
+Layout JSON has its own 1 MiB ceiling. Existing project-wide preparation
+bounds also apply. The target entrypoint runs from its retained member path
+while its working directory remains disposable scratch. No isolated-linker
+mode is exposed.
+
+Ancestor runtime configuration outside selected packages is not captured.
+Registry dependencies retain the same integrity and source policy.
+
+The workspace root may declare Bun `patchedDependencies`: at most 256 exact
+registry `name@version` keys mapped to root-relative `.patch` files. Paths must
+be canonical, at most 1,024 UTF-8 bytes, contain no controls or backslashes,
+and traverse neither links nor `.git`, `.jig`, or `node_modules`. Each patch
+must be a regular, singly linked file of at most 1 MiB; the existing aggregate
+capture limits also apply. Jig captures and rechecks these bytes, including
+patches outside the selected members, and stages them before installation.
+The supplied lock's patch map must match the root manifest exactly. Bun applies
+patches inside the existing contained, script-disabled installation; Jig does
+not implement a patch engine or rewrite manifests. Patch bytes remain part of
+the retained execution artifact and are verified unchanged after preparation.
+
+Workspace members use the root lock; member locks and member-level patch
+declarations, overrides, catalogs, and alternate sources are unsupported.
+A new review recaptures the workspace. It may reuse this Jig project's approved
+dependencies only when fresh installer inputs and current preparation support
+match retained evidence. Inputs include exact root manifest, authored lock and
+patch bytes, all member manifests, target and selected membership, and the
+installed preparation runtime and containment support. Selected local source
+is captured afresh but is not an installer input. Reuse revalidates the admitted
+execution and separate installed-byte artifact, then assembles a new immutable
+execution image from fresh source and those bytes. Added and deleted source
+files are reflected exactly; no live overlay is used. A fresh execution recipe
+and ordinary review still cover source, settings and authority changes. Flow
+identity alone is insufficient. Reuse never crosses Jig project boundaries,
+even within one ancestor workspace, and performs no resolution or installation.
+Missing preparation evidence or changed installer inputs require preparation.
+Prepared bytes and normalized layout participate in
+target-change review, exact admission, launch and durable materialization identity.
+The host creates only recorded aliases after copying regular bytes, verifies both
+on reopen, and unlinks aliases without following their targets during cleanup.
+Runs neither reopen the workspace nor follow development links. Authored package
+metadata, contracts and Skills remain relative to the admitted Flow package.
+
+Package-local imports remain available without workspaces. Authored symlinks and
+hardlinks whose complete link set cannot be proved inside the captured package
+remain invalid; fully contained hardlinks are captured as independent
+regular-file records.
+
+### Prepared execution and limits
+
+The admitted target pins the separately retained prepared Package/0 while the
+portable lock continues to identify the reviewed source Package/0. Generated
+`bun.lock` bytes live only in the retained execution package, not visible
+source. Without an authored dependency lock, identical source and `jig.lock`
+on different machines may resolve different dependency versions. A Run
+performs no install or fetch and has no network, lifecycle scripts, or ambient
+runtime lookup. A package without runtime dependencies needs no preparation.
+
+Standalone registry preparations use the same project-local separation:
+exact manifest and authored lock bytes plus preparation support identify the
+installer inputs. Code-only and settings/grant changes do not themselves
+reinstall dependencies. The current source is recaptured and assembled with
+verified installed bytes; the new request and recipe still require ordinary
+admission. For unchanged unlocked inputs, reuse preserves the admitted generated
+lock and resolved bytes, without resolution or a new network permission. It
+does not refresh the selection. Changed installer inputs or preparation support
+require fresh preparation and the flag again when no authored lock exists.
+Declined preparations do not grant reuse. Final publication reacquires both
+execution and dependency artifacts and compare-and-sets the captured policy
+heads. Missing or corrupt admitted bytes fail closed; they are not silently
+fetched again under an otherwise reusable admission.
+
+After bounded project capture, the alpha's dependency-planning phase permits
+16 distinct actual preparations, 256 MiB of aggregate prepared content, and
+one 180-second cancellation deadline. Each contained preparation has the
+earlier 60-second hard deadline. Reused admitted execution packages consume
+none of the preparation count or output budget. One package accepts at most
+4,096 source files and 16 MiB before installation.
+
+Production output defaults to 4,096 combined file/alias records and 32 MiB, including layout metadata.
+Project `limits.dependencies` and corresponding operator environment variables can change these output budgets.
+The [authoring contract](project-sdk.md#dependency-preparation-limits) defines supported ranges, precedence, and combined artifact capacity.
+Fresh preparation and assembly with reused dependencies enforce the same resolved values.
+
+Review rejects incompatible limits before installation. Increasing these budgets does not change source, evaluation, project aggregate, or storage limits.
+
+Source, author-closure, and prepared Package/0 artifacts share one protected
+content-addressed store. Its fixed limits are 192 MiB per canonical artifact
+and 1 GiB per project. Review may retain immutable evidence even when the Plan
+is later declined or superseded. That evidence still consumes the cap. The
+alpha performs no implicit garbage collection. Existing exact artifacts can
+be reused at the cap, but a new artifact fails closed.
+
+There is no selective
+reclamation command.
+
+State deletion is not a capacity-recovery or retry instruction.
+Original execution and export custody must be settled before any explicit project retirement.
+Replacement state must use a fresh ticket domain.
+Missing history cannot establish that earlier effects did not occur.
+These archive bounds do not enlarge authored-source capture or execution
+resource limits. The larger archive envelope accommodates the reviewed
+evaluation dependency closure and its immutable combined phase inputs.
+
+### Why preparation belongs to `review`
+
+Requiring every TypeScript author to bundle dependencies was rejected because
+it replaces Bun's ordinary manifest-and-lock workflow with a Jig-specific
+packaging chore. Installing during `run` was also rejected: execution would
+then depend on mutable registry state, network availability, installer side
+effects, and a larger live authority boundary.
+
+Preparation during `review` keeps both useful properties. Authors use normal
+Bun inputs, while review and admission still pin every byte that execution can
+load. The prepared tree is not a second user lock or a portable FLOW concept;
+it is private content-addressed host evidence. Bundling remains an optional
+authoring choice for packages that prefer a self-contained source tree.
+
+## 5. Bindings
+
+A Binding gives one package a reusable project-local configuration. A file's
+basename is its `LocalName` ID; there is no duplicate `id` field.
+
+```text
+bindings/reviewer.ts    -> Binding ID `reviewer`
+```
+
+A Binding default-exports:
+
+```ts
+import { defineBinding } from "@jigging/jig";
+
+export default defineBinding({
+  package: "./flows/review",
+  settings: {
+    strict: true,
+  },
+  slots: {
+    research: "flow:./flows/research",
+    critique: "binding:critic",
+  },
+});
+```
+
+`package` resolves from the project root, not from the declaration file. It
+must name one selected Flow package. Moving a Binding file therefore does not
+retarget it.
+
+`settings` is one complete immutable JSON/0 object. Omission means `{}`. A
+present `settings.schema.json` validates it; without that schema, nonempty
+settings are invalid. Jig does not merge defaults, environment values, or
+per-invocation overrides into settings.
+
+`slots` is an optional map of at most 256 LocalName keys to exact
+`flow:<project-relative-path>` or `binding:<LocalName>` selectors, inline grants,
+or `grant:<LocalName>` selections. A child route may instead be
+`{ target, attachments }`, where `target` is the same exact selector and
+`attachments` is the complete reviewed authority map described below. Omission
+normalizes the declaration to `{}` before project defaults are resolved.
+
+A Flow selector must identify a direct Flow target, using empty settings and its
+own resolved routes. A Binding selector uses that Binding's own validated settings.
+Either may have further routes, within the fixed aggregate resource budget. Grant slots
+do not count as child routes. Either target may use the exact
+ordinary [Agent Run](agent-run.md) invocation, and a configured
+Binding may also use [Project Command](project-command.md) or
+[HTTP Request](http-request.md) or [Finite ACP](finite-acp.md).
+
+Slots cannot select the parent's own package, directly or through a Binding.
+The following reject the candidate:
+
+- Unknown targets or cycles.
+- Paths exceeding the root resource budget.
+- Unqualified execution profiles.
+- Attachment-bearing children without complete explicit mappings.
+
+Plain package paths are not slot selectors. Linking captures each
+target identity, and apply admits the complete relation and target
+configuration in the same immutable generation.
+In the example, `binding:critic` is a separate declaration selecting a
+different package, such as `flows/critique`, with its own settings and no slots.
+
+Explicit Flow routes are Binding-local. Starting `flow:flows/review` never borrows
+routes from `binding:reviewer`; project defaults and qualified native
+implementations are resolved from each target's own requirements. The map is neither
+a candidate catalogue nor authority to select a different child at runtime.
+
+`uses` in `FLOW.meta.json` (code) or optional Markdown frontmatter declares
+uncontracted requirements with `{}` or named requirements with a local
+`contract` path. A typed Flow route must offer the identical contract ID,
+version and descriptor/closure digest in its root `FLOW.contract.json`. An explicit
+route wins or fails; it never falls back. Uncontracted exact Binding routes
+need no additional declaration and cannot receive project defaults. Without a
+selected ordinary default, only qualified root Run Checkpoint requirements
+resolve implicitly to host support. Agent requirements resolve to ordinary
+Flows offering the exact contract. HTTP Request, Finite ACP and Project Command
+require explicit grants; these three contracts and Run Checkpoint remain
+host-only evidence/authority interfaces. Claiming a
+descriptor grants no credentials, endpoint access, command execution or
+retention authority.
+Review shows the resolved route and expected contract for each target slot.
+
+An optional `requires` list beside a dependency's `contract` selects names from
+that contract's `features` catalog. The selected package declares its implemented
+names in metadata `supports`. Both lists are bounded, unique LocalNames; even
+empty declarations require an identified single-form contract, and every name
+must occur in that exact catalog. Inspection rejects unknown names before routing.
+
+After exact contract matching, Jig checks required names against the selected
+implementation's support declaration. A missing feature marks the consuming
+target and its selected dependents `FEATURE_UNAVAILABLE` before their execution
+is prepared. Unrelated targets remain eligible. This check never ranks alternatives,
+changes an explicit selection or falls back. The decision and evidence belong to
+the captured admission generation; visible metadata edits require a new review.
+The lock projects both requirements and package support declarations from those
+captured bytes. Review names each failing caller slot, selected provider and
+missing feature once, including the actual descendant edge for dependent refusals.
+Support claims are package-wide obligations across accepted settings, not proof
+of provider honesty, native runtime availability, grant authority or successful
+execution. No feature requirement is needed for ordinary one-shot calls.
+
+Attachment declarations participate in root eligibility and review without
+invocation paths. A direct root or configured Binding receives its declared
+attachments through the [root file profile](#root-file-runs). Child relations
+use complete reviewed mappings under the [child file profile](#child-file-runs);
+there is no implicit inheritance of parent file access. Unsupported declaration counts reject the project candidate.
+
+Bindings contain no runtime command, environment map, package-manager policy,
+or generic permission bag.
+
+### Default providers by contract
+
+`defaultProviders: { 'https://jig.md/contracts/agent-run': 'binding:agent' }`
+selects an ordinary implementation for omitted slots requiring that contract.
+The optional map contains at most 256 contract IDs, canonically ordered by key.
+Each value is an exact Flow or Binding selector. The selected package must
+offer a named root `FLOW.contract.json` whose ID equals the map key. A key is
+not a consumer-local slot name, a URL to fetch, or a declaration of compatibility.
+
+For each target and requirement, review resolves in this order:
+
+1. An explicit Binding slot wins and must itself validate.
+2. Otherwise, a default selected for the required named contract ID must match
+   its version and descriptor/closure digest exactly.
+3. Otherwise, exactly one structurally provisioned ordinary target offering the
+   required ID, version and closure digest supplies the route. Zero remains
+   unresolved; several require an explicit selection. Each configured Binding
+   is distinct, including an empty Binding and its directly invokable package.
+4. A qualified root Run Checkpoint implementation may satisfy its unmapped
+   requirement. Other native resources require explicit grants.
+
+Candidate construction does not allocate resources or test provider health.
+Targets with root attachments, invalid settings, missing explicit native grants,
+or unbound anonymous slots are not candidates. Ordinary named dependencies may
+themselves resolve; count candidates before validating the resulting graph,
+without pruning cycles or backtracking to manufacture a unique answer.
+An ambiguous unconfigured direct identity may remain ineligible when that
+package has a Binding; each Binding must still resolve independently. An
+explicit consumer selection must not be vetoed by its unused direct identity.
+
+An `npm:<name>` reference explicitly selects project dependency membership.
+The host captures the project dependency metadata and prepares its locked
+closure through existing Bun controls, then inspects the selected package's
+own FLOW files without executing them. Workspace source selection and registry
+installation keep their existing limits, permissions and source checks.
+No package source, installer alias, mutable manifest, or resource name grants
+execution authority. Review retains the exact effective routes and reachable
+resource policies; Run uses only those admitted bytes.
+
+A selected but incompatible default never falls back to native authority. It
+makes the package's automatic direct target ineligible; an omitted Binding slot
+with that mismatch rejects the candidate. An explicit matching Binding override
+can still make the package usable. Anonymous requirements need explicit slots.
+
+Each selected default must itself be invokable and require no attachments.
+A `flow:` selection must be a direct target; a `binding:` selection uses its
+own settings and exact admitted routes and grants. HTTP Request, Project Command
+and Run Checkpoint cannot be ordinary defaults. A default selects an
+implementation, not resource authority: grant admission and recipient checks
+remain unchanged.
+
+Jig resolves defaults for direct Flows and Bindings during review, retains
+their effective routes in the same immutable generation, and validates the
+complete graph including both target kinds. Cycles, same-package recursion,
+and paths exceeding the root resource budget reject the candidate. Runtime calls
+use only the retained target-local routes; they do not consult current source,
+a defaults map, or a provider catalogue. Changing defaults proposes a new
+generation and cannot retarget an already admitted Run.
+
+### Resource grants
+
+A Binding supplies inline `kind: 'http'`, `kind: 'command'` or `kind: 'acp'`
+policies through its ordinary `slots` map. Optional `grants: discover('./grants')`
+membership enables `grant:<name>` reuse with one JSON policy per named file.
+These are proposals until explicit admission. [Grants](grants.md) defines the
+closed grammar, capture limits, recipient-scoped continuity and authority
+approval. Each grant requires its exact HTTP Request, Project Command or
+Finite ACP invocation contract.
+
+An admitted slot pins its policy. The host enforces it outside Flow execution.
+For finite ACP, the grant selects the native client; the host holds private
+authentication and constrains dispatch and process lifetime, while an ordinary
+Agent Flow owns the dialogue and answer interpretation.
+Source edits do not revoke active admissions; a new approved
+generation changes new Runs, while cancellation settles existing work.
+HTTP, finite ACP and command calls share the existing exclusive effect capacity.
+Root and child Bindings receive only their own grants. Grant slots do not
+introduce nested Flow routes or additional execution capacity.
+
+### Child file runs
+
+A mapped slot declares every child attachment exactly once:
+
+- `{ from: "source" }` supplies the immediate caller's complete immutable read
+  view to a child `read` port. The caller must declare that read port. The
+  call cannot also supply or override this mapping.
+- `{ supplied: "read" }` permits a child `read` port to receive a held artifact
+  through the call's `attachments: { source: { read: artifact } }`. The
+  reference must belong to the invoking participant.
+- `{ create: true }` permits a child `read-write` port to receive one fresh,
+  initially empty destination owned by that operation. The call must request
+  `attachments: { files: { create: true } }`. No writable caller port or
+  caller-selected destination path is required.
+
+Fixed reads and operation-supplied mappings may coexist on different ports.
+They never override one another. Maps are complete, direction checked and
+included in the admitted relation. Unmapped attachment-bearing children and
+independent retained resources on a mapped child Binding are invalid. Repeated
+invocations of the same slot use distinct operation-owned destinations, not
+shared folders in the caller's output.
+
+Every invocation keeps its own writable backing and limits. Only after result
+validation, writer and descendant fencing, and confirmed native cleanup may
+Jig seal a successful child's output as an immutable artifact. The caller
+receives its artifact through `CallResult.artifacts`. Artifact references are
+separate from the domain `outcome` and `output` schemas. A held artifact can
+be supplied readonly to another explicitly authorized slot without copying it
+into a mutable caller output tree.
+
+Initial readonly attachments carry participant-scoped artifact references. Writable attachments carry none.
+Rights do not widen through delegation, and releasing a reference prevents
+later use of that participant's reference.
+
+The root's `FLOW.contract.json` may declare `artifactResults: ["final"]`.
+These are allowed forwarded result names, not required outputs. Names are
+unique LocalNames, at most 256, and cannot collide with declared writable
+attachment names. A handler may select any subset, including empty, through
+its terminal `artifactResults` map. Jig retains this declaration in exact
+activation metadata.
+
+Final forwarded names alias held immutable bytes rather
+than copying them. The host output envelope keeps `artifacts` separate from
+ordinary domain results.
+
+One root lifetime permits at most 256 artifact references, 16 distinct live
+snapshots and 256 MiB of aggregate retained and materialized live artifact bytes.
+Aliases alone do not create new snapshots or duplicate byte charges.
+Existing per-invocation input/output and aggregate
+execution limits still apply. Failed collection, cleanup or reference
+validation cannot manufacture a usable artifact.
+
+Cancellation and uncertainty
+retain their ordinary fencing and no-replay rules. Recovery fences interrupted
+work. It does not resume the caller's program.
+
+Final root file delivery remains
+separate from child sealing and reference transfer.
+
+This live budget is separate from durable attempt retention. An
+[execution-client request](execution-client.md#capacity-and-time-limits) selects
+up to 256 MiB retained artifact allowance shared by final and latest checkpoint
+bytes. Prepared input, retained bytes and accepted control/result reservations
+share the protected attempt store's 4 GiB quota, not review's separate 1 GiB
+Package/0 archive. Capacity reservations are logical accounting, not physical
+filesystem preallocation or an `ENOSPC` guarantee.
+
+### Reviewed Binding attachments
+
+A Binding may supply `attachments: { decoder: "tools/base64" }`. Each LocalName
+key must name a declared `read` attachment; each value is a project-relative
+directory, resolved from the project root. At most eight selections are allowed.
+Empty or absent maps select nothing. These values are inert requests to capture
+project resources, not live mount permissions. Absolute paths, traversal and
+protected `.jig` paths are invalid. No environment or host path expansion occurs.
+
+Every review recaptures each selected tree using the root file capture controls
+and limits below, including no links or nested mounts. There are no selectors or
+implicit exclusions: a selected directory means its complete bounded regular-file
+tree. Review does not execute its contents, discover libraries, install tools,
+or search host executables. Capture is not a secret scan; selected bytes are
+retained in protected storage even if execution approval is declined.
+
+The Binding lock and review include each source path, tree digest and file
+manifest (relative paths, lengths and SHA-256 digests). The retained tree uses
+the existing bounded content-addressed store. Admission revalidates those
+artifacts with the complete candidate. The exact activation and configuration
+identities include them. A source edit changes the next proposed generation,
+not the current admission; deleting an original does not invalidate its retained
+copy. Missing or corrupt retained bytes fail without recapture or substitution.
+
+Only that root Binding receives the captured bytes through ordinary
+`run.attachments`. Other read attachments require `--attach`.
+Supplying an already-bound name fails rather than overriding it. Bound and per-run inputs
+share the 64-file/64-MiB execution budget. Both use sealed descriptors and the
+same read-only input projection, without source modes or live host paths.
+
+Children receive a selected immutable read view only through an explicit
+reviewed mapping from their immediate caller. Native Agent/command scopes
+receive no attachment authority.
+
+These trees can contain data or self-contained code/tool bundles. A script may
+use installed Bun; a native bundle must supply its own compatible closure.
+Jig does not resolve an arbitrary installed binary's loader or libraries, preserve
+executable permissions, or grant mounts for absolute paths embedded in a tool.
+Direct code access permits all its behavior within the existing execution
+envelope; configured filenames or arguments do not restrict it to one operation.
+Narrower semantic rights need a separately authorized owner, not an executable
+renamed to look harmless. This profile adds no network, credential or shared
+writable resource authority.
+
+Execution cancellation fences owned descendants and releases invocation copies.
+Removing a selection and approving the new generation revokes it for future
+Runs, not an already running invocation; stop that Run separately. Retained
+review artifacts remain subject to the existing store limit and retention policy.
+
+## 6. Candidate and planning
+
+Planning uses one descriptor-held project identity for the complete finite
+session. A second competing owner receives a bounded busy result rather than a
+second coordinator or authority issuer.
+
+One planning attempt:
+
+1. captures the exact author module graph;
+2. evaluates and retains its inert project and Binding values;
+3. captures and retains every selected Package/0 tree;
+4. links packages, settings, resolved defaults, exact slots, and the complete
+   direct-Flow and Binding target graph, applying an explicit review client
+   selection to selected normalized ACP policies when requested;
+5. qualifies the selected graph and effective resource policies; CLI review
+   stops on an observed typed selected ACP prerequisite before avoidable target
+   execution preparation, while SDK planning retains per-target readiness;
+6. selects exact installed-host recipes for ready targets and derives the
+   complete portable lock; and
+7. publishes one retained candidate and human-readable review.
+
+Planning is Run-admission-neutral, not free of authority or side effects. It
+may create protected `.jig/` storage and retain immutable artifacts, and may
+exercise explicitly granted resolution networking before final approval.
+It does not mutate user source or the visible lock, admit execution authority,
+or run package code.
+
+SDK planning retains closed expected ACP prerequisite refusals as per-target
+unavailability, as defined above. Other unsupported recipe failures,
+interrupted qualification, integrity faults and unconfirmed cleanup fail
+planning with no applicable Plan. Missing or invalid native configuration
+supplies its known `PROJECT_ACP_<CLIENT>_<STAGE>` cause, or
+`PROJECT_ACP_UNAVAILABLE` when unclassified. The CLI stops the complete review
+on an observed typed selected ACP prerequisite before apply or otherwise
+unchanged success, independently of report truncation.
+
+It identifies the captured policy selection with verified locations or an
+honest Binding/slot fallback. It does not label a provider's executable Flow
+as the client declaration. Failure preserves the previous complete admission.
+Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED` and
+its project-relative `package.json` location.
+
+These diagnostics include fixed guidance, not credentials, raw provider
+errors, or installer output. Manifest-policy refusals identify the manifest
+and offending JSON field with a closed cause. Causes cover unsupported fields
+or dependency sources, invalid object shapes, dependency maps, package names,
+and patch declarations. Rejected values are not displayed. Invalid dependency names
+identify their containing map instead.
+
+Workspace manifest locations are relative to the Jig project. Ancestor workspace
+locations may begin with up to 32 `../` segments, within the existing path bounds.
+`PACKAGE_BUN_LOCK_STALE` also permits these bounded ancestor
+locations for the mismatched manifest or lock. Its optional `lockPath` names
+the authored `bun.lock` relative to the project, using the verified captured
+workspace root or standalone package location. Other diagnostic codes cannot
+supply `lockPath`.
+
+These display locations grant no filesystem access and cannot name protected
+`.jig` state. The CLI identifies the mismatch and lock. It gives a shell-safe Bun
+lock update command with its working directory. It explains that resolution
+permission does not update a supplied lock. Review never performs that source
+update implicitly. A successful review shows the complete added, removed, and
+changed package, Binding, and target identities.
+
+Current and proposed package entries include their full Package/0 content
+digest, which is the same portable identity written to `jig.lock`. The default
+CLI view leads with additions, changes, removals, and the resulting target
+list. It shows changed fields as previous/proposed values and omits unchanged
+policy. `jig review --details` expands the same diff with unchanged context.
+
+For ACP grants, both views identify the recipient's exact proposed client,
+configured model, authentication mode and operator-selected executable through
+a non-secret field allowlist. They never expose credentials or private
+authentication-store paths. These facts come from authenticated recipes, not
+package-authored claims. Ordinary Agent implementations appear through their
+selected package, Binding settings and reviewed resource grants, like other
+ordinary targets.
+
+Approval behavior is identical in both views. `--details` is display policy,
+not another admission operation.
+
+The review is not a source-file diff; authors inspect editable source with
+their editor or version-control tools before approval. Its text is bounded and
+escapes project-controlled Unicode so terminal control characters cannot
+alter the consent display.
+
+The target change summary describes affected admitted execution targets. A
+target may therefore be marked changed because its selected package identity
+or exact host execution evidence changed even when its visible configuration
+fields did not. Package digests are shown once in the package section; private
+recipe and host-observation identities are never exposed by the review.
+
+A successful planning result is either `unchanged` or one applicable retained
+Plan. The Plan digest is an internal authorization token carried by the CLI;
+users do not need to copy or manage it. If publication commits but its response
+is lost, replanning the same unchanged content rediscovers the same retained
+meaning without admitting it.
+
+### Review client selection
+
+The CLI's explicit `jig review --agent codex|claude|pi` argument requires one
+supported value. Validate authored declarations normally, then change only
+`client` in every selected normalized ACP resource policy before qualification.
+Inline, named/shared and computed policies use the same construction boundary.
+The source closure remains unchanged. HTTP-backed Agents, Flow/package/provider
+routes and unselected policies are unaffected; no Agent is created.
+
+This operand is part of retained candidate meaning wherever authenticity and
+reuse require it. Effective requests, qualification, execution recipes, lock,
+admission and inspection MUST agree on the selected client and complete policy.
+Review identifies source versus effective clients, argument origin and affected
+recipients before normal approval. The ordinary lock retains effective slot
+policies and optional top-level
+`agentOverride`, whose value is exactly `codex`, `claude` or `pi`. Its presence
+requires at least one selected ACP policy and every selected ACP policy must
+use that client. Inspection's approved snapshot includes this retained
+`agentOverride` beside the effective slots; human output explains its
+review-argument origin. Neither view guesses origin from current source
+differences. The operand is also bound into retained capture identity; replay
+or reuse cannot pair another argument with the captured proposal.
+
+A same-client choice preserves every field and still qualifies. An actual
+cross-client change with an authored model pin or incompatible `retainSessions`
+refuses the entire request. Never clear, translate or infer model/retention
+policy, and preserve `maxTurns`. A pinned-model refusal states the operand's
+restriction, not an unproved claim about model compatibility or native setup.
+Refuse an inapplicable request when no ACP resources are selected. Global scope
+includes mixed source clients; there are no per-slot exceptions, force modes,
+automatic alternatives or partial semantic success.
+
+The operand does not grant execution, resolution networking, contract generation
+or new resource authority. Existing approval, `--yes` restrictions, generation,
+verification, preparation and cleanup remain unchanged. Run has no client operand
+and consumes only the complete admitted policy without substitution.
+
+Each later review uses newly captured source and its explicit arguments again.
+No client preference is inherited from lock, admission or environment. Repeating
+`--agent` proposes that selection again; editing the Binding persists a project
+choice. A bare review explains a proposed source-derived client change before
+approval or in its refusal. If it fails, the earlier approved code and client
+remain together: newly edited code is not admitted with the earlier client.
+Apply reopens the retained candidate and never reevaluates source or reconstructs
+this selection. Replay and exact reuse retain the same operand and effective
+meaning. Captured source locations remain source locations; an overridden Pi
+literal cannot become an originating Codex literal.
+
+## 7. Lock and local admission
+
+`jig.lock` is the one portable desired-state lock. It records only:
+
+- the optional project `entrypoint` string, including default invocation arguments;
+- selected package paths and Package/0 digests;
+- direct-target eligibility, invocation requirements, and effective ordinary
+  routes for direct Flows;
+- Binding package choices, settings, and effective slots;
+- resolved effective slot grant policies;
+- optional `agentOverride` recording an explicit review-client selection; and
+- reviewed attachment source paths, tree digests and file manifests.
+
+Lock slot values are closed target identities: `{ "kind": "flow", "path":
+"flows/research" }` or `{ "kind": "binding", "id": "critic" }`,
+or resolved grants `{ "kind": "grant", "policy": { ... }, "name": "optional-name" }`. The lock
+retains the selected Binding's configuration in its own Binding entry. Optional
+top-level `agentOverride` is reviewed origin, not a default for later reviews;
+the strict lock decoder requires at least one selected ACP slot and agreement
+of every selected ACP slot with that client.
+
+Only a package with `directRun: true` may contain `slots`. This optional map
+is present only when nonempty and contains only Flow or Binding identities
+resolved from project defaults, never grants. Binding `slots` includes its
+effective default selections as well as explicit routes and resolved grants.
+The authoring `defaultProviders` map is not a runtime lock field. Exact interface
+matching, direct-target eligibility and the full bounded graph are validated
+with the retained packages, not inferred from lock shape alone.
+
+Entrypoint file arguments are project-relative invocation defaults. Their current
+bytes are captured for each Run; they are not review-pinned Binding resources.
+The CLI resolves the approved defaults before host acquisition and reexecution,
+and refuses submission if approval changed after selection. No source evaluation
+or fallback target is permitted during this selection.
+
+The lock contains no absolute runtime path, runtime version guess, host closure, sandbox
+detail, process identity, coordinator epoch, or local approval.
+
+Local admission lives under `.jig/` and is separate from the portable lock. A
+clone containing source and `jig.lock` therefore carries source and Binding
+choices, not execution consent on a new host.
+
+Applying a reviewed Plan:
+
+1. reopens the retained Plan and artifacts by digest;
+2. rechecks the project identity, candidate and admission heads, and explicit
+   approval for new or changed resource delegations;
+3. writes the exact proposed `jig.lock` durably; and
+4. advances local admission in one compare-and-set transaction.
+
+Apply never rereads or reevaluates visible source. If source has since changed,
+that edit remains a later proposal; it cannot mutate the retained Plan. If the
+Plan's base admission has changed, apply returns stale and grants nothing.
+
+Lock publication precedes admission. A crash between the two leaves a visible
+but inert lock and the old complete admission. Replaying the same retained Plan
+converges that state. A crash during the admission transaction exposes either
+the old or the new complete generation, never mixed authority.
+
+If admitted meaning already matches and only the visible lock is absent or
+drifted, apply repairs the lock without creating a new execution generation.
+The CLI handles that distinction; it is not a user-selected protocol mode.
+
+## 8. Direct Run
+
+### Target selection and submission
+
+Only an exact target in the current admitted generation can start. Target
+identity is explicit:
+
+```text
+flow:flows/build
+binding:reviewer
+```
+
+An unprefixed name is not guessed. A direct Flow receives empty settings.
+A Binding receives exactly its admitted settings. Callers
+cannot override package source, runtime, environment, authority, the host
+deadline ceiling, or containment. The installed CLI may supply the exact
+declared root attachments and choose one root execution duration within
+the host's fixed policy; it does not change admitted project meaning.
+
+Each submission has one bounded project-local idempotency key and JSON/0 input.
+The first accepted request stores the exact target, canonical input, captured
+file manifest, and output intent before
+dispatch. Repeating the key with identical content returns the same Run;
+changed reuse conflicts and never dispatches again.
+
+After allocation, Jig validates the actual input against
+the `input` schema in `FLOW.contract.json`, when present. Invalid input terminates that same durable
+Run without starting package code.
+
+Package schema roots use FLOW Schema/0 and therefore declare exactly
+`"$schema": "https://flow.jig.md/schemas/schema-0.json"`. This is a portable
+package rule, not Jig project authoring metadata.
+
+The host launches one Run/0 process from the exact admitted package bytes in
+the selected contained host envelope. It validates the returned outcome and the complete
+result against `FLOW.contract.json` outcomes and its `result` schema. A success is
+published only after the complete process tree is fenced, reaped, and cleaned.
+
+### Child calls and branch capacity
+
+While a direct Flow or Binding Run remains open, its package may use Run/0
+`flow/call` with one of that target's admitted slot names. Jig resolves the name only to the
+exact Flow or Binding target captured in the same admitted generation. The call
+carries one JSON/0 input and returns that child's complete JSON/0 Run result;
+there is no argument or response channel for target selection, settings,
+attachments, or host authority.
+
+Each child starts in a fresh Run/0 context with its own scratch directory,
+the selected target's own settings and slots, and only explicitly mapped attachments.
+A direct Flow child has empty settings and its own reviewed routes resolved
+from project defaults and qualified native requirements. Parent settings,
+routes and grants are not inherited; attachment mappings select only the
+immediate caller's declared views. Its effective deadline is the earlier of its
+own direct-Run ceiling and the parent's deadline, so it can never outlive or
+widen the parent deadline.
+
+Run/0 owns child operation identity, duplicate joins, conflicting reuse,
+cancellation races, and `UNCERTAIN` completion. Jig does not automatically
+replay possibly dispatched child work; a deliberate retry uses a new
+`operationId`. The child is invocation-local owned work, not an independently
+addressable Run. Its terminal exists only as the parent-owned Run/0 operation
+result; Jig creates no child Run history and exposes no child administration,
+scheduler, catalogue, or resolver.
+
+The root permits two active sibling Flow calls, or one exclusive Agent or
+command effect. A child permits one active Flow or effect; admitted branch depth
+is bounded by the root's fixed aggregate budget. A third sibling, conflicting operation,
+or branch exceeding remaining aggregate capacity receives `RESOURCE_EXHAUSTED` before dispatch;
+there is no host queue or automatic retry. Identical waiters join the same
+operation. Applications use ordinary promises to schedule and aggregate work,
+and per-call cancellation to stop a selected sibling without stopping another.
+Run/0's request-lifetime limit still applies.
+
+Before dispatch, Jig reserves every Flow level in the selected branch's longest
+admitted path plus its largest possible effect
+against a fixed root payload budget: 1,792 MiB memory, 576 tasks, and 3.5 CPU
+cores with a 100 ms quota period. Each actual envelope is kernel-limited below
+its reservation. Two simultaneous two-level branches fit, including an effect
+in each: one root, four child Flows, and two effect envelopes. Each Flow retains
+its fixed 256 MiB, 64-task, and half-CPU ceiling; effect ceilings are unchanged.
+The same budget permits one five-level child branch with its effect, or two
+branches of depths three and one. A sixth child level cannot fit and is rejected
+at review. Two individually admissible branches may not fit simultaneously;
+their concurrent allocation fails before dispatch rather than borrowing capacity.
+Unused reservations are not borrowed; reservations remain
+until confirmed fencing and cleanup. This bounds the complete root call tree,
+not just each parent's immediate children. Trusted coordinators and supervisors
+are outside this payload budget. It is not fair-share scheduling or combined
+utilization accounting. Every descendant remains within the root deadline.
+The reservation policy participates in each exact launch recipe identity;
+a changed policy requires renewed review before execution.
+
+### Agent and command effects
+
+An Agent-using root or child uses `flow/call` through its exact Agent Run slot,
+selecting an ordinary Flow implementation. Input carries instructions, optional
+explicit Skill contents and guidance, and an optional response Schema/0 value. The result is
+`{ "outcome": "done" | "blocked" | "limit", "output": { "text", "structured"? } }`.
+There is no method selector or native-only value wrapper. A completed
+structured result must match the caller's schema. Consumers validate replacement
+results independently; both supplied ordinary methods also validate their own
+dynamic result boundary.
+
+The ordinary ACP method uses a [finite native resource](finite-acp.md) through
+two required channels. The method owns prompt preparation, protocol dialogue,
+public updates and answer interpretation. The resource independently authorizes
+native writes and owns private authentication and process settlement. Channel
+completion, ACP stop reason and the final Agent result remain distinct.
+
+Agent Run accepts explicit selected Skill contents, with exact-case `SKILL.md`
+in each Skill. A caller can read its captured `skills/<name>/` trees using
+the public method library. Supplied text is guidance, not host-attested origin;
+it grants no tools, network, filesystem, child target, or other authority. Agent and child
+calls share the root's absolute deadline. Each direct child occupies one root
+branch; its descendants use that branch's reserved Flow and effect capacity.
+No ancestor or sibling's files or conversation are included implicitly.
+Possibly dispatched Agent work is fenced and reported as uncertain rather
+than automatically replayed.
+
+A command-capable Binding may call the exact [Project Command](project-command.md)
+contract through a granted slot with a bounded text candidate. Jig uses
+the installed Bun runtime inside a separate keyless envelope and collects
+output and termination outside candidate execution. The root or child has
+only its own admitted slot policy. Command effects share the context's single
+active-operation limit and its containing deadlines. Independent assertions
+remain application policy; repository test logs cannot establish an
+independent verdict. Commands confer no shell, network, installation,
+credential, or writable host-repository authority.
+
+### Settlement and interruption
+
+A Run is `pending` until it has one durable terminal:
+
+- success with outcome, output, and bounded diagnostics;
+- failure with a closed failure code and bounded diagnostics; or
+- `COORDINATOR_LOST` when earlier dispatch may have occurred but no result can
+  be proved.
+
+The installed CLI shows readable results on terminal stdout. Redirected stdout
+or `--json` preserves JSON, or NDJSON for selected channels.
+Elapsed status and cancellation updates follow the [CLI experience contract](https://jig.md/spec/cli-experience.md) on terminal stderr;
+diagnostics remain available with redirected streams. A cancellation request
+is not a cleanup acknowledgement. Execution completion, application outcome,
+delivery, and late cleanup failure remain distinct observations. Status output
+does not turn `blocked` into task success or unknown delivery into a retry hint.
+
+Possibly dispatched work is never replayed merely because its result is
+unknown. Closing the project session rejects new starts, revokes its issued Run
+authority, settles or fences live Runs, waits for cleanup, and preserves
+already durable status records.
+
+### Stale execution approval
+
+If the current host cannot reproduce an admitted root execution recipe because
+its execution environment changed, Jig refuses execution with the host-only
+`REVIEW_REQUIRED` failure code and directs the operator to `jig review`.
+Its details are `reason: "EXECUTION_ENVIRONMENT_CHANGED"` and `flowStarted: false`.
+This refusal is established before starting Flow code; it is not inferred from
+arbitrary execution failures or missing diagnostics. Existing cancellation and
+recovery precedence remain authoritative. Flow Run/0 responses cannot emit this
+host-only code. Neither the refusal nor subsequent review replays the failed Run.
+
+
+### Root file Runs
+
+The installed command accepts `--input JSON|@FILE`, repeated `--attach NAME=DIR`
+and `--select NAME=FILE`, and optional `--out DIR`.
+Parsing performs no file reads. Acquisition happens once, preserving
+caller-relative paths through reexecution. An explicit `--out` replaces an
+entrypoint output default and keeps its exact destination.
+
+When the effective invocation has no `--out`, a retained approved target with
+a read-write attachment or nonempty declared `artifactResults` list receives a fresh absolute packet destination.
+That destination is beneath the canonical operating-system temporary directory.
+Result-only targets keep
+stdout-only output. Unknown targets and unreviewed projects receive no fabricated
+file requirements.
+
+The selection uses the same retained admission as submission, including unavailable packet-eligible targets.
+Selection neither evaluates visible source nor probes Agent readiness.
+Output and no-output decisions are made before file
+ownership or host-delegation reexecution and remain unchanged through all owners.
+
+Selection neither reserves a directory nor grants filesystem authority.
+An invalid temporary parent refuses before dispatch with guidance to choose
+`--out`. No alternative path or target is selected automatically.
+An ordinary quoted JSON string beginning with `@` is still an inline value.
+
+Every declared read attachment not supplied by the selected Binding requires
+exactly one mapping. Selectors name
+exact regular files relative to that root. Without selectors Jig enumerates
+its bounded tree. Unknown or duplicate mappings/selectors fail before dispatch.
+
+Review requires no invocation paths. Packet-eligible targets receive a
+destination implicitly when `--out` is omitted. A target with neither writable
+attachments nor declared artifact results remains stdout-only unless explicit
+`--out` selects a host-record packet.
+
+The authoritative
+admitted-interface check precedes root Run allocation.
+
+A closed bounded failure
+identifies missing unbound reads, names
+that cannot map an unbound read, attempted bound overrides, and writable names
+missing a destination. Combined retained and per-run file limits remain
+independently enforced. Diagnostics contain declared/supplied attachment names
+and fixed text, never guessed fixture paths or source freshness.
+
+Capture preserves binary and empty file bytes, omits empty directories, and
+rejects symlinks, multiply linked files, special files, traversal, malformed
+Unicode paths, and nested mounts. Descriptor-relative acquisition prevents
+pathname substitution from changing the selected root. Protected paths and
+resolved mount-source aliases into `/proc`, `/sys`, `/dev`, `/run`, or `.jig`
+are refused. Supported source and destination-parent filesystems
+on Linux are ext4, XFS, Btrfs, and tmpfs, with `openat2` and no-replace rename
+support. Qualified Macs use descriptor-relative no-follow acquisition and
+no-replace publication; unsupported semantics have no fallback. These checks exclude a malicious host
+administrator or same-user process, as specified in the security boundary.
+
+Input limits aggregate across attachments, including any writable one.
+They permit eight attachments, 64 regular files, 64 MiB content and 256 enumerated entries.
+Relative paths permit 16 components and 512 UTF-8 bytes.
+Exact selection never enumerates unselected subtrees.
+A detected file mutation fails capture.
+The captured set is not an atomic repository revision or a secret scan.
+
+`@FILE` is operator-selected data, not an execution attachment. Jig opens its
+non-symbolic-link regular-file leaf once, bounds and snapshots its bytes, checks
+that the opened file remained stable, and parses it as JSON/0 before project
+acquisition. Parent-directory aliases and filesystems do not need attachment
+mount semantics because neither the path nor its descriptor enters Flow code.
+JSON/0's byte and value limits still apply.
+
+Input is projected from immutable sealed bytes, never live host directories.
+Per-run captured bytes live only through command ownership and are not retained
+as Package/0 artifacts. Reviewed Binding resources instead belong to the admitted
+configuration and retained store described above. Durable request evidence sorts attachment names and paths
+ordinally and records names, lengths, SHA-256 content digests, and the absolute
+output intent. Equivalent selected bytes have the same data identity regardless
+of source spelling; hashes never authenticate the private file descriptors.
+Same-submission conflict rules include this identity. Repeating the CLI command
+creates a new submission, not a replay or export-resumption request.
+
+The single writable attachment is initially empty, on a 16 MiB anonymous tmpfs
+inside the completed execution envelope. Its runtime metadata and allocation
+are subject to the scope's Linux aggregate memory ceiling or Mac supervised
+limit. A trusted descriptor
+handoff retains this bounded filesystem beyond complete writer fencing and
+execution cleanup. The host validates its final tree before copying: at most
+64 singly linked regular files, 16 MiB logical bytes, and the same entry, depth,
+and path limits as capture. Sparse excess, links, and special files reject
+delivery without changing a separately accepted execution terminal.
+
+Destination preparation precedes dispatch. The new leaf must be absent beneath
+an existing anchored parent, outside every per-run selected input root and protected
+state. A separate command owner owns destination staging before allocation,
+survives coordinator failure, and removes unpublished staging without another
+invocation. Output storage, its bounded read buffer, and destination copies
+remain bounded after the Run execution owner is removed. See the security ceilings.
+
+The same checks apply to an implicit temporary destination, including for an
+unavailable packet-eligible target before its retained refusal. A collision or invalid parent,
+protected path or input-root overlap refuses before dispatch. There is no
+automatic name retry after work starts.
+
+Stderr reports the selected destination,
+including in machine-output mode. JSON/NDJSON framing and the existing
+`delivery.destination` field are preserved. Written packets remain after command
+or inspection exit.
+
+Operating-system cleanup may remove temporary packets.
+`--out` selects a chosen retained location without overwrite behavior.
+
+Publication uses one no-replace atomic directory rename. Directories have mode
+`0700`, files `0600`. Empty directories and source permissions are not preserved.
+`files/` contains Flow deliverables: native root writable output remains flat,
+while each forwarded result is prefixed by its declared result name. Empty
+forwarded selections are valid.
+
+Path collisions fail rather than overwrite.
+Checkpoint associations use `artifacts/<association-name>/` beneath `files/`,
+alongside explicit checkpoint text files.
+
+`result.json` contains the accepted execution
+record, Run identity, admitted Package/0 and configuration identity when resolved,
+canonical JSON input digest, captured manifest, and delivery manifest. The
+manifest lists only Flow files, never its own host record. Private launch,
+inode, device, provider, and credential evidence is not exported.
+
+`delivery.status` is `written`, `failed`, or `unknown`, independently of execution
+`status`. A written receipt's `source` is `final`, `checkpoint`, or `none`.
+A known successful terminal is not downgraded when coordinator loss leaves only
+earlier checkpoint files for delivery; the source identifies those bytes.
+A valid custom outcome may publish files. Operational execution or
+result-validation failure publishes only the actual host record when available,
+unless the root declared [Run Checkpoint](https://jig.md/spec/run-checkpoint.md). That native invocation
+delivers its latest accepted aggregate after confirmed cleanup and adds an
+explicit checkpoint record or `null`; it never exports unfinished scratch.
+unconfirmed Project Session cleanup also suppresses Flow files and returns a
+nonzero command result while preserving a known terminal.
+
+After confirmed interrupted settlement, publication may retain the actual host
+terminal without Flow files, even without a checkpoint. Cancellation during
+ordinary final-file copying still removes unpublished staging. Validation,
+copying, or a destination collision
+leaves no packet and removes owned staging. If publication wins cancellation,
+the complete packet remains. Later acknowledgement, stdout, or cleanup failure
+never retracts the packet, rewrites its terminal, or authorizes reexecution.
+Channel loss may leave publication unknown to the caller. The immutable packet
+and ordinary stdout agree; later CLI errors can report additional observations.
+`written` promises atomic visibility, not persistence through machine failure.
+If expanded metadata exceeds the report's JSON/0 limits, the CLI preserves the
+unexpanded execution terminal on stdout, reports known delivery/cleanup status
+with `JIG_REPORT_LIMIT` on stderr, and exits nonzero without replay.
+
+The root `--timeout` covers execution. Attachment capture checks a 10-second budget and
+delivery checks a 20-second budget at bounded operations; the independent
+command lifetime also bounds host overhead. Cleanup retains its existing
+reserve and is not skipped on cancellation or expiry. These private budgets
+do not introduce Flow-controlled policy or a new public timeout API.
+
+## 9. Execution envelope
+
+### Installation verification policy
+
+The operator selects installation verification with
+`--verification cached|strict|fast` on `run`, `review`, or `inspect`. The argument
+overrides `JIG_VERIFICATION`; if both are absent, the default is `cached`.
+Missing, invalid or repeated argument values are usage errors before host
+acquisition. An invalid environment value is a configuration error unless a
+valid argument overrides it. The effective policy is captured before project
+loading and preserved through delegation, file delivery and recovery.
+This is a host performance/integrity choice, never a `jig.ts`, FLOW, Binding,
+approval, or capability setting. It applies to review, Run, and environment
+inspection, including each later installed-support revalidation boundary.
+Saved-result inspection (`jig inspect --result <directory>`) is a separate local
+evidence reader: it rejects `--verification`, ignores `JIG_VERIFICATION`, and
+performs no execution-environment acquisition or installation verification.
+Its recorded-claim and capture profile belongs to [CLI experience](https://jig.md/spec/cli-experience.md).
+
+- `cached` reuses an installed file's SHA-256 while its selected canonical path,
+  device, inode, ownership, permissions, link count, size, modification time,
+  and change time match. Times use filesystem nanosecond precision. A miss or
+  mismatch hashes current bytes and checks metadata again before retaining the
+  digest. This detects ordinary installation updates, including in-place edits
+  with restored modification time; it does not promise fresh byte verification
+  when filesystem identity and metadata appear unchanged.
+- `strict` hashes current installed bytes at every verification boundary. It
+  neither reads nor writes the installation cache.
+- `fast` reuses a stored digest for the selected canonical file path without
+  comparing file freshness. A cache miss still hashes current bytes. Changed
+  installed bytes can therefore retain their old identity without requiring
+  review; operators selecting this mode accept that limit.
+
+The bounded, disposable cache contains only installed tool/support paths,
+metadata and digests. It lives in owner-private storage outside project source
+at `$XDG_CACHE_HOME/jig/installation-verification`, or
+`$HOME/.cache/jig/installation-verification` when XDG cache home is unset.
+Unsafe locations, symlink cache routes, invalid entries or cache failures fall
+back to fresh hashing. Cache deletion is harmless. Inspection can reuse valid
+entries but never creates or updates them. A cache grants no approval or
+execution authority. Mode selection alone does not change execution identity
+when the observed installation bytes agree.
+
+All modes retain executable/path eligibility, supported-runtime and sandbox
+feature checks, credential validation, capability permissions, resource limits,
+recovery, cancellation and cleanup. Package capture, retained artifacts and
+invocation files keep their existing exact verification. These policies concern
+change detection for the trusted installation; none protects against a
+compromised host administrator, same-user process, runtime or containment tool.
+
+### Containment and lifetime
+
+The direct alpha has a Linux rootless containment mechanism and a qualified
+native Mac mechanism. On Linux, before package
+bytes execute, it establishes one Run-owned cgroup and configures aggregate
+memory, PID, and CPU limits. The same pre-exec path then enters isolated user,
+mount, PID, IPC, UTS, cgroup, and network namespaces.
+
+On Linux, package code receives:
+
+- the admitted package tree, read-only;
+- the root's immutable read attachments and optional bounded empty output;
+- one private writable scratch directory;
+- Run/0 protocol stdio; and
+- only the minimal read-only process and device views required by the pinned
+  Bun runtime.
+
+On Linux it does not receive the host environment, network, host process tree, writable
+cgroup controls, general devices, inherited descriptors, project source,
+`.jig`, or host-control channels.
+
+The native resource is a separate bounded process running Codex,
+Claude Code, or Pi through the constrained finite ACP mechanism. Jig supplies no
+default model. Native executable, model, authentication and launch policy are
+operator configuration, not powers supplied by the calling Flow.
+An API-backed Agent is an ordinary Flow with reviewed model and wire-format
+settings and an exact HTTP resource grant. It runs in the ordinary keyless Flow envelope and
+requests only its explicitly granted resources. Selecting that Flow through a
+default does not project native credentials or network authority into it.
+The ACP Agent is also an ordinary Flow, using its granted native resource and
+ordinary channels instead of a hidden host Agent method.
+
+Among native Agent workload processes, only the selected Agent scope receives its bounded
+credential projection and inherited network access. The parent Flow remains
+network-isolated and keyless. A native client starts with an empty work
+directory; Jig advertises no ACP filesystem, terminal, or MCP client
+capability, supplies no MCP servers, and grants no permission request. Fixed
+Claude and Pi profiles additionally disable native tools and ambient extensions.
+Codex retains its constrained native tool environment with no-network workspace
+policy and protected authentication projection; it is not a universal tools-off
+profile. See [exact native profiles](finite-acp.md#native-client-profiles). Selected
+FLOW skills become bounded instruction text only. No Agent implementation can
+widen the Flow's exact admitted child slots, and none creates a public provider
+registry or SPI.
+
+Dependency preparation uses the selected host's ownership, filesystem,
+process, and cleanup boundary. Only Jig's fixed installer and worker execute there;
+package source is handled as data and lifecycle scripts are disabled. That
+trusted preparation process may inherit host networking long enough to fetch
+the validated lock from the fixed registry, or perform explicitly permitted
+missing-lock resolution before graph validation. The resulting package is captured
+before admission. This does not give the later Flow Run network access.
+
+CPU throttling is not a deadline, so the trusted owner also enforces a hard
+wall-clock limit. Root Runs default to 30 seconds; the installed CLI accepts a
+positive integer duration with `ms`, `s`, `m`, or `h`, up to 24 hours. This
+deadline begins with the accepted root Run. Project acquisition precedes it,
+and mandatory fencing and cleanup may settle afterward. On Linux, every
+completion, failure, session close, and coordinator loss kills the whole
+cgroup, waits until it is unpopulated, removes its resources, and surfaces
+cleanup failure. There is no weaker fallback path.
+
+On qualified Macs, a private launchd guardian establishes an exclusive
+resource coalition and a restrictive sandbox before package bytes execute.
+The operator needs no `sudo`, helper installation, or managed execution
+account. Each scope receives only its projected read-only files, private
+writable storage, selected network policy, and its authenticated Run channel.
+Unselected file descriptors and Mach rights are closed before execution.
+Cancellation, deadline, coordinator loss, and recovery fence the complete
+owned coalition and confirm storage cleanup before reporting settlement.
+CPU, memory, and process limits use supervised sampling and termination rather
+than Linux cgroup hard quotas, so short overshoot is possible.
+
+The selected profiles are Intel Darwin 23.4.0 build 23E224, Intel/Apple Silicon Darwin 24.6.0 build 24G830, and Apple Silicon Darwin 24.6.0 build 24H232.
+Each profile requires complete native qualification before release. Other builds fail closed.
+
+Containment and system-management executables default to `/usr/bin`, `/bin`, and the NixOS system profile
+`/run/current-system/sw/bin`. The operator may select Bubblewrap through an
+absolute `JIG_BWRAP_PATH` in the host environment. An explicit selection must
+pass the same executable, feature, retained-identity, and revalidation checks;
+failure never selects another executable. Neither project input nor ambient
+`PATH` selects those containment tools. Native Agent clients use the separate
+[operator executable discovery rules](finite-acp.md#native-client-profiles).
+The selection is not exposed to Flow code.
+NixOS uses its system-managed nix-ld link to select the real glibc
+loader. Runtime support is still authenticated and mounted file by file;
+neither the nix-ld shim nor the entire Nix store is exposed to a Run. These
+host paths do not alter capability, delegation, or resource requirements.
+
+Containment details are Jig host internals. FLOW metadata cannot choose or
+weaken them.
+
+## 10. Editing behavior
+
+- Adding or changing source proposes a new candidate. It has no effect until
+  review and apply.
+- Deleting a member proposes removal. The old admitted generation remains
+  usable until a replacement is applied.
+- Renaming is one removal plus one addition in the same candidate.
+- Formatting changes which preserve normalized project meaning need no new
+  admission.
+- An explicit review client selection belongs to that retained proposal, not a
+  source edit or remembered preference. A later review without it uses source
+  again; failure retains the previous complete code and client.
+
+Runtime dispatch always uses an immutable admitted generation. It never reads
+the live discovery directories to decide what to execute.
+
+## 11. Required conformance
+
+The direct-alpha project implementation must prove at least:
+
+1. Bare initialization creates only `.gitignore`, `jig.ts`, `flows/`, and
+   `bindings/`, and cleans up its own partial output after failure.
+2. Discovery is shallow and exact; missing roots are empty; exact lists fail
+   closed; unsafe paths, symlinks, aliases, and collisions reject.
+3. Only the captured static TypeScript closure is evaluated, under bounded
+   authority, and apply never reevaluates it.
+4. Invalid package metadata, schemas, Binding settings or slots,
+   unsupported attachment profiles or child relations, or dangling package references reject
+   the complete candidate.
+5. Source changes grant no authority before explicit apply.
+6. A Plan binds the exact candidate, lock, host readiness observation, and
+   base admission; stale apply changes nothing.
+7. Lock bytes become durable before local admission; injected crashes expose
+   either the old or new complete authority state.
+8. Replaying one Plan is idempotent. Lost Plan publication responses and lost
+   Run acknowledgements converge without duplicate authority or execution.
+9. A direct Run resolves only an exact admitted `flow:` or `binding:` target,
+   validates input before package execution, and validates outcomes and result
+   before success.
+10. Same submission key and content returns one Run; changed content conflicts
+    before dispatch.
+11. Coordinator loss fences possibly dispatched work and reports loss without
+    redispatch or invented success.
+12. Session close linearizes with in-flight operations, rejects new work,
+    settles or fences live Runs, and releases exclusive project ownership.
+13. Hostile descendants cannot escape the selected host's process ownership,
+    filesystem isolation, deadline enforcement, cancellation, or whole-tree
+    cleanup. Linux enforces hard aggregate resource limits; Mac reports
+    supervised limit overshoot rather than claiming hard quotas.
+14. Repeated Runs leave no process, owner state, scratch, or private-device residue.
+15. Direct-Flow and Binding child calls resolve only exact same-generation Flow
+    or bounded Binding targets, receive their own admitted settings and routes
+    and only explicitly mapped attachments,
+    cannot exceed the parent deadline, and leave no separately addressable
+    child history.
+16. One exact Agent Run invocation receives only explicitly supplied Skill
+    contents and context, validates structured output, remains inside
+    the parent deadline, and gives the Flow neither network nor its provider
+    credential.
+17. Reviewed project commands execute immutable candidate bytes in separate
+    keyless envelopes, retain exact identities and bounded collected evidence,
+    reject authority outside the Binding, and close root and child ownership
+    on cancellation, deadline, and coordinator loss without replay.
+18. Project defaults match named contracts exactly, explicit Binding routes
+    override them, mismatches never select native fallback, and anonymous slots
+    receive no defaults. Review retains effective direct-Flow and Binding
+    routes, rejects invalid or over-deep graphs, and source edits cannot
+    change an admitted Run's implementation or authority.
+19. CLI review refuses every observed typed selected ACP prerequisite before apply
+    or unchanged success, even with ready code targets, `--yes`, redirected output
+    or a saturated issue report. It retains prior complete approval and SDK
+    per-target readiness, starts no Flow/model call, and never rewrites ACP source.
+20. Explicit review client selection changes only `client` in all selected normalized
+    ACP policies before qualification; source, other fields and authority checks
+    remain intact. Candidate/capture identity, lock, recipes and inspection agree
+    on effective policy and retained origin. Pinned cross-client models,
+    incompatible retention and zero selected ACP policies refuse atomically.
+    A same-client choice qualifies; later bare review uses source again, and a
+    failed later review retains the earlier code and client together.

@@ -19,6 +19,7 @@ const sidebar = [
   {
     text: 'Build',
     items: [
+      { text: 'Project design', link: '/guide/design' },
       { text: 'Choose an Agent', link: '/guide/agents' },
       { text: 'Reuse the Agent method', link: '/guide/agent-method' },
       { text: 'Revise in one conversation', link: '/guide/conversations' },

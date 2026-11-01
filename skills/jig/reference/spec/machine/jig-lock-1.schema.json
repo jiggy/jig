@@ -1,0 +1,584 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
+  "title": "Jig lock/1",
+  "description": "The portable desired-state value stored as canonical JSON/0 plus LF in jig.lock. Project-path, LocalName, digest, collision, protected-path, exact interface matching, acyclic child-depth, aggregate-target, and canonical-byte rules are additionally enforced by Jig.",
+  "type": "object",
+  "properties": {
+    "agentOverride": {
+      "enum": ["codex", "claude", "pi"],
+      "description": "Explicit review-only client selection that constructed every selected ACP policy. Jig requires at least one such policy and exact agreement. It is retained origin, never a default for future reviews or a Run-time overlay."
+    },
+    "packages": {
+      "type": "object",
+      "description": "Package entries keyed by canonical project-relative package path.",
+      "additionalProperties": {
+        "$ref": "#/$defs/package"
+      },
+      "maxProperties": 65536
+    },
+    "bindings": {
+      "type": "object",
+      "description": "Binding entries keyed by LocalName.",
+      "additionalProperties": {
+        "$ref": "#/$defs/binding"
+      },
+      "maxProperties": 4096
+    },
+    "entrypoint": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16384,
+      "description": "An exact Run target followed by optional Jig run invocation arguments. Jig validates quoting, permitted options, project-relative paths and target membership. No shell execution or expansion."
+    }
+  },
+  "required": ["packages", "bindings"],
+  "additionalProperties": false,
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "description": "A sha256: digest containing exactly 64 lowercase hexadecimal digits.",
+      "minLength": 71,
+      "maxLength": 71
+    },
+    "package": {
+      "type": "object",
+      "properties": {
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "directRun": {
+          "type": "boolean"
+        },
+        "supports": {
+          "type": "array",
+          "maxItems": 256,
+          "description": "Unique LocalNames from the offered contract catalog; exact membership and uniqueness are enforced by Jig.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          }
+        },
+        "uses": {
+          "type": "object",
+          "description": "Invocation requirements keyed by package-local slot: an empty uncontracted requirement or an exact named interface. This is not native-host qualification.",
+          "additionalProperties": {
+            "$ref": "#/$defs/invocationRequirement"
+          },
+          "maxProperties": 256
+        },
+        "slots": {
+          "type": "object",
+          "description": "Effective ordinary routes resolved from project defaults for this direct Flow. Omitted when empty; grants and a live defaults map are never stored here.",
+          "additionalProperties": {
+            "$ref": "#/$defs/ordinaryTargetIdentity"
+          },
+          "minProperties": 1,
+          "maxProperties": 256
+        }
+      },
+      "required": ["digest", "directRun", "uses"],
+      "additionalProperties": false,
+      "if": {
+        "required": ["slots"]
+      },
+      "then": {
+        "properties": {
+          "directRun": {
+            "const": true
+          }
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "properties": {
+        "packagePath": {
+          "type": "string",
+          "description": "A canonical project-relative path selecting one package entry.",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "settings": {
+          "type": "object",
+          "additionalProperties": true,
+          "maxProperties": 65536
+        },
+        "slots": {
+          "type": "object",
+          "description": "Effective exact Flow, bounded Binding, or resolved resource policy keyed by consumer-local slot; explicit Binding selections override project defaults.",
+          "additionalProperties": {
+            "$ref": "#/$defs/targetIdentity"
+          },
+          "maxProperties": 256
+        },
+        "attachments": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": {
+            "$ref": "#/$defs/attachment"
+          }
+        }
+      },
+      "required": ["packagePath", "settings", "slots"],
+      "additionalProperties": false
+    },
+    "attachment": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "digest": {
+          "$ref": "#/$defs/digest"
+        },
+        "files": {
+          "type": "array",
+          "maxItems": 64,
+          "items": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 512
+              },
+              "bytes": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 8388608
+              },
+              "digest": {
+                "$ref": "#/$defs/digest"
+              }
+            },
+            "required": ["path", "bytes", "digest"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["source", "digest", "files"],
+      "additionalProperties": false
+    },
+    "ordinaryTargetIdentity": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "flow"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            }
+          },
+          "required": ["kind", "path"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "binding"
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["kind", "id"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "targetIdentity": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ordinaryTargetIdentity"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "grant"
+            },
+            "policy": {
+              "$ref": "#/$defs/grantPolicy"
+            },
+            "evaluation": {
+              "$ref": "#/$defs/retainedEvaluation"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["kind", "policy"],
+          "additionalProperties": false
+        },
+        {
+          "$ref": "#/$defs/mappedAttachmentRoute"
+        }
+      ]
+    },
+    "retainedPackage": {
+      "type": "object",
+      "properties": {
+        "kind": { "const": "flow-package/0" },
+        "digest": { "type": "string", "minLength": 71, "maxLength": 71 }
+      },
+      "required": ["kind", "digest"],
+      "additionalProperties": false
+    },
+    "retainedEvaluation": {
+      "description": "Exact reviewed recipe and development-inclusive dependency bytes, effective policy, and private alias layout. References alone grant no authority.",
+      "type": "object",
+      "properties": {
+        "recipe": { "$ref": "#/$defs/retainedPackage" },
+        "dependencies": { "$ref": "#/$defs/retainedPackage" },
+        "recipeDigest": { "type": "string", "minLength": 71, "maxLength": 71 },
+        "dependencyDigest": { "type": "string", "minLength": 71, "maxLength": 71 },
+        "layout": {
+          "type": "object",
+          "properties": {
+            "flowRoot": { "type": "string" },
+            "members": { "type": "array", "maxItems": 256, "items": { "type": "string" } },
+            "aliases": {
+              "type": "array",
+              "maxItems": 4096,
+              "items": {
+                "type": "object",
+                "properties": { "path": { "type": "string" }, "target": { "type": "string" } },
+                "required": ["path", "target"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["flowRoot", "members", "aliases"],
+          "additionalProperties": false
+        },
+        "configuration": {
+          "type": "object",
+          "properties": {
+            "recipe": {
+              "type": "object",
+              "properties": {
+                "family": { "const": "bun-typescript" },
+                "generate": { "type": "string" },
+                "test": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "items": { "type": "string" }
+                },
+                "collect": {
+                  "type": "array",
+                  "maxItems": 3,
+                  "items": { "enum": ["generated", "dist", "reports"] }
+                }
+              },
+              "required": ["family", "test", "collect"],
+              "additionalProperties": false
+            },
+            "compiler": {
+              "type": "object",
+              "properties": {
+                "compilerOptions": {
+                  "type": "object",
+                  "properties": {
+                    "target": { "enum": ["ES2022", "ESNext"] },
+                    "module": { "const": "ESNext" },
+                    "moduleResolution": { "const": "Bundler" },
+                    "strict": { "type": "boolean" },
+                    "noUncheckedIndexedAccess": { "type": "boolean" },
+                    "exactOptionalPropertyTypes": { "type": "boolean" },
+                    "skipLibCheck": { "type": "boolean" },
+                    "declaration": { "type": "boolean" },
+                    "sourceMap": { "type": "boolean" },
+                    "lib": { "type": "array", "items": { "enum": ["ES2022", "ESNext", "DOM"] } },
+                    "types": { "type": "array", "items": { "type": "string" } },
+                    "rootDir": { "const": "." },
+                    "outDir": { "const": "dist" },
+                    "noEmitOnError": { "const": true },
+                    "incremental": { "const": false }
+                  },
+                  "required": [
+                    "target",
+                    "module",
+                    "moduleResolution",
+                    "rootDir",
+                    "outDir",
+                    "noEmitOnError",
+                    "incremental"
+                  ],
+                  "additionalProperties": false
+                },
+                "include": {
+                  "type": "array",
+                  "minItems": 4,
+                  "maxItems": 4,
+                  "items": {
+                    "enum": ["src/**/*.ts", "tools/**/*.ts", "test/**/*.ts", "generated/**/*.ts"]
+                  }
+                },
+                "exclude": {
+                  "type": "array",
+                  "minItems": 3,
+                  "maxItems": 3,
+                  "items": { "enum": ["node_modules", "scratch", "dist"] }
+                }
+              },
+              "required": ["compilerOptions", "include", "exclude"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["recipe", "compiler"],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "recipe",
+        "dependencies",
+        "recipeDigest",
+        "dependencyDigest",
+        "layout",
+        "configuration"
+      ],
+      "additionalProperties": false
+    },
+    "invocationRequirement": {
+      "oneOf": [
+        {
+          "type": "object",
+          "maxProperties": 0,
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "digest": {
+              "$ref": "#/$defs/digest"
+            },
+            "requires": {
+              "type": "array",
+              "maxItems": 256,
+              "description": "Unique LocalNames from the required contract catalog; exact membership and uniqueness are enforced by Jig.",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              }
+            }
+          },
+          "required": ["id", "version", "digest"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "grantPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "evaluation" },
+            "recipe": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "attachments": {
+              "type": "object",
+              "properties": {
+                "candidate": { "const": "supplied-read" },
+                "deliverables": { "const": "operation-create" }
+              },
+              "required": ["candidate", "deliverables"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "recipe", "attachments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "acp"
+            },
+            "client": {
+              "enum": ["codex", "claude", "pi"]
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "maxTurns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "retainSessions": {
+              "const": true
+            }
+          },
+          "required": ["kind", "client"],
+          "if": {
+            "required": ["retainSessions"]
+          },
+          "then": {
+            "properties": {
+              "client": {
+                "const": "codex"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "http"
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "method": {
+              "enum": ["GET", "POST"]
+            },
+            "bearerEnv": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "requestBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8388608
+            },
+            "responseBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12582912
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60000
+            },
+            "bodySchema": {
+              "type": ["object", "boolean"]
+            }
+          },
+          "required": ["kind", "url", "method", "requestBytes", "responseBytes", "timeoutMs"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "run": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": ["kind", "run"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "test": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": ["kind", "test"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "attachmentMapping": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["from"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "create": { "const": true }
+          },
+          "required": ["create"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "supplied": { "const": "read" }
+          },
+          "required": ["supplied"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "attachmentMap": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 8,
+      "additionalProperties": {
+        "$ref": "#/$defs/attachmentMapping"
+      }
+    },
+    "mappedAttachmentRoute": {
+      "type": "object",
+      "description": "Closed static review data, with no native filesystem authority. Mapped child execution requires admitted routes and qualified native containment and cleanup support.",
+      "properties": {
+        "kind": {
+          "const": "route"
+        },
+        "target": {
+          "$ref": "#/$defs/ordinaryTargetIdentity"
+        },
+        "attachments": {
+          "$ref": "#/$defs/attachmentMap"
+        }
+      },
+      "required": ["kind", "target", "attachments"],
+      "additionalProperties": false
+    }
+  }
+}
