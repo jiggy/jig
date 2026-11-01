@@ -1,37 +1,19 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "dbd01232882219f162d9f7ab571500c829ad332a",
-  "sourceDigest": "e57377546a6fd7ff485417ca33b6d202f7975247f2f5057df395f499598c07a9",
+  "baseRevision": "fff63329d24e5961ebdff24b5b96f0ba17d2eda5",
+  "sourceDigest": "f9280126c1a8eed8115fa683fa32e994d80552e9efb6dc21c96c0e736721683b",
   "changesets": [
     {
-      "id": "landing-font-license-notices",
-      "sha256": "353cecef8e28a001135d4bf04e29f8a34ab2b34182b4f93d8be174012750e89e"
+      "id": "native-session-failure-reasons",
+      "sha256": "508ec6b7826db3a817ce24091d15561365874ae31bb4d0bbcd5ec8540e5aee03"
     }
   ],
   "releases": [
     {
-      "name": "@jigging/display-model",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.3",
-      "newVersion": "0.1.0-alpha.4"
-    },
-    {
-      "name": "@jigging/display-tui",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.3",
-      "newVersion": "0.1.0-alpha.4"
-    },
-    {
-      "name": "@jigging/display-web",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.3",
-      "newVersion": "0.1.0-alpha.4"
-    },
-    {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.46",
-      "newVersion": "0.1.0-alpha.47"
+      "oldVersion": "0.1.0-alpha.47",
+      "newVersion": "0.1.0-alpha.48"
     }
   ]
 }
