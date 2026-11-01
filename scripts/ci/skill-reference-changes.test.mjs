@@ -134,8 +134,10 @@ test('the trusted CLI prepares, validates, and reconstructs a tree with exact at
   const path = join(options.root, 'prepared.json')
   const env = {
     ...process.env,
-    GITHUB_RUN_ID: identity.runId,
-    GITHUB_RUN_ATTEMPT: identity.runAttempt,
+    GITHUB_RUN_ID: '99',
+    GITHUB_RUN_ATTEMPT: '4',
+    SKILL_REFERENCE_RUN_ID: identity.runId,
+    SKILL_REFERENCE_RUN_ATTEMPT: identity.runAttempt,
   }
   const invoke = (command, selectedEnv = env) =>
     execFileSync(process.execPath, [script, command, options.root, options.source, path], {
@@ -147,7 +149,7 @@ test('the trusted CLI prepares, validates, and reconstructs a tree with exact at
   assert.equal(invoke('validate'), '')
   assert.equal(invoke('tree'), git(options.root, 'write-tree'))
   assert.throws(
-    () => invoke('validate', { ...env, GITHUB_RUN_ATTEMPT: '3' }),
+    () => invoke('validate', { ...env, SKILL_REFERENCE_RUN_ATTEMPT: '3' }),
     /mismatched source\/run identity/,
   )
 })

@@ -12,11 +12,18 @@ const workflow = parse(
     'utf8',
   ),
 )
-const { generate, synchronize } = workflow.jobs
+const writer = parse(
+  await readFile(
+    new URL('../../.github/workflows/write-skill-references.yml', import.meta.url),
+    'utf8',
+  ),
+)
+const { generate } = workflow.jobs
+const { synchronize } = writer.jobs
 
 test('only same-repository open PRs into the default branch enter automatic synchronization', () => {
-  assert.deepEqual(Object.keys(workflow.on), ['pull_request_target'])
-  assert.deepEqual(workflow.on.pull_request_target.types, ['opened', 'reopened', 'synchronize'])
+  assert.deepEqual(Object.keys(workflow.on), ['pull_request'])
+  assert.deepEqual(workflow.on.pull_request.types, ['opened', 'reopened', 'synchronize'])
   const allowed = Function('github', `return (${generate.if})`)
   const context = {
     repository: 'jiggy/jig',
@@ -58,7 +65,7 @@ test('PR content is inert input to trusted tooling without credential or depende
   assert.deepEqual(
     checkouts.map((step) => [step.with.path, step.with.ref, step.with['persist-credentials']]),
     [
-      ['trusted', '${{ github.sha }}', false],
+      ['trusted', '${{ github.event.pull_request.base.sha }}', false],
       ['incoming', '${{ github.event.pull_request.head.sha }}', false],
     ],
   )
@@ -69,7 +76,8 @@ test('PR content is inert input to trusted tooling without credential or depende
     /node trusted\/scripts\/sync-skills\.mjs --root "\$GITHUB_WORKSPACE\/incoming"/,
   )
   assert.doesNotMatch(commands, /node incoming\/|bun install --cwd incoming|gh |git push/)
-  assert.ok(generate.steps.every((step) => !JSON.stringify(step).includes('secrets.')))
+  assert.deepEqual(Object.keys(workflow.jobs), ['generate'])
+  assert.doesNotMatch(JSON.stringify(workflow), /secrets\.|create-github-app-token|git push/)
   const upload = generate.steps.find((step) => step.uses?.startsWith('actions/upload-artifact@'))
   assert.match(upload.with.name, /github\.run_id/)
   assert.match(upload.with.name, /github\.run_attempt/)
@@ -77,24 +85,39 @@ test('PR content is inert input to trusted tooling without credential or depende
 })
 
 test('the fresh writer validates data before a contents-only App token and preserves genuine PR checks', () => {
-  assert.deepEqual(synchronize.permissions, { contents: 'read' })
-  assert.equal(synchronize.needs, 'generate')
-  assert.equal(synchronize.if, "needs.generate.outputs.changed == 'true'")
+  assert.deepEqual(Object.keys(writer.on), ['workflow_run'])
+  assert.deepEqual(writer.on.workflow_run, {
+    workflows: [workflow.name],
+    types: ['completed'],
+  })
+  assert.deepEqual(writer.permissions, {
+    contents: 'read',
+    actions: 'read',
+    'pull-requests': 'read',
+  })
+  assert.equal(synchronize.permissions, undefined)
+  assert.equal(synchronize.needs, undefined)
   const checkouts = synchronize.steps.filter((step) => step.uses?.startsWith('actions/checkout@'))
   assert.equal(checkouts.length, 1)
   assert.equal(checkouts[0].with.ref, '${{ github.sha }}')
   assert.equal(checkouts[0].with['persist-credentials'], false)
-  const download = synchronize.steps.find((step) =>
-    step.uses?.startsWith('actions/download-artifact@'),
-  )
-  assert.equal(download.with['artifact-ids'], '${{ needs.generate.outputs.artifact-id }}')
+  const selection = synchronize.steps.findIndex((step) => step.id === 'source')
+  assert.match(synchronize.steps[selection].run, /node scripts\/ci\/skill-reference-run\.mjs/)
+  assert.equal(synchronize.steps[selection].env.GH_TOKEN, '${{ github.token }}')
   const token = synchronize.steps.findIndex((step) =>
     step.uses?.startsWith('actions/create-github-app-token@'),
   )
   const validation = synchronize.steps.findIndex((step) =>
     step.run?.includes('skill-reference-changes.mjs validate'),
   )
-  assert.ok(validation >= 0 && validation < token)
+  assert.ok(selection >= 0 && validation > selection && validation < token)
+  for (const step of synchronize.steps.filter((step) => step.env?.SKILL_REFERENCE_RUN_ID)) {
+    assert.equal(step.env.SKILL_REFERENCE_RUN_ID, '${{ steps.source.outputs.source-run-id }}')
+    assert.equal(
+      step.env.SKILL_REFERENCE_RUN_ATTEMPT,
+      '${{ steps.source.outputs.source-run-attempt }}',
+    )
+  }
   assert.equal(synchronize.steps[token].with['app-id'], '${{ vars.RELEASE_APP_ID }}')
   assert.equal(
     synchronize.steps[token].with['private-key'],
@@ -107,14 +130,72 @@ test('the fresh writer validates data before a contents-only App token and prese
     ['permission-contents'],
   )
   const commands = synchronize.steps.map((step) => step.run ?? '').join('\n')
-  assert.doesNotMatch(commands, /(?:bun|npm) (?:install|ci)|gh workflow|workflow_dispatch/)
+  assert.doesNotMatch(
+    commands,
+    /(?:bun|npm) (?:install|ci)|gh workflow|workflow_dispatch|git checkout/,
+  )
   assert.match(commands, /commit-tree "\$tree" -p "\$PR_HEAD_SHA"/)
   assert.match(commands, /git push --force-with-lease="refs\/heads\/\$PR_BRANCH:\$PR_HEAD_SHA"/)
   const push = synchronize.steps.find((step) => step.run?.includes('git push'))
   assert.equal(push.env.GH_TOKEN, '${{ steps.app-token.outputs.token }}')
+  for (const step of synchronize.steps.slice(selection + 1))
+    assert.equal(step.if, "steps.source.outputs.ready == 'true'")
 })
 
-test('missing App configuration leaves an actionable failure instead of a non-triggering token push', async (t) => {
+test('only successful same-repository PR producers enter the trusted writer', () => {
+  const allowed = Function('github', `return (${synchronize.if})`)
+  const context = {
+    repository: 'jiggy/jig',
+    event: {
+      repository: { default_branch: 'main' },
+      workflow_run: {
+        event: 'pull_request',
+        conclusion: 'success',
+        path: '.github/workflows/sync-skill-references.yml',
+        head_repository: { full_name: 'jiggy/jig' },
+        head_branch: 'feature',
+      },
+    },
+  }
+  assert.equal(allowed(context), true)
+  for (const change of [
+    { event: 'pull_request_target' },
+    { event: 'workflow_dispatch' },
+    { event: 'push' },
+    { conclusion: 'failure' },
+    { conclusion: 'cancelled' },
+    { path: '.github/workflows/other.yml' },
+    { head_repository: { full_name: 'contributor/jig' } },
+    { head_branch: 'main' },
+  ]) {
+    const rejected = structuredClone(context)
+    Object.assign(rejected.event.workflow_run, change)
+    assert.equal(allowed(rejected), false)
+  }
+})
+
+test('foreign producers cannot cancel a writer for the same branch name', () => {
+  const group = (run) =>
+    writer.concurrency.group.replace(/\$\{\{\s*(.*?)\s*\}\}/g, (_, expression) =>
+      String(Function('github', `return (${expression})`)({ event: { workflow_run: run } })),
+    )
+  const producer = {
+    workflow_id: 6,
+    head_repository: { id: 42 },
+    head_branch: 'feature',
+    head_sha: 'a'.repeat(40),
+    id: 17,
+    run_attempt: 1,
+  }
+  assert.equal(writer.concurrency['cancel-in-progress'], true)
+  assert.notEqual(group(producer), group({ ...producer, head_repository: { id: 43 } }))
+  assert.notEqual(group(producer), group({ ...producer, workflow_id: 7 }))
+  assert.notEqual(group(producer), group({ ...producer, head_branch: 'another-feature' }))
+  assert.equal(group(producer), group({ ...producer, head_sha: 'b'.repeat(40), id: 18 }))
+  assert.equal(group(producer), group({ ...producer, run_attempt: 2 }))
+})
+
+test('missing App configuration leaves an actionable failure without acquiring write authority', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'jig-skill-workflow-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const setup = synchronize.steps.find((step) => step.env?.HAS_RELEASE_APP_ID)
@@ -141,7 +222,7 @@ test('missing App configuration leaves an actionable failure instead of a non-tr
       const message = await readFile(summary, 'utf8')
       assert.match(message, /just sync-skills/)
       assert.match(message, /leaves the branch unchanged/)
-      assert.match(message, /Re-run all jobs/)
+      assert.match(message, /re-run the Sync skill references workflow/)
     }
   }
 })
@@ -159,7 +240,7 @@ test('ordinary and fork CI check reference freshness through the existing requir
   assert.equal(quick.permissions.contents, 'read')
 })
 
-test('generator edits receive a local handoff instead of older generated output', async (t) => {
+test('new or edited generation tooling receives a local synchronization handoff', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'jig-skill-generator-'))
   t.after(() => rm(root, { recursive: true, force: true }))
   const runGit = (path, ...args) =>
@@ -167,10 +248,15 @@ test('generator edits receive a local handoff instead of older generated output'
   for (const name of ['trusted', 'incoming']) {
     const path = join(root, name)
     await mkdir(join(path, 'scripts'), { recursive: true })
+    await mkdir(join(path, 'scripts/ci'), { recursive: true })
     runGit(path, 'init', '-q')
     runGit(path, 'config', 'user.name', 'Test Author')
     runGit(path, 'config', 'user.email', 'test@example.invalid')
     await writeFile(join(path, 'scripts/sync-skills.mjs'), 'export const version = 1\n')
+    await writeFile(
+      join(path, 'scripts/ci/skill-reference-changes.mjs'),
+      'export const version = 1\n',
+    )
     runGit(path, 'add', '--all')
     runGit(path, 'commit', '-qm', 'base')
   }
@@ -193,6 +279,11 @@ test('generator edits receive a local handoff instead of older generated output'
   const changed = await run('changed')
   assert.equal(changed.output, 'unchanged=false\n')
   assert.match(await readFile(changed.summary, 'utf8'), /just sync-skills/)
+  runGit(join(root, 'trusted'), 'rm', 'scripts/sync-skills.mjs')
+  runGit(join(root, 'trusted'), 'commit', '-qm', 'base before skill tooling')
+  const absent = await run('missing')
+  assert.equal(absent.output, 'unchanged=false\n')
+  assert.match(await readFile(absent.summary, 'utf8'), /introduces or changes generation tooling/)
   for (const step of generate.steps.filter(
     (step) => step.run?.includes('bun install') || step.run?.includes('node trusted/'),
   ))
