@@ -10,7 +10,8 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - `src/client.ts` owns bounded synchronization, memory capability and preview
   requests. `src/navigation.ts` owns viewer-local semantic selection/references.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
-- `src/application.ts` composes authored sections and complete-column tables.
+- `src/application.ts` composes authored reading, media, gallery, document and comparison surfaces.
+  Gallery metadata uses a disclosure without dropping supplied columns.
   `src/app.ts`, `src/app.css` and `src/index.html` own inert browser
   rendering.
 - `scripts/build-assets.ts` emits fixed self-contained values for the declared
@@ -42,7 +43,8 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - Render author/file/diagnostic data as inert text. Only typed scoped references
   navigate. Path strings never grant evidence access or assign domain success.
 - Visible captured media shares one serial request queue with evidence inspection.
-  Retain at most 24 visible requests and eight MiB of cached replies.
+  Retain at most 24 visible requests and forty MiB of cached replies.
+  Each preview response allows three MiB of JSON for a bounded two-MiB raster.
   Complete downloads require the exact capture generation and declared availability.
   Closing the client fences previews, media and downloads.
 
@@ -59,10 +61,19 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - Appearance uses fixed accessible icon buttons with names, tooltips, focus
   and pressed state. Default System follows browser preference. Choices are
   viewer-local.
+- The compact application frame puts routine host facts in Run details while retaining visible attention and Close.
+- Document covers and downloads use exact current capture bindings and generation checks.
+- Presentation follows supplied block types and explicit roles, independently of application names.
+  Document content preserves image proportions. Content and covers retain accessible captured-source disclosures.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
   inspection destinations.
+- Follow [DESIGN.md](DESIGN.md) for the approved workbench hierarchy and material-specific acceptance criteria.
+- Preserve application selection through local filtering. Explain hidden selections and allow clearing filters without selecting another record.
+  Clear filters restores focus to the selected control, or the visible detail Back button at narrow widths.
+  Search input keeps focus while typing.
+- Render captured text, delimited tables and diffs inline. Keep unavailable and clipped captures explicit.
 - Preserve list/context/expanded-evidence hierarchy, keyboard focus, compact
   navigation, diagnostic uncertainty and captured-file findings.
 - Routine replacement belongs in quiet synchronization. Actual loss remains

@@ -10,11 +10,14 @@ export type PhotoBoxState = {
     | 'checking'
     | 'copying'
     | 'contact-sheet'
+    | 'yearbook'
     | 'ready'
     | 'blocked'
     | 'limit'
     | 'cancelled'
     | 'failed'
+  albumTitle?: string
+  yearbook?: { pages: number; bytes: number }
   photos?: Photo[]
   plan?: RenamedPhoto[]
   reason?: string
@@ -26,7 +29,8 @@ const stages = {
   checking: ['Checking every assignment and filename', 2],
   copying: ['Preparing checked copies and the manifest', 3],
   'contact-sheet': ['Creating the before-and-after contact sheet', 4],
-  ready: ['Photo collection prepared', 5],
+  yearbook: ['Preparing the printable yearbook', 5],
+  ready: ['Photo collection prepared', 6],
   blocked: ['Grouping needs attention', 0],
   limit: ['Grouping limit reached', 0],
   cancelled: ['Photo organisation cancelled', 0],
@@ -47,7 +51,7 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
       blocks: [
         {
           kind: 'report',
-          text: 'Open the contact sheet to see the original photo box beside its organised copies. The manifest records every destination.',
+          text: 'The checked collection preserves every original. Compare the grouping and review the destinations in the manifest.',
           references: [
             { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
             { kind: 'artifact', attachment: 'copies', path: 'manifest.csv' },
@@ -60,7 +64,7 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
   sections.push({
     title: 'Photo box status',
     blocks: [
-      { kind: 'progress', label, completed, total: 5, unit: 'stages' },
+      { kind: 'progress', label, completed, total: 6, unit: 'stages' },
       {
         kind: 'facts',
         items: [
@@ -84,57 +88,78 @@ export function photoBoxView(state: PhotoBoxState): ViewSnapshot {
   })
 
   if (photos.length) {
-    sections.push({
-      title: 'Your photos',
-      blocks: [
-        {
-          kind: 'collection',
-          id: 'photos',
-          title: 'Original → organised copy',
-          presentation: { kind: 'table' },
-          columns: [
-            { key: 'original', label: 'Original', type: 'text' },
-            { key: 'date', label: 'Date', type: 'text' },
-            { key: 'group', label: 'Event', type: 'text' },
-            { key: 'copy', label: ready ? 'Copy' : 'Planned copy', type: 'text' },
-          ],
-          rows: photos.map((photo) => {
-            const checked = plan.find((entry) => entry.id === photo.id)
-            return {
-              id: photo.id,
-              cells: {
-                original: photo.file,
-                date: photo.date,
-                group: checked?.event ?? null,
-                copy: checked?.destination ?? null,
-              },
-              details: [
-                {
-                  kind: 'content',
-                  title: 'Original photo',
-                  reference: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+    const events = state.plan ? groups : ['Awaiting checked grouping']
+    for (const event of events) {
+      // Event identity survives phase changes and reordered groups.
+      const collectionId = state.plan
+        ? `event-${createHash('sha256').update(event).digest('base64url')}`
+        : 'ungrouped-photos'
+      const members = photos.filter(
+        (photo) => !state.plan || plan.find((entry) => entry.id === photo.id)?.event === event,
+      )
+      sections.push({
+        title: event,
+        blocks: [
+          {
+            kind: 'collection',
+            id: collectionId,
+            title: event,
+            presentation: {
+              kind: 'gallery',
+              media: 'image',
+              title: 'caption',
+              alt: 'caption',
+              description: 'date',
+            },
+            columns: [
+              { key: 'caption', label: 'Caption', type: 'text' },
+              { key: 'image', label: 'Original photo', type: 'reference' },
+              { key: 'date', label: 'Date', type: 'text' },
+              { key: 'original', label: 'Original', type: 'text' },
+              { key: 'copy', label: ready ? 'Copy' : 'Planned copy', type: 'text' },
+            ],
+            rows: members.map((photo) => {
+              const checked = plan.find((entry) => entry.id === photo.id)
+              return {
+                id: photo.id,
+                cells: {
+                  caption: photo.caption,
+                  image: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+                  date: photo.date,
+                  original: photo.file,
+                  copy: checked?.destination ?? null,
                 },
-                {
-                  kind: 'report',
-                  text: photo.caption,
-                  references:
-                    ready && checked
-                      ? [
-                          {
-                            kind: 'artifact',
-                            attachment: 'copies',
-                            path: checked.destination.slice('copies/'.length),
-                          },
-                        ]
-                      : [],
-                },
-              ],
-            }
-          }),
-          total: photos.length,
-        },
-      ],
-    })
+                details: [
+                  {
+                    kind: 'content',
+                    title: 'Original photo',
+                    reference: { kind: 'input-artifact', attachment: 'source', path: photo.file },
+                  },
+                  {
+                    kind: 'report',
+                    text: photo.caption,
+                    references:
+                      ready && checked
+                        ? [
+                            {
+                              kind: 'artifact',
+                              attachment: 'copies',
+                              path: checked.destination.slice('copies/'.length),
+                            },
+                          ]
+                        : [],
+                  },
+                ],
+              }
+            }),
+            total: members.length,
+          },
+        ],
+      })
+    }
+    // Material leads; status and caveats remain together below it.
+    const status = sections.findIndex((section) => section.title === 'Photo box status')
+    sections.push(...sections.splice(status, 1))
   }
 
   return {
@@ -151,20 +176,42 @@ export function photoAlbumKey(photos: readonly Photo[]): string {
 
 export function photoViewOptions(
   albumKey: string,
-): Readonly<Record<'photos' | 'organise' | 'contactSheet', ViewOptions>> {
+  albumTitle = 'Photo collection',
+): Readonly<Record<'photos' | 'organise' | 'yearbook', ViewOptions>> {
   return {
     photos: {
       title: 'Photos',
+      application: 'Photo studio',
       landing: true,
-      target: { definitionId: 'photos', instanceKey: albumKey, subjectKey: albumKey },
+      target: {
+        definitionId: 'photos',
+        instanceKey: albumKey,
+        subjectKey: albumKey,
+        label: albumTitle,
+        scopeLabel: 'Album',
+      },
     },
     organise: {
       title: 'Organise',
-      target: { definitionId: 'organise', instanceKey: albumKey, subjectKey: albumKey },
+      application: 'Photo studio',
+      target: {
+        definitionId: 'organise',
+        instanceKey: albumKey,
+        subjectKey: albumKey,
+        label: albumTitle,
+        scopeLabel: 'Album',
+      },
     },
-    contactSheet: {
-      title: 'Contact sheet',
-      target: { definitionId: 'contact-sheet', instanceKey: albumKey, subjectKey: albumKey },
+    yearbook: {
+      title: 'Yearbook',
+      application: 'Photo studio',
+      target: {
+        definitionId: 'yearbook',
+        instanceKey: albumKey,
+        subjectKey: albumKey,
+        label: albumTitle,
+        scopeLabel: 'Album',
+      },
     },
   }
 }
@@ -183,7 +230,7 @@ export function photoGalleryView(state: PhotoBoxState): ViewSnapshot {
             presentation: {
               kind: 'gallery',
               media: 'image',
-              title: 'name',
+              title: 'caption',
               alt: 'caption',
               description: 'date',
             },
@@ -220,43 +267,86 @@ export function photoGalleryView(state: PhotoBoxState): ViewSnapshot {
   }
 }
 
-export function photoContactSheetView(state: PhotoBoxState): ViewSnapshot {
-  if (state.phase === 'ready') {
-    return {
-      summary: 'Compare the captured originals with their checked event grouping.',
-      sections: [
-        {
-          title: 'Before and after',
-          blocks: [
-            {
-              kind: 'content',
-              title: 'Before-and-after contact sheet',
-              reference: { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
-            },
-            {
-              kind: 'report',
-              text: 'The manifest records every checked destination. Grouping quality still needs your review.',
-              references: [{ kind: 'artifact', attachment: 'copies', path: 'manifest.csv' }],
-            },
-          ],
-        },
+export function photoYearbookView(state: PhotoBoxState): ViewSnapshot {
+  const photos = state.photos ?? []
+  const groups = [...new Set((state.plan ?? []).map((photo) => photo.event))]
+  const ready = state.phase === 'ready' && state.yearbook !== undefined
+  const title = state.albumTitle ?? 'Photo collection'
+  const cover = photos[1] ?? photos[0]
+  const sections: Section[] = []
+  const image = (photo: Photo) => ({
+    kind: 'content' as const,
+    title: photo.caption,
+    reference: { kind: 'input-artifact' as const, attachment: 'source', path: photo.file },
+  })
+  if (state.plan?.length && photos[0]) {
+    sections.push({
+      title: 'Opening',
+      label: '01–02',
+      blocks: [
+        { kind: 'report', text: 'A cover, followed by the contents and chapter photographs.' },
+        image(photos[0]),
       ],
-    }
-  }
-  return {
-    summary:
-      'The contact sheet becomes available after both file methods complete and their results pass the application checks.',
-    sections: [
-      {
+    })
+    let page = 3
+    for (const group of groups) {
+      const members = state.plan.filter((photo) => photo.event === group)
+      const until = page + members.length
+      sections.push({
+        title: group,
+        label: `${page}–${until}`,
         blocks: [
           {
             kind: 'report',
-            text:
-              state.reason ??
-              'The captured originals remain available in Photos while organisation proceeds.',
+            text: `${members.length} photographs, brought together into one chapter.`,
           },
+          ...members.map(image),
         ],
-      },
-    ],
+      })
+      page = until + 1
+    }
+    sections.push({
+      title: 'Closing',
+      label: String(page),
+      blocks: [
+        {
+          kind: 'report',
+          text: 'The moments between them. Originals stay unchanged; review the event grouping before printing.',
+        },
+      ],
+    })
+  }
+  if (state.reason)
+    sections.unshift({
+      title: 'Preparation stopped',
+      blocks: [{ kind: 'report', text: state.reason }],
+    })
+  return {
+    summary: state.plan?.length
+      ? `${photos.length} photographs, ${groups.length} chapters, and the moments between them.`
+      : 'The yearbook is not produced yet. Captured originals remain available in Photos.',
+    presentation: {
+      kind: 'document',
+      title,
+      subtitle: 'A family yearbook',
+      label: ready
+        ? `${state.yearbook!.pages}-page yearbook · PDF ready`
+        : state.plan?.length
+          ? 'Page plan · PDF not produced yet'
+          : 'Not produced',
+      ...(cover
+        ? { cover: { kind: 'input-artifact' as const, attachment: 'source', path: cover.file } }
+        : {}),
+      ...(ready
+        ? {
+            download: {
+              reference: { kind: 'artifact' as const, attachment: 'book', path: 'yearbook.pdf' },
+              label: 'Download PDF',
+              detail: `${state.yearbook!.pages} pages · A4 portrait · ${(state.yearbook!.bytes / (1024 * 1024)).toFixed(1)} MB`,
+            },
+          }
+        : {}),
+    },
+    sections,
   }
 }

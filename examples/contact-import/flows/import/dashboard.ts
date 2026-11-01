@@ -128,6 +128,7 @@ export function contactPreviewOptions(
     .digest('hex')
   return {
     title: 'Contact preview',
+    application: 'Contact import',
     landing: true,
     target: { definitionId: 'contact-preview', instanceKey: sourceKey, subjectKey: sourceKey },
   }
@@ -171,7 +172,8 @@ export function contactPreviewView(state: ImportState): ViewSnapshot {
     },
   ]
   if (state.headers) sections.push(mappingSection(state))
-  if (preview?.status === 'ready') sections.push(acceptedSection(preview), rejectedSection(preview))
+  if (preview?.status === 'ready')
+    sections.unshift(acceptedSection(preview), rejectedSection(preview))
   if (state.file)
     sections.push({
       title: 'Your complete preview',

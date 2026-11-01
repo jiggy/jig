@@ -9,12 +9,13 @@ while application checks and operator authority control file effects.
 
 - `flows/organise` owns the short coordinating method. Its `catalogue.ts` owns source
   capture. Its `plan.ts` owns proposal/child-result acceptance and path checks.
-  Its `view.ts` projects Photos, Organise and Contact sheet from one application state.
+  Its `view.ts` projects Photos, Organise and Yearbook from one application state.
   Catalogue-derived application targets distinguish finite collections without assigning Run provenance.
 
   Photos exposes captured originals before the Agent call.
-  The completed contact-sheet page leads with visual content and a manifest reference.
-  The coordinator calls grouping and both independent file Flows. It writes no files.
+  Organise groups those photographs into event galleries, followed by status and caveats.
+  The completed Yearbook page leads with its document, chapter photographs and verified PDF download.
+  The coordinator calls grouping and three independent file Flows. It writes no files.
 - `flows/group` owns the caption-only grouping contract, one Agent call and its
   provisional grouping view in `view.ts`. It returns assignments or an explicit
   cause. It neither imports the organiser nor acquires file access.
@@ -25,11 +26,12 @@ while application checks and operator authority control file effects.
   validation, readable SVG rendering and its optional public sheet view. It uses
   original bytes through the same two attachment modes, without reading copied
   output.
+- `flows/yearbook` owns independently validated PDF rendering, page counts and exclusive file creation.
+  It uses bounded PNG/JPEG originals and the same source/output attachment modes.
 - `bindings`, `grants` and `jig.ts` select the ordinary ACP provider, explicit
   operator grant, complete child attachment maps and reviewed default
   entrypoint.
-- `fixtures/photos` owns twelve visually distinct labelled synthetic
-  illustrations and caption/date sidecars. Tests construct invalid proposals.
+- `fixtures/photos` owns six generated fictional photographs, provenance and caption/date sidecars. Tests construct invalid proposals.
 - `test` owns pure acceptance checks, actual file-method checks and the
   deterministic caption-task Flow used by installed regression tests.
   `README.md` owns the user walkthrough.
@@ -37,7 +39,7 @@ while application checks and operator authority control file effects.
 ## Local Contracts
 
 - Scope cap: twelve images, one Agent proposal, checked copies and one visual
-  contact sheet. Flow count is not capped. No vision adapter, EXIF library,
+  contact sheet and one printable yearbook. Flow count is not capped. No vision adapter, EXIF library,
   destructive rename, image editing or custom viewer.
 - The grouping Flow and Agent see captions, dates and IDs only. It cannot select
   paths or receive source attachments.
@@ -47,19 +49,18 @@ while application checks and operator authority control file effects.
 - Preserve source bytes and write only to the output attachment with exclusive
   creation. Interrupted writes are not a completed collection. Propagate
   uncertainty and cancellation without replay.
-- Each file method accepts only complete `{assignments: [{id, event}]}` input,
-  rechecks every original and derived destination, and returns paths relative to
-  its own `files` attachment. Each file method rejects caller assertions and
+- Each file method accepts complete assignments and its declared title where applicable.
+  It rechecks originals and destinations, returning paths relative to its own `files` attachment. Each file method rejects caller assertions and
   supplied paths.
 - `bindings/organise.ts` lends `source` to each file Flow and authorizes fresh
   operation-owned `files` outputs. The coordinator checks complete results and
-  forwards their sealed artifacts as `copies` and `overview`, without a writable
+  forwards their sealed artifacts as `copies`, `overview` and `book`, without a writable
   organiser attachment or copy/broker slot. Final names supply packet prefixes.
   Leaf paths and manifest rows stay relative to the leaf output. Independent
   file methods keep the same contracts when called as standalone root Flows.
 
   Each call explicitly requests `files: {create: true}` and requires its returned
-  artifact grant. Dashboard references name `copies` or `overview` with leaf-relative
+  artifact grant. Dashboard references name `copies`, `overview` or `book` with leaf-relative
   paths, never a root output folder.
 - `jig run` uses the reviewed source fixture and receives a fresh temporary
   packet. Retained `--out` paths must be new.
@@ -67,11 +68,10 @@ while application checks and operator authority control file effects.
   references. Each Flow uses `withReporting`/`Reporter` from
   `@jigging/reporting` and carries the complete current `jig:reporting`
   descriptor and license under `contracts/reporting`. The shared web preview
-  rasterises selected captured originals and the delivered contact sheet. Original SVG resolution remains
+  rasterises selected captured originals and the delivered contact sheet. Original contact-sheet SVG resolution remains
   available in the packet. Terminal evidence keeps its textual fallback. Do
   not introduce an example-only viewer.
-- Fixture SVGs are inert synthetic illustrations. Supported user inputs are
-  bounded PNG/JPEG files with explicit sidecars. No claim of pixel
+- Fixtures and user inputs are bounded PNG/JPEG files with explicit sidecars. No claim of pixel
   understanding or general image decoding.
 
 ## Work Guidance
@@ -98,7 +98,7 @@ while application checks and operator authority control file effects.
 
 - `bun test examples/photo-organiser/test` includes the public Agent preparation
   validator, so substitutes cannot bypass response-schema compatibility.
-- Verify four-Flow composition through actual protocol processes or the installed
+- Verify five-Flow composition through actual protocol processes or the installed
   host. Check final prefixes, child acceptance and failure without replay.
   Never replace invocation, artifact grants or export with a test double.
 - `test/file-methods.test.ts` checks independent copy/sheet results, byte
@@ -107,12 +107,12 @@ while application checks and operator authority control file effects.
   Those application checks do not
   establish native containment or standalone/mapped host execution.
 - `packages/jig/test/host/installed-photo-organiser.test.ts` qualifies the
-  unchanged four-Flow application with a real caption-task Flow and frozen packages.
+  unchanged five-Flow application with a real caption-task Flow and frozen packages.
   It requires the actual native host and checks packet bytes and ownership residue.
   It does not establish live Agent judgment or untested fault windows.
 - Agent response schemas declare FLOW Schema/0 and use its bounded Agent subset.
   Length and filename constraints remain in application code.
-- Reporting checks compare all four offline descriptor/license copies with the
+- Reporting checks compare all five offline descriptor/license copies with the
   installed public package and use its derived `REPORTING_CONTRACT` identity.
 - Packed application checks belong to `scripts/test-release.sh`. Admitted host
   evidence and live Agent evidence stay separate from test substitutes.

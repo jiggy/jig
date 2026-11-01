@@ -21,10 +21,13 @@ class ViewTarget(TypedDict, total=False):
     definitionId: Required[str]
     instanceKey: Required[str]
     subjectKey: str
+    label: str
+    scopeLabel: str
 
 
 class ViewOptions(TypedDict, total=False):
     title: Required[str]
+    application: str
     landing: Literal[True]
     operationId: str
     target: ViewTarget
@@ -33,6 +36,7 @@ class ViewOptions(TypedDict, total=False):
 class ViewSnapshot(TypedDict, total=False):
     title: str
     summary: Required[str]
+    presentation: dict[str, Any]
     sections: Required[list[dict[str, Any]]]
 
 
@@ -85,10 +89,12 @@ def array(value: Any, maximum: int, minimum: int = 0) -> list[Any]:
 
 
 def target(value: Any) -> dict[str, str]:
-    value = record(value, {'definitionId', 'instanceKey', 'subjectKey'})
+    value = record(value, {'definitionId', 'instanceKey', 'subjectKey', 'label', 'scopeLabel'})
     return {
         'definitionId': identity(value.get('definitionId'), 64),
         'instanceKey': identity(value.get('instanceKey'), 64),
+        **({'label': text(value['label'], 128, True)} if 'label' in value else {}),
+        **({'scopeLabel': text(value['scopeLabel'], 32, True)} if 'scopeLabel' in value else {}),
         **({'subjectKey': identity(value['subjectKey'], 64)} if 'subjectKey' in value else {}),
     }
 
@@ -261,8 +267,30 @@ def block(value: Any, budget: dict[str, Any], detail: bool = False) -> dict[str,
     return result
 
 
+def document(value: Any) -> dict[str, Any]:
+    value = record(value, {'kind', 'title', 'subtitle', 'label', 'cover', 'download'})
+    if value.get('kind') != 'document':
+        raise TypeError('Unknown view presentation')
+    def media(value: Any) -> Reference:
+        result = reference(value)
+        if result['kind'] not in ('artifact', 'input-artifact'):
+            raise TypeError('Document content requires a captured file reference')
+        return result
+    result: dict[str, Any] = {'kind': 'document', 'title': text(value.get('title'), 128, True)}
+    for key, maximum in [('subtitle', 256), ('label', 128)]:
+        if key in value:
+            result[key] = text(value[key], maximum, True)
+    if 'cover' in value:
+        result['cover'] = media(value['cover'])
+    if 'download' in value:
+        item = record(value['download'], {'reference', 'label', 'detail'})
+        result['download'] = {'reference': media(item.get('reference')), 'label': text(item.get('label'), 128, True),
+            **({'detail': text(item['detail'], 256, True)} if 'detail' in item else {})}
+    return result
+
+
 def validate_view(value: Any) -> dict[str, Any]:
-    value = record(value, {'kind', 'id', 'title', 'summary', 'landing', 'operationId', 'sections', 'target'})
+    value = record(value, {'kind', 'id', 'title', 'summary', 'landing', 'operationId', 'sections', 'target', 'application', 'presentation'})
     if value.get('kind') != 'view' or ('landing' in value and value['landing'] is not True):
         raise TypeError('Invalid view kind or landing hint')
     result: dict[str, Any] = {
@@ -273,14 +301,19 @@ def validate_view(value: Any) -> dict[str, Any]:
         result['landing'] = True
     if 'operationId' in value:
         result['operationId'] = operation(value['operationId'])
+    if 'application' in value:
+        result['application'] = text(value['application'], 128, True)
+    if 'presentation' in value:
+        result['presentation'] = document(value['presentation'])
     if 'target' in value:
         result['target'] = target(value['target'])
     budget = {'blocks': 0, 'detailBlocks': 0, 'rows': 0, 'cells': 0, 'collections': set()}
     sections = []
     for item in array(value.get('sections'), 32):
-        section = record(item, {'title', 'blocks'})
+        section = record(item, {'title', 'label', 'blocks'})
         sections.append({
             **({'title': text(section['title'], 128, True)} if 'title' in section else {}),
+            **({'label': text(section['label'], 64, True)} if 'label' in section else {}),
             'blocks': [block(item, budget) for item in array(section.get('blocks'), 32)],
         })
     result['sections'] = sections

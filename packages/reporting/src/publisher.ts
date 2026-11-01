@@ -93,7 +93,7 @@ class Publisher implements Reporter {
     const declaration = validateView({
       kind: 'view',
       id,
-      ...dataRecord(options, ['title', 'landing', 'operationId', 'target']),
+      ...dataRecord(options, ['title', 'application', 'landing', 'operationId', 'target']),
       summary: 'Declaration',
       sections: [],
     })
@@ -108,7 +108,7 @@ class Publisher implements Reporter {
     const { summary: _summary, sections: _sections, ...identity } = declaration
     return Object.freeze({
       update: (snapshot: ViewSnapshot) => {
-        const replacement = dataRecord(snapshot, ['title', 'summary', 'sections'])
+        const replacement = dataRecord(snapshot, ['title', 'summary', 'sections', 'presentation'])
         const value = validateReportingMessage({ ...identity, ...replacement })
         if (retired) throw new Error('View has been retired')
         if (declaration.landing && this.#landing !== undefined && this.#landing !== id)

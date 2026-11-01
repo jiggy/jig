@@ -28,7 +28,12 @@ sorting, stable selection, full record details and typed evidence navigation
 remain available. Details open on request rather than occupying the initial
 application screen.
 
-Host facts, attention, observation loss and Close remain visible across pages.
+A compact top bar shows application and page names, with routine host facts available through Run details.
+Attention and observation loss remain visible across pages, alongside an explicit Close action.
+
+Application instance labels populate the scope selector without inventing records.
+Document presentations show captured covers, chapter outlines, body photographs and verified downloads.
+
 Directly invoking a child makes that invocation the root. Its own view becomes
 primary. Recorded-packet navigation retains its explicit host roles.
 [Retained application views](display-archive.md) show only their selected projections and captured evidence.
@@ -197,7 +202,11 @@ The response owns its copied bytes, and Close aborts pending delivery.
 
 A fixed disposable process accepts PNG/JPEG sources up to 8 MiB, 24 megapixels and 16,384 pixels per dimension.
 SVG sources remain bounded to 64 KiB.
-It returns PNG within 384 by 1,024 pixels and 256 KiB.
+Raster previews return PNG within 1,024 by 1,024 pixels and 2 MiB.
+SVG previews retain their 384-pixel width and 256 KiB output limits.
+SVG image upgrades retain the 512 KiB content ceiling, including reserved text fallbacks.
+
+Retained preview content has a 48 MiB aggregate allowance, separate from complete download bytes.
 Its main thread owns a five-second deadline and an open input-pipe lifetime lease.
 Pipe loss or cancellation kills the whole process, whose actual exit precedes reuse.
 
@@ -208,7 +217,9 @@ External references and entities are refused.
 Bundled fonts supply text.
 
 At most one renderer runs per command, without a decoder queue.
-Selected input thumbnails are decoded on demand and share a 2 MiB LRU cache.
+Selected input thumbnails are decoded on demand and share an 8 MiB LRU cache.
+
+The browser retains at most forty MiB of media replies across twenty-four visible requests.
 Close aborts and joins owned decoding before releasing its captured bytes.
 Saved inspection retains its ten-second aggregate image preparation limit.
 Malformed, oversized or stalled images lose only their optional preview.

@@ -190,27 +190,43 @@ export class PrivateDisplayProjection {
     return this.#id('artifact-inventory', generation, 'host-inventory', path)
   }
   #artifacts(): DisplaySnapshot['artifacts'] {
-    const capture = this.model.artifactCapture,
-      attachments = new Set<string>()
+    const capture = this.model.artifactCapture
+    const attachments = new Set<string>()
+    const bindings = new Map<
+      string,
+      Map<string, { sourceId: string; attachment: string; path: string }>
+    >()
+    const bind = (publisher: string, ref: import('@jigging/reporting').Reference) => {
+      if (ref.kind !== 'artifact') return
+      const resolved = this.model.resolve(publisher, ref)
+      if (
+        !resolved.available ||
+        !resolved.target ||
+        !capture.files.some((file) => file.path === resolved.target)
+      )
+        return
+      attachments.add(ref.attachment)
+      const sourceId = this.#source(publisher)
+      const entries = bindings.get(resolved.target) ?? new Map()
+      entries.set(JSON.stringify([sourceId, ref.attachment, ref.path]), {
+        sourceId,
+        attachment: ref.attachment,
+        path: ref.path,
+      })
+      bindings.set(resolved.target, entries)
+    }
     for (const view of this.model.views.values()) {
-      if (view.publisher !== capture.sourcePublisher) continue
+      if (view.value.presentation?.cover) bind(view.publisher, view.value.presentation.cover)
+      if (view.value.presentation?.download)
+        bind(view.publisher, view.value.presentation.download.reference)
       for (const section of view.value.sections)
         for (const block of section.blocks) {
           const entries =
             block.kind === 'collection'
-              ? block.rows.map((row) => ({
-                  kind: 'row' as const,
-                  key: row.id,
-                  signature: '',
-                  row,
-                  collection: block,
-                }))
-              : [{ kind: block.kind, key: '', signature: '', block }]
+              ? block.rows.map((row) => ({ row, collection: block }))
+              : [{ block }]
           for (const entry of entries)
-            for (const ref of privateRecordReferences(entry)) {
-              if (ref.kind === 'artifact' && this.model.resolve(view.publisher, ref).available)
-                attachments.add(ref.attachment)
-            }
+            for (const ref of privateRecordReferences(entry)) bind(view.publisher, ref)
         }
     }
     const permittedAttachments = [...attachments]
@@ -225,6 +241,7 @@ export class PrivateDisplayProjection {
         id: this.#artifactId(capture.generation, file.path),
         ...(file.downloadable === undefined ? {} : { downloadable: file.downloadable }),
         path: file.path,
+        bindings: [...(bindings.get(file.path)?.values() ?? [])],
         bytes: file.bytes,
         state: file.state,
         clipped: file.clipped,

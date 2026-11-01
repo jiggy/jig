@@ -35,7 +35,7 @@ const catalogue = (await Bun.file(join(fixtureFolder, 'photos.json')).json()) as
 const [firstPhoto, secondPhoto] = catalogue
 const lastPhoto = catalogue.at(-1)
 if (firstPhoto === undefined || secondPhoto === undefined || lastPhoto === undefined) {
-  throw new Error('The photo fixture needs its complete twelve-photo catalogue.')
+  throw new Error('The photo fixture needs its complete six-photo catalogue.')
 }
 
 function eventForFixture(photo: FixturePhoto): string {
@@ -88,9 +88,9 @@ test('copy-photos independently checks assignments and preserves all original by
       manifest: string
     }
     expect(Object.keys(output).sort()).toEqual(['count', 'manifest', 'photos'])
-    expect(output.count).toBe(12)
+    expect(output.count).toBe(6)
     expect(output.manifest).toBe('manifest.csv')
-    expect(output.photos).toHaveLength(12)
+    expect(output.photos).toHaveLength(6)
 
     for (const photo of output.photos) {
       const original = await readFile(join(sourceFolder, photo.file))
@@ -109,7 +109,7 @@ test('copy-photos independently checks assignments and preserves all original by
     const manifest = await readFile(join(outputFolder, output.manifest), 'utf8')
     const manifestLines = manifest.trimEnd().split('\n')
     expect(manifestLines[0]).toBe('id,original,event,date,copy')
-    expect(manifestLines).toHaveLength(13)
+    expect(manifestLines).toHaveLength(catalogue.length + 1)
     for (const photo of output.photos) {
       expect(manifest).toContain(`"${photo.destination}"`)
     }
@@ -122,12 +122,12 @@ test('contact-sheet runs without copied files and embeds every original twice', 
     const result = await createPhotoContactSheet(run)
     expect(result).toEqual({
       outcome: 'done',
-      output: { count: 12, contactSheet: 'contact-sheet.svg' },
+      output: { count: 6, contactSheet: 'contact-sheet.svg' },
     })
     expect(await readdir(outputFolder)).toEqual(['contact-sheet.svg'])
 
     const sheet = await readFile(join(outputFolder, 'contact-sheet.svg'), 'utf8')
-    expect(sheet.match(/<image /g)).toHaveLength(24)
+    expect(sheet.match(/<image /g)).toHaveLength(catalogue.length * 2)
     expect(sheet).toContain('Original order and names')
     expect(sheet).toContain('Grouped copies')
     for (const photo of catalogue) {
@@ -248,7 +248,7 @@ for (const method of methods) {
     { name: 'invalid calendar date', change: { date: '2026-02-30' } },
     {
       name: 'duplicate filename ignoring case',
-      change: { file: secondPhoto.file.toUpperCase().replace('.SVG', '.svg') },
+      change: { file: secondPhoto.file.toUpperCase().replace('.JPG', '.jpg') },
     },
     { name: 'control characters in a caption', change: { caption: 'unsafe\u0000caption' } },
     { name: 'invalid Unicode in a caption', change: { caption: 'unsafe\ud800caption' } },

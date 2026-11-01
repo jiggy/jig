@@ -48,7 +48,10 @@ runtimes.
 Its pure helpers derive revision conditions without granting source or file authority.
 Copyable target and publication identities reject Unicode control and format characters.
 `preview.ts` selects whole collection rows and reports omitted records explicitly.
-Content and gallery roles reference selected immutable input or verified output media.
+Content, gallery and document roles reference selected immutable input or verified output media.
+
+Document presentation owns portable cover/download meaning, with section labels for chapter locators.
+Application and target labels never establish publisher identity or file authority.
 Layout blocks and row detail blocks have separate aggregate budgets.
 
 ## Verification

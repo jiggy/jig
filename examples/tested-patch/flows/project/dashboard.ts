@@ -42,6 +42,7 @@ export function patchReviewOptions(request: CapturedProject): ViewOptions {
     .digest('hex')
   return {
     title: 'Patch review',
+    application: 'Patch review',
     landing: true,
     target: { definitionId: 'patch-review', instanceKey, subjectKey: instanceKey },
   }
@@ -119,6 +120,13 @@ function filesSection(files: string[]): Section {
         })),
         total: files.length,
       },
+      ...files
+        .filter((path) => path.endsWith('.patch'))
+        .map((path) => ({
+          kind: 'content' as const,
+          title: path,
+          reference: { kind: 'artifact' as const, attachment: 'deliverables', path },
+        })),
     ],
   }
 }

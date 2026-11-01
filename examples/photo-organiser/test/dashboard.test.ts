@@ -4,9 +4,9 @@ import {
   type PhotoBoxState,
   photoAlbumKey,
   photoBoxView,
-  photoContactSheetView,
   photoGalleryView,
   photoViewOptions,
+  photoYearbookView,
 } from '../flows/organise/view.ts'
 
 const photo = {
@@ -61,6 +61,33 @@ test('a later file failure retains the checked plan without declaring a finished
   expect(JSON.stringify(failed)).not.toContain('"kind":"artifact"')
 })
 
+test('event collection identity survives completion and reordered or newly inserted groups', () => {
+  const otherPhoto = { ...photo, id: 'p02', file: 'other.png' }
+  const otherPlan = { ...planned, id: 'p02', event: 'Another event' }
+  const collections = (state: PhotoBoxState) =>
+    checked(state).sections.flatMap((section) =>
+      section.blocks.filter((block) => block.kind === 'collection'),
+    )
+  const state: PhotoBoxState = { phase: 'copying', photos: [photo], plan: [planned] }
+  const initial = collections(state)[0]!
+  for (const next of [
+    { ...state, phase: 'ready' as const },
+    { ...state, photos: [otherPhoto, photo], plan: [otherPlan, planned] },
+    { ...state, photos: [photo, otherPhoto], plan: [planned, otherPlan] },
+  ]) {
+    const current = collections(next).find((block) => block.title === planned.event)!
+    expect(current.id).toBe(initial.id)
+    expect(current.rows.map((row) => row.id)).toEqual(initial.rows.map((row) => row.id))
+    expect(new Set(collections(next).map((block) => block.id)).size).toBe(collections(next).length)
+  }
+  const ungrouped = collections({ phase: 'grouping', photos: [photo] })[0]!
+  const namedLikePlaceholder = collections({
+    ...state,
+    plan: [{ ...planned, event: 'Awaiting checked grouping' }],
+  })[0]!
+  expect(ungrouped.id).not.toBe(namedLikePlaceholder.id)
+})
+
 test('captured originals appear before grouping and contact-sheet output remains provisional', () => {
   const state: PhotoBoxState = { phase: 'grouping', photos: [photo] }
   const gallery = photoGalleryView(state)
@@ -75,7 +102,7 @@ test('captured originals appear before grouping and contact-sheet output remains
     presentation: {
       kind: 'gallery',
       media: 'image',
-      title: 'name',
+      title: 'caption',
       alt: 'caption',
       description: 'date',
     },
@@ -86,19 +113,27 @@ test('captured originals appear before grouping and contact-sheet output remains
       },
     ],
   })
-  const pending = photoContactSheetView(state)
+  const pending = photoYearbookView(state)
   expect(JSON.stringify(pending)).not.toContain('"kind":"artifact"')
-  const ready = photoContactSheetView({ phase: 'ready', photos: [photo], plan: [planned] })
+  const ready = photoYearbookView({
+    phase: 'ready',
+    albumTitle: 'Family moments',
+    photos: [photo],
+    plan: [planned],
+    yearbook: { pages: 5, bytes: 1200 },
+  })
   validateReportingMessage({
     kind: 'view',
     id: 'sheet',
-    ...photoViewOptions('family').contactSheet,
+    ...photoViewOptions('family').yearbook,
     ...ready,
   })
-  expect(ready.sections[0]?.blocks[0]).toMatchObject({
-    kind: 'content',
-    reference: { kind: 'artifact', attachment: 'overview', path: 'contact-sheet.svg' },
+  expect(ready.presentation).toMatchObject({
+    kind: 'document',
+    title: 'Family moments',
+    download: { reference: { kind: 'artifact', attachment: 'book', path: 'yearbook.pdf' } },
   })
+  expect(ready.sections[0]?.label).toBe('01–02')
 })
 
 test('two catalogues produce six independently identified application views', () => {

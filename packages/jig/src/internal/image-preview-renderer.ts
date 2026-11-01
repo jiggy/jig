@@ -157,7 +157,7 @@ function inertSvg(text: string, depth: number, budget: SvgBudget): boolean {
       budget.rasterPixels += image.width * image.height
       if (
         !Number.isSafeInteger(budget.rasterPixels) ||
-        budget.rasterPixels > PRIVATE_PREVIEW_LIMITS.pixels
+        budget.rasterPixels > PRIVATE_PREVIEW_LIMITS.svgPixels
       )
         return false
     }
@@ -199,8 +199,10 @@ export async function privateRenderImage(
     )
       return undefined
   }
-  // Fit tall and noisy inputs within the same inert-thumbnail profile.
-  let width: number = PRIVATE_PREVIEW_LIMITS.width
+  // Keep vector thumbnails small while raster documents retain readable detail.
+  let width: number = raster
+    ? Math.min(raster.width, PRIVATE_PREVIEW_LIMITS.width)
+    : PRIVATE_PREVIEW_LIMITS.svgWidth
   for (let attempt = 0; attempt < 4; attempt++) {
     const svg = new Resvg(source, {
       font: {
@@ -228,7 +230,10 @@ export async function privateRenderImage(
       try {
         if (!privatePreviewDimensions(rendered.width, rendered.height)) return undefined
         const png = rendered.asPng()
-        if (png.byteLength <= PRIVATE_PREVIEW_LIMITS.pngBytes) {
+        if (
+          png.byteLength <=
+          (raster ? PRIVATE_PREVIEW_LIMITS.pngBytes : PRIVATE_PREVIEW_LIMITS.svgPngBytes)
+        ) {
           observe?.({ copies: allocations.copies(), decodedText: allocations.decodedText() })
           return Buffer.from(png)
         }
