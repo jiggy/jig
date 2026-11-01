@@ -20,6 +20,8 @@ your application while keeping authority and consequences explicit.
 
 | I want to… | Read |
 | --- | --- |
+| Create a project with clear components and configuration | [Project design](./design.md) |
+| Give my development Agent FLOW and Jig guidance | [Install authoring skills](./for-agents.md#install-authoring-skills) |
 | Compose code and Agent work through one caller | [Contact import](./contact-import.md) |
 | Produce a patch with executed checks | [Tested patch](./tested-patch.md) |
 | Run a fixed set of checked repairs | [Small software factory](./software-factory.md) |

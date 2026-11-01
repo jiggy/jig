@@ -111,7 +111,9 @@ use-case and orchestration hypotheses.
   evidence, and the human merge gate.
 
 - `guide/overview.md` owns task-based discovery. `guide/for-agents.md` owns
-  machine-readable entry paths. `guide/concepts.md` owns introductory vocabulary
+  authoring-skill installation and machine-readable entry paths.
+  It recommends FLOW for portable methods and Jig for project work.
+  `guide/concepts.md` owns introductory vocabulary
   and common questions. These guides defer to the linked exact contracts.
 - `guide/design.md` owns project design guidance for responsibility boundaries,
   local configuration, operator choices, relocation, and verification.

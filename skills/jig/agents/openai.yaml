@@ -1,0 +1,4 @@
+interface:
+  display_name: "Jig"
+  short_description: "Create, configure, and use Jig projects"
+  default_prompt: "Use $jig to build or improve my Jig project with clear Flow boundaries and verified results."

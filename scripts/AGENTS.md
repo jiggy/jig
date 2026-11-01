@@ -28,6 +28,8 @@ operational baselines, and public-site assembly.
   Feature PRs declare intent without editing generated version outputs.
 - `check-docs.ts` owns documentation metadata, local links, source anchors,
   changed-paragraph structural writing checks, and built-site routes and anchors.
+  It checks authored public `skills/*/SKILL.md` instructions without rechecking generated reference prose.
+
   It uses an explicit Git baseline without an external skill dependency.
   Unchanged paragraphs retain existing style findings across owner changes.
   New technical paragraphs receive all mechanical style checks.

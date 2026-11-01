@@ -87,7 +87,7 @@ Name each Binding by its configured role when several uses need distinction.
 Use ordinary input for job data and `settings` for reviewed configuration.
 Settings form one complete value and are not merged with per-run overrides.
 Keep declarations inert.
-Do not put filesystem discovery, network requests, secret lookup, or application execution inside `jig.ts` or Binding modules.
+Do not read files, request network access, fetch secrets, or run application work while evaluating project declarations.
 
 Use [default providers](../spec/project-sdk.md#default-providers-by-contract) for a project-wide choice of an ordinary contract implementation.
 Use an explicit slot when one configured use needs a different implementation.

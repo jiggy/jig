@@ -1,0 +1,357 @@
+{
+  "$schema": "https://flow.jig.md/schemas/schema-0.json",
+  "title": "Jig project authoring value/1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/project"
+    },
+    {
+      "$ref": "#/$defs/bindingDefinition"
+    }
+  ],
+  "$defs": {
+    "localName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "projectPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024
+    },
+    "targetSelector": {
+      "type": "string",
+      "description": "An exact flow:<path>, npm:<package>, binding:<id>, or grant:<name> selector. Prefixes and canonical identities are additionally validated by Jig.",
+      "minLength": 5,
+      "maxLength": 1029
+    },
+    "defaultSelector": {
+      "type": "string",
+      "description": "An exact flow:<path>, npm:<package> or binding:<id> selecting an ordinary implementation with an offered named contract. Jig additionally validates selector grammar, canonical identity and provider eligibility.",
+      "minLength": 5,
+      "maxLength": 1029
+    },
+    "discoverSource": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "discover"
+        },
+        "roots": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          },
+          "minItems": 1,
+          "maxItems": 65536
+        }
+      },
+      "required": ["kind", "roots"],
+      "additionalProperties": false
+    },
+    "membersSource": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "members"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/projectPath"
+          },
+          "maxItems": 65536
+        }
+      },
+      "required": ["kind", "paths"],
+      "additionalProperties": false
+    },
+    "source": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/discoverSource"
+        },
+        {
+          "$ref": "#/$defs/membersSource"
+        }
+      ]
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "flows": {
+          "$ref": "#/$defs/source"
+        },
+        "bindings": {
+          "$ref": "#/$defs/source"
+        },
+        "grants": {
+          "$ref": "#/$defs/source"
+        },
+        "defaultProviders": {
+          "type": "object",
+          "description": "Exact contract ID to implementation selector. Each target must offer that named contract; review checks exact identity and resolves only omitted named slots.",
+          "additionalProperties": {
+            "$ref": "#/$defs/defaultSelector"
+          },
+          "maxProperties": 256
+        },
+        "entrypoint": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16384,
+          "description": "An exact Run target followed by optional Jig run invocation arguments. Jig validates quoting, permitted options, project-relative paths and target membership. No shell execution or expansion."
+        },
+        "limits": {
+          "type": "object",
+          "properties": {
+            "dependencies": {
+              "type": "object",
+              "description": "Production preparation output budgets. Jig additionally validates their combined canonical artifact capacity.",
+              "properties": {
+                "maxPreparedBytes": { "type": "integer", "minimum": 1, "maximum": 134217728 },
+                "maxPreparedFiles": { "type": "integer", "minimum": 1, "maximum": 65536 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "packageBinding": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "const": "package"
+        },
+        "package": {
+          "$ref": "#/$defs/projectPath"
+        },
+        "settings": {
+          "type": "object",
+          "maxProperties": 65536
+        },
+        "slots": {
+          "type": "object",
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/targetSelector"
+              },
+              {
+                "$ref": "#/$defs/grantPolicy"
+              },
+              {
+                "$ref": "#/$defs/mappedAttachmentRoute"
+              }
+            ]
+          },
+          "maxProperties": 256
+        },
+        "attachments": {
+          "type": "object",
+          "maxProperties": 8,
+          "additionalProperties": {
+            "$ref": "#/$defs/projectPath"
+          }
+        }
+      },
+      "required": ["kind", "package", "settings", "slots"],
+      "additionalProperties": false
+    },
+    "bindingDefinition": {
+      "$ref": "#/$defs/packageBinding"
+    },
+    "grantPolicy": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": { "const": "evaluation" },
+            "recipe": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "attachments": {
+              "type": "object",
+              "properties": {
+                "candidate": { "const": "supplied-read" },
+                "deliverables": { "const": "operation-create" }
+              },
+              "required": ["candidate", "deliverables"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["kind", "recipe", "attachments"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "acp"
+            },
+            "client": {
+              "enum": ["codex", "claude", "pi"]
+            },
+            "model": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "maxTurns": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            "retainSessions": {
+              "const": true
+            }
+          },
+          "required": ["kind", "client"],
+          "if": {
+            "required": ["retainSessions"]
+          },
+          "then": {
+            "properties": {
+              "client": {
+                "const": "codex"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "http"
+            },
+            "url": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "method": {
+              "enum": ["GET", "POST"]
+            },
+            "bearerEnv": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128
+            },
+            "requestBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8388608
+            },
+            "responseBytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 12582912
+            },
+            "timeoutMs": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 60000
+            },
+            "bodySchema": {
+              "type": ["object", "boolean"]
+            }
+          },
+          "required": ["kind", "url", "method", "requestBytes", "responseBytes", "timeoutMs"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "run": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            }
+          },
+          "required": ["kind", "run"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "const": "command"
+            },
+            "test": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256
+              },
+              "minItems": 1,
+              "maxItems": 16
+            }
+          },
+          "required": ["kind", "test"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "attachmentMapping": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "from": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
+            }
+          },
+          "required": ["from"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "create": { "const": true }
+          },
+          "required": ["create"],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "supplied": { "const": "read" }
+          },
+          "required": ["supplied"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "attachmentMap": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 8,
+      "additionalProperties": {
+        "$ref": "#/$defs/attachmentMapping"
+      }
+    },
+    "mappedAttachmentRoute": {
+      "type": "object",
+      "description": "Closed reviewed policy for an explicit Binding route: fixed caller reads, call-supplied artifact reads or operation-created writable artifacts. Jig additionally validates LocalNames, ordinary target grammar and complete port interfaces.",
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/defaultSelector"
+        },
+        "attachments": {
+          "$ref": "#/$defs/attachmentMap"
+        }
+      },
+      "required": ["target", "attachments"],
+      "additionalProperties": false
+    }
+  }
+}
