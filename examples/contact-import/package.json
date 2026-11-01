@@ -11,6 +11,6 @@
     "@jigging/agent-acp": "0.1.0-alpha.12"
   },
   "engines": {
-    "jig": "0.1.0-alpha.48"
+    "jig": "0.1.0-alpha.49"
   }
 }

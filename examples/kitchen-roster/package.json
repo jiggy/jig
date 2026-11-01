@@ -11,6 +11,6 @@
     "@jigging/agent-method": "0.1.0-alpha.10"
   },
   "engines": {
-    "jig": "0.1.0-alpha.48"
+    "jig": "0.1.0-alpha.49"
   }
 }
