@@ -120,6 +120,11 @@ These links locate module rules. All selected domain requirements still apply.
   Malformed statuses are omitted independently. These reports establish neither
   an underlying provider cause nor permission to retry.
 
+  `native-session-diagnostics.ts` classifies recognized request failures from the exact failed native exchange before private titles are discarded.
+  It retains only the specification's closed `reportedReason` values and inspects at most 16,384 title characters.
+  Unknown, malformed and oversized titles cannot expose text or alter failure, dispatch or cleanup decisions.
+  A classification attributes a native report and never supplies retry permission.
+
   The authentic runtime retains its host-selected
   client identity. Only Codex's demonstrated `session/new` managed preference
   error shape maps to the closed reason specified in `finite-acp.md`.

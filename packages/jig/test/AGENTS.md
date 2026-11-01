@@ -478,6 +478,10 @@ HTTP error status on the matching `UNCERTAIN` failure. Statuses must be integers
 from 400 through 599. Unknown fields, accessors and malformed categories remain
 absent. Malformed statuses cannot discard the known category or change the failure.
 
+Recognized reasons from the exact failed native exchange retain only the specification's closed `reportedReason` values.
+Portable policy cases exercise rejection on result and late notification paths, private-title bounds and unknown-message refusal.
+The copied diagnostic helper preserves recognized reasons and discards malformed optional values independently of the category.
+
 The copied `fixtures/native-conversation-diagnostics.ts` helper imports only the
 public SDK. Own data properties exclude accessors and arbitrary payloads.
 Projection or output failure preserves the original exception. Portable cases

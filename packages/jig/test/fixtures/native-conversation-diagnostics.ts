@@ -48,6 +48,11 @@ const nativeMethods = new Set([
   'session/prompt',
 ])
 const nativeCategories = new Set(['connection', 'access', 'limit', 'request', 'service', 'unknown'])
+const nativeReportedReasons = new Set([
+  'unsupported-namespace-tools',
+  'invalid-responses-request',
+  'unsupported-reasoning-summary',
+])
 
 function ownValue(value: unknown, key: PropertyKey): unknown {
   if (value === null || typeof value !== 'object') return undefined
@@ -120,14 +125,20 @@ function nativeSession(details: unknown) {
     const session = ownValue(details, 'nativeSession')
     if (
       !exactRecord(session, ['category']) &&
-      !exactRecord(session, ['category', 'httpStatusCode'])
+      !exactRecord(session, ['category', 'httpStatusCode']) &&
+      !exactRecord(session, ['category', 'reportedReason']) &&
+      !exactRecord(session, ['category', 'httpStatusCode', 'reportedReason'])
     )
       return undefined
     const category = ownValue(session, 'category')
     if (typeof category !== 'string' || !nativeCategories.has(category)) return undefined
     const status = ownValue(session, 'httpStatusCode')
+    const reason = ownValue(session, 'reportedReason')
     return {
       category,
+      ...(typeof reason === 'string' && nativeReportedReasons.has(reason)
+        ? { reportedReason: reason }
+        : {}),
       ...(typeof status === 'number' && Number.isInteger(status) && status >= 400 && status <= 599
         ? { httpStatusCode: status }
         : {}),

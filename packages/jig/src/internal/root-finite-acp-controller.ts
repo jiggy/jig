@@ -536,6 +536,9 @@ async function executeOwnedProvider(
       error.nativeCategory !== undefined
         ? {
             category: error.nativeCategory,
+            ...(error.nativeReportedReason === undefined
+              ? {}
+              : { reportedReason: error.nativeReportedReason }),
             ...(error.nativeHttpStatusCode === undefined
               ? {}
               : { httpStatusCode: error.nativeHttpStatusCode }),
