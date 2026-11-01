@@ -17,8 +17,31 @@ These links locate module rules. All selected domain requirements still apply.
 - [root-flow-call-controller tests](#root-flow-call-controller-tests)
 - [native clocks](#native-clocks)
 - [controlled evaluation](#controlled-evaluation)
+- [declaration evaluation](#declaration-evaluation)
 
 ## Ownership
+
+### Declaration evaluation
+
+- `project-evaluator-program.ts` frames the exact captured, digest-verified
+  worker and SDK plus bounded request bytes as a finite Bun stdin program.
+  Only the trusted worker is executable source. Request bytes remain base64
+  inside escaped JSON parsed as data, preserving JSON object semantics.
+  Bound request bytes separately from the final UTF-8 program at both outer
+  and per-entry launch. Consume and delete the bootstrap before guest evaluation.
+
+  No installed support path is reopened during a batch. The SDK stays captured
+  text for the existing closed compiler plugin. `project-evaluator-child.ts`
+  starts a fresh stdin worker for each entry with the original independent
+  timer, output caps and reaping. Compiler, guest realm and SDK remain fresh.
+
+  Bootstrap discovery and complete-closure evaluation remain separate. No
+  evaluated result is reused. Their existing native envelopes and aggregate
+  limits still fence all descendants before collection.
+
+  Declaration evaluation requests only runtime files and a read-only root cwd.
+  With no input directories, write grants or collection, Mac needs no image.
+  This removes disposable projection work without changing writable storage.
 
 ### Native clocks
 
@@ -158,7 +181,7 @@ These links locate module rules. All selected domain requirements still apply.
   A single entry keeps its host's total ceiling.
 
   Each subprocess receives only the captured modules reachable from its entry.
-  Worker and SDK bytes use the existing sealed file projection. Later children
+  Worker and SDK bytes use the bounded captured stdin program. Later children
   never reopen live installed support. Bootstrap consistency remains a separate
   evaluation. Collection requires whole-batch fencing and cleanup. No result
   cache or resident service.
@@ -234,7 +257,11 @@ These links locate module rules. All selected domain requirements still apply.
   startup qualification consumes this lowering instead of a second translator.
   Read-only workers with captured inputs still allocate bounded Mac input
   storage without payload write grants. Workers using only retained projections
-  need no volume. The stdin-only HTTP worker uses exact runtime/worker files and
+  need no volume.
+
+  Declaration evaluators send their captured program through
+  stdin with only runtime file projections and root cwd.
+  The stdin-only HTTP worker uses exact runtime/worker files and
   literal root cwd without readonly or writable trees, captured inputs or a
   volume.
 
