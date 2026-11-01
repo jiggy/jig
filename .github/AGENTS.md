@@ -214,6 +214,22 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Collection preserves the qualification API reserve and refuses incomplete windows.
   Manual dispatch permits one, three or seven complete days after budget refusal.
   Reports establish no qualification, flake rate or automatic scheduling changes.
+- `workflows/sync-skill-references.yml` processes same-repository PR documents with trusted base tooling under `pull_request_target`.
+  The generation job has read permission and treats PR files as inert input.
+  Changes to the generator itself require local synchronization, preventing older tooling from overwriting the new format.
+  Forks use ordinary read-only CI checks.
+
+  A fresh writer validates source-bound, attempt-bound data before creating a repository-scoped App token with only contents write permission.
+  It commits only regular files under generated reference directories, using an exact expected-head lease.
+  Reuse `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` from release automation.
+  App commits trigger genuine PR checks. Never substitute manually dispatched qualification or a built-in-token push.
+
+  Current references require no App configuration.
+  Missing App configuration leaves stale branches unchanged and explains `just sync-skills`, commit, and push in the workflow summary.
+  Retry all jobs after configuration changes. Every attempt requires freshly generated data.
+  The workflow begins operating after its trusted implementation reaches the default branch.
+- Ordinary CI checks committed reference freshness through `just check-skills` in the required Quick job.
+  This check never writes generated content.
 - The CI site job checks documentation metadata, local links, source anchors,
   changed technical paragraphs, and the rendered Jig site before recording success.
   PR style checks use the base SHA. Push checks use the previous SHA.

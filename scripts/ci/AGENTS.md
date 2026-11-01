@@ -52,6 +52,12 @@ preparation never becomes a consumer requirement.
   names the tested version/source and last recorded passing published version.
   Missing, stale or foreign proof fails. Health never grants release readiness.
 
+- `skill-reference-changes.mjs` transfers generated references as inert data between read-only generation and a fresh trusted writer.
+  Bind every transfer to its exact PR source, workflow run, and attempt.
+  Admit only regular files under `skills/*/reference/`, preserving original blob identities and rejecting linked ancestors.
+  Build the replacement Git tree with a temporary index, without checking out or executing PR code.
+  The workflow commits that tree as a direct child and uses an exact branch lease.
+  Concurrent updates and resets must remain untouched.
 - `release-base.mjs` selects the required release check's comparison commit.
   It verifies the workflow source and both parents of a PR merge.
   The second parent must equal the event head. The event base must be an
@@ -444,6 +450,9 @@ They consume frozen package exports with tracked test helpers and installed
 
 ## Verification
 
+- `node --test scripts/ci/skill-reference-changes.test.mjs scripts/ci/skill-reference-workflow.test.mjs` checks trusted generation and generated-data transfer.
+  Real Git repositories exercise additions, removals, unchanged authored files, malformed transfers, and concurrent branch changes.
+  Workflow checks cover fork refusal, credential separation, exact artifact selection, and missing App configuration.
 - `node --test scripts/ci/sync-skills.test.mjs` exercises deterministic reference generation, drift detection, and standalone links.
   It verifies preserved examples, machine bytes, licenses, source hashes, private-source refusals, and symbolic-link refusals.
   Trusted-tooling checks process a separate source checkout without executing its scripts.
