@@ -1,0 +1,23 @@
+name: Credential-free native Codex reproduction
+on:
+  push:
+    branches: [codex/native-reproduction]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - name: Install genuine fixed native client and ACP adapter
+        run: npm install --prefix "$RUNNER_TEMP/native-repro" --ignore-scripts --no-audit --no-fund @openai/codex@0.166.0 @agentclientprotocol/codex-acp@1.8.0
+      - name: Apply candidate adapter patches
+        run: git apply --unsafe-paths --directory="$RUNNER_TEMP/native-repro/node_modules/@agentclientprotocol/codex-acp" packages/jig/patches/codex-acp@1.8.0.patch
+      - name: Exercise native gateway against a fixed local peer
+        run: node scripts/ci/reproduce-native.mjs "$RUNNER_TEMP/native-repro"
