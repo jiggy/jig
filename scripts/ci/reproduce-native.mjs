@@ -49,7 +49,7 @@ try {
   await mkdir(home)
   await mkdir(project)
   const features = { apps: false, code_mode: false, code_mode_host: false, plugins: false, remote_plugin: false, tool_suggest: false }
-  await writeFile(join(home, 'config.toml'), `cli_auth_credentials_store = "ephemeral"\n[features]\n${Object.entries(features).map(([key, value]) => `${key} = ${value}`).join('\n')}\n`)
+  await writeFile(join(home, 'config.toml'), `cli_auth_credentials_store = "ephemeral"\nmodel_provider = "custom-gateway"\n[model_providers.custom-gateway]\nname = "local-only"\nbase_url = "http://127.0.0.1:${peer.address().port}/v1"\nwire_api = "responses"\n[features]\n${Object.entries(features).map(([key, value]) => `${key} = ${value}`).join('\n')}\n`)
   const wrapper = join(root, 'native-wrapper')
   await writeFile(wrapper, `#!${process.execPath}\nimport { spawn } from 'node:child_process'; import { createInterface } from 'node:readline'; const child = spawn(process.env.NATIVE_CODEX, process.argv.slice(2), { stdio: ['pipe', 'pipe', 'inherit'] }); process.stdin.pipe(child.stdin); for await (const line of createInterface({ input: child.stdout })) { const frame = JSON.parse(line); if (frame.method === 'error' || frame.params?.turn?.error) process.stderr.write('NATIVE_LOCAL_ERROR ' + line + '\\n'); process.stdout.write(line + '\\n'); } child.on('close', code => {process.exitCode = code});`, { mode: 0o700 })
   child = spawn(process.execPath, [join(install, 'node_modules/@agentclientprotocol/codex-acp/dist/index.js')], { cwd: project, env: { PATH: process.env.PATH, HOME: home, CODEX_HOME: home, CODEX_PATH: wrapper, NATIVE_CODEX: join(install, 'node_modules/.bin/codex'), CODEX_CONFIG: JSON.stringify({ model: 'openrouter/free', features, 'analytics.enabled': false, check_for_update_on_startup: false, 'history.persistence': 'none', log_dir: join(root, 'logs'), sqlite_home: join(root, 'state') }), INITIAL_AGENT_MODE: 'read-only' }, stdio: ['pipe', 'pipe', 'pipe'] })
@@ -72,7 +72,7 @@ try {
   const request = (method, params) => new Promise((resolve, reject) => {
     const number = ++id
     pending.set(number, frame => {
-      console.log('REPLY', method, JSON.stringify(frame))
+      console.log('REPLY', method, JSON.stringify(method === 'session/new' ? { sessionId: frame.result?.sessionId, error: frame.error } : frame))
       if (frame.error) reject(new Error(JSON.stringify(frame.error)))
       else resolve(frame.result)
     })
