@@ -1,5 +1,11 @@
 # @jigging/jig
 
+## 0.1.0-alpha.50
+
+### Patch Changes
+
+- 9373d9b: Recommend the FLOW and Jig authoring skills in generated project READMEs, linking to the shared installation guide.
+
 ## 0.1.0-alpha.49
 
 ### Patch Changes
