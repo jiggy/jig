@@ -1,5 +1,11 @@
 # @jigging/jig
 
+## 0.1.0-alpha.48
+
+### Patch Changes
+
+- fff6332: Preserve closed native request failure reasons without exposing provider messages or replaying uncertain work.
+
 ## 0.1.0-alpha.47
 
 ### Patch Changes
