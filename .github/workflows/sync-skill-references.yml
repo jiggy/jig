@@ -1,6 +1,6 @@
 name: Sync skill references
 on:
-  pull_request_target:
+  pull_request:
     types:
       - opened
       - reopened
@@ -17,14 +17,11 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-    outputs:
-      changed: ${{ steps.prepare.outputs.changed }}
-      artifact-id: ${{ steps.artifact.outputs.artifact-id }}
     steps:
       - name: Check out trusted base tooling
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.base.sha }}
           path: trusted
           persist-credentials: false
       - name: Check out PR input as data
@@ -33,17 +30,28 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           path: incoming
           persist-credentials: false
-      - name: Preserve changes to the generator itself
+      - name: Check trusted generation tooling
         id: generator
         run: |
-          trusted_generator=$(git -C trusted rev-parse 'HEAD:scripts/sync-skills.mjs')
-          incoming_generator=$(git -C incoming rev-parse 'HEAD:scripts/sync-skills.mjs')
-          if [ "$trusted_generator" = "$incoming_generator" ]; then
+          unchanged=true
+          for source in scripts/sync-skills.mjs scripts/ci/skill-reference-changes.mjs; do
+            if ! git -C trusted cat-file -e "HEAD:$source" 2>/dev/null; then
+              unchanged=false
+              break
+            fi
+            trusted_blob=$(git -C trusted rev-parse "HEAD:$source")
+            incoming_blob=$(git -C incoming rev-parse "HEAD:$source")
+            if [ "$trusted_blob" != "$incoming_blob" ]; then
+              unchanged=false
+              break
+            fi
+          done
+          if [ "$unchanged" = 'true' ]; then
             echo 'unchanged=true' >> "$GITHUB_OUTPUT"
           else
             echo 'unchanged=false' >> "$GITHUB_OUTPUT"
-            printf '%s\n' '## Reference generator changed' '' \
-              'This PR changes the generator, so automatic synchronization cannot use its unreviewed implementation.' \
+            printf '%s\n' '## Reference tooling needs review' '' \
+              'This PR introduces or changes generation tooling that is not yet available in its trusted base.' \
               'Run `just sync-skills`, commit the generated references, and let ordinary CI verify them.' >> "$GITHUB_STEP_SUMMARY"
           fi
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -63,6 +71,8 @@ jobs:
         id: prepare
         env:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SKILL_REFERENCE_RUN_ID: ${{ github.run_id }}
+          SKILL_REFERENCE_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
           git -C incoming add -- ':(glob)skills/*/reference/**'
           changes=$(node trusted/scripts/ci/skill-reference-changes.mjs prepare "$GITHUB_WORKSPACE/incoming" "$PR_HEAD_SHA" "$RUNNER_TEMP/skill-references.json")
@@ -73,7 +83,6 @@ jobs:
           fi
       - name: Retain prepared reference data
         if: steps.prepare.outputs.changed == 'true'
-        id: artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: skill-references-${{ github.event.pull_request.head.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
@@ -81,86 +90,3 @@ jobs:
           retention-days: 7
           if-no-files-found: error
           overwrite: false
-  synchronize:
-    needs: generate
-    if: needs.generate.outputs.changed == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    steps:
-      - name: Check out trusted writer only
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: "24"
-      - name: Download the exact generated artifact
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with:
-          artifact-ids: ${{ needs.generate.outputs.artifact-id }}
-          path: ${{ runner.temp }}/prepared-references
-          merge-multiple: true
-      - name: Verify the current PR head
-        id: current
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          current_head=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" --jq 'if .state == "open" then .head.sha else "closed" end')
-          if [ "$current_head" = "$PR_HEAD_SHA" ]; then
-            echo 'current=true' >> "$GITHUB_OUTPUT"
-          else
-            echo 'A newer or closed PR supersedes this synchronization.'
-            echo 'current=false' >> "$GITHUB_OUTPUT"
-          fi
-      - name: Validate inert generated data before obtaining write authority
-        if: steps.current.outputs.current == 'true'
-        env:
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          git fetch --no-tags origin "$PR_HEAD_SHA"
-          node scripts/ci/skill-reference-changes.mjs validate "$GITHUB_WORKSPACE" "$PR_HEAD_SHA" "$RUNNER_TEMP/prepared-references/skill-references.json"
-      - name: Check automatic synchronization setup
-        if: steps.current.outputs.current == 'true'
-        env:
-          HAS_RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID != '' }}
-          HAS_RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}
-        run: |
-          if [ "$HAS_RELEASE_APP_ID" != 'true' ] || [ "$HAS_RELEASE_APP_PRIVATE_KEY" != 'true' ]; then
-            printf '%s\n' '## Skill references need synchronization' '' \
-              'Run `just sync-skills`, commit the generated references, and push the PR branch.' '' \
-              'Automatic commits reuse `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` from release automation.' \
-              'The App must be installed on this repository with Contents: write.' \
-              'Its commits trigger the ordinary PR checks with their verified merge provenance.' \
-              'The built-in token cannot trigger those checks, so this workflow leaves the branch unchanged.' '' \
-              'After configuring the App, choose **Re-run all jobs** to generate fresh data.' >> "$GITHUB_STEP_SUMMARY"
-            echo '::error::Automatic synchronization needs the existing release App. Run just sync-skills and push, or configure that App.'
-            exit 1
-          fi
-      - name: Create a repository-scoped synchronization token
-        if: steps.current.outputs.current == 'true'
-        id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
-        with:
-          app-id: ${{ vars.RELEASE_APP_ID }}
-          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-      - name: Commit generated references with an exact head lease
-        if: steps.current.outputs.current == 'true'
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          tree=$(node scripts/ci/skill-reference-changes.mjs tree "$GITHUB_WORKSPACE" "$PR_HEAD_SHA" "$RUNNER_TEMP/prepared-references/skill-references.json")
-          commit=$(printf '%s\n' 'chore: sync Jig skill references' '' 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' | \
-            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit-tree "$tree" -p "$PR_HEAD_SHA")
-          gh auth setup-git
-          git push --force-with-lease="refs/heads/$PR_BRANCH:$PR_HEAD_SHA" origin "$commit:refs/heads/$PR_BRANCH"

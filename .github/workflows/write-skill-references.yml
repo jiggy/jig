@@ -1,0 +1,84 @@
+name: Write skill references
+on:
+  workflow_run:
+    workflows:
+      - Sync skill references
+    types:
+      - completed
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: write-skill-references-${{ github.event.workflow_run.workflow_id }}-${{ github.event.workflow_run.head_repository.id }}-${{ github.event.workflow_run.head_branch }}
+  cancel-in-progress: true
+jobs:
+  synchronize:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.path == '.github/workflows/sync-skill-references.yml' && github.event.workflow_run.head_repository.full_name == github.repository && github.event.workflow_run.head_branch != github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out trusted writer only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - name: Select and verify the producer's exact generated artifact
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/skill-reference-run.mjs "$RUNNER_TEMP/prepared-references"
+      - name: Validate inert generated data before obtaining write authority
+        if: steps.source.outputs.ready == 'true'
+        env:
+          PR_HEAD_SHA: ${{ steps.source.outputs.pr-head-sha }}
+          SKILL_REFERENCE_RUN_ID: ${{ steps.source.outputs.source-run-id }}
+          SKILL_REFERENCE_RUN_ATTEMPT: ${{ steps.source.outputs.source-run-attempt }}
+        run: |
+          git fetch --no-tags origin "$PR_HEAD_SHA"
+          node scripts/ci/skill-reference-changes.mjs validate "$GITHUB_WORKSPACE" "$PR_HEAD_SHA" "$RUNNER_TEMP/prepared-references/skill-references.json"
+      - name: Check automatic synchronization setup
+        if: steps.source.outputs.ready == 'true'
+        env:
+          HAS_RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID != '' }}
+          HAS_RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY != '' }}
+        run: |
+          if [ "$HAS_RELEASE_APP_ID" != 'true' ] || [ "$HAS_RELEASE_APP_PRIVATE_KEY" != 'true' ]; then
+            printf '%s\n' '## Skill references need synchronization' '' \
+              'Run `just sync-skills`, commit the generated references, and push the PR branch.' '' \
+              'Automatic commits reuse `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` from release automation.' \
+              'The App must be installed on this repository with Contents: write.' \
+              'Its commits trigger ordinary PR checks without another workflow-approval step.' \
+              'Without the App, this workflow leaves the branch unchanged.' '' \
+              'After configuring the App, re-run the Sync skill references workflow to generate fresh data.' >> "$GITHUB_STEP_SUMMARY"
+            echo '::error::Automatic synchronization needs the existing release App. Run just sync-skills and push, or configure that App.'
+            exit 1
+          fi
+      - name: Create a repository-scoped synchronization token
+        if: steps.source.outputs.ready == 'true'
+        id: app-token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+      - name: Commit generated references with an exact head lease
+        if: steps.source.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_BRANCH: ${{ steps.source.outputs.pr-branch }}
+          PR_HEAD_SHA: ${{ steps.source.outputs.pr-head-sha }}
+          SKILL_REFERENCE_RUN_ID: ${{ steps.source.outputs.source-run-id }}
+          SKILL_REFERENCE_RUN_ATTEMPT: ${{ steps.source.outputs.source-run-attempt }}
+        run: |
+          tree=$(node scripts/ci/skill-reference-changes.mjs tree "$GITHUB_WORKSPACE" "$PR_HEAD_SHA" "$RUNNER_TEMP/prepared-references/skill-references.json")
+          commit=$(printf '%s\n' 'chore: sync Jig skill references' '' 'Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>' | \
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit-tree "$tree" -p "$PR_HEAD_SHA")
+          gh auth setup-git
+          git push --force-with-lease="refs/heads/$PR_BRANCH:$PR_HEAD_SHA" origin "$commit:refs/heads/$PR_BRANCH"

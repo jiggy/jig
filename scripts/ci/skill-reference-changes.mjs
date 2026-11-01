@@ -164,8 +164,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     )
       throw new Error('usage: skill-reference-changes.mjs prepare|validate|tree ROOT SOURCE FILE')
     const identity = {
-      runId: process.env.GITHUB_RUN_ID,
-      runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+      runId: process.env.SKILL_REFERENCE_RUN_ID,
+      runAttempt: process.env.SKILL_REFERENCE_RUN_ATTEMPT,
     }
     if (command === 'prepare') {
       const prepared = await prepareSkillChanges({ root, source, identity })
