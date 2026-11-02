@@ -55,6 +55,10 @@ These links locate module rules. All selected domain requirements still apply.
 
   Standalone package recipes keep their complete dependencies.
 
+- Jig's manifest omits `sideEffects: false`: Bun 1.3.13 incorrectly drops the
+  authoring exports from both bundles when it is set. The built authoring
+  regression checks both public and evaluator exports.
+
 - `support/macos-exec.c` and the private Mac capture/process controls supply the
   qualified native host boundaries. Their ownership and qualification procedure
   live in `src/internal/AGENTS.md`. Installed Mac consumers require neither a
