@@ -6,17 +6,6 @@
 }:
 let
   python = pkgs.python3.withPackages (p: [ p.build p.setuptools p.wheel ]);
-  # The pinned toolchain predates Bubblewrap's required namespace controls.
-  bubblewrap = pkgs.bubblewrap.overrideAttrs (old: {
-    version = "0.12.0";
-    src = pkgs.fetchurl {
-      url = "https://github.com/containers/bubblewrap/releases/download/v0.12.0/bubblewrap-0.12.0.tar.xz";
-      hash = "sha256-l2DQBzY+Orunx0dImRD5+C2fylO6O9MoLjlvo8l6MxQ=";
-    };
-    meta = old.meta // {
-      changelog = "https://github.com/containers/bubblewrap/releases/tag/v0.12.0";
-    };
-  });
 in
 assert pkgs.bun.version == "1.3.13";
 pkgs.mkShellNoCC {
@@ -30,14 +19,14 @@ pkgs.mkShellNoCC {
     pkgs.jq
     pkgs.ripgrep
     pkgs.coreutils
-    bubblewrap
+    pkgs.bubblewrap
   ];
 
   FLOW_NODE = "${pkgs.nodejs_24}/bin/node";
   FLOW_NPM = "${pkgs.nodejs_24}/bin/npm";
   JIG_NPM = "${pkgs.nodejs_24}/bin/npm";
   PYTHON = "${python}/bin/python3";
-  JIG_BWRAP_PATH = "${bubblewrap}/bin/bwrap";
+  JIG_BWRAP_PATH = "${pkgs.bubblewrap}/bin/bwrap";
 
   shellHook = ''
     jig_repository=${pkgs.lib.escapeShellArg (toString ./.)}
