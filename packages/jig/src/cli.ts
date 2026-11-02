@@ -80,8 +80,8 @@ import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue }
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
 import { EVALUATOR_HINTS } from './project/evaluator-diagnostics.js'
-import { checkProjectJigRequirement } from './project/jig-version.js'
 import type { AcpGrant } from './project/grants.js'
+import { checkProjectJigRequirement } from './project/jig-version.js'
 import { DEPENDENCY_PREPARATION_LIMIT_POLICY } from './project/limits.js'
 import { flowSelector } from './project/package-selector.js'
 import {
@@ -2632,7 +2632,8 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED:
         'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
       PACKAGE_BUN_SOURCE_UNSUPPORTED:
-        'use default npm registry dependencies or declared workspace members; patches require workspace-root declarations and captured .patch files; overrides and other dependency sources are unsupported',
+        'Jig could not identify the unsupported dependency source. Inspect the workspace manifest, lock and patch declarations; see https://jig.md/guide/dependencies.',
+      PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED: unsupportedRegistryLockHint(error),
       PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED:
         'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.13 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
       PACKAGE_BUN_MANIFEST_SHAPE: 'package.json must contain an object',
@@ -3002,6 +3003,14 @@ function staleDependencyLockHint(error: ProjectAdministrationError): string {
   return `${repair}\n\n    ${afterRepair}`
 }
 
+function unsupportedRegistryLockHint(error: ProjectAdministrationError): string {
+  const path = error.diagnostic?.path
+  if (path === undefined || !/^[\x20-\x7e]+$/.test(path))
+    return 'Configure Bun to use the default npm registry. Delete the indicated bun.lock, then run bun install --lockfile-only --ignore-scripts in its directory. Inspect the new lock and retry review.'
+  const directory = dirname(path)
+  return `Configure Bun to use the default npm registry. From the reviewed project directory, regenerate the dependency lock:\n\n  $ rm -- ${shellWord(path)}\n  $ bun install --lockfile-only --ignore-scripts --cwd ${shellWord(directory)}\n\n    Regeneration can change dependency versions. Inspect the new lock, then retry jig review.`
+}
+
 function dependencyPreparationLimitHint(error: ProjectAdministrationError): string {
   const detail = error.diagnostic?.preparationLimit
   if (detail?.profile === 'evaluation')
@@ -3012,7 +3021,8 @@ function dependencyPreparationLimitHint(error: ProjectAdministrationError): stri
       : detail?.dimension === 'files'
         ? 'maxPreparedFiles'
         : undefined
-  const keys: readonly ('maxPreparedBytes' | 'maxPreparedFiles')[] = field === undefined ? ['maxPreparedBytes', 'maxPreparedFiles'] : [field]
+  const keys: readonly ('maxPreparedBytes' | 'maxPreparedFiles')[] =
+    field === undefined ? ['maxPreparedBytes', 'maxPreparedFiles'] : [field]
   return `The prepared execution tree includes source, production dependencies, lock and layout bytes. Adjust ${keys.map((key) => `limits.dependencies.${key} in jig.ts or ${DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[key]}`).join('; ')}. Exported environment values take precedence. Then rerun your review command. See https://jig.md/guide/limits.`
 }
 
@@ -3025,9 +3035,11 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const cause =
     diagnostic.code === 'PACKAGE_BUN_LOCK_STALE'
       ? 'The package declarations in package.json no longer match bun.lock.'
-      : ACP_SETUP_CAUSES[diagnostic.code]
+      : diagnostic.code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'
+        ? 'The dependency lock contains a non-default registry source.'
+        : ACP_SETUP_CAUSES[diagnostic.code]
   const lock =
-    diagnostic.lockPath === undefined
+    diagnostic.lockPath === undefined || diagnostic.lockPath === diagnostic.path
       ? ''
       : `\n  Dependency lock: ${asciiJsonString(diagnostic.lockPath)}`
   const detail = diagnostic.preparationLimit
@@ -3035,7 +3047,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const limit =
     detail === undefined
       ? ''
-    : `\n  Observed: at least ${detail.observed} ${detail.dimension === 'bytes' ? 'bytes' : 'file/alias records'}\n  Effective limit: ${detail.maximum}\n  Limit source: ${detail.profile === 'evaluation' ? 'fixed evaluation profile' : detail.origin === 'environment' ? DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field] : detail.origin === 'project' ? `jig.ts limits.dependencies.${field}` : detail.origin === 'default' ? 'built-in default' : 'preparation policy'}`
+      : `\n  Observed: at least ${detail.observed} ${detail.dimension === 'bytes' ? 'bytes' : 'file/alias records'}\n  Effective limit: ${detail.maximum}\n  Limit source: ${detail.profile === 'evaluation' ? 'fixed evaluation profile' : detail.origin === 'environment' ? DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field] : detail.origin === 'project' ? `jig.ts limits.dependencies.${field}` : detail.origin === 'default' ? 'built-in default' : 'preparation policy'}`
   const selection =
     cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
       ? '\n  Agent selection: the resource grant at this Binding slot.'

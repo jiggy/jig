@@ -3,6 +3,9 @@
 ## Ownership
 
 `portable/jig-version.test.ts` checks exact requirement values, captured metadata and contributor identification.
+`portable/built-authoring.test.ts` checks the actual public and evaluator authoring bundles after building Jig.
+`portable/bun-workspace.test.ts` checks workspace capture, including unrelated external patterns and selected-root containment.
+
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
 `portable/jig-development-build.test.ts` exercises the genuine launcher against matching, changed and incomplete contributor builds.
 It rejects changed checker source without executing that source.
@@ -418,6 +421,8 @@ the public CLI in root, member and nested consumer projects. Execute the printed
 Bun command for real declaration mismatches. Root name/version edits must
 review successfully without altering the authored lock. Preserve the prior
 approval on refusal and require successful review after each repair.
+It also checks non-default registry refusals identify the workspace lock and do
+not disclose its URL.
 
 Keep initial registry preparation and patch-pinning checks intact.
 After those checks, author and repair locks using only local workspace dependencies.

@@ -33,8 +33,8 @@
     {
       "source": "docs/jig/guide/dependencies.md",
       "destination": "guide/dependencies.md",
-      "sourceSha256": "849aecf39efe7448d0f9472017fc237bcc3303d0282df7b655e5eb6faecad59f",
-      "outputSha256": "849aecf39efe7448d0f9472017fc237bcc3303d0282df7b655e5eb6faecad59f"
+      "sourceSha256": "7c8f6fcd6178c96bef7d721254f7aae63a7e435fb17997a11c76e4ee01cf3b5f",
+      "outputSha256": "7c8f6fcd6178c96bef7d721254f7aae63a7e435fb17997a11c76e4ee01cf3b5f"
     },
     {
       "source": "docs/jig/guide/configuration.md",
@@ -81,8 +81,8 @@
     {
       "source": "docs/jig/spec/project-policy.md",
       "destination": "spec/project-policy.md",
-      "sourceSha256": "fcdfff0aa5355136c49fe25c8eaecf2f6d97059d1ee27a6e4cec5678bb35ff06",
-      "outputSha256": "a7c869e994134a43029859d34168aeb2910a336c32ef861aa59e1c8280523159"
+      "sourceSha256": "9b44d2bc42a77cfb19b769c73369246347a03d2e63613d338842bdcf5b9964e1",
+      "outputSha256": "f0939282944848a806f9525eb588313fd27eb3687d1397c48a1a6ec432ef50a7"
     },
     {
       "source": "docs/jig/guide/http.md",

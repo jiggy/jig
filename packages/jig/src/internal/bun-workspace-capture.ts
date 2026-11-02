@@ -90,9 +90,9 @@ export async function capturePrivateBunWorkspace(input: {
       if (bytes !== undefined) {
         const rootManifest = parseManifest(bytes)
         if (rootManifest.workspaces !== undefined) {
-          const patterns = workspacePatterns(rootManifest.workspaces)
           const target = relative(path, physical)
-          if (target === '' || matches(patterns, target)) {
+          const patterns = workspacePatterns(rootManifest.workspaces, target)
+          if (patterns !== undefined) {
             try {
               return await capture(
                 root,
@@ -382,25 +382,31 @@ function parseManifest(bytes: Uint8Array): Record<string, unknown> {
   fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace package.json must be a UTF-8 JSON object')
 }
 
-function workspacePatterns(value: unknown): readonly string[] {
+function workspacePatterns(value: unknown, target: string): readonly string[] | undefined {
   if (value !== null && typeof value === 'object' && !Array.isArray(value))
     value = (value as Record<string, unknown>).packages
   if (
     !Array.isArray(value) ||
     value.length === 0 ||
     value.length > MAX_MEMBERS ||
-    value.some(
-      (pattern) =>
-        typeof pattern !== 'string' ||
-        pattern.length > 1024 ||
-        !safePattern(pattern.startsWith('!') ? pattern.slice(1) : pattern),
-    )
+    value.some((pattern) => typeof pattern !== 'string' || pattern.length > 1024)
   )
     fail(
       'PACKAGE_BUN_WORKSPACE_INVALID',
       'workspaces must declare bounded relative package patterns',
     )
-  return value as string[]
+  const patterns = value as string[]
+  // An unrelated ancestor is not an input to this Flow's workspace capture.
+  // Determine membership before applying the selected workspace's path policy.
+  if (target !== '' && !matches(patterns, target)) return undefined
+  if (
+    patterns.some((pattern) => !safePattern(pattern.startsWith('!') ? pattern.slice(1) : pattern))
+  )
+    fail(
+      'PACKAGE_BUN_WORKSPACE_INVALID',
+      'workspaces must declare bounded relative package patterns',
+    )
+  return patterns
 }
 
 function safePattern(value: string): boolean {

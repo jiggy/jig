@@ -89,6 +89,13 @@ export class PrivateBunLockVersionError extends TypeError {
   }
 }
 
+/** Closed cause; do not expose a registry URL, which may contain credentials. */
+export class PrivateBunLockRegistryError extends TypeError {
+  constructor() {
+    super('bun.lock contains a non-default registry source')
+  }
+}
+
 /** Current Bun accepts version 1; the Mac runtime also reads and emits version 2. */
 export function requirePrivateBunLockPolicy(
   value: unknown,
@@ -145,14 +152,17 @@ export function requirePrivateBunLockPolicy(
       resolution.length !== 4 ||
       !isExactRegistryResolution(resolution[0]) ||
       typeof resolution[1] !== 'string' ||
-      (resolution[1] !== '' &&
-        resolution[1] !== 'https://registry.npmjs.org' &&
-        resolution[1] !== 'https://registry.npmjs.org/') ||
       metadata === undefined ||
       !isExactIntegrity(resolution[3])
     ) {
       throw new TypeError('unsupported Bun lock source')
     }
+    if (
+      resolution[1] !== '' &&
+      resolution[1] !== 'https://registry.npmjs.org' &&
+      resolution[1] !== 'https://registry.npmjs.org/'
+    )
+      throw new PrivateBunLockRegistryError()
     requireRegistryDependencyMaps(metadata)
   }
 }

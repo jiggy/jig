@@ -250,7 +250,7 @@ function normalizeProjectAdministrationDiagnostic(
 
   const path = fields.path
   const ancestorFiles =
-    code === 'PACKAGE_BUN_LOCK_STALE'
+    code === 'PACKAGE_BUN_LOCK_STALE' || code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'
       ? ['package.json', 'bun.lock']
       : /^PACKAGE_BUN_MANIFEST_(SHAPE|FIELD|DEPENDENCIES|NAME|SOURCE|PATCH)$/.test(code)
         ? ['package.json']
@@ -259,7 +259,10 @@ function normalizeProjectAdministrationDiagnostic(
 
   let lockPath: string | undefined
   if (actual.includes('lockPath')) {
-    if (code !== 'PACKAGE_BUN_LOCK_STALE' || typeof fields.lockPath !== 'string') {
+    if (
+      !['PACKAGE_BUN_LOCK_STALE', 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'].includes(code) ||
+      typeof fields.lockPath !== 'string'
+    ) {
       throw new TypeError('project diagnostic lock path is invalid')
     }
     validateDiagnosticPath(fields.lockPath, ['bun.lock'])

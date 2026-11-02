@@ -255,6 +255,10 @@ Version metadata is checked before evaluation and reverified before capture comp
   distinct closed diagnostic. Missing-lock resolution uses `--omit=dev` so
   production-only installation does not suppress publication of the new lock.
 
+  A non-default registry in a lock has a distinct closed diagnostic. Never
+  expose its URL. Identify the captured workspace lock relative to the reviewed
+  project, including an ancestor lock when applicable.
+
   The subsequent install stays frozen and script-disabled.
 
 - `bun-preparation-output.ts` owns descriptor-based native directory collection for both modes.
@@ -288,6 +292,9 @@ Version metadata is checked before evaluation and reverified before capture comp
   does not add undeclared Flows. Without a qualifying outer root, use the
   nearest declared enclosing workspace within the application, or the selected
   package's own workspace. Keep the same bounded ancestor discovery.
+
+  An unrelated ancestor's external patterns do not invalidate a standalone
+  Flow. Validate every pattern before capturing a selected workspace.
 
   Stop at directory aliases without invalidating a declared workspace below one.
   Preserve members' own `workspaces` declarations as inert metadata during an

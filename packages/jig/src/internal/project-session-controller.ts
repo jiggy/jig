@@ -1151,7 +1151,9 @@ export function projectError(
             'AUTHORING_COMPILE',
             'PROJECT_JIG_VERSION_MISMATCH',
             'PROJECT_JIG_REQUIREMENT_INVALID',
-          ].includes(error.code) ? error.message : 'project candidate is invalid',
+          ].includes(error.code)
+            ? error.message
+            : 'project candidate is invalid',
           {
             code: error.code,
             path: error.path,
@@ -1178,6 +1180,7 @@ export function projectError(
             code: error.code,
             path: error.path,
             ...(error.pointer === undefined ? {} : { pointer: error.pointer }),
+            ...(error.lockPath === undefined ? {} : { lockPath: error.lockPath }),
           })
         } catch {
           // An invalid or protected location remains a closed unavailability.
@@ -1201,7 +1204,10 @@ export function scopePrivatePackagePlanningError(
     return error
   }
   if (error.lockPath !== undefined) return error
-  if (error.code === 'PACKAGE_BUN_LOCK_STALE') {
+  if (
+    error.code === 'PACKAGE_BUN_LOCK_STALE' ||
+    error.code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'
+  ) {
     const root = workspaceRoot ?? packagePath
     const atRoot = (path: string) => (root === '.' ? path : `${root}/${path}`)
     return new CheckError(
@@ -1253,6 +1259,7 @@ function isUnavailableDiagnosticCode(code: string): boolean {
       'AUTHORING_STATE',
     ].includes(code) ||
     code === 'PACKAGE_BUN_SOURCE_UNSUPPORTED' ||
+    code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED' ||
     code === 'PACKAGE_BUN_RESOLUTION_FAILED' ||

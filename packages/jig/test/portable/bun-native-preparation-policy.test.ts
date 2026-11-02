@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../../src/internal/bun-execution-layout.js'
 import {
+  PrivateBunLockRegistryError,
   PrivateBunLockVersionError,
   PrivateBunManifestError,
   requirePrivateBunLockPolicy,
@@ -39,6 +40,18 @@ function lock(packages: Readonly<Record<string, unknown>>): object {
 }
 
 describe('private Bun preparation policy', () => {
+  test('identifies a non-default registry without exposing its URL', () => {
+    const value = lock({
+      example: ['example@1.0.0', 'https://secret@example.invalid/example.tgz', {}, INTEGRITY],
+    })
+    try {
+      requirePrivateBunLockPolicy(value)
+      throw new Error('expected registry refusal')
+    } catch (error) {
+      expect(error).toBeInstanceOf(PrivateBunLockRegistryError)
+      expect(String(error)).not.toContain('secret')
+    }
+  })
   test('worker limit evidence must match the selected bound and a real overflow', () => {
     const limits = privateBunPreparationLimits('production', {
       maxPreparedFiles: 12,
@@ -352,7 +365,7 @@ describe('private Bun preparation policy', () => {
           value: ['value@1.0.0', 'https://packages.example.invalid', {}, INTEGRITY],
         }),
       ),
-    ).toThrow('unsupported Bun lock source')
+    ).toThrow(PrivateBunLockRegistryError)
   })
   for (const [suiteCaseIndex, suiteCaseValue] of [
     ['file', 'file:../value'],

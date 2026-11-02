@@ -77,6 +77,7 @@ change the code or dependencies.
 | No authored lock exists | Decide whether to permit fresh resolution for this review. Read the network conditions below. |
 | The supplied lock is stale or invalid | Update it with Bun. Review again. Jig does not repair it implicitly. |
 | `PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED` | Use a [supported lock format](#lock-formats). Changing dependency sources cannot fix the format. |
+| `PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED` | Configure the default npm registry and regenerate the indicated lock. Review the new dependency versions. |
 | `PACKAGE_BUN_MANIFEST_SOURCE` | Replace unsupported sources with default-registry versions or [declared workspace members](#local-workspace-packages). A `file:` archive is not supported. |
 | A workspace member or build output is missing | Correct the declaration or build the library. Jig does not fall back to npm. |
 | `PACKAGE_BUN_OUTPUT_LIMIT` | Inspect the reported manifest and runtime dependencies. Increase the documented [dependency preparation limits](limits.md#override-dependency-preparation-limits) when the complete tree is necessary. |

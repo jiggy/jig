@@ -303,14 +303,19 @@ ancestor contents. Explicit workspace requirements never fall back to a registry
 
 A member may also declare `workspaces` for use as a standalone project. During
 an ancestor-root installation, Bun uses only that root's membership patterns.
-Jig retains member declarations unchanged; they do not add nested packages to
+Jig retains member declarations unchanged. They do not add nested packages to
 the captured workspace or invalidate unrelated members.
+
 When a selected package belongs to a workspace above the Jig application,
 Jig uses the nearest such root before workspace declarations inside the
-application. The selected package must itself match that root's patterns;
-application membership alone does not declare its Flows. If no outer root
+application. The selected package must itself match that root's patterns.
+Application membership alone does not declare its Flows. If no outer root
 declares the selected package, its nearest enclosing application workspace
 or its own workspace supplies the standalone context.
+
+An ancestor workspace that does not declare the selected package is not
+captured. Its unrelated patterns do not invalidate the selected package.
+The selected workspace still must satisfy the path and source rules above.
 
 Library `files` paths and glob patterns select source when present, including
 `package.json`, README and license files. Otherwise ordinary package files are
@@ -815,11 +820,12 @@ identify their containing map instead.
 
 Workspace manifest locations are relative to the Jig project. Ancestor workspace
 locations may begin with up to 32 `../` segments, within the existing path bounds.
-`PACKAGE_BUN_LOCK_STALE` also permits these bounded ancestor
-locations for the mismatched manifest or lock. Its optional `lockPath` names
-the authored `bun.lock` relative to the project, using the verified captured
-workspace root or standalone package location. Other diagnostic codes cannot
-supply `lockPath`.
+`PACKAGE_BUN_LOCK_STALE` permits these locations for the mismatched manifest or lock.
+`PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED` permits them for the lock.
+
+Both codes may provide a `lockPath` for the authored `bun.lock`, relative to
+the project. The path uses the verified workspace root or standalone package
+location. Other diagnostic codes cannot supply `lockPath`.
 
 These display locations grant no filesystem access and cannot name protected
 `.jig` state. The CLI identifies the mismatch and lock. It gives a shell-safe Bun

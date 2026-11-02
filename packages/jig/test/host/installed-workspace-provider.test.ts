@@ -331,6 +331,24 @@ for (const location of ['member', 'root', 'nested'] as const) {
       })
       const repaired = await run(['review', '--yes'])
       expect(repaired.exit, repaired.stdout + repaired.stderr).toBe(0)
+      const lockFile = join(directory, 'bun.lock')
+      const validLock = await readFile(lockFile, 'utf8')
+      const registryEntry =
+        '"diagnostic-sample": ["diagnostic-sample@1.0.0", "https://secret@example.invalid/package.tgz", {}, "sha512-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="],'
+      expect(validLock).toContain('"packages": {')
+      await writeFile(
+        lockFile,
+        validLock.replace('"packages": {', `"packages": {\n${registryEntry}`),
+      )
+      const refusedRegistry = await run(['review'])
+      expect(refusedRegistry.exit, refusedRegistry.stdout + refusedRegistry.stderr).not.toBe(0)
+      expect(refusedRegistry.stderr).toContain('PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED')
+      expect(refusedRegistry.stderr).toContain(`Location: "${lockPath}"`)
+      expect(refusedRegistry.stderr).toContain(`rm -- '${lockPath}'`)
+      expect(refusedRegistry.stderr).toContain(`--cwd '${lockRoot}'`)
+      expect(refusedRegistry.stderr).not.toContain('secret')
+      expect(refusedRegistry.stderr).not.toContain('example.invalid')
+      await writeFile(lockFile, validLock)
       passed = true
     } finally {
       if (passed) {

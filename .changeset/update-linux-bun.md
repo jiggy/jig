@@ -8,4 +8,6 @@
 "@jigging/display-tui": patch
 ---
 
-Build Linux candidates with Bun 1.3.13 and use its pinned runtime for Jig.
+Build Linux candidates with Bun 1.3.13, preserve Jig's authoring exports, and use its pinned runtime. Explain unsupported registry sources in dependency locks with actionable repair steps.
+
+Allow standalone Flows to ignore unrelated ancestor workspaces.

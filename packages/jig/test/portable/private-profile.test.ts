@@ -132,6 +132,7 @@ test('private failure records accept only fixed own data and return fresh bounde
     'PROJECT_EVALUATOR_LAUNCH',
     'PACKAGE_BUN_INPUT_LIMIT',
     'PACKAGE_BUN_LOCK_INVALID',
+    'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED',
     'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
     'PACKAGE_BUN_LOCK_STALE',
     'PACKAGE_BUN_OUTPUT_LIMIT',

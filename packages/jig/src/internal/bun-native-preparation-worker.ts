@@ -7,6 +7,7 @@ import {
 } from '../project/limits.js'
 import { privateBunNativeInputs } from './bun-native-inputs.js'
 import {
+  PrivateBunLockRegistryError,
   PrivateBunLockVersionError,
   requirePrivateBunLockPolicy,
   requirePrivateBunPatches,
@@ -213,6 +214,8 @@ async function requireSupportedLock(
     }
     if (error instanceof PrivateBunLockVersionError)
       throw new WorkerFailure('PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED', error.message)
+    if (error instanceof PrivateBunLockRegistryError)
+      throw new WorkerFailure('PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED', error.message)
     unsupportedSource()
   }
   if (workspace !== undefined) {

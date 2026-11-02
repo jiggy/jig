@@ -862,6 +862,23 @@ describe('private finite project session', () => {
       path: 'flows/dependent/bun.lock',
       lockPath: 'flows/dependent/bun.lock',
     })
+    const registry = scopePrivatePackagePlanningError(
+      new CheckError(
+        'unavailable',
+        'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED',
+        'private registry detail',
+        'bun.lock',
+      ),
+      'flows/dependent',
+      undefined,
+      '../..',
+    )
+    const rescoped = scopePrivatePackagePlanningError(registry, 'flows/dependent')
+    expect(projectError(rescoped, 'plan').diagnostic).toEqual({
+      code: 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED',
+      path: '../../bun.lock',
+      lockPath: '../../bun.lock',
+    })
     const unsupportedFormat = projectError(
       scopePrivatePackagePlanningError(
         new CheckError(

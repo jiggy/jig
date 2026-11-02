@@ -23,6 +23,47 @@ import { captureFlowSource } from '../../src/project/flow-source.js'
 import { openPrivateProjectRoot } from '../../src/project/root.js'
 
 const target = 'apps/demo/flows/work'
+
+test('an unrelated external workspace does not invalidate a standalone Flow', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-unrelated-workspace-')))
+  await mkdir(join(root, 'flows/hello'), { recursive: true })
+  await writeFile(join(root, 'flows/hello/FLOW.ts'), 'export default 1\n')
+  await writeFile(
+    join(root, 'flows/hello/package.json'),
+    JSON.stringify({ name: 'hello', dependencies: { 'is-number': '7.0.0' } }),
+  )
+  const project = await openPrivateProjectRoot(root)
+  const captured = await capturePackageDirectory(join(root, 'flows/hello'))
+  const capture = () =>
+    capturePrivateBunWorkspace({
+      projectRoot: project,
+      packagePath: 'flows/hello',
+      captured,
+      signal: new AbortController().signal,
+    })
+  try {
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({
+        workspaces: ['../jiggy/jig/main/packages/*'],
+        dependencies: { '@jigging/jig': 'workspace:*' },
+      }),
+    )
+    expect(await capture()).toBeUndefined()
+    await writeFile(
+      join(root, 'package.json'),
+      JSON.stringify({
+        workspaces: ['../jiggy/jig/main/packages/*', 'flows/*'],
+      }),
+    )
+    await expect(capture()).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_INVALID' })
+  } finally {
+    await captured.dispose()
+    await project.dispose()
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
 async function fixture(
   versions = false,
   rootApplication = false,
