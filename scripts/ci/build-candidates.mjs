@@ -23,8 +23,8 @@ import { PACKAGE_LAYOUT } from './candidate-provenance.mjs'
 
 export const CANDIDATE_PACKAGES = PACKAGE_LAYOUT
 export const QUALIFIED_BUN = Object.freeze({
-  version: '1.3.3',
-  revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
+  version: '1.3.13',
+  revision: 'bf2e2cecf27e800962b1e7f03d66278f9d5d2e79',
   platform: 'linux',
   architecture: 'x64',
 })
@@ -62,7 +62,7 @@ export async function candidateTools({ env = process.env, run = execute } = {}) 
   for (const [key, expected] of Object.entries(QUALIFIED_BUN)) {
     if (identity[key] !== expected)
       throw new Error(
-        'Candidates require native Linux x64 Bun 1.3.3 revision 274e01c737e85f8142070a9745b43a2ba09fce4c',
+        'Candidates require native Linux x64 Bun 1.3.13 revision bf2e2cecf27e800962b1e7f03d66278f9d5d2e79',
       )
   }
   const nodeVersion = run(node, [

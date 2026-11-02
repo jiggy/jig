@@ -1,7 +1,7 @@
 {
-  # This revision supplies the Bun 1.3.3 required by Jig's build.
+  # This revision supplies the Bun 1.3.13 required by Jig's build.
   pkgs ? import (builtins.fetchTarball {
-    url = "https://github.com/NixOS/nixpkgs/archive/2f5cde3125a022b349324aae7e15a35622723cb8.tar.gz";
+    url = "https://github.com/NixOS/nixpkgs/archive/9bb52223f4f6a0cc606fd0852d8784f896c137d5.tar.gz";
   }) { },
 }:
 let
@@ -18,7 +18,7 @@ let
     };
   });
 in
-assert pkgs.bun.version == "1.3.3";
+assert pkgs.bun.version == "1.3.13";
 pkgs.mkShellNoCC {
   packages = [
     pkgs.bun

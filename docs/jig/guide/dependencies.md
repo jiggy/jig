@@ -9,7 +9,7 @@ in `<note>` with `escape-html`.
 
 ## Before you start
 
-Use a project from the [quickstart](index.md) and Bun 1.3.3 for authoring. Jig
+Use a project from the [quickstart](index.md) and Bun 1.3.13 for authoring. Jig
 runs `FLOW.ts` with its installed Bun runtime. A Flow can import supported
 Bun/Node built-ins, its own files, and declared production dependencies.
 
@@ -126,7 +126,7 @@ manifest with a supported Bun version:
 
 | Authoring version | Text lock | Supported hosts |
 | --- | --- | --- |
-| Bun 1.3.3 | Version 1 | Linux and Mac |
+| Bun 1.3.13 | Version 1 | Linux and Mac |
 | Bun 1.4.2 | Version 2 | Mac |
 
 Jig installs valid supplied locks frozen, without conversion. Frozen

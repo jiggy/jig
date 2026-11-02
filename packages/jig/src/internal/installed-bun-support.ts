@@ -24,9 +24,9 @@ const MARKDOWN_RUNTIME_DESTINATION = '/jig-markdown-runtime.js'
 const LINUX_BUN_PACKAGE = join('@oven', 'bun-linux-x64-baseline', 'bin', 'bun')
 const MACOS_BUN_PACKAGE = join('@oven', 'bun-darwin-x64-baseline', 'bin', 'bun')
 const LINUX_BUN = Object.freeze({
-  version: '1.3.3',
-  revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
-  digest: 'sha256:e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+  version: '1.3.13',
+  revision: 'bf2e2cecf27e800962b1e7f03d66278f9d5d2e79',
+  digest: 'sha256:9bab98ce2341995f03ee11f8095bd4965b6216c12834523f0824aac26d579235',
 })
 const MACOS_BUN = Object.freeze({
   version: '1.4.2',

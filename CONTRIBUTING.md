@@ -67,8 +67,8 @@ direnv allow
 ```
 
 Alternatively, run `nix-shell` from the repository root. The first entry fetches
-the pinned Nixpkgs toolchain: Bun 1.3.3, Node 24 with npm, Python with package
-build dependencies, Bubblewrap 0.12, Just 1.43.1, and common development tools.
+the pinned Nixpkgs toolchain: Bun 1.3.13, Node 24 with npm, Python with package
+build dependencies, Bubblewrap 0.12, Just 1.51.0, and common development tools.
 `FLOW_NODE`, `FLOW_NPM`, `JIG_NPM`, and `PYTHON` point to those tools; Python is also on `PATH` for
 conformance tests. The Bun pin follows Jig's exact build requirement, not the
 latest Nix channel.
@@ -88,6 +88,9 @@ Site tooling and conformance fixtures keep their separate dependency installatio
 Build Jig with `just jig::build` before reviewing examples.
 Review captures declared workspace dependencies without per-Flow setup.
 FLOW SDKs remain versioned public dependencies.
+
+Release candidate production requires Just 1.43.1. See [RELEASING.md](RELEASING.md)
+for the exact candidate toolchain.
 
 Shell entry warns in bold red when Jig is missing or incompletely built, or
 when its successful-build version differs from `packages/jig/package.json`.

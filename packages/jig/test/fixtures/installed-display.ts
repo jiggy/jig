@@ -15,9 +15,9 @@ export const installedRuntime =
       })
     : Object.freeze({
         package: 'bun-linux-x64-baseline',
-        version: '1.3.3',
-        revision: '1.3.3+274e01c73',
-        sha256: 'e666c943af70078a72bad00757a094776a54621fecd83eb4aa982760f9186839',
+        version: '1.3.13',
+        revision: '1.3.13+bf2e2cecf',
+        sha256: '9bab98ce2341995f03ee11f8095bd4965b6216c12834523f0824aac26d579235',
       })
 export const expectedInstalledFiles = [
   'LICENSE.md',
