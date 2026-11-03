@@ -160,7 +160,7 @@ function rosterAnswer(prompt: string) {
 function photoAnswer(prompt: string) {
   assert.ok(prompt.includes('Group these photos into a few recognizable events'))
   const captions = array(promptJson(prompt, 'Photo captions:\n'))
-  assert.equal(captions.length, 12)
+  assert.equal(captions.length, 6)
   const assignments = captions.map((value) => {
     const photo = object(value)
     assert.deepEqual(Object.keys(photo).sort(), ['caption', 'date', 'id'])
@@ -478,20 +478,23 @@ export const EXAMPLE_SMOKE_CASES: readonly ExampleSmokeCase[] = [
     async assertResult({ result: value, project, packet }) {
       const result = successfulResult(value)
       const output = object(result.output)
-      assert.equal(output.count, 12)
+      assert.equal(output.count, 6)
       assert.equal(output.manifest, 'copies/manifest.csv')
       assert.equal(output.contactSheet, 'overview/contact-sheet.svg')
+      assert.equal(output.yearbook, 'book/yearbook.pdf')
+      assert.equal(output.pages, 12)
       assert.deepEqual([...strings(output.groups)].sort(), [
         'Birthday party',
         'Lake picnic',
         'Mountain walk',
       ])
       const photos = array(output.photos).map(object)
-      assert.equal(photos.length, 12)
+      assert.equal(photos.length, 6)
       const files = await deliveredFiles(result, packet, [
         ...photos.map((photo) => safeRelativePath(photo.destination)),
         'copies/manifest.csv',
         'overview/contact-sheet.svg',
+        'book/yearbook.pdf',
       ])
       const originals = array(
         JSON.parse(await readFile(join(project, 'fixtures/photos/photos.json'), 'utf8')),
@@ -501,7 +504,7 @@ export const EXAMPLE_SMOKE_CASES: readonly ExampleSmokeCase[] = [
         originals.map((photo) => photo.id).sort(),
       )
       const sheet = await readFile(join(files, 'overview/contact-sheet.svg'), 'utf8')
-      assert.equal(sheet.match(/<image /g)?.length, 24)
+      assert.equal(sheet.match(/<image /g)?.length, 12)
       assert.ok(sheet.includes('Original order and names'))
       assert.ok(sheet.includes('Grouped copies'))
       for (const photo of photos) {
@@ -513,9 +516,13 @@ export const EXAMPLE_SMOKE_CASES: readonly ExampleSmokeCase[] = [
         assert.deepEqual(await readFile(join(files, safeRelativePath(photo.destination))), bytes)
         assert.ok(sheet.includes(bytes.toString('base64')))
       }
+      assert.equal(
+        (await readFile(join(files, 'book/yearbook.pdf'))).subarray(0, 5).toString(),
+        '%PDF-',
+      )
       const manifest = await readFile(join(files, 'copies/manifest.csv'), 'utf8')
       assert.ok(manifest.startsWith('id,original,event,date,copy\n'))
-      assert.equal(manifest.trimEnd().split('\n').length, 13)
+      assert.equal(manifest.trimEnd().split('\n').length, 7)
       for (const photo of photos)
         assert.ok(manifest.includes(`"${photo.destination.slice('copies/'.length)}"`))
     },

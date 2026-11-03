@@ -287,6 +287,8 @@ These links locate module rules. All selected domain requirements still apply.
   Raster copies and decoded text each allow 32 MiB. SVG copies and decoded text each allow one MiB.
   Raster preview output allows 2 MiB within 1024 by 1024 pixels.
   SVG output retains its 256 KiB and 384-pixel width limits.
+
+  SVG image upgrades retain the 512 KiB content ceiling, including reserved text fallbacks.
   Selected input raster previews share an eight-MiB LRU cache.
   Pinned Wasm, copy and decoded-text limits bound content, not total Bun RSS.
 

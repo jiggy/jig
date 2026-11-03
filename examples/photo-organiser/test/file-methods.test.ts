@@ -109,7 +109,7 @@ test('copy-photos independently checks assignments and preserves all original by
     const manifest = await readFile(join(outputFolder, output.manifest), 'utf8')
     const manifestLines = manifest.trimEnd().split('\n')
     expect(manifestLines[0]).toBe('id,original,event,date,copy')
-    expect(manifestLines).toHaveLength(13)
+    expect(manifestLines).toHaveLength(catalogue.length + 1)
     for (const photo of output.photos) {
       expect(manifest).toContain(`"${photo.destination}"`)
     }
@@ -127,7 +127,7 @@ test('contact-sheet runs without copied files and embeds every original twice', 
     expect(await readdir(outputFolder)).toEqual(['contact-sheet.svg'])
 
     const sheet = await readFile(join(outputFolder, 'contact-sheet.svg'), 'utf8')
-    expect(sheet.match(/<image /g)).toHaveLength(24)
+    expect(sheet.match(/<image /g)).toHaveLength(catalogue.length * 2)
     expect(sheet).toContain('Original order and names')
     expect(sheet).toContain('Grouped copies')
     for (const photo of catalogue) {
