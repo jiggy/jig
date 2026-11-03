@@ -130,6 +130,30 @@ test('private failure records accept only fixed own data and return fresh bounde
     'ENOMEM',
     'EXECUTION_PREPARATION_DEADLINE',
     'PROJECT_EVALUATOR_LAUNCH',
+    'PACKAGE_MATERIALIZATION_MODE',
+    'PACKAGE_MATERIALIZATION_ALIAS',
+    'PACKAGE_MATERIALIZATION_DIGEST',
+    'PACKAGE_MATERIALIZATION_MODES',
+    'PACKAGE_MATERIALIZATION_IDENTITY',
+    'PACKAGE_SOURCE_CHANGED',
+    'PACKAGE_STAGE_CHANGED',
+    'PACKAGE_CAPTURE_UNAVAILABLE',
+    'PACKAGE_SOURCE_IO',
+    'PACKAGE_RESOURCE_EXHAUSTED',
+    'PACKAGE_SNAPSHOT_CLOSED',
+    'PACKAGE_SYMLINK',
+    'PACKAGE_SPECIAL_FILE',
+    'PACKAGE_CAPTURE_IO',
+    'PACKAGE_FILE_LIMIT',
+    'PACKAGE_FILE_MISSING',
+    'PACKAGE_HARDLINK',
+    'PACKAGE_LIMIT',
+    'PACKAGE_MOUNT',
+    'PACKAGE_PATH',
+    'PACKAGE_PATH_UTF8',
+    'PACKAGE_ROOT',
+    'PACKAGE_SOURCE_TOPOLOGY_UNSUPPORTED',
+    'PACKAGE_SOURCE_UNSUPPORTED',
     'PACKAGE_BUN_INPUT_LIMIT',
     'PACKAGE_BUN_LOCK_INVALID',
     'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED',
@@ -175,6 +199,10 @@ test('private failure records accept only fixed own data and return fresh bounde
     { ...record, cause: 'Error:EAGAIN' },
     { ...record, cause: 'MACOS_GUARDIAN_STORAGE_PRIVATE_TOKEN' },
     { ...record, cause: 'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH/private' },
+    { ...record, cause: 'PACKAGE_MATERIALIZATION_DIGEST_PRIVATE_CANARY' },
+    { ...record, cause: 'PACKAGE_MATERIALIZATION_MODES/private' },
+    { ...record, cause: 'PACKAGE_SOURCE_CHANGED_PRIVATE_CANARY' },
+    { ...record, phase: 'package-materialization-verification/private' },
     { ...record, cause: 'PACKAGE_BUN_PRIVATE_CANARY' },
     { ...record, cause: 'PACKAGE_BUN_EXCHANGE_CLEANUP/private' },
     { ...record, cause: 'PACKAGE_BUN_NATIVE_CLEANUP_PRIVATE_CANARY' },
@@ -709,10 +737,10 @@ test('real package materialization records bounded copy, freeze and verification
           process.execPath,
           '-e',
           `import assert from 'node:assert/strict';
-          import {readFile} from 'node:fs/promises';
-          import {join} from 'node:path';
+          import {chmod,readFile,readlink,symlink,unlink,writeFile} from 'node:fs/promises';
+          import {dirname,join} from 'node:path';
           import {privateProfileActivate,privateProfileFinish} from ${JSON.stringify(profiler)};
-          import {materializePrivatePackageLease} from ${JSON.stringify(materializer)};
+          import {materializePrivatePackageLease,reacquirePrivatePackageMaterializationLease} from ${JSON.stringify(materializer)};
           import {workspaceFixture} from ${JSON.stringify(fixture)};
           const value=await workspaceFixture();
           try {
@@ -721,6 +749,36 @@ test('real package materialization records bounded copy, freeze and verification
             try {
               assert.equal(await readFile(join(lease.root,'libraries/shared/value.txt'),'utf8'),'shared bytes\\n');
               assert.equal(await readFile(join(lease.root,'flows/main/node_modules/@fixture/shared/value.txt'),'utf8'),'shared bytes\\n');
+              const file=join(lease.root,'libraries/shared/value.txt');
+              const original=await readFile(file);
+              await chmod(file,0o600);
+              try {
+                await assert.rejects(reacquirePrivatePackageMaterializationLease(value.protectedParent,lease.identity), /materialized package no longer matches its lease digest/);
+              } finally {await chmod(file,0o444)}
+              await chmod(file,0o600);
+              await writeFile(file,'PRIVATE_CHANGED_BYTES');
+              await chmod(file,0o444);
+              try {
+                await assert.rejects(reacquirePrivatePackageMaterializationLease(value.protectedParent,lease.identity), /materialized package no longer matches its lease digest/);
+              } finally {
+                await chmod(file,0o600);
+                await writeFile(file,original);
+                await chmod(file,0o444);
+              }
+              const alias=join(lease.root,value.layout.aliases[0].path);
+              const target=await readlink(alias);
+              await chmod(dirname(alias),0o700);
+              await unlink(alias);
+              await symlink('PRIVATE_CHANGED_ALIAS',alias);
+              await chmod(dirname(alias),0o555);
+              try {
+                await assert.rejects(reacquirePrivatePackageMaterializationLease(value.protectedParent,lease.identity), /materialized package no longer matches its lease digest/);
+              } finally {
+                await chmod(dirname(alias),0o700);
+                await unlink(alias);
+                await symlink(target,alias);
+                await chmod(dirname(alias),0o555);
+              }
             } finally {await lease.dispose()}
           } finally {
             await value.dispose();
@@ -754,7 +812,9 @@ test('real package materialization records bounded copy, freeze and verification
         .split('\n')
         .every((line) => Buffer.byteLength(line) <= 192),
     ).toBe(true)
-    expect(text).not.toMatch(/shared bytes|value\.txt|ownerToken|packageDigest|"path"/)
+    expect(text).not.toMatch(
+      /shared bytes|PRIVATE_CHANGED|value\.txt|ownerToken|packageDigest|"path"/,
+    )
     const phases = [
       'package-materialization-copy',
       'package-materialization-freeze',
@@ -764,10 +824,22 @@ test('real package materialization records bounded copy, freeze and verification
       const summary = JSON.parse(await profilePhaseSummary(destination, kind))
       expect(summary).toEqual({
         status: 'captured',
-        events: phases.flatMap((phase) => [
-          { phase, kind: 'start', timeMs: expect.any(Number) },
-          { phase, kind: 'end', timeMs: expect.any(Number), outcome: 'returned' },
-        ]),
+        events: [
+          ...phases.flatMap((phase) => [
+            { phase, kind: 'start', timeMs: expect.any(Number) },
+            { phase, kind: 'end', timeMs: expect.any(Number), outcome: 'returned' },
+          ]),
+          ...[
+            'PACKAGE_MATERIALIZATION_MODES',
+            'PACKAGE_MATERIALIZATION_DIGEST',
+            'PACKAGE_MATERIALIZATION_ALIAS',
+          ].map((cause) => ({
+            kind: 'failure',
+            phase: 'package-materialization-verification',
+            cause,
+            timeMs: expect.any(Number),
+          })),
+        ],
       })
       expect(JSON.stringify(summary)).not.toMatch(/"pid"|shared bytes|value\.txt|ownerToken/)
     }

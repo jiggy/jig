@@ -30,7 +30,7 @@ import {
   type PrivatePackageAlias,
   privatePackageAliasText,
 } from './package-aliases.js'
-import { privateProfileSpan } from './private-profile.js'
+import { privateProfileFailure, privateProfileSpan } from './private-profile.js'
 
 const TEMPORARY_PREFIX = 'jig-package-'
 const ALLOCATION_KIND = 'private-package-materialization-allocation/1'
@@ -287,7 +287,14 @@ export async function materializePrivatePackageLease(
     return await privateProfileSpan('package-materialization-verification', async () => {
       transactionInformation = await transactionHandle.stat({ bigint: true })
       const packageInformation = await packageHandle.stat({ bigint: true })
-      requireOwnedDirectory(transactionInformation, parent.information, [0o711n], 'transaction')
+      try {
+        requireOwnedDirectory(transactionInformation, parent.information, [0o711n], 'transaction')
+      } catch (error) {
+        privateProfileFailure('package-materialization-verification', [
+          'PACKAGE_MATERIALIZATION_MODE',
+        ])
+        throw error
+      }
       if (
         !(await packageMatches(
           packageHandle,
@@ -298,9 +305,16 @@ export async function materializePrivatePackageLease(
         ))
       )
         throw new Error('new materialized package failed its digest verification')
-      await verifyVisibleParent(parent, allocation.parent)
-      await requireChildIdentity(parent.handle, allocation.name, transactionInformation)
-      await requireChildIdentity(transactionHandle, PACKAGE_NAME, packageInformation)
+      try {
+        await verifyVisibleParent(parent, allocation.parent)
+        await requireChildIdentity(parent.handle, allocation.name, transactionInformation)
+        await requireChildIdentity(transactionHandle, PACKAGE_NAME, packageInformation)
+      } catch (error) {
+        privateProfileFailure('package-materialization-verification', [
+          'PACKAGE_MATERIALIZATION_IDENTITY',
+        ])
+        throw error
+      }
       return leaseFromObserved(allocation, transactionInformation, packageInformation)
     })
   } catch (error) {
@@ -835,9 +849,11 @@ async function packageMatches(
   filesystem: BigIntStats,
   aliases?: readonly PrivatePackageAlias[],
 ): Promise<boolean> {
-  if (fileMode(packageInformation) !== 0o555n) return false
+  if (fileMode(packageInformation) !== 0o555n)
+    return materializationMismatch('PACKAGE_MATERIALIZATION_MODE')
   requireOwnedDirectory(packageInformation, filesystem, [0o555n], 'package')
-  if (!(await aliasesMatch(packageDirectory, filesystem, aliases))) return false
+  if (!(await aliasesMatch(packageDirectory, filesystem, aliases)))
+    return materializationMismatch('PACKAGE_MATERIALIZATION_ALIAS')
   const links = aliasTexts(aliases)
   const captured = await captureOpenedPackageDirectory(
     'durable package materialization',
@@ -851,15 +867,31 @@ async function packageMatches(
         },
   )
   try {
-    if (captured.digest !== expectedDigest) return false
+    if (captured.digest !== expectedDigest)
+      return materializationMismatch('PACKAGE_MATERIALIZATION_DIGEST')
     if (aliases !== undefined) assertPrivatePackageAliasFiles(aliases, captured.files)
     if (!(await packageModesMatch(packageDirectory, captured.files, filesystem, aliases)))
-      return false
-    if (!(await aliasesMatch(packageDirectory, filesystem, aliases))) return false
-    return sameIdentity(await packageDirectory.stat({ bigint: true }), packageInformation)
+      return materializationMismatch('PACKAGE_MATERIALIZATION_MODES')
+    if (!(await aliasesMatch(packageDirectory, filesystem, aliases)))
+      return materializationMismatch('PACKAGE_MATERIALIZATION_ALIAS')
+    if (!sameIdentity(await packageDirectory.stat({ bigint: true }), packageInformation))
+      return materializationMismatch('PACKAGE_MATERIALIZATION_IDENTITY')
+    return true
   } finally {
     await captured.dispose()
   }
+}
+
+function materializationMismatch(
+  cause:
+    | 'PACKAGE_MATERIALIZATION_MODE'
+    | 'PACKAGE_MATERIALIZATION_ALIAS'
+    | 'PACKAGE_MATERIALIZATION_DIGEST'
+    | 'PACKAGE_MATERIALIZATION_MODES'
+    | 'PACKAGE_MATERIALIZATION_IDENTITY',
+): false {
+  privateProfileFailure('package-materialization-verification', [cause])
+  return false
 }
 
 async function packageModesMatch(

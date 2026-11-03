@@ -101,6 +101,10 @@ Version metadata is checked before evaluation and reverified before capture comp
 
   Optional private timing separates copying, freezing and final verification.
   These observations retain no paths or identities and change no authority, recovery or deadline.
+  Closed verification failures distinguish root metadata, aliases, content digest, the descendant mode walk, and final directory identity.
+  The mode walk also checks ownership, filesystem, and file-link identity.
+  Capture exceptions retain only explicitly allowed codes.
+  Profiling preserves boolean results, thrown errors, and cleanup.
 
 - Package artifact retention, materialization, and preparation.
 
