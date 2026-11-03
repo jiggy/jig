@@ -25,11 +25,14 @@ ordinary FLOW channel and continues preparing independent review questions.
 Ordinary commentary uses a follow-up in the same conversation. A validated
 replacement of source files or appended instructions triggers handoff:
 
-1. Interrupt the predecessor if it is still active.
+1. [Interrupt the predecessor](conversation-control.md#interrupt-a-turn) if it is still active.
 2. Await the actual turn.
 3. Request a summary in the same conversation.
 4. Settle the predecessor.
 5. Start one successor.
+
+Do not dispatch a successor while the predecessor's turn or invocation remains
+unsettled.
 
 The parent connects the workers directly. No logging service or host scheduler
 is involved:
@@ -78,10 +81,5 @@ not establish factual correctness or authorize publication. This pattern
 demonstrates lifecycle and context preservation. It does not establish better
 answers.
 
-## If handoff does not complete
-
-Preserve received answers and each branch's result. Do not dispatch a successor
-while the predecessor's turn or invocation remains unsettled. If interruption or
-cleanup is uncertain, follow [Results and recovery](results.md).
-[Conversation control](conversation-control.md) explains interruption and
-retained helper errors.
+For incomplete handoff, see
+[handoff troubleshooting](../reference/troubleshooting.md#conversation-handoff-fails).

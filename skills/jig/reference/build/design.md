@@ -171,7 +171,8 @@ Choose output that lets the recipient understand both the result and any remaini
 Read execution status, application outcome, output delivery, and cleanup evidence separately.
 A successful invocation can return an unsuccessful domain outcome.
 Completion of an optional channel does not establish method completion.
-Use [results and recovery](results.md) for those distinctions and diagnostic steps.
+Use [results](results.md) to interpret those distinctions.
+Use [troubleshooting](../reference/troubleshooting.md) to choose a diagnostic or recovery step.
 
 Choose a retained output destination when the user needs files beyond temporary storage.
 Jig never replaces an earlier result directory.

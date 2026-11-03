@@ -157,7 +157,7 @@ If a child fails later, the coordinator does not invent a successful result or r
 Earlier completed effects are not rolled back.
 This example only produces messages, so it has no external changes to undo.
 Ctrl-C requests cancellation of owned work.
-Follow [Results and recovery](results.md) when execution or cleanup is uncertain.
+Follow [Troubleshooting](../reference/troubleshooting.md#inputs-and-execution) when execution or cleanup is uncertain.
 
 ## Apply the boundary to real work
 

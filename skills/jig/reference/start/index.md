@@ -129,13 +129,7 @@ An unchanged review reuses admitted bytes.
 
 ## If the first run fails
 
-| Observation | Next action |
-| --- | --- |
-| Host support is missing | Check [supported hosts](#supported-host). Jig provides no weaker fallback. |
-| The project has no approved target | Complete review and approval before running. |
-| A source edit has no effect | Review it. Runs use accepted source rather than live files. |
-| JSON input cannot be parsed | Supply valid JSON. The greeting expects a quoted string. |
-| Execution, delivery, or cleanup is uncertain | Preserve the evidence and follow [Results and recovery](../build/results.md). |
+For host support, review, input, or execution failures, see [Troubleshooting](../reference/troubleshooting.md).
 
 Ctrl-C requests cancellation.
 Wait for cleanup before starting new work.
