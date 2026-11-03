@@ -97,4 +97,8 @@ Application targets, presentation roles and captured content retain their report
 `inputs` supplies a separate captured-input inventory. File IDs remain unique across both inventories.
 `retained-views` presents retained application projections without execution history.
 Per-file source and attachment bindings prevent references from borrowing another publication’s evidence.
+
+Delivered files may carry explicit `bindings` with `sourceId`, `attachment` and attachment-relative `path`.
+These verified joins remain separate from retained packet paths, including forwarded child artifacts.
+An empty binding list authorizes no authored references.
 The complete snapshot allowance is 16 MiB.

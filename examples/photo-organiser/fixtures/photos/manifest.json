@@ -1,0 +1,44 @@
+{
+  "purpose": "Fictional demonstration photographs for the Jig photo studio workbench",
+  "mode": "built-in image_gen",
+  "sharedPrompt": "Natural candid lifestyle photography; warm restrained colors; realistic textures; horizontal 4:3; no text, captions, logos, watermarks, borders, or UI.",
+  "assets": [
+    {
+      "file": "walk.jpg",
+      "scene": "A candid family snapshot of two adults and a child walking away from the camera along a green countryside trail, soft hills and summer trees, relaxed everyday clothes, faces not identifiable.",
+      "generator": "built-in image_gen",
+      "fictionalDemoAsset": true
+    },
+    {
+      "file": "cottage.jpg",
+      "scene": "A quiet photograph from inside a modest cozy cottage, a wooden window framing a still lake and green rolling hills, a curtain edge and simple sill in foreground.",
+      "generator": "built-in image_gen",
+      "fictionalDemoAsset": true
+    },
+    {
+      "file": "meal.jpg",
+      "scene": "A candid family shared meal around a wooden dining table, home cooked dishes, ceramic plates, several natural hands passing food, cozy lived-in room, faces incidental and not prominent.",
+      "generator": "built-in image_gen",
+      "fictionalDemoAsset": true
+    },
+    {
+      "file": "cake.jpg",
+      "scene": "A homemade birthday cake on a kitchen table, casually decorated with berries and simple colorful candles, handmade details and soft daylight, no writing on the cake.",
+      "generator": "built-in image_gen",
+      "fictionalDemoAsset": true
+    },
+    {
+      "file": "bicycle.jpg",
+      "scene": "A candid photograph of a child learning to ride a small bicycle on a park path, an adult's supporting hand nearby, photographed from behind and slightly to the side, natural safe family moment.",
+      "generator": "built-in image_gen",
+      "fictionalDemoAsset": true
+    },
+    {
+      "file": "garden.jpg",
+      "scene": "A quiet rainy afternoon garden photographed through a window, raindrops on the glass, lush foliage, terracotta pots and soft wet light, warm indoor edge in foreground.",
+      "generator": "built-in image_gen",
+      "fictionalDemoAsset": true
+    }
+  ],
+  "preparation": "JPEG encoding at 1024px for bounded sample delivery. No scene content changed."
+}

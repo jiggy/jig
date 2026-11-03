@@ -1,5 +1,11 @@
 ---
+"@jigging/reporting": patch
+"@jigging/display-model": patch
 "@jigging/display-web": patch
+"@jigging/display-tui": patch
+"@jigging/jig": patch
 ---
 
-Restore the approved workbench hierarchy with photograph galleries, readable reports, inline captured documents and patches, and contextual comparison tables. Preserve record selection through filtering and keep technical metadata in disclosures.
+Restore the application workbench hierarchy with compact navigation, readable reports, photograph galleries and captured documents.
+Add portable document covers, chapter locators, verified downloads and readable application instance labels in both reporting SDKs.
+Resolve forwarded output references through verified publisher and attachment bindings while preserving packet paths.

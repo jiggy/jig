@@ -350,3 +350,62 @@ test('copyable publication and target identities reject hidden controls while pr
     )
   }
 })
+
+test('documents preserve labels, captured cover/download references and page locators', () => {
+  const original = {
+    ...view({ kind: 'report', text: 'Opening prose' }),
+    application: 'Photo studio',
+    presentation: {
+      kind: 'document',
+      title: 'Family moments · 2025',
+      subtitle: 'A family yearbook',
+      label: '12 pages',
+      cover: { kind: 'input-artifact', attachment: 'photos', path: 'cover.jpg' },
+      download: {
+        label: 'Download PDF',
+        reference: { kind: 'artifact', attachment: 'book', path: 'yearbook.pdf' },
+        detail: '12 pages · A4',
+      },
+    },
+    target: {
+      definitionId: 'yearbook',
+      instanceKey: 'family',
+      subjectKey: 'family',
+      label: 'Family moments · 2025',
+      scopeLabel: 'Album',
+    },
+  }
+  original.sections[0].label = '01–02'
+  const accepted = validateReportingMessage(original)
+  original.presentation.download.label = 'Changed'
+  assert.equal(accepted.presentation.download.label, 'Download PDF')
+  assert.equal(accepted.target.label, 'Family moments · 2025')
+  assert.equal(accepted.sections[0].label, '01–02')
+  assert(Object.isFrozen(accepted.presentation.download.reference))
+  for (const patch of [
+    { cover: { kind: 'call', operationId: 'not-media' } },
+    {
+      download: {
+        label: 'Download',
+        reference: { kind: 'record', viewId: 'a', collectionId: 'b', rowId: 'c' },
+      },
+    },
+    { kind: 'html' },
+    { style: 'arbitrary CSS' },
+  ])
+    assert.throws(() =>
+      validateReportingMessage({
+        ...accepted,
+        presentation: { ...accepted.presentation, ...patch },
+      }),
+    )
+})
+test('real SDK publishes a document using only ordinary view declarations and snapshots', async () => {
+  const messages = await wire(
+    `const options={title:'Yearbook',application:'Photo studio',target:{definitionId:'yearbook',instanceKey:'family',label:'Family moments',scopeLabel:'Album'}};const document=report.view('book',options);options.application='Mutated';document.update({summary:'A readable yearbook.',presentation:{kind:'document',title:'Family moments',cover:{kind:'input-artifact',attachment:'source',path:'cover.jpg'},download:{label:'Download PDF',reference:{kind:'artifact',attachment:'book',path:'yearbook.pdf'}}},sections:[{title:'Opening',label:'01–02',blocks:[{kind:'report',text:'A retained page plan.'}]}]});`,
+  )
+  assert.equal(messages.length, 1)
+  assert.equal(messages[0].application, 'Photo studio')
+  assert.equal(messages[0].presentation.download.reference.path, 'yearbook.pdf')
+  assert.equal(messages[0].sections[0].label, '01–02')
+})

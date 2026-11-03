@@ -128,6 +128,7 @@ export function contactPreviewOptions(
     .digest('hex')
   return {
     title: 'Contact preview',
+    application: 'Contact import',
     landing: true,
     target: { definitionId: 'contact-preview', instanceKey: sourceKey, subjectKey: sourceKey },
   }

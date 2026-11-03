@@ -28,7 +28,12 @@ sorting, stable selection, full record details and typed evidence navigation
 remain available. Details open on request rather than occupying the initial
 application screen.
 
-Host facts, attention, observation loss and Close remain visible across pages.
+A compact top bar shows application and page names, with routine host facts available through Run details.
+Attention and observation loss remain visible across pages, alongside an explicit Close action.
+
+Application instance labels populate the scope selector without inventing records.
+Document presentations show captured covers, chapter outlines, body photographs and verified downloads.
+
 Directly invoking a child makes that invocation the root. Its own view becomes
 primary. Recorded-packet navigation retains its explicit host roles.
 [Retained application views](display-archive.md) show only their selected projections and captured evidence.

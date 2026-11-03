@@ -6,7 +6,7 @@ import {
   type PhotoBoxState,
   photoAlbumKey,
   photoBoxView,
-  photoContactSheetView,
+  photoYearbookView,
   photoGalleryView,
   photoViewOptions,
 } from './view.ts'
@@ -20,15 +20,16 @@ export async function organisePhotos(
     throw new TypeError('Supply a read-only source attachment.')
   }
 
-  const reading = updates?.view('reading', { title: 'Reading photos' })
-  let views: Readonly<Record<'photos' | 'organise' | 'contactSheet', ReportingView>> | undefined
-  let state: PhotoBoxState = { phase: 'reading' }
+  const reading = updates?.view('reading', { title: 'Reading photos', application: 'Photo studio' })
+  let views: Readonly<Record<'photos' | 'organise' | 'yearbook', ReportingView>> | undefined
+  const albumTitle = (run.input as { albumTitle?: string })?.albumTitle ?? 'Photo collection'
+  let state: PhotoBoxState = { phase: 'reading', albumTitle }
   const show = (phase: PhotoBoxState['phase']) => {
     state = { ...state, phase }
     if (views) {
       views.photos.update(photoGalleryView(state))
       views.organise.update(photoBoxView(state))
-      views.contactSheet.update(photoContactSheetView(state))
+      views.yearbook.update(photoYearbookView(state))
     } else {
       reading?.update(photoBoxView(state))
     }
@@ -45,11 +46,11 @@ export async function organisePhotos(
     state = { ...state, photos }
     if (updates) {
       reading?.retire()
-      const options = photoViewOptions(photoAlbumKey(photos))
+      const options = photoViewOptions(photoAlbumKey(photos), albumTitle)
       views = {
         photos: updates.view('photos', options.photos),
         organise: updates.view('organise', options.organise),
-        contactSheet: updates.view('contact-sheet', options.contactSheet),
+        yearbook: updates.view('yearbook', options.yearbook),
       }
     }
     show('grouping')
@@ -140,6 +141,38 @@ export async function organisePhotos(
       throw new TypeError('The contact-sheet Flow omitted its immutable files artifact.')
     }
 
+    show('yearbook')
+    updates?.activity('organise', 'Preparing the printable yearbook')
+    const bookResponse = await run.call({
+      operationId: 'create-yearbook',
+      slot: 'yearbook',
+      intent: 'Prepare a printable yearbook from the checked photographs and event grouping',
+      input: { title: albumTitle, assignments },
+      attachments: { files: { create: true } },
+    })
+    run.signal.throwIfAborted()
+    const bookOutput = bookResponse.output as {
+      count?: unknown
+      pages?: unknown
+      bytes?: unknown
+      file?: unknown
+    }
+    const expectedPages =
+      renamedPhotos.length + new Set(renamedPhotos.map((photo) => photo.event)).size + 3
+    if (
+      bookResponse.outcome !== 'done' ||
+      bookOutput?.count !== renamedPhotos.length ||
+      bookOutput?.pages !== expectedPages ||
+      bookOutput?.file !== 'yearbook.pdf' ||
+      typeof bookOutput.bytes !== 'number' ||
+      !Number.isSafeInteger(bookOutput.bytes) ||
+      bookOutput.bytes <= 0
+    )
+      throw new TypeError('The yearbook Flow omitted its checked document metadata.')
+    const book = bookResponse.artifacts?.files
+    if (!book) throw new TypeError('The yearbook Flow omitted its immutable files artifact.')
+    state = { ...state, yearbook: { pages: expectedPages, bytes: bookOutput.bytes } }
+
     // Final artifact names supply packet prefixes. Leaf paths stay relative.
     const deliveredPhotos = renamedPhotos.map((photo) => ({
       ...photo,
@@ -150,7 +183,7 @@ export async function organisePhotos(
     const eventGroups = [...new Set(renamedPhotos.map((photo) => photo.event))]
     return {
       outcome: 'done',
-      artifactResults: { copies, overview },
+      artifactResults: { copies, overview, book },
       output: {
         status: 'organised',
         count: renamedPhotos.length,
@@ -158,6 +191,8 @@ export async function organisePhotos(
         photos: deliveredPhotos,
         manifest: 'copies/manifest.csv',
         contactSheet: 'overview/contact-sheet.svg',
+        yearbook: 'book/yearbook.pdf',
+        pages: expectedPages,
       },
     }
   } catch (error) {

@@ -74,7 +74,7 @@ def _count(value: Any) -> int:
 
 def validate_reporting_message(value: Any) -> dict[str, Any]:
     """Validate unknown input and return a private JSON snapshot."""
-    root = _record(value, {"kind", "text", "severity", "id", "label", "progress", "detail", "operationId", "title", "summary", "landing", "sections", "target"})
+    root = _record(value, {"kind", "text", "severity", "id", "label", "progress", "detail", "operationId", "title", "summary", "landing", "sections", "target", "application", "presentation"})
     kind = root.get("kind")
     if type(kind) is not str:
         raise TypeError("Unknown reporting message kind")
@@ -124,7 +124,7 @@ class ReportingView:
         self._retired = self._published = False
 
     def update(self, snapshot: ViewSnapshot) -> None:
-        value = validate_reporting_message({**self._identity, **record(snapshot,{'title','summary','sections'})})
+        value = validate_reporting_message({**self._identity, **record(snapshot,{'title','summary','sections','presentation'})})
         if self._retired: raise RuntimeError('View has been retired')
         if self._identity.get('landing') and self._owner._landing not in (None,self._identity['id']):
             raise TypeError('Only one view may nominate a landing hint')
@@ -179,7 +179,7 @@ class Reporter:
         self._activity_calls.pop(id, None)
 
     def view(self, id: str, options: ViewOptions) -> ReportingView:
-        declaration = validate_view({'kind':'view','id':id,**record(options,{'title','landing','operationId','target'}),'summary':'Declaration','sections':[]})
+        declaration = validate_view({'kind':'view','id':id,**record(options,{'title','application','landing','operationId','target'}),'summary':'Declaration','sections':[]})
         if self._phase != 'accepting': raise RuntimeError('Reporting scope is no longer accepting offers')
         if id in self._view_ids: raise RuntimeError('View ID already has a scope owner')
         if len(self._view_ids) >= 16: raise RuntimeError('View ID claim limit exceeded')

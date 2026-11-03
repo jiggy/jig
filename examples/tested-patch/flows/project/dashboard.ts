@@ -42,6 +42,7 @@ export function patchReviewOptions(request: CapturedProject): ViewOptions {
     .digest('hex')
   return {
     title: 'Patch review',
+    application: 'Patch review',
     landing: true,
     target: { definitionId: 'patch-review', instanceKey, subjectKey: instanceKey },
   }

@@ -59,6 +59,7 @@ export function rosterViewOptions(scenario: RosterScenario): ViewOptions {
   const scenarioKey = createHash('sha256').update(JSON.stringify(scenario)).digest('hex')
   return {
     title: 'Saturday kitchen',
+    application: 'Saturday kitchen',
     landing: true,
     target: { definitionId: 'kitchen-roster', instanceKey: scenarioKey, subjectKey: scenarioKey },
   }

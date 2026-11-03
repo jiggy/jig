@@ -35,8 +35,8 @@ function readPhoto(record: unknown): Photo {
     throw new TypeError('Photo IDs must contain 1–32 letters, digits, hyphens or underscores.')
   }
 
-  if (typeof file !== 'string' || !/^[a-zA-Z0-9_-]{1,64}\.(svg|png|jpg|jpeg)$/.test(file)) {
-    throw new TypeError('Use a simple SVG, PNG or JPEG filename without folders.')
+  if (typeof file !== 'string' || !/^[a-zA-Z0-9_-]{1,64}\.(png|jpg|jpeg)$/.test(file)) {
+    throw new TypeError('Use a simple PNG or JPEG filename without folders.')
   }
 
   if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -116,19 +116,6 @@ async function readSourceFile(
 function checkImage(filename: string, bytes: Buffer): void {
   if (bytes.length === 0) {
     throw new TypeError('Photos cannot be empty.')
-  }
-
-  if (filename.endsWith('.svg')) {
-    // This small fixture format excludes executable markup and resource references.
-    const svg = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-    const forbiddenSvgContent =
-      /<!|<\?|<\s*\/?\s*(script|foreignObject|style|image|use|a)\b|\bon\w+\s*=|\bhref\s*=|url\s*\(/i
-    if (!svg.startsWith('<svg ') || forbiddenSvgContent.test(svg)) {
-      throw new TypeError(
-        'SVG fixtures must be inert illustrations without links, scripts or embedded resources.',
-      )
-    }
-    return
   }
 
   if (filename.endsWith('.png')) {

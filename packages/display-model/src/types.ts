@@ -145,6 +145,7 @@ export type DisplaySnapshot = Immutable<{
       sourceId?: string
       attachment?: string
       downloadable?: boolean
+      bindings?: { sourceId: string; attachment: string; path: string }[]
     }[]
   }
 }>

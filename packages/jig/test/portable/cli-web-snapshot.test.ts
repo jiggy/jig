@@ -525,8 +525,8 @@ test('verified detached bytes remain downloadable when no optional preview was r
   const projection = new PrivateDisplayProjection(model)
   let retained: Awaited<ReturnType<typeof privateCaptureDeliveryInspection>> | undefined
   try {
-    await mkdir(source)
-    await writeFile(join(source, 'binary.dat'), original)
+    await mkdir(join(source, 'book'), { recursive: true })
+    await writeFile(join(source, 'book/binary.dat'), original)
     const descriptor = privateOpenFileRoot(source)
     try {
       output = capturePrivateOutput(descriptor)
@@ -553,20 +553,20 @@ test('verified detached bytes remain downloadable when no optional preview was r
     )
     expect(retained.files).toEqual([
       {
-        path: 'binary.dat',
+        path: 'book/binary.dat',
         bytes: original.length,
         state: 'unavailable',
         clipped: false,
         downloadable: true,
       },
     ])
-    expect(owner.read('binary.dat')).toBeUndefined()
+    expect(owner.read('book/binary.dat')).toBeUndefined()
     await rm(source, { recursive: true })
-    await writeFile(join(destination, 'files/binary.dat'), 'Changed mutable destination')
+    await writeFile(join(destination, 'files/book/binary.dat'), 'Changed mutable destination')
     const capture = retained
     const resolve = (publisher: string, ref: { attachment: string; path: string }) =>
-      publisher === 'root' && ref.attachment === 'files' && ref.path === 'binary.dat'
-        ? ref.path
+      publisher === 'root' && ref.attachment === 'book' && ref.path === 'binary.dat'
+        ? `book/${ref.path}`
         : undefined
     const preview = async (path: string) => {
       const value = capture.preview(path)
@@ -576,6 +576,25 @@ test('verified detached bytes remain downloadable when no optional preview was r
     }
     const read = async (path: string) => capture.read(path)
     model.setArtifacts(resolve, preview, read)
+    model.acceptView(
+      'root',
+      validateReportingMessage({
+        kind: 'view',
+        id: 'document',
+        title: 'Document',
+        application: 'Photo studio',
+        summary: 'Captured document',
+        presentation: {
+          kind: 'document',
+          title: 'Album',
+          download: {
+            reference: { kind: 'artifact', attachment: 'book', path: 'binary.dat' },
+            label: 'Download',
+          },
+        },
+        sections: [],
+      }) as ViewItem,
+    )
     const inventory = {
       generation: capture.generation,
       sourcePublisher: 'root',
@@ -587,6 +606,11 @@ test('verified detached bytes remain downloadable when no optional preview was r
     const first = projection.capture(1)
     const file = first.artifacts.files[0]!
     expect(file).toMatchObject({ state: 'unavailable', downloadable: true })
+    expect(file.path).toBe('book/binary.dat')
+    expect(file.bindings).toEqual([
+      { sourceId: first.views[0]!.sourceId, attachment: 'book', path: 'binary.dat' },
+    ])
+    expect(first.artifacts.permittedAttachments).toEqual(['book'])
     expect(await projection.preview(file.id, first.artifacts.generation)).toMatchObject({
       state: 'unavailable',
     })
@@ -629,4 +653,17 @@ test('verified detached bytes remain downloadable when no optional preview was r
       await rm(root, { recursive: true, force: true })
     }
   }
+})
+
+test('application labels remain fixed per view without establishing publisher identity', () => {
+  const model = new PrivateRunModel()
+  const value = validateReportingMessage({ ...view(), application: 'Photo studio' }) as ViewItem
+  model.acceptView('root', value)
+  model.acceptView('child', { ...value, application: 'Independent child' })
+  expect(() => model.acceptView('root', { ...value, application: 'Changed' })).toThrow(
+    'View association changed',
+  )
+  expect(
+    [...model.views.values()].find((entry) => entry.publisher === 'root')?.value.application,
+  ).toBe('Photo studio')
 })

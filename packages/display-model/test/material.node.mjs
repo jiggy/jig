@@ -175,3 +175,33 @@ test('unavailable observation clocks preserve material without inventing an inte
     assert.throws(() => validateDisplaySnapshot(input))
   }
 })
+
+test('forwarded output bindings preserve multiple exact publishers and reject ambiguous joins', () => {
+  const value = snapshot()
+  value.artifacts.permittedAttachments = ['book']
+  value.artifacts.files = [
+    {
+      id: 'pdf',
+      path: 'book/yearbook.pdf',
+      bytes: 12,
+      state: 'non-text',
+      clipped: false,
+      downloadable: true,
+      bindings: [
+        { sourceId: 'root', attachment: 'book', path: 'yearbook.pdf' },
+        { sourceId: 'child', attachment: 'book', path: 'yearbook.pdf' },
+      ],
+    },
+  ]
+  const accepted = validateDisplaySnapshot(value)
+  assert.equal(accepted.artifacts.files[0].bindings.length, 2)
+  assert(Object.isFrozen(accepted.artifacts.files[0].bindings))
+  value.artifacts.files[0].bindings.push({ ...value.artifacts.files[0].bindings[0] })
+  assert.throws(() => validateDisplaySnapshot(value))
+  value.artifacts.files[0].bindings.pop()
+  value.artifacts.files.push({ ...value.artifacts.files[0], id: 'other', path: 'different.pdf' })
+  assert.throws(() => validateDisplaySnapshot(value))
+  value.artifacts.files.pop()
+  value.artifacts.files[0].bindings[0].attachment = 'unpermitted'
+  assert.throws(() => validateDisplaySnapshot(value))
+})

@@ -34,6 +34,12 @@ type ApplicationPageProps = {
   onSort: (collection: string, key: string, descending: boolean) => void
   renderBlock: (block: DetailBlock, record: PrivateBrowserRecord) => ComponentChildren
   renderValue: (value: Value, record: PrivateBrowserRecord) => ComponentChildren
+  scope?: ComponentChildren
+  renderDownload?: (
+    reference: MediaReference,
+    record: PrivateBrowserRecord,
+    label: string,
+  ) => ComponentChildren
   renderMedia?: (
     reference: MediaReference,
     record: PrivateBrowserRecord,
@@ -256,17 +262,19 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
     h(
       'header',
       { class: 'application-heading' },
-      view.value.summary
-        ? h('p', { class: 'application-summary' }, text(view.value.summary))
-        : null,
+      props.scope,
       h(
         'details',
         { class: 'application-about' },
         h('summary', {}, 'About this view'),
+        h('p', {}, text(view.value.summary)),
         h('small', { class: 'secondary' }, text(view.sourceLabel)),
+        view.ended ? h('p', { class: 'secondary' }, text(view.ended)) : null,
       ),
-      view.ended ? h('span', { class: 'secondary' }, text(view.ended)) : null,
     ),
+    !view.value.presentation && view.value.summary
+      ? h('p', { class: 'application-summary' }, text(view.value.summary))
+      : null,
     hiddenSelection
       ? h(
           'div',
@@ -289,37 +297,137 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
           ),
         )
       : null,
-    h(
-      'div',
-      { class: 'application-sections' },
-      view.value.sections.map((section, sectionIndex) =>
-        h(
-          'section',
-          {
-            key: sectionIndex,
-            class: `application-section ${sectionPresentation(section)}`,
-            'aria-label': section.title ? text(section.title) : `Section ${sectionIndex + 1}`,
-          },
-          section.title &&
-            !(
-              section.blocks.length === 1 &&
-              section.blocks[0]?.kind === 'collection' &&
-              section.blocks[0].title === section.title
-            )
-            ? h('h3', {}, text(section.title))
-            : null,
-          section.blocks.map((block, blockIndex) => {
-            if (block.kind === 'collection') return collection(block)
-            const record = records.find(
-              (item) => item.key === JSON.stringify(['block', sectionIndex, blockIndex]),
-            )!
-            return h(
-              'div',
-              { key: blockIndex, class: 'application-block' },
-              props.renderBlock(block, record),
-            )
-          }),
+    view.value.presentation?.kind === 'document'
+      ? h(DocumentPage, { ...props, renderCollection: collection })
+      : h(
+          'div',
+          { class: 'application-sections' },
+          view.value.sections.map((section, sectionIndex) =>
+            h(
+              'section',
+              {
+                key: sectionIndex,
+                class: `application-section ${sectionPresentation(section)}`,
+                'aria-label': section.title ? text(section.title) : `Section ${sectionIndex + 1}`,
+              },
+              section.title &&
+                !(
+                  section.blocks.length === 1 &&
+                  section.blocks[0]?.kind === 'collection' &&
+                  section.blocks[0].title === section.title
+                )
+                ? h('h3', {}, text(section.title))
+                : null,
+              section.blocks.map((block, blockIndex) => {
+                if (block.kind === 'collection') return collection(block)
+                const record = records.find(
+                  (item) => item.key === JSON.stringify(['block', sectionIndex, blockIndex]),
+                )!
+                return h(
+                  'div',
+                  { key: blockIndex, class: 'application-block' },
+                  props.renderBlock(block, record),
+                )
+              }),
+            ),
+          ),
         ),
+  )
+}
+
+export function DocumentPage(
+  props: ApplicationPageProps & { renderCollection: (block: Collection) => ComponentChildren },
+): ComponentChildren {
+  const { view, records } = props
+  const document = view.value.presentation!
+  const text = privateBrowserLiteral
+  const owner = records[0]!
+  const sectionId = (index: number) => `document-${encodeURIComponent(view.id)}-${index}`
+  return h(
+    'article',
+    { class: 'application-document', 'aria-label': text(document.title) },
+    h(
+      'header',
+      { class: `document-header${document.cover ? ' document-header-media' : ''}` },
+      h(
+        'div',
+        { class: 'document-title' },
+        document.label ? h('span', { class: 'document-label' }, text(document.label)) : null,
+        h('h2', {}, text(document.title)),
+        document.subtitle ? h('p', { class: 'document-subtitle' }, text(document.subtitle)) : null,
+        h('p', { class: 'document-description' }, text(view.value.summary)),
+        document.download
+          ? h(
+              'div',
+              { class: 'document-download' },
+              props.renderDownload?.(document.download.reference, owner, document.download.label),
+              document.download.detail ? h('span', {}, text(document.download.detail)) : null,
+            )
+          : null,
+      ),
+      document.cover
+        ? h(
+            'div',
+            { class: 'document-cover' },
+            props.renderMedia?.(document.cover, owner, document.title),
+          )
+        : null,
+    ),
+    view.value.sections.some((section) => section.label)
+      ? h(
+          'nav',
+          { class: 'document-outline', 'aria-label': 'Document contents' },
+          view.value.sections.map((section, index) =>
+            h(
+              'button',
+              {
+                key: index,
+                type: 'button',
+                onClick: () => {
+                  const target = globalThis.document.getElementById(sectionId(index))
+                  target?.scrollIntoView({ block: 'start', behavior: 'instant' })
+                  target?.focus({ preventScroll: true })
+                },
+              },
+              section.label ? h('span', {}, text(section.label)) : null,
+              text(section.title ?? `Section ${index + 1}`),
+            ),
+          ),
+        )
+      : null,
+    view.value.sections.map((section, sectionIndex) =>
+      h(
+        'section',
+        {
+          key: sectionIndex,
+          id: sectionId(sectionIndex),
+          tabIndex: -1,
+          class: 'document-section',
+        },
+        section.label ? h('span', { class: 'document-section-label' }, text(section.label)) : null,
+        section.title ? h('h3', {}, text(section.title)) : null,
+        section.blocks.map((block, blockIndex) => {
+          if (block.kind === 'collection') return props.renderCollection(block)
+          const record = records.find(
+            (record) => record.key === JSON.stringify(['block', sectionIndex, blockIndex]),
+          )!
+          return h(
+            'div',
+            { key: blockIndex, class: 'document-block' },
+            block.kind === 'content'
+              ? h(
+                  'figure',
+                  { class: 'document-photo' },
+                  props.renderMedia?.(
+                    block.reference,
+                    record,
+                    block.title ?? section.title ?? document.title,
+                  ),
+                  block.title ? h('figcaption', {}, text(block.title)) : null,
+                )
+              : props.renderBlock(block, record),
+          )
+        }),
       ),
     ),
   )

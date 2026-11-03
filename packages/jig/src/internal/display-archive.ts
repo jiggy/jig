@@ -147,6 +147,8 @@ export function privateViewReferences(view: ViewItem): readonly Reference[] {
       }
     }
   }
+  if (view.presentation?.cover) add(view.presentation.cover)
+  if (view.presentation?.download) add(view.presentation.download.reference)
   for (const section of view.sections) for (const value of section.blocks) block(value)
   return [...references.values()]
 }
