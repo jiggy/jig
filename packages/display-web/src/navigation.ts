@@ -142,11 +142,17 @@ export function privateBrowserResolve(
     return { kind: 'unavailable', label: 'Evidence unavailable in this selected capture' }
   if (capture.phase === 'pending')
     return { kind: 'unavailable', label: 'Evidence pending immutable capture' }
-  const files = capture.files.filter(
-    (item) =>
-      item.path === ref.path &&
-      (item.sourceId ?? capture.sourceId) === sourceId &&
-      (item.attachment === undefined || item.attachment === ref.attachment),
+  const files = capture.files.filter((item) =>
+    'bindings' in item && item.bindings !== undefined
+      ? item.bindings.some(
+          (binding) =>
+            binding.sourceId === sourceId &&
+            binding.attachment === ref.attachment &&
+            binding.path === ref.path,
+        )
+      : item.path === ref.path &&
+        (item.sourceId ?? capture.sourceId) === sourceId &&
+        (item.attachment === undefined || item.attachment === ref.attachment),
   )
   const file = files.length === 1 ? files[0] : undefined
   return capture.phase === 'ready' && file

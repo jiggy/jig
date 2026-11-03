@@ -99,6 +99,8 @@ export function validateReportingMessage(value: unknown): ReportingMessage {
     'landing',
     'sections',
     'target',
+    'application',
+    'presentation',
   ])
   let result: ReportingMessage
   switch (root.kind) {

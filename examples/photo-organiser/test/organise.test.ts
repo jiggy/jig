@@ -49,7 +49,7 @@ test('all photo Flows carry the exact licensed public reporting contract', async
     new URL(import.meta.resolve('@jigging/reporting/reporting.json')),
   )
   const license = await readFile(new URL(import.meta.resolve('@jigging/reporting/LICENSE')))
-  for (const flow of ['organise', 'group', 'copy-photos', 'contact-sheet']) {
+  for (const flow of ['organise', 'group', 'copy-photos', 'contact-sheet', 'yearbook']) {
     const folder = join(import.meta.dir, '..', 'flows', flow, 'contracts', 'reporting')
     expect(await readFile(join(folder, 'reporting.json'))).toEqual(descriptor)
     expect(await readFile(join(folder, 'LICENSE'))).toEqual(license)
@@ -57,13 +57,13 @@ test('all photo Flows carry the exact licensed public reporting contract', async
 })
 
 test('the accepted plan accounts for every original with deterministic safe destinations', () => {
-  expect(plan).toHaveLength(12)
+  expect(plan).toHaveLength(6)
   expect(new Set(plan.map((photo) => photo.id))).toEqual(
     new Set(catalogue.map((photo) => photo.id)),
   )
   for (const photo of plan) {
     const eventFolder = photo.event.toLowerCase().replaceAll(' ', '-')
-    expect(photo.destination).toBe(`${eventFolder}/${photo.date}_${eventFolder}_${photo.id}.svg`)
+    expect(photo.destination).toBe(`${eventFolder}/${photo.date}_${eventFolder}_${photo.id}.jpg`)
   }
   expect(checkProposal(catalogue, { assignments: [...proposal.assignments].reverse() })).toEqual(
     plan,
@@ -105,26 +105,26 @@ for (const [name, invalidProposal] of [
 
 test('copy metadata acceptance permits reordering without changing the plan', () => {
   const before = structuredClone(plan)
-  checkCopiedPhotos(plan, { count: 12, photos: [...plan].reverse(), manifest: 'manifest.csv' })
+  checkCopiedPhotos(plan, { count: 6, photos: [...plan].reverse(), manifest: 'manifest.csv' })
   expect(plan).toEqual(before)
 })
 
 for (const [name, output] of [
-  ['incomplete count', { count: 11, photos: plan, manifest: 'manifest.csv' }],
-  ['missing photo', { count: 12, photos: plan.slice(1), manifest: 'manifest.csv' }],
+  ['incomplete count', { count: 5, photos: plan, manifest: 'manifest.csv' }],
+  ['missing photo', { count: 6, photos: plan.slice(1), manifest: 'manifest.csv' }],
   [
     'changed destination',
     {
-      count: 12,
+      count: 6,
       photos: plan.map((photo, index) =>
         index === 0 ? { ...photo, destination: 'unreviewed/image.svg' } : photo,
       ),
       manifest: 'manifest.csv',
     },
   ],
-  ['duplicate identity', { count: 12, photos: plan.map(() => plan[0]), manifest: 'manifest.csv' }],
-  ['changed manifest', { count: 12, photos: plan, manifest: '../manifest.csv' }],
-  ['extra field', { count: 12, photos: plan, manifest: 'manifest.csv', checked: true }],
+  ['duplicate identity', { count: 6, photos: plan.map(() => plan[0]), manifest: 'manifest.csv' }],
+  ['changed manifest', { count: 6, photos: plan, manifest: '../manifest.csv' }],
+  ['extra field', { count: 6, photos: plan, manifest: 'manifest.csv', checked: true }],
 ] as const) {
   test(`copy metadata acceptance rejects ${name}`, () => {
     expect(() => checkCopiedPhotos(plan, output)).toThrow()
@@ -132,13 +132,13 @@ for (const [name, output] of [
 }
 
 test('contact sheet metadata acceptance requires the complete count and exact relative path', () => {
-  checkContactSheetOutput(12, { count: 12, contactSheet: 'contact-sheet.svg' })
+  checkContactSheetOutput(6, { count: 6, contactSheet: 'contact-sheet.svg' })
   for (const output of [
-    { count: 11, contactSheet: 'contact-sheet.svg' },
-    { count: 12, contactSheet: '../unreviewed.svg' },
-    { count: 12, contactSheet: 'contact-sheet.svg', checked: true },
+    { count: 5, contactSheet: 'contact-sheet.svg' },
+    { count: 6, contactSheet: '../unreviewed.svg' },
+    { count: 6, contactSheet: 'contact-sheet.svg', checked: true },
   ]) {
-    expect(() => checkContactSheetOutput(12, output)).toThrow()
+    expect(() => checkContactSheetOutput(6, output)).toThrow()
   }
 })
 
@@ -214,14 +214,12 @@ test('the ACP regression check rejects unsupported response schemas', () => {
   expect(() => assertResponseSchema(unsupported)).toThrow('bounded structured-output profile')
 })
 
-test('all twelve fixtures differ visually beyond their ID labels', async () => {
+test('the six photographic fixtures retain distinct captured bytes', async () => {
   const scenes = await Promise.all(
     catalogue.map(async (photo) =>
-      (await readFile(join(fixtureFolder, photo.file), 'utf8')).replace(
-        /<text[^>]*>.*?<\/text>/g,
-        '',
-      ),
+      (await readFile(join(fixtureFolder, photo.file))).toString('base64'),
     ),
   )
-  expect(new Set(scenes).size).toBe(12)
+  expect(new Set(scenes).size).toBe(6)
+  expect(catalogue.every((photo) => photo.file.endsWith('.jpg'))).toBe(true)
 })

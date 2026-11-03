@@ -374,6 +374,8 @@ These links locate module rules. All selected domain requirements still apply.
   Persisted receipts, views and evidence require closed canonical data.
   Evidence selection walks only typed reference positions in validated views, including collection cells and details.
   Cell maps and prose cannot become references through a matching `kind` value.
+
+  Explicit document cover/download references participate in retained evidence discovery.
   Evidence reads verify exact content sizes and digests before returning owned copies.
   Acquisition rejects unexpected noninternal schema objects and changed protected filesystem identities.
 

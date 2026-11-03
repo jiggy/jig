@@ -172,6 +172,11 @@ owned channels and deliberate validated relays; a parent remaps IDs/references
 into its own namespace and strips child landing hints. There are no executable
 widgets, layout callbacks, arbitrary links or execution-changing controls.
 
+A view may declare an application label and readable target `label` and `scopeLabel` fields.
+These labels never establish identity, ancestry or evidence access.
+A document presentation supplies a title, optional subtitle, cover and captured download reference.
+Section labels provide chapter locators, while the renderer owns the document layout.
+
 ## Application projections and captured media
 
 A view can declare `target: {definitionId, instanceKey, subjectKey?}` in its options.

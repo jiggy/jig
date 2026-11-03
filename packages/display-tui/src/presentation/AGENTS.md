@@ -35,6 +35,9 @@ input, native allocation and output remain with their existing owners.
   output references through the same typed inspection path.
 - Keep semantic presentation separate from actual I/O and execution authority.
 
+Document metadata preserves portable titles, chapter labels and typed cover/download references in the terminal model.
+Forwarded output resolution uses exact verified bindings independently of packet paths.
+
 ## Verification
 
 - Existing package `just build`, `just test` and frozen ordinary `test-package`.

@@ -23,6 +23,7 @@ export type {
   Collection,
   CollectionPresentation,
   Content,
+  DocumentPresentation,
   DetailBlock,
   Facts,
   InputArtifactReference,

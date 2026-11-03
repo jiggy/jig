@@ -164,9 +164,15 @@ export async function runInstalledPhotoProject(options: {
   assert.equal(result.status, 'succeeded')
   assert.equal(result.outcome, 'done')
   assert.equal(result.cleanup, undefined, 'The CLI reported cleanup failure')
-  assert.equal(result.output.count, 12)
+  assert.equal(result.output.count, 6)
   assert.equal(result.output.manifest, 'copies/manifest.csv')
   assert.equal(result.output.contactSheet, 'overview/contact-sheet.svg')
+  assert.equal(result.output.yearbook, 'book/yearbook.pdf')
+  assert.equal(result.output.pages, 12)
+  assert.equal(
+    (await readFile(join(packet, 'files/book/yearbook.pdf'))).subarray(0, 5).toString(),
+    '%PDF-',
+  )
   assert.equal(result.delivery.status, 'written')
   assert.equal(result.delivery.source, 'final')
   // All deliverables live beneath files/. Forwarded results add their result names.
@@ -177,6 +183,7 @@ export async function runInstalledPhotoProject(options: {
       ...result.output.photos.map((photo: { destination: string }) => photo.destination),
       'copies/manifest.csv',
       'overview/contact-sheet.svg',
+      'book/yearbook.pdf',
     ].sort(),
   )
   const delivered = await tree(files)
@@ -193,7 +200,7 @@ export async function runInstalledPhotoProject(options: {
     'Lake picnic',
     'Mountain walk',
   ])
-  assert.equal(result.output.photos.length, 12)
+  assert.equal(result.output.photos.length, 6)
   const originals = JSON.parse(await readFile(join(example, 'fixtures/photos/photos.json'), 'utf8'))
   assert.deepEqual(
     result.output.photos.map((photo: { id: string }) => photo.id).sort(),
@@ -216,13 +223,13 @@ export async function runInstalledPhotoProject(options: {
     )
   }
   const manifest = await readFile(join(files, 'copies/manifest.csv'), 'utf8')
-  assert.equal(manifest.trimEnd().split('\n').length, 13)
+  assert.equal(manifest.trimEnd().split('\n').length, 7)
   assert.ok(manifest.startsWith('id,original,event,date,copy\n'))
   for (const photo of result.output.photos) {
     assert.ok(manifest.includes(`"${photo.destination.slice('copies/'.length)}"`))
   }
   const sheet = await readFile(join(files, 'overview/contact-sheet.svg'), 'utf8')
-  assert.equal(sheet.match(/<image /g)?.length, 24)
+  assert.equal(sheet.match(/<image /g)?.length, 12)
   assert.ok(sheet.includes('Original order and names'))
   assert.ok(sheet.includes('Grouped copies'))
   for (const photo of result.output.photos) {
@@ -247,7 +254,7 @@ export async function runInstalledPhotoProject(options: {
   )
   await put(directory, 'verified.json', {
     application: 'photo-organiser',
-    photos: 12,
+    photos: 6,
     residue: 'unchanged',
     archiveDigests: frozenDigests,
   })

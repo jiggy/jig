@@ -2,7 +2,12 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import { deflateSync } from 'node:zlib'
-import { ApplicationPage, CapturedContent, FormattedReport } from '../dist/application.js'
+import {
+  ApplicationPage,
+  CapturedContent,
+  DocumentPage,
+  FormattedReport,
+} from '../dist/application.js'
 import {
   BrowserClient,
   browserLocal,
@@ -571,7 +576,7 @@ test('application identity stays in the shell while summaries and ended state re
   assert(text(page).includes(view.value.summary))
   const about = walk(page).find((node) => node.type === 'details')
   assert(text(about).includes('Original publisher'))
-  assert(!text(about).includes('Partial result'))
+  assert(text(about).includes('Partial result'))
   assert(text(page).includes(view.ended))
 })
 
@@ -671,4 +676,66 @@ test('empty, unavailable and non-text captures keep explicit states and selected
   })
   assert.equal(page.type, 'img')
   assert.equal(page.props.alt, 'Captured document')
+})
+
+test('forwarded capture bindings resolve exact scoped references while preserving raw inventory paths', () => {
+  const body = snapshot()
+  body.artifacts = {
+    ...body.artifacts,
+    phase: 'ready',
+    permittedAttachments: ['book'],
+    files: [
+      {
+        id: 'pdf',
+        path: 'book/yearbook.pdf',
+        bytes: 12,
+        state: 'non-text',
+        clipped: false,
+        downloadable: true,
+        bindings: [{ sourceId: 'root', attachment: 'book', path: 'yearbook.pdf' }],
+      },
+    ],
+  }
+  const ref = { kind: 'artifact', attachment: 'book', path: 'yearbook.pdf' }
+  assert.equal(browserResolve(body, 'root', ref).artifactId, 'pdf')
+  for (const [source, value] of [
+    ['other', ref],
+    ['root', { ...ref, path: 'book/yearbook.pdf' }],
+    ['root', { ...ref, attachment: 'other' }],
+  ])
+    assert.equal(browserResolve(body, source, value).kind, 'unavailable')
+  assert.equal(body.artifacts.files[0].path, 'book/yearbook.pdf')
+})
+test('a document composes a cover, usable download and readable sections without generic inspection chrome', () => {
+  const view = materialView([
+    { kind: 'report', text: 'A cottage cover, followed by the contents.' },
+    {
+      kind: 'content',
+      title: 'Family walk',
+      reference: { kind: 'input-artifact', attachment: 'photos', path: 'walk.jpg' },
+    },
+  ])
+  view.value.sections[0].label = '01–02'
+  view.value.presentation = {
+    kind: 'document',
+    title: 'Family moments · 2025',
+    subtitle: 'A family yearbook',
+    label: '12-page yearbook · PDF ready',
+    cover: { kind: 'input-artifact', attachment: 'photos', path: 'cottage.jpg' },
+    download: {
+      label: 'Download PDF',
+      reference: { kind: 'artifact', attachment: 'book', path: 'yearbook.pdf' },
+    },
+  }
+  const page = DocumentPage({
+    ...props(view),
+    renderCollection: () => '',
+    renderDownload: () => ({ type: 'button', props: { children: 'Download PDF' } }),
+  })
+  assert.equal(page.props.class, 'application-document')
+  assert(text(page).includes('Family moments · 2025'))
+  assert(text(page).includes('Download PDF'))
+  assert(text(page).includes('01–02'))
+  assert.equal(walk(page).filter((node) => node.props.class === 'application-inspect').length, 0)
+  assert.equal(walk(page).filter((node) => node.props.class === 'document-outline').length, 1)
 })
