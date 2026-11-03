@@ -636,6 +636,7 @@ test('the real snapshot CLI is read-only and rejects ambiguous command options',
     assert.ok(rendered.stdout.includes('| ci.yml | pull_request | 1 | 8.0 | 8.0 | success: 1 |'))
     assert.ok(rendered.stdout.includes('no flake rate'))
     assert.ok(rendered.stdout.includes('PR three-workflow elapsed envelope'))
+    assert.ok(rendered.stdout.includes('latest observed job completion in the successful workflows'))
     assert.ok(rendered.stdout.includes('Observed PR event-head groups: 1.'))
     assert.ok(rendered.stdout.includes('| 0 | 0 | 0 | 1 | 0 |'))
     for (const args of [

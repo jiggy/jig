@@ -591,7 +591,8 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     }
     const marker = resolve(f.directories[0], 'shard-0.complete')
     await rm(marker)
-    assert.equal((await run()).status, 1)
+    const incomplete = await run()
+    assert.equal(incomplete.status, 1, `${incomplete.stdout}\n${incomplete.stderr}`)
     assert.equal(JSON.parse(await readFile(jsonPath, 'utf8')).qualified, false)
     await writeFile(marker, `${revision} arm64 0\n`)
     await writeFile(resolve(f.directories[0], 'CANDIDATE.json'), 'another candidate')

@@ -668,7 +668,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('the actual Mac acquisition step waits for Quick before complete native allocation', async () => {
+test('Mac acquisition wiring requires Quick before complete native allocation', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -680,9 +680,12 @@ test('the actual Mac acquisition step waits for Quick before complete native all
     entry.run?.includes('scripts/ci/candidate-transfer.mjs acquire'),
   )
   assert.ok(step)
-  assert.match(
-    step.run,
-    /node scripts\/ci\/pr-time-budget\.mjs run -- node scripts\/ci\/candidate-transfer\.mjs acquire "\$RUNNER_TEMP\/macos-host-artifacts" --source "\$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
+  assert.equal(
+    step.run.trim(),
+    [
+      'set -eu',
+      'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600',
+    ].join('\n'),
   )
   assert.doesNotMatch(step.run, /AFTER_QUICK|needs\.plan/)
   assert.ok(acquisition.steps.findIndex((entry) => entry.id === 'acquire-budget') < acquisition.steps.indexOf(step))

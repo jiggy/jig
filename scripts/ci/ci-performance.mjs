@@ -558,7 +558,7 @@ export function performanceMarkdown(report) {
     '',
     '### PR three-workflow elapsed envelope',
     '',
-    'Elapsed time runs from the earliest workflow creation to the latest successful workflow completion.',
+    'Elapsed time runs from the earliest workflow creation to the latest observed job completion in the successful workflows.',
     'This diagnostic groups event heads, not distinct pushes or verified branch-policy readiness.',
     `Observed PR event-head groups: ${pr.groupCount}. Budget comparison: ${minutes(pr.budgetSeconds)} minutes.`,
     '',
