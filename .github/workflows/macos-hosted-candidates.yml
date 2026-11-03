@@ -58,7 +58,8 @@ jobs:
             console.log(JSON.stringify({ event: 'sibling-registration', run, attempt, jobId: job.id, status: job.status == null ? null : statuses.has(job.status) ? job.status : 'invalid', conclusion: job.conclusion == null ? null : conclusions.has(job.conclusion) ? job.conclusion : 'invalid', runnerId: Number.isSafeInteger(job.runner_id) && job.runner_id >= 0 ? job.runner_id : null, runnerNameEmpty: typeof job.runner_name === 'string' ? job.runner_name === '' : null, stepCount: Array.isArray(job.steps) ? job.steps.length : null, hasExactLabel: Array.isArray(job.labels) ? job.labels.includes(label) : null }));
             if (job.status === 'in_progress' || job.status === 'completed' || job.conclusion != null || (Number.isSafeInteger(job.runner_id) && job.runner_id > 0) || (typeof job.runner_name === 'string' && job.runner_name !== '') || (Array.isArray(job.steps) && job.steps.length > 0)) throw Error('Sibling acquired a runner or execution state');
             if ((job.status != null && !registrationStates.has(job.status)) || (job.runner_id != null && (!Number.isSafeInteger(job.runner_id) || job.runner_id < 0)) || (job.runner_name != null && typeof job.runner_name !== 'string') || (job.steps != null && !Array.isArray(job.steps)) || (job.labels != null && (!Array.isArray(job.labels) || job.labels.some(value => typeof value !== 'string')))) throw Error('Invalid sibling registration metadata');
-            if (job.status !== 'queued' || job.conclusion !== null || job.runner_id !== 0 || job.runner_name !== '' || !Array.isArray(job.steps) || job.steps.length !== 0 || !job.labels?.includes(label)) return undefined;
+            const noRunner = (job.runner_id === null && job.runner_name === null) || (job.runner_id === 0 && job.runner_name === '');
+            if (job.status !== 'queued' || job.conclusion !== null || !noRunner || !Array.isArray(job.steps) || job.steps.length !== 0 || !job.labels?.includes(label)) return undefined;
             return job;
           };
           let sibling;
@@ -68,7 +69,7 @@ jobs:
           }
           if (!sibling || Date.now() >= deadline) throw Error('Queued sibling was not observed within 45 seconds');
           const observed = performance.now();
-          console.log(JSON.stringify({ event: 'queued-sibling-observed', run, attempt, jobId: sibling.id, runnerId: 0, steps: 0, observedAt: new Date().toISOString() }));
+          console.log(JSON.stringify({ event: 'queued-sibling-observed', run, attempt, jobId: sibling.id, runnerId: sibling.runner_id, runnerName: sibling.runner_name, steps: 0, observedAt: new Date().toISOString() }));
           await new Promise(resolve => setTimeout(resolve, 2000));
           if ((await readSibling())?.id !== sibling.id) throw Error('Queued sibling changed during the real wait');
           console.log(JSON.stringify({ event: 'intentional-guard-failure', run, attempt, jobId: sibling.id, waitedMs: performance.now() - observed, failedAt: new Date().toISOString() }));
