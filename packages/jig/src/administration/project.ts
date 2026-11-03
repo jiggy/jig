@@ -377,6 +377,8 @@ function validateDiagnosticPath(
 ): asserts path is string {
   try {
     if (typeof path !== 'string') throw new TypeError('invalid diagnostic path')
+    if (workspaceSourceLocation && /[\p{Cc}\u2028\u2029]/u.test(path))
+      throw new TypeError('invalid workspace diagnostic path')
     if (workspaceSourceLocation && (path === '.' || /^(?:\.\.\/)*\.\.$/.test(path))) {
       if (path.split('/').length > 32) throw new TypeError('invalid workspace diagnostic path')
       return

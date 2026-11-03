@@ -371,6 +371,7 @@ function requireRootPath(path: string): void {
 
 /** Keep refusals intact when a source location cannot enter the public diagnostic. */
 function workspaceDisplayPath(path: string): string {
+  if (PATH_CONTROLS.test(path)) return '--source-root'
   if (path === '.') return path
   const parts = path.split('/')
   let ancestors = 0

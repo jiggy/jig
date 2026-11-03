@@ -384,6 +384,7 @@ Only that namespace retains `CAP_SYS_ADMIN` for the post-capture mount and unmou
 Its workspace cases compare ordinary and explicitly selected mounted roots through actual capture.
 They check application prefixes, dependency roots, protected sources, repeated directory identity, nested mounts and mount identity changes.
 The local Bun consumer executes copied captured bytes after visible source changes.
+
 That consumer establishes captured dependency usability, not Jig admission or native Run qualification.
 The installed composition case uses a real Agent-contract decision task, code
 child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
@@ -441,6 +442,7 @@ review successfully without altering the authored lock. Preserve the prior
 approval on refusal and require successful review after each repair.
 It also checks non-default registry refusals identify the workspace lock and do
 not disclose its URL.
+
 Its initial reviews select a dependency source root relative to the CLI working directory.
 Member and nested applications retain a distinct project argument.
 Later reviews omit the selection and Runs consume retained bytes without it.
