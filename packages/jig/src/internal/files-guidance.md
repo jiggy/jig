@@ -117,6 +117,7 @@ These links locate module rules. All selected domain requirements still apply.
   Each Linux launch reopens its held sealed memfd read-only, rechecks backing
   identity and seals, and hands off an independent file position above stdio
   destination slots. Parent and sibling copies never seek the original reader.
+
   Inherit those readers in their existing descriptor slots at every Linux launch.
   Numeric extra stdio transfers closure to Bun and must not share the caller's custody.
   The supervisor validates distinct descriptor coordinates and verifies the original seals and bytes.
