@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs'
 import wasmAsset from '@resvg/resvg-wasm/index_bg.wasm' with { type: 'file' }
 import fontAsset from 'dejavu-fonts-ttf/ttf/DejaVuSans.ttf' with { type: 'file' }
 import { privateGuardImageAllocations } from './image-preview-allocation.js'
-import { PRIVATE_PREVIEW_LIMITS, privatePreviewDimensions } from './image-preview-policy.js'
+import {
+  PRIVATE_PREVIEW_LIMITS,
+  privatePreviewDimensions,
+  privateSvgDocumentStart,
+} from './image-preview-policy.js'
 
 function asset(value: string): Buffer {
   return value.startsWith('base64:') ? Buffer.from(value.slice(7), 'base64') : readFileSync(value)
@@ -181,11 +185,7 @@ export async function privateRenderImage(
   const svgBudget: SvgBudget = { sourceBytes: 0, rasterBytes: 0, images: 0, rasterPixels: 0 }
   if (!raster) {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-    if (
-      !/^\s*(?:(?:<\?xml[^>]*>|<!--[\s\S]*?-->)\s*)*<svg[\s>]/i.test(text) ||
-      !inertSvg(text, 0, svgBudget)
-    )
-      return undefined
+    if (!privateSvgDocumentStart(text) || !inertSvg(text, 0, svgBudget)) return undefined
   }
   const rasterMemory = !!raster || svgBudget.rasterBytes > 0
   const module = boundedModule(asset(wasmAsset), rasterMemory)

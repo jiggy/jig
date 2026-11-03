@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process'
 import { dirname } from 'node:path'
 import type { DisplayImagePreview } from '@jigging/display-model'
-import { PRIVATE_PREVIEW_LIMITS, privateValidImagePreview } from './image-preview-policy.js'
+import {
+  PRIVATE_PREVIEW_LIMITS,
+  privateSvgDocumentStart,
+  privateValidImagePreview,
+} from './image-preview-policy.js'
 import { privateImagePreviewWorkerPath } from './image-preview-worker-location.js'
 import { privatePresentationNow } from './root-run-timeout-policy.js'
 
@@ -14,9 +18,7 @@ export function privateImageSourceCandidate(prefix: Buffer): boolean {
       prefix.readUInt32BE(0) === 0x89504e47 &&
       prefix.readUInt32BE(4) === 0x0d0a1a0a) ||
     (prefix[0] === 255 && prefix[1] === 216) ||
-    /^\s*(?:(?:<\?xml[^>]*>|<!--[\s\S]*?-->)\s*)*<svg[\s>]/i.test(
-      prefix.subarray(0, 1024).toString('utf8'),
-    )
+    privateSvgDocumentStart(prefix.subarray(0, 1024).toString('utf8'))
   )
 }
 

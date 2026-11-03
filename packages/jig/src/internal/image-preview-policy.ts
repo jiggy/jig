@@ -31,6 +31,26 @@ export function privatePreviewStringBytes(value: string): number {
   return 2 * value.length
 }
 
+/** Scan each prefix segment once, including malformed chains of XML comments. */
+export function privateSvgDocumentStart(text: string): boolean {
+  let offset = 0
+  while (offset < text.length) {
+    while (offset < text.length && /\s/.test(text[offset]!)) offset++
+    if (text.startsWith('<!--', offset)) {
+      const end = text.indexOf('-->', offset + 4)
+      if (end < 0) return false
+      offset = end + 3
+    } else if (text.slice(offset, offset + 5).toLowerCase() === '<?xml') {
+      const end = text.indexOf('>', offset + 5)
+      if (end < 0) return false
+      offset = end + 1
+    } else {
+      return /^<svg[\s>]/i.test(text.slice(offset, offset + 5))
+    }
+  }
+  return false
+}
+
 export function privatePreviewDimensions(width: number, height: number): boolean {
   return (
     Number.isSafeInteger(width) &&

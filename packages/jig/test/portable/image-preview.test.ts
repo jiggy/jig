@@ -8,11 +8,20 @@ import { createContactSheet } from '../../../../examples/photo-organiser/flows/c
 import { privateImagePreview } from '../../src/internal/image-preview.js'
 import {
   PRIVATE_PREVIEW_LIMITS,
+  privateSvgDocumentStart,
   privateValidImagePreview,
 } from '../../src/internal/image-preview-policy.js'
 
 const svg = (body: string, dimensions = 'width="32" height="16"') =>
   Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" ${dimensions}>${body}</svg>`)
+
+test('SVG prefixes handle XML and comment chains without backtracking', () => {
+  expect(privateSvgDocumentStart(' \n<?xml version="1.0"?> <!-- cover --> <svg />')).toBeTrue()
+  expect(privateSvgDocumentStart(`${'<!-- -->'.repeat(10000)}<svg>`)).toBeTrue()
+  expect(privateSvgDocumentStart(`<!--${'--><!--'.repeat(100000)}unfinished`)).toBeFalse()
+  expect(privateSvgDocumentStart('<!-- unfinished <svg>')).toBeFalse()
+  expect(privateSvgDocumentStart('<html><svg>')).toBeFalse()
+})
 
 test('process renderer: captured SVG becomes bounded PNG and raster input is normalised inside the renderer', async () => {
   const image = (await privateImagePreview(
