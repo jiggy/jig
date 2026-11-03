@@ -102,6 +102,21 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
       'Resolve a disputed charge using the customer request, supplied account facts and a fixed duplicate-credit policy.',
     sections: [
       {
+        title: 'Customer request',
+        blocks: [{ kind: 'report', text: excerpt(input.message, 1500) }],
+      },
+      {
+        title: 'Draft reply',
+        blocks: [
+          {
+            kind: 'report',
+            text: decision
+              ? excerpt(decision.reply)
+              : 'A policy-owned reply will be prepared after checks. No message is sent.',
+          },
+        ],
+      },
+      {
         title: 'Case status',
         blocks: [
           { kind: 'progress', label, completed, total: 2, unit: 'stages' },
@@ -115,10 +130,6 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
             ],
           },
         ],
-      },
-      {
-        title: 'Customer request',
-        blocks: [{ kind: 'report', text: excerpt(input.message, 1500) }],
       },
       {
         title: 'Supplied charges',
@@ -167,17 +178,6 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
             ],
           },
           { kind: 'report', text: excerpt(policyReason) },
-        ],
-      },
-      {
-        title: 'Draft reply',
-        blocks: [
-          {
-            kind: 'report',
-            text: decision
-              ? excerpt(decision.reply)
-              : 'A policy-owned reply will be prepared after checks. No message is sent.',
-          },
         ],
       },
     ],
