@@ -201,17 +201,21 @@ One active download body retains at most 16 MiB.
 The response owns its copied bytes, and Close aborts pending delivery.
 
 A fixed disposable process accepts PNG/JPEG sources up to 8 MiB, 24 megapixels and 16,384 pixels per dimension.
-SVG sources remain bounded to 64 KiB.
+SVG documents allow 8 MiB of encoded source, with 64 KiB of vector markup across all nested SVGs.
+Embedded raster images share an 8 MiB decoded-source allowance and the 24-megapixel limit across at most 64 images.
 Raster previews return PNG within 1,024 by 1,024 pixels and 2 MiB.
 SVG previews retain their 384-pixel width and 256 KiB output limits.
-SVG image upgrades retain the 512 KiB content ceiling, including reserved text fallbacks.
+
+SVG image upgrades retain a separate 512 KiB content ceiling, including their reserved text fallbacks.
+Raster reservations cannot consume that SVG allowance. All preview content also counts against the aggregate allowance.
 
 Retained preview content has a 48 MiB aggregate allowance, separate from complete download bytes.
 Its main thread owns a five-second deadline and an open input-pipe lifetime lease.
 Pipe loss or cancellation kills the whole process, whose actual exit precedes reuse.
 
-The pinned renderer limits raster Wasm memory to 128 MiB and SVG Wasm memory to 5 MiB.
-Cumulative imported copies and decoded text each remain bounded to 32 MiB for raster and 1 MiB for SVG.
+The pinned renderer limits raster decoding to 128 MiB of Wasm memory, including SVG documents with embedded rasters.
+Vector-only SVG documents retain the 5 MiB Wasm ceiling.
+Cumulative imported copies and decoded text each allow 32 MiB for raster decoding and 1 MiB for vector-only SVGs.
 These are image-content limits, not a hard quota on Bun's total resident memory.
 External references and entities are refused.
 Bundled fonts supply text.

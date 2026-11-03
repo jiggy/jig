@@ -12,3 +12,4 @@ Resolve forwarded output references through verified publisher and attachment bi
 Retain bounded document-sized raster previews while preserving SVG, decoder memory and source limits.
 Preserve event identity, captured-source access, filter-clear focus and header-only delimited tables across application layouts.
 Preserve Linux input descriptor custody across subprocess finalization and reuse.
+Keep exact cross-subject references, accessible cover evidence and separate SVG preview reservations, and render bounded raster-containing SVG documents.

@@ -23,6 +23,7 @@ export type PrivateBrowserRecord = {
   title: string
   section?: string | undefined
   text?: string | undefined
+  references?: readonly Reference[] | undefined
   block?: Exclude<Block, Collection> | undefined
   collection?: Collection | undefined
   row?: Collection['rows'][number] | undefined
@@ -74,6 +75,30 @@ export function privateBrowserView(
   return snapshot?.views.find((view) => displayViewKey(view.id) === destinationKey)
 }
 
+/** General tabs retain subject context; resolved references keep their exact destination. */
+export function privateBrowserNavigationDestination(
+  snapshot: DisplaySnapshot | undefined,
+  before: DisplaySnapshot['views'][number] | undefined,
+  requestedKey: string,
+  preserveSubject = true,
+): string {
+  const requested = privateBrowserView(snapshot, requestedKey)
+  const related =
+    preserveSubject &&
+    requested &&
+    requested.sourceId === before?.sourceId &&
+    before?.value.target?.subjectKey &&
+    requested?.value.target?.definitionId !== before.value.target.definitionId
+      ? snapshot?.views.find(
+          (item) =>
+            item.sourceId === requested.sourceId &&
+            item.value.target?.definitionId === requested.value.target?.definitionId &&
+            item.value.target?.subjectKey === before.value.target?.subjectKey,
+        )
+      : undefined
+  return related ? displayViewKey(related.id) : requestedKey
+}
+
 export function privateBrowserLiteral(value: string): string {
   // Preserve line breaks/spacing, expose invisible controls/bidi overrides as data.
   return value.replace(
@@ -93,7 +118,7 @@ export function privateBrowserValue(value: Value): string {
 }
 
 export function privateBrowserReferences(record: PrivateBrowserRecord | undefined): Reference[] {
-  return recordReferences(record)
+  return [...recordReferences(record), ...(record?.references ?? [])]
 }
 
 export function privateBrowserPeek(
@@ -202,10 +227,16 @@ export function privateBrowserRecords(
   const records: PrivateBrowserRecord[] = [
     {
       key: 'summary',
-      signature: view.value.summary,
+      signature:
+        view.value.presentation?.kind === 'document' && view.value.presentation.cover
+          ? JSON.stringify([view.value.summary, view.value.presentation.cover])
+          : view.value.summary,
       sourceId: view.sourceId,
       title: 'View summary',
       text: view.value.summary,
+      ...(view.value.presentation?.kind === 'document' && view.value.presentation.cover
+        ? { references: [view.value.presentation.cover] }
+        : {}),
     },
   ]
   view.value.sections.forEach((section, sectionIndex) => {

@@ -21,6 +21,7 @@ import {
   type PrivateBrowserRecord,
   privateBrowserLiteral,
   privateBrowserLocal,
+  privateBrowserNavigationDestination,
   privateBrowserPeek,
   privateBrowserRecords,
   privateBrowserReferences,
@@ -263,24 +264,11 @@ function redraw(): void {
   }
 }
 
-function navigate(id: string): void {
+function navigate(id: string, preserveSubject = true): void {
   const body = document.getElementById('view-panel')
   if (body && !panel) scrollPositions.set(destinationKey, body.scrollTop)
   humanNavigation = true
-  const before = view()
-  const requested = privateBrowserView(client?.body, id)
-  const related =
-    requested?.sourceId === before?.sourceId &&
-    before?.value.target?.subjectKey &&
-    requested?.value.target?.definitionId !== before.value.target.definitionId
-      ? client?.body?.views.find(
-          (item) =>
-            item.sourceId === requested?.sourceId &&
-            item.value.target?.definitionId === requested.value.target?.definitionId &&
-            item.value.target?.subjectKey === before.value.target?.subjectKey,
-        )
-      : undefined
-  destinationKey = related ? displayViewKey(related.id) : id
+  destinationKey = privateBrowserNavigationDestination(client?.body, view(), id, preserveSubject)
   panel = undefined
   client?.setPreview(undefined)
   feedback = ''
@@ -362,7 +350,7 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
     return
   }
   if (target.kind === 'record') {
-    navigate(displayViewKey(target.viewId))
+    navigate(displayViewKey(target.viewId), false)
     const state = currentLocal()
     if (state.filters.delete(target.collectionId))
       feedback = 'The local filter was cleared to show the referenced record.'

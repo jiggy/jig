@@ -27,13 +27,11 @@ export async function privateImagePreview(
   signal?: AbortSignal,
   deadline?: number,
 ): Promise<DisplayImagePreview | undefined> {
-  const raster = bytes[0] === 137 || (bytes[0] === 255 && bytes[1] === 216)
   if (
     rendering ||
     signal?.aborted ||
     (deadline !== undefined && privatePresentationNow() >= deadline) ||
-    bytes.length >
-      (raster ? PRIVATE_PREVIEW_LIMITS.sourceBytes : PRIVATE_PREVIEW_LIMITS.svgSourceBytes) ||
+    bytes.length > PRIVATE_PREVIEW_LIMITS.sourceBytes ||
     !privateImageSourceCandidate(bytes)
   )
     return undefined

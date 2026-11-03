@@ -18,6 +18,9 @@ Successful closure preserves ordinary operation exit codes, including exit 1 for
 `linux/file-input.test.ts` forces subprocess collection after input-descriptor reuse and checks that replacement descriptors remain open.
 Its real subprocesses establish descriptor custody, not native containment or fencing.
 
+Image-preview regressions render the complete supplied JPEG contact sheet and reject aggregate embedded-image overflow.
+Delivery inspection verifies that raster reservations cannot consume the separate SVG allowance.
+
 - `portable/` owns source checks without native host admission or model
   credentials.
 - `linux/` owns Linux platform checks that can run in the ordinary source job.
