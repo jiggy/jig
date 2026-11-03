@@ -13,7 +13,7 @@ The developer alpha supports qualified Linux x86_64 and selected native Intel
 and Apple Silicon Macs. Linux needs Bubblewrap and a systemd user manager with
 delegated cgroup v2 controllers. Mac needs no administrator setup or `sudo`;
 its supervised resource limits can briefly overshoot. See the
-[complete supported-host requirements](https://jig.md/guide/#supported-host).
+[complete supported-host requirements](https://jig.md/start/#supported-host).
 npm installs Jig's exact Bun runtime dependency alongside the package.
 Linux ARM64 is unsupported. npm's independent OS and CPU allowlists may permit
 installation there, but the launcher refuses execution before selecting a runtime.
@@ -34,9 +34,9 @@ privately and asks for approval. The resolution flag allows dependency-selected
 network requests before approval; declining cannot undo those requests. Runs
 gain no network access. No separate Bun install is needed.
 
-Then [add a support-reply Agent](https://jig.md/guide/agents#build-your-first-agent-method)
-to that same project. Read the [first Flow guide](https://jig.md/guide/#your-first-flow), or try
-[an issue becoming a tested patch](https://jig.md/guide/tested-patch): selected
+Then [add a support-reply Agent](https://jig.md/build/agents#build-your-first-agent-method)
+to that same project. Read the [first Flow guide](https://jig.md/start/#1-create-the-project), or try
+[an issue becoming a tested patch](https://jig.md/examples/tested-patch): selected
 local source becomes a reviewable patch with executed checks, while the original
 repository stays unchanged.
 
@@ -73,7 +73,7 @@ File previews use
 verified immutable delivery. Use `--display plain`
 for nonanimated summaries. `--json` and effective `--receive` preserve exact
 machine/channel output. Flow authors compose views through the portable
-[reporting agreement](https://jig.md/guide/channels), without terminal code or
+[reporting agreement](https://jig.md/build/channels), without terminal code or
 host-specific domain adapters.
 
 `jig run --display web` publishes a private loopback browser link on terminal
@@ -83,7 +83,7 @@ Close inspection or press q to leave; closing a tab does not cancel work or end
 inspection. There is no automatic inspection timeout. The web display needs no
 development server and initializes no native terminal renderer. `--json` and
 effective `--receive` take precedence; redirected Run stdout remains exact JSON.
-See [live progress and views](https://jig.md/guide/channels).
+See [live progress and views](https://jig.md/build/channels).
 
 The TUI uses pinned OpenTUI Core, installed with Jig and loaded only for
 an eligible TUI. Automatic selection falls back to ordinary output when native
@@ -108,7 +108,7 @@ retained cause. Shell completion offers ready approved targets.
 A Binding can pin a declared read attachment with
 `attachments: { reference: './resources/reference' }`. Review captures and
 identifies its files; Runs use those approved bytes without repeating `--attach`
-or exposing the live source directory. See [working with files](https://jig.md/guide/files).
+or exposing the live source directory. See [working with files](https://jig.md/start/.html).
 Child routes can combine fixed reads with `{ create: true }` writable mappings
 or `{ supplied: 'read' }` held-artifact inputs. Each call owns fresh output;
 `FLOW.contract.json` declares allowed forwarded `artifactResults` names
@@ -143,7 +143,7 @@ For service access, `slots: { reference: 'grant:documents' }` selects an indepen
 configured operator grant. Jig enforces its exact endpoint, method, credential
 reference and limits outside the Flow. The same ordinary call can retrieve a
 document or support an editable API client without handing it a secret or a
-network socket. See [delegated HTTP access](https://jig.md/guide/http).
+network socket. See [delegated HTTP access](https://jig.md/build/http).
 
 `--generate-contracts` compiles authored TypeSpec contracts and publishes their
 managed JSON and types before the separate execution-approval question. Plain
@@ -164,7 +164,7 @@ to keep a packet in a chosen location; existing destinations are never replaced.
 Targets with neither a writable attachment nor declared `artifactResults`
 return their result on stdout unless output is selected. Either declaration
 makes a target packet-eligible, even when a handler forwards no artifacts.
-A target-only string is valid too. See [project entrypoints](https://jig.md/guide/configuration#project-entrypoint).
+A target-only string is valid too. See [project entrypoints](https://jig.md/reference/configuration#project-entrypoint).
 
 `inspect` lists approved targets or shows a target's retained interface without
 evaluating source, contacting providers, preparing dependencies or changing state.
@@ -176,7 +176,7 @@ launch readiness or remote availability; Run still revalidates before execution.
 file and diagnostic evidence without starting work or requiring a project.
 Use `--display web` for browser inspection instead.
 These are recorded local claims, not a new execution verdict. File previews use
-captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/guide/results).
+captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/build/results).
 
 `run` executes the approved revision and shows a YAML terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout
@@ -197,7 +197,7 @@ replacing the method does not require a host plugin.
 Native Codex, Claude Code, and Pi clients selected by ACP grants are discovered on the operator's
 `PATH`. Absolute `CODEX_PATH`, `CLAUDE_PATH`, and `PI_PATH` overrides select a
 specific installation. Review shows the resolved executable; project-local
-binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/guide/agents)
+binaries are excluded from implicit discovery. See [Choose an Agent](https://jig.md/build/agents)
 for supported installations and authentication.
 Keep a simple ACP policy inline in its Binding. Review reports a missing selected
 client with its captured setting and detected executable alternatives. Edit the
@@ -210,13 +210,13 @@ CLI review before new approval; no Flow starts.
 
 ## Guides
 
-- [Markdown methods](https://jig.md/guide/markdown)
-- [Choose an Agent](https://jig.md/guide/agents)
-- [Working with files](https://jig.md/guide/files)
-- [Delegated HTTP access](https://jig.md/guide/http)
-- [Dependencies](https://jig.md/guide/dependencies)
-- [Author contracts once](https://jig.md/guide/contracts)
-- [Workflow design](https://jig.md/guide/workflow-design)
+- [Markdown methods](https://jig.md/build/markdown)
+- [Choose an Agent](https://jig.md/build/agents)
+- [Working with files](https://jig.md/start/.html)
+- [Delegated HTTP access](https://jig.md/build/http)
+- [Dependencies](https://jig.md/build/dependencies)
+- [Author contracts once](https://jig.md/build/contracts)
+- [Workflow design](https://jig.md/understand/workflows)
 - [Project authoring](https://jig.md/spec/project-sdk)
 - [Execution policy](https://jig.md/spec/project-policy)
 - [Security boundary](https://github.com/jiggy/jig/blob/main/SECURITY.md)

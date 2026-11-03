@@ -10,7 +10,7 @@ fail() {
   fi
   printf '%s\n' '' "  ${1:-The installed Jig runtime is unavailable.}" '' \
     "  Next step: ${2:-Restore the complete Jig installation.}" \
-    "  See ${3:-https://jig.md/guide/#install.}" '' \
+    "  See ${3:-https://jig.md/start/#install.}" '' \
     '  Diagnostic code: JIG_COMMAND_UNAVAILABLE' >&2
   exit 2
 }
@@ -18,7 +18,7 @@ fail() {
 unsupported_host() {
   fail 'This operating system and CPU combination is not supported.' \
     'Use qualified Linux x86_64 or an Intel or Apple Silicon Mac.' \
-    'https://jig.md/guide/#supported-host.'
+    'https://jig.md/start/#supported-host.'
 }
 
 case $0 in

@@ -101,7 +101,7 @@ if [ "$actual" != "$expected" ]; then
   exit 1
 fi
 
-for route in index.html guide/index.html guide/understand.html; do
+for route in index.html documentation.html start/index.html start/application.html build/index.html build/compose.html understand/index.html reference/index.html examples/index.html research/index.html; do
   if [ ! -s "$staging/$route" ]; then
     echo "the $site_name public entry route is missing: $route" >&2
     exit 1
@@ -109,7 +109,7 @@ for route in index.html guide/index.html guide/understand.html; do
 done
 case $site_name in
   jig)
-    if [ ! -s "$staging/guide/contact-import.html" ]; then
+    if [ ! -s "$staging/examples/contact-import.html" ]; then
       echo "the code-and-Agent composition guide is missing" >&2
       exit 1
     fi
@@ -144,8 +144,8 @@ docs/jig/spec/machine/project-evaluation-recipe-1.schema.json|project-evaluation
     test -s "$staging/spec/http-request.html"
     test -s "$staging/spec/project-evaluation.html"
     test -s "$staging/spec/execution-client.html"
-    test -s "$staging/guide/http.html"
-    test -s "$staging/guide/agent-method.html"
+    test -s "$staging/build/http.html"
+    test -s "$staging/build/agent-method.html"
     test -s "$staging/contracts/acp-public-updates.html"
     cp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"
     cmp -- "$repository/docs/jig/spec/contracts/acp-public-updates.json" "$staging/contracts/acp-public-updates.json"

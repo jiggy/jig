@@ -10,13 +10,13 @@ whether to apply, merge, or release any patch.
 
 ## Run the supplied issue set
 
-With Jig installed on a [supported host](https://jig.md/guide/), configure and
-authenticate a native client through [Choose an Agent](https://jig.md/guide/agents).
+With Jig installed on a [supported host](https://jig.md/start/), configure and
+authenticate a native client through [Choose an Agent](https://jig.md/build/agents).
 The inline native policy in `bindings/agent.ts` selects Codex as an example.
 Edit that Binding and review again for a lasting client preference. Inspect
 `batch.json`, `bindings/single-pass.ts`, `bindings/checked-correction.ts`, and
 the two named case files under `flows/factory/`. For an HTTP Agent route, follow the package and
-Binding setup in the [Agent method guide](../../docs/jig/guide/agent-method.md).
+Binding setup in the [Agent method guide](../../docs/jig/build/agent-method.md).
 From this directory:
 
 ```sh

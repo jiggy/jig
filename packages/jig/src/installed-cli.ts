@@ -76,7 +76,7 @@ try {
   process.stderr.write(
     privateCliStderrDiagnostic(
       'JIG_COMMAND_UNAVAILABLE',
-      'Jig could not validate its installed launcher. Invoke the installed jig command directly. If that fails, restore the complete installation; see https://jig.md/guide/#install.',
+      'Jig could not validate its installed launcher. Invoke the installed jig command directly. If that fails, restore the complete installation; see https://jig.md/start/#install.',
     ),
   )
   process.exit(2)
@@ -138,7 +138,7 @@ async function runPrivateInstalledCli(
     process.stderr.write(
       privateCliStderrDiagnostic(
         'JIG_VERIFICATION_INVALID',
-        'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values. Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/guide/configuration#startup-verification',
+        'Choose --verification cached (default), strict, or fast, or set JIG_VERIFICATION to one of those values. Fast reuses installation identities without checking file freshness.\nNo Flow was started.\nNext step: https://jig.md/reference/configuration#startup-verification',
       ),
     )
     return exit(2)
@@ -401,14 +401,14 @@ async function runWithEnvironment(
       process.stderr.write(
         privateCliStderrDiagnostic(
           'SANDBOX_UNAVAILABLE',
-          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nIf Bubblewrap is outside the normal host-tool locations, set JIG_BWRAP_PATH to its absolute executable path; adding it to PATH alone does not select it.\nNext step: https://jig.md/guide/#supported-host',
+          'Check the supported-host requirements: systemd user service, delegated cgroups, namespaces and Bubblewrap >= 0.12.\nIf Bubblewrap is outside the normal host-tool locations, set JIG_BWRAP_PATH to its absolute executable path; adding it to PATH alone does not select it.\nNext step: https://jig.md/start/#supported-host',
         ),
       )
     } else {
       process.stderr.write(
         privateCliStderrDiagnostic(
           'JIG_COMMAND_UNAVAILABLE',
-          'The cause could not be determined. Inspect any result and effects before starting new work.\nNext step: Check https://jig.md/guide/results and include this code when reporting the failure.',
+          'The cause could not be determined. Inspect any result and effects before starting new work.\nNext step: Check https://jig.md/build/results and include this code when reporting the failure.',
         ),
       )
     }

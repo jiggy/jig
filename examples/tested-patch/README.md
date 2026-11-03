@@ -7,11 +7,11 @@ stays unchanged.
 
 ## Try it
 
-Install Jig on a [supported host](https://jig.md/guide/).
+Install Jig on a [supported host](https://jig.md/start/).
 
 The application declares pinned ordinary FLOW and ACP Agent packages; review
 prepares their execution dependencies. Download this directory and follow
-[Choose an Agent](https://jig.md/guide/agents) for authentication and configuration.
+[Choose an Agent](https://jig.md/build/agents) for authentication and configuration.
 The inline native policy in `bindings/agent.ts` selects Pi as an example.
 Edit that Binding and review again for a lasting client preference. Inspect `issue.json`,
 `bindings/specialist.ts`, and `flows/read-project/logs-cases.json`.
@@ -119,11 +119,11 @@ Selected source reaches the configured provider.
 For your own project, add `flows/project/<name>-cases.json` with independent CLI
 expectations and set `"checks": "<name>"` in the issue. The default is `logs`.
 Select your test files and CLI in `bindings/specialist.ts`, then review the
-application. The [walkthrough](https://jig.md/guide/tested-patch) explains the
+application. The [walkthrough](https://jig.md/examples/tested-patch) explains the
 evidence and adaptation steps. Keep one issue and one specialist so the
 acceptance boundary remains easy to follow.
 
-The walkthrough also describes optional [conversation-based correction](https://jig.md/guide/tested-patch#keep-conversation-context-for-a-correction):
+The walkthrough also describes optional [conversation-based correction](https://jig.md/examples/tested-patch#keep-conversation-context-for-a-correction):
 settle the first Agent, execute checks, then restore its retained native state
 for one revision. It requires explicit retention authority; default one-shot
 repair needs none.

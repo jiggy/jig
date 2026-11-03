@@ -19,8 +19,8 @@ claiming to find the best roster or measuring scheduling quality.
 
 ## Run it
 
-Complete the [ordinary workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages)
-and use a [supported host](../../docs/jig/guide/index.md#supported-host).
+Complete the [ordinary workspace setup](../../docs/jig/build/dependencies.md#local-workspace-packages)
+and use a [supported host](../../docs/jig/start/index.md#supported-host).
 In this directory, review the project and run its default entrypoint:
 
 ```sh

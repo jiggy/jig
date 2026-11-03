@@ -55,13 +55,13 @@
   <header class="site-header">
     <nav class="nav" aria-label="Main navigation">
       <a class="brand" href="#" aria-label="Jig home"><img src="/landing/assets/mark-light.svg" alt="" width="37" height="37"><span>jig</span></a>
-      <div class="nav-links"><a href="#how-it-works">How it works</a><a href="#your-control">Why Jig</a><a href="https://jig.md/guide/">Docs <span aria-hidden="true">↗</span></a></div>
+      <div class="nav-links"><a href="#how-it-works">How it works</a><a href="#your-control">Why Jig</a><a href="https://jig.md/documentation">Docs <span aria-hidden="true">↗</span></a></div>
       <div class="nav-actions"><a class="github-link" href="https://github.com/jiggy/jig" aria-label="Jig on GitHub"><svg class="icon"><use href="#github"/></svg></a><a class="nav-cta" href="#start">Start building <span aria-hidden="true">↗</span></a></div>
     </nav>
   </header>
   <main id="main">
     <section class="hero" aria-labelledby="hero-title">
-      <a class="alpha-badge" href="https://jig.md/guide/#supported-host"><span class="status-dot"></span> Meet Jig. A local host for code &amp; Agents. <span aria-hidden="true">↗</span></a>
+      <a class="alpha-badge" href="https://jig.md/start/#supported-host"><span class="status-dot"></span> Meet Jig. A local host for code &amp; Agents. <span aria-hidden="true">↗</span></a>
       <h1 id="hero-title">Put your Agents to work. <br><span>Inside your software.</span></h1>
       <p class="hero-copy">Let your app call on Agent judgment and ordinary code. <br>Jig runs the work with the access you choose.</p>
       <div class="hero-actions"><a class="button primary" href="#start">Start building <svg class="icon"><use href="#arrow"/></svg></a></div>
@@ -128,7 +128,7 @@
               </div>
               <div class="sample-app-bottom"><span><span class="status-dot" aria-hidden="true"></span> Ready for your application</span><span>Draft only · No credit or message sent</span></div>
             </div>
-            <div class="sample-demo-caption"><span data-sm-hint id="support-preview-hint">Choose Before or After to explore.</span><a href="https://jig.md/guide/support-case">Explore the support example <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a></div>
+            <div class="sample-demo-caption"><span data-sm-hint id="support-preview-hint">Choose Before or After to explore.</span><a href="https://jig.md/examples/support-case">Explore the support example <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a></div>
           </section>
         </div>
         <div class="examples-panel" id="example-kitchen" role="tabpanel" tabindex="0" aria-labelledby="example-tab-kitchen" hidden>
@@ -194,7 +194,7 @@
         </div>
         <div class="control-moment" id="control-review" role="tabpanel" tabindex="0" aria-labelledby="control-tab-review" hidden>
           <div class="control-art approval-art" role="img" aria-label="A community Flow and its requested access are reviewed before execution. Jig runs only the accepted revision."><div class="review-object source-object"><div class="source-sheets"><span></span><span></span><div><svg class="icon"><use href="#code"/></svg><i></i><i></i><i></i></div></div><strong>Community Flow</strong></div><div class="approval-bridge"><span>Your review</span><svg class="icon"><use href="#arrow"/></svg></div><div class="review-object accepted-object"><div class="method-emblem"><div class="function-face"><span>input</span><i aria-hidden="true"></i><code>task(x)</code><i aria-hidden="true"></i><span>result</span></div><span class="approval-seal"><svg class="icon"><use href="#check"/></svg></span></div><strong>Accepted revision</strong></div></div>
-          <div class="control-message"><h3>Community Flows. <br>Reviewed first.</h3><p>Inspect a community Flow and its requested access before it runs. Jig executes the revision you accept.</p><a href="https://jig.md/guide/dependencies">How review works <svg class="icon"><use href="#external"/></svg></a></div>
+          <div class="control-message"><h3>Community Flows. <br>Reviewed first.</h3><p>Inspect a community Flow and its requested access before it runs. Jig executes the revision you accept.</p><a href="https://jig.md/build/dependencies">How review works <svg class="icon"><use href="#external"/></svg></a></div>
         </div>
       </div>
     </div></section>
@@ -203,7 +203,7 @@
       <div class="section-heading"><span class="eyebrow">See the work, your way</span><h2 id="app-views-title">Build the workflow. <br><span class="green-text">Web and TUI are included.</span></h2><p>Describe your app’s view once. Jig supplies an interactive browser workspace <br>and a keyboard-driven terminal interface. No separate frontend for each.</p></div>
       <div class="view-toolbar"><div class="view-switch" role="tablist" aria-label="Jig application display" aria-orientation="horizontal"><button id="display-tab-web" type="button" role="tab" aria-controls="display-web" aria-selected="true" tabindex="0"><svg class="icon"><use href="#eye"/></svg> Web</button><button id="display-tab-terminal" type="button" role="tab" aria-controls="display-terminal" aria-selected="false" tabindex="-1"><svg class="icon"><use href="#code"/></svg> Terminal / TUI</button></div><span class="view-sample-label">Display previews</span></div>
       <div class="display-previews"><div id="display-web" class="display-preview" role="tabpanel" tabindex="0" aria-labelledby="display-tab-web"><div class="spacious-web-preview display-placeholder"><iframe srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;Web display preview&lt;/title&gt;&lt;style&gt;html,body{height:100%;margin:0}body{display:grid;place-content:center;text-align:center;font:16px/1.7 system-ui,sans-serif;background:#f7f7fa;color:#625a76}p{margin:0}small{color:#85808e;font-size:13px}&lt;/style&gt;&lt;body&gt;&lt;p&gt;Web display preview&lt;/p&gt;&lt;small&gt;Coming soon&lt;/small&gt;&lt;/body&gt;&lt;/html&gt;" sandbox="" title="Web display preview placeholder" loading="lazy"></iframe></div><div class="view-caption"><p>Preview placeholder.</p></div></div><div id="display-terminal" class="display-preview" role="tabpanel" tabindex="0" aria-labelledby="display-tab-terminal" hidden><div class="spacious-web-preview display-placeholder"><iframe srcdoc="&lt;!doctype html&gt;&lt;html lang=&quot;en&quot;&gt;&lt;meta charset=&quot;utf-8&quot;&gt;&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width,initial-scale=1&quot;&gt;&lt;title&gt;TUI display preview&lt;/title&gt;&lt;style&gt;html,body{height:100%;margin:0}body{display:grid;place-content:center;text-align:center;font:16px/1.7 system-ui,sans-serif;background:#171a23;color:#e4e1f1}p{margin:0}small{color:#aba5bc;font-size:13px}&lt;/style&gt;&lt;body&gt;&lt;p&gt;TUI display preview&lt;/p&gt;&lt;small&gt;Coming soon&lt;/small&gt;&lt;/body&gt;&lt;/html&gt;" sandbox="" title="TUI display preview placeholder" loading="lazy"></iframe></div><div class="view-caption"><p>Preview placeholder.</p></div></div></div>
-      <div class="view-capabilities"><span><svg class="icon"><use href="#check"/></svg> Filter &amp; sort records</span><span><svg class="icon"><use href="#folder"/></svg> Preview delivered files</span><span><svg class="icon"><use href="#eye"/></svg> Inspect calls &amp; errors</span><a href="https://jig.md/guide/channels">Describe your app’s view <svg class="icon"><use href="#external"/></svg></a></div>
+      <div class="view-capabilities"><span><svg class="icon"><use href="#check"/></svg> Filter &amp; sort records</span><span><svg class="icon"><use href="#folder"/></svg> Preview delivered files</span><span><svg class="icon"><use href="#eye"/></svg> Inspect calls &amp; errors</span><a href="https://jig.md/build/channels">Describe your app’s view <svg class="icon"><use href="#external"/></svg></a></div>
     </section>
 
 
@@ -342,7 +342,7 @@
         <div class="fr-contracts-copy">
           <h3 id="fr-contracts-title">New connections.<br><span>Same FLOW.</span></h3>
           <p>Connect your FLOW to a different method through the same shared contract.</p>
-          <a class="fr-contract-link" href="https://jig.md/guide/contracts">How contracts make parts fit <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
+          <a class="fr-contract-link" href="https://jig.md/build/contracts">How contracts make parts fit <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a>
         </div>
         <figure class="fr-fit-figure" role="img" aria-label="A FLOW stays unchanged while another compatible method fits its matching connection. The matching edge represents a shared contract that a FLOW can use; the stacked tiles show alternative compatible methods.">
           <div class="fr-fit-object" aria-hidden="true">
@@ -388,7 +388,7 @@
                 </div>
                 <span class="ka-client" id="ka-client"><svg class="icon" aria-hidden="true"><use href="#spark"/></svg> <strong data-ka-client-label>Codex</strong><span>via ACP</span></span>
                 <span class="ka-operator-note">A separate choice from the method.</span>
-                <a class="ka-client-link" href="https://jig.md/guide/agents#local-clients">Explore ACP clients <span aria-hidden="true">↗</span></a>
+                <a class="ka-client-link" href="https://jig.md/build/agents#local-clients">Explore ACP clients <span aria-hidden="true">↗</span></a>
               </div>
             </div>
             <div class="ka-method">
@@ -472,12 +472,12 @@
           <figcaption id="ka-caption">Your next idea shouldn’t need a new kernel.</figcaption>
           <p class="ka-illustration-note">Architecture illustration · Authored methods and independent configuration choices.</p>
         </figure>
-        <div class="ka-architecture-link"><a class="text-link" href="https://jig.md/guide/understand#why-a-microkernel-inspired-host">Explore the architecture <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a></div>
+        <div class="ka-architecture-link"><a class="text-link" href="https://jig.md/understand/index#why-a-microkernel-inspired-host">Explore the architecture <svg class="icon" aria-hidden="true"><use href="#external"/></svg></a></div>
         <span class="sr-only" data-ka-status role="status" aria-live="polite" aria-atomic="true"></span>
       </div>
     </section>
 
-    <section class="start section-width" id="start" aria-labelledby="start-title"><div class="start-copy"><span class="eyebrow">From your first run to your first useful task</span><h2 id="start-title">Start with hello. <br><span class="green-text">Build something bigger.</span></h2><p>Learn the review-and-run loop with a greeting. <br>Then combine specialists into a more capable application.</p><a class="button primary" href="https://jig.md/guide/#your-first-flow">01 · Run your first Flow <svg class="icon"><use href="#external"/></svg></a><a class="requirements" href="https://jig.md/guide/#supported-host">Developer alpha · Check Linux &amp; Mac requirements <span aria-hidden="true">↗</span></a></div><div class="terminal start-setup">
+    <section class="start section-width" id="start" aria-labelledby="start-title"><div class="start-copy"><span class="eyebrow">From your first run to your first useful task</span><h2 id="start-title">Start with hello. <br><span class="green-text">Build something bigger.</span></h2><p>Learn the review-and-run loop with a greeting. <br>Then combine specialists into a more capable application.</p><a class="button primary" href="https://jig.md/start/#1-create-the-project">01 · Run your first Flow <svg class="icon"><use href="#external"/></svg></a><a class="requirements" href="https://jig.md/start/#supported-host">Developer alpha · Check Linux &amp; Mac requirements <span aria-hidden="true">↗</span></a></div><div class="terminal start-setup">
   <div class="terminal-bar setup-bar"><span class="setup-window-dots" aria-hidden="true"><i></i><i></i><i></i></span>
     <div class="setup-tabs" role="tablist" aria-label="Choose how to set up Jig" aria-orientation="horizontal">
       <button type="button" id="setup-tab-agent" role="tab" aria-controls="setup-agent" aria-selected="true" tabindex="0">Ask your Agent</button>
@@ -499,12 +499,12 @@
   </div>
   <div class="setup-panel setup-agent-panel" id="setup-agent" role="tabpanel" tabindex="0" aria-labelledby="setup-tab-agent">
     <p class="setup-agent-intro"><svg class="icon" aria-hidden="true"><use href="#spark"/></svg> Paste this into your coding Agent.</p>
-    <pre class="setup-agent-prompt" data-setup-copy="prompt" tabindex="0" aria-label="Agent setup instructions">Bootstrap a Jig project: https://jig.md/guide/for-agents.html</pre>
-    <p class="setup-agent-note">Your Agent follows the current <a href="https://jig.md/guide/for-agents.html">Jig setup guide <span aria-hidden="true">↗</span></a>.</p>
+    <pre class="setup-agent-prompt" data-setup-copy="prompt" tabindex="0" aria-label="Agent setup instructions">Bootstrap a Jig project: https://jig.md/for-agents.html</pre>
+    <p class="setup-agent-note">Your Agent follows the current <a href="https://jig.md/for-agents.html">Jig setup guide <span aria-hidden="true">↗</span></a>.</p>
   </div>
   <span class="sr-only" id="copy-status" role="status" aria-live="polite" aria-atomic="true"></span>
-</div><div class="next-example"><div class="next-example-icon"><svg class="icon"><use href="#folder"/></svg><svg class="icon"><use href="#spark"/></svg></div><div><span class="eyebrow">02 · Try a more capable application</span><h3>Combine specialists into a workflow.</h3><p>Go further with a support application that interprets requests, checks account records, and prepares a reply.</p></div><div class="next-example-actions"><a class="button primary" href="https://jig.md/guide/support-case">Build the support workflow <svg class="icon"><use href="#external"/></svg></a><a class="text-link" href="https://jig.md/guide/software-factory">Explore a small software factory <span aria-hidden="true">↗</span></a></div></div></section>
+</div><div class="next-example"><div class="next-example-icon"><svg class="icon"><use href="#folder"/></svg><svg class="icon"><use href="#spark"/></svg></div><div><span class="eyebrow">02 · Try a more capable application</span><h3>Combine specialists into a workflow.</h3><p>Go further with a support application that interprets requests, checks account records, and prepares a reply.</p></div><div class="next-example-actions"><a class="button primary" href="https://jig.md/examples/support-case">Build the support workflow <svg class="icon"><use href="#external"/></svg></a><a class="text-link" href="https://jig.md/examples/software-factory">Explore a small software factory <span aria-hidden="true">↗</span></a></div></div></section>
   </main>
-  <footer class="site-footer section-width"><div class="footer-top"><a class="brand" href="#" aria-label="Jig home"><img src="/landing/assets/mark.svg" alt="" width="40" height="40"><span>jig</span></a><p>Build with Agents as naturally <br>as you build with code.</p><div><a href="https://jig.md/guide/">Documentation</a><a href="https://github.com/jiggy/jig"><svg class="icon"><use href="#github"/></svg> GitHub</a><a href="https://flow.jig.md/">FLOW <span aria-hidden="true">↗</span></a><a href="https://jig.md/pricing">Pricing &amp; licence</a></div></div><div class="footer-bottom"><span>Expand human possibility.</span><span>Developer alpha · Bread source-available</span></div><p class="license-note">Free for personal non-business use, genuine evaluation, and qualifying business groups below US$1m annual revenue. <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">Licence terms apply.</a> Agent judgment can be wrong; application checks still matter.</p></footer>
+  <footer class="site-footer section-width"><div class="footer-top"><a class="brand" href="#" aria-label="Jig home"><img src="/landing/assets/mark.svg" alt="" width="40" height="40"><span>jig</span></a><p>Build with Agents as naturally <br>as you build with code.</p><div><a href="https://jig.md/documentation">Documentation</a><a href="https://github.com/jiggy/jig"><svg class="icon"><use href="#github"/></svg> GitHub</a><a href="https://flow.jig.md/">FLOW <span aria-hidden="true">↗</span></a><a href="https://jig.md/pricing">Pricing &amp; licence</a></div></div><div class="footer-bottom"><span>Expand human possibility.</span><span>Developer alpha · Bread source-available</span></div><p class="license-note">Free for personal non-business use, genuine evaluation, and qualifying business groups below US$1m annual revenue. <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md">Licence terms apply.</a> Agent judgment can be wrong; application checks still matter.</p></footer>
 </body>
 </html>

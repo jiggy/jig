@@ -22,6 +22,6 @@ Use direct delivery for one reader or broadcast for independent readers of the
 same updates. Allocate subscriptions before starting the Agent to receive the
 whole interval; a lagging subscriber fails without stopping the others.
 
-See [live Agent progress](../guide/channels.md) for ordinary usage and
+See [live Agent progress](../build/channels.md) for ordinary usage and
 [Jig channels](../spec/channels.md) for limits and failure behavior. Updates and
 EOF do not replace the Agent's final result.

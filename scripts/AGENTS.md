@@ -43,7 +43,7 @@ operational baselines, and public-site assembly.
 - `limit-reference.ts` owns typed documentation metadata for user-facing limits.
   Import values from implementation policy owners instead of defining runtime
   policy here. Its `--write` command refreshes the marked tables in
-  `docs/jig/guide/limits.md`. `check-docs.ts` runs its `--check` drift guard.
+  `docs/jig/reference/limits.md`. `check-docs.ts` runs its `--check` drift guard.
 - `new-worktree.sh` owns sibling development-checkout creation. It inherits
   existing ignored `../<same-name>` links from the primary checkout to real
   workspace entries. Tracked source stays local to each checkout. Parent links
@@ -231,7 +231,7 @@ operational baselines, and public-site assembly.
   notices for bundled fonts.
   It installs the standalone `docs/jig/index.html` homepage after rendering the
   documentation. Its `index.md` companion retains the complete page meaning.
-- Site assembly requires Jig's home, guide, and understanding routes, plus its
+- Site assembly requires Jig's home, documentation, start, build, and understanding routes, plus its
   contact-import composition guide. FLOW owns its separate site and authoring
   guidance.
 - Site assembly requires Jig's contract identity pages and exact descriptor

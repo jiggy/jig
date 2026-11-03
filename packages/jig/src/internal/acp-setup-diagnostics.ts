@@ -136,7 +136,7 @@ export function acpSetupHints(platform: 'linux' | 'darwin'): Readonly<Record<str
           wrapper: `The selected ${profile.name} launcher is an unsupported wrapper. Select the underlying supported native executable with ${profile.path}; Jig does not execute shell or npm wrappers to discover their dependencies.`,
           sandbox:
             platform === 'darwin'
-              ? 'Use a qualified Jig macOS host with its system /usr/bin/sandbox-exec helper intact; do not replace system helpers or bypass containment. See https://jig.md/guide/agents for supported native installations.'
+              ? 'Use a qualified Jig macOS host with its system /usr/bin/sandbox-exec helper intact; do not replace system helpers or bypass containment. See https://jig.md/build/agents for supported native installations.'
               : 'Install an unprivileged Bubblewrap helper supported by the selected Codex installation; do not bypass containment.',
           login: profile.login,
           api: profile.api,

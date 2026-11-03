@@ -19,7 +19,7 @@ eligibility and customer-facing claims.
   explicit client is editable operator configuration, not a Jig default.
 - `fixtures/` contains synthetic account records and customer requests.
 - `test/` owns pure policy and view checks. The public walkthrough belongs
-  in `docs/jig/guide/support-case.md`.
+  in `docs/jig/examples/support-case.md`.
 
 - `bindings/agent.ts` owns the inline ACP client/model/turn/session policy.
   The assessor keeps its small private response schema beside its Agent call.

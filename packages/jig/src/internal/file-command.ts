@@ -700,7 +700,7 @@ export async function privateOwnFileCommand(
           process.stderr.write(
             privateCliStderrDiagnostic(
               'JIG_DELIVERY_FAILED',
-              `Retained-result publication failed (${receipt.code}). Inspect the output destination before starting new work; repeating the command starts a new Run. See https://jig.md/guide/results.`,
+              `Retained-result publication failed (${receipt.code}). Inspect the output destination before starting new work; repeating the command starts a new Run. See https://jig.md/build/results.`,
             ),
           )
           recoveryFailed = true
@@ -709,7 +709,7 @@ export async function privateOwnFileCommand(
         process.stderr.write(
           privateCliStderrDiagnostic(
             'JIG_CHECKPOINT_UNAVAILABLE',
-            'Cleanup or retained-result delivery could not be confirmed. Inspect the destination and settle existing work before starting another command. See https://jig.md/guide/results.',
+            'Cleanup or retained-result delivery could not be confirmed. Inspect the destination and settle existing work before starting another command. See https://jig.md/build/results.',
           ),
         )
         recoveryFailed = true
@@ -746,7 +746,7 @@ export async function privateOwnFileCommand(
     process.stderr.write(
       privateCliStderrDiagnostic(
         'JIG_DELIVERY_CLEANUP_FAILED',
-        'Unfinished delivery storage could not be removed. Preserve any published result and inspect destination permissions before starting new work. See https://jig.md/guide/results.',
+        'Unfinished delivery storage could not be removed. Preserve any published result and inspect destination permissions before starting new work. See https://jig.md/build/results.',
       ),
     )
     return { exitCode: 2, signal: null }

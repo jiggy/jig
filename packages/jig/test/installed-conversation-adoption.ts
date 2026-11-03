@@ -74,7 +74,7 @@ export async function checkInstalledConversation(options: {
     await writeFile(join(directory, 'package.json'), JSON.stringify(manifest))
   }
   const guide = await readFile(
-    resolve(import.meta.dir, '../../../docs/jig/guide/conversations.md'),
+    resolve(import.meta.dir, '../../../docs/jig/build/conversations.md'),
     'utf8',
   )
   const caller = [...guide.matchAll(/```ts\n([\s\S]*?)\n```/g)]

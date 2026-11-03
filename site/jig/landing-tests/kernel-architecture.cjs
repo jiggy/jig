@@ -62,7 +62,7 @@ assert.equal(topologies.find(topology => !topology.hidden).dataset.kaContextPane
 assert.equal(topologies.find(topology => !topology.hidden).dataset.kaTopology, 'team');
 assert(topologies.every(topology => topology.attributes.role === 'img' && topology.attributes['aria-label']), 'every diagram has a semantic description');
 assert(section.includes('<code>method(input)</code>') && !section.includes('<strong>Research workspace</strong>'), 'shared caller is neutral');
-assert(section.includes('https://jig.md/guide/agents#local-clients'), 'ACP documentation link is preserved');
+assert(section.includes('https://jig.md/build/agents#local-clients'), 'ACP documentation link is preserved');
 
 vm.runInNewContext(script, { document: { querySelector: () => null } });
 vm.runInNewContext(script, { document: { querySelector: () => scene } });

@@ -6,6 +6,9 @@ Own this repository's Rspress configuration, assets, assembly, and direct GitHub
 
 ## Ownership
 
+- `jig/rspress.config.ts` owns task-focused sidebars for Start, Build, Understand,
+  Examples, Reference, and Research. The Markdown index follows the same groups.
+
 - `../docs/jig/` owns public prose, specifications, and source diagrams.
 - `jig/` owns product navigation, public roots, origins, and assets.
 - `jig/public/landing/` contains the standalone homepage's styles, scripts,

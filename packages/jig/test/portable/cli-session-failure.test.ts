@@ -9,7 +9,7 @@ import type { PrivateAgentReadinessReport } from '../../src/internal/review-agen
 
 const operationSecret = 'SYNTHETIC_OPERATION_FAILURE /private/input Authorization=Bearer SYNTHETIC_TICKET'
 const closeSecret = 'SYNTHETIC_CLOSE_FAILURE /private/host SYNTHETIC_RECOVERY_TICKET'
-const recovery = 'https://jig.md/guide/results#when-cleanup-cannot-be-confirmed'
+const recovery = 'https://jig.md/build/results#when-cleanup-cannot-be-confirmed'
 
 type Failure = { failed: false } | { failed: true; value: unknown }
 const success: Failure = { failed: false }

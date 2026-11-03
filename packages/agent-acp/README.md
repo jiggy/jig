@@ -115,7 +115,7 @@ fail visibly. A failed claimed invocation does not make its old reference
 reusable. The project permits 16 available snapshots of at most 8 MiB each,
 with 24-hour logical expiry and pruning on the next store access. State excludes
 credentials and arbitrary workspaces; expiry is not a secure-erasure promise.
-See the [restoration guide](https://jig.md/guide/conversation-restoration)
+See the [restoration guide](https://jig.md/build/conversation-restoration)
 for calls and [Finite ACP](https://jig.md/spec/finite-acp#retained-native-state)
 for exact authorization, collection and settlement requirements.
 
@@ -139,7 +139,7 @@ in `jig.ts` with `bindings: discover('./bindings')` for matching callers, or use
 an explicit slot. With one eligible provider the mapping is optional.
 The example's client is a choice, not a Jig default; `codex`, `claude` and `pi`
 use the same grant interface. The operator configures the native installation, model and
-authentication described in [Choose an Agent](https://jig.md/guide/agents).
+authentication described in [Choose an Agent](https://jig.md/build/agents).
 
 To call this Agent from a new Flow, install the declared project dependency
 with `bun install`, then select its complete contract when creating the caller:
@@ -161,7 +161,7 @@ installation, copies all referenced channel descriptors offline, and runs no
 package code. The copied contract belongs to the caller: an installation update
 does not replace it or grant new authority. An existing destination is refused;
 choose a new directory to inspect a changed contract before updating the caller.
-See the [conversation walkthrough](https://jig.md/guide/conversations) for a
+See the [conversation walkthrough](https://jig.md/build/conversations) for a
 complete two-turn caller and the separate native turn grant. The published
 Jig alpha supplies these authoring commands.
 

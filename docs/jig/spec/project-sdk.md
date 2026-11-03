@@ -99,7 +99,7 @@ Workers receive explicit validated values. They do not read the operator environ
 
 These settings govern review preparation, including assembly with reused dependencies. They grant no execution authority or resolution-network permission.
 Run consumes admitted bytes without preparing dependencies again. Later environment changes cannot replace those bytes or enlarge reviewed resource grants.
-See [limits and defaults](../guide/limits.md) for related constraints and override policies.
+See [limits and defaults](../reference/limits.md) for related constraints and override policies.
 
 ### Project entrypoint
 

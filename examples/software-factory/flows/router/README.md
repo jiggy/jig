@@ -41,7 +41,7 @@ validator. The package's own manifest declares its public SDK and Agent library
 versions. Run `bun install` at the workspace root; this TypeScript package needs
 no build or private repository tooling. This source package is not published on npm.
 
-Configure an ordinary Agent using the public [Agent guide](https://jig.md/guide/agents).
+Configure an ordinary Agent using the public [Agent guide](https://jig.md/build/agents).
 In your caller metadata declare `"uses": { "router": {} }`. In its Binding select
 `router: 'npm:semantic-router-flow'`; your project's Agent default supplies the
 router's named Agent dependency. Review with `jig review --allow-resolution-network`

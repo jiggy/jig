@@ -474,7 +474,7 @@ available in TUI/web. Final evidence remains independent of optional updates.
 
 `PACKAGE_BUN_OUTPUT_LIMIT` identifies the complete prepared execution tree, including source and production dependencies.
 When bounded numeric evidence exists, report the exhausted dimension, observed lower bound, effective cap, and policy source.
-Identify the corresponding project field and environment variable. Explain environment precedence and link to [limits and defaults](../guide/limits.md).
+Identify the corresponding project field and environment variable. Explain environment precedence and link to [limits and defaults](../reference/limits.md).
 Do not expose worker messages or assume production dependencies are misplaced development tools.
 
 The SDK diagnostic retains these facts in optional `preparationLimit` with `dimension`, `observed`, `maximum`, and optional `origin`.
@@ -648,7 +648,7 @@ Combined recovery guidance MUST withhold operation-specific replay instructions 
 It MUST direct applications with retained tickets to observe the original attempt.
 For callers without a usable packet or recovery identity, explain the supported recovery limit and preserve existing evidence.
 Never invent a recovery command or imply that new work settles the original invocation.
-The [cleanup recovery guide](../guide/results.md#when-cleanup-cannot-be-confirmed) owns the procedure and escalation path.
+The [cleanup recovery guide](../build/results.md#when-cleanup-cannot-be-confirmed) owns the procedure and escalation path.
 These diagnostics do not add a review JSON envelope or change existing machine framing.
 
 ### Agent project initialization
@@ -968,4 +968,4 @@ Changes to public output must update this contract when its guarantees change,
 its owning implementation, and focused acceptance tests together. Adding an
 ad hoc raw diagnostic or weakening an assertion to accommodate unreadable
 output is not an acceptable shortcut. Recovery advice remains subject to the
-[results guide](../guide/results.md) and exact lifecycle contracts.
+[results guide](../build/results.md) and exact lifecycle contracts.

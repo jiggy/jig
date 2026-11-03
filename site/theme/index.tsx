@@ -1,21 +1,16 @@
-import {
-  Layout as DefaultLayout,
-  HomeFooter,
-  Link,
-  useMdUrl,
-} from '@rspress/core/theme-original'
 import { Content, usePage, useSite } from '@rspress/core/runtime'
+import { Layout as DefaultLayout, HomeFooter, Link, useMdUrl } from '@rspress/core/theme-original'
 import { useEffect } from 'react'
-import { Arrow } from './icons'
 import { BrandTitle } from './brand-title'
+import { Arrow } from './icons'
 import '../landing.css'
 
 export * from '@rspress/core/theme-original'
-export { Search } from './search'
 export { SwitchAppearance } from './appearance'
-export { Tabs } from './tabs'
-export { Sidebar } from './sidebar'
 export { NavHamburger } from './navigation'
+export { Search } from './search'
+export { Sidebar } from './sidebar'
+export { Tabs } from './tabs'
 
 /** Client-side documentation links return to the independently rendered home. */
 export function HomeLayout() {
@@ -27,7 +22,9 @@ export function HomeLayout() {
   if (import.meta.env.SSG_MD) return <Content />
   return (
     <main id="main-content">
-      <p><a href="/">Open the Jig landing page</a></p>
+      <p>
+        <a href="/">Open the Jig landing page</a>
+      </p>
       <Content />
     </main>
   )
@@ -40,15 +37,13 @@ function DocContext() {
     ? 'Specification'
     : path.startsWith('/contracts/')
       ? 'Contract guide'
-      : ['/use-cases', '/time-travel-handoff', '/orchestration-patterns'].some((route) =>
-            path.startsWith(route),
-          )
+      : path.startsWith('/research/')
         ? 'Research'
         : 'Guide'
   if (import.meta.env.SSG_MD) return null
   return (
     <div className="doc-context">
-      <Link href="/guide/overview">Documentation</Link>
+      <Link href="/documentation">Documentation</Link>
       <span aria-hidden="true">/</span>
       <span>{kind}</span>
       <span className="doc-stage">Prerelease</span>

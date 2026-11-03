@@ -21,10 +21,10 @@ on its own, without another example or sibling checkout.
 | [Support case](support-case/) | A disputed-charge decision and reply | Code checks an Agent's proposal against account facts and application policy. |
 | [Tested patch](tested-patch/) | A patch with executed checks and evidence | A reusable repair method combines Agent proposals with independent acceptance. |
 
-Complete [workspace setup](../docs/jig/guide/dependencies.md#local-workspace-packages)
+Complete [workspace setup](../docs/jig/build/dependencies.md#local-workspace-packages)
 and follow the selected example's README on a
-[supported host](../docs/jig/guide/index.md#supported-host).
-The [documentation](../docs/jig/guide/overview.md) explains installation,
+[supported host](../docs/jig/start/index.md#supported-host).
+The [documentation](../docs/jig/documentation.md) explains installation,
 Agent configuration, results, and integration.
 
 Support case returns its result on stdout

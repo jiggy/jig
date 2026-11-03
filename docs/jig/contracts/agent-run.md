@@ -14,7 +14,7 @@ The Flow supplies instructions, any selected package-local Skills, and an
 optional structured-result schema. The operator chooses the Agent, model,
 credentials, and endpoint.
 
-The ordinary HTTP and native [Agent Flows](../guide/agent-method.md)
+The ordinary HTTP and native [Agent Flows](../build/agent-method.md)
 share this interface. Selected Skill contents are explicit caller data, not
 host-attested provenance. Consumers independently check structured answers;
 the operator chooses an implementation and grants its required resources.
@@ -47,7 +47,7 @@ versions; the descriptor carries the version and exact interface.
 - **Use the invocation:** read the [Agent Run specification](../spec/agent-run.md)
   for request and result fields, Skills, limits, and failure behavior.
 - **Configure an Agent:** follow the
-  [Agent configuration guide](../guide/agents.md).
+  [Agent configuration guide](../build/agents.md).
   Do not use this contract ID as your provider's base URL.
 - **Get the interface file:** download the
   [Agent Run JSON descriptor](https://jig.md/contracts/agent-run/contract.json).
@@ -58,8 +58,8 @@ versions; the descriptor carries the version and exact interface.
   the complete bundle into the Flow package and reference the invocation descriptor from
   `FLOW.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** try the
-  [support-case application](../guide/support-case.md).
-- **Continue or restore work:** read [Agent conversations](../guide/conversations.md).
+  [support-case application](../examples/support-case.md).
+- **Continue or restore work:** read [Agent conversations](../build/conversations.md).
   Native restoration requires a separately reviewed retention grant, a
   single-use reference, and qualification of the installed client's save-and-restore
   path. Its receipt appears only in the

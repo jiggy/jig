@@ -12,8 +12,8 @@ requiring a vision model or EXIF tooling.
 
 ## Try it
 
-Install Jig on a [supported host](https://jig.md/guide/) and configure a supported
-[ACP client](https://jig.md/guide/agents) in `grants/agent.json`. The shipped grant
+Install Jig on a [supported host](https://jig.md/start/) and configure a supported
+[ACP client](https://jig.md/build/agents) in `grants/agent.json`. The shipped grant
 selects Codex; edit it to your installed client and model. From this directory:
 
 ```sh

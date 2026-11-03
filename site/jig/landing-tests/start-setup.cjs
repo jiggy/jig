@@ -81,7 +81,7 @@ const clickCopy = () => Promise.all(button.dispatch('click'));
   assert(button.getAttribute('aria-label').includes('agent setup instructions'));
   await clickCopy();
   assert.equal(writes.at(-1),sources[0].textContent.trim(), 'The exact visible Agent prompt is copied');
-  assert.equal(writes.at(-1),'Bootstrap a Jig project: https://jig.md/guide/for-agents.html');
+  assert.equal(writes.at(-1),'Bootstrap a Jig project: https://jig.md/for-agents.html');
   assert.equal(label.textContent,'Copied'); assert.equal(status.textContent,'Agent setup instructions copied.');
   tabs[0].dispatch('keydown', { key: 'End' }); selected(1); assert.equal(focused,tabs[1]);
   assert.equal(label.textContent,'Copy'); assert.equal(status.textContent,'');

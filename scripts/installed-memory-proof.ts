@@ -437,7 +437,7 @@ function validateMemoryProof(
     const message =
       'The Flow could not complete execution.\n\nReported cause:\n  ' +
       '"component exited with code null and signal SIGKILL"\n\n' +
-      'Inspect any effects before starting new work. See https://jig.md/guide/results.'
+      'Inspect any effects before starting new work. See https://jig.md/build/results.'
     assert.equal(
       command.stderr,
       'Run failed\n\n' +

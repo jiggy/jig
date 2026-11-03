@@ -7,7 +7,7 @@ The importer calls the same mapping slot in all three configurations.
 
 ## Try it
 
-With Jig installed on a [supported host](https://jig.md/guide/), run from this
+With Jig installed on a [supported host](https://jig.md/start/), run from this
 directory. The default review selects only the code implementation: no Agent
 installation or login is needed for the first preview.
 
@@ -31,7 +31,7 @@ records. Grace's invalid email appears in `rejected`, with CSV record number 3.
 contacts, and no database records are created.
 
 To try Agent interpretation, first configure and authenticate the client in
-`bindings/model.ts` through [Choose an Agent](https://jig.md/guide/agents).
+`bindings/model.ts` through [Choose an Agent](https://jig.md/build/agents).
 Then replace `jig.ts` with this ordinary project selection:
 
 ```ts

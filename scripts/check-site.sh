@@ -12,7 +12,7 @@ case $site_name in
   jig)
     default_base=https://jig.md
     home_title='<title>Jig — Put your Agents to work.</title>'
-    guide_title='<title>Get started with Jig - Jig</title>'
+    guide_title='<title>Run your first Flow - Jig</title>'
     json_map='packages/reporting/src/reporting.json|contracts/reporting.json
 docs/jig/spec/machine/jig-lock-1.schema.json|schemas/jig-lock-1.schema.json
 docs/jig/spec/machine/project-authoring-1.schema.json|schemas/project-authoring-1.schema.json
@@ -59,7 +59,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 curl --fail --location --silent --show-error "$base/" > "$temporary/index.html"
-curl --fail --location --silent --show-error "$base/guide/" > "$temporary/guide.html"
+curl --fail --location --silent --show-error "$base/start/" > "$temporary/guide.html"
 grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 

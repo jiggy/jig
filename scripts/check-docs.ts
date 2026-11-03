@@ -278,7 +278,7 @@ export function renderedFindings(sites: string): Finding[] {
 }
 
 export function limitReferenceFindings(repository = root): Finding[] {
-  const file = 'docs/jig/guide/limits.md'
+  const file = 'docs/jig/reference/limits.md'
   if (!existsSync(resolve(repository, file))) return []
   const script = resolve(repository, 'scripts/limit-reference.ts')
   if (!existsSync(script))
@@ -344,12 +344,12 @@ export function main(args = process.argv.slice(2)): number {
   )
   // The owner excludes this tutorial's style while it awaits replacement.
   const technical = (file: string) =>
-    file !== 'docs/jig/guide/software-factory.md' &&
+    file !== 'docs/jig/examples/software-factory.md' &&
     (authoredSkill(file) ||
       file.endsWith('AGENTS.md') ||
       file.endsWith('-guidance.md') ||
       file === '.agents/maintainer-guide.md' ||
-      /^docs\/(?:flow|jig)\/(?:guide|spec)\//.test(file))
+      /^docs\/(?:flow|jig)\/(?:guide|start|build|understand|reference|examples|spec)\//.test(file))
   const inherited = new Map<string, number>()
   for (const file of baseFiles) {
     if (!file.endsWith('.md') || !technical(file)) continue

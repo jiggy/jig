@@ -12,7 +12,7 @@ description: Jig is source-available and always free for personal use and evalua
 <h1>Always free for personal use.<br /><span className="hero-emphasis">Always free for small business.</span></h1>
 <p className="hero-description">Build personal projects, learn, and evaluate the complete Jig product at no cost. No seat counting, no usage metering, and no locked features, ever.</p>
 <nav className="hero-actions" aria-label="Get started">
-<a href="/guide/" className="action action--brand">Start building <span aria-hidden="true">↗</span></a>
+<a href="/start/" className="action action--brand">Start building <span aria-hidden="true">↗</span></a>
 <a href="https://github.com/jiggy/jig/blob/main/LICENSE.md" className="action action--alt">🍞 Read Jig's license</a>
 </nav>
 <p className="hero-status"><span aria-hidden="true"></span>One complete product · No billing surprises · No license telemetry</p>
