@@ -24,6 +24,8 @@ jobs:
     outputs:
       required: "${{ steps.scope.outputs.required }}"
       native_lane: "${{ steps.native-lane.outputs.lane }}"
+      workers: "${{ steps.plan.outputs.workers }}"
+      shard_count: "${{ steps.plan.outputs.shard_count }}"
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -38,6 +40,10 @@ jobs:
         name: "Determine whether complete host qualification is required"
         id: "scope"
         run: 'node scripts/ci/host-scope.mjs --scope macos --github-output "$GITHUB_OUTPUT"'
+      -
+        name: "Select the complete host execution plan"
+        id: "plan"
+        run: "node scripts/ci/macos-host-cohort-run.mjs plan"
       -
         name: "Select a bounded main native lane"
         id: "native-lane"
@@ -54,7 +60,7 @@ jobs:
     needs: "scope"
     if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: 45
+    timeout-minutes: "${{ github.event_name == 'pull_request' && 25 || 45 }}"
     permissions:
       contents: "read"
       actions: "read"
@@ -68,12 +74,28 @@ jobs:
         with:
           node-version: "24"
       -
+        name: "Read the original 25-minute PR deadline"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+      -
+        name: "Reserve time for evidence and final checks"
+        id: "acquire-budget"
+        if: "github.event_name == 'pull_request'"
+        run: 'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"'
+      -
         name: "Acquire the exact canonical CI candidates"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.acquire-budget.outputs.work_minutes) || 45 }}"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: |
           set -eu
-          node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
+          node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
       -
         name: "Retain exact macos host artifacts"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
@@ -83,37 +105,47 @@ jobs:
           retention-days: 7
           if-no-files-found: "error"
   prerequisites:
-    name: "Native host shard — ${{ matrix.arch }} / ${{ matrix.shard }}"
+    name: "${{ github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch) }}"
     runs-on: "macos-15"
     concurrency:
-      group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || github.run_id }}"
+      group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || format('{0}-{1}', github.run_id, matrix.worker) }}"
       queue: "max"
       cancel-in-progress: false
-    # ARM consolidates two former jobs: 60 < 2*35 minutes, or 90 < 35+65
-    # with the optional 30-minute profile. Individual test limits stay unchanged.
-    timeout-minutes: "${{ matrix.arch == 'arm64' && (inputs.include_startup_profile && 90 || 60) || (matrix.installed && inputs.include_startup_profile && 65 || 35) }}"
+    # PR workers start immediately after claiming one role on their observed profile.
+    # Main and manual runs retain one complete host and their existing allowance.
+    timeout-minutes: "${{ github.event_name == 'pull_request' && 25 || (inputs.include_startup_profile && 90 || 60) }}"
+    permissions:
+      contents: "read"
+      actions: "read"
+    env:
+      JIG_MACOS_TEST_PLAN: "${{ github.event_name == 'pull_request' && 'pull-request' || 'complete' }}"
     strategy:
       fail-fast: false
-      max-parallel: 1
-      matrix:
-        include:
-          -
-            arch: "arm64"
-            shard: 0
-            installed: true
+      max-parallel: 5
+      matrix: "${{ fromJSON(needs.scope.outputs.workers) }}"
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         with:
           persist-credentials: false
       -
-        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
-        with:
-          bun-version: "1.4.2"
-      -
         uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
         with:
           node-version: "24"
+      -
+        name: "Read the original 25-minute PR deadline"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+      -
+        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+        with:
+          bun-version: "1.4.2"
       -
         uses: "extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b"
         with:
@@ -130,28 +162,57 @@ jobs:
           sw_vers >> "$RUNNER_TEMP/mac-evidence/host.txt"
           xcrun --show-sdk-version >> "$RUNNER_TEMP/mac-evidence/host.txt"
           bun -e 'if (process.arch !== process.env.EXPECTED_ARCH) throw Error("incorrect native architecture")'
-          bun scripts/ci/probe-macos-host.ts --hosted | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+          node scripts/ci/pr-time-budget.mjs run -- bun scripts/ci/probe-macos-host.ts --hosted | tee "$RUNNER_TEMP/mac-evidence/prerequisites.json"
+      -
+        name: "Install the pinned official artifact client in isolated scratch"
+        if: "github.event_name == 'pull_request'"
+        timeout-minutes: 2
+        run: |
+          set -eu
+          mkdir "$RUNNER_TEMP/mac-cohort-client"
+          printf '{"private":true}\n' > "$RUNNER_TEMP/mac-cohort-client/package.json"
+          node scripts/ci/pr-time-budget.mjs run -- bun add --cwd "$RUNNER_TEMP/mac-cohort-client" --ignore-scripts --exact @actions/artifact@2.3.2
+      -
+        name: "Claim an independent role on this exact host profile"
+        id: "role"
+        timeout-minutes: 2
+        uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd"
+        env:
+          MAC_HOST_WORKER: "${{ matrix.worker }}"
+          GH_TOKEN: "${{ github.token }}"
+        with:
+          script: |
+            const { execFileSync } = require('node:child_process');
+            execFileSync('node', ['scripts/ci/pr-time-budget.mjs', 'run', '--',
+              'node', 'scripts/ci/macos-host-cohort-run.mjs', 'claim'], {
+              stdio: 'inherit', env: process.env,
+            });
       -
         name: "Compile the native launcher and validate SDK descriptor layouts"
+        if: "steps.role.outputs.execute == 'true'"
         run: |
           set -o pipefail
-          clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/mac-evidence/macos-exec"
-          clang -Wall -Wextra -Werror packages/jig/test/fixtures/macos-file-abi.c -o "$RUNNER_TEMP/mac-evidence/file-abi"
+          node scripts/ci/pr-time-budget.mjs run -- clang -Wall -Wextra -Werror -Wno-deprecated-declarations packages/jig/support/macos-exec.c -o "$RUNNER_TEMP/mac-evidence/macos-exec"
+          node scripts/ci/pr-time-budget.mjs run -- clang -Wall -Wextra -Werror packages/jig/test/fixtures/macos-file-abi.c -o "$RUNNER_TEMP/mac-evidence/file-abi"
           "$RUNNER_TEMP/mac-evidence/file-abi" | tee "$RUNNER_TEMP/mac-evidence/file-abi.txt"
           file "$RUNNER_TEMP/mac-evidence/macos-exec" >> "$RUNNER_TEMP/mac-evidence/host.txt"
       -
         name: "Install build dependencies without lifecycle scripts"
-        run: "bun install --ignore-scripts"
+        if: "steps.role.outputs.execute == 'true'"
+        run: "node scripts/ci/pr-time-budget.mjs run -- bun install --ignore-scripts"
       -
         name: "Build the source-test workspace packages"
-        run: "just --justfile packages/jig/justfile build"
+        if: "steps.role.outputs.execute == 'true'"
+        run: "node scripts/ci/pr-time-budget.mjs run -- just --justfile packages/jig/justfile build"
       -
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        if: "steps.role.outputs.execute == 'true'"
         with:
           name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/macos-host-artifacts"
       -
         name: "Verify exact canonical publication archives"
+        if: "steps.role.outputs.execute == 'true'"
         run: |
           set -eu
           node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
@@ -159,8 +220,14 @@ jobs:
           cp "$RUNNER_TEMP/macos-host-artifacts/CANDIDATE.json" "$RUNNER_TEMP/mac-evidence/CANDIDATE.json"
           cp "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json" "$RUNNER_TEMP/mac-evidence/ARTIFACT.json"
       -
+        name: "Reserve time for evidence and final checks"
+        id: "native-budget"
+        if: "github.event_name == 'pull_request' && steps.role.outputs.role == '0'"
+        run: 'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"'
+      -
         name: "Test native containment and recovery"
-        if: "matrix.shard == 0"
+        if: "steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0'"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.native-budget.outputs.work_minutes) || 60 }}"
         env:
           JIG_MACOS_PROCESS_TEST: "1"
         run: |
@@ -170,25 +237,34 @@ jobs:
           }
           snapshot > "$RUNNER_TEMP/mac-evidence/before-native.txt"
           status=0
-          bun test packages/jig/test/macos/macos-process-controls.test.ts packages/jig/test/macos/macos-execution.test.ts packages/jig/test/macos/macos-descriptor-files.test.ts packages/jig/test/macos/macos-descriptor-handoff.test.ts packages/jig/test/macos/macos-volume.test.ts packages/jig/test/macos/macos-backend-state.test.ts packages/jig/test/macos/macos-native-backend.test.ts packages/jig/test/macos/macos-guardian.test.ts --bail=1 --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
+          node scripts/ci/pr-time-budget.mjs run -- bun test packages/jig/test/macos/macos-process-controls.test.ts packages/jig/test/macos/macos-execution.test.ts packages/jig/test/macos/macos-descriptor-files.test.ts packages/jig/test/macos/macos-descriptor-handoff.test.ts packages/jig/test/macos/macos-volume.test.ts packages/jig/test/macos/macos-backend-state.test.ts packages/jig/test/macos/macos-native-backend.test.ts packages/jig/test/macos/macos-guardian.test.ts --bail=1 --timeout 420000 --reporter=junit --reporter-outfile="$RUNNER_TEMP/mac-evidence/native-tests.xml" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/native-tests.txt" || status=$?
           snapshot > "$RUNNER_TEMP/mac-evidence/after-native.txt"
           diff -u "$RUNNER_TEMP/mac-evidence/before-native.txt" "$RUNNER_TEMP/mac-evidence/after-native.txt" || status=1
           exit "$status"
       -
         name: "Prepare genuine pinned clients for offline startup and refusal checks"
-        if: "matrix.installed"
-        run: "bun scripts/ci/install-macos-test-clients.ts \"$RUNNER_TEMP/jig-native-clients\" >> \"$GITHUB_ENV\""
+        if: "steps.role.outputs.installed == 'true'"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && 3 || 60 }}"
+        run: "node scripts/ci/pr-time-budget.mjs run -- bun scripts/ci/install-macos-test-clients.ts \"$RUNNER_TEMP/jig-native-clients\" >> \"$GITHUB_ENV\""
+      -
+        name: "Reserve time for evidence and final checks"
+        id: "qualify-budget"
+        if: "github.event_name == 'pull_request' && steps.role.outputs.execute == 'true'"
+        run: 'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"'
       -
         name: "Qualify the complete rootless host and installed consumer"
+        if: "steps.role.outputs.execute == 'true'"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.qualify-budget.outputs.work_minutes) || (inputs.include_startup_profile && 90 || 60) }}"
         env:
+          MAC_HOST_ROLE: "${{ steps.role.outputs.role }}"
           JIG_MACOS_TEST_TIMINGS_DIRECTORY: "${{ runner.temp }}/mac-evidence"
-          JIG_STARTUP_PROFILE_DIRECTORY: "${{ matrix.installed && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}"
+          JIG_STARTUP_PROFILE_DIRECTORY: "${{ steps.role.outputs.installed == 'true' && inputs.include_startup_profile && format('{0}/mac-startup-profile', runner.temp) || '' }}"
         run: |
           set -o pipefail
-          scripts/ci/qualify-macos-host.sh --shard "${{ matrix.shard }}" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
+          node scripts/ci/pr-time-budget.mjs run -- scripts/ci/qualify-macos-host.sh --shard "$MAC_HOST_ROLE" 2>&1 | tee "$RUNNER_TEMP/mac-evidence/host-conformance.txt"
       -
         name: "Verify canonical candidate metadata is unchanged"
-        if: "always()"
+        if: "always() && steps.role.outputs.execute == 'true'"
         run: |
           set -eu
           node scripts/ci/candidate-provenance.mjs verify "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA"
@@ -196,13 +272,18 @@ jobs:
           cmp "$RUNNER_TEMP/mac-evidence/ARTIFACT.json" "$RUNNER_TEMP/macos-host-artifacts/ARTIFACT.json"
       -
         name: "Record successful shard"
-        run: "printf '%s %s %s\\n' '${{ github.sha }}' '${{ matrix.arch }}' '${{ matrix.shard }}' > \"$RUNNER_TEMP/mac-evidence/shard-${{ matrix.shard }}.complete\""
+        if: "steps.role.outputs.execute == 'true'"
+        env:
+          MAC_HOST_ROLE: "${{ steps.role.outputs.role }}"
+          EXPECTED_ARCH: "${{ matrix.arch }}"
+        run: |
+          printf '%s %s %s\n' "$GITHUB_SHA" "$EXPECTED_ARCH" "$MAC_HOST_ROLE" > "$RUNNER_TEMP/mac-evidence/shard-$MAC_HOST_ROLE.complete"
       -
         name: "Retain candidate prerequisite evidence"
         if: "always()"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
-          name: "macos-prerequisites-${{ matrix.arch }}-${{ matrix.shard }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
+          name: "${{ github.event_name == 'pull_request' && format('macos-cohort-worker-{0}-{1}-r{2}-a{3}', matrix.worker, github.sha, github.run_id, github.run_attempt) || format('macos-prerequisites-{0}-0-{1}-r{2}-a{3}', matrix.arch, github.sha, github.run_id, github.run_attempt) }}"
           path: |
             ${{ runner.temp }}/mac-evidence/*.txt
             ${{ runner.temp }}/mac-evidence/*.json
@@ -211,13 +292,17 @@ jobs:
           retention-days: 7
       -
         name: "Retain optional installed startup profile"
-        if: "${{ always() && matrix.installed && inputs.include_startup_profile }}"
+        if: "${{ always() && steps.role.outputs.installed == 'true' && inputs.include_startup_profile }}"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "macos-startup-profile-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/mac-startup-profile"
           if-no-files-found: "ignore"
           retention-days: 7
+      -
+        name: "Require completion within the original PR deadline"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
     needs:
       - "scope"
       - "host-artifacts"
@@ -234,13 +319,15 @@ jobs:
       contents: "read"
       actions: "read"
     timeout-minutes: 5
+    env:
+      JIG_MACOS_TEST_PLAN: "${{ github.event_name == 'pull_request' && 'pull-request' || 'complete' }}"
     strategy:
       fail-fast: false
       matrix:
         include:
           -
             arch: "arm64"
-            count: 1
+            count: "${{ fromJSON(needs.scope.outputs.shard_count) }}"
     steps:
       -
         uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
@@ -251,13 +338,24 @@ jobs:
         with:
           node-version: "24"
       -
+        name: "Read the original 25-minute PR deadline"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+      -
         name: "Download this architecture's shard evidence"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
         with:
-          pattern: "macos-prerequisites-${{ matrix.arch }}-*-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/macos-evidence"
+          pattern: "${{ github.event_name == 'pull_request' && format('macos-cohort-worker-*-{0}-r{1}-a{2}', github.sha, github.run_id, github.run_attempt) || format('macos-prerequisites-{0}-*-{1}-r{2}-a{3}', matrix.arch, github.sha, github.run_id, github.run_attempt) }}"
+          path: "${{ github.event_name == 'pull_request' && format('{0}/macos-workers', runner.temp) || format('{0}/macos-evidence', runner.temp) }}"
       -
         name: "Read this attempt's job timing evidence"
+        if: "github.event_name != 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: |
@@ -271,6 +369,12 @@ jobs:
           name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/macos-host-artifacts"
       -
+        name: "Validate every PR worker and select one complete exact profile"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: "node scripts/ci/pr-time-budget.mjs run --reserve-seconds 0 -- node scripts/ci/macos-host-cohort-run.mjs reconcile"
+      -
         name: "Require complete exact-revision proof and summarize coverage"
         if: "always()"
         env:
@@ -279,11 +383,13 @@ jobs:
           SHARD_COUNT: "${{ matrix.count }}"
         run: |
           set -eu
-          # The artifact download admits only this workflow run and current attempt.
-          # Normalize its directory names for the existing complete JUnit reconciler.
+          # PR directories are normalized only after every worker's proof validates.
+          # Main/manual artifacts still have the fixed complete-host identity.
           python3 - <<'PY'
           import os
           from pathlib import Path
+          if os.environ["GITHUB_EVENT_NAME"] == "pull_request":
+              raise SystemExit(0)
           root = Path(os.environ["RUNNER_TEMP"]) / "macos-evidence"
           arch, sha, run, attempt = (os.environ[key] for key in ("EXPECTED_ARCH", "EXPECTED_SHA", "GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT"))
           for shard in range(int(os.environ["SHARD_COUNT"])):
@@ -317,9 +423,15 @@ jobs:
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "macos-summary-${{ matrix.arch }}-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
-          path: "${{ runner.temp }}/mac-summary.json"
+          path: |
+            ${{ runner.temp }}/mac-summary.json
+            ${{ runner.temp }}/mac-cohort.json
           if-no-files-found: "ignore"
           retention-days: 7
+      -
+        name: "Require completion within the original PR deadline"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
       -
         name: "Bind complete native qualification to the canonical candidate"
         env:
@@ -344,8 +456,15 @@ jobs:
           path: "${{ runner.temp }}/macos-observed.json"
           retention-days: 7
           if-no-files-found: "error"
+      -
+        name: "Require completion within the original PR deadline"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
   affected-macos:
     name: "affected-macos"
+    permissions:
+      contents: "read"
+      actions: "read"
     if: "always()"
     needs:
       - "scope"
@@ -364,6 +483,16 @@ jobs:
         uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
         with:
           node-version: "24"
+      -
+        name: "Read the original 25-minute PR deadline"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
       -
         name: "Revalidate host scope and every required job result"
         env:
@@ -400,3 +529,7 @@ jobs:
             ${{ runner.temp }}/host-evidence.json
           retention-days: 7
           if-no-files-found: "ignore"
+      -
+        name: "Require completion within the original PR deadline"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
