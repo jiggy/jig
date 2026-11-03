@@ -3,7 +3,7 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { afterAll, beforeAll, expect, spyOn, test } from 'bun:test'
-import { closeSync } from 'node:fs'
+import { closeSync, readFileSync } from 'node:fs'
 import {
   copyFile,
   mkdir,
@@ -262,6 +262,12 @@ test('inspection retains only verified immutable bytes and closes previews with 
     await writeFile(join(source, 'binary'), Buffer.from([255, 128]))
     await writeFile(join(source, 'empty'), '')
     await writeFile(
+      join(source, 'photograph.jpg'),
+      readFileSync(
+        new URL('../../../../examples/photo-organiser/fixtures/photos/garden.jpg', import.meta.url),
+      ),
+    )
+    await writeFile(
       join(source, 'chart.svg'),
       '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="16"><rect width="32" height="16" fill="red"/></svg>',
     )
@@ -303,6 +309,11 @@ test('inspection retains only verified immutable bytes and closes previews with 
         bytes: 0,
         clipped: false,
       })
+      const photograph = await owner.inspectionPreview('photograph.jpg')
+      expect(photograph.state).toBe('image')
+      expect(privatePreviewStringBytes(photograph.image!.base64)).toBeGreaterThan(
+        PRIVATE_PREVIEW_LIMITS.svgRetainedBytes,
+      )
       const image = await owner.inspectionPreview('chart.svg')
       expect(image.state).toBe('image')
       expect(image.image?.mime).toBe('image/png')

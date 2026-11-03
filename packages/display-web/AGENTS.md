@@ -63,6 +63,8 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   viewer-local.
 - The compact application frame puts routine host facts in Run details while retaining visible attention and Close.
 - Document covers and downloads use exact current capture bindings and generation checks.
+  The summary record owns its cover reference, preserving inspection across the first selection change.
+- Resolved record references keep exact view destinations. Only general tab navigation redirects within the current subject.
 - Presentation follows supplied block types and explicit roles, independently of application names.
   Document content preserves image proportions. Content and covers retain accessible captured-source disclosures.
 - Root application pages precede Inspector and child views by verified

@@ -124,11 +124,13 @@ function rasterDimensions(
 
 interface SvgBudget {
   sourceBytes: number
+  rasterBytes: number
   images: number
   rasterPixels: number
 }
 function inertSvg(text: string, depth: number, budget: SvgBudget): boolean {
   if (depth > 4 || /<!DOCTYPE|<!ENTITY/i.test(text)) return false
+  let markupBytes = Buffer.byteLength(text)
   for (const match of text.matchAll(/(?:\b|:)href\s*=\s*["']([^"']*)["']/gi)) {
     const href = match[1]
     if (href === undefined) return false
@@ -139,29 +141,33 @@ function inertSvg(text: string, depth: number, budget: SvgBudget): boolean {
     if (!data || payload === undefined) return false
     const size =
       (payload.length / 4) * 3 - (payload.endsWith('==') ? 2 : payload.endsWith('=') ? 1 : 0)
-    if (
-      !Number.isSafeInteger(size) ||
-      size < 0 ||
-      budget.sourceBytes + size > PRIVATE_PREVIEW_LIMITS.svgSourceBytes
-    )
+    if (!Number.isSafeInteger(size) || size < 0 || size > PRIVATE_PREVIEW_LIMITS.sourceBytes)
       return false
-    budget.sourceBytes += size
+    // Encoded image bytes have their own budget. The surrounding vector markup
+    // and every decoded nested SVG still share the original markup ceiling.
+    markupBytes -= payload.length
     const bytes = Buffer.from(payload, 'base64')
     if (bytes.length !== size) return false
     if (data[1] === 'image/svg+xml') {
       if (!inertSvg(new TextDecoder('utf-8', { fatal: true }).decode(bytes), depth + 1, budget))
         return false
     } else {
+      budget.rasterBytes += size
+      if (budget.rasterBytes > PRIVATE_PREVIEW_LIMITS.sourceBytes) return false
       const image = rasterDimensions(bytes)
       if (!image || image.mime !== data[1] || image.width < 1 || image.height < 1) return false
       budget.rasterPixels += image.width * image.height
       if (
         !Number.isSafeInteger(budget.rasterPixels) ||
-        budget.rasterPixels > PRIVATE_PREVIEW_LIMITS.svgPixels
+        budget.rasterPixels > PRIVATE_PREVIEW_LIMITS.rasterPixels ||
+        image.width > PRIVATE_PREVIEW_LIMITS.rasterDimension ||
+        image.height > PRIVATE_PREVIEW_LIMITS.rasterDimension
       )
         return false
     }
   }
+  budget.sourceBytes += markupBytes
+  if (budget.sourceBytes > PRIVATE_PREVIEW_LIMITS.svgSourceBytes) return false
   return true
 }
 
@@ -172,10 +178,19 @@ export async function privateRenderImage(
 ): Promise<Buffer | undefined> {
   if (bytes.length > PRIVATE_PREVIEW_LIMITS.sourceBytes) return undefined
   const raster = rasterDimensions(bytes)
-  if (!raster && bytes.length > PRIVATE_PREVIEW_LIMITS.svgSourceBytes) return undefined
-  const module = boundedModule(asset(wasmAsset), !!raster)
+  const svgBudget: SvgBudget = { sourceBytes: 0, rasterBytes: 0, images: 0, rasterPixels: 0 }
+  if (!raster) {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
+    if (
+      !/^\s*(?:(?:<\?xml[^>]*>|<!--[\s\S]*?-->)\s*)*<svg[\s>]/i.test(text) ||
+      !inertSvg(text, 0, svgBudget)
+    )
+      return undefined
+  }
+  const rasterMemory = !!raster || svgBudget.rasterBytes > 0
+  const module = boundedModule(asset(wasmAsset), rasterMemory)
   const font = asset(fontAsset)
-  const allocations = privateGuardImageAllocations(!!raster)
+  const allocations = privateGuardImageAllocations(rasterMemory)
   const { initWasm, Resvg } = await import('@resvg/resvg-wasm')
   await initWasm(module)
   let source: Uint8Array | string = bytes
@@ -191,13 +206,6 @@ export async function privateRenderImage(
       return undefined
     // Native displays receive only host-rendered PNG, never an untrusted codec.
     source = `<svg xmlns="http://www.w3.org/2000/svg" width="${raster.width}" height="${raster.height}"><image width="100%" height="100%" href="data:${raster.mime};base64,${bytes.toString('base64')}"/></svg>`
-  } else {
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-    if (
-      !/^\s*(?:(?:<\?xml[^>]*>|<!--[\s\S]*?-->)\s*)*<svg[\s>]/i.test(text) ||
-      !inertSvg(text, 0, { sourceBytes: bytes.length, images: 0, rasterPixels: 0 })
-    )
-      return undefined
   }
   // Keep vector thumbnails small while raster documents retain readable detail.
   let width: number = raster

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { createServer } from 'node:http'
 import test from 'node:test'
 import { deflateSync } from 'node:zlib'
+import { displayViewKey } from '@jigging/display-model'
 import {
   ApplicationPage,
   CapturedContent,
@@ -11,11 +12,13 @@ import {
 import {
   BrowserClient,
   browserLocal,
+  browserPeek,
   browserRecords,
   browserRelatedViews,
   browserResolve,
   browserTabs,
 } from '../dist/index.js'
+import { privateBrowserNavigationDestination } from '../dist/navigation.js'
 
 const snapshot = () => ({
   kind: 'snapshot',
@@ -753,6 +756,11 @@ test('a document composes a cover, usable download and readable sections without
       reference: { kind: 'artifact', attachment: 'book', path: 'yearbook.pdf' },
     },
   }
+  const owner = browserRecords(view, browserLocal())[0]
+  assert.deepEqual(browserPeek(owner), view.value.presentation.cover)
+  const signature = owner.signature
+  view.value.presentation.cover = { kind: 'input-artifact', attachment: 'photos', path: 'walk.jpg' }
+  assert.notEqual(browserRecords(view, browserLocal())[0].signature, signature)
   const page = DocumentPage({
     ...props(view),
     renderCollection: () => '',
@@ -764,4 +772,27 @@ test('a document composes a cover, usable download and readable sections without
   assert(text(page).includes('01–02'))
   assert.equal(walk(page).filter((node) => node.props.class === 'application-inspect').length, 0)
   assert.equal(walk(page).filter((node) => node.props.class === 'document-outline').length, 1)
+})
+
+test('resolved record references bypass subject-preserving tab redirects', () => {
+  const body = snapshot()
+  const make = (id, definition, subject) => ({
+    ...materialView([]),
+    id,
+    value: {
+      ...materialView([]).value,
+      id,
+      target: { definitionId: definition, instanceKey: subject, subjectKey: subject },
+    },
+  })
+  const photosA = make('photos-a', 'photos', 'a')
+  const eventsA = make('events-a', 'events', 'a')
+  const eventsB = make('events-b', 'events', 'b')
+  body.views = [photosA, eventsA, eventsB]
+  const requested = displayViewKey(eventsB.id)
+  assert.equal(
+    privateBrowserNavigationDestination(body, photosA, requested),
+    displayViewKey(eventsA.id),
+  )
+  assert.equal(privateBrowserNavigationDestination(body, photosA, requested, false), requested)
 })

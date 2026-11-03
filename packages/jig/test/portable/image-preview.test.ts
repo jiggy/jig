@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { validDisplayImage } from '@jigging/display-model'
+import type { Photo } from '../../../../examples/photo-organiser/flows/contact-sheet/catalogue.js'
 import { createContactSheet } from '../../../../examples/photo-organiser/flows/contact-sheet/rendering.js'
 import { privateImagePreview } from '../../src/internal/image-preview.js'
 import {
@@ -96,11 +97,36 @@ test('process renderer: invalid input loses its preview while tall surfaces fit 
   ).toBeFalse()
 })
 
+test('process renderer: the supplied JPEG contact sheet has a bounded image preview', async () => {
+  const root = new URL('../../../../examples/photo-organiser/fixtures/photos/', import.meta.url)
+  const photos: Photo[] = JSON.parse(readFileSync(new URL('photos.json', root), 'utf8'))
+  const images = new Map<string, Buffer>(
+    photos.map((photo) => [photo.id, readFileSync(new URL(photo.file, root))]),
+  )
+  const renamed = photos.map((photo) => ({
+    ...photo,
+    event: 'Collection',
+    destination: `Grouped/${photo.file}`,
+  }))
+  const sheet = Buffer.from(createContactSheet(photos, renamed, images))
+  expect(sheet.length).toBeGreaterThan(PRIVATE_PREVIEW_LIMITS.svgSourceBytes)
+  const image = (await privateImagePreview(sheet))!
+  expect(privateValidImagePreview(image)).toBeTrue()
+  expect(Buffer.from(image.base64, 'base64').length).toBeLessThanOrEqual(
+    PRIVATE_PREVIEW_LIMITS.svgPngBytes,
+  )
+  const jpeg = readFileSync(new URL('garden.jpg', root))
+  const body = `<image width="32" height="16" href="data:image/jpeg;base64,${jpeg.toString('base64')}"/>`
+  // 31 copies of the actual 1024x768 source exceed the aggregate pixel allowance.
+  expect(await privateImagePreview(svg(body.repeat(31)))).toBeUndefined()
+})
+
 test('process renderer: nested image source and decoded raster budgets are aggregate, and refusal does not poison later jobs', async () => {
   const raster = (await privateImagePreview(svg('<rect width="32" height="16" fill="red"/>')))!
   const body = `<image width="32" height="16" href="data:image/png;base64,${raster.base64}"/>`
   expect(privateValidImagePreview(await privateImagePreview(svg(body)))).toBeTrue()
-  expect(await privateImagePreview(svg(body.repeat(6)))).toBeUndefined()
+  expect(privateValidImagePreview(await privateImagePreview(svg(body.repeat(6))))).toBeTrue()
+  expect(await privateImagePreview(svg(body.repeat(65)))).toBeUndefined()
   expect(
     await privateImagePreview(svg('<image href="data:image/png;base64,AAAA"/>')),
   ).toBeUndefined()

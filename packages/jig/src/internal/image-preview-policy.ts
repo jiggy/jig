@@ -9,7 +9,6 @@ export const PRIVATE_PREVIEW_LIMITS = Object.freeze({
   pngBytes: 2 * 1024 * 1024,
   svgPngBytes: 256 * 1024,
   svgRetainedBytes: 512 * 1024,
-  svgPixels: 384 * 1024,
   svgWidth: 384,
   inputCacheBytes: 8 * 1024 * 1024,
   width: 1024,

@@ -287,13 +287,17 @@ These links locate module rules. All selected domain requirements still apply.
   under the separate total deadline before retirement.
 
   PNG/JPEG sources allow eight MiB and 24 million pixels, with 128 MiB of Wasm memory.
-  SVG sources allow 64 KiB and five MiB of Wasm memory.
+  SVG vector markup shares 64 KiB across nested documents, within eight MiB of encoded source.
+  Embedded rasters share eight MiB of decoded bytes, 24 million pixels and 64 image references.
 
-  Raster copies and decoded text each allow 32 MiB. SVG copies and decoded text each allow one MiB.
+  SVG documents containing rasters use the bounded raster decoder profile.
+  Vector-only SVGs retain five MiB of Wasm memory and one MiB each for copies and decoded text.
+  Raster copies and decoded text each allow 32 MiB.
   Raster preview output allows 2 MiB within 1024 by 1024 pixels.
   SVG output retains its 256 KiB and 384-pixel width limits.
 
-  SVG image upgrades retain the 512 KiB content ceiling, including reserved text fallbacks.
+  SVG image upgrades retain a separate 512 KiB content ceiling, including their reserved text fallbacks.
+  Raster reservations cannot consume that allowance. The overall retained-content limit still applies to both.
   Selected input raster previews share an eight-MiB LRU cache.
   Pinned Wasm, copy and decoded-text limits bound content, not total Bun RSS.
 

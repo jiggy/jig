@@ -1935,7 +1935,7 @@ nav .nav-entry {
   .document-header-media {
     grid-template-columns: minmax(0, 1fr);
   }
-  .document-cover {
+  .document-cover .captured-media img {
     display: none;
   }
   .document-title h2 {

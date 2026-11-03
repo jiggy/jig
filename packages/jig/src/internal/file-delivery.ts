@@ -30,7 +30,7 @@ import {
   privateOpenAt,
   privateOpenFileRoot,
 } from './file-input.js'
-import { privateImagePreview } from './image-preview.js'
+import { privateImagePreview, privateImageSourceCandidate } from './image-preview.js'
 import { PRIVATE_PREVIEW_LIMITS, privatePreviewStringBytes } from './image-preview-policy.js'
 import type {
   RetainedRunCheckpoint,
@@ -127,6 +127,7 @@ export class PrivateFileDeliveryOwner {
   #previewFiles: Map<string, PreviewFile> | undefined
   readonly #previewCharges = new Map<PreviewFile, number>()
   #inspectionBytes = 0
+  #svgInspectionBytes = 0
   #retainPreview = false
   #close: Promise<void> | undefined
   #preparation: Promise<void> | undefined
@@ -198,12 +199,13 @@ export class PrivateFileDeliveryOwner {
       const charge = privatePreviewStringBytes(image.base64)
       const extra = Math.max(0, charge - reserved)
       const raster = contents[0] === 137 || (contents[0] === 255 && contents[1] === 216)
-      const limit = raster
-        ? PRIVATE_PREVIEW_LIMITS.retainedBytes
-        : PRIVATE_PREVIEW_LIMITS.svgRetainedBytes
-      if (this.#inspectionBytes + extra <= limit) {
+      if (
+        this.#inspectionBytes + extra <= PRIVATE_PREVIEW_LIMITS.retainedBytes &&
+        (raster || this.#svgInspectionBytes + extra <= PRIVATE_PREVIEW_LIMITS.svgRetainedBytes)
+      ) {
         this.#previewCharges.set(file, Math.max(reserved, charge))
         this.#inspectionBytes += extra
+        if (!raster) this.#svgInspectionBytes += extra
         return { state: 'image', image, bytes, clipped: false }
       }
     }
@@ -523,6 +525,12 @@ export class PrivateFileDeliveryOwner {
           const charge = privatePreviewStringBytes(this.#textPreview(file).text ?? '')
           this.#previewCharges.set(file, charge)
           this.#inspectionBytes += charge
+          if (
+            privateImageSourceCandidate(file.contents) &&
+            file.contents[0] !== 137 &&
+            !(file.contents[0] === 255 && file.contents[1] === 216)
+          )
+            this.#svgInspectionBytes += charge
         }
       }
       keptPreviews = this.#retainPreview
@@ -561,6 +569,7 @@ export class PrivateFileDeliveryOwner {
     this.#previewFiles = undefined
     this.#previewCharges.clear()
     this.#inspectionBytes = 0
+    this.#svgInspectionBytes = 0
     this.#parent = undefined
     this.#stage = undefined
     for (const preview of previews?.values() ?? []) preview.contents.fill(0)
