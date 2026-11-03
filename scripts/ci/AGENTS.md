@@ -464,7 +464,9 @@ They consume frozen package exports with tracked test helpers and installed
   Workflow checks cover fork refusal, credential separation, exact artifact selection, and missing App or base-tooling configuration.
   Metadata checks reject stale attempts, wrong workflows, foreign sources, closed PRs, retargeting, and expired or ambiguous artifacts.
 - `node --test scripts/ci/sync-skills.test.mjs` exercises deterministic reference generation, drift detection, and standalone links.
-  It verifies preserved examples, machine bytes, licenses, source hashes, private-source refusals, and symbolic-link refusals.
+  It verifies preserved examples, machine bytes, licenses, private-source refusals, and symbolic-link refusals.
+  Real Git branches verify that independent documentation edits merge without generated checksum conflicts.
+  Equivalent manifest formatting and source order must leave generated references unchanged.
   Trusted-tooling checks process a separate source checkout without executing its scripts.
 
 - `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
