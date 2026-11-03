@@ -108,6 +108,20 @@ All selected domain requirements still apply.
   preparation. Generic limits do not imply host pressure. Arbitrary launch codes
   cannot establish a deadline.
 
+  Repeatable review `--source-root DIRECTORY` selects additional mounted Bun workspace dependency roots for this invocation.
+  Resolve operands from the invocation directory, independently of the selected project directory.
+  Reject malformed or excessive operands before host acquisition. Preserve safely quoted operands in review retry commands.
+  Pass selections only to workspace capture, including npm Flow dependency capture.
+
+  Never persist host paths, accept source-authored root grants, or extend Run filesystem access.
+  The project root already has source authority. Project Flow directories retain their existing capture boundary.
+
+  Mount, missing-source, link and access diagnostics retain closed causes and bounded project-relative locations.
+  Ancestor workspace paths are display locations. They never grant filesystem access.
+  Recommend explicit dependency-root selection only for mount refusals. Other causes keep their own correction.
+
+  Each additional root must contain an actual declared workspace member. Mounted files and mounts inside package source remain unsupported.
+
 ### Retained application views
 
 - `src/cli-display-archive.ts` owns explicit final-bundle selection and the `views` commands.

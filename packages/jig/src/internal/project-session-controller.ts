@@ -107,6 +107,7 @@ import {
 } from './root-run-controller.js'
 import type { PrivateRootRunFiles } from './root-run-files.js'
 import type { PrivateRunChannelOutput } from './run-channels.js'
+import { PrivateBunWorkspaceError } from './workspace-source-roots.js'
 
 /** One closed proof-host input. It is not a public host or extension SPI. */
 export interface PrivateProjectSessionHost {
@@ -119,6 +120,7 @@ export interface PrivateProjectSessionHost {
   readonly acpResources?: PrivateAcpResources | undefined
   readonly files?: PrivateRootRunFiles
   readonly channelOutput?: PrivateRunChannelOutput
+  readonly sourceRoots?: readonly string[]
   readonly allowResolutionNetwork?: boolean
   readonly onAgentReadiness?: (report: PrivateAgentReadinessReport) => void
   readonly agentOverride?: AcpGrant['client']
@@ -416,6 +418,8 @@ function createSession(
       let preparationBudget: PrivateBunPreparationBudget | undefined
       let dependencyPolicy: PrivateResolvedDependencyPreparationLimits | undefined
       try {
+        const sourceRoots =
+          host.sourceRoots === undefined ? undefined : Object.freeze([...host.sourceRoots])
         let operatorLimits: ReturnType<typeof capturePrivateDependencyPreparationLimitEnvironment>
         try {
           operatorLimits = capturePrivateDependencyPreparationLimitEnvironment(
@@ -494,6 +498,7 @@ function createSession(
                 root: owner.root,
                 selectors,
                 signal: budget.signal,
+                ...(sourceRoots === undefined ? {} : { sourceRoots }),
                 prepare: async (captured, workspace) => {
                   budget.reserve(captured.digest, 'package.json')
                   const unlocked = !captured.files.some((file) => file.path === 'bun.lock')
@@ -626,6 +631,7 @@ function createSession(
                     packagePath: request.packagePath,
                     captured: source,
                     signal: budget.signal,
+                    ...(sourceRoots === undefined ? {} : { sourceRoots }),
                   }),
                 )
                 if (workspace !== undefined) {
@@ -1199,7 +1205,11 @@ export function scopePrivatePackagePlanningError(
   bindingPath?: string,
   workspaceRoot?: string,
 ): unknown {
-  if (error instanceof PrivateBunManifestError && error.projectRelative) return error
+  if (
+    error instanceof PrivateBunWorkspaceError ||
+    (error instanceof PrivateBunManifestError && error.projectRelative)
+  )
+    return error
   if (!(error instanceof CheckError)) {
     return error
   }
@@ -1266,6 +1276,10 @@ function isUnavailableDiagnosticCode(code: string): boolean {
     code === 'PACKAGE_BUN_RESOLUTION_VERSION_UNAVAILABLE' ||
     code === 'PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED' ||
     code === 'PACKAGE_BUN_PREPARATION_FAILED' ||
+    code === 'PACKAGE_BUN_SOURCE_ROOT_UNREADABLE' ||
+    code === 'PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE' ||
+    code === 'PACKAGE_BUN_WORKSPACE_SOURCE_ACCESS' ||
+    code === 'PACKAGE_BUN_WORKSPACE_SOURCE_UNAVAILABLE' ||
     code === 'PROJECT_ACP_UNAVAILABLE' ||
     code === 'PROJECT_HTTP_UNAVAILABLE' ||
     code === 'PACKAGE_PROFILE_UNSUPPORTED' ||

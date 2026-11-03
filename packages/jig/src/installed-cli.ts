@@ -345,6 +345,9 @@ async function runWithEnvironment(
                 ...(options?.channelOutput === undefined
                   ? {}
                   : { channelOutput: options.channelOutput }),
+                ...(options?.sourceRoots === undefined
+                  ? {}
+                  : { sourceRoots: options.sourceRoots }),
                 ...(options?.allowResolutionNetwork !== true
                   ? {}
                   : {

@@ -76,6 +76,10 @@ import type { PrivateRunChannelOutput } from './internal/run-channels.js'
 import { PrivateRunDiagnostics } from './internal/run-diagnostics.js'
 import { PrivateSavedResultError, privateCaptureSavedResult } from './internal/saved-result.js'
 import { JIG_STANDARD_CONTRACTS } from './internal/standard-contracts.js'
+import {
+  PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT,
+  PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES,
+} from './internal/workspace-source-roots.js'
 import { canonicalJson, decodeJson1, JSON_1_LIMITS, Json1Error, type JsonValue } from './json.js'
 import type { RunTargetRef } from './project/author.js'
 import { resolveProjectEntrypoint } from './project/entrypoint.js'
@@ -253,13 +257,15 @@ Use --agent without a client for an interactive choice. It writes a visible
 dependency, Binding and default selection; client installation and authority
 approval remain separate. Without --agent the greeting needs no Agent.
 The destination must not exist; existing files are never replaced.`,
-  review: `Usage: jig review [project] [--agent codex|claude|pi] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
+  review: `Usage: jig review [project] [--source-root DIRECTORY]... [--agent codex|claude|pi] [--generate-contracts] [--allow-resolution-network] [--yes] [--allow-authority-changes] [--details]
 
 Capture source, prepare dependencies, show changes, then ask for approval.
 The project defaults to the current directory. This command has side effects:
 it retains private snapshots and, after approval, updates jig.lock.
 
   --allow-resolution-network  Permit fresh resolution for missing dependency locks
+  --source-root DIRECTORY     Capture an additional mounted workspace dependency root
+                             Repeat for each root, relative to the current directory
   --yes                      Approve the displayed revision without a prompt
   --allow-authority-changes   Also approve new or changed resource grants
   --details                  Show complete policy and retained setup details
@@ -271,6 +277,7 @@ Examples:
   jig review
   jig review --allow-resolution-network
   jig review ./my-project --yes
+  jig review ./apps/demo --source-root ./packages/helper
 
 Resolution can contact dependency-selected public or private-network services
 before graph validation. Requests cannot be undone by declining approval.
@@ -282,6 +289,15 @@ unchanged. Model pins and incompatible retention can block a cross-client choice
 Repeat the flag on later reviews; a bare review derives choices from source again.
 Run uses the approved client and code together; review never rewrites grants.
 Supplied locks stay frozen; stale locks must be updated explicitly.
+
+--source-root selects additional directories inside the enclosing Bun workspace.
+Paths may be absolute or relative to the invocation directory.
+The optional [project] operand does not change path resolution.
+The selected project root already has source authority. Each additional root
+must be selected explicitly on every review that needs it. Unselected nested
+mounts and links remain refused. Flow directories inside the project keep their
+existing capture boundary. This option grants no network or Run filesystem access.
+At most ${PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT} roots are accepted, each at most ${PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES} UTF-8 bytes.
 
 ${VERIFICATION_HELP}`,
   run: `Usage: jig run [flow:path|npm:package|binding:id] [options]
@@ -343,6 +359,7 @@ export interface PrivateCliCommandHost {
       readonly runTimeoutMs?: number
       readonly files?: PrivateRootRunFiles
       readonly channelOutput?: PrivateRunChannelOutput
+      readonly sourceRoots?: readonly string[]
       readonly allowResolutionNetwork?: boolean
       readonly onResolution?: (packagePath: string) => void
       readonly onNotice?: (text: string) => void
@@ -1158,6 +1175,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
         ? []
         : [unsafeRetryPath ? 'PROJECT_DIRECTORY' : shellWord(parsed.project)]),
       ...(agent === undefined ? [] : ['--agent', agent]),
+      ...parsed.sourceRoots.flatMap((path) => ['--source-root', shellWord(path)]),
       ...(parsed.allowResolutionNetwork ? ['--allow-resolution-network'] : []),
       ...(parsed.generate ? ['--generate-contracts'] : []),
       ...(parsed.verification === undefined ? [] : ['--verification', parsed.verification]),
@@ -1233,6 +1251,13 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     },
     {
       ...(parsed.agent === undefined ? {} : { agentOverride: parsed.agent }),
+      ...(parsed.sourceRoots.length === 0
+        ? {}
+        : {
+            sourceRoots: Object.freeze(
+              parsed.sourceRoots.map((path) => resolve(runtime.currentDirectory, path)),
+            ),
+          }),
       onAgentReadiness: (report) => {
         readiness = report
         if (unsafeRetryPath && parsed.project !== runtime.currentDirectory)
@@ -2131,8 +2156,10 @@ function parseReview(
   readonly verification: string | undefined
   readonly generate: boolean
   readonly agent: AcpGrant['client'] | undefined
+  readonly sourceRoots: readonly string[]
 } {
   let agent: AcpGrant['client'] | undefined
+  const sourceRoots: string[] = []
   let project: string | undefined
   let yes = false
   let allowAuthorityChanges = false
@@ -2142,6 +2169,32 @@ function parseReview(
   let verification: string | undefined
   for (let index = 1; index < arguments_.length; index++) {
     const argument = arguments_[index]!
+    if (argument === '--source-root') {
+      const value = arguments_[++index]
+      if (value === undefined || value.length === 0 || value.startsWith('-'))
+        usage(
+          'review',
+          '--source-root requires a directory. Prefix a leading dash with ./ or use an absolute path.',
+        )
+      if (sourceRoots.length >= PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT)
+        usage(
+          'review',
+          `--source-root accepts at most ${PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT} directories.`,
+        )
+      if (
+        /[\p{Cc}\u2028\u2029]/u.test(value) ||
+        Buffer.from(value).toString('utf8') !== value ||
+        Buffer.byteLength(value) > PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES ||
+        Buffer.byteLength(resolve(currentDirectory, value)) >
+          PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES
+      )
+        usage(
+          'review',
+          `--source-root requires a valid directory path of at most ${PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES} UTF-8 bytes without control characters.`,
+        )
+      sourceRoots.push(value)
+      continue
+    }
     if (argument === '--agent') {
       if (agent !== undefined) usage('review', '--agent may only be supplied once.')
       const value = arguments_[++index]
@@ -2180,6 +2233,7 @@ function parseReview(
     generate,
     verification,
     agent,
+    sourceRoots: Object.freeze(sourceRoots),
   }
 }
 
@@ -2735,6 +2789,26 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'declare the Flow and each workspace dependency in an ancestor package.json workspaces list; workspace dependencies never fall back to npm',
       PACKAGE_BUN_WORKSPACE_INVALID:
         'check workspace membership, unique package names, safe relative paths, root lock, and declared patch files (at most 1 MiB each); links, local member locks, and dependency overrides are unsupported',
+      PACKAGE_BUN_WORKSPACE_MOUNT:
+        'workspace capture reached an unselected mount boundary at the indicated project-relative location. Select this mounted directory with jig review --source-root DIRECTORY if it contains declared workspace members. A deeper member selection cannot bypass this boundary. Resolve DIRECTORY from the invocation directory. Alternatively, use source without nested mounts. Mounted files and mounts inside package source remain unsupported',
+      PACKAGE_BUN_WORKSPACE_SOURCE_MISSING:
+        'the indicated workspace source is missing. Restore the declared member or source file, then review again',
+      PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK:
+        'the indicated workspace source is a symbolic link. Use ordinary source directories and files. --source-root does not permit links',
+      PACKAGE_BUN_WORKSPACE_SOURCE_INVALID:
+        'the indicated workspace path is not an ordinary directory. Use a real directory without symbolic links, then review again',
+      PACKAGE_BUN_WORKSPACE_SOURCE_ACCESS:
+        'the indicated workspace source cannot be read. Check its directory and file permissions, then review again',
+      PACKAGE_BUN_WORKSPACE_SOURCE_UNAVAILABLE:
+        'the indicated workspace source could not be opened safely. Check that the source is stable and accessible on a qualified host',
+      PACKAGE_BUN_SOURCE_ROOT_INVALID:
+        'select distinct ordinary directories below the enclosing Bun workspace root. Omit the already selected project root. Links, duplicate directories and workspace-root overrides are unsupported',
+      PACKAGE_BUN_SOURCE_ROOT_MISSING:
+        'the selected source-root directory is missing. Restore it or correct --source-root relative to the invocation directory, then review again',
+      PACKAGE_BUN_SOURCE_ROOT_UNREADABLE:
+        'the selected source-root directory cannot be read. Check its permissions, then review again',
+      PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE:
+        'the selected source-root directory could not be acquired safely. Check that the directory is stable and accessible on a qualified host',
       PACKAGE_BUN_WORKSPACE_VERSION:
         'a workspace package version does not satisfy its workspace: declaration; correct the declaration or local package version',
       PACKAGE_BUN_WORKSPACE_BUILD_REQUIRED:

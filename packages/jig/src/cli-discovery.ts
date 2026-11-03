@@ -164,6 +164,8 @@ export function completionScript(shell: string): string | undefined {
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W '${commands} --help --version' -- "$cur")
   elif [[ "$prev" == --agent && ( "$command" == review || "$command" == init ) ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'codex claude pi' -- "$cur")
+  elif [[ "$prev" == --source-root && "$command" == review ]]; then
+    while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -d -- "$cur")
   elif [[ "$prev" == --verification ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(compgen -W 'cached strict fast' -- "$cur")
   elif [[ "$prev" == --updates && "$command" == run ]]; then
@@ -176,7 +178,7 @@ export function completionScript(shell: string): string | undefined {
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
-      review) opts='--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
+      review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
       inspect) opts='--help --json --verification --result --display';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
       init) opts='--help --bare --agent';;
@@ -206,6 +208,8 @@ _jig() {
     choices=(${commands} --help --version)
   elif [[ "$words[CURRENT-1]" == --agent && ( "$words[2]" == review || "$words[2]" == init ) ]]; then
     choices=(codex claude pi)
+  elif [[ "$words[CURRENT-1]" == --source-root && "$words[2]" == review ]]; then
+    _files -/; return
   elif [[ "$words[CURRENT-1]" == --verification ]]; then
     choices=(cached strict fast)
   elif [[ "$words[CURRENT-1]" == --updates && "$words[2]" == run ]]; then
@@ -217,7 +221,7 @@ _jig() {
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
-      review) choices=(--help --allow-resolution-network --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
+      review) choices=(--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
       inspect) choices=(--help --json --verification --result --display);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
       init) choices=(--help --bare --agent);;
@@ -252,6 +256,7 @@ complete -c jig -n '__fish_seen_subcommand_from init' -l bare
 complete -c jig -n '__fish_seen_subcommand_from init' -l agent -r -a 'codex claude pi'
 ${['input', 'attach', 'select', 'out', 'receive', 'timeout'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from run' -l ${flag} -r`).join('\n')}
 complete -c jig -n '__fish_seen_subcommand_from review' -l agent -r -a 'codex claude pi'
+complete -c jig -n '__fish_seen_subcommand_from review' -l source-root -r -a '(__fish_complete_directories)'
 ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'generate-contracts'].map((flag) => `complete -c jig -n '__fish_seen_subcommand_from review' -l ${flag}`).join('\n')}
 `
   return undefined

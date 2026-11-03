@@ -109,7 +109,11 @@ try {
             captured: metadata,
             signal: new AbortController().signal,
           }),
-          { code: 'PACKAGE_BUN_WORKSPACE_INVALID' },
+          {
+            code: 'PACKAGE_BUN_WORKSPACE_MOUNT',
+            path: 'mounted',
+            message: /mount boundary/,
+          },
         )
       } finally {
         await metadata.dispose()

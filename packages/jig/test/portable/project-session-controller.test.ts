@@ -15,6 +15,7 @@ import {
   projectError,
   scopePrivatePackagePlanningError,
 } from '../../src/internal/project-session-controller.js'
+import { PrivateBunWorkspaceError } from '../../src/internal/workspace-source-roots.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
 const missingPlan = `sha256:${'0'.repeat(64)}`
@@ -172,6 +173,88 @@ describe('private finite project session', () => {
     expect(
       projectError(
         new CheckError('invalid', 'PROJECT_DEFAULT_MISSING', 'private detail', '../package.json'),
+        'plan',
+      ).diagnostic,
+    ).toBeUndefined()
+  })
+  test('workspace source diagnostics preserve their project-relative directory and file locations', () => {
+    const kinds = [
+      ['invalid', 'PACKAGE_BUN_WORKSPACE_MOUNT'],
+      ['invalid', 'PACKAGE_BUN_WORKSPACE_SOURCE_MISSING'],
+      ['invalid', 'PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK'],
+      ['invalid', 'PACKAGE_BUN_WORKSPACE_SOURCE_INVALID'],
+      ['unavailable', 'PACKAGE_BUN_WORKSPACE_SOURCE_ACCESS'],
+      ['unavailable', 'PACKAGE_BUN_WORKSPACE_SOURCE_UNAVAILABLE'],
+      ['invalid', 'PACKAGE_BUN_SOURCE_ROOT_INVALID'],
+      ['invalid', 'PACKAGE_BUN_SOURCE_ROOT_MISSING'],
+      ['unavailable', 'PACKAGE_BUN_SOURCE_ROOT_UNREADABLE'],
+      ['unavailable', 'PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE'],
+      ['invalid', 'PACKAGE_BUN_WORKSPACE_CHANGED'],
+    ] as const
+    for (const [kind, code] of kinds) {
+      for (const path of [
+        '.',
+        '..',
+        '../..',
+        '../../packages/helper',
+        '../../packages/helper/index.js',
+        'package.json',
+        'bun.lock',
+        '--source-root',
+      ]) {
+        const failure = new PrivateBunWorkspaceError(kind, code, 'private source-open detail', path)
+        expect(scopePrivatePackagePlanningError(failure, 'flows/demo')).toBe(failure)
+        expect(projectError(failure, 'plan').toJSON()).toEqual({
+          code: kind === 'invalid' ? 'INVALID_CANDIDATE' : 'UNAVAILABLE',
+          message: kind === 'invalid' ? 'project candidate is invalid' : 'plan is unavailable',
+          diagnostic: { code, path },
+        })
+      }
+    }
+  })
+  test('workspace source diagnostics reject unsafe locations and unrelated ancestor codes', () => {
+    for (const path of [
+      '/private/workspace/helper',
+      '../.jig/private',
+      '../packages/.jig/private',
+      '../packages/../../helper',
+      '../packages/./helper',
+      '../packages//helper',
+      '../packages/helper\n',
+      '../',
+      Array.from({ length: 33 }, () => '..').join('/'),
+      '../'.repeat(33) + 'helper',
+      '../' + 'a/'.repeat(63) + 'helper',
+      '../' + 'a'.repeat(1022),
+    ]) {
+      const failure = new PrivateBunWorkspaceError(
+        'invalid',
+        'PACKAGE_BUN_WORKSPACE_MOUNT',
+        'private source-open detail',
+        path,
+      )
+      expect(projectError(failure, 'plan').diagnostic).toBeUndefined()
+    }
+    for (const code of [
+      'PACKAGE_BUN_WORKSPACE_INVALID',
+      'PACKAGE_BUN_WORKSPACE_OTHER',
+      'PROJECT_DEFAULT_MISSING',
+    ]) {
+      expect(
+        projectError(
+          new CheckError('invalid', code, 'private detail', '../packages/helper'),
+          'plan',
+        ).diagnostic,
+      ).toBeUndefined()
+    }
+    expect(
+      projectError(
+        new CheckError(
+          'unavailable',
+          'PACKAGE_BUN_SOURCE_ROOT_OTHER',
+          'private detail',
+          'packages/helper',
+        ),
         'plan',
       ).diagnostic,
     ).toBeUndefined()

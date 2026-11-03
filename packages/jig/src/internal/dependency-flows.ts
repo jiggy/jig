@@ -19,6 +19,7 @@ export async function captureDependencyFlows(input: {
   root: PrivateProjectRoot
   selectors: readonly string[]
   signal: AbortSignal
+  sourceRoots?: readonly string[]
   prepare(
     source: CapturedPackage,
     workspace?: PrivateBunWorkspace,
@@ -67,6 +68,7 @@ export async function captureDependencyFlows(input: {
       packagePath: '',
       captured: metadata,
       signal: input.signal,
+      ...(input.sourceRoots === undefined ? {} : { sourceRoots: input.sourceRoots }),
     })
     prepared = await input.prepare(workspace?.captured ?? metadata, workspace)
     for (const selector of input.selectors) {

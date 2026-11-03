@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 if (process.platform !== 'linux' || process.env.JIG_LINUX_ROOTLESS_HOSTILE !== '1')
@@ -84,6 +84,143 @@ for (const mode of ['bind', 'tmpfs', 'file', 'freshness'] as const) {
         expect({ code, stdout, stderr }).toEqual({
           code: 0,
           stdout: 'mount boundaries refused\n',
+          stderr: '',
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+    } finally {
+      await rm(base, { recursive: true, force: true })
+    }
+  }, 25_000)
+}
+
+for (const mode of [
+  'helper',
+  'application',
+  'prefix',
+  'nested',
+  'file',
+  'protected',
+  'alias',
+  'freshness',
+] as const) {
+  test(`workspace capture enforces selected roots across real ${mode} mounts`, async () => {
+    const base = await realpath(await mkdtemp(join(tmpdir(), 'jig-workspace-mount-')))
+    const workspace = join(base, 'workspace')
+    const helper = join(workspace, 'packages/helper')
+    try {
+      for (const name of ['control', 'workspace']) {
+        const root = join(base, name)
+        const put = async (path: string, value: string | Record<string, unknown>) => {
+          await mkdir(dirname(join(root, path)), { recursive: true })
+          await writeFile(
+            join(root, path),
+            typeof value === 'string' ? value : JSON.stringify(value),
+          )
+        }
+        await put('package.json', {
+          private: true,
+          workspaces: ['apps/demo/flows/*', 'packages/*'],
+        })
+        await put(
+          'apps/demo/jig.ts',
+          "import { defineJig, discover } from '@jigging/jig'\nexport default defineJig({ flows: discover('./flows') })\n",
+        )
+        await put('apps/demo/flows/echo/package.json', {
+          name: 'echo',
+          type: 'module',
+          dependencies: { 'fixture-helper': 'workspace:*' },
+        })
+        await put('apps/demo/flows/echo/FLOW.meta.json', {
+          name: 'echo',
+          description: 'Return a local helper value.',
+        })
+        await put(
+          'apps/demo/flows/echo/FLOW.ts',
+          "import { message } from 'fixture-helper'\nconsole.log(JSON.stringify({ message }))\n",
+        )
+        await put('packages/helper/package.json', {
+          name: 'fixture-helper',
+          version: '0.1.0',
+          type: 'module',
+          files: ['index.js', 'data'],
+          exports: './index.js',
+        })
+        await put('packages/helper/index.js', "export const message = 'synthetic helper'\n")
+        await put('packages/helper/data/value.json', '{"retained":true}\n')
+        await put('packages/unrelated/package.json', { name: 'unrelated', version: '0.1.0' })
+        await put('packages/unrelated/private-note', 'unrelated source must stay absent')
+      }
+      await cp(helper, join(base, '.jig'), { recursive: true })
+      await mkdir(join(base, 'extra'))
+      await writeFile(join(base, 'extra/value.json'), '{"retained":false}\n')
+      const mountArgs =
+        mode === 'freshness'
+          ? ['--uid', '0', '--gid', '0', '--cap-add', 'CAP_SYS_ADMIN']
+          : mode === 'protected'
+            ? ['--ro-bind', join(base, '.jig'), helper]
+            : mode === 'alias'
+              ? ['--ro-bind', join(workspace, 'apps/demo'), helper]
+              : mode === 'prefix'
+                ? ['--bind', join(workspace, 'packages'), join(workspace, 'packages')]
+                : [
+                    ...(mode === 'application'
+                      ? ['--bind', join(workspace, 'apps/demo'), join(workspace, 'apps/demo')]
+                      : []),
+                    '--bind',
+                    helper,
+                    helper,
+                    ...(mode === 'nested'
+                      ? ['--ro-bind', join(base, 'extra'), join(helper, 'data')]
+                      : mode === 'file'
+                        ? ['--ro-bind', join(helper, 'index.js'), join(helper, 'index.js')]
+                        : []),
+                  ]
+      const worker = fileURLToPath(
+        new URL('../fixtures/workspace-source-mount-worker.ts', import.meta.url),
+      )
+      const child = Bun.spawn(
+        [
+          process.env.JIG_BWRAP_PATH ?? '/usr/bin/bwrap',
+          '--unshare-user',
+          '--unshare-pid',
+          '--die-with-parent',
+          '--ro-bind',
+          '/',
+          '/',
+          '--bind',
+          base,
+          base,
+          '--proc',
+          '/proc',
+          '--dev',
+          '/dev',
+          '--setenv',
+          'TMPDIR',
+          base,
+          ...mountArgs,
+          '--',
+          process.execPath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          worker,
+          base,
+          mode,
+        ],
+        { stdout: 'pipe', stderr: 'pipe' },
+      )
+      const timer = setTimeout(() => child.kill('SIGKILL'), 20_000)
+      try {
+        const [code, stdout, stderr] = await Promise.all([
+          child.exited,
+          new Response(child.stdout).text(),
+          new Response(child.stderr).text(),
+        ])
+        expect({ code, stdout, stderr }).toEqual({
+          code: 0,
+          stdout: 'workspace source roots verified\n',
           stderr: '',
         })
       } finally {

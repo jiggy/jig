@@ -154,6 +154,36 @@ requirements; source tests alone do not establish them.
 
 ## Supported trust boundary
 
+### Workspace source capture
+
+Review can capture separately mounted dependency directories through explicit
+operator `--source-root` selections. The selected application already has its
+own root. Additional roots must lie below the chosen Bun workspace and contain
+actual declared members. Selection preserves workspace membership and existing
+source and preparation limits.
+
+Each additional directory uses the existing native file-root acquisition and
+qualified filesystem checks. Capture holds directory and mount identities and
+revalidates them before accepting source. Replaced roots, remounts, unsafe links,
+duplicate directory identities and unsupported filesystems refuse capture.
+Unselected mount crossings remain refused, including same-filesystem bind mounts.
+A deeper selected root cannot bypass an earlier unselected mount boundary.
+
+This option does not permit mounted files, mounts inside captured package source,
+or separately mounted project Flow directories. Project-authored configuration
+cannot select roots. Operator operands are bounded and apply only to the current
+review. Later reviews require explicit selections again.
+
+Host paths and source-selection authority are not persisted in project locks or
+admission records. Runs consume retained approved bytes without reopening these
+directories. Approved-project inspection also requires no live source roots.
+Source selection grants neither dependency networking nor runtime filesystem access.
+Diagnostics expose closed causes and bounded project-relative locations, without
+absolute host paths or native mount identities.
+
+See [workspace capture](docs/jig/spec/project-policy.md#workspace-dependency-capture)
+for the exact source-root contract and its fixed bounds.
+
 ### Local browser inspection
 
 Operator-selected `--display web` runs a command-owned read-only HTTP display on

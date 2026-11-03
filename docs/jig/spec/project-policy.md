@@ -317,6 +317,50 @@ An ancestor workspace that does not declare the selected package is not
 captured. Its unrelated patterns do not invalidate the selected package.
 The selected workspace still must satisfy the path and source rules above.
 
+Review accepts repeatable `--source-root DIRECTORY` operands for additional
+workspace source directories. Relative operands resolve from the invocation
+directory, independently of the optional project operand. Absolute operands
+select their stated directory. Project declarations, manifests and earlier
+approvals cannot supply or remember these selections.
+
+Each explicit root MUST lie below the selected workspace root and contain at
+least one actual member declared by that workspace. A root may equal a member
+directory or contain several members. Selection MUST NOT expand membership,
+dependency selection, or captured file rules. Selecting the workspace root
+itself as an override MUST fail.
+
+The already selected Jig application root supplies its own source boundary when
+workspace traversal reaches it. A separately mounted application requires no
+duplicate operand. Additional selected roots MAY cross directory mount
+boundaries, including same-filesystem bind mounts, only through independent root
+acquisition. Every root MUST satisfy the native host's existing file-root
+filesystem requirements.
+
+The host MUST retain the selected directory identity and mount identity through
+capture and freshness verification. Root replacement, remounting, duplicate
+directory identities, unsafe aliases, or failed verification MUST refuse capture.
+Ordinary descendant opens MUST retain their existing link and mount checks.
+Selecting a deeper root MUST NOT bypass an earlier unselected mount crossing.
+Mounted files, mounts inside captured package source, and separately mounted
+project Flow directories remain unsupported by this option.
+
+At most 32 additional roots may be selected per review. Each operand and its
+resolved absolute path MUST fit within 4,096 UTF-8 bytes. Empty operands,
+controls, malformed Unicode, and duplicate selections MUST fail. These fixed
+bounds do not enlarge existing member, traversal, source, or preparation limits.
+
+Workspace traversal MUST retain `PACKAGE_BUN_WORKSPACE_MOUNT` for known unselected mount crossings.
+Missing source, links, invalid directories, access failures and other acquisition failures MUST retain
+their separate closed diagnostic codes. Safe locations MUST be project-relative,
+including bounded ancestor directory paths. Diagnostics MUST NOT expose absolute
+host paths, native mount identities, or raw operating-system errors.
+
+Selections authorize source acquisition only for the current review. They MUST
+NOT be persisted in project declarations, locks, admission records, or runtime
+grants. Captured bytes continue through ordinary preparation and approval.
+Later reviews require their own explicit selections. Runs and approved-project
+inspection MUST remain independent of live source roots.
+
 Library `files` paths and glob patterns select source when present, including
 `package.json`, README and license files. Otherwise ordinary package files are
 selected. `.git` and `node_modules` are excluded. Literal exported files must be
@@ -1521,3 +1565,8 @@ The direct-alpha project implementation must prove at least:
     incompatible retention and zero selected ACP policies refuse atomically.
     A same-client choice qualifies; later bare review uses source again, and a
     failed later review retains the earlier code and client together.
+21. Explicit mounted workspace roots preserve declared membership and bounded
+    capture. Unselected crossings, unsupported interior mounts, links and root
+    substitution refuse with safe diagnostics. Capture and freshness use the
+    same held roots. Later review requires explicit selection again, while
+    retained Runs and inspection acquire no live source authority.

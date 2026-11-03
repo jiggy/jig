@@ -56,7 +56,11 @@ tests use genuine host capture through their own fixture entry.
   Rejection immediately stops the root Run before exposing a catchable child failure.
   The Agent guide owns matching limits and launch-copy cleanup.
 
-- Source capture and freshness walks reject mount transitions at every descendant through the shared native source open operation.
+- Source capture and freshness walks reject mount transitions through the shared native source open operation.
+  Bun workspace capture may switch at an exact operator-selected directory prefix to its pinned, qualified source root.
+  `workspace-source-roots.ts` owns these review-only roots and their mount identity checks.
+  The already selected application root can supply the same boundary when an ancestor workspace traverses it.
+  Descendants keep the ordinary guard. Package contents cannot register roots or receive their host descriptors.
 
 - Provider credentials are host configuration and must not enter Flow input,
   project state, artifacts, diagnostics, or unrelated provider processes.
