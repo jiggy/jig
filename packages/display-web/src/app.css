@@ -5,8 +5,8 @@
   --text: #1e2630;
   --secondary: #4d5a6b;
   --line: #dce1e7;
-  --accent: #6650b7;
-  --selected: #f0ebfa;
+  --accent: #3f6d50;
+  --selected: #e8f3eb;
   --warning: #87501c;
   --warning-bg: #fff4e7;
   --failure: #a52638;
@@ -222,6 +222,7 @@ small,
   flex: 1;
 }
 .run-content {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -852,8 +853,8 @@ footer {
     --text: #e9edf2;
     --secondary: #b4bdc8;
     --line: #2c3138;
-    --accent: #b5a0ff;
-    --selected: #2a243d;
+    --accent: #a4d2b3;
+    --selected: #20372a;
     --warning: #ffd0a1;
     --warning-bg: #35291f;
     --failure: #ffb8c3;
@@ -869,8 +870,8 @@ footer {
   --text: #e9edf2;
   --secondary: #b4bdc8;
   --line: #2c3138;
-  --accent: #b5a0ff;
-  --selected: #2a243d;
+  --accent: #a4d2b3;
+  --selected: #20372a;
   --warning: #ffd0a1;
   --warning-bg: #35291f;
   --failure: #ffb8c3;
@@ -1688,7 +1689,7 @@ nav .nav-entry {
 }
 .application-about {
   position: relative;
-  margin-left: auto;
+  margin: 0 0 0 auto;
   font-size: 12px;
 }
 .application-about > summary {

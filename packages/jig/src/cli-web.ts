@@ -9,7 +9,7 @@ import { DISPLAY_SNAPSHOT_LIMIT } from '@jigging/display-model'
 
 const SNAPSHOT_BYTES = DISPLAY_SNAPSHOT_LIMIT
 const INCOMPLETE_BYTES = 2 * 1024 * 1024
-const PREVIEW_BYTES = 2 * 1024 * 1024
+const PREVIEW_BYTES = 3 * 1024 * 1024
 const REFRESH_MS = 200
 const encoder = new TextEncoder()
 type PrivateWebServer = {
