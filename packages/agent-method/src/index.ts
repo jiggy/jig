@@ -281,10 +281,12 @@ export function finishAgent(prepared: PreparedAgent, result: unknown): AgentResu
         )
     }
     if (structured !== undefined && !matchesResponseSchema(responseSchema, structured)) {
-      throw new AgentMethodError(
-        'INVALID_RESULT',
-        'Structured Agent output does not match responseSchema',
-      )
+      if (outcome === 'done')
+        throw new AgentMethodError(
+          'INVALID_RESULT',
+          'Structured Agent output does not match responseSchema',
+        )
+      structured = undefined
     }
   }
   const completed = {

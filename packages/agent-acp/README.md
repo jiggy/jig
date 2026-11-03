@@ -28,13 +28,18 @@ receipt. The selected resource's grants and runtime evidence remain separate.
 
 The Flow must receive a completed ACP answer **and** settled resource evidence.
 It does not turn channel EOF, a stopped process or a model's claim into success.
-Refusal returns `blocked`; a bounded model response limit returns `limit`.
-Cancellation, broken transport, invalid structured output and failed process
-settlement remain errors. Conversational callers explicitly supply command/reply
-channels and use a grant with `maxTurns` (1–8); ordinary calls still perform one
-turn. Native retention and restoration use an explicit session request and
-separate reviewed authority, described below. Tools, retries and implicit
-filesystem context are not supplied.
+
+Refusal returns `blocked`. A bounded model response limit returns `limit`.
+Both retain answer text. When a response schema was requested, they include
+`structured` only when it matches that schema. Neither becomes `done`.
+Cancellation, host deadlines, broken transport, invalid completed structured
+output and failed process settlement remain errors.
+
+Conversational callers explicitly supply command/reply channels and use a grant
+with `maxTurns` (1–8). Ordinary calls still perform one turn. Native retention and
+restoration use an explicit session request and separate reviewed authority,
+described below.
+Tools, retries and implicit filesystem context are not supplied.
 
 Native warnings are separate, sanitized console diagnostics rather than answer
 text or Agent events. Authoritative native errors remain invocation failures.

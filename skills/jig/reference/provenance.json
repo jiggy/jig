@@ -57,14 +57,14 @@
     {
       "source": "docs/jig/spec/agent-run.md",
       "destination": "spec/agent-run.md",
-      "sourceSha256": "e386d08953b09f2c1c995fd75d24069c59a3c10c71239b282780361017124e25",
-      "outputSha256": "bd7ad92c9e1db5856199a275265365b277d2d5088e11a241560f11d20a1154b1"
+      "sourceSha256": "761d7474295ccc92776da2189986a883a44a48f428c6b32b4f18a6977a5f73d3",
+      "outputSha256": "2e3d5f2c33be922fca5425dc8969af295bd290bc76dd28d21f2a8c0938321ba9"
     },
     {
       "source": "docs/jig/guide/agent-method.md",
       "destination": "guide/agent-method.md",
-      "sourceSha256": "f7e45e25e3b43ceb635bb0a08a6fac66fea0faef8329bbba2f581af3f526869e",
-      "outputSha256": "f7e45e25e3b43ceb635bb0a08a6fac66fea0faef8329bbba2f581af3f526869e"
+      "sourceSha256": "61a208229c4b6149d451fdb1620271e8462ab53a3769ff693654a33178e9c5a5",
+      "outputSha256": "61a208229c4b6149d451fdb1620271e8462ab53a3769ff693654a33178e9c5a5"
     },
     {
       "source": "docs/jig/guide/markdown.md",

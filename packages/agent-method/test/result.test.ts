@@ -53,9 +53,20 @@ describe('consumer-side Agent result checking', () => {
       checkAgentResult({ outcome: 'done', output: { text: 'no data' } }, schema),
     ).toThrow('requires a structured result')
     for (const outcome of ['blocked', 'limit']) {
+      for (const text of ['Could not finish.', '{"different":"shape"}']) {
+        const result = checkAgentResult({ outcome, output: { text } }, schema)
+        expect(result).toEqual({ outcome, output: { text } })
+        expect(Object.hasOwn(result.output, 'structured')).toBe(false)
+      }
       expect(
-        checkAgentResult({ outcome, output: { text: 'Could not finish.' } }, schema).outcome,
-      ).toBe(outcome)
+        checkAgentResult(
+          { outcome, output: { text: '{"answer":"yes"}', structured: { answer: 'yes' } } },
+          schema,
+        ),
+      ).toEqual({
+        outcome,
+        output: { text: '{"answer":"yes"}', structured: { answer: 'yes' } },
+      })
       expect(() =>
         checkAgentResult(
           { outcome, output: { text: 'Invalid data', structured: { answer: 3 } } },

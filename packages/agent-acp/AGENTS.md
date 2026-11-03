@@ -38,6 +38,8 @@ host retains credential, process, and dispatch authority.
   and offline contract import from ordinary root/member installs. Consumers do
   not name physical installer paths.
 - Reuse `@jigging/agent-method` for prompt preparation and result validation.
+  Provider refusal and limits retain answer text, with structured data only when
+  it matches the requested schema. Completed structured answers remain strict.
   Complete ACP dialogue and resource settlement are separate requirements.
 - Locally detected invalid ACP cancels the resource while preserving that
   parsing error. A terminal essential-channel failure awaits the resource's
