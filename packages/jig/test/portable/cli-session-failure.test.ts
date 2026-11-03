@@ -2,12 +2,16 @@ import { expect, test } from 'bun:test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { ProjectAdministrationError, type ProjectSession } from '../../src/administration/project.js'
+import {
+  ProjectAdministrationError,
+  type ProjectSession,
+} from '../../src/administration/project.js'
 import { RootAdministrationError, type RootRunTerminal } from '../../src/administration/root.js'
 import { main, privateCliRunFailure } from '../../src/cli.js'
 import type { PrivateAgentReadinessReport } from '../../src/internal/review-agent-setup.js'
 
-const operationSecret = 'SYNTHETIC_OPERATION_FAILURE /private/input Authorization=Bearer SYNTHETIC_TICKET'
+const operationSecret =
+  'SYNTHETIC_OPERATION_FAILURE /private/input Authorization=Bearer SYNTHETIC_TICKET'
 const closeSecret = 'SYNTHETIC_CLOSE_FAILURE /private/host SYNTHETIC_RECOVERY_TICKET'
 const recovery = 'https://jig.md/build/results#when-cleanup-cannot-be-confirmed'
 
