@@ -300,6 +300,22 @@ Version metadata is checked before evaluation and reverified before capture comp
   An unrelated ancestor's external patterns do not invalidate a standalone
   Flow. Validate every pattern before capturing a selected workspace.
 
+  `workspace-source-roots.ts` owns explicit operator roots for one workspace capture.
+  Snapshot the review selections and pass them through ordinary and npm Flow dependency capture.
+  Resolve relative CLI operands from the invocation directory. Never acquire these permissions from project-authored values or earlier approval.
+  Every explicit root must contain an actual discovered workspace member. Keep the selected workspace's existing membership rules.
+
+  Acquire additional roots with the native file-root boundary. Preserve its qualified filesystem requirements and refuse duplicate directory identities or unsafe aliases.
+  Reuse the selected application root only after checking its requested-path identity.
+  Keep directory and mount identities held through capture, freshness verification, failure and disposal.
+  Ordinary descendants reject links and unselected mount crossings, including crossings before a deeper selected root.
+  Mounted files and mounts inside captured package source remain unsupported.
+
+  Root selection neither widens project Flow capture nor grants runtime filesystem access.
+  Never persist host paths, selection authority, or descriptors in captures, locks, admission, or preparation caches.
+  Retained artifacts remain ordinary immutable bytes. Later review requires explicit selections again.
+  Preserve distinct closed source failures and bounded project-relative locations through outer catches and package-error scoping.
+
   Stop at directory aliases without invalidating a declared workspace below one.
   Preserve members' own `workspaces` declarations as inert metadata during an
   ancestor-root install. Only that root's patterns define captured membership.

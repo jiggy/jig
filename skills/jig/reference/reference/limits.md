@@ -95,11 +95,13 @@ The prepared package controls apply to production dependencies of each selected 
 | Aggregate prepared content, per review | 256 MiB (268,435,456 bytes) | Fixed |
 | Whole preparation phase deadline | 180 seconds | Fixed |
 | Workspace members in execution layout | 256 | Fixed |
+| Additional workspace source roots, per review | 32 | Fixed |
+| Each source-root operand and resolved absolute path | 4,096 UTF-8 bytes | Fixed |
 | Dependency aliases in execution layout | 4,096 | Fixed |
 | Execution layout JSON | 1 MiB (1,048,576 bytes) | Fixed |
 | Evaluation dependency closure | 128 MiB (134,217,728 bytes) / 8,192 files | Fixed |
 
-Policy owners: [`project/limits.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/project/limits.ts), [`internal/bun-native-preparation-protocol.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/bun-native-preparation-protocol.ts), [`internal/bun-native-preparation-budget.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/bun-native-preparation-budget.ts), [`internal/bun-execution-layout.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/bun-execution-layout.ts).
+Policy owners: [`project/limits.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/project/limits.ts), [`internal/bun-native-preparation-protocol.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/bun-native-preparation-protocol.ts), [`internal/bun-native-preparation-budget.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/bun-native-preparation-budget.ts), [`internal/bun-execution-layout.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/bun-execution-layout.ts), [`internal/workspace-source-roots.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/workspace-source-roots.ts).
 
 ## Retain captured packages
 
@@ -236,6 +238,12 @@ Workspace discovery also bounds members, manifests, locks, patches, and tree
 traversal. See [workspace capture](../spec/project-policy.md#workspace-dependency-capture)
 for those exact rules. A format's larger upper bound does not enlarge a host
 task's smaller allowance.
+
+Separately mounted workspace dependencies require explicit review source-root
+selections. Their fixed count and path bounds limit source authority and
+directory acquisition. They have no override and do not enlarge capture budgets.
+See [mounted workspace roots](../build/dependencies.md#separately-mounted-workspace-roots)
+for selection and diagnosis.
 
 For resource setup, see [Agent settings](../build/agents.md), [HTTP access](../build/http.md),
 [files](../build/files.md), and [checkpoints](https://jig.md/spec/run-checkpoint.md). Terminal and

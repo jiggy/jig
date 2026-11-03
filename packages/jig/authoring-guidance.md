@@ -59,8 +59,11 @@ These links locate module rules. All selected domain requirements still apply.
 - Project source, declaration and static author-module capture use the same
   closed descriptor operations on Linux and qualified Darwin. Workspace capture
   preserves declared source/dependency selection and raw-name validation.
-  Every descendant open rejects nested mounts, including same-filesystem bind mounts and mounted regular files.
-  Initial capture and freshness verification use the same mount-safe operation.
+  Ordinary descendant opens reject nested mounts, including same-filesystem bind mounts and mounted regular files.
+
+  Explicit operator roots separately acquire mounted directories containing declared Bun workspace members.
+  They do not widen project Flow capture or permit mounts inside captured package source.
+  Initial capture and freshness verification use the same held roots and mount-safe operations.
   Filesystem capture does not independently qualify Bun installation or
   execution.
 
@@ -180,6 +183,9 @@ These links locate module rules. All selected domain requirements still apply.
   bounded project-relative locations, not executable or readable file routes.
   Stale-lock diagnostics identify the verified authored lock and working
   directory. They provide a shell-safe repair command.
+
+  Workspace source diagnostics distinguish mount crossings, missing source, links, access failures and unavailable acquisition.
+  Their bounded project-relative directory locations remain display-only. Never disclose absolute operator paths or native mount identities.
 
   Resolution permission does not update supplied locks. Root name/version
   metadata does not select dependencies. Keep member name/version and all

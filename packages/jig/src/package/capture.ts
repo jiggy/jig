@@ -34,6 +34,17 @@ const backingReaders = new WeakMap<FileHandle, FileHandle>()
 /** Resource ceiling shared with private materializers which verify by recapture. */
 export const PACKAGE_CAPTURE_LIMITS = Object.freeze({ directories: MAX_DIRECTORIES })
 
+/** Preserve the trusted source-open cause when a workspace adds its logical location. */
+export class PrivatePackageSourceError extends CheckError {
+  constructor(
+    readonly sourceCode: string | undefined,
+    message: string,
+    path: string,
+  ) {
+    super('unavailable', 'PACKAGE_SOURCE_IO', message, path)
+  }
+}
+
 export interface CapturedFile {
   readonly path: string
   readonly size: number
@@ -747,7 +758,11 @@ async function openDirectoryEntry(
   } catch (error) {
     if (isResourceError(error)) resourceExhausted(error, 'cannot open package entry', logicalPath)
     if (isEntryRace(error)) sourceChanged('package entry changed while it was opened', logicalPath)
-    unavailable('PACKAGE_SOURCE_IO', `cannot open package entry: ${errorText(error)}`, logicalPath)
+    throw new PrivatePackageSourceError(
+      (error as NodeJS.ErrnoException).code,
+      `cannot open package entry: ${errorText(error)}`,
+      logicalPath,
+    )
   }
   try {
     const actual = await handle.stat({ bigint: true })

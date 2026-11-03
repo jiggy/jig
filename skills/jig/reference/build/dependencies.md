@@ -79,6 +79,13 @@ change the code or dependencies.
 | `PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED` | Use a [supported lock format](#lock-formats). Changing dependency sources cannot fix the format. |
 | `PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED` | Configure the default npm registry and regenerate the indicated lock. Review the new dependency versions. |
 | `PACKAGE_BUN_MANIFEST_SOURCE` | Replace unsupported sources with default-registry versions or [declared workspace members](#local-workspace-packages). A `file:` archive is not supported. |
+| `PACKAGE_BUN_WORKSPACE_MOUNT` | Select the [mounted workspace root](#separately-mounted-workspace-roots) explicitly, or use source without nested mounts. |
+| `PACKAGE_BUN_WORKSPACE_SOURCE_MISSING` or `PACKAGE_BUN_SOURCE_ROOT_MISSING` | Restore the indicated source or correct its declaration or operator path. |
+| `PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK` | Replace the link with ordinary source. Source-root selection does not permit links. |
+| `PACKAGE_BUN_WORKSPACE_SOURCE_INVALID` | Use an ordinary directory at the indicated location. A link or another file type cannot serve as a directory. |
+| `PACKAGE_BUN_WORKSPACE_SOURCE_ACCESS` or `PACKAGE_BUN_SOURCE_ROOT_UNREADABLE` | Check permissions at the indicated source location. |
+| `PACKAGE_BUN_SOURCE_ROOT_INVALID` | Select a distinct directory below the workspace root that contains declared members. Omit the already selected project root. |
+| `PACKAGE_BUN_WORKSPACE_SOURCE_UNAVAILABLE` or `PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE` | Check that the source remains stable and accessible on a qualified host. |
 | A workspace member or build output is missing | Correct the declaration or build the library. Jig does not fall back to npm. |
 | `PACKAGE_BUN_OUTPUT_LIMIT` | Inspect the reported manifest and runtime dependencies. Increase the documented [dependency preparation limits](../reference/limits.md#override-dependency-preparation-limits) when the complete tree is necessary. |
 | Approved bytes are missing or corrupt | Preserve the reported evidence. Jig refuses instead of resolving packages again. |
@@ -231,6 +238,53 @@ may retain its own workspace declaration for standalone use.
 
 If a supplied lock is stale, follow the [lock recovery instructions](#when-the-dependency-lock-is-out-of-date)
 to update the workspace root lock and review again.
+
+### Separately mounted workspace roots
+
+Neighboring directories can belong to separate mounts, including bind mounts on
+the same filesystem. Review requires explicit selection of additional mounted
+directories containing declared workspace members.
+
+For example, `apps/demo` can use a declared library at `packages/helper`.
+From their `workspace/` directory, run:
+
+```sh
+jig review apps/demo --source-root packages/helper
+```
+
+Review captures the helper's declared sources before ordinary approval.
+Repeat `--source-root` for each additional root needed by that review.
+An absolute path is also accepted. Relative operands start at the invocation
+directory, independently of the `apps/demo` project operand.
+
+The selected application directory already supplies its own source root, even
+when the whole application is separately mounted. Do not select it again.
+Each additional root must be below the enclosing workspace root and contain at
+least one actual declared member. A mounted parent such as `packages` can be
+selected when it contains those members.
+
+Select the directory where traversal crosses the mount. If `packages` itself
+is mounted, use `--source-root packages`. Selecting only `packages/helper`
+cannot authorize that earlier unselected crossing.
+
+Selection preserves the workspace's membership, dependency and file rules.
+It does not permit symbolic links, mounted files, or mounts inside captured
+package source. Separately mounted Flow directories inside the application keep
+their existing capture restriction. Unselected mount boundaries remain refused.
+Every selected root must satisfy the host's existing filesystem requirements.
+
+The fixed limits allow 32 additional roots and 4,096 UTF-8 bytes per operand
+and resolved absolute path. These bounds and other capture limits appear in the
+[limits reference](../reference/limits.md#prepare-runtime-dependencies).
+
+Diagnostics identify logical locations relative to the reviewed application,
+such as `../../packages/helper`. Source-root operands instead use the invocation
+directory. Mount, missing-source, link and access failures have distinct codes.
+
+Source selection grants no dependency networking or Run filesystem access.
+`jig run` uses retained approved bytes, and `jig inspect` reads retained approval.
+Neither needs these options. Select the roots again on each later review.
+Jig does not retain their host paths as project configuration or authority.
 
 ### Capture, reuse, and supported boundaries
 

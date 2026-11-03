@@ -57,6 +57,10 @@ use-case and orchestration hypotheses.
   examples follow `spec/project-policy.md`'s root selection, direct membership,
   and supported lock formats. Stale-lock recovery identifies the authored lock
   and workspace. Resolution permission does not update a supplied lock.
+
+  It also explains explicit review selection of separately mounted dependency roots.
+  Keep invocation-relative operands distinct from project-relative diagnostic locations.
+  Source selection preserves workspace membership and never grants live Run filesystem access.
 - `reference/configuration.md` owns settings, entrypoint selection, terminal
   appearance, review change notation, and cached, strict, and fast installation
   verification. Keep verification defaults and limits aligned with execution

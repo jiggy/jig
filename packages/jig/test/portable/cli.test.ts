@@ -73,6 +73,9 @@ test('installed help is focused and version matches the installed manifest', asy
     }
     if (args[0] === 'review') {
       expect(result.stdout).toContain('--details')
+      expect(result.stdout).toContain('--source-root DIRECTORY')
+      expect(result.stdout).toContain('relative to the invocation directory')
+      expect(result.stdout).toContain('no network or Run filesystem access')
       expect(result.stdout).toContain('--yes alone does not approve new resource authority')
     }
     if (args[0] === 'init') expect(result.stdout).toContain('--bare')
@@ -125,6 +128,17 @@ test('installed invalid grammar refuses without disclosing rejected private valu
     ]),
     ['run', 'flow:flows/hello', '--attach'],
     ['run', 'flow:flows/hello', '--out'],
+    ['review', '--source-root'],
+    ['review', '--source-root', ''],
+    ['review', '--source-root', '--yes'],
+    ['review', '--source-root', 'private-invalid-value\nfolder'],
+    ['review', '--source-root', `private-invalid-value${'é'.repeat(2048)}`],
+    [
+      'review',
+      ...Array.from({ length: 33 }, (_, index) => ['--source-root', `../root-${index}`]).flat(),
+    ],
+    ['run', 'flow:flows/hello', '--source-root', 'private-invalid-value'],
+    ['inspect', '--source-root', 'private-invalid-value'],
     ['init', 'unselected', '--agent', 'unknown'],
   ]
   const project = join(root, 'grammar')

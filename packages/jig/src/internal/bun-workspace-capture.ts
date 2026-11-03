@@ -6,6 +6,7 @@ import {
   type CapturedPackage,
   captureOpenedPackageDirectory,
   createCapturedPackage,
+  PrivatePackageSourceError,
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
@@ -17,6 +18,11 @@ import {
 } from './bun-native-lock-policy.js'
 import { PRIVATE_BUN_PREPARATION_LIMITS } from './bun-native-preparation-protocol.js'
 import { openPrivateSourceChild, privateDirectoryEntries } from './descriptor-files.js'
+import {
+  openPrivateWorkspaceSourceRoots,
+  type PrivateWorkspaceSourceRoots,
+  throwPrivateWorkspaceSourceError,
+} from './workspace-source-roots.js'
 
 const MANIFEST_BYTES = 1024 * 1024
 const MAX_MEMBERS = 256
@@ -40,6 +46,15 @@ export interface PrivateBunWorkspace {
   readonly selected: readonly string[]
 }
 
+interface WorkspaceCaptureInput {
+  projectRoot: PrivateProjectRoot
+  packagePath: string
+  captured: CapturedPackage
+  signal: AbortSignal
+  /** Trusted, invocation-local review operands; never project-authored authority. */
+  sourceRoots?: readonly string[]
+}
+
 interface Member {
   path: string
   bytes: Uint8Array
@@ -47,12 +62,9 @@ interface Member {
 }
 
 /** Capture declared workspace source, never an installed node_modules link. */
-export async function capturePrivateBunWorkspace(input: {
-  projectRoot: PrivateProjectRoot
-  packagePath: string
-  captured: CapturedPackage
-  signal: AbortSignal
-}): Promise<PrivateBunWorkspace | undefined> {
+export async function capturePrivateBunWorkspace(
+  input: WorkspaceCaptureInput,
+): Promise<PrivateBunWorkspace | undefined> {
   if (!input.captured.files.some(({ path }) => path === 'package.json')) return undefined
   const manifestBytes = await input.captured.read('package.json', MANIFEST_BYTES)
   const manifest = parseManifest(manifestBytes)
@@ -86,7 +98,12 @@ export async function capturePrivateBunWorkspace(input: {
     input.signal.throwIfAborted()
     const root = await openPrivateProjectRoot(path)
     try {
-      const bytes = await readOptional(root.handle, 'package.json')
+      const bytes = await readOptional(
+        root.handle,
+        'package.json',
+        MANIFEST_BYTES,
+        relative(input.projectRoot.requestedPath, resolve(path, 'package.json')),
+      )
       if (bytes !== undefined) {
         const rootManifest = parseManifest(bytes)
         if (rootManifest.workspaces !== undefined) {
@@ -94,16 +111,7 @@ export async function capturePrivateBunWorkspace(input: {
           const patterns = workspacePatterns(rootManifest.workspaces, target)
           if (patterns !== undefined) {
             try {
-              return await capture(
-                root,
-                bytes,
-                patterns,
-                target,
-                manifestBytes,
-                input.captured,
-                input.signal,
-                input.projectRoot.requestedPath,
-              )
+              return await captureWorkspace(root, bytes, patterns, target, manifestBytes, input)
             } catch (error) {
               if (error instanceof CheckError && !error.code.startsWith('PACKAGE_BUN_')) {
                 if (error.code.includes('LIMIT') || error.code.includes('RESOURCE'))
@@ -131,6 +139,55 @@ export async function capturePrivateBunWorkspace(input: {
   return undefined
 }
 
+async function captureWorkspace(
+  root: PrivateProjectRoot,
+  rootBytes: Uint8Array,
+  patterns: readonly string[],
+  target: string,
+  targetBytes: Uint8Array,
+  input: WorkspaceCaptureInput,
+): Promise<PrivateBunWorkspace> {
+  const sources = await openPrivateWorkspaceSourceRoots({
+    workspaceRoot: root,
+    projectRoot: input.projectRoot,
+    sourceRoots: input.sourceRoots,
+  })
+  const failures: unknown[] = []
+  let result: PrivateBunWorkspace | undefined
+  try {
+    result = await capture(
+      root,
+      rootBytes,
+      patterns,
+      target,
+      targetBytes,
+      input.captured,
+      input.signal,
+      input.projectRoot.requestedPath,
+      sources,
+    )
+  } catch (error) {
+    failures.push(error)
+  }
+  try {
+    await sources.dispose()
+  } catch (error) {
+    failures.push(error)
+  }
+  if (failures.length) {
+    if (result !== undefined) {
+      try {
+        await result.captured.dispose()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length === 1) throw failures[0]
+    throw new AggregateError(failures, 'workspace source capture cleanup failed')
+  }
+  return result!
+}
+
 async function capture(
   root: PrivateProjectRoot,
   rootBytes: Uint8Array,
@@ -140,19 +197,27 @@ async function capture(
   source: CapturedPackage,
   signal: AbortSignal,
   projectPath: string,
+  sources: PrivateWorkspaceSourceRoots,
 ): Promise<PrivateBunWorkspace> {
+  const sourcePath = (path: string): string =>
+    relative(projectPath, resolve(root.requestedPath, path)) || '.'
   const manifestPath = (member = ''): string =>
     relative(projectPath, resolve(root.requestedPath, member, 'package.json'))
   requireManifest(parseManifest(rootBytes), manifestPath(), true)
-  const paths = await discover(root.handle, patterns, signal)
+  const paths = await discover(root.handle, patterns, signal, sources, sourcePath)
   const members: Member[] = []
   const byName = new Map<string, Member>()
   let metadataBytes = rootBytes.byteLength
   for (const path of paths) {
     signal.throwIfAborted()
-    const directory = await openBeneath(root.handle, path)
+    const directory = await sources.openDirectory(path)
     try {
-      const bytes = await readOptional(directory, 'package.json')
+      const bytes = await readOptional(
+        directory,
+        'package.json',
+        MANIFEST_BYTES,
+        manifestPath(path),
+      )
       if (bytes === undefined) continue
       metadataBytes += bytes.byteLength
       if (metadataBytes > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)
@@ -168,6 +233,7 @@ async function capture(
       await directory.close()
     }
   }
+  sources.validateMembers(members.map(({ path }) => path))
   const entry =
     target === ''
       ? { path: '', bytes: rootBytes, manifest: parseManifest(rootBytes) }
@@ -230,7 +296,7 @@ async function capture(
     let patchBytes = 0
     for (const path of patchPaths) {
       signal.throwIfAborted()
-      const bytes = await readPatch(root.handle, path)
+      const bytes = await readPatch(root.handle, path, sourcePath)
       patchBytes += bytes.byteLength
       if (patchBytes + metadataBytes > PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)
         fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace patch inputs exceed the capture budget')
@@ -247,7 +313,12 @@ async function capture(
         'PACKAGE_BUN_WORKSPACE_INVALID',
         'workspace root dependency capture requires package metadata only',
       )
-    const lock = await readOptional(root.handle, 'bun.lock', 2 * MANIFEST_BYTES)
+    const lock = await readOptional(
+      root.handle,
+      'bun.lock',
+      2 * MANIFEST_BYTES,
+      sourcePath('bun.lock'),
+    )
     if (lock !== undefined) add('bun.lock', lock.byteLength, { bytes: lock })
     for (const member of members) {
       signal.throwIfAborted()
@@ -257,7 +328,7 @@ async function capture(
       }
       let captured = source
       if (member.path !== target) {
-        const directory = await openBeneath(root.handle, member.path)
+        const directory = await sources.openDirectory(member.path)
         try {
           captured = await captureOpenedPackageDirectory(member.path, directory, {
             includes: packageSelection(member.manifest),
@@ -265,6 +336,15 @@ async function capture(
             maximumBytes: PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes - total,
           })
           owned.push(captured)
+        } catch (error) {
+          const location = sourcePath(
+            member.path + (error instanceof CheckError && error.path ? '/' + error.path : ''),
+          )
+          if (error instanceof PrivatePackageSourceError)
+            throwPrivateWorkspaceSourceError({ code: error.sourceCode }, location)
+          if (error instanceof CheckError && error.code === 'PACKAGE_SYMLINK')
+            throwPrivateWorkspaceSourceError({ code: 'ELOOP' }, location)
+          throw error
         } finally {
           await directory.close()
         }
@@ -287,31 +367,51 @@ async function capture(
         !Buffer.from(existing.bytes ?? (await existing.source!.read(existing.path!))).equals(bytes)
       )
         changed()
-      if (!Buffer.from(await readPatch(root.handle, path)).equals(bytes)) changed()
+      if (!Buffer.from(await readPatch(root.handle, path, sourcePath)).equals(bytes)) changed()
     }
     // Verify metadata and membership again after the byte capture. A changed
     // local dependency never qualifies for old admitted-execution reuse.
-    if (JSON.stringify(paths) !== JSON.stringify(await discover(root.handle, patterns, signal)))
+    if (
+      JSON.stringify(paths) !==
+      JSON.stringify(await discover(root.handle, patterns, signal, sources, sourcePath))
+    )
       changed()
-    if (!Buffer.from((await readOptional(root.handle, 'package.json')) ?? []).equals(rootBytes))
+    if (
+      !Buffer.from(
+        (await readOptional(root.handle, 'package.json', MANIFEST_BYTES, manifestPath())) ?? [],
+      ).equals(rootBytes)
+    )
       changed()
-    const currentLock = await readOptional(root.handle, 'bun.lock', 2 * MANIFEST_BYTES)
+    const currentLock = await readOptional(
+      root.handle,
+      'bun.lock',
+      2 * MANIFEST_BYTES,
+      sourcePath('bun.lock'),
+    )
     if (
       (lock === undefined) !== (currentLock === undefined) ||
       (lock !== undefined && !Buffer.from(lock).equals(currentLock!))
     )
       changed()
     for (const member of members) {
-      const directory = await openBeneath(root.handle, member.path)
+      const directory = await sources.openDirectory(member.path)
       try {
         if (
-          !Buffer.from((await readOptional(directory, 'package.json')) ?? []).equals(member.bytes)
+          !Buffer.from(
+            (await readOptional(
+              directory,
+              'package.json',
+              MANIFEST_BYTES,
+              manifestPath(member.path),
+            )) ?? [],
+          ).equals(member.bytes)
         )
           changed()
       } finally {
         await directory.close()
       }
     }
+    await sources.verify()
     await root.verify()
     const files = Object.freeze(
       [...records]
@@ -452,6 +552,8 @@ async function discover(
   root: FileHandle,
   patterns: readonly string[],
   signal: AbortSignal,
+  sources: PrivateWorkspaceSourceRoots,
+  sourcePath: (path: string) => string,
 ): Promise<string[]> {
   const results: string[] = []
   let count = 0
@@ -467,9 +569,9 @@ async function discover(
       if (!patterns.some((pattern) => !pattern.startsWith('!') && couldContain(pattern, childPath)))
         continue
       if (entry.isSymbolicLink())
-        fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace package paths must not traverse symlinks')
+        throwPrivateWorkspaceSourceError({ code: 'ELOOP' }, sourcePath(childPath))
       if (!entry.isDirectory()) continue
-      const child = await openBeneath(directory, entry.name)
+      const child = await sources.openChild(directory, path, entry.name)
       try {
         if (matches(patterns, childPath)) {
           if (results.length >= MAX_MEMBERS)
@@ -486,30 +588,61 @@ async function discover(
   return results.sort(comparePathBytes)
 }
 
-async function openBeneath(root: FileHandle, path: string): Promise<FileHandle> {
+async function openBeneath(
+  root: FileHandle,
+  path: string,
+  sourcePath: (path: string) => string,
+): Promise<FileHandle> {
   validateLogicalPath(path)
   let current = root
+  let location = ''
+  const opened: FileHandle[] = []
+  const failures: unknown[] = []
+  let result: FileHandle | undefined
   try {
     for (const part of path.split('/')) {
-      const next = await openPrivateSourceChild(
+      location = location === '' ? part : location + '/' + part
+      current = await openPrivateSourceChild(
         current,
         part,
         constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
       )
-      if (current !== root) await current.close()
-      current = next
+      opened.push(current)
     }
-    return current
-  } catch {
-    if (current !== root) await current.close()
-    fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace directory is missing or unsafe')
+    result = opened.pop()!
+  } catch (error) {
+    try {
+      throwPrivateWorkspaceSourceError(error, sourcePath(location))
+    } catch (failure) {
+      failures.push(failure)
+    }
   }
+  for (const handle of opened) {
+    try {
+      await handle.close()
+    } catch (error) {
+      failures.push(error)
+    }
+  }
+  if (failures.length) {
+    if (result !== undefined) {
+      try {
+        await result.close()
+      } catch (error) {
+        failures.push(error)
+      }
+    }
+    if (failures.length === 1) throw failures[0]
+    throw new AggregateError(failures, 'workspace patch directory cleanup failed')
+  }
+  return result!
 }
 
 async function readOptional(
   directory: FileHandle,
   name: string,
   maximum = MANIFEST_BYTES,
+  sourcePath = name,
 ): Promise<Uint8Array | undefined> {
   let handle: FileHandle
   try {
@@ -520,7 +653,7 @@ async function readOptional(
     )
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
-    fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace metadata is unreadable or unsafe')
+    throwPrivateWorkspaceSourceError(error, sourcePath)
   }
   try {
     const before = await handle.stat({ bigint: true })
@@ -547,12 +680,16 @@ async function readOptional(
   }
 }
 
-async function readPatch(root: FileHandle, path: string): Promise<Uint8Array> {
+async function readPatch(
+  root: FileHandle,
+  path: string,
+  sourcePath: (path: string) => string,
+): Promise<Uint8Array> {
   const parts = path.split('/')
   const name = parts.pop()!
-  const directory = parts.length === 0 ? root : await openBeneath(root, parts.join('/'))
+  const directory = parts.length === 0 ? root : await openBeneath(root, parts.join('/'), sourcePath)
   try {
-    const bytes = await readOptional(directory, name)
+    const bytes = await readOptional(directory, name, MANIFEST_BYTES, sourcePath(path))
     if (bytes === undefined)
       fail('PACKAGE_BUN_WORKSPACE_INVALID', 'a declared workspace patch is missing')
     return bytes

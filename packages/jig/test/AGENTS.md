@@ -5,6 +5,7 @@
 `portable/jig-version.test.ts` checks exact requirement values, captured metadata and contributor identification.
 `portable/built-authoring.test.ts` checks the actual public and evaluator authoring bundles after building Jig.
 `portable/bun-workspace.test.ts` checks workspace capture, including unrelated external patterns and selected-root containment.
+Explicit source selections retain dependency membership, aggregate limits, immutable bytes and directory replacement checks.
 
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
 `portable/jig-development-build.test.ts` exercises the genuine launcher against matching, changed and incomplete contributor builds.
@@ -380,6 +381,10 @@ mount refusal, including declaration reads and freshness after a new bind mount
 in the fixture-owned user and mount namespace.
 The freshness fixture maps namespace root to the unprivileged host user for util-linux mount authorization.
 Only that namespace retains `CAP_SYS_ADMIN` for the post-capture mount and unmount.
+Its workspace cases compare ordinary and explicitly selected mounted roots through actual capture.
+They check application prefixes, dependency roots, protected sources, repeated directory identity, nested mounts and mount identity changes.
+The local Bun consumer executes copied captured bytes after visible source changes.
+That consumer establishes captured dependency usability, not Jig admission or native Run qualification.
 The installed composition case uses a real Agent-contract decision task, code
 child and SDK channels. `portable/markdown-runtime.test.ts` checks compilation
 and template inputs without substituting a Run context.
@@ -436,6 +441,9 @@ review successfully without altering the authored lock. Preserve the prior
 approval on refusal and require successful review after each repair.
 It also checks non-default registry refusals identify the workspace lock and do
 not disclose its URL.
+Its initial reviews select a dependency source root relative to the CLI working directory.
+Member and nested applications retain a distinct project argument.
+Later reviews omit the selection and Runs consume retained bytes without it.
 
 Keep initial registry preparation and patch-pinning checks intact.
 After those checks, author and repair locks using only local workspace dependencies.

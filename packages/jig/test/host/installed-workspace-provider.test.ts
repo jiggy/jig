@@ -44,7 +44,7 @@ for (const location of ['member', 'root', 'nested'] as const) {
     const project = rootApplication ? directory : join(directory, 'apps/consumer')
     const putApp = (path: string, value: unknown) =>
       put(rootApplication ? path : `apps/consumer/${path}`, value)
-    const run = async (args: string[], interrupt = false) => {
+    const run = async (args: string[], interrupt = false, currentDirectory = project) => {
       const commandTiming = startHostTestTiming(
         'workspace',
         args[0] === 'review'
@@ -60,7 +60,7 @@ for (const location of ['member', 'root', 'nested'] as const) {
         NO_COLOR: '1',
       })
       const child = Bun.spawn([cli, ...args], {
-        cwd: project,
+        cwd: currentDirectory,
         env,
         stdin: 'ignore',
         stdout: 'pipe',
@@ -186,7 +186,19 @@ for (const location of ['member', 'root', 'nested'] as const) {
       await put('packages/echo/FLOW.ts', peer)
       await put('packages/echo/FLOW.contract.json', contract)
       setupTiming()
-      const review = await run(['review', '--yes', '--allow-resolution-network'])
+      // Source selections are relative to the CLI cwd, independently of its project argument.
+      const review = await run(
+        [
+          'review',
+          rootApplication ? '.' : 'apps/consumer',
+          '--source-root',
+          'packages',
+          '--yes',
+          '--allow-resolution-network',
+        ],
+        false,
+        directory,
+      )
       expect(review.exit, review.stdout + review.stderr).toBe(0)
       const result = await run([
         'run',

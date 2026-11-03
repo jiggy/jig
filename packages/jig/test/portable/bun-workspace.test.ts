@@ -3,11 +3,22 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  open,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { requirePrivateBunLockPolicy } from '../../src/internal/bun-native-lock-policy.js'
 import { decodePrivateBunPreparedResult } from '../../src/internal/bun-native-preparation.js'
+import { PRIVATE_BUN_PREPARATION_LIMITS } from '../../src/internal/bun-native-preparation-protocol.js'
 import { capturePrivateBunPreparationOutput } from '../../src/internal/bun-preparation-output.js'
 import { capturePrivateBunWorkspace } from '../../src/internal/bun-workspace-capture.js'
 import { privatePackageAliasText } from '../../src/internal/package-aliases.js'
@@ -15,6 +26,7 @@ import {
   projectError,
   scopePrivatePackagePlanningError,
 } from '../../src/internal/project-session-controller.js'
+import { openPrivateWorkspaceSourceRoots } from '../../src/internal/workspace-source-roots.js'
 import {
   captureOpenedPackageDirectory,
   capturePackageDirectory,
@@ -126,11 +138,12 @@ async function fixture(
         maximumBytes: 3 * 1024 * 1024,
       })
     : await capturePackageDirectory(join(root, target))
-  const capture = () =>
+  const capture = (sourceRoots?: readonly string[]) =>
     capturePrivateBunWorkspace({
       projectRoot: project,
       packagePath: rootApplication ? '' : 'flows/work',
       captured: source,
+      sourceRoots,
       signal: new AbortController().signal,
     })
   return {
@@ -212,6 +225,122 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
       ),
   )
 }
+test('explicit workspace roots preserve dependency selection and captured identity', async () => {
+  const value = await fixture()
+  let ordinary: Awaited<ReturnType<typeof value.capture>>
+  let selected: Awaited<ReturnType<typeof value.capture>>
+  try {
+    ordinary = await value.capture()
+    selected = await value.capture([join(value.root, 'libs')])
+    expect(selected).toBeDefined()
+    expect(selected!.captured.digest).toBe(ordinary!.captured.digest)
+    expect(selected!.selected).toEqual(ordinary!.selected)
+    expect(selected!.captured.files).toEqual(ordinary!.captured.files)
+    expect(selected!.captured.files.map(({ path }) => path)).not.toContain('libs/unrelated/secret')
+    expect(selected!.captured.files.map(({ path }) => path)).not.toContain(
+      'libs/helper/private-note',
+    )
+  } finally {
+    await selected?.captured.dispose()
+    await ordinary?.captured.dispose()
+    await value.dispose()
+  }
+})
+
+for (const mode of [
+  'outside',
+  'missing',
+  'file',
+  'symlink',
+  'duplicate',
+  'workspace',
+  'unused',
+  'resource',
+  'count',
+] as const) {
+  test(`operator workspace roots reject ${mode} selection`, async () => {
+    const value = await fixture()
+    try {
+      const helper = join(value.root, 'libs/helper')
+      const paths = {
+        outside: [dirname(value.root)],
+        missing: [join(value.root, 'libs/missing')],
+        file: [join(value.root, 'libs/leaf/index.js')],
+        symlink: [join(value.root, 'libs/alias')],
+        duplicate: [helper, helper],
+        workspace: [value.root],
+        unused: [join(value.root, 'unused')],
+        resource: [join(helper, 'dist')],
+        count: Array.from({ length: 33 }, (_, index) => join(value.root, `selected-${index}`)),
+      }[mode]
+      if (mode === 'symlink') await symlink(helper, paths[0]!)
+      if (mode === 'unused') await mkdir(paths[0]!)
+      let failure: unknown
+      try {
+        const captured = await value.capture(paths)
+        await captured?.captured.dispose()
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({
+        code:
+          mode === 'missing'
+            ? 'PACKAGE_BUN_SOURCE_ROOT_MISSING'
+            : 'PACKAGE_BUN_SOURCE_ROOT_INVALID',
+      })
+      const scoped = scopePrivatePackagePlanningError(failure, 'flows/work')
+      expect(scoped).toBe(failure)
+      const projected = projectError(scoped, 'plan').toJSON()
+      if (mode === 'missing')
+        expect(projected.diagnostic).toEqual({
+          code: 'PACKAGE_BUN_SOURCE_ROOT_MISSING',
+          path: '../../libs/missing',
+        })
+      expect(JSON.stringify(projected)).not.toContain(value.root)
+    } finally {
+      await value.dispose()
+    }
+  })
+}
+
+test('selected workspace roots retain one aggregate source-byte budget', async () => {
+  const value = await fixture()
+  try {
+    const bytes = Buffer.alloc(Math.floor(PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes / 2) + 1)
+    await writeFile(join(value.root, 'libs/helper/dist/large.bin'), bytes)
+    await writeFile(join(value.root, 'libs/leaf/large.bin'), bytes)
+    await expect(
+      value.capture([join(value.root, 'libs/helper'), join(value.root, 'libs/leaf')]),
+    ).rejects.toMatchObject({ code: 'PACKAGE_BUN_INPUT_LIMIT' })
+  } finally {
+    await value.dispose()
+  }
+})
+
+test('selected workspace root verification refuses a replacement directory', async () => {
+  const value = await fixture()
+  const workspace = await openPrivateProjectRoot(value.root)
+  const project = await openPrivateProjectRoot(join(value.root, 'apps/demo'))
+  let selected: Awaited<ReturnType<typeof openPrivateWorkspaceSourceRoots>> | undefined
+  try {
+    const helper = join(value.root, 'libs/helper')
+    selected = await openPrivateWorkspaceSourceRoots({
+      workspaceRoot: workspace,
+      projectRoot: project,
+      sourceRoots: [helper],
+    })
+    await selected.verify()
+    await rename(helper, join(value.root, 'retired-helper'))
+    await mkdir(helper)
+    await expect(selected.verify()).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_CHANGED' })
+  } finally {
+    await selected?.dispose()
+    await project.dispose()
+    await workspace.dispose()
+    await value.dispose()
+  }
+})
+
 test('workspace capture follows declared transitive members, not installation links or unrelated source', async () => {
   const value = await fixture()
   try {
@@ -493,8 +622,22 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
           if (mode === 'oversized')
             await value.put('patches/fix.patch', 'x'.repeat(1024 * 1024 + 1))
           await expect(value.capture()).rejects.toMatchObject({
-            code:
-              mode === 'escape' ? 'PACKAGE_BUN_MANIFEST_PATCH' : 'PACKAGE_BUN_WORKSPACE_INVALID',
+            code: {
+              missing: 'PACKAGE_BUN_WORKSPACE_INVALID',
+              link: 'PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK',
+              // Darwin's O_NOFOLLOW_ANY reports ELOOP; Linux's directory open reports ENOTDIR.
+              'directory-link':
+                process.platform === 'darwin'
+                  ? 'PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK'
+                  : 'PACKAGE_BUN_WORKSPACE_SOURCE_INVALID',
+              oversized: 'PACKAGE_BUN_WORKSPACE_INVALID',
+              escape: 'PACKAGE_BUN_MANIFEST_PATCH',
+            }[mode],
+            ...(mode === 'link'
+              ? { path: '../../patches/fix.patch' }
+              : mode === 'directory-link'
+                ? { path: '../../patches' }
+                : {}),
           })
         } finally {
           await value.dispose()
@@ -518,7 +661,7 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
             const codes = {
               missing: 'PACKAGE_BUN_WORKSPACE_MISSING',
               version: 'PACKAGE_BUN_WORKSPACE_VERSION',
-              link: 'PACKAGE_BUN_WORKSPACE_INVALID',
+              link: 'PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK',
               export: 'PACKAGE_BUN_WORKSPACE_BUILD_REQUIRED',
               duplicate: 'PACKAGE_BUN_WORKSPACE_INVALID',
               escape: 'PACKAGE_BUN_WORKSPACE_INVALID',
@@ -546,7 +689,10 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
                 join(value.root, 'libs/leaf/oversize'),
                 Buffer.alloc(17 * 1024 * 1024),
               )
-            await expect(value.capture()).rejects.toMatchObject({ code: codes[mode] })
+            await expect(value.capture()).rejects.toMatchObject({
+              code: codes[mode],
+              ...(mode === 'link' ? { path: '../../libs/leaf/index.js' } : {}),
+            })
           } finally {
             await value.dispose()
           }

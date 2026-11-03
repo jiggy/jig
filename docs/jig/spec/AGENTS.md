@@ -71,6 +71,11 @@ execution evidence.
   application over standalone member declarations. Require direct membership of
   the selected package.
 
+  Explicit review source roots select additional directory boundaries for declared workspace members.
+  Resolve relative operands from the invocation directory. Never derive source authority from project declarations or earlier approvals.
+  Preserve bounded capture, native root qualification, and mount refusal inside captured packages and project Flow sources.
+  Safe diagnostics keep distinct mount, missing-source, link and access causes with project-relative locations.
+
   An application's own patterns cannot expand an outer root's members.
   Dependency lock formats follow the current pinned preparer's readers: version
   1 on Linux and versions 1/2 on Mac, without conversion or source-policy

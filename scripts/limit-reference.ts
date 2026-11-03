@@ -28,6 +28,10 @@ import {
   PRIVATE_DEFAULT_ROOT_RUN_TIMEOUT_MS,
   PRIVATE_MAX_ROOT_RUN_TIMEOUT_MS,
 } from '../packages/jig/src/internal/root-run-timeout-policy.js'
+import {
+  PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT,
+  PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES,
+} from '../packages/jig/src/internal/workspace-source-roots.js'
 import { JSON_1_LIMITS } from '../packages/jig/src/json.js'
 import {
   PACKAGE_1_LIMITS,
@@ -68,6 +72,7 @@ export const LIMIT_REFERENCE: readonly Group[] = [
       'internal/bun-native-preparation-protocol.ts',
       'internal/bun-native-preparation-budget.ts',
       'internal/bun-execution-layout.ts',
+      'internal/workspace-source-roots.ts',
     ],
     limits: [
       {
@@ -99,6 +104,14 @@ export const LIMIT_REFERENCE: readonly Group[] = [
       fixed(
         'Workspace members in execution layout',
         integer(PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS.members),
+      ),
+      fixed(
+        'Additional workspace source roots, per review',
+        integer(PRIVATE_WORKSPACE_SOURCE_ROOT_LIMIT),
+      ),
+      fixed(
+        'Each source-root operand and resolved absolute path',
+        `${integer(PRIVATE_WORKSPACE_SOURCE_ROOT_PATH_BYTES)} UTF-8 bytes`,
       ),
       fixed(
         'Dependency aliases in execution layout',

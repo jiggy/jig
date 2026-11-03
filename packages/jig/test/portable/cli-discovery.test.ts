@@ -2,7 +2,12 @@ import { expect, test } from 'bun:test'
 import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { main, privateCliPrepareArguments, privateCliRequiresHost } from '../../src/cli.js'
+import {
+  main,
+  privateCliPrepareArguments,
+  privateCliRequiresHost,
+  privateCliVerification,
+} from '../../src/cli.js'
 import {
   approvedTargets,
   cliShellWord,
@@ -58,6 +63,47 @@ test('selection without an approved entrypoint never guesses and validates optio
     expect(await readdir(root)).toEqual([])
   } finally {
     await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('review source roots use bounded repeatable operands before host acquisition', () => {
+  const repeated = [
+    'review',
+    './apps/demo',
+    '--source-root',
+    './packages/local library',
+    '--source-root',
+    './packages/another',
+    '--verification',
+    'strict',
+  ]
+  expect(privateCliRequiresHost(repeated)).toBe(true)
+  expect(privateCliVerification(repeated)).toBe('strict')
+  expect(
+    privateCliRequiresHost([
+      'review',
+      ...Array.from({ length: 32 }, (_, index) => ['--source-root', `../root-${index}`]).flat(),
+    ]),
+  ).toBe(true)
+  expect(privateCliRequiresHost(['review', '--source-root', `/${'a'.repeat(4095)}`])).toBe(true)
+  expect(privateCliRequiresHost(['review', '--source-root', './-library'])).toBe(true)
+  for (const args of [
+    ['review', '--source-root'],
+    ['review', '--source-root', ''],
+    ['review', '--source-root', '--yes'],
+    ['review', '--source-root', 'private-invalid-value\u0000'],
+    ['review', '--source-root', 'private-invalid-value\n'],
+    ['review', '--source-root', 'private-invalid-value\ud800'],
+    ['review', '--source-root', 'é'.repeat(2049)],
+    [
+      'review',
+      ...Array.from({ length: 33 }, (_, index) => ['--source-root', `../root-${index}`]).flat(),
+    ],
+    ['run', 'flow:flows/hello', '--source-root', '../library'],
+    ['inspect', '--source-root', '../library'],
+  ]) {
+    expect(privateCliRequiresHost(args)).toBe(false)
+    expect(() => privateCliVerification(args)).toThrow()
   }
 })
 
@@ -126,6 +172,7 @@ test('completion scripts contain only static shell code and read-only target loo
     expect(script).not.toContain('jig review')
     expect(script).not.toMatch(/\beval\b/)
     expect(script).toContain(shell === 'fish' ? '-l verification' : '--verification')
+    expect(script).toContain(shell === 'fish' ? '-l source-root' : '--source-root')
   }
   expect(completionScript('sh')).toBeUndefined()
   const check = Bun.spawn(['bash', '-n'], {
@@ -162,6 +209,33 @@ _jig
   ).toBe(0)
   expect(output).toBe(completionScript('bash')!)
   expect(privateCliRequiresHost(['completion', 'targets'])).toBe(false)
+})
+
+test('source-root completion preserves directory spaces without executing Jig', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'jig-source-root-completion-'))
+  try {
+    await mkdir(join(root, 'local library'))
+    await writeFile(join(root, 'local-file'), 'ordinary file')
+    const completion = Bun.spawn(['bash'], {
+      cwd: root,
+      stdin: new Blob([
+        completionScript('bash')!,
+        `
+COMP_WORDS=(jig review --source-root ./loc)
+COMP_CWORD=3
+_jig
+printf '%s\\n' "\${COMPREPLY[@]}"
+`,
+      ]),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    })
+    expect(await new Response(completion.stdout).text()).toBe('./local library\n')
+    expect(await completion.exited).toBe(0)
+    expect(await new Response(completion.stderr).text()).toBe('')
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
 })
 
 test('target discovery distinguishes unavailable alternatives from ready choices', () => {
