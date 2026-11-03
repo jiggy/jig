@@ -1176,30 +1176,19 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     parsed.project,
     runtime,
     async (session) => {
-      let plan: Awaited<ReturnType<ProjectSession['plan']>>
-      try {
-        plan = await privateProfileSpan('project-planning', () =>
-          session.plan({ lockMode: 'update' }),
-        )
-      } catch (error) {
-        if (
-          !(error instanceof ProjectAdministrationError) ||
-          error.diagnostic?.code !== 'JIG_REVIEW_AGENT_UNAVAILABLE' ||
-          !readiness?.selectedAcpUnavailable
-        )
-          throw error
-        runtime.progress.complete(true)
-        runtime.writeError(renderReviewAgentSetup(readiness, setupPresentation))
-        return 2
-      }
+      const plan = await privateProfileSpan('project-planning', () =>
+        session.plan({ lockMode: 'update' }),
+      )
       runtime.signal?.throwIfAborted()
       runtime.progress.complete(true)
       // A private injected host may return after observation. The CLI still
       // refuses before both unchanged success and admission.
-      if (readiness?.selectedAcpUnavailable) {
-        runtime.writeError(renderReviewAgentSetup(readiness, setupPresentation))
-        return 2
-      }
+      if (readiness?.selectedAcpUnavailable)
+        throw new ProjectAdministrationError(
+          'UNAVAILABLE',
+          'Selected ACP prerequisites are unavailable.',
+          { code: 'JIG_REVIEW_AGENT_UNAVAILABLE', path: 'jig.ts' },
+        )
       if (plan.state === 'unchanged') return 0
       runtime.writeOutput(
         `${(parsed.details ? plan.review.details : plan.review.text).trimEnd()}\n`,
@@ -1289,7 +1278,18 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
           }
         : {}),
     },
-  )
+  ).catch((error: unknown) => {
+    if (
+      !(error instanceof ProjectAdministrationError) ||
+      error.diagnostic?.code !== 'JIG_REVIEW_AGENT_UNAVAILABLE' ||
+      !readiness?.selectedAcpUnavailable
+    )
+      throw error
+    // Offer setup retry instructions only when no session-close failure was reported.
+    runtime.progress.complete(true)
+    runtime.writeError(renderReviewAgentSetup(readiness, setupPresentation))
+    return 2
+  })
   runtime.signal?.throwIfAborted()
   if (result === 0) {
     if (readiness?.readyTargets === 0)
@@ -2045,11 +2045,12 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     // Finish with the cause and recovery action, after any retained evidence.
     if (terminal.status !== 'succeeded')
       runtime.writeError(
-        renderRunFailure(
+        privateCliRunFailure(
           terminal,
           parsed.target,
           runDiagnostics.entries.some((entry) => entry.stderrBytes > 0),
           rootDispatched,
+          cleanupFailed,
         ),
       )
     if (cleanupFailed || fileFinalizationFailed || publicationFailed) return 2
@@ -2209,6 +2210,104 @@ export function privateCliCommandLifetimeMs(
   }
 }
 
+/** Private phase identity. Exception text never selects the combined-failure path. */
+class PrivateCliSessionCloseFailure extends AggregateError {
+  constructor(
+    readonly operationCompleted: boolean,
+    readonly operationFailure: unknown,
+    readonly closeFailure: unknown,
+  ) {
+    super(
+      operationCompleted ? [closeFailure] : [operationFailure, closeFailure],
+      'project session close failed',
+    )
+  }
+}
+
+const PROJECT_FAILURE_CAUSES: Readonly<Record<ProjectAdministrationError['code'], string>> = {
+  AUTHORITY_APPROVAL_REQUIRED: 'Resource authority requires explicit approval.',
+  INVALID_REQUEST: 'The project request was invalid.',
+  PROJECT_NOT_FOUND: 'The project could not be found.',
+  PROJECT_UNSAFE: 'The project could not be opened safely.',
+  PROJECT_STATE_INVALID: 'The retained project state was incompatible or damaged.',
+  INVALID_CANDIDATE: 'The project definition was invalid.',
+  LOCK_MISMATCH: 'The project lock did not match the reviewed state.',
+  PLAN_NOT_FOUND: 'The reviewed project plan was unavailable.',
+  STALE_PLAN: 'The reviewed project plan was stale.',
+  PROJECT_BUSY: 'The project was already in use.',
+  PROJECT_CLOSED: 'The project session was closed.',
+  UNAVAILABLE: 'Required project support was unavailable.',
+  INTERNAL: 'The host reported an internal failure.',
+}
+
+const ROOT_FAILURE_CAUSES: Readonly<Record<RootAdministrationError['code'], string>> = {
+  INVALID_REQUEST: 'The Run request was invalid.',
+  SUBMISSION_CONFLICT: 'The Run request conflicted with existing work.',
+  RUN_NOT_FOUND: 'The Run could not be found.',
+  PROJECT_BUSY: 'The project was already in use.',
+  PROJECT_CLOSED: 'The project session was closed.',
+  UNAVAILABLE: 'Required execution support was unavailable.',
+  INTERNAL: 'The host reported an internal failure.',
+}
+
+const CLI_FAILURE_CAUSES: Readonly<Record<string, string>> = {
+  JIG_USAGE: 'The command arguments were invalid.',
+  JIG_COMMAND_UNAVAILABLE: 'The command could not finish.',
+  JIG_INSPECTION_UNAVAILABLE: 'The approved snapshot could not be read safely.',
+  JIG_TARGET_NOT_FOUND: 'The selected target was not in the approved revision.',
+  JIG_AUTHORITY_APPROVAL_REQUIRED: 'Resource authority requires explicit approval.',
+  JIG_APPROVAL_REQUIRED: 'The project revision requires approval.',
+  JIG_WEB_UNAVAILABLE: 'The local web display could not be prepared.',
+  JIG_TUI_UNAVAILABLE: 'The terminal display could not be prepared.',
+  JIG_RUN_INPUT_INVALID: 'The Run input was invalid.',
+  JIG_RUN_FILES_INVALID: 'The invocation files were invalid or unavailable.',
+  JIG_DISPLAY_BUNDLE_UNAVAILABLE: 'The selected display bundle could not be retained.',
+  JIG_OUTPUT_INVALID: 'The output destination was invalid or unavailable.',
+  JIG_OUTPUT_EXISTS: 'The output destination already existed.',
+  JIG_DELIVERY_UNAVAILABLE: 'The result delivery owner was unavailable.',
+}
+
+function sessionFailureClassification(error: unknown): { code: string; cause: string } {
+  try {
+    const causes =
+      error instanceof ProjectAdministrationError
+        ? PROJECT_FAILURE_CAUSES
+        : error instanceof RootAdministrationError
+          ? ROOT_FAILURE_CAUSES
+          : error instanceof CliDiagnostic
+            ? CLI_FAILURE_CAUSES
+            : undefined
+    if (causes !== undefined) {
+      // A known class alone does not make a mutated code or accessor public data.
+      const code: unknown = Object.getOwnPropertyDescriptor(error, 'code')?.value
+      if (typeof code === 'string' && Object.hasOwn(causes, code))
+        return { code, cause: (causes as Readonly<Record<string, string>>)[code]! }
+    }
+  } catch {
+    // Arbitrary thrown values, including proxies, cannot break safe projection.
+  }
+  return { code: 'UNCLASSIFIED', cause: 'The cause could not be determined.' }
+}
+
+function renderSessionCloseFailure(error: PrivateCliSessionCloseFailure): string {
+  const operation = sessionFailureClassification(error.operationFailure)
+  const close = sessionFailureClassification(error.closeFailure)
+  return renderDiagnostic(
+    'JIG_CLEANUP_FAILED',
+    [
+      error.operationCompleted
+        ? 'Operation: completed. This does not establish execution success.'
+        : `Operation failure: ${operation.code}\n${operation.cause}`,
+      `Close failure: ${close.code}\n${close.cause}`,
+      'Cleanup could not be confirmed. Preserve the project state and any existing result.',
+      'Do not start new work or follow earlier retry advice until the existing work is settled.',
+      'If you saved an application ticket, observe that original attempt.',
+      'If no saved ticket or result is available, request recovery help from Jig maintainers before retrying.',
+      'Next step: https://jig.md/guide/results#when-cleanup-cannot-be-confirmed',
+    ].join('\n\n'),
+  )
+}
+
 async function withProjectSession<T>(
   project: string,
   runtime: CliRuntime,
@@ -2245,8 +2344,7 @@ async function withProjectSession<T>(
     failure = error
   }
 
-  let closeFailed = false
-  let closeFailure: unknown
+  let closeFailure: PrivateCliSessionCloseFailure | undefined
   try {
     runtime.progress.stopUpdates()
     runtime.progress.stage('Stopping remaining work and cleaning up')
@@ -2255,28 +2353,18 @@ async function withProjectSession<T>(
     if (runtime.signal?.aborted)
       runtime.progress.note('Cleanup complete. The command remains interrupted.')
   } catch (error) {
-    closeFailed = true
-    closeFailure = error
+    closeFailure = new PrivateCliSessionCloseFailure(completed, failure, error)
     onSettledCloseFailure?.()
     // Cleanup uncertainty must survive a missing terminal or broken stdout.
     // The callback enriches a result when available; it does not own this warning.
-    runtime.writeError(
-      renderDiagnostic(
-        'JIG_CLEANUP_FAILED',
-        'Cleanup could not be confirmed. Do not start new work until the existing work is settled. See https://jig.md/guide/results.',
-      ),
-    )
+    runtime.writeError(renderSessionCloseFailure(closeFailure))
   } finally {
     runtime.signal?.removeEventListener('abort', onAbort)
   }
 
-  if (!completed && closeFailed) {
-    throw new AggregateError([failure, closeFailure], 'project command and close both failed')
-  }
+  if (closeFailure !== undefined && (!completed || onSettledCloseFailure === undefined))
+    throw closeFailure
   if (!completed) throw failure
-  if (closeFailed) {
-    if (onSettledCloseFailure === undefined) throw closeFailure
-  }
   return result as T
 }
 
@@ -2474,13 +2562,9 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     )
     return error.code === 'CLEANUP_UNRESOLVED' || error.code === 'EXECUTION_UNCERTAIN' ? 2 : 1
   }
-  if (
-    error instanceof AggregateError &&
-    error.message === 'project command and close both failed'
-  ) {
-    renderFailure(error.errors[0], runtime)
-    return 2
-  }
+  // The phase diagnostic was emitted before propagation, including on interruption.
+  // Ordinary operation hints may suggest replay, so they do not apply here.
+  if (error instanceof PrivateCliSessionCloseFailure) return 2
   if (error instanceof CliDiagnostic) {
     runtime.writeError(renderDiagnostic(error.code, error.message))
     return error.exitCode
@@ -2875,12 +2959,19 @@ function rootError(code: RootAdministrationError['code']): {
   return { message: messages[code], exitCode: invalid ? 1 : 2 }
 }
 
-function renderRunFailure(
+export function privateCliRunFailure(
   terminal: Exclude<RootRunTerminal, { readonly status: 'succeeded' }>,
   target: RunTargetRef,
   hasRunDiagnostics = false,
   rootDispatched = true,
+  cleanupUnconfirmed = false,
 ): string {
+  if (cleanupUnconfirmed)
+    return renderDiagnostic(
+      terminal.code,
+      `${terminal.status === 'lost' ? 'Execution was lost.' : terminal.code === 'CANCELLED' ? 'Execution was cancelled.' : 'Execution failed.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nCleanup remains unconfirmed. Preserve the result and settle existing work before following any retry advice.\nNext step: https://jig.md/guide/results#when-cleanup-cannot-be-confirmed`,
+      terminal.status === 'lost' ? 'Execution lost' : 'Run failed',
+    )
   if (terminal.code === 'PROTOCOL_ERROR')
     return renderDiagnostic(
       'JIG_RUN_PROTOCOL_ERROR',

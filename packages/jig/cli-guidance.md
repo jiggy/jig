@@ -268,6 +268,13 @@ All selected domain requirements still apply.
   authoring failures identify the required root dialect when known and route
   unsupported keywords, references and limits to FLOW Schema/0.
 
+  Project session close failures retain separate operation and close classifications
+  in one `JIG_CLEANUP_FAILED` diagnostic. Use approved categories or `UNCLASSIFIED`.
+  Classify from trusted error types and allowlisted data properties, never exception text.
+  Preserve cleanup uncertainty and withhold operation retry instructions until settlement.
+  The results guide owns recovery with an original ticket and escalation without one.
+  A completed command operation does not establish a successful execution terminal.
+
   Never display rejected schema values or compiler exception text. Render
   host-only REVIEW_REQUIRED with `jig review` as the next action. Flow-supplied
   error details cannot establish that execution never started. Emphasize host

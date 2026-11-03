@@ -629,6 +629,28 @@ the terminal record and an already accepted checkpoint. It never exports unfinis
 Flow files. The trusted command's bounded settlement wait does not extend the
 Run deadline; forced termination still leaves unavailable evidence unavailable.
 
+### Operation and session-close failures
+
+When project session close fails, `JIG_CLEANUP_FAILED` MUST identify the operation and close outcomes in one diagnostic.
+If the operation also failed, label the classifications `Operation failure` and `Close failure` independently.
+Each classification MUST use an approved Jig error category or `UNCLASSIFIED` for an unknown cause.
+If the operation returned, label it `Operation: completed` without implying a successful Flow or application outcome.
+Arbitrary exception messages, stacks, nested causes, private paths, credentials and recovery tickets MUST remain private.
+An arbitrary object's `code` or `name` property cannot establish a public category.
+
+`JIG_CLEANUP_FAILED` MUST remain visible on writable stderr even when no authoritative terminal or usable stdout remains.
+A close failure establishes unconfirmed cleanup, without claiming that processes remain running or that external effects did not occur.
+The command exits 2 when session closure fails, including when the operation alone would select another exit code.
+Preserve an available execution terminal independently of the command's close failure.
+Do not fabricate an execution terminal when none is available.
+
+Combined recovery guidance MUST withhold operation-specific replay instructions while cleanup remains unconfirmed.
+It MUST direct applications with retained tickets to observe the original attempt.
+For callers without a usable packet or recovery identity, explain the supported recovery limit and preserve existing evidence.
+Never invent a recovery command or imply that new work settles the original invocation.
+The [cleanup recovery guide](../guide/results.md#when-cleanup-cannot-be-confirmed) owns the procedure and escalation path.
+These diagnostics do not add a review JSON envelope or change existing machine framing.
+
 ### Agent project initialization
 
 `jig init <directory> --agent codex|claude|pi` optionally authors a declared

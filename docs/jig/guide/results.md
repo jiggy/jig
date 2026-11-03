@@ -41,11 +41,61 @@ retained destination. Result-only targets return stdout by default. See
 | `REVIEW_REQUIRED` | Review the changed execution environment. Inspect the proposal. Approve the revision before explicitly starting a new Run. |
 | An input mismatch | Compare your input with the approved schema using `jig inspect <target>`. |
 | Failure with retained diagnostics | Read the reported cause and inspect any effects before starting new work. |
-| Missing terminal, uncertain effects or unconfirmed cleanup | Preserve the evidence and settle owned work before another action. |
+| Missing terminal, uncertain effects or unconfirmed cleanup | Follow [cleanup recovery](#when-cleanup-cannot-be-confirmed) before starting new work. |
 | A selected Agent prerequisite stops review | Follow [client-check recovery](agents.md#repair-a-client-check). |
 
 These steps do not grant authority to replay work. Cancellation cannot reverse a
 completed consequence or retract an accepted remote request.
+
+### When cleanup cannot be confirmed
+
+`JIG_CLEANUP_FAILED` means Jig could not confirm that owned work settled.
+It does not establish whether processes remain running or whether external effects occurred.
+
+The diagnostic labels `Operation failure` and `Close failure` separately when both fail.
+Each field contains an approved category or `UNCLASSIFIED` when the cause remains unknown.
+`Operation: completed` means the command operation returned before session close failed.
+It does not establish a successful Flow or application outcome.
+
+Preserve the original invocation's evidence before choosing another action:
+
+1. Keep its diagnostic codes, Jig version, command name, and approximate invocation time.
+2. Preserve `.jig`, `jig.lock`, existing output directories, and any application recovery record.
+3. If the original command still owns an attached terminal, request cancellation with Ctrl-C.
+4. Wait for its cleanup observation before considering new work.
+
+Cancellation acknowledgement and process exit do not establish complete cleanup.
+Do not delete project state, repeat the command, or select another output directory to bypass unresolved work.
+
+#### Applications with a saved ticket
+
+A ticket identifies the request captured by the application's `prepare` call.
+Durable applications save the complete prepared request before submission.
+Use that original ticket through `@jigging/jig/client` or `jig attempt`:
+
+| Operation | Recovery use |
+| --- | --- |
+| `lookup` | Read the existing attempt's execution and cleanup observations without advancing work. |
+| `cancel` | Request cancellation of that attempt, then observe its cleanup separately. |
+| `result` | Read retained output and artifact availability when present. |
+| `export` | Publish available retained bytes without executing the method again. |
+
+Interpret execution, cleanup, and retained-byte observations independently.
+Missing or expired history does not establish that execution never started.
+Keep tickets and request contents out of command arguments and public diagnostic reports.
+The [application execution contract](../spec/execution-client.md) supplies the complete request format and persistence example.
+
+#### Ordinary CLI runs without a ticket or packet
+
+The attempt interface requires the original ticket.
+Jig has no generic command to discover or force-clean an ordinary CLI invocation without that identity.
+`jig inspect` reads approved target information and cannot establish that this invocation settled.
+Saved-result inspection requires an existing packet and does not cancel work.
+
+If neither recovery identity nor usable packet is available, preserve the state and request a maintainer-directed recovery procedure.
+Report the bounded diagnostic codes and version without attaching private state or application data publicly.
+State that cleanup remains unconfirmed and that no usable result is available.
+Do not infer permission to replay from a missing result or an unknown cause.
 
 ### Check the approved target and input
 

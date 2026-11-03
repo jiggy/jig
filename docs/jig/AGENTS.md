@@ -85,10 +85,12 @@ use-case and orchestration hypotheses.
 - `orchestration-patterns.md` records candidate reusable methods.
 
 - `guide/results.md` owns execution, application outcome, delivery, cleanup,
-  failure diagnosis, and retained-state recovery. It distinguishes saved packets
-  from explicitly retained application views. Neither inspection starts execution. Agent setup recovery belongs in `guide/agents.md`. Settings and
-  appearance belong in `guide/configuration.md`. The quickstart links to results
-  after the first outcome.
+  failure diagnosis, and retained-state recovery.
+  It distinguishes saved packets from explicitly retained application views.
+  Neither inspection starts execution.
+  Cleanup recovery distinguishes original-ticket observation from escalation without a usable ticket or packet.
+  Settings and appearance belong in `guide/configuration.md`, and Agent setup recovery belongs in `guide/agents.md`.
+  The quickstart links to results after the first outcome.
 - `index.html` owns the standalone marketing page. `index.md` preserves its
   complete meaning in generated Markdown, including every example, method
   strategy, setup path, and qualification.

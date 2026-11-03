@@ -11,6 +11,9 @@
 It rejects changed checker source without executing that source.
 These checks grant no native execution or cleanup evidence.
 
+`portable/cli-session-failure.test.ts` checks phase-specific failure diagnostics through the private CLI seam.
+Its synthetic errors establish no native cleanup, artifact retention or installed-host evidence.
+
 - `portable/` owns source checks without native host admission or model
   credentials.
 - `linux/` owns Linux platform checks that can run in the ordinary source job.
