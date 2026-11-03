@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto'
 import { lstat, mkdir, readdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -15,7 +14,6 @@ const notices = [
   'LICENSES/CC-BY-4.0.txt',
   'LICENSES/MPL-2.0.txt',
 ]
-const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const posix = (path) => path.split(sep).join('/')
 const encodePath = (path) => path.split('/').map(encodeURIComponent).join('/')
 
@@ -177,7 +175,7 @@ async function validateSkill(root, name, references) {
   })
 }
 
-async function referenceFiles(root, name, references, manifestBytes) {
+async function referenceFiles(root, name, references) {
   const sources = new Map([
     ...references.map((source) => [source, source.slice(docsPrefix.length)]),
     ...notices.map((source) => [source, source]),
@@ -199,7 +197,6 @@ async function referenceFiles(root, name, references, manifestBytes) {
   }
 
   const files = new Map()
-  const records = []
   for (const [source, destination] of sources) {
     const bytes = inputs.get(source)
     let output = bytes
@@ -231,23 +228,7 @@ async function referenceFiles(root, name, references, manifestBytes) {
       output = Buffer.from(text)
     }
     files.set(destination, output)
-    records.push({ source, destination, sourceSha256: digest(bytes), outputSha256: digest(output) })
   }
-  files.set(
-    'provenance.json',
-    Buffer.from(
-      JSON.stringify(
-        {
-          version: 1,
-          repository: repositoryURL,
-          manifest: { source: manifestPath, sha256: digest(manifestBytes) },
-          files: records,
-        },
-        null,
-        2,
-      ) + '\n',
-    ),
-  )
   await validateSkill(root, name, files)
   return files
 }
@@ -301,7 +282,7 @@ export async function syncSkills({ root, check = false }) {
   const plans = []
   const changes = []
   for (const name of Object.keys(manifest.skills).sort()) {
-    const files = await referenceFiles(root, name, manifest.skills[name], manifestBytes)
+    const files = await referenceFiles(root, name, manifest.skills[name])
     const directory = join(root, 'skills', name, 'reference')
     const existing = await existingReferences(directory)
     const removed = [...existing.keys()].filter((path) => !files.has(path))

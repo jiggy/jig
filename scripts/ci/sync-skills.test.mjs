@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
 import { lstat, mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
@@ -102,22 +101,20 @@ test('synchronizes standalone references while preserving the skill, machine byt
     await readFile(join(output, 'spec/machine/package.json')),
     await readFile(join(root, 'docs/jig/spec/machine/package.json')),
   )
-  for (const path of [
+  const notices = [
     'LICENSES.md',
     'LICENSE.md',
     'PRICING.md',
     'LICENSES/Apache-2.0.txt',
     'LICENSES/CC-BY-4.0.txt',
     'LICENSES/MPL-2.0.txt',
-  ])
+  ]
+  for (const path of notices)
     assert.deepEqual(await readFile(join(output, path)), await readFile(join(root, path)))
-  const provenance = JSON.parse(await readFile(join(output, 'provenance.json'), 'utf8'))
-  assert.equal(provenance.checkoutRevision, undefined)
-  for (const file of provenance.files) {
-    const hash = (bytes) => createHash('sha256').update(bytes).digest('hex')
-    assert.equal(file.sourceSha256, hash(await readFile(join(root, file.source))))
-    assert.equal(file.outputSha256, hash(await readFile(join(output, file.destination))))
-  }
+  assert.deepEqual(
+    (await snapshot(output)).map(([path]) => path).sort(),
+    [...manifest.skills.jig.map((path) => path.slice('docs/jig/'.length)), ...notices].sort(),
+  )
   await rm(join(root, 'docs'), { recursive: true })
   assert.ok((await readFile(join(output, 'guide/create.md'), 'utf8')).includes('# Create'))
 })
@@ -141,6 +138,64 @@ test('check detects drift without writing and synchronization is idempotent', as
   assert.deepEqual(await syncSkills({ root }), [])
 })
 
+test('equivalent manifest formatting and ordering leave generated references unchanged', async (t) => {
+  const root = await fixture(t)
+  const output = join(root, 'skills/jig/reference')
+  await syncSkills({ root })
+  const original = await snapshot(output)
+  const equivalent = { skills: { jig: [...manifest.skills.jig].reverse() }, version: 1 }
+  await put(root, 'skills/references.json', JSON.stringify(equivalent, null, 2) + '\n')
+  assert.deepEqual(await syncSkills({ root, check: true }), [])
+  assert.deepEqual(await syncSkills({ root }), [])
+  assert.deepEqual(await snapshot(output), original)
+})
+
+test('independent edits to one document merge without generated conflicts or drift', async (t) => {
+  const root = await fixture(t)
+  const source =
+    '# Create\n\nBefore planning.\n\n' +
+    Array.from({ length: 12 }, (_, index) => `Unchanged guidance ${index}.\n`).join('\n') +
+    '\nBefore execution.\n'
+  const path = 'docs/jig/guide/create.md'
+  await put(root, path, source)
+  await syncSkills({ root })
+  const git = (...args) =>
+    execFileSync(
+      'git',
+      [
+        '-C',
+        root,
+        '-c',
+        'user.name=Test Author',
+        '-c',
+        'user.email=test@example.invalid',
+        '-c',
+        'commit.gpgsign=false',
+        ...args,
+      ],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: 10000 },
+    ).trim()
+  git('init', '-q')
+  git('add', '--all')
+  git('commit', '-qm', 'base references')
+  const base = git('rev-parse', 'HEAD')
+  for (const topic of ['planning', 'execution']) {
+    git('checkout', '-qb', topic, base)
+    await put(root, path, source.replace(`Before ${topic}.`, `After ${topic}.`))
+    await syncSkills({ root })
+    git('add', '--all')
+    git('commit', '-qm', `Update ${topic} guidance`)
+  }
+  git('merge', '--no-edit', 'planning')
+  const combined = source
+    .replace('Before planning.', 'After planning.')
+    .replace('Before execution.', 'After execution.')
+  assert.equal(await readFile(join(root, path), 'utf8'), combined)
+  assert.equal(await readFile(join(root, 'skills/jig/reference/guide/create.md'), 'utf8'), combined)
+  assert.equal(git('status', '--porcelain'), '')
+  assert.deepEqual(await syncSkills({ root, check: true }), [])
+})
+
 test('repairs deleted or edited outputs and removes stale references only inside its generated subtree', async (t) => {
   const root = await fixture(t)
   const output = join(root, 'skills/jig/reference')
@@ -148,6 +203,7 @@ test('repairs deleted or edited outputs and removes stale references only inside
   const skill = await readFile(join(root, 'skills/jig/SKILL.md'))
   await put(root, 'skills/jig/manual.txt', 'authored resource')
   await put(root, 'skills/jig/reference/stale/old.md', 'obsolete generated reference')
+  await put(root, 'skills/jig/reference/provenance.json', 'obsolete generated metadata')
   await put(root, 'skills/jig/reference/guide/create.md', 'manual drift')
   await rm(join(output, 'spec/package.md'))
   const reduced = structuredClone(manifest)
@@ -156,7 +212,9 @@ test('repairs deleted or edited outputs and removes stale references only inside
   await assert.rejects(syncSkills({ root, check: true }), /Skill references are stale/)
   const changed = await syncSkills({ root })
   assert.ok(changed.includes('skills/jig/reference/stale/old.md'))
+  assert.ok(changed.includes('skills/jig/reference/provenance.json'))
   await assert.rejects(lstat(join(output, 'stale')), { code: 'ENOENT' })
+  await assert.rejects(lstat(join(output, 'provenance.json')), { code: 'ENOENT' })
   await assert.rejects(lstat(join(output, 'spec/machine/package.json')), { code: 'ENOENT' })
   assert.match(await readFile(join(output, 'guide/create.md'), 'utf8'), /# Create/)
   assert.match(await readFile(join(output, 'spec/package.md'), 'utf8'), /# Package/)
