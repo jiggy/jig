@@ -1,0 +1,79 @@
+name: Generate pinned Mac artifact client lock
+
+on:
+  push:
+    branches: [work/ci-artifact-lock-20261103]
+
+permissions:
+  contents: read
+
+jobs:
+  generate-lock:
+    name: Generate and verify the isolated artifact client lock
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: '1.4.2'
+      - name: Generate the complete dependency lock with Bun 1.4.2
+        timeout-minutes: 2
+        run: |
+          set -eu
+          test "$(bun --version)" = '1.4.2'
+          mkdir "$RUNNER_TEMP/mac-cohort-client-generated"
+          node --input-type=module <<'NODE'
+          import { writeFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const manifest = {
+            name: 'jig-ci-mac-cohort-client',
+            private: true,
+            dependencies: { '@actions/artifact': '2.3.2' },
+          };
+          writeFileSync(join(process.env.RUNNER_TEMP, 'mac-cohort-client-generated', 'package.json'), `${JSON.stringify(manifest, null, 2)}\n`, { flag: 'wx' });
+          NODE
+          BUN_INSTALL_CACHE_DIR="$RUNNER_TEMP/mac-cohort-client-generate-cache" bun install --cwd "$RUNNER_TEMP/mac-cohort-client-generated" --ignore-scripts
+      - name: Verify a fresh frozen install and emit the exact generated files
+        timeout-minutes: 2
+        run: |
+          set -eu
+          mkdir "$RUNNER_TEMP/mac-cohort-client-verified"
+          cp "$RUNNER_TEMP/mac-cohort-client-generated/package.json" "$RUNNER_TEMP/mac-cohort-client-generated/bun.lock" "$RUNNER_TEMP/mac-cohort-client-verified/"
+          BUN_INSTALL_CACHE_DIR="$RUNNER_TEMP/mac-cohort-client-verify-cache" bun install --cwd "$RUNNER_TEMP/mac-cohort-client-verified" --frozen-lockfile --ignore-scripts
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { lstatSync, readFileSync } from 'node:fs';
+          import { createRequire } from 'node:module';
+          import { join } from 'node:path';
+          const generated = join(process.env.RUNNER_TEMP, 'mac-cohort-client-generated');
+          const verified = join(process.env.RUNNER_TEMP, 'mac-cohort-client-verified');
+          const require = createRequire(join(verified, 'package.json'));
+          const client = require('@actions/artifact/package.json');
+          assert.equal(client.name, '@actions/artifact');
+          assert.equal(client.version, '2.3.2');
+          assert.equal(typeof require('@actions/artifact').DefaultArtifactClient, 'function');
+          assert.deepEqual(JSON.parse(readFileSync(join(generated, 'package.json'), 'utf8')), {
+            name: 'jig-ci-mac-cohort-client',
+            private: true,
+            dependencies: { '@actions/artifact': '2.3.2' },
+          });
+          const files = ['package.json', 'bun.lock'].map(name => {
+            const path = join(generated, name);
+            assert.equal(lstatSync(path).isFile(), true);
+            const bytes = readFileSync(path);
+            assert.ok(bytes.length > 0 && bytes.length <= 256_000);
+            assert.deepEqual(readFileSync(join(verified, name)), bytes);
+            return { name, bytes, sha256: createHash('sha256').update(bytes).digest('hex') };
+          });
+          for (const { name, bytes, sha256 } of files) {
+            const base64 = bytes.toString('base64');
+            const chunks = Math.ceil(base64.length / 3072);
+            console.log(JSON.stringify({ event: 'mac-cohort-client-file-begin', name, bytes: bytes.length, sha256, chunks }));
+            for (let index = 0; index < chunks; index++) {
+              console.log(JSON.stringify({ event: 'mac-cohort-client-file-chunk', name, index, base64: base64.slice(index * 3072, (index + 1) * 3072) }));
+            }
+            console.log(JSON.stringify({ event: 'mac-cohort-client-file-end', name, sha256 }));
+          }
+          console.log(JSON.stringify({ event: 'mac-cohort-client-generation-verified', bun: '1.4.2', client: '2.3.2', files: files.length }));
+          NODE
