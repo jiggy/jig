@@ -191,6 +191,13 @@ export async function openPrivateWorkspaceSourceRoots(input: {
       throw new TypeError('workspace source child requires one leaf name')
     const logicalPath = logicalParentPath === '' ? name : `${logicalParentPath}/${name}`
     validateLogicalPath(logicalPath)
+    if (isProtectedProjectPath(name))
+      throw new PrivateBunWorkspaceError(
+        'invalid',
+        'PACKAGE_BUN_WORKSPACE_SOURCE_INVALID',
+        'workspace source paths must not traverse protected Jig state',
+        '--source-root',
+      )
     const selected = held.get(logicalPath)
     let child: FileHandle
     if (selected !== undefined) child = await duplicatePrivateDirectory(selected.handle)

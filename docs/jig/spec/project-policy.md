@@ -329,6 +329,9 @@ directory or contain several members. Selection MUST NOT expand membership,
 dependency selection, or captured file rules. Selecting the workspace root
 itself as an override MUST fail.
 
+Case-folded `.jig` descendants MUST be excluded at every depth.
+Explicit source roots, member patterns, package file selections, and patch paths naming protected components MUST fail.
+
 The already selected Jig application root supplies its own source boundary when
 workspace traversal reaches it. A separately mounted application requires no
 duplicate operand. Additional selected roots MAY cross directory mount
@@ -363,11 +366,14 @@ inspection MUST remain independent of live source roots.
 
 Library `files` paths and glob patterns select source when present, including
 `package.json`, README and license files. Otherwise ordinary package files are
-selected. `.git` and `node_modules` are excluded. Literal exported files must be
-present; Jig runs no author build. Workspace metadata is rechecked after source
-capture. Discovery is bounded to 256 members, 32,768 entries, and 32 levels;
-metadata is bounded to 1 MiB per manifest and 2 MiB for the root lock. Existing
-aggregate preparation limits apply to the captured workspace.
+selected. `.git`, `node_modules`, and case-folded `.jig` directories are excluded
+at every depth. Explicit protected paths in file selections or exports MUST fail.
+Literal exported files must be present. Jig runs no author build.
+
+Workspace metadata is rechecked after source capture. Discovery is bounded to
+256 members, 32,768 entries, and 32 levels. Metadata is bounded to 1 MiB per
+manifest and 2 MiB for the root lock. Existing aggregate preparation limits apply
+to the captured workspace.
 
 Bun installs the captured target with `--filter`, script execution disabled,
 and the supplied root lock frozen, or with explicitly permitted lock

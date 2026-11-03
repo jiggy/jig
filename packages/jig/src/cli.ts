@@ -1191,7 +1191,7 @@ async function executeReview(arguments_: readonly string[], runtime: CliRuntime)
     },
   }
   const result = await withProjectSession(
-    parsed.project,
+    resolve(runtime.currentDirectory, parsed.project),
     runtime,
     async (session) => {
       const plan = await privateProfileSpan('project-planning', () =>

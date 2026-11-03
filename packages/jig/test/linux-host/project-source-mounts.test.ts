@@ -102,6 +102,7 @@ for (const mode of [
   'nested',
   'file',
   'protected',
+  'protected-folded',
   'alias',
   'freshness',
 ] as const) {
@@ -144,22 +145,28 @@ for (const mode of [
           name: 'fixture-helper',
           version: '0.1.0',
           type: 'module',
-          files: ['index.js', 'data'],
+          files: mode === 'prefix' ? ['**/*'] : ['index.js', 'data'],
           exports: './index.js',
         })
         await put('packages/helper/index.js', "export const message = 'synthetic helper'\n")
         await put('packages/helper/data/value.json', '{"retained":true}\n')
+        if (mode === 'prefix' && name === 'workspace') {
+          await put('packages/helper/.jig/admission-secret', 'protected admission fixture state')
+          await put('packages/helper/data/.JiG/run-secret', 'protected Run fixture state')
+        }
         await put('packages/unrelated/package.json', { name: 'unrelated', version: '0.1.0' })
         await put('packages/unrelated/private-note', 'unrelated source must stay absent')
       }
       await cp(helper, join(base, '.jig'), { recursive: true })
+      if (mode === 'protected-folded')
+        await cp(helper, join(base, '.JiG'), { recursive: true })
       await mkdir(join(base, 'extra'))
       await writeFile(join(base, 'extra/value.json'), '{"retained":false}\n')
       const mountArgs =
         mode === 'freshness'
           ? ['--uid', '0', '--gid', '0', '--cap-add', 'CAP_SYS_ADMIN']
-          : mode === 'protected'
-            ? ['--ro-bind', join(base, '.jig'), helper]
+          : mode === 'protected' || mode === 'protected-folded'
+            ? ['--ro-bind', join(base, mode === 'protected' ? '.jig' : '.JiG'), helper]
             : mode === 'alias'
               ? ['--ro-bind', join(workspace, 'apps/demo'), helper]
               : mode === 'prefix'

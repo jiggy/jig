@@ -317,6 +317,73 @@ test('selected workspace roots retain one aggregate source-byte budget', async (
   }
 })
 
+for (const state of ['.jig', '.JiG'] as const) {
+  for (const selection of ['default', 'glob', 'explicit'] as const) {
+    test(`selected workspace roots protect ${state} with ${selection} package files`, async () => {
+      const value = await fixture()
+      let before: Awaited<ReturnType<typeof value.capture>>
+      let after: Awaited<ReturnType<typeof value.capture>>
+      try {
+        if (selection !== 'default')
+          await value.put('libs/leaf/package.json', {
+            name: 'leaf',
+            version: '0.1.0',
+            type: 'module',
+            exports: './index.js',
+            files: selection === 'glob' ? ['**/*'] : ['index.js', `data/${state}`],
+          })
+        const roots = [join(value.root, 'libs')]
+        if (selection !== 'explicit') before = await value.capture(roots)
+        const secrets = [
+          `libs/leaf/${state}/admission-secret`,
+          `libs/leaf/data/${state}/run-secret`,
+        ]
+        for (const path of secrets) await value.put(path, 'protected fixture state')
+        if (selection === 'explicit') {
+          await expect(value.capture(roots)).rejects.toMatchObject({
+            code: 'PACKAGE_BUN_WORKSPACE_INVALID',
+          })
+          return
+        }
+        after = await value.capture(roots)
+        expect(after!.captured.digest).toBe(before!.captured.digest)
+        expect(after!.captured.files).toEqual(before!.captured.files)
+        for (const path of secrets)
+          await expect(after!.captured.read(path)).rejects.toMatchObject({
+            code: 'PACKAGE_FILE_MISSING',
+          })
+      } finally {
+        await after?.captured.dispose()
+        await before?.captured.dispose()
+        await value.dispose()
+      }
+    })
+  }
+
+  test(`workspace capture refuses protected ${state} bytes in a pre-captured target`, async () => {
+    const value = await fixture()
+    const project = await openPrivateProjectRoot(join(value.root, 'apps/demo'))
+    let source: Awaited<ReturnType<typeof capturePackageDirectory>> | undefined
+    try {
+      await value.put(`${target}/data/${state}/admission-secret`, 'protected target state')
+      source = await capturePackageDirectory(join(value.root, target))
+      await expect(
+        capturePrivateBunWorkspace({
+          projectRoot: project,
+          packagePath: 'flows/work',
+          captured: source,
+          sourceRoots: [join(value.root, 'libs')],
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_INVALID' })
+    } finally {
+      await source?.dispose()
+      await project.dispose()
+      await value.dispose()
+    }
+  })
+}
+
 test('selected workspace root verification refuses a replacement directory', async () => {
   const value = await fixture()
   const workspace = await openPrivateProjectRoot(value.root)
@@ -599,18 +666,26 @@ test('workspace patches are immutable captured inputs, including patches inside 
   }
 })
 for (const [suiteCaseIndex, suiteCaseValue] of (
-  ['missing', 'link', 'directory-link', 'oversized', 'escape'] as const
+  ['missing', 'link', 'directory-link', 'oversized', 'escape', 'protected', 'protected-folded'] as const
 ).entries()) {
   test('workspace patch capture rejects %s' + ` (case ${suiteCaseIndex + 1})`, () =>
     Reflect.apply(
       async (mode) => {
         const value = await fixture()
         try {
+          const patchPath =
+            mode === 'escape'
+              ? '../outside.patch'
+              : mode === 'protected'
+                ? 'patches/.jig/fix.patch'
+                : mode === 'protected-folded'
+                  ? 'patches/.JiG/fix.patch'
+                  : 'patches/fix.patch'
           await value.put('package.json', {
             private: true,
             workspaces: ['apps/*/flows/*', 'libs/*'],
             patchedDependencies: {
-              'value@1.0.0': mode === 'escape' ? '../outside.patch' : 'patches/fix.patch',
+              'value@1.0.0': patchPath,
             },
           })
           await mkdir(join(value.root, 'patches'))
@@ -621,6 +696,8 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
           }
           if (mode === 'oversized')
             await value.put('patches/fix.patch', 'x'.repeat(1024 * 1024 + 1))
+          if (mode === 'protected' || mode === 'protected-folded')
+            await value.put(patchPath, 'protected fixture patch')
           await expect(value.capture()).rejects.toMatchObject({
             code: {
               missing: 'PACKAGE_BUN_WORKSPACE_INVALID',
@@ -632,6 +709,8 @@ for (const [suiteCaseIndex, suiteCaseValue] of (
                   : 'PACKAGE_BUN_WORKSPACE_SOURCE_INVALID',
               oversized: 'PACKAGE_BUN_WORKSPACE_INVALID',
               escape: 'PACKAGE_BUN_MANIFEST_PATCH',
+              protected: 'PACKAGE_BUN_MANIFEST_PATCH',
+              'protected-folded': 'PACKAGE_BUN_WORKSPACE_INVALID',
             }[mode],
             ...(mode === 'link'
               ? { path: '../../patches/fix.patch' }

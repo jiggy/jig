@@ -60,6 +60,9 @@ tests use genuine host capture through their own fixture entry.
   Bun workspace capture may switch at an exact operator-selected directory prefix to its pinned, qualified source root.
   `workspace-source-roots.ts` owns these review-only roots and their mount identity checks.
   The already selected application root can supply the same boundary when an ancestor workspace traverses it.
+
+  Root selection never authorizes case-folded `.jig` descendants.
+  Discovery and selected-package capture exclude protected state before opening it.
   Descendants keep the ordinary guard. Package contents cannot register roots or receive their host descriptors.
 
 - Provider credentials are host configuration and must not enter Flow input,

@@ -93,8 +93,8 @@
     {
       "source": "docs/jig/spec/project-policy.md",
       "destination": "spec/project-policy.md",
-      "sourceSha256": "a1da30d83c1704d234464b720f83a9b1eb64fa420767f7d02539de6f789d5acf",
-      "outputSha256": "576b2014421d816f98f94b0a3858786e860e81965749b9fbf273c1db05939a2c"
+      "sourceSha256": "f666785ec2765306b3ce9939dfa69b8b866526065e196ae4b2ba421b1ceaa540",
+      "outputSha256": "e3eee5cebe2299b750dbf39930a8b68d8150baff79bb279c5b31a907ad1a521f"
     },
     {
       "source": "docs/jig/build/http.md",

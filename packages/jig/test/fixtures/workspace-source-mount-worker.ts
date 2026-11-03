@@ -100,7 +100,7 @@ if (mode === 'freshness') {
     await project.dispose()
     await root.dispose()
   }
-} else if (mode === 'protected' || mode === 'alias') {
+} else if (mode === 'protected' || mode === 'protected-folded' || mode === 'alias') {
   await assert.rejects(capture(workspace, [helper]), (error: unknown) => {
     assert(error instanceof CheckError)
     assert.equal(error.code, 'PACKAGE_BUN_SOURCE_ROOT_INVALID')
@@ -125,6 +125,24 @@ if (mode === 'freshness') {
     assert(paths.includes('packages/unrelated/package.json'))
     assert(!paths.includes('packages/unrelated/private-note'))
     assert(!paths.some((path) => path.includes('node_modules')))
+    assert(!paths.some((path) => path.split('/').some((part) => part.toLowerCase() === '.jig')))
+    if (mode === 'prefix') {
+      for (const path of [
+        'packages/helper/.jig/admission-secret',
+        'packages/helper/data/.JiG/run-secret',
+      ])
+        await assert.rejects(admitted.workspace.captured.read(path), {
+          code: 'PACKAGE_FILE_MISSING',
+        })
+      const manifest = JSON.parse(await readFile(join(helper, 'package.json'), 'utf8'))
+      await writeFile(
+        join(helper, 'package.json'),
+        JSON.stringify({ ...manifest, files: ['**/*', 'data/.JiG'] }),
+      )
+      await assert.rejects(capture(workspace, [join(workspace, boundary)]), {
+        code: 'PACKAGE_BUN_WORKSPACE_INVALID',
+      })
+    }
     await writeFile(join(helper, 'index.js'), 'throw new Error("live helper must not run")\n')
     const prepared = join(base, 'prepared')
     for (const { path } of admitted.workspace.captured.files) {

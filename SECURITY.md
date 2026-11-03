@@ -162,6 +162,9 @@ own root. Additional roots must lie below the chosen Bun workspace and contain
 actual declared members. Selection preserves workspace membership and existing
 source and preparation limits.
 
+Capture excludes case-folded `.jig` descendants at every depth.
+Explicit selections naming protected paths are refused.
+
 Each additional directory uses the existing native file-root acquisition and
 qualified filesystem checks. Capture holds directory and mount identities and
 revalidates them before accepting source. Replaced roots, remounts, unsafe links,
