@@ -358,4 +358,4 @@ method quality or a release.
 
 See [project policy](project-policy.md), [CLI experience](https://jig.md/spec/cli-experience.md),
 [Run Checkpoint](https://jig.md/spec/run-checkpoint.md), [file guidance](../build/files.md) and
-[results and recovery](../build/results.md) for their respective boundaries.
+[results](../build/results.md) for their respective boundaries.

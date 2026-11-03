@@ -83,15 +83,7 @@ A missing resource or credential remains unavailable.
 Declaring one cannot manufacture it.
 A child can call the same configured Binding through an exact slot.
 
-## If the request fails
-
-| Observation | Next step |
-| --- | --- |
-| The named credential is unavailable | Supply it through the operator environment for review and execution. |
-| The response status is not 200 | Check the reviewed URL, credential, and remote service. The handler rejects that response. |
-| The response exceeds its grant | Inspect the expected document size before changing and reviewing `responseBytes`. |
-| A timeout or network failure follows possible dispatch | Inspect retained evidence before repeating work. The remote operation may have occurred. |
-| Cleanup is uncertain | Follow [Results and recovery](results.md). Do not automatically replay the request. |
+If the request fails, use [HTTP troubleshooting](../reference/troubleshooting.md#http-request-fails).
 
 ## Write an independently replaceable API client
 

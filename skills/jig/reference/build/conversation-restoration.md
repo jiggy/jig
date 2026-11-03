@@ -52,17 +52,12 @@ clean native exit, validated collection and complete cleanup, so accepting a
 close command or receiving the answer does not predict it. Forced closure cannot
 retain a session.
 
-Use `reason` to explain what happened without rerunning completed work:
-
-| Reason | Next step |
-| --- | --- |
-| `not-cleanly-closed` | Use the answer. Investigate why native shutdown needed termination. |
-| `missing-history` | Use the answer. Check that the installed native client supports the qualified history profile. |
-| `unsupported-history` | Use the answer. Compare the native version and history features with the [collection profile](../spec/finite-acp.md#retained-native-state). |
-| `capacity` | Keep the answer. Available snapshots are bounded and expire after 24 hours. |
-
+Use a `retained` final receipt only after the invocation settles.
 An unavailable receipt is not a reusable reference. Storage or cleanup errors
 remain invocation failures, not optional retention loss.
+
+For unavailable receipt reasons, see
+[retention troubleshooting](../reference/troubleshooting.md#conversation-state-is-not-retained).
 
 ## 2. Restore in an authorized invocation
 
@@ -125,12 +120,5 @@ defines the request and receipt.
 [Finite ACP](../spec/finite-acp.md#retained-native-state) defines native
 qualification, authorization and cleanup.
 
-## If retention or restoration does not complete
-
-Use a `retained` final receipt only after the invocation settles. An
-`unavailable` receipt leaves no reusable reference. Follow its reason table
-above. A failed restoration does not start a fresh conversation. Do not retry a
-reference after a failed claim. Storage and cleanup failures remain invocation
-failures.
-
-Follow [Results and recovery](results.md) for uncertain owned work.
+For a failed restoration, see
+[restoration troubleshooting](../reference/troubleshooting.md#conversation-restoration-fails).

@@ -231,6 +231,8 @@ executable. See the
 [selection rules](../spec/finite-acp.md#native-client-profiles) for the
 supported metadata and project exclusions.
 
+Pi requires its standalone 0.84.4 distribution, including `package.json` and the theme directory beside its executable.
+
 ### Codex
 
 Install Codex and sign in as the OS user running Jig, using
@@ -279,72 +281,7 @@ verification. A local HTTP server is not an accepted native Codex endpoint.
 The current adapter supplies a short-lived credential to the contained client.
 It does not give it your full authentication store or refresh credentials.
 
-## Repair a client check
-
-A selected ACP prerequisite failure stops the entire `jig review` before new
-approval, including an otherwise unchanged review. This applies in terminals,
-scripts and `--yes` use. It also applies when a code target is ready or input
-might avoid the selected Agent branch. An unselected missing client does not
-block review. Any earlier approved code and client remain unchanged. Run still
-performs its normal admission and environment checks.
-
-The error shows the cause, selected client, captured location and a complete
-retry command. Missing executable errors may also offer commands for detected
-alternatives. Detection does not confirm login or readiness. The command keeps
-your review options and applies the chosen client to all native Agent policies.
-Repeat its client flag on later reviews.
-
-Add `--details` for source provenance, complete installation guidance and
-affected recipient context. Its locations refer to captured source:
-
-- A verified client literal, when known.
-- Selection context for a computed expression.
-- The Binding file and logical slot, when no exact client line is known. Named
-  policies point to their captured JSON file and identify affected recipients.
-  The next review captures your edits afresh.
-
-Repair the selected client's installation or exported path override. A rejected
-`CODEX_PATH`, `CLAUDE_PATH` or `PI_PATH` is an override problem, not proof that
-the client is uninstalled. An explicit override does not fall back to `PATH`.
-Codex's supported npm and Volta layouts resolve to their native executable
-without running the launcher. Shell aliases and functions are not executables.
-An unsupported wrapper needs its underlying native file.
-
-Helper and other setup failures have their own repair guidance.
-
-Executable failures may list passively detected supported alternatives, labelled
-as executable detection only. They do not establish authentication,
-qualification or compatibility. To change clients permanently, edit the named
-policy or inline Binding shown by the diagnostic and review again. You may
-instead use an explicit [`jig review --agent codex`](agents.md#switching)
-proposal for every selected ACP policy. Preserve turn limits and choose
-model/retention changes deliberately. No interactive correction or automatic
-source write occurs.
-
-Retry guidance does not add networking or authority approval on your behalf.
-
-Review checks prerequisites without starting a Flow or calling a model. It may
-have prepared dependencies or performed separately requested contract generation
-before failure. No new approval is recorded. `--details` expands the retained
-observed report, discloses its bounds and identifies checks that did not finish.
-It does not run extra checks. `jig review --json` is unsupported.
-
-Run and inspection keep their existing machine-output options.
-
-
-An **installation** error means the executable or its required runtime files
-could not be verified. Use a supported Linux x86-64 installation on Linux, or a
-native installation matching your architecture on a qualified Mac. Pi requires
-its standalone 0.84.4 distribution, including `package.json` and the theme
-directory beside its executable. A **sandbox** error identifies Codex's separate
-helper check. Follow the host-specific instructions above. An unsupported
-**wrapper** requires selecting the underlying native executable with the
-appropriate absolute path override.
-
-Review cannot prove that a later native session or model call will succeed.
-After a client starts, use
-[execution failure recovery](results.md#recover-from-execution-failure). Do not
-repeat uncertain work to diagnose setup.
+If review rejects the selected client, follow [client-check troubleshooting](../reference/troubleshooting.md#agent-client-check-fails).
 
 ## Continue a conversation
 
@@ -405,7 +342,7 @@ If that review fails, the earlier approved code and client remain together.
 Newly edited code is not authorized with the old client.
 
 If the selected client fails review, follow
-[client-check recovery](#repair-a-client-check). The failed review does not
+[client-check recovery](../reference/troubleshooting.md#agent-client-check-fails). The failed review does not
 approve newly edited code or replace the earlier approved client.
 
 Choose a different ordinary Agent package in its Binding when switching between

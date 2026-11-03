@@ -155,15 +155,11 @@ again if you change the caller. If the initial turn is `blocked` or `limit`,
 this caller returns that turn without requesting a revision. A clean settlement
 does not turn that outcome into an answer.
 
-## If the tutorial does not complete
+Check the revised text against the supplied facts and correction. Application
+code owns factual validation.
 
-| Observation | Next action |
-| --- | --- |
-| Review stops at a selected client prerequisite | Follow [client-check recovery](agents.md#repair-a-client-check). No new approval exists. |
-| The initial turn is `blocked` or `limit` | Read that turn's output. This caller does not request a revision. |
-| A turn returns `cancelled` or `error` | Preserve the turn and settlement evidence. Follow [conversation control](conversation-control.md#handle-errors-and-observation-loss). |
-| Execution, delivery, or cleanup is uncertain | Use [Results and recovery](results.md). Do not automatically replay work. |
-| The revised text is incorrect | Check the supplied facts and correction. Application code owns factual validation. |
+For review refusals, failed turns, or uncertain settlement, see
+[conversation troubleshooting](../reference/troubleshooting.md#conversation-fails-or-loses-observation).
 
 ## Continue with a different task
 

@@ -1,15 +1,15 @@
 ---
-title: Results and recovery
-description: Read an execution result, diagnose failures, inspect saved evidence, and recover without replaying uncertain work.
+title: Results
+description: Read execution status, application outcomes, delivery, cleanup evidence, and saved results.
 ---
 
-# Results and recovery
+# Results
 
 Use the result to decide what your application can do next.
 Check execution, the method's answer, output delivery, and cleanup separately.
 The [quickstart](../start/index.md) shows a successful first invocation.
 
-## Read results and diagnose failures
+## Read an execution result
 
 | Fact | Question | Meaning |
 | --- | --- | --- |
@@ -35,69 +35,7 @@ operating system may clear that storage. Use `--out DIRECTORY` for a new
 retained destination. Result-only targets return stdout by default. See
 [file delivery](files.md#receive-one-packet) for destination requirements.
 
-## Choose the next action
-
-| Observed fact | Next step |
-| --- | --- |
-| The method returns `blocked` or `limit` | Read its output and reason before choosing further work. |
-| `REVIEW_REQUIRED` | Review the changed execution environment. Inspect the proposal. Approve the revision before explicitly starting a new Run. |
-| An input mismatch | Compare your input with the approved schema using `jig inspect <target>`. |
-| Failure with retained diagnostics | Read the reported cause and inspect any effects before starting new work. |
-| Missing terminal, uncertain effects or unconfirmed cleanup | Follow [cleanup recovery](#when-cleanup-cannot-be-confirmed) before starting new work. |
-| A selected Agent prerequisite stops review | Follow [client-check recovery](agents.md#repair-a-client-check). |
-
-These steps do not grant authority to replay work. Cancellation cannot reverse a
-completed consequence or retract an accepted remote request.
-
-### When cleanup cannot be confirmed
-
-`JIG_CLEANUP_FAILED` means Jig could not confirm that owned work settled.
-It does not establish whether processes remain running or whether external effects occurred.
-
-The diagnostic labels `Operation failure` and `Close failure` separately when both fail.
-Each field contains an approved category or `UNCLASSIFIED` when the cause remains unknown.
-`Operation: completed` means the command operation returned before session close failed.
-It does not establish a successful Flow or application outcome.
-
-Preserve the original invocation's evidence before choosing another action:
-
-1. Keep its diagnostic codes, Jig version, command name, and approximate invocation time.
-2. Preserve `.jig`, `jig.lock`, existing output directories, and any application recovery record.
-3. If the original command still owns an attached terminal, request cancellation with Ctrl-C.
-4. Wait for its cleanup observation before considering new work.
-
-Cancellation acknowledgement and process exit do not establish complete cleanup.
-Do not delete project state, repeat the command, or select another output directory to bypass unresolved work.
-
-#### Applications with a saved ticket
-
-A ticket identifies the request captured by the application's `prepare` call.
-Durable applications save the complete prepared request before submission.
-Use that original ticket through `@jigging/jig/client` or `jig attempt`:
-
-| Operation | Recovery use |
-| --- | --- |
-| `lookup` | Read the existing attempt's execution and cleanup observations without advancing work. |
-| `cancel` | Request cancellation of that attempt, then observe its cleanup separately. |
-| `result` | Read retained output and artifact availability when present. |
-| `export` | Publish available retained bytes without executing the method again. |
-
-Interpret execution, cleanup, and retained-byte observations independently.
-Missing or expired history does not establish that execution never started.
-Keep tickets and request contents out of command arguments and public diagnostic reports.
-The [application execution contract](../spec/execution-client.md) supplies the complete request format and persistence example.
-
-#### Ordinary CLI runs without a ticket or packet
-
-The attempt interface requires the original ticket.
-Jig has no generic command to discover or force-clean an ordinary CLI invocation without that identity.
-`jig inspect` reads approved target information and cannot establish that this invocation settled.
-Saved-result inspection requires an existing packet and does not cancel work.
-
-If neither recovery identity nor usable packet is available, preserve the state and request a maintainer-directed recovery procedure.
-Report the bounded diagnostic codes and version without attaching private state or application data publicly.
-State that cleanup remains unconfirmed and that no usable result is available.
-Do not infer permission to replay from a missing result or an unknown cause.
+Use [Troubleshooting](../reference/troubleshooting.md) for diagnostic steps and recovery procedures.
 
 ## Check the approved target and input
 
@@ -131,18 +69,8 @@ Inspection retains an approved review-client selection and its origin.
 
 See [client selection](agents.md#switching) for its review-only scope.
 
-An input mismatch uses the approved schema.
-If you changed source or schemas, review and approve those changes first.
-If the approved schema is correct, fix the input.
-For an `enum` error, use one of the declared values.
-
-Type errors report expected and received JSON types without printing rejected values.
-For example, `Expected string; received object.` requires a JSON string rather than an object.
-
-Use `jig <command> --help` for syntax and examples. Errors identify a
-project-relative location when available and suggest a safe next step. See
-[entrypoint configuration](../reference/configuration.md#project-entrypoint) for target
-selection.
+For rejected input, follow [input troubleshooting](../reference/troubleshooting.md#input-does-not-match-the-approved-target).
+See [entrypoint configuration](../reference/configuration.md#project-entrypoint) for target selection.
 
 ## Read diagnostics and machine output
 
@@ -171,71 +99,14 @@ colors and plain output. The
 [CLI experience contract](https://jig.md/spec/cli-experience.md) defines exact presentation
 requirements.
 
-## Handle interruption
+## Read an interrupted result
 
-Ctrl-C requests cancellation. Wait for cleanup before starting new work. When an
-authoritative terminal is available, Jig preserves its execution status, adds
-`command: {status: 'interrupted'}` and exits 2. Completion may have won the race
-before cancellation. An interrupted command can exit without JSON when no
-terminal or output connection remains. Scripts must handle that absence without
-automatic replay.
-
-## Recover from execution failure
-
-### The execution environment changed
-
-A `REVIEW_REQUIRED` diagnostic means the current execution environment differs from the approved revision.
-No Flow started for that Run.
-
-1. Run `jig review`.
-2. Inspect the proposed revision.
-3. Approve it before explicitly starting a new Run.
-
-A Jig rebuild, runtime change, Agent configuration change, or changed sandbox support can require review even when project source is unchanged.
-Machine output reports host-only `code: "REVIEW_REQUIRED"`, `details.reason: "EXECUTION_ENVIRONMENT_CHANGED"`, and `details.flowStarted: false`.
-Review distinguishes environment-only changes from source, prepared dependency, and permission changes.
-
-The retained combined fingerprint does not identify which individual historical
-component changed. Review states this evidence limit.
-
-### The host reports execution failure
-
-An `EXECUTION_FAILED` result with no captured diagnostic text does not establish
-whether the Flow started. The public result contains no more specific cause.
-Keep the command and diagnostic code for investigation and inspect any effects
-before starting new work.
-
-### A deadline expired
-
-A `DEADLINE_EXCEEDED` result for a contained HTTP request or Project Command may
-name the worker phase. It may identify which configured limit capped the
-effective deadline: root Run, parent Flow, HTTP grant, or Project Command limit.
-This identifies the work and budget involved. It does not prove whether a remote
-request was accepted or whether a command had side effects. Inspect retained
-evidence before starting a new Run. Increasing `--timeout` helps only when the
-root Run was the limiting budget and the work can finish within the other
-limits.
-
-The diagnostic instead says the operation was not dispatched when both
-conditions apply:
-
-- The effective deadline elapsed before dispatch.
-- Jig has no unresolved owner for an earlier attempt with the same operation ID.
-  A retry with a retained prior owner is reported as uncertain after Jig settles
-  that owner. A deadline after launch also retains the uncertainty warning and
-  the host's collected cleanup evidence.
-
-### A protocol or result check failed
-
-A protocol error means the Flow did not complete Run/0 correctly.
-Check its SDK revision and stdout use.
-Inspect the result and any effects before running again.
-After changing source or dependencies, review the changes first.
-
-`INVALID_RESULT` can mean that a Flow's final value failed its declared contract
-or that a method rejected a result from one of its operations. Read the reported
-cause before changing a schema. For example, an Agent method can reject an HTTP
-provider response while the Flow's own result contract is unchanged.
+After interruption, Jig preserves an available authoritative terminal's execution status.
+It adds `command: {status: 'interrupted'}` and exits 2.
+Completion may have won the race before cancellation.
+An interrupted command can exit without JSON when no terminal or output connection remains.
+Scripts must handle that absence without automatic replay.
+Follow [interruption recovery](../reference/troubleshooting.md#execution-is-interrupted) before deciding on further work.
 
 ## Reopen a saved result
 
@@ -302,25 +173,6 @@ Completeness and domain revision remain application claims.
 Currency is unknown without a current application revision.
 Closing inspection releases presentation captures while keeping the retained edition.
 
-When publication is unconfirmed, recover its original receipt before deciding to publish again:
-
-```sh
-jig views receipt --request PUBLICATION_ID --generation ARCHIVE_GENERATION --json
-```
-
-An accepted duplicate returns its original receipt and provenance without reinstalling removed views.
+For an unconfirmed publication, follow [receipt recovery](../reference/troubleshooting.md#view-publication-is-unconfirmed).
 Generation-checked removal and reset require explicit current conditions.
 The [archive contract](https://jig.md/spec/display-archive.md) defines capacity, evidence and recovery limits.
-
-## If retained state cannot be opened
-
-`PROJECT_STATE_INVALID` means `.jig` is incompatible with the current build or damaged.
-Reinstalling dependencies does not change that state.
-Preserve `.jig` and `jig.lock` for recovery.
-
-If cleanup is uncertain, recover owned work before replacing its state.
-Once prior work is confirmed stopped and cleaned up:
-
-1. Move `.jig` and `jig.lock` outside the project.
-2. Keep the source and dependency locks.
-3. Run `jig review` for fresh approval.

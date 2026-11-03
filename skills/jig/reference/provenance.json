@@ -3,38 +3,38 @@
   "repository": "https://github.com/jiggy/jig",
   "manifest": {
     "source": "skills/references.json",
-    "sha256": "769c5e901a7f33882c508f7193b23769337f53f8a2efa9fd4e1ca4d21d2c89b2"
+    "sha256": "ecdcffaf79a2221dcd2854dff01f407536bb8bf5cb6545da382e998ad4296d75"
   },
   "files": [
     {
       "source": "docs/jig/start/index.md",
       "destination": "start/index.md",
-      "sourceSha256": "31af91ee221861ddc0c9fa69d56f423d19a4678afcfded35b5eaa5cedc060e55",
-      "outputSha256": "f9d247970f9e136d426a6e6f30bde9209b93aa2d2b18b714b225017a81f7bfff"
+      "sourceSha256": "f9fae55fb381cb5435e9a87b927f6b5437b3fed3889e207d879e3ef7a104863e",
+      "outputSha256": "5842051287b983abfd59ddb7b4fb3581846ca92cfb55bf1baa6ecc1ed26f2ffb"
     },
     {
       "source": "docs/jig/start/application.md",
       "destination": "start/application.md",
-      "sourceSha256": "3e89ca7084d89e568f16933db3f57139906e490462db1b38ef88dcb745e5ada4",
-      "outputSha256": "9acde40c9511238cf81dce13a46d05292234bf1b1aa5917b9450523f22d152a8"
+      "sourceSha256": "36803bafed02de82937138fd33e40a7be647d1c1d3ae849a328f76c1ea521dbf",
+      "outputSha256": "e8aa3065055e7bb724ca4fea3c030de3a61c64b5e5d3446ae70a0df3ac856ba0"
     },
     {
       "source": "docs/jig/build/compose.md",
       "destination": "build/compose.md",
-      "sourceSha256": "bdcbc6bfcb93a349e430d859bd10a3a8f4e0cae70df7125e655d6e37b239c563",
-      "outputSha256": "dfb215048f241a152b8239e2b957ff3b34de870342e5488b813afb7f6b1f5b14"
+      "sourceSha256": "0d230695717fafdc80a6b2506ef944ed9a2e68d38847f14524b1b38db5733b38",
+      "outputSha256": "0c5b79a2c7c43e5cb7242e4ec6ffe111cfc2aa27d29d54dfc8e8f94c7189ee53"
     },
     {
       "source": "docs/jig/for-agents.md",
       "destination": "for-agents.md",
-      "sourceSha256": "8d972977202e4ccd30a8a3cc635de41ea64b034db7594bfddaf314e3654cc76a",
-      "outputSha256": "bb5db35b7689a97e652cb4d7ceb9ae2db4cbe5ca6cfac792b6996b124938c63e"
+      "sourceSha256": "038789b4ce4602c19bf6ba67225aab65898a6dfad0322803c781a52dacced9b2",
+      "outputSha256": "6ce65d19fe53e446ccc23d65d2b2ce777dceca1ee9dbdbd3f212866df4fdbd35"
     },
     {
       "source": "docs/jig/build/design.md",
       "destination": "build/design.md",
-      "sourceSha256": "792314dfda2cb554cd087ddcb8978957896c1b2488cec39ad73b1850a134caa6",
-      "outputSha256": "35531531906f64c36cd518f77ba6612ce74de29e201379fc2a5970b84fc16ea9"
+      "sourceSha256": "0f32009689bbb9c2b939a506d4aeb7372c040f5e1673c64242c6bae850bc35bb",
+      "outputSha256": "8567db8458ad35e66519d1efe7c1a82ef7bf7d0e870bfdb62fe4b6edbbcae403"
     },
     {
       "source": "docs/jig/spec/project-sdk.md",
@@ -45,14 +45,14 @@
     {
       "source": "docs/jig/build/dependencies.md",
       "destination": "build/dependencies.md",
-      "sourceSha256": "cf0c6a1e8fe4be99a1453a49e6a5f5cfe0d65daac1a076c30d09a37aa7e926c0",
-      "outputSha256": "cf0c6a1e8fe4be99a1453a49e6a5f5cfe0d65daac1a076c30d09a37aa7e926c0"
+      "sourceSha256": "1b07efabb33aa1b4654b07d2f10f2a893b2a252488872550ad1e8ccf3306f3af",
+      "outputSha256": "1b07efabb33aa1b4654b07d2f10f2a893b2a252488872550ad1e8ccf3306f3af"
     },
     {
       "source": "docs/jig/reference/configuration.md",
       "destination": "reference/configuration.md",
-      "sourceSha256": "4d5f3facf7d626b79a6ae3f571b7c0ec2198f9427072e9da2b2bde22ccc7412f",
-      "outputSha256": "ffb07e3cdcc13fbb69f99e931ea7e98813f7b48855a8d52f64754169adcaaa07"
+      "sourceSha256": "8fea1323273077ef99b423492fcce4ee4bdce37e25eb44995a6ff94adedc1503",
+      "outputSha256": "b2497fba10a2112c6a77b909b2a795c5bec23aa910d82d955e7669fe730b874e"
     },
     {
       "source": "docs/jig/understand/workflows.md",
@@ -63,8 +63,8 @@
     {
       "source": "docs/jig/build/agents.md",
       "destination": "build/agents.md",
-      "sourceSha256": "8c779d49953088a06c3f9217ba15b0287b5fe1fbd08ffcae1e06efc0f4e81544",
-      "outputSha256": "52376a5c95b5c2a450e469e74e8969137fee49c7905d4339ff5d5bddac7b9edc"
+      "sourceSha256": "25e328ed11d96698275a1472eb9c4212044d2320753e2cd7eed268b5134de9ab",
+      "outputSha256": "ac869e957a0b4991c389bf005d796368bd8e58d7eeea9c9193e1dbafe090841a"
     },
     {
       "source": "docs/jig/spec/agent-run.md",
@@ -75,20 +75,20 @@
     {
       "source": "docs/jig/build/agent-method.md",
       "destination": "build/agent-method.md",
-      "sourceSha256": "322a3a0ca50425f53f72efdcc429f79b02912cde3fbfd76ea0d3bbfa0e99dcbf",
-      "outputSha256": "2ec82ecb673943259da3ebbf163c798ab65eefee29c19a2fdc7fa3c48cdb361c"
+      "sourceSha256": "47433f0b04f090d980974be100931b66af3c2e0e2d8bfe6b8ea28802fd8b2ce0",
+      "outputSha256": "920d55f678c0bbfde9fb68f272b9f0e8ea5aef1556b0eda7fc772d1df3fd85e9"
     },
     {
       "source": "docs/jig/build/markdown.md",
       "destination": "build/markdown.md",
-      "sourceSha256": "1b1be2fd2c2940d14cebf13a6d43da804e4cb53701cf032a352ff1989c36d0cd",
-      "outputSha256": "48e7613104ed5c997ed5f1b5043b4d5f929cf6a3c9b03629cd4c761f598ff767"
+      "sourceSha256": "a4294542c3a413bdc295ca58d5ebf11533219a6acf07416ae935e092a9c15919",
+      "outputSha256": "801f6f6f47bf5cb8aa6987be3aa0887f2158550747c63268deb7a5f78d9cb91f"
     },
     {
       "source": "docs/jig/build/files.md",
       "destination": "build/files.md",
-      "sourceSha256": "c2220b9254a39521f26cc01811831f6d23a53b8ac24b36b938f83a7224dd479a",
-      "outputSha256": "8f15424dbbab0c9c64635c3090431fe32a9e8fbe1c882cd2bdaf8c06f3ba100e"
+      "sourceSha256": "a47a67387b572a8219722924c75804e2db3fca59faafefd5b4c9f03d9b44721c",
+      "outputSha256": "f05489525b5c8150b3aa270a4c00e355e3b537aa34a682db1c70a50310c3ebeb"
     },
     {
       "source": "docs/jig/spec/project-policy.md",
@@ -99,8 +99,8 @@
     {
       "source": "docs/jig/build/http.md",
       "destination": "build/http.md",
-      "sourceSha256": "ebc63c8b145426738fe5bea4ed0a5c30e5e6eb723e8daf51e609b065a10b1f27",
-      "outputSha256": "531b2ef86423cc8c90b485721987dbc4516655b405f028ca5c7ce50ceef9f65b"
+      "sourceSha256": "94bea9cfb34ded030dbab67aa8150ce54421644320f2b6e12ad50f056d95b98e",
+      "outputSha256": "499c56ca24f23a8e3237607a0cd0b6e0a3f24a662350f256e6f7e2dd4edcecd1"
     },
     {
       "source": "docs/jig/spec/http-request.md",
@@ -123,8 +123,8 @@
     {
       "source": "docs/jig/build/contracts.md",
       "destination": "build/contracts.md",
-      "sourceSha256": "ada28f6b0fe0700b8ff850697ea40c6950cba0435124fac632cb9d86154b9bd5",
-      "outputSha256": "f1f8581f810c5f62d9e98597171422c57c948cd7f2b9ef3dccf40aa3ad962566"
+      "sourceSha256": "a4a4e99a2faf0333004b16af44521b756a2ec103c933db2693652a47106155d7",
+      "outputSha256": "cc21d015a59c3d96b729e1666d6d8a2bbe8925a0f1b6b45373a145bb8c00cff2"
     },
     {
       "source": "docs/jig/spec/contract-authoring.md",
@@ -135,8 +135,8 @@
     {
       "source": "docs/jig/build/channels.md",
       "destination": "build/channels.md",
-      "sourceSha256": "4d05c408800e964d9bf6a11d9ef099ca1609bb1d3f216edba1fa1a29b82bc6a8",
-      "outputSha256": "a24187d023f85588303d3f5fbf6279d82ac2a281e849550defd2c0bacbf519db"
+      "sourceSha256": "90f48363e06a43bcdd4ccea69fd745f085a34887b35795542e32a319160ec7ca",
+      "outputSha256": "04d8d0ba873714161b7d66628db353d2cf1b095bf7b4f289251d7f99e863ceb2"
     },
     {
       "source": "docs/jig/spec/channels.md",
@@ -153,14 +153,14 @@
     {
       "source": "docs/jig/build/conversations.md",
       "destination": "build/conversations.md",
-      "sourceSha256": "4f66389f2e07d83877f9341461cbc6fb0ef110fc3908fa07bc3b5c097c33595f",
-      "outputSha256": "05e9009fee246427705ef79320064800c0479b289c9a48552701cd6c55bb0738"
+      "sourceSha256": "ce11cc8a0acbc48e3d9113de8bdb8f2da0d973fb59bea21fa4b1b7bd8338ec7b",
+      "outputSha256": "d9e49abf1e5691c9317ff27282df433e7e6160406e2da11e99d0d72d6c11f697"
     },
     {
       "source": "docs/jig/build/conversation-control.md",
       "destination": "build/conversation-control.md",
-      "sourceSha256": "0f61a579f67d5458131c178e5197d22b98b4f17a9948cf9f6c4aa6053c60d3c8",
-      "outputSha256": "51349b65206dd36cf76329ced04d9a8c047ad3645ef1a79ea8178cd4cf52010e"
+      "sourceSha256": "5443b6a4167f2b8e6c3e29e7cbd92ef8ba23c62cbe3747ed5370997b80ac7a9f",
+      "outputSha256": "90c0f053d35afd33788fc897ce41fe3cf86b72720c6e27d525ff0e7cf58b5b38"
     },
     {
       "source": "docs/jig/spec/finite-acp.md",
@@ -171,32 +171,38 @@
     {
       "source": "docs/jig/build/conversation-handoff.md",
       "destination": "build/conversation-handoff.md",
-      "sourceSha256": "22230d2898d98a3d98f9c504317ad52ec6c351146a1c66fbbe3e1082b32714d5",
-      "outputSha256": "ee7d5d69b66954ead91ba6fb6e5668161dafe9e72d94e2b2216d2de2adec940b"
+      "sourceSha256": "49fec69bd95dd8d0897a911353ddb1e450d490345699d6ff987593aed994d36d",
+      "outputSha256": "90ada9c3d239e162f41e9d83124b27aff854cb37c832f5fc290c397379426564"
     },
     {
       "source": "docs/jig/build/conversation-restoration.md",
       "destination": "build/conversation-restoration.md",
-      "sourceSha256": "184648da73097d85030c14cef9d0ef9197be63f0234f8f2cdfc2640df1b499b7",
-      "outputSha256": "f4b4c9c3ee4a8e38ebcc1cb433ad587dda128a7adbdb35f0d3c4f166e7ac9559"
+      "sourceSha256": "0df3412fbf3fc7052334682160f195cea82e2f87eb0912bb04da881f57f699f1",
+      "outputSha256": "f2c858767bf11dca926f814d65030fe9ebcb1d43bf6315881d5f96a2d0c154cb"
     },
     {
       "source": "docs/jig/reference/limits.md",
       "destination": "reference/limits.md",
-      "sourceSha256": "3cb0482da001704664d319c2e5d47f8ddd0be21b2782c8bf0867c753daa5914f",
-      "outputSha256": "3b746dae10c1ac19418f53cb70bd8553095b493e9e32ba05f2130b2f575240e1"
+      "sourceSha256": "e35150955c859f575d10cfb27879a682d1dc2f78141ee83e4d063628fff5b934",
+      "outputSha256": "39474f0714806355dd9c355ef8cc061671c9daa8dd694830715a828b573751eb"
     },
     {
       "source": "docs/jig/spec/execution-client.md",
       "destination": "spec/execution-client.md",
-      "sourceSha256": "d75f05ad679ab42f1d28838e054afad6e31a7d06e403e1fd31520d342753002f",
-      "outputSha256": "5d37c547ed6520a126d6bfd7eb93208b186c4b8cebe62308a9cdd1cfa1167d93"
+      "sourceSha256": "374e740496d7e95013536f0693595d51b8f9753d5076fdf7d89b0454eb83d38b",
+      "outputSha256": "4c020396a5afb2e77ec2be444e883600425442e2b4ffa6bb59d1869b85b5cfbd"
     },
     {
       "source": "docs/jig/build/results.md",
       "destination": "build/results.md",
-      "sourceSha256": "e501e44a50ca70d54fb793173595e1869e584eaf1c86e9ea91cc5f1add1ea4dc",
-      "outputSha256": "729cb76c07212a31cfea80ca4e2e840821291e2a6c56fe862c17365c53b59180"
+      "sourceSha256": "46fa08663d5fde4bcd781ab2e2f1c2e3a60aafd815fed240fa01215f5eff6ac5",
+      "outputSha256": "3e6e2f54f81c9de5e9f6a14bc8236ff12fd72e2fa7be8dd07f44ee9d69de36d6"
+    },
+    {
+      "source": "docs/jig/reference/troubleshooting.md",
+      "destination": "reference/troubleshooting.md",
+      "sourceSha256": "a286b1d53a329e957d554bc1742f9d715d5b1ea97cda0e9ad64b076112453420",
+      "outputSha256": "fbcb1074f28cf3ffcc06bb36b86f4662a53d9ef6553de6da0e60ed3c6de49bd8"
     },
     {
       "source": "docs/jig/spec/machine/jig-lock-1.schema.json",

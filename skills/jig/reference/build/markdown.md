@@ -47,7 +47,7 @@ The new output should contain `"Welcome!"`.
 A source edit does not change the approved version until you approve another review.
 
 If no Agent route is available, complete [Agent setup](agents.md) before another review.
-For interpretation or cleanup failures, inspect [Results and recovery](results.md) before repeating work.
+For interpretation or cleanup failures, use [Troubleshooting](../reference/troubleshooting.md#inputs-and-execution) before deciding on further work.
 
 ## Use prose and existing Skills
 

@@ -232,7 +232,7 @@ the new-preparation count or aggregate output allowance.
 The captured package store retains evidence from declined and superseded
 reviews. It performs no implicit garbage collection and offers no selective
 reclamation command. State deletion is not a capacity-recovery instruction.
-Follow [results and recovery](../build/results.md) when retained state prevents progress.
+Follow [retained-state troubleshooting](troubleshooting.md#retained-state-cannot-be-opened) when retained state prevents progress.
 
 Workspace discovery also bounds members, manifests, locks, patches, and tree
 traversal. See [workspace capture](../spec/project-policy.md#workspace-dependency-capture)

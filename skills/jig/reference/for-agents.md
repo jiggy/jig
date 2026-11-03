@@ -99,7 +99,7 @@ Package versions in source may be candidates awaiting publication.
 Keep generated answers distinct from execution evidence.
 Package names grant no permission.
 Preserve uncertainty after interruption or possible effects.
-Use [results and recovery](build/results.md) to choose the next step without automatically replaying work.
+Use [troubleshooting](reference/troubleshooting.md) to choose the next step without automatically replaying work.
 
 The site generates the index and bundle from public pages.
 It excludes internal repository work contracts.
