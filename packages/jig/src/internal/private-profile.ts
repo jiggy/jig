@@ -53,8 +53,12 @@ const failurePhases = {
   'child-finite-acp-cleanup': true,
   'project-plan': true,
   'project-apply': true,
+  'package-materialization-verification': true,
 } as const satisfies Record<
-  PrivateRootExecutionFailurePhase | 'project-plan' | 'project-apply',
+  | PrivateRootExecutionFailurePhase
+  | 'project-plan'
+  | 'project-apply'
+  | 'package-materialization-verification',
   true
 >
 
@@ -93,6 +97,30 @@ const failureCauses = new Set([
   'PROJECT_BUSY',
   'PROJECT_CLOSED',
   'PROJECT_UNSAFE',
+  'PACKAGE_MATERIALIZATION_MODE',
+  'PACKAGE_MATERIALIZATION_ALIAS',
+  'PACKAGE_MATERIALIZATION_DIGEST',
+  'PACKAGE_MATERIALIZATION_MODES',
+  'PACKAGE_MATERIALIZATION_IDENTITY',
+  'PACKAGE_SOURCE_CHANGED',
+  'PACKAGE_STAGE_CHANGED',
+  'PACKAGE_CAPTURE_UNAVAILABLE',
+  'PACKAGE_SOURCE_IO',
+  'PACKAGE_RESOURCE_EXHAUSTED',
+  'PACKAGE_SNAPSHOT_CLOSED',
+  'PACKAGE_SYMLINK',
+  'PACKAGE_SPECIAL_FILE',
+  'PACKAGE_CAPTURE_IO',
+  'PACKAGE_FILE_LIMIT',
+  'PACKAGE_FILE_MISSING',
+  'PACKAGE_HARDLINK',
+  'PACKAGE_LIMIT',
+  'PACKAGE_MOUNT',
+  'PACKAGE_PATH',
+  'PACKAGE_PATH_UTF8',
+  'PACKAGE_ROOT',
+  'PACKAGE_SOURCE_TOPOLOGY_UNSUPPORTED',
+  'PACKAGE_SOURCE_UNSUPPORTED',
   'PACKAGE_BUN_INPUT_LIMIT',
   'PACKAGE_BUN_LOCK_INVALID',
   'PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED',
