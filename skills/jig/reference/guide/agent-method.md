@@ -230,6 +230,10 @@ validate returned data locally and fail on unsupported responses.
 
 Neither establishes semantic correctness.
 
+Both APIs send `store: false` by default. Set `omitStore: true` in Binding
+settings for endpoints that reject this field. Omission does not establish the
+provider's data retention policy.
+
 HTTP grants default to a 256 KiB request and 1 MiB response. For larger explicit
 context or answers, change the reviewed HTTP slot. Set `requestBytes` up to 8
 MiB. Set `responseBytes` up to 12 MiB.

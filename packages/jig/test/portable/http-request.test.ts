@@ -145,6 +145,76 @@ describe('delegated HTTP policy and trusted transport', () => {
       canonicalJson(selectHttpGrants(first, route({ kind: 'http', ...policy, timeoutMs: 1000 }))),
     ).not.toEqual(canonicalJson(selected))
   })
+  test('omitting store preserves the reviewed HTTP body and credential policy', async () => {
+    const seen: unknown[] = []
+    const body = { model: 'chosen-model', max_completion_tokens: 16 }
+    const bodySchema = {
+      type: 'object',
+      properties: {
+        model: { type: 'string', enum: ['chosen-model'] },
+        max_completion_tokens: { type: 'integer', minimum: 1, maximum: 16 },
+        store: { type: 'boolean', enum: [false] },
+      },
+      required: ['model', 'max_completion_tokens', 'store'],
+      additionalProperties: false,
+    }
+    await endpoint(
+      async (request, response) => {
+        const chunks: Buffer[] = []
+        for await (const chunk of request) chunks.push(Buffer.from(chunk))
+        seen.push({
+          method: request.method,
+          path: request.url,
+          authorization: request.headers.authorization,
+          body: JSON.parse(Buffer.concat(chunks).toString()),
+        })
+        response.end('{}')
+      },
+      async (url) => {
+        const required = normalizeHttpGrant({
+          url: `${url}/exact?scope=completion`,
+          method: 'POST',
+          bearerEnv: 'TEST_TOKEN',
+          bodySchema,
+        })
+        const credentials = openPrivateHttpGrants({ TEST_TOKEN: 'private-test-token' })
+        const bearer = httpCredential(credentials, required)
+        expect(() => parseHttpRequest({ body, response: 'json' }, required)).toThrow()
+        await expect(
+          requestGrantedHttp({
+            grant: required,
+            bearer,
+            body: JSON.stringify(body),
+            response: 'json',
+          }),
+        ).rejects.toThrow()
+        expect(seen).toHaveLength(0)
+
+        const permitted = normalizeHttpGrant({
+          ...required,
+          bodySchema: { ...bodySchema, required: ['model', 'max_completion_tokens'] },
+        })
+        const request = parseHttpRequest({ body, response: 'json' }, permitted)
+        expect(request.grant).toEqual(permitted)
+        expect(JSON.parse(request.body!)).toEqual(body)
+        expect(Object.hasOwn(JSON.parse(request.body!), 'store')).toBe(false)
+        expect(
+          await requestGrantedHttp(
+            JSON.parse(Buffer.from(encodeHttpWorkerInput(request, bearer)).toString()),
+          ),
+        ).toEqual({ response: { status: 200, body: {} }, bodyBytes: 2 })
+        expect(seen).toEqual([
+          {
+            method: 'POST',
+            path: '/exact?scope=completion',
+            authorization: 'Bearer private-test-token',
+            body,
+          },
+        ])
+        expect(required.bodySchema).toEqual(bodySchema)
+      },
+    )
+  })
   test('bounds and closes policy, accepts neither ambient network nor malformed destinations', () => {
     const base = { url: 'https://example.org/', method: 'GET' }
     for (const value of [

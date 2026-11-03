@@ -15,7 +15,7 @@ export function prepareApiRequest(
   if (
     value === undefined ||
     Object.keys(value).some(
-      (key) => !['model', 'maxCompletionTokens', 'api', 'structuredOutput'].includes(key),
+      (key) => !['model', 'maxCompletionTokens', 'api', 'structuredOutput', 'omitStore'].includes(key),
     ) ||
     typeof value.model !== 'string' ||
     value.model.trim().length === 0 ||
@@ -34,6 +34,9 @@ export function prepareApiRequest(
     : 'prompt'
   if (structuredOutput !== 'prompt' && structuredOutput !== 'json-schema')
     throw new AgentMethodError('INVALID_INPUT', 'structuredOutput must be prompt or json-schema')
+  const omitStore = Object.hasOwn(value, 'omitStore') ? value.omitStore : false
+  if (typeof omitStore !== 'boolean')
+    throw new AgentMethodError('INVALID_INPUT', 'omitStore must be a boolean')
   const format =
     structuredOutput === 'json-schema' && prepared.request.responseSchema !== undefined
       ? {
@@ -50,7 +53,7 @@ export function prepareApiRequest(
           input: prepared.request.prompt,
           max_output_tokens: tokens,
           stream: false,
-          store: false,
+          ...(omitStore ? {} : { store: false }),
           ...(format === undefined ? {} : { text: { format } }),
         }
       : {
@@ -59,7 +62,7 @@ export function prepareApiRequest(
           max_completion_tokens: tokens,
           n: 1,
           stream: false,
-          store: false,
+          ...(omitStore ? {} : { store: false }),
           ...(format === undefined
             ? {}
             : {
@@ -197,7 +200,7 @@ function rejectedHttp(status: number, api: Api, body: unknown): never {
   const error = ordinaryRecord(ordinaryRecord(body)?.error)
   const parameters: Record<string, string> = {
     model: 'model',
-    store: 'endpoint support for store: false',
+    store: 'omitStore',
     ...(api === 'responses'
       ? {
           max_output_tokens: 'maxCompletionTokens',
@@ -220,7 +223,7 @@ function rejectedHttp(status: number, api: Api, body: unknown): never {
     category = 'request'
     action =
       parameter === undefined
-        ? 'Check the Agent Binding model, api, structuredOutput and token settings against the endpoint requirements. The rejected parameter is unknown.'
+        ? 'Check the Agent Binding model, api, structuredOutput, omitStore and token settings against the endpoint requirements. The rejected parameter is unknown.'
         : `The provider reports a rejected ${parameter} parameter. Check ${parameters[parameter]} against the endpoint requirements.`
   } else if (status === 401 || status === 403) {
     category = status === 401 ? 'authentication' : 'permission'

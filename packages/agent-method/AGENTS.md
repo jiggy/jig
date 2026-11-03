@@ -72,11 +72,15 @@ ordinary Flow, preserving operator ownership of Agent execution.
   grants a feature.
 - The ordinary Flow owns one non-streaming text-only Chat Completions or
   Responses exchange through its HTTP slot. The Flow checks closed
-  API/model/token settings before dispatch. `structuredOutput: 'json-schema'`
+  Binding settings before dispatch. `structuredOutput: 'json-schema'`
   explicitly adds the API's strict schema request. Prompt mode is the default.
   Both modes check results locally and never fall back or retry on rejection.
   HTTP failures retain closed status-derived diagnostics and corrective
   guidance.
+
+  Both APIs send `store: false` unless `omitStore: true` explicitly omits it.
+  The setting accepts only booleans and defaults to `false`. It changes no
+  other request field or grant policy.
 
   Only an exact allowlisted API parameter name may be projected from rejection.
   Provider error text, headers and rejected values never enter diagnostics. A
@@ -88,7 +92,7 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
   offers the exact Agent Run interface. An unsupported optional channel rejects
   before HTTP dispatch.
-- `settings.schema.json` owns API/model/token/output-mode authoring validation.
+- `settings.schema.json` owns closed Binding settings validation.
   The HTTP call requests decoded JSON/0 responses. Its 8 MiB request / 12 MiB
   response ceilings do not increase the operator's smaller default grant or
   JSON/0 value limits. Reject oversized requests before dispatch, never

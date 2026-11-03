@@ -75,6 +75,47 @@ const schema = {
   additionalProperties: false,
 }
 
+test('store omission changes only that field in either API and structured output mode', () => {
+  const structured = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
+  for (const api of ['chat-completions', 'responses'] as const) {
+    for (const structuredOutput of ['prompt', 'json-schema'] as const) {
+      const settings = { api, model: 'chosen-model', maxCompletionTokens: 16, structuredOutput }
+      const ordinary = prepareApiRequest(structured, settings)
+      expect(prepareApiRequest(structured, { ...settings, omitStore: false })).toEqual(ordinary)
+      const { store: _store, ...withoutStore } = ordinary.body
+      const configured = prepareApiRequest(structured, { ...settings, omitStore: true })
+      expect(configured).toEqual({ api, body: withoutStore })
+      expect(Object.hasOwn(configured.body, 'store')).toBe(false)
+      expect(configured.body.model).toBe('chosen-model')
+      expect(
+        configured.body[api === 'responses' ? 'max_output_tokens' : 'max_completion_tokens'],
+      ).toBe(16)
+      expect(Object.hasOwn(configured.body, 'max_tokens')).toBe(false)
+    }
+  }
+})
+
+test('store omission is a closed boolean setting and cannot supply HTTP authority', async () => {
+  const settingsSchema = JSON.parse(
+    await readFile(new URL('../settings.schema.json', import.meta.url), 'utf8'),
+  )
+  expect(settingsSchema.properties.omitStore).toEqual({ type: 'boolean' })
+  expect(settingsSchema.required).toEqual(['model'])
+  expect(settingsSchema.additionalProperties).toBe(false)
+  for (const omitStore of [null, 0, 1, 'true', 'false', [], {}])
+    expect(() => prepareApiRequest(prepared, { model: 'x', omitStore })).toThrow('omitStore')
+  for (const extra of [
+    { endpoint: 'https://example.org' },
+    { apiKey: 'not-a-credential' },
+    { bearerEnv: 'PROVIDER_API_KEY' },
+    { headers: {} },
+    { body: {} },
+    { store: true },
+    { tools: [] },
+  ])
+    expect(() => prepareApiRequest(prepared, { model: 'x', omitStore: true, ...extra })).toThrow()
+})
+
 test('provider-enforced schemas require explicit selection and never replace local checking', () => {
   const structured = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
   const { $schema: _removed, ...projected } = schema
@@ -183,6 +224,8 @@ test('only exact known API parameter names can be projected from provider reject
   for (const [api, parameter, setting] of [
     ['chat-completions', 'max_completion_tokens', 'maxCompletionTokens'],
     ['responses', 'text.format', 'structuredOutput'],
+    ['chat-completions', 'store', 'omitStore'],
+    ['responses', 'store', 'omitStore'],
   ] as const) {
     for (const param of [parameter, 'unknown-secret', '__proto__', `${parameter}\u001b[31m`]) {
       let error: unknown
