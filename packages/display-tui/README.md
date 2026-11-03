@@ -26,7 +26,7 @@ display.dispose()
 `prepareTui()` explicitly checks native support and returns an opaque value.
 `TuiSupportError` identifies unavailable support. The caller performs this check
 before starting work when display availability is a prerequisite. This package
-targets the Bun profiles used by Jig: Linux x64 Bun 1.3.13 and Darwin
+targets the Bun profiles used by Jig: Linux x64 Bun 1.3.3 and Darwin
 x64/arm64 Bun 1.4.2, with exact OpenTUI 0.5.17 and tree-sitter 0.25.10 dependencies.
 Those support declarations do not qualify a consumer's execution host.
 

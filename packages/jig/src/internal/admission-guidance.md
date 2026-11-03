@@ -252,7 +252,7 @@ Version metadata is checked before evaluation and reverified before capture comp
   Retain its exact bytes privately. The worker derives scratch paths from its
   trusted launch working directory, never rewritten worker or consumer source.
 
-  Select the native lock version for the pinned runtime (Linux Bun 1.3.13 or
+  Select the native lock version for the pinned runtime (Linux Bun 1.3.3 or
   qualified Mac Bun 1.4.2). Linux reads text lock version 1. Mac reads versions
   1 and 2 and emits version 2. Keep the same source/provenance checks and exact
   supplied bytes without translating locks. Unsupported formats retain a

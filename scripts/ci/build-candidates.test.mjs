@@ -422,7 +422,7 @@ test('Jig qualification retains installed smokes without repeating Linux baselin
         run: (command, args, options) => {
           if (command.endsWith('/npm-consumer/node_modules/@oven/bun-linux-x64-baseline/bin/bun')) {
             f.calls.push({ command, args, options })
-            return args[0] === '--version' ? '1.3.13' : '1.3.13+bf2e2cecf'
+            return args[0] === '--version' ? '1.3.3' : '1.3.3+274e01c73'
           }
           const result = f.run(command, args, options)
           if (command === join(f.bin, 'npm') && args[0] === 'install') {

@@ -228,7 +228,7 @@
       "scope": "ci",
       "kind": "tooling",
       "profiles": [
-        "ubuntu-24.04/node-24/bun-1.3.13"
+        "ubuntu-24.04/node-24/bun-1.3.3"
       ],
       "suiteIds": [
         "tooling"
@@ -253,7 +253,7 @@
       "scope": "ci",
       "kind": "source-and-consumer",
       "profiles": [
-        "ubuntu-24.04/bun-1.3.13/node-24/python-3.13"
+        "ubuntu-24.04/bun-1.3.3/node-24/python-3.13"
       ],
       "suiteIds": [
         "jig-portable",
@@ -272,7 +272,7 @@
       "scope": "ci",
       "kind": "source-and-consumer",
       "profiles": [
-        "ubuntu-24.04/bun-1.3.13/node-24/python-3.13"
+        "ubuntu-24.04/bun-1.3.3/node-24/python-3.13"
       ],
       "suiteIds": [
         "agent",
@@ -288,7 +288,7 @@
       "scope": "ci",
       "kind": "source-and-consumer",
       "profiles": [
-        "ubuntu-24.04/bun-1.3.13/node-24/python-3.13"
+        "ubuntu-24.04/bun-1.3.3/node-24/python-3.13"
       ],
       "suiteIds": [
         "applications"
@@ -302,7 +302,7 @@
       "scope": "ci",
       "kind": "source-and-consumer",
       "profiles": [
-        "ubuntu-24.04/bun-1.3.13/node-24/python-3.13"
+        "ubuntu-24.04/bun-1.3.3/node-24/python-3.13"
       ],
       "suiteIds": [
         "python-reporting"
@@ -357,7 +357,7 @@
       "scope": "linux",
       "kind": "native-and-installed",
       "profiles": [
-        "ubuntu-24.04/x64/bun-1.3.13/rootless"
+        "ubuntu-24.04/x64/bun-1.3.3/rootless"
       ],
       "suiteIds": [
         "linux-platform",

@@ -1,16 +1,20 @@
 {
-  # This revision supplies the Bun 1.3.13 required by Jig's build.
+  # Keep the current host tools, including Bubblewrap 0.12.0.
   pkgs ? import (builtins.fetchTarball {
     url = "https://github.com/NixOS/nixpkgs/archive/9bb52223f4f6a0cc606fd0852d8784f896c137d5.tar.gz";
   }) { },
 }:
 let
+  # Select Bun independently so the rest of the host toolchain stays unchanged.
+  bun = (import (builtins.fetchTarball {
+    url = "https://github.com/NixOS/nixpkgs/archive/2f5cde3125a022b349324aae7e15a35622723cb8.tar.gz";
+  }) { }).bun;
   python = pkgs.python3.withPackages (p: [ p.build p.setuptools p.wheel ]);
 in
-assert pkgs.bun.version == "1.3.13";
+assert bun.version == "1.3.3";
 pkgs.mkShellNoCC {
   packages = [
-    pkgs.bun
+    bun
     pkgs.just
     pkgs.nodejs_24
     python

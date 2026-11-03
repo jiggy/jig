@@ -168,8 +168,8 @@ test('real ZIP mirrors preserve canonical bytes and refuse transport, source, pr
         reason: 'versioned-release', pendingPackages: [], releasePlanSha256: 'e'.repeat(64),
         packages: Object.entries(RELEASE_PACKAGE_LAYOUT).map(([kind, name]) => ({ kind, name, version: target.version })),
       },
-      buildProfile: { platform: 'linux', architecture: 'x64', version: '1.3.13',
-        revision: 'bf2e2cecf27e800962b1e7f03d66278f9d5d2e79', justVersion: 'just 1.43.1',
+      buildProfile: { platform: 'linux', architecture: 'x64', version: '1.3.3',
+        revision: '274e01c737e85f8142070a9745b43a2ba09fce4c', justVersion: 'just 1.43.1',
         nodeVersion: '24.0.0', npmVersion: '11.6.2' },
     })
     await writeFile(join(root, 'ARTIFACT.json'), JSON.stringify({ schemaVersion: 1,

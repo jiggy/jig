@@ -97,7 +97,7 @@ try {
   assert.deepEqual(installedManifest.optionalDependencies, {
     '@oven/bun-darwin-x64-baseline': '1.4.2',
     '@oven/bun-darwin-aarch64': '1.4.2',
-    '@oven/bun-linux-x64-baseline': '1.3.13',
+    '@oven/bun-linux-x64-baseline': '1.3.3',
   })
   assert.deepEqual(installedManifest.dependencies, {
     '@opentui/core': '0.5.17',

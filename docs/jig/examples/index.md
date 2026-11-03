@@ -40,7 +40,7 @@ cd jig-examples
 
 Follow the platform-specific [development-shell setup](https://github.com/jiggy/jig/blob/main/CONTRIBUTING.md#development-shell).
 It supplies the selected Bun version, Node, Just, and required host tools.
-Use Bun 1.3.13 on Linux and Bun 1.4.2 on the qualified Mac path.
+Use Bun 1.3.3 on Linux and Bun 1.4.2 on the qualified Mac path.
 Build from the checkout root:
 
 ```sh

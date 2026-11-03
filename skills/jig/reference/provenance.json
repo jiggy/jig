@@ -45,8 +45,8 @@
     {
       "source": "docs/jig/build/dependencies.md",
       "destination": "build/dependencies.md",
-      "sourceSha256": "1c722f7d57797aae82574c2ca7da668905e98e4fa0750c1fbf36b2fb94f4a4bf",
-      "outputSha256": "1c722f7d57797aae82574c2ca7da668905e98e4fa0750c1fbf36b2fb94f4a4bf"
+      "sourceSha256": "a301a013668ca8eb3decc5e563406aed731e7d1b307b4caf64e1c4d6d78da11f",
+      "outputSha256": "a301a013668ca8eb3decc5e563406aed731e7d1b307b4caf64e1c4d6d78da11f"
     },
     {
       "source": "docs/jig/reference/configuration.md",
