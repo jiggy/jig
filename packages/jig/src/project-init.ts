@@ -40,7 +40,7 @@ const AUTHORING_SKILLS_README = [
   '',
   'Install the FLOW and Jig authoring skills for your development assistant.',
   'FLOW teaches reusable method design. Jig teaches project creation, configuration and use.',
-  'See [Install authoring skills](https://jig.md/guide/for-agents#install-authoring-skills).',
+  'See [Install authoring skills](https://jig.md/for-agents#install-authoring-skills).',
   '',
 ] as const
 export type ProjectInitAgent = 'codex' | 'claude' | 'pi'
@@ -378,7 +378,7 @@ function agentFiles(client: ProjectInitAgent): readonly (readonly [string, strin
         'Repeat that argument on later reviews; a bare review uses source choices again.',
         '',
         'Configure the native installation and operator authentication described in',
-        'https://jig.md/guide/agents, then run:',
+        'https://jig.md/build/agents, then run:',
         '',
         '```sh',
         'jig review --allow-resolution-network',
@@ -461,7 +461,7 @@ function greetingFiles(): readonly (readonly [string, string])[] {
         'sharing reproducible dependencies.',
         'You do not need a separate Bun install to run this project.',
         '',
-        'Help: `jig review --help`, `jig run --help`, https://jig.md/guide/',
+        'Help: `jig review --help`, `jig run --help`, https://jig.md/start/',
         '',
         ...AUTHORING_SKILLS_README,
       ].join('\n'),

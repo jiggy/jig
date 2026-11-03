@@ -36,9 +36,9 @@ that phrase as a claim that this bounded CSV example accepts every format.
 
 ## Rehearsal and recording setup
 
-1. Use a [supported host](../../docs/jig/guide/index.md), complete
-   [workspace setup](../../docs/jig/guide/dependencies.md#local-workspace-packages),
-   and configure an [Agent](../../docs/jig/guide/agents.md).
+1. Use a [supported host](../../docs/jig/start/index.md), complete
+   [workspace setup](../../docs/jig/build/dependencies.md#local-workspace-packages),
+   and configure an [Agent](../../docs/jig/build/agents.md).
 2. Open `examples/contact-import`. Keep credentials and personal configuration
    out of the recording. Use only the supplied synthetic data.
 3. Rehearse the commands below in a disposable copy. Use fresh output paths

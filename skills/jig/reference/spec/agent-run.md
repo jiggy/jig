@@ -4,7 +4,7 @@
 
 Agent Run is one exact FLOW Invocation Contract consumed through Run/0
 `flow/call`. A caller supplies explicit instructions, Skill contents and optional
-guidance. The shared [Agent method](../guide/agent-method.md) prepares the prompt
+guidance. The shared [Agent method](../build/agent-method.md) prepares the prompt
 and interprets the response in an ordinary Flow. Jig provides the granted
 HTTP or finite native transport, not the Agent's method. This adds no special
 Agent invocation API to `@jigging/flow`.
@@ -483,7 +483,7 @@ configuration. Settings guide method behavior; authority comes from the grant.
 An operator requiring HTTP body restrictions against modified method code
 uses the grant's `bodySchema`.
 
-See [Choose an Agent](../guide/agents.md) for configuration and
+See [Choose an Agent](../build/agents.md) for configuration and
 [Finite ACP](finite-acp.md#native-client-profiles) for native installation,
 authentication and containment limits. Review does not perform a remote
 health check. A ready local plan does not assert model availability or quality.

@@ -347,7 +347,7 @@ export const LIMIT_REFERENCE: readonly Group[] = [
 
 const START = '<!-- limit-reference:start -->'
 const END = '<!-- limit-reference:end -->'
-export const LIMIT_REFERENCE_PATH = 'docs/jig/guide/limits.md'
+export const LIMIT_REFERENCE_PATH = 'docs/jig/reference/limits.md'
 
 export function renderLimitReference(groups: readonly Group[] = LIMIT_REFERENCE): string {
   return groups

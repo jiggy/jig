@@ -23,7 +23,7 @@ Resolution matches that complete identity offline.
 
 - [Finite ACP specification](../spec/finite-acp.md): grant, framing, authority,
   failure and settlement.
-- [Choose an Agent](../guide/agents.md): use a replaceable implementation.
+- [Choose an Agent](../build/agents.md): use a replaceable implementation.
 - [Retained native state](../spec/finite-acp.md#retained-native-state): explicit
   retention and restoration under separate reviewed authority. This source
   candidate requires matching artifacts and installed-client qualification.

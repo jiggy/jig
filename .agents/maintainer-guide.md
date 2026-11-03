@@ -256,7 +256,7 @@ workspace dependencies. Rebuild the candidate before testing changed source.
 ### Limits, defaults, and override discipline
 
 User-facing limits need an explicit owner and a discoverable operating contract.
-The [limits reference](../docs/jig/guide/limits.md) centralizes that contract.
+The [limits reference](../docs/jig/reference/limits.md) centralizes that contract.
 Its numeric tables derive from policy owners through `scripts/limit-reference.ts`.
 The metadata index documents policy. It never grants authority or replaces
 enforcement.
@@ -416,8 +416,8 @@ Before changing Agent behavior, read [Agent Run](../docs/jig/spec/agent-run.md),
 [HTTP Request](../docs/jig/spec/http-request.md), and
 [Finite ACP](../docs/jig/spec/finite-acp.md) as applicable. They own values,
 endpoint authority, native grants, credential separation, and settlement.
-[Agent setup](../docs/jig/guide/agents.md) owns operator configuration.
-[Agent method](../docs/jig/guide/agent-method.md) owns caller inputs and pure
+[Agent setup](../docs/jig/build/agents.md) owns operator configuration.
+[Agent method](../docs/jig/build/agent-method.md) owns caller inputs and pure
 library reuse.
 
 `@jigging/agent-method` owns HTTP preparation, answer interpretation, and its

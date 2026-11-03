@@ -536,7 +536,7 @@ describe.serial('private rootless project session', () => {
       })
       expect(rejected.stderr).toContain('Run failed')
       expect(rejected.stderr).toContain('Required execution support was unavailable.')
-      expect(rejected.stderr).toContain('https://jig.md/guide/results')
+      expect(rejected.stderr).toContain('https://jig.md/build/results')
       expect(rejected.stderr).toContain('Diagnostic code: UNAVAILABLE')
       expect(rejected.stderr).not.toContain('\u001b[')
 

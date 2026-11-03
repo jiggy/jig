@@ -7,78 +7,134 @@ import { documentationIndex } from '../theme/llms'
 
 const siteDirectory = import.meta.dirname
 
-const sidebar = [
+const areas = [
+  { text: 'Documentation home', link: '/documentation' },
+  { text: 'Start here', link: '/start/' },
+  { text: 'Build', link: '/build/' },
+  { text: 'Understand', link: '/understand/' },
+  { text: 'Examples', link: '/examples/' },
+  { text: 'Reference', link: '/reference/' },
+]
+
+const start = [
   {
-    text: 'Start',
+    text: 'Start here',
     items: [
-      { text: 'Documentation home', link: '/guide/overview' },
-      { text: 'Your first Flow', link: '/guide/' },
-      { text: 'How Jig works', link: '/guide/understand' },
+      { text: 'Run your first Flow', link: '/start/' },
+      { text: 'Call from your application', link: '/start/application' },
+      { text: 'Add an Agent', link: '/build/agents' },
+      { text: 'Compose methods', link: '/build/compose' },
     ],
   },
+]
+const build = [
   {
     text: 'Build',
     items: [
-      { text: 'Project design', link: '/guide/design' },
-      { text: 'Choose an Agent', link: '/guide/agents' },
-      { text: 'Reuse the Agent method', link: '/guide/agent-method' },
-      { text: 'Revise in one conversation', link: '/guide/conversations' },
-      { text: 'Control a conversation', link: '/guide/conversation-control' },
-      { text: 'Hand work to a fresh conversation', link: '/guide/conversation-handoff' },
-      { text: 'Retain and restore a conversation', link: '/guide/conversation-restoration' },
-      { text: 'Flow dependencies', link: '/guide/dependencies' },
-      { text: 'Author contracts', link: '/guide/contracts' },
-      { text: 'Markdown methods', link: '/guide/markdown' },
-      { text: 'Delegate HTTP access', link: '/guide/http' },
-      { text: 'Working with files', link: '/guide/files' },
-      { text: 'Live progress', link: '/guide/channels' },
-      { text: 'Workflow structure', link: '/guide/workflow-design' },
+      { text: 'Choose a task', link: '/build/' },
+      { text: 'Add an Agent', link: '/build/agents' },
+      { text: 'Compose methods', link: '/build/compose' },
+      { text: 'Write Markdown methods', link: '/build/markdown' },
+      { text: 'Reuse the Agent method', link: '/build/agent-method' },
+      { text: 'Prepare dependencies', link: '/build/dependencies' },
+      { text: 'Author contracts', link: '/build/contracts' },
     ],
   },
+  {
+    text: 'Data, effects, and results',
+    items: [
+      { text: 'Work with files', link: '/build/files' },
+      { text: 'Delegate HTTP access', link: '/build/http' },
+      { text: 'Show live progress', link: '/build/channels' },
+      { text: 'Results and recovery', link: '/build/results' },
+    ],
+  },
+  {
+    text: 'Continue Agent work',
+    collapsible: true,
+    items: [
+      { text: 'Revise in one conversation', link: '/build/conversations' },
+      { text: 'Control a conversation', link: '/build/conversation-control' },
+      { text: 'Hand work to a fresh conversation', link: '/build/conversation-handoff' },
+      { text: 'Retain and restore a conversation', link: '/build/conversation-restoration' },
+    ],
+  },
+  {
+    text: 'Design and collaborate',
+    collapsible: true,
+    items: [
+      { text: 'Project design', link: '/build/design' },
+      { text: 'Work together', link: '/build/teams' },
+    ],
+  },
+]
+const understand = [
+  {
+    text: 'Understand',
+    items: [
+      { text: 'How Jig works', link: '/understand/' },
+      { text: 'Choose a workflow structure', link: '/understand/workflows' },
+      { text: 'Glossary and questions', link: '/reference/glossary' },
+    ],
+  },
+]
+const examples = [
   {
     text: 'Examples',
     items: [
-      { text: 'Preview unfamiliar CSV contacts', link: '/guide/contact-import' },
-      { text: 'Handle a disputed charge', link: '/guide/support-case' },
-      { text: 'An issue becomes a tested patch', link: '/guide/tested-patch' },
-      { text: 'Run a small software factory', link: '/guide/software-factory' },
+      { text: 'Choose an example', link: '/examples/' },
+      { text: 'Preview unfamiliar CSV contacts', link: '/examples/contact-import' },
+      { text: 'Handle a disputed charge', link: '/examples/support-case' },
+      { text: 'Turn an issue into a tested patch', link: '/examples/tested-patch' },
+      { text: 'Run a small software factory', link: '/examples/software-factory' },
     ],
   },
-  {
-    text: 'Work together',
-    items: [
-      { text: 'For teams', link: '/guide/teams' },
-      { text: 'For agents', link: '/guide/for-agents' },
-      { text: 'Concepts and questions', link: '/guide/concepts' },
-      { text: 'Results and recovery', link: '/guide/results' },
-      { text: 'Acknowledgements', link: '/acknowledgements' },
-    ],
-  },
+]
+const reference = [
   {
     text: 'Reference',
+    items: [
+      { text: 'Find an exact answer', link: '/reference/' },
+      { text: 'Settings and configuration', link: '/reference/configuration' },
+      { text: 'Limits and defaults', link: '/reference/limits' },
+      { text: 'Glossary and questions', link: '/reference/glossary' },
+    ],
+  },
+  {
+    text: 'Project and execution contracts',
     collapsible: true,
     items: [
-      { text: 'Settings and configuration', link: '/guide/configuration' },
-      { text: 'Limits and defaults', link: '/guide/limits' },
       { text: 'Project authoring', link: '/spec/project-sdk' },
       { text: 'Execution policy', link: '/spec/project-policy' },
       { text: 'Application client', link: '/spec/execution-client' },
-      { text: 'Agent Run', link: '/spec/agent-run' },
-      { text: 'Project Command', link: '/spec/project-command' },
-      { text: 'Project Evaluation', link: '/spec/project-evaluation' },
-      { text: 'HTTP Request', link: '/spec/http-request' },
-      { text: 'Finite ACP', link: '/spec/finite-acp' },
-      { text: 'Channels', link: '/spec/channels' },
-      { text: 'Reporting', link: '/spec/reporting' },
-      { text: 'Run Checkpoint', link: '/spec/run-checkpoint' },
+      { text: 'Resource grants', link: '/spec/grants' },
+      { text: 'Contract authoring', link: '/spec/contract-authoring' },
+      { text: 'CLI experience', link: '/spec/cli-experience' },
     ],
   },
   {
-    text: 'Standard library',
+    text: 'Capability and presentation contracts',
     collapsible: true,
     collapsed: true,
     items: [
-      { text: 'Overview', link: '/contracts/' },
+      { text: 'Agent Run', link: '/spec/agent-run' },
+      { text: 'Finite ACP', link: '/spec/finite-acp' },
+      { text: 'Project Command', link: '/spec/project-command' },
+      { text: 'Project Evaluation', link: '/spec/project-evaluation' },
+      { text: 'HTTP Request', link: '/spec/http-request' },
+      { text: 'Channels', link: '/spec/channels' },
+      { text: 'Reporting', link: '/spec/reporting' },
+      { text: 'Run Checkpoint', link: '/spec/run-checkpoint' },
+      { text: 'Display archives', link: '/spec/display-archive' },
+      { text: 'Web display', link: '/spec/web-display' },
+    ],
+  },
+  {
+    text: 'Named capability contracts',
+    collapsible: true,
+    collapsed: true,
+    items: [
+      { text: 'Directory', link: '/contracts/' },
       { text: 'Agent Run', link: '/contracts/agent-run' },
       { text: 'ACP public updates', link: '/contracts/acp-public-updates' },
       { text: 'Reporting', link: '/contracts/reporting' },
@@ -89,17 +145,47 @@ const sidebar = [
       { text: 'Run Checkpoint', link: '/contracts/run-checkpoint' },
     ],
   },
+]
+const research = [
   {
-    text: 'Research \u00b7 not availability',
-    collapsible: true,
-    collapsed: true,
+    text: 'Research · hypotheses',
     items: [
-      { text: 'Use cases', link: '/use-cases' },
-      { text: 'Orchestration patterns', link: '/orchestration-patterns' },
-      { text: 'Time-travel handoff', link: '/time-travel-handoff' },
+      { text: 'About this research', link: '/research/' },
+      { text: 'Use cases', link: '/research/use-cases' },
+      { text: 'Orchestration patterns', link: '/research/orchestration-patterns' },
+      { text: 'Time-travel handoff', link: '/research/time-travel-handoff' },
     ],
   },
 ]
+const utilities = [
+  {
+    text: 'Resources',
+    items: [
+      { text: 'For agents', link: '/for-agents' },
+      { text: 'Research · hypotheses', link: '/research/' },
+      { text: 'Acknowledgements', link: '/acknowledgements' },
+    ],
+  },
+]
+const sectionLinks = { text: 'Documentation', items: areas }
+const focused = (groups: typeof start) => [sectionLinks, ...groups]
+const indexed = new Set<string>()
+const index = [
+  ...start,
+  ...build,
+  ...understand,
+  ...examples,
+  ...reference,
+  ...research,
+  ...utilities,
+].map((group) => ({
+  ...group,
+  items: group.items.filter((item) => {
+    if (indexed.has(item.link)) return false
+    indexed.add(item.link)
+    return true
+  }),
+}))
 
 export default defineConfig({
   root: resolve(siteDirectory, '../../docs/jig'),
@@ -110,7 +196,7 @@ export default defineConfig({
     rehypePlugins: [accessibleMarkdown],
     shiki: codeThemes,
   },
-  llms: { llmsTxt: documentationIndex(sidebar) },
+  llms: { llmsTxt: documentationIndex(index) },
   route: { exclude: ['**/AGENTS.md'] },
   outDir: process.env.PUBLIC_SITE_OUTPUT ?? resolve(siteDirectory, 'doc_build'),
   siteOrigin: 'https://jig.md',
@@ -153,14 +239,26 @@ export default defineConfig({
     editLink: { docRepoBaseUrl: 'https://github.com/jiggy/jig/tree/main/docs/jig' },
     enableScrollToTop: true,
     nav: [
-      { text: 'Documentation', link: '/guide/overview' },
-      { text: 'Example', link: '/guide/contact-import' },
-      { text: 'For agents', link: '/guide/for-agents' },
+      { text: 'Start here', link: '/start/' },
+      { text: 'Build', link: '/build/' },
+      { text: 'Understand', link: '/understand/' },
+      { text: 'Reference', link: '/reference/' },
+      { text: 'For agents', link: '/for-agents' },
       { text: 'Pricing', link: '/pricing' },
       { text: 'FLOW', link: 'https://flow.jig.md/' },
       { text: 'GitHub', link: 'https://github.com/jiggy/jig' },
     ],
-    sidebar: { '/': sidebar },
+    sidebar: {
+      '/start/': focused(start),
+      '/build/': focused(build),
+      '/understand/': focused(understand),
+      '/examples/': focused(examples),
+      '/reference/': focused(reference),
+      '/spec/': focused(reference),
+      '/contracts/': focused(reference),
+      '/research/': focused(research),
+      '/': [sectionLinks, ...utilities],
+    },
     footer: { message: 'Expand human possibility. Jig is source-available, prerelease software.' },
   },
 })

@@ -113,7 +113,7 @@ Packaged users receive installation recovery instead.
 
 The shell supplies Bubblewrap locally and sets `JIG_BWRAP_PATH` to its exact
 Nix-store executable. No system-wide Bubblewrap installation is needed.
-Running Jig still requires the [supported host configuration](docs/jig/guide/index.md#supported-host).
+Running Jig still requires the [supported host configuration](./docs/jig/start/index.md#supported-host).
 On NixOS, enable the unmodified runtime's loader support in your host configuration:
 
 ```nix

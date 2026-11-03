@@ -18,7 +18,7 @@ permission. A Flow includes its [JSON descriptor](https://jig.md/contracts/http-
 locally and refers to it from `uses`. Jig matches its exact identity offline.
 The operator separately supplies named endpoint grants and approves their use.
 
-- [Delegate an HTTP resource](../guide/http.md): declaration, Binding and first call.
+- [Delegate an HTTP resource](../build/http.md): declaration, Binding and first call.
 - [Exact HTTP Request specification](../spec/http-request.md): policy, failures,
   credential trust, cancellation and limits.
 

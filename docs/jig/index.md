@@ -9,7 +9,7 @@ description: "Put Agent judgment to work inside your software. Combine it with o
 Let your app call on Agent judgment and ordinary code.
 Jig runs the work with the access you choose.
 
-[Meet Jig, a local host for code and Agents](guide/understand.md).
+[Meet Jig, a local host for code and Agents](./understand/index.md).
 [Start building](#start).
 
 <span id="examples-carousel"></span>
@@ -53,7 +53,7 @@ The two charges move into a matched pair. The checked decision and reply draft a
 The result is ready for your application. No credit or message is sent.
 
 Choose Before or After to explore.
-[Explore the support example](guide/support-case.md).
+[Explore the support example](./examples/support-case.md).
 
 <span id="example-kitchen"></span>
 
@@ -156,7 +156,7 @@ Inspect a community Flow and its requested access before it runs.
 Jig executes the revision you accept.
 The illustration follows Community Flow, Your review, then Accepted revision.
 
-[How review works](guide/dependencies.md).
+[How review works](./build/dependencies.md).
 
 <span id="app-views"></span>
 
@@ -170,7 +170,7 @@ The Web and Terminal / TUI tabs currently contain temporary placeholders.
 They do not embed a working display or run a task.
 
 The section introduces filtering and sorting records, previewing delivered files, and inspecting calls and errors.
-[Describe your app’s view](guide/channels.md).
+[Describe your app’s view](./build/channels.md).
 
 <span id="architecture"></span>
 
@@ -222,7 +222,7 @@ Same FLOW. Different apps.
 Connect your FLOW to a different method through the same shared contract.
 The illustration connects “Your FLOW — Same method” to “Connection — Same contract.”
 
-[How contracts make parts fit](guide/contracts.md).
+[How contracts make parts fit](./build/contracts.md).
 
 ### How a Flow connects
 
@@ -251,7 +251,7 @@ Design the method. Choose its Agents. Keep the execution foundation.
 | Inside your Flow | The authored method and its internal procedure. |
 
 The illustration offers Codex, Claude Code, and Pi as independent Agent choices.
-[Explore ACP clients](guide/agents.md#local-clients).
+[Explore ACP clients](./build/agents.md#local-clients).
 
 Three application examples each offer a specialist, a review loop, and a specialist team.
 Switching the app, strategy, or Agent leaves the other choices and execution foundation in place.
@@ -289,7 +289,7 @@ Input: an event brief. Output: proposed event plan.
 
 Your next idea shouldn’t need a new kernel.
 
-[Explore the architecture](guide/understand.md#why-a-microkernel-inspired-host).
+[Explore the architecture](./understand/index.md#why-a-microkernel-inspired-host).
 
 <span id="start"></span>
 
@@ -298,18 +298,18 @@ Your next idea shouldn’t need a new kernel.
 Learn the review-and-run loop with a greeting.
 Then combine specialists into a more capable application.
 
-[Run your first Flow](guide/index.md#your-first-flow).
-Developer alpha: [check Linux and Mac requirements](guide/index.md#supported-host).
+[Run your first Flow](./start/index.md#1-create-the-project).
+Developer alpha: [check Linux and Mac requirements](./start/index.md#supported-host).
 
 ### Ask your Agent
 
 The default setup tab offers this prompt to paste into your coding Agent:
 
 ```text
-Bootstrap a Jig project: https://jig.md/guide/for-agents.html
+Bootstrap a Jig project: https://jig.md/for-agents.html
 ```
 
-Your Agent follows the current [Jig setup guide](guide/for-agents.md).
+Your Agent follows the current [Jig setup guide](./for-agents.md).
 
 ### Terminal
 
@@ -340,8 +340,8 @@ Inspect the source and policy before approving.
 Try a more capable application.
 Go further with a support application that interprets requests, checks account records, and prepares a reply.
 
-[Build the support workflow](guide/support-case.md).
-[Explore a small software factory](guide/software-factory.md).
+[Build the support workflow](./examples/support-case.md).
+[Explore a small software factory](./examples/software-factory.md).
 
 ## Build with Agents as naturally as you build with code.
 
@@ -352,4 +352,4 @@ Free for personal non-business use, genuine evaluation, and qualifying business 
 [Licence terms apply](https://github.com/jiggy/jig/blob/main/LICENSE.md).
 Agent judgment can be wrong. Application checks still matter.
 
-[Documentation](guide/index.md) · [GitHub](https://github.com/jiggy/jig) · [FLOW](https://flow.jig.md/) · [Pricing & licence](pricing.md)
+[Documentation](./start/index.md) · [GitHub](https://github.com/jiggy/jig) · [FLOW](https://flow.jig.md/) · [Pricing & licence](pricing.md)

@@ -19,7 +19,7 @@ port referencing `./contracts/reporting/reporting.json`. The local port
 name is your choice; a named invocation contract for the entire Flow is unnecessary.
 Other hosts can use the identical local descriptor from the library or download.
 
-Use the [scoped publisher](../guide/channels.md) for TypeScript or Python to
+Use the [scoped publisher](../build/channels.md) for TypeScript or Python to
 validate messages and own optional publication cleanup. Activity replaces a
 slot's complete state, including optional counts. Clear and every source ending
 remove its transient state. Accepted complete notices retain presenter ownership

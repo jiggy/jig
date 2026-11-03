@@ -41,7 +41,7 @@ versions; the descriptor carries the version and exact interface.
   Keep an exact copy in the Flow package and reference that local file from
   `FLOW.meta.json` (or Markdown frontmatter), as the specification shows.
 - **See it in an application:** follow
-  [an issue becoming a tested patch](../guide/tested-patch.md).
+  [an issue becoming a tested patch](../examples/tested-patch.md).
 - **Understand contract matching:** read
   [FLOW Invocation Contract/0](https://flow.jig.md/spec/invocation-contracts).
 

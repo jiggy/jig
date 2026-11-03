@@ -100,7 +100,7 @@ const VERIFICATION_HELP = `Startup verification:
   fast    Reuse installation hashes without checking freshness
 The argument overrides JIG_VERIFICATION; when neither is set, cached is used.
 Cache misses require hashing. Fast can miss changed tool bytes; approval and
-sandbox requirements still apply. See https://jig.md/guide/configuration#startup-verification.`
+sandbox requirements still apply. See https://jig.md/reference/configuration#startup-verification.`
 
 const HELP = `Jig runs reusable methods with powers you approve.
 
@@ -126,7 +126,7 @@ ${VERIFICATION_HELP}
 
 Command options and examples:
   jig <command> --help
-Guide: https://jig.md/guide/`
+Guide: https://jig.md/start/`
 
 const COMMAND_HELP = {
   views: `Usage: jig views [list|context|receipt|remove|reset] [options]
@@ -2303,7 +2303,7 @@ function renderSessionCloseFailure(error: PrivateCliSessionCloseFailure): string
       'Do not start new work or follow earlier retry advice until the existing work is settled.',
       'If you saved an application ticket, observe that original attempt.',
       'If no saved ticket or result is available, request recovery help from Jig maintainers before retrying.',
-      'Next step: https://jig.md/guide/results#when-cleanup-cannot-be-confirmed',
+      'Next step: https://jig.md/build/results#when-cleanup-cannot-be-confirmed',
     ].join('\n\n'),
   )
 }
@@ -2557,7 +2557,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     runtime.writeError(
       renderDiagnostic(
         `JIG_ATTEMPT_${error.code}`,
-        `${privateAttemptFailureMessage(error.code)}\nNext step: https://jig.md/guide/results`,
+        `${privateAttemptFailureMessage(error.code)}\nNext step: https://jig.md/build/results`,
       ),
     )
     return error.code === 'CLEANUP_UNRESOLVED' || error.code === 'EXECUTION_UNCERTAIN' ? 2 : 1
@@ -2573,7 +2573,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
     runtime.writeError(
       renderDiagnostic(
         'JIG_COMMAND_UNAVAILABLE',
-        'The installed Jig runtime is incomplete or invalid. Restore the complete installation. Inspect any result or effects before retrying. See https://jig.md/guide/#install.',
+        'The installed Jig runtime is incomplete or invalid. Restore the complete installation. Inspect any result or effects before retrying. See https://jig.md/start/#install.',
       ),
     )
     return 2
@@ -2700,7 +2700,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PROJECT_EVALUATION_FAILED:
         'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts flows, bindings, grants, defaultProviders, entrypoint and limits',
       PROJECT_LIMITS_INVALID:
-        'Check limits.dependencies in jig.ts and the JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES and JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES environment variables. Their combined values must fit artifact capacity. See https://jig.md/guide/limits.',
+        'Check limits.dependencies in jig.ts and the JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES and JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES environment variables. Their combined values must fit artifact capacity. See https://jig.md/reference/limits.',
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded a capture or execution limit; keep authoring modules small and inert. The specific limiting resource was not retained. Preserve this diagnostic if a small declaration fails. No Flow was started',
       PROJECT_DECLARATION_INVALID:
@@ -2716,7 +2716,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_RESOLVED_SOURCE_UNSUPPORTED:
         'resolved dependencies are unsupported; requests may already have occurred; use integrity-pinned default npm registry dependencies',
       PACKAGE_BUN_SOURCE_UNSUPPORTED:
-        'Jig could not identify the unsupported dependency source. Inspect the workspace manifest, lock and patch declarations; see https://jig.md/guide/dependencies.',
+        'Jig could not identify the unsupported dependency source. Inspect the workspace manifest, lock and patch declarations; see https://jig.md/build/dependencies.',
       PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED: unsupportedRegistryLockHint(error),
       PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED:
         'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.13 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
@@ -2748,7 +2748,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
       PACKAGE_BUN_LOCK_INVALID: 'bun.lock is invalid; correct the supplied lock',
       PACKAGE_BUN_LOCK_STALE: staleDependencyLockHint(error),
       PACKAGE_BUN_INPUT_LIMIT:
-        'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/guide/dependencies',
+        'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/build/dependencies',
       PACKAGE_BUN_OUTPUT_LIMIT: dependencyPreparationLimitHint(error),
     }
     const hint =
@@ -2822,7 +2822,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
   runtime.writeError(
     renderDiagnostic(
       'JIG_COMMAND_UNAVAILABLE',
-      'The cause could not be determined. Inspect the result and any effects before starting new work. Check https://jig.md/guide/results and include this diagnostic code when reporting the failure.',
+      'The cause could not be determined. Inspect the result and any effects before starting new work. Check https://jig.md/build/results and include this diagnostic code when reporting the failure.',
     ),
   )
   return 2
@@ -2911,11 +2911,11 @@ function projectError(code: ProjectAdministrationError['code']): {
     PROJECT_NOT_FOUND:
       'the project was not found; change into a Jig project or pass its directory to jig review',
     PROJECT_UNSAFE:
-      'The project cannot be opened safely. Check its ownership and permissions against https://jig.md/guide/#supported-host.',
+      'The project cannot be opened safely. Check its ownership and permissions against https://jig.md/start/#supported-host.',
     PROJECT_STATE_INVALID:
       'the retained .jig state is incompatible with this Jig build or damaged; preserve .jig and jig.lock for recovery. Once prior work is confirmed stopped and cleaned up, move them outside the project and run jig review again',
     INVALID_CANDIDATE:
-      'The project definition is invalid. Check jig.ts and the selected Flow declarations; see https://jig.md/guide/.',
+      'The project definition is invalid. Check jig.ts and the selected Flow declarations; see https://jig.md/start/.',
     LOCK_MISMATCH:
       'The project lock does not match the reviewed state. Inspect and approve the current revision:\n\n  $ jig review',
     PLAN_NOT_FOUND:
@@ -2927,9 +2927,9 @@ function projectError(code: ProjectAdministrationError['code']): {
     PROJECT_CLOSED:
       'The project session is closed. Inspect any result and cleanup status before starting another command.',
     UNAVAILABLE:
-      'The project command is unavailable. Check the supported host and installation requirements at https://jig.md/guide/#supported-host.',
+      'The project command is unavailable. Check the supported host and installation requirements at https://jig.md/start/#supported-host.',
     INTERNAL:
-      'The project command failed; its cause could not be determined. Preserve any result and check https://jig.md/guide/results before starting new work.',
+      'The project command failed; its cause could not be determined. Preserve any result and check https://jig.md/build/results before starting new work.',
   }
   return { message: messages[code], exitCode: invalid ? 1 : 2 }
 }
@@ -2944,17 +2944,17 @@ function rootError(code: RootAdministrationError['code']): {
     INVALID_REQUEST:
       'The Run request is invalid. Check the target and options with jig run --help.',
     SUBMISSION_CONFLICT:
-      'The Run request conflicts with existing work. Inspect the existing result and effects before starting new work; see https://jig.md/guide/results.',
+      'The Run request conflicts with existing work. Inspect the existing result and effects before starting new work; see https://jig.md/build/results.',
     RUN_NOT_FOUND:
-      'The Run could not be found. Its effects are not established by this failure. Check https://jig.md/guide/results before starting new work.',
+      'The Run could not be found. Its effects are not established by this failure. Check https://jig.md/build/results before starting new work.',
     PROJECT_BUSY:
       'The project is already in use. Wait for the current command to finish or cancel it and wait for cleanup.',
     PROJECT_CLOSED:
       'The project session is closed. Inspect any result and cleanup status before starting another command.',
     UNAVAILABLE:
-      'The Run command is unavailable. Check https://jig.md/guide/#supported-host and inspect any existing result before starting new work.',
+      'The Run command is unavailable. Check https://jig.md/start/#supported-host and inspect any existing result before starting new work.',
     INTERNAL:
-      'The Run command failed; its cause could not be determined. Inspect the result and any effects, and check https://jig.md/guide/results before starting new work.',
+      'The Run command failed; its cause could not be determined. Inspect the result and any effects, and check https://jig.md/build/results before starting new work.',
   }
   return { message: messages[code], exitCode: invalid ? 1 : 2 }
 }
@@ -2969,7 +2969,7 @@ export function privateCliRunFailure(
   if (cleanupUnconfirmed)
     return renderDiagnostic(
       terminal.code,
-      `${terminal.status === 'lost' ? 'Execution was lost.' : terminal.code === 'CANCELLED' ? 'Execution was cancelled.' : 'Execution failed.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nCleanup remains unconfirmed. Preserve the result and settle existing work before following any retry advice.\nNext step: https://jig.md/guide/results#when-cleanup-cannot-be-confirmed`,
+      `${terminal.status === 'lost' ? 'Execution was lost.' : terminal.code === 'CANCELLED' ? 'Execution was cancelled.' : 'Execution failed.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nCleanup remains unconfirmed. Preserve the result and settle existing work before following any retry advice.\nNext step: https://jig.md/build/results#when-cleanup-cannot-be-confirmed`,
       terminal.status === 'lost' ? 'Execution lost' : 'Run failed',
     )
   if (terminal.code === 'PROTOCOL_ERROR')
@@ -3046,7 +3046,7 @@ export function privateCliRunFailure(
   if (terminal.status === 'lost')
     return renderDiagnostic(
       terminal.code,
-      'Effects may be uncertain; do not blindly repeat the Run. Inspect the result and any effects before starting new work. See https://jig.md/guide/results.',
+      'Effects may be uncertain; do not blindly repeat the Run. Inspect the result and any effects before starting new work. See https://jig.md/build/results.',
       'Execution lost',
     )
   if (
@@ -3056,7 +3056,7 @@ export function privateCliRunFailure(
   )
     return renderDiagnostic(
       terminal.code,
-      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See the attributed diagnostics shown above; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
+      `Execution failed, but the host did not retain a more specific cause.\n${hasRunDiagnostics ? 'See the attributed diagnostics shown above; diagnostic text is not a confirmed cause.' : 'No Flow diagnostic text was captured. This result does not establish whether the Flow started.'}\n\nInspect any effects before starting new work. See https://jig.md/build/results.`,
       'Run failed',
     )
   const reasons: Record<string, string> = {
@@ -3076,7 +3076,7 @@ export function privateCliRunFailure(
   }
   return renderDiagnostic(
     terminal.code,
-    `${reasons[terminal.code] ?? 'The cause could not be determined.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nInspect any effects before starting new work. See https://jig.md/guide/results.`,
+    `${reasons[terminal.code] ?? 'The cause could not be determined.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nInspect any effects before starting new work. See https://jig.md/build/results.`,
     terminal.code === 'CANCELLED' ? 'Run cancelled' : 'Run failed',
   )
 }
@@ -3105,7 +3105,7 @@ function unsupportedRegistryLockHint(error: ProjectAdministrationError): string 
 function dependencyPreparationLimitHint(error: ProjectAdministrationError): string {
   const detail = error.diagnostic?.preparationLimit
   if (detail?.profile === 'evaluation')
-    return 'The evaluation dependency tree exceeds its fixed preparation profile. Reduce its dependencies and see https://jig.md/guide/limits. Production dependency overrides do not apply to evaluation.'
+    return 'The evaluation dependency tree exceeds its fixed preparation profile. Reduce its dependencies and see https://jig.md/reference/limits. Production dependency overrides do not apply to evaluation.'
   const field =
     detail?.dimension === 'bytes'
       ? 'maxPreparedBytes'
@@ -3114,7 +3114,7 @@ function dependencyPreparationLimitHint(error: ProjectAdministrationError): stri
         : undefined
   const keys: readonly ('maxPreparedBytes' | 'maxPreparedFiles')[] =
     field === undefined ? ['maxPreparedBytes', 'maxPreparedFiles'] : [field]
-  return `The prepared execution tree includes source, production dependencies, lock and layout bytes. Adjust ${keys.map((key) => `limits.dependencies.${key} in jig.ts or ${DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[key]}`).join('; ')}. Exported environment values take precedence. Then rerun your review command. See https://jig.md/guide/limits.`
+  return `The prepared execution tree includes source, production dependencies, lock and layout bytes. Adjust ${keys.map((key) => `limits.dependencies.${key} in jig.ts or ${DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[key]}`).join('; ')}. Exported environment values take precedence. Then rerun your review command. See https://jig.md/reference/limits.`
 }
 
 function renderProjectDiagnostic(error: ProjectAdministrationError, message: string): string {

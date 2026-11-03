@@ -82,11 +82,11 @@ test('style protects literal code while checking sentence and paragraph bounds',
 })
 test('rendered checks verify cross-site routes, assets and actual emitted IDs', () => {
   const root = fixture()
-  put(root, 'flow/index.html', '<h1 id="flow">FLOW</h1><a href="https://jig.md/guide/">Jig</a>')
+  put(root, 'flow/index.html', '<h1 id="flow">FLOW</h1><a href="https://jig.md/start/">Jig</a>')
   put(root, 'jig/index.html', '<h1 id="home">Jig</h1>')
   put(
     root,
-    'jig/guide/index.html',
+    'jig/start/index.html',
     '<h1 id="guide">Guide</h1><a href="https://flow.jig.md/#flow">FLOW</a><img src="/mark.svg">',
   )
   put(root, 'jig/mark.svg', '<svg/>')
@@ -94,7 +94,7 @@ test('rendered checks verify cross-site routes, assets and actual emitted IDs', 
   put(
     root,
     'jig/index.html',
-    '<a href="/absent">Missing</a><a href="/guide/#absent">Wrong anchor</a>',
+    '<a href="/absent">Missing</a><a href="/start/#absent">Wrong anchor</a>',
   )
   expect(renderedFindings(root)).toHaveLength(2)
 })
@@ -133,7 +133,7 @@ test('actual limits checker rejects drift and repairs only its generated region'
 })
 test('documentation checks require the limits checker whenever its public page is present', () => {
   const root = fixture()
-  put(root, 'docs/jig/guide/limits.md', '# Limits\n')
+  put(root, 'docs/jig/reference/limits.md', '# Limits\n')
   expect(limitReferenceFindings(root)).toHaveLength(1)
 })
 test('the actual CLI rejects invalid baselines and checks new files against Git', () => {

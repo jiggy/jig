@@ -1,0 +1,360 @@
+---
+title: Run a small software factory
+---
+
+# Run a small software factory
+
+Turn a fixed set of one or two authorized issues into separate tested patch
+packets. Explicit method IDs select reviewed repair budgets. An optional
+Semantic Router can choose from issue text when the choice is unknown, or
+abstain. Each factory-owned worker reproduces the defect, requests bounded
+source replacements, executes reviewed commands, and checks unchanged acceptance
+cases. You still decide whether any patch should be combined, merged, or
+released.
+
+Use the
+[small software factory source](https://github.com/jiggy/jig/tree/main/examples/software-factory).
+This is an implemented, self-contained source application. Its local repair Flow
+and Semantic Router use ordinary workspace dependencies. Its external Agent and
+FLOW dependencies are published alphas. Independent installed-package adoption
+and maintainer-authored source comparisons are distinct evidence, summarized
+below. Neither establishes general repair reliability or comparative advantage.
+
+## Before you start
+
+Start with [one tested patch](./tested-patch.md) if you have not run a repair application yet.
+[Prepare the source examples](./index.md#prepare-the-source-examples) on a supported host.
+Use the source-built CLI selected there.
+Configure and authenticate a supported [native client](../build/agents.md#local-clients).
+
+From the checkout root, enter this example:
+
+```sh
+cd examples/software-factory
+```
+
+Keep the full checkout: this application references a sibling Semantic Router workspace package.
+Use the source-built CLI from the shared setup.
+
+## Run the supplied batch
+
+Inspect `batch.json`, the Agent Binding, both repair Bindings, and the two named case files.
+The inline policy in `bindings/agent.ts` selects native Codex through ACP as an example choice.
+Edit that Binding for a lasting choice, or explicitly propose another client during review.
+If the selected client is unavailable, review stops before new approval.
+Correct its setup or deliberately select another client, then review again.
+Review never rewrites policy.
+
+Review prepares the ordinary declared dependencies. To use an HTTP Agent method
+instead, follow the package and Binding setup in
+[Choose an Agent](../build/agents.md#api-access), including its optional
+[OpenAI-compatible gateway route](../build/agent-method.md#use-an-openai-compatible-gateway).
+After authenticating the selected Agent, review and run:
+
+```sh
+jig review --allow-resolution-network
+jig run
+```
+
+The reviewed `entrypoint` in `jig.ts` selects the factory, `batch.json`, the
+`fixtures` source tree and an eight-minute deadline. Jig chooses a fresh packet
+directory in operating-system temporary storage for its writable deliverables
+and reports it on stderr. Repeating `jig run` leaves earlier packets intact, but
+the operating system may clear temporary storage. Use
+`jig run --out ./factory-result` to choose a retained location that does not
+already exist. For another batch, override its input:
+
+```sh
+jig run --input @another-batch.json
+```
+
+Existing results are never overwritten. Explicitly naming a target bypasses
+entrypoint defaults. Supply that invocation's arguments in full.
+
+The standard [reporting contract](../contracts/reporting.md) supplies three
+factory views: **Jobs** shows requested goals, source scope, reviewed approach
+and outcomes. **Checks** shows repository tests and independent acceptance
+cases. **Patches** shows independently checked patch packets and evidence links.
+**Activity** follows current work and check reports. **Execution** shows the
+actual call tree, distinguishing baseline checks from checks of each proposed
+repair. Jobs pairs concise outcomes, verified checks and patch references with
+each job's goal and evidence.
+
+Wide terminals show the selected job's details beside the list. Blocking causes
+remain in the attention bar. Press `!` to read the complete cause. Use
+`jig run --display tui` to switch views, select a job, inspect its details, and
+use `r` to select a verified file preview after packet delivery. Use
+`jig run --display web` to open the same Jobs, Checks and Patches views in a
+browser through the private link printed after execution starts. **Delivered
+files** lets you read each checked patch and its evidence once delivery is
+verified.
+
+A job with several evidence references offers an explicit choice. The display
+does not guess which file you meant. No Flow changes are required. Jobs includes
+the exact original request file. Long displayed goals explicitly identify
+excerpts. Complete requests also remain in the supplied input and `result.json`.
+
+The completed inspector selects Jobs unless you already chose a view. It stays
+read-only until you leave, subject to any explicit enclosing command deadline.
+Execution, cleanup and delivery have already settled. Press `q` to ask before
+leaving the TUI, with Stay selected. During work, confirmed exit continues in
+the ordinary transcript. Escape returns within the TUI.
+
+Ordinary `jig run` selects TUI in suitable interactive terminals. Otherwise it
+shows ordinary output and exits with the final report. `--display plain` emits a
+simple transcript. The final application output gives a brief report of each job
+and public failure causes, while full evidence remains in `result.json`. Reopen
+the saved evidence later without starting work:
+
+```sh
+jig inspect --result DESTINATION --display tui
+jig inspect --result DESTINATION --display web
+```
+
+Replace `DESTINATION` with the packet directory reported by Jig. This shows the
+recorded result, verified saved files and diagnostics. Current packets do not
+retain the live factory tabs or call graph. Add `--receive progress --json` for
+explicit machine records, or `--updates off` to disable automatic observation.
+Rapid phase replacements and slow observers may omit intermediate activity. A
+checkpoint notice follows durable storage.
+
+Counts measure saved jobs, including failures. If live updates stop early, check
+the final report and saved evidence. These views report application
+observations. The final result and retained evidence determine whether a patch
+is review-ready. The factory's `checkpoint` slot separately retains settled job
+evidence and original request files across interruption.
+
+The factory accepts at most two jobs. It validates and captures every selected
+project and case set before starting paid work, then routes and repairs each job
+independently. One configuration allows a single checked proposal. The other
+allows one correction using check feedback. Both require the same evidence.
+Original projects are read-only.
+
+Only a new result packet is writable. Source reads use explicit file offsets and
+must match their observed sizes. An incomplete or wholly empty materialization
+stops before worker dispatch.
+
+## Review the expected result
+
+Start with `<reported destination>/files/summary.txt`, then inspect each job
+directory and the host-owned `result.json`.
+
+- `review.patch` means that job reproduced its defect and the final candidate
+  passed its repository test command and every independent case.
+- `proposal-N.patch` preserves a valid unsuccessful proposal without calling it
+  review-ready.
+- A failed or cancelled peer stays explicit. It does not erase a healthy job's
+  patch or manufacture a verdict for unfinished work.
+- Checkpoint evidence contains only settled jobs. After interruption, the host
+  can deliver that accepted checkpoint with the unsuccessful Run status.
+
+Patches are checked separately. The factory reports overlap and blocks
+conflicting replacements, but it does not claim that two individually passing
+patches pass when combined. Apply selected patches to a disposable copy, run
+combined checks, and review the changes before a human merge decision.
+
+If a job is blocked, inspect its reason and evidence before changing the batch.
+For failed execution or uncertain delivery, follow [Results and recovery](../build/results.md) before retrying.
+
+## Make one change
+
+In `batch.json`, change the timesheet job's `method` from `p2` to `p1`.
+Run `jig run` again.
+The factory now allows one proposal for each job, without changing either job's acceptance cases.
+Input changes do not grant new powers or alter the reviewed repair implementations.
+Changing those implementations or their Bindings requires another review.
+
+## Adapt the issue set
+
+Place each small project beneath the directory supplied as `source`. The
+included specialist runs the same `test/project.test.ts` and `src/cli.ts` paths
+for both projects. Change its Binding only when your bounded application needs a
+different common command shape.
+
+For each job:
+
+1. Add a named `*-cases.json` beside `flows/factory/FLOW.ts`.
+2. Add its `id`, relative `directory`, case-set name, issue text, and existing
+   editable `src/*.ts` or `src/*.js` paths to `batch.json`.
+3. Reproduce the failure yourself.
+4. Review again before starting the batch.
+
+Do not move acceptance policy into candidate source or relax it after seeing a
+proposal. Optional `cancelAfterMs` covers the entire routing-and-repair interval
+of one job while its peer may finish. Root cancellation still stops all owned
+work.
+
+## Choose a method without changing its authority
+
+The supplied issues express different work preferences: the log repair gets one
+proposal, while the timesheet repair can use check feedback for a correction.
+The supplied `batch.json` selects `"method": "p1"` for logs and `"method": "p2"`
+for timesheet, so an ordinary `jig run` spends no Agent calls on selection.
+Inspect `routing` in the result packet to see the exact chosen configuration.
+`flows/factory/methods.ts` supplies opaque IDs and descriptions and maps them to
+reviewed slots. A second proposal is a work budget choice, not weaker
+acceptance. When semantic selection is requested with no preference, candidate
+data describes checked correction as the default.
+
+The router prompt asks the Agent to apply that default only when the method
+suits the stated requirements. This remains model judgment, not a deterministic
+guarantee. When the operator already knows which configuration to select, set
+that job's `method` to `p1` or `p2`. This exact reviewed choice bypasses the
+router. Omit `method` to ask the router to judge from the issue and preferences.
+Both paths still use the same worker and acceptance checks.
+
+The router is useful when the preference is expressed in the task text. It is
+not a cheaper or more reliable replacement for an explicit choice.
+
+For example, a job may include `"method": "p1"` to require one proposal, or
+`"method": "p2"` to allow a checked correction. Unknown method IDs fail input
+validation before any Agent call. The final and checkpoint evidence records
+whether the choice was explicit or automatic and the exact selected slot.
+
+The standalone repair also publishes Repair and Checks on its optional `updates`
+channel. Their reports remain provisional for a caller. The router publishes
+Selection on `progress`, showing task, eligible candidates and a validated
+choice or abstention. Both use the same portable profile as the factory’s views.
+
+The
+[Semantic Router source package](https://github.com/jiggy/jig/tree/main/examples/software-factory/flows/router)
+is independently reusable. It accepts only task text and a bounded candidate
+list, and uses the ordinary Agent contract. It returns a supplied ID with a
+reason, or null for abstention. Candidate IDs and descriptions are data, not
+executable selectors. It has no host registry, provider configuration, or
+factory-specific prompt. Candidate descriptions are still natural-language model
+input.
+
+Use reviewed application-owned descriptions. Membership validation provides no
+protection against instruction-like text and is not an authority check.
+
+The factory validates even a replacement router's complete result and membership
+before calling the mapped slot. Abstention, Agent blocked/limit, malformed
+output and operational failure produce no worker dispatch or patch for that job.
+They remain visible alongside healthy peers. Job evidence retains the exact
+routing input, validated decision and selected slot. Checkpoint and final
+summaries show the routing outcome. The router returns before the worker starts,
+keeping each concurrent branch within the ordinary host budget.
+
+Adding an eligible method changes candidate data and the factory's declared slot
+and Binding. Keep any input/result adaptation in application code and preserve
+independent patch inspection. Reusing the router for a different domain changes
+only candidate data and project wiring. This is bounded semantic dispatch, not
+catalogue discovery or installation. Membership checks enforce the finite set.
+They cannot guarantee an appropriate choice within it.
+
+## Bounded live source evidence
+
+On 2026-09-24, an evaluation tested the current router instructions on eleven
+frozen, synthetic held-out cases. It used ordinary Jig Runs in a fresh consumer
+project with `mistralai/mistral-small-2603`. Seven choices matched the
+pre-recorded expectations. Four did not:
+
+- The Agent selected a sole candidate despite an explicit mismatch.
+- It selected the default when task context was missing.
+- It treated contradictory mandatory budgets as conditional.
+- It followed instruction-like text embedded in one candidate description over
+  the task. All eleven Runs completed successfully at the protocol level. That
+  does not make the four judgments correct. The result is not evidence of
+  improved suitability or abstention, and it exposes that candidate text can
+  steer the Agent. The router therefore remains a bounded choice mechanism, not
+  a suitability, injection resistance, permission, or policy boundary. Supply
+  reviewed application-owned candidate descriptions and independently validate
+  dispatch policy.
+
+This is a small maintainer-authored synthetic set, not a general accuracy
+estimate. Cases, prompt and host hashes, per-Run outputs, and the full method
+are retained in the repository's transient
+`.tmp/semantic-router/revised-holdout/` record. Do not tune against this set and
+then reuse it as held-out evidence.
+
+An earlier evaluation of the previous router instructions used a different
+frozen set, so its outcomes below are not directly comparable to the current
+run.
+
+A fresh copy used an operator-selected OpenRouter Mistral BYOK Agent. Twelve
+frozen direct router Runs tested repair preferences, abstention, adversarial
+text, and an unrelated prose-method set. With `mistralai/mistral-small-2603`,
+ten of twelve choices matched the expected sets. It selected a repair method
+instead of abstaining on an underspecified request and on contradictory
+mandatory preferences. A lighter `mistralai/ministral-8b-2512` run matched nine
+of twelve, also missing the no-preference default. All twenty-four Runs settled.
+
+This small synthetic set is evidence of behavior, not a general accuracy
+estimate.
+
+The same source factory then routed the supplied two issues to different
+reviewed configurations. Both workers reproduced their defects, passed their
+fixed Bun tests and every independent case after one proposal, and delivered
+separate review patches. A fixed two-proposal baseline on the same inputs also
+completed both patches. Approximate command wall time was 128 seconds routed
+versus 96 seconds fixed. This trial demonstrates method selection and evidence
+retention, not a completion or speed advantage. Original fixture bytes were
+unchanged, and both root Runs retained confirmed fencing and release.
+
+The provider did not expose per-call cost through these Jig results, so no
+factory cost comparison is claimed.
+
+## Earlier factory evidence
+
+The following comparison predates semantic dispatch and does not measure
+routing.
+
+
+On the supplied two-project candidate run, one native Agent request failed. The
+other worker produced a patch passing two repository tests and four independent
+cases. The batch returned `blocked`, exported only the healthy patch, retained
+both outcomes and a checkpoint, and left all source bytes unchanged.
+
+A frozen comparison used Codex 0.154.0 with its default model selection. The
+factory needed one batch command but accepted one of two issues in about 75
+seconds. A direct Codex coding session edited disposable copies and accepted
+both issues in about 169 seconds. It also had to construct its evidence harness,
+whose first invocation failed before being corrected. Counting the operator's
+mistyped CLI submission gives one action versus two, but excluding that
+unrelated mistake makes the primary action metric a tie. This run therefore does
+not prove a coordination advantage or superior patch quality.
+
+It does demonstrate the factory's predefined evidence shape and healthy-peer
+retention under a real failure. The earlier two-fixture controller comparison
+also remains a tie.
+
+An independent builder then replaced the issue set with invoice-total and
+word-frequency projects without changing the Bindings. It reproduced both
+defects, reviewed three exact grants, and completed one bounded batch in 121
+seconds. The invoice Agent failed before proposing a patch. More importantly,
+the word-frequency child saw empty files even though the host's captured input
+manifest retained all 24 nonempty source identities. No patch was called ready,
+all originals remained byte-identical, and nothing was merged.
+
+At that stage, the source correction verified every projected attachment's byte
+count and digest in Jig's trusted inner launcher before Flow code started. The
+repair input layer also rejected incomplete and wholly empty reads. Replaying
+the same adapted input failed before any worker or Agent call. A separate
+24-file nested host projection check passed, so that evidence alone did not
+establish the cause of the projection mismatch.
+
+## Published package evidence and adoption limits
+
+This example remains limited to small Bun projects and one or two preselected
+issues with a human merge gate. An independent builder used published packages
+and this guide to adapt it to pantry and receipts projects. Both patches passed
+their repository commands and all seven unchanged independent acceptance cases.
+No patch was applied or combined. This establishes that particular adaptation,
+not general repair reliability or comparative superiority.
+
+A later same-project, two-issue attempt reproduced both defects, but the
+configured Agent endpoint rejected both calls before proposals, so no patch or
+repair-quality evidence resulted. That narrower adoption criterion remains
+unproved until an independent builder meets all these conditions:
+
+- Produce a review-ready patch with passing repository and independent checks.
+- Retain inspectable outcomes for the other issue.
+- Explain how to review the results. These runs were not technically isolated
+  clean-room tests and establish neither general model reliability nor an
+  advantage over a capable coding Agent.
+
+Immediate follow-up interruption also remains unqualified with a supported
+native client on Ubuntu using published packages. Deterministic tests and the
+documented requirement to await the same turn's result do not replace that live
+qualification.

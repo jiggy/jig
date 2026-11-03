@@ -145,7 +145,7 @@ parent: `jig import-contract npm:@jigging/agent-method flows/worker/contracts/ag
 This copies the validated offline closure without running code or granting authority.
 Resolution starts from that parent and uses the nearest ordinary installation,
 including a Flow-local or project-root dependency. The
-[conversation guide](https://jig.md/guide/conversations) supplies a complete caller.
+[conversation guide](https://jig.md/build/conversations) supplies a complete caller.
 
 ```json
 {
@@ -194,7 +194,7 @@ not awaited as part of Agent execution. One-shot callers still use `run.call()`.
 and cleanup `errors`. Catch it normally to retain partial work, not to infer
 successful cleanup from a missing settlement. Optional `events` accepts a
 caller-created update writer; filtering and presentation remain caller-owned.
-See the [conversation guide](https://jig.md/guide/conversations) for grants,
+See the [conversation guide](https://jig.md/build/conversations) for grants,
 control semantics, and the raw channel interface.
 
 ## Ordinary Flow and explicit Skills
@@ -302,7 +302,7 @@ HTTP rejection errors retain status-derived `details` (`phase`, `api`, `status`,
 `category`, `retry`, and an optional recognized `parameter`) and explain which configuration to check. Provider bodies
 remain private, unknown parameters remain unknown, and a received response
 does not prove remote rollback or safe replay. See the
-[diagnostic guide](https://jig.md/guide/agent-method#diagnose-a-failed-request).
+[diagnostic guide](https://jig.md/build/agent-method#diagnose-a-failed-request).
 
 The exact Agent Run contract declares optional updates. This HTTP implementation
 rejects a requested channel before dispatch; it supplies no streaming or ACP

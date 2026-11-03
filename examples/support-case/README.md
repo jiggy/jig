@@ -4,8 +4,8 @@ An Agent interprets a customer's request. Code checks account records and
 credit policy, then returns a decision another application can consume.
 A persuasive answer cannot raise the credit limit or create a duplicate payment.
 
-With Jig installed on a [supported host](https://jig.md/guide/), configure and
-authenticate a supported client through [Choose an Agent](https://jig.md/guide/agents).
+With Jig installed on a [supported host](https://jig.md/start/), configure and
+authenticate a supported client through [Choose an Agent](https://jig.md/build/agents).
 The inline native policy in `bindings/agent.ts` selects Codex as an example
 choice. Edit that Binding and review again for a lasting client preference.
 `jig.ts` routes the assessor's Agent slot to this configured Binding. Run here:
@@ -76,7 +76,7 @@ stays open until you explicitly close it; leaving a live display does not cancel
 Blocking causes remain reachable from every view. Plain output and `--json` remain
 available.
 
-Read the [walkthrough](../../docs/jig/guide/support-case.md), then run:
+Read the [walkthrough](../../docs/jig/examples/support-case.md), then run:
 
 ```sh
 bun test examples/support-case/test

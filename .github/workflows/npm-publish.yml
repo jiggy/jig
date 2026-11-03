@@ -591,11 +591,11 @@ jobs:
           case "$RELEASE_GROUP" in
             host)
               create_release agent-method "$AGENT_VERSION" 'Replaceable HTTP Agent Flow and reusable method library.' \
-                "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/guide/agent-method' "$AGENT_STATE"
+                "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/build/agent-method' "$AGENT_STATE"
               create_release agent-acp "$ACP_VERSION" 'Replaceable Agent Flow over a host-authorized finite ACP resource.' \
-                "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/guide/agents' "$ACP_STATE"
+                "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/build/agents' "$ACP_STATE"
               create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
-                "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/guide/' "$JIG_STATE"
+                "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/start/' "$JIG_STATE"
               ;;
             *) exit 1 ;;
           esac

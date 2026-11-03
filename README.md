@@ -17,18 +17,18 @@ methods with operator-chosen powers and accounts for their execution. Methods
 own the work; applications own purpose and consequences; Jig owns the common
 execution boundaries.
 
-Start with [one caller, three implementations](docs/jig/guide/contact-import.md):
+Start with [one caller, three implementations](./docs/jig/examples/contact-import.md):
 a contact importer calls a column mapper written as code, an Agent method,
 or a combination. Its caller stays unchanged. The shared interface keeps composition
 consistent; it does not guarantee equal answers or make Agent judgment correct.
 
-For larger applications, try [a tested patch](docs/jig/guide/tested-patch.md) or
-[support-case handling](docs/jig/guide/support-case.md).
+For larger applications, try [a tested patch](./docs/jig/examples/tested-patch.md) or
+[support-case handling](./docs/jig/examples/support-case.md).
 
 The shared aspiration is to **expand human possibility**. FLOW pursues
 **capability compounding**; Jig pursues **agency through power under control**.
 [Why FLOW exists](https://flow.jig.md/guide/understand) and
-[how Jig works](docs/jig/guide/understand.md) explain the architecture behind them.
+[how Jig works](./docs/jig/understand/index.md) explain the architecture behind them.
 
 ## Quickstart
 
@@ -38,36 +38,36 @@ annual revenue are free. Larger groups need company coverage for operational
 use. [Jig's prices](PRICING.md) buy permanent rights to covered releases across
 applications, including twelve months of new official releases.
 
-Install the developer alpha on a [supported Linux or Mac host](docs/jig/guide/index.md#supported-host):
+Install the developer alpha on a [supported Linux or Mac host](./docs/jig/start/index.md#supported-host):
 
 ```sh
 npm install --global @jigging/jig@alpha
-```
-
-Follow [your first Flow](docs/jig/guide/index.md#your-first-flow) for a complete
-small project, or copy the [tested-patch application](examples/tested-patch).
-
-Inside the greeting project from the first-Flow guide, the everyday loop is:
-
-```sh
+jig init hello-jig
+cd hello-jig
 jig review --allow-resolution-network
 jig run flow:flows/hello --input '"Ada"'
 ```
 
-`review` shows the proposed changes and asks for approval. `run` executes the
-approved revision, returns its result, and settles owned work. Later source
-changes need another review.
+Read the source and policy during review, then approve the exact revision before running it.
+The network flag permits dependency preparation. It gives the Flow no runtime network access.
+Expect `status: "succeeded"`, `outcome: "done"`, and `output.message: "Hello, Ada!"`.
 
-For Agent-assisted development, install the [FLOW and Jig authoring skills](docs/jig/guide/for-agents.md#install-authoring-skills) in your project.
+Follow [your first Flow](./docs/jig/start/index.md) to change that result and handle a failed run.
+Then [call it from your application](./docs/jig/start/application.md), [add an Agent](./docs/jig/build/agents.md), and [compose methods](./docs/jig/build/compose.md).
+Later source or policy changes need another review.
+
+For Agent-assisted development, install the [FLOW and Jig authoring skills](./docs/jig/for-agents.md#install-authoring-skills) in your project.
 They teach portable Flow design and Jig's project workflow.
 
 ## Documentation
 
-- [Get started and supported hosts](docs/jig/guide/index.md)
-- [Choose an Agent](docs/jig/guide/agents.md)
-- [Working with files](docs/jig/guide/files.md) and [dependencies](docs/jig/guide/dependencies.md)
-- [Project design](docs/jig/guide/design.md), [workflow structure](docs/jig/guide/workflow-design.md), and [use cases](docs/jig/use-cases.md)
-- [Project authoring](docs/jig/spec/project-sdk.md) and [execution policy](docs/jig/spec/project-policy.md)
+- [Documentation home](./docs/jig/documentation.md) — choose a task or learning path.
+- [Start here](./docs/jig/start/index.md) — run, call, and change one method.
+- [Build](./docs/jig/build/index.md) — compose methods, use files, add effects, and handle results.
+- [Understand](./docs/jig/understand/index.md) — learn what the application, method, operator, and host each own.
+- [Examples](./docs/jig/examples/index.md) — follow complete applications through their results and checks.
+- [Reference](./docs/jig/reference/index.md) — look up settings, limits, APIs, and exact host contracts.
+- [Research](./docs/jig/research/index.md) — explore hypotheses separately from supported behavior.
 - [FLOW specifications](https://flow.jig.md/)
 - [Security](SECURITY.md), [contributing](CONTRIBUTING.md), and [release process](RELEASING.md)
 

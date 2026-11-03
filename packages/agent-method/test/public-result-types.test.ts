@@ -19,7 +19,7 @@ test('public Agent results compose with FLOW JSON without casts', async () => {
       join(consumer, 'consumer.ts'),
     )
     const guide = await readFile(
-      new URL('../../../docs/jig/guide/conversations.md', import.meta.url),
+      new URL('../../../docs/jig/build/conversations.md', import.meta.url),
       'utf8',
     )
     const caller = Array.from(guide.matchAll(/```ts\n([\s\S]*?)\n```/g))
