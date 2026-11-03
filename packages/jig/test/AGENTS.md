@@ -6,6 +6,8 @@
 `portable/built-authoring.test.ts` checks the actual public and evaluator authoring bundles after building Jig.
 `portable/bun-workspace.test.ts` checks workspace capture, including unrelated external patterns and selected-root containment.
 Explicit source selections retain dependency membership, aggregate limits, immutable bytes and directory replacement checks.
+Protected Jig state stays absent under ordinary or broad package selections, including case-folded names.
+Explicit protected file or patch requests and protected bytes in supplied target snapshots remain refused.
 
 `portable/cli.test.ts` exercises actual packaged review refusal and authoring recovery without source evaluation or host acquisition.
 `portable/jig-development-build.test.ts` exercises the genuine launcher against matching, changed and incomplete contributor builds.
@@ -381,8 +383,10 @@ mount refusal, including declaration reads and freshness after a new bind mount
 in the fixture-owned user and mount namespace.
 The freshness fixture maps namespace root to the unprivileged host user for util-linux mount authorization.
 Only that namespace retains `CAP_SYS_ADMIN` for the post-capture mount and unmount.
+
 Its workspace cases compare ordinary and explicitly selected mounted roots through actual capture.
 They check application prefixes, dependency roots, protected sources, repeated directory identity, nested mounts and mount identity changes.
+Mounted ancestor selection excludes protected descendant state and refuses explicit inclusion or case-folded protected bind sources.
 The local Bun consumer executes copied captured bytes after visible source changes.
 
 That consumer establishes captured dependency usability, not Jig admission or native Run qualification.

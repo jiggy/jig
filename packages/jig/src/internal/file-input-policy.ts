@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { isProtectedProjectPath } from '../project/paths.js'
 
 /** Closed invocation-file policy shared by the supported native hosts. */
 export const PRIVATE_FILE_LIMITS = Object.freeze({
@@ -23,7 +24,6 @@ export type PrivateCapturePurpose = keyof typeof PRIVATE_CAPTURE_LIMITS
 /** Capture/import borrows one bounded buffer, never another complete file tree. */
 export const PRIVATE_CAPTURE_CHUNK_BYTES = 64 * 1024
 const NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const protectedParts = new Set(['.jig'])
 // biome-ignore lint/suspicious/noControlCharactersInRegex: The file boundary must reject control characters.
 const FILE_CONTROLS = /[\x00-\x1f\x7f]/
 
@@ -106,7 +106,7 @@ export function privateFilePath(value: string): string {
           !part ||
           part === '.' ||
           part === '..' ||
-          protectedParts.has(process.platform === 'darwin' ? part.toLowerCase() : part),
+          isProtectedProjectPath(part),
       ) ||
     value.split('/').length > PRIVATE_FILE_LIMITS.depth
   )
@@ -121,11 +121,7 @@ export function privateAttachmentName(value: string): string {
 
 export function privateRequireUnprotected(path: string): void {
   if (
-    path
-      .split('/')
-      .some((part) =>
-        protectedParts.has(process.platform === 'darwin' ? part.toLowerCase() : part),
-      ) ||
+    path.split('/').some(isProtectedProjectPath) ||
     ['/proc', '/sys', '/dev', '/run'].some((root) => path === root || path.startsWith(`${root}/`))
   ) {
     throw new PrivateFileInputError('protected')

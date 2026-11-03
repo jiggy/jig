@@ -10,6 +10,7 @@ import {
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes, validateLogicalPath } from '../package/paths.js'
+import { isProtectedProjectPath } from '../project/paths.js'
 import { openPrivateProjectRoot, type PrivateProjectRoot } from '../project/root.js'
 import {
   PrivateBunManifestError,
@@ -357,8 +358,14 @@ async function capture(
           'PACKAGE_BUN_WORKSPACE_INVALID',
           'workspace members use the root lock and no package-local registry configuration',
         )
-      for (const file of captured.files)
+      for (const file of captured.files) {
+        if (file.path.split('/').some(isProtectedProjectPath))
+          fail(
+            'PACKAGE_BUN_WORKSPACE_INVALID',
+            'workspace package source cannot include protected Jig state',
+          )
         add(`${member.path}/${file.path}`, file.size, { source: captured, path: file.path })
+      }
     }
     for (const [path, bytes] of patches) {
       const existing = records.get(path)
@@ -523,7 +530,8 @@ function safePattern(value: string): boolean {
           part === '..' ||
           part === '' ||
           part === 'node_modules' ||
-          part === '.git',
+          part === '.git' ||
+          isProtectedProjectPath(part),
       )
   )
 }
@@ -564,7 +572,12 @@ async function discover(
     for await (const entry of privateDirectoryEntries(directory)) {
       if (++count > MAX_ENTRIES)
         fail('PACKAGE_BUN_INPUT_LIMIT', 'workspace discovery exceeded its entry bound')
-      if (entry.name === 'node_modules' || entry.name === '.git') continue
+      if (
+        entry.name === 'node_modules' ||
+        entry.name === '.git' ||
+        isProtectedProjectPath(entry.name)
+      )
+        continue
       const childPath = path === '' ? entry.name : `${path}/${entry.name}`
       if (!patterns.some((pattern) => !pattern.startsWith('!') && couldContain(pattern, childPath)))
         continue
@@ -686,6 +699,8 @@ async function readPatch(
   sourcePath: (path: string) => string,
 ): Promise<Uint8Array> {
   const parts = path.split('/')
+  if (parts.some(isProtectedProjectPath))
+    fail('PACKAGE_BUN_WORKSPACE_INVALID', 'workspace patches cannot select protected Jig state')
   const name = parts.pop()!
   const directory = parts.length === 0 ? root : await openBeneath(root, parts.join('/'), sourcePath)
   try {
@@ -715,7 +730,12 @@ function packageSelection(manifest: Record<string, unknown>): (path: string) => 
     )
   const patterns = files as string[] | undefined
   return (path) => {
-    if (path.split('/').some((part) => part === 'node_modules' || part === '.git')) return false
+    if (
+      path
+        .split('/')
+        .some((part) => part === 'node_modules' || part === '.git' || isProtectedProjectPath(part))
+    )
+      return false
     if (path === 'package.json' || /^(README|LICENSE|LICENCE)(\.|$)/i.test(path)) return true
     if (
       patterns?.some(

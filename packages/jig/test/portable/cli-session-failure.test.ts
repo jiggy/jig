@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import {
   ProjectAdministrationError,
   type ProjectSession,
@@ -20,12 +20,21 @@ const success: Failure = { failed: false }
 const failure = (value: unknown): Failure => ({ failed: true, value })
 
 // This diagnostic probe does not acquire a native host or establish cleanup evidence.
-async function review(operation: Failure, close: Failure, readiness?: PrivateAgentReadinessReport) {
+async function review(
+  operation: Failure,
+  close: Failure,
+  readiness?: PrivateAgentReadinessReport,
+  relativeSelection = false,
+) {
   const project = await mkdtemp(join(tmpdir(), 'jig-cli-session-failure-'))
+  const invocationDirectory = relativeSelection ? dirname(project) : project
+  const sourceRootOperand = `${basename(project)}-dependency`
   const events: string[] = []
   const output: string[] = []
   const errors: string[] = []
   let reportReadiness: ((report: PrivateAgentReadinessReport) => void) | undefined
+  let acquiredProject: string | undefined
+  let acquiredSourceRoots: readonly string[] | undefined
   const session: ProjectSession = {
     async plan() {
       events.push('plan')
@@ -47,22 +56,35 @@ async function review(operation: Failure, close: Failure, readiness?: PrivateAge
     },
   }
   try {
-    const exit = await main(['review', '--yes'], {
-      currentDirectory: project,
-      interactive: false,
-      terminalOutput: false,
-      terminalError: false,
-      writeOutput: (text) => output.push(text),
-      writeError: (text) => errors.push(text),
-      host: {
-        async acquire(_project, options) {
-          events.push('acquire')
-          reportReadiness = options?.onAgentReadiness
-          return session
+    const exit = await main(
+      [
+        'review',
+        ...(relativeSelection ? [basename(project), '--source-root', sourceRootOperand] : []),
+        '--yes',
+      ],
+      {
+        currentDirectory: invocationDirectory,
+        interactive: false,
+        terminalOutput: false,
+        terminalError: false,
+        writeOutput: (text) => output.push(text),
+        writeError: (text) => errors.push(text),
+        host: {
+          async acquire(selectedProject, options) {
+            events.push('acquire')
+            acquiredProject = selectedProject
+            acquiredSourceRoots = options?.sourceRoots
+            reportReadiness = options?.onAgentReadiness
+            return session
+          },
         },
       },
-    })
+    )
     expect(events).toEqual(['acquire', 'plan', 'close'])
+    expect(acquiredProject).toBe(project)
+    expect(acquiredSourceRoots).toEqual(
+      relativeSelection ? [join(invocationDirectory, sourceRootOperand)] : undefined,
+    )
     expect(await readdir(project)).toEqual([])
     const text = [...output, ...errors].join('')
     expect(text).not.toContain('SYNTHETIC_')
@@ -80,6 +102,8 @@ for (const operationFails of [false, true]) {
       const result = await review(
         operationFails ? failure(new Error(operationSecret)) : success,
         closeFails ? failure(new Error(closeSecret)) : success,
+        undefined,
+        !operationFails && !closeFails,
       )
       expect(result.exit).toBe(operationFails || closeFails ? 2 : 0)
       if (!operationFails && !closeFails) {

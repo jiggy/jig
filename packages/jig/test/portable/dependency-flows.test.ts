@@ -167,7 +167,10 @@ test('missing declarations and symlinked source fail without acquiring package a
     expect(f.preparations()).toBe(0)
     await rm(join(f.directory, 'packages/echo/FLOW.ts'))
     await symlink('/etc/passwd', join(f.directory, 'packages/echo/FLOW.ts'))
-    await expect(f.capture()).rejects.toMatchObject({ code: 'PACKAGE_BUN_WORKSPACE_INVALID' })
+    await expect(f.capture()).rejects.toMatchObject({
+      code: 'PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK',
+      path: '../../packages/echo/FLOW.ts',
+    })
     expect(f.preparations()).toBe(0)
   } finally {
     await f.dispose()

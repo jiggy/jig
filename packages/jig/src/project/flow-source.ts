@@ -318,14 +318,16 @@ async function captureMember(
   let captured: CapturedPackage | undefined
   try {
     captured = await captureOpenedPackageDirectory(provenance.projectPath, handle, {
-      includes: (path) => !path.split('/').includes('node_modules'),
+      includes: (path) =>
+        !path.split('/').some((part) => part === 'node_modules' || isProtectedProjectPath(part)),
       maximumFiles: 65_536,
       maximumBytes: 4_294_967_296,
     })
     if (await prepare?.(handle, provenance, captured)) {
       await captured.dispose()
       captured = await captureOpenedPackageDirectory(provenance.projectPath, handle, {
-        includes: (path) => !path.split('/').includes('node_modules'),
+        includes: (path) =>
+          !path.split('/').some((part) => part === 'node_modules' || isProtectedProjectPath(part)),
         maximumFiles: 65_536,
         maximumBytes: 4_294_967_296,
       })
