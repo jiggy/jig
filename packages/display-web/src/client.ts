@@ -6,7 +6,7 @@ import type {
 import { validateDisplaySnapshot, validDisplayImage } from '@jigging/display-model'
 
 const SNAPSHOT_BYTES = 16 * 1024 * 1024
-const PREVIEW_BYTES = 1 * 1024 * 1024
+const PREVIEW_BYTES = 3 * 1024 * 1024
 export type PrivateBrowserConnection =
   | 'connecting'
   | 'current'
@@ -560,7 +560,7 @@ export class PrivateBrowserClient {
       this.#mediaBytes -= previous.charge
     }
     while (
-      (this.#mediaBytes + charge > 8 * 1024 * 1024 || this.#mediaCache.size >= 64) &&
+      (this.#mediaBytes + charge > 40 * 1024 * 1024 || this.#mediaCache.size >= 64) &&
       this.#mediaCache.size
     ) {
       const [oldKey, old] = this.#mediaCache.entries().next().value!

@@ -35,9 +35,7 @@ test('process renderer: captured SVG becomes bounded PNG and raster input is nor
 })
 
 test('process renderer: photo images render from owned SVG data and external references are refused', async () => {
-  const photo = readFileSync(
-    new URL('../../../../examples/photo-organiser/fixtures/photos/IMG_0201.svg', import.meta.url),
-  )
+  const photo = svg('<rect width="32" height="16" fill="green"/>')
   expect(
     privateValidImagePreview(
       await privateImagePreview(
@@ -56,17 +54,19 @@ test('process renderer: photo images render from owned SVG data and external ref
     expect(await privateImagePreview(svg(`<image href="${href}"/>`))).toBeUndefined()
 })
 
-test('process renderer: the complete cookbook contact sheet retains all twelve before-and-after rows', async () => {
-  const root = new URL('../../../../examples/photo-organiser/fixtures/photos/', import.meta.url)
-  const photos = JSON.parse(readFileSync(new URL('photos.json', root), 'utf8'))
-  const images = new Map<string, Buffer>(
-    photos.map((photo: { id: string; file: string }) => [
-      photo.id,
-      readFileSync(new URL(photo.file, root)),
-    ]),
+test('process renderer: a complete contact sheet retains all twelve before-and-after rows', async () => {
+  const photos = Array.from({ length: 12 }, (_, index) => ({
+    id: `p${index}`,
+    file: `photo-${index}.svg`,
+    date: '2025-06-14',
+    caption: `Photograph ${index}`,
+  }))
+  const images = new Map(
+    photos.map((photo) => [photo.id, svg('<rect width="32" height="16" fill="green"/>')]),
   )
-  const renamed = photos.map((photo: { file: string }) => ({
+  const renamed = photos.map((photo) => ({
     ...photo,
+    event: 'Group',
     destination: `Grouped/${photo.file}`,
   }))
   const image = (await privateImagePreview(
@@ -91,7 +91,9 @@ test('process renderer: invalid input loses its preview while tall surfaces fit 
   bytes.writeUInt32BE(100000, 16)
   expect(await privateImagePreview(bytes)).toBeUndefined()
   expect(validDisplayImage({ ...image, mime: 'image/svg+xml' })).toBeFalse()
-  expect(privateValidImagePreview({ ...image, width: 385 })).toBeFalse()
+  expect(
+    privateValidImagePreview({ ...image, width: PRIVATE_PREVIEW_LIMITS.width + 1 }),
+  ).toBeFalse()
 })
 
 test('process renderer: nested image source and decoded raster budgets are aggregate, and refusal does not poison later jobs', async () => {
@@ -150,4 +152,17 @@ test('renderer import guards charge before individual and aggregate content allo
     await worker.terminate()
     await exited
   }
+})
+
+test('process renderer: captured photographs retain document detail within bounded PNG output', async () => {
+  const source = readFileSync(
+    new URL('../../../../examples/photo-organiser/fixtures/photos/walk.jpg', import.meta.url),
+  )
+  const image = await privateImagePreview(source)
+  expect(privateValidImagePreview(image)).toBeTrue()
+  expect(image!.width).toBeGreaterThan(384)
+  expect(image!.width).toBeLessThanOrEqual(1024)
+  expect(Buffer.from(image!.base64, 'base64').length).toBeLessThanOrEqual(
+    PRIVATE_PREVIEW_LIMITS.pngBytes,
+  )
 })

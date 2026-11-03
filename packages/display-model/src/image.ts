@@ -1,6 +1,6 @@
 import type { DisplayImagePreview } from './types.js'
 
-export const DISPLAY_IMAGE_BYTES = 1024 * 1024
+export const DISPLAY_IMAGE_BYTES = 2 * 1024 * 1024
 /** Bounded inert raster data. This checks shape, not authenticity or decoding. */
 export function validDisplayImage(value: unknown): value is DisplayImagePreview {
   if (!value || typeof value !== 'object') return false

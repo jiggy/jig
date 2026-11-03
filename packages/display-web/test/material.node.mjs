@@ -371,9 +371,7 @@ test('real HTTP serializes visible media, authenticates full downloads and fence
   }
 })
 
-function thumbnail() {
-  const width = 384,
-    height = 170
+function thumbnail(width = 384, height = 170) {
   const pixels = Buffer.alloc((width * 4 + 1) * height)
   for (let row = 0; row < height; row++)
     for (let column = 1; column <= width * 4; column++)
@@ -402,13 +400,14 @@ function thumbnail() {
     chunk('IDAT', deflateSync(pixels, { level: 0 })),
     chunk('IEND', Buffer.alloc(0)),
   ])
-  assert(png.length <= 256 * 1024)
+  assert(png.length <= 2 * 1024 * 1024)
   return { mime: 'image/png', width, height, base64: png.toString('base64') }
 }
 
 test('media cache pressure does not repeat settled visible requests', async () => {
   const body = snapshot()
-  const image = thumbnail()
+  const image = thumbnail(800, 400)
+  assert(Buffer.from(image.base64, 'base64').length > 1024 * 1024)
   const cap = 'B'.repeat(43)
   body.inputs = {
     generation: 'input-1',
@@ -434,7 +433,7 @@ test('media cache pressure does not repeat settled visible requests', async () =
     bytes: 256 * 1024,
     clipped: false,
   })
-  assert(13 * (JSON.stringify(reply('file-0')).length * 2 + 512) > 8 * 1024 * 1024)
+  assert(13 * (JSON.stringify(reply('file-0')).length * 2 + 512) > 40 * 1024 * 1024)
   const attempts = new Map()
   const events = new Set()
   let held,
@@ -487,6 +486,8 @@ test('media cache pressure does not repeat settled visible requests', async () =
     await until(() => client.referencesEnabled)
     client.setMedia(intents.slice(0, 13))
     await until(() => requests >= 13 && client.mediaPreview(intents[12]))
+    assert.equal(client.mediaPreview(intents[12]).state, 'image')
+    assert.equal(client.mediaPreview(intents[12]).image.width, 800)
     await quiet()
     assert.equal(requests, 13)
     assert.equal(peak, 1)
