@@ -286,7 +286,8 @@ All selected domain requirements still apply.
   in one `JIG_CLEANUP_FAILED` diagnostic. Use approved categories or `UNCLASSIFIED`.
   Classify from trusted error types and allowlisted data properties, never exception text.
   Preserve cleanup uncertainty and withhold operation retry instructions until settlement.
-  The results guide owns recovery with an original ticket and escalation without one.
+  The [troubleshooting guide](../../docs/jig/reference/troubleshooting.md#unconfirmed-cleanup) owns
+  recovery with an original ticket and escalation without one.
   A completed command operation does not establish a successful execution terminal.
 
   Never display rejected schema values or compiler exception text. Render

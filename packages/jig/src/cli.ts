@@ -2357,7 +2357,7 @@ function renderSessionCloseFailure(error: PrivateCliSessionCloseFailure): string
       'Do not start new work or follow earlier retry advice until the existing work is settled.',
       'If you saved an application ticket, observe that original attempt.',
       'If no saved ticket or result is available, request recovery help from Jig maintainers before retrying.',
-      'Next step: https://jig.md/build/results#when-cleanup-cannot-be-confirmed',
+      'Next step: https://jig.md/reference/troubleshooting#unconfirmed-cleanup',
     ].join('\n\n'),
   )
 }
@@ -3043,7 +3043,7 @@ export function privateCliRunFailure(
   if (cleanupUnconfirmed)
     return renderDiagnostic(
       terminal.code,
-      `${terminal.status === 'lost' ? 'Execution was lost.' : terminal.code === 'CANCELLED' ? 'Execution was cancelled.' : 'Execution failed.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nCleanup remains unconfirmed. Preserve the result and settle existing work before following any retry advice.\nNext step: https://jig.md/build/results#when-cleanup-cannot-be-confirmed`,
+      `${terminal.status === 'lost' ? 'Execution was lost.' : terminal.code === 'CANCELLED' ? 'Execution was cancelled.' : 'Execution failed.'}${terminal.message.trim() ? `\n\nReported cause:\n  ${asciiJsonString(terminal.message)}` : ''}\n\nCleanup remains unconfirmed. Preserve the result and settle existing work before following any retry advice.\nNext step: https://jig.md/reference/troubleshooting#unconfirmed-cleanup`,
       terminal.status === 'lost' ? 'Execution lost' : 'Run failed',
     )
   if (terminal.code === 'PROTOCOL_ERROR')

@@ -648,7 +648,7 @@ Combined recovery guidance MUST withhold operation-specific replay instructions 
 It MUST direct applications with retained tickets to observe the original attempt.
 For callers without a usable packet or recovery identity, explain the supported recovery limit and preserve existing evidence.
 Never invent a recovery command or imply that new work settles the original invocation.
-The [cleanup recovery guide](../build/results.md#when-cleanup-cannot-be-confirmed) owns the procedure and escalation path.
+The [troubleshooting guide](../reference/troubleshooting.md#unconfirmed-cleanup) owns the procedure and escalation path.
 These diagnostics do not add a review JSON envelope or change existing machine framing.
 
 ### Agent project initialization
@@ -968,4 +968,4 @@ Changes to public output must update this contract when its guarantees change,
 its owning implementation, and focused acceptance tests together. Adding an
 ad hoc raw diagnostic or weakening an assertion to accommodate unreadable
 output is not an acceptable shortcut. Recovery advice remains subject to the
-[results guide](../build/results.md) and exact lifecycle contracts.
+[troubleshooting guide](../reference/troubleshooting.md) and exact lifecycle contracts.

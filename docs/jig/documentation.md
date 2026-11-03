@@ -33,7 +33,8 @@ Check the [supported host requirements](./start/index.md#supported-host) before 
 | Show progress and application views | [Live progress](./build/channels.md) |
 | Give a method bounded network access | [Delegate HTTP access](./build/http.md) |
 | Revise an answer with the same Agent | [Conversations](./build/conversations.md) |
-| Handle failure or recover a result | [Results and recovery](./build/results.md) |
+| Understand an execution result | [Results](./build/results.md) |
+| Diagnose an error or recover from failure | [Troubleshooting](./reference/troubleshooting.md) |
 | Choose responsibilities and configuration | [Project design](./build/design.md) |
 
 Browse [Build](./build/index.md) for the complete task map.
@@ -50,7 +51,7 @@ Each example states its assumptions and prerequisites.
 
 ## Find an exact answer
 
-[Reference](./reference/index.md) routes you to settings, limits, terminology, APIs, and specifications.
+[Reference](./reference/index.md) routes you to settings, limits, troubleshooting, terminology, APIs, and specifications.
 Guides explain tasks. Specifications define exact requirements.
 The separate [Research](./research/index.md) area records hypotheses and evaluation criteria.
 Research does not establish current support.

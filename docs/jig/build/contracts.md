@@ -65,7 +65,7 @@ The contract now requires a string, even though the original handler supplied a 
 
 Change the string input and run again without another review.
 Review is required when you change the implementation or contract source.
-Use [failure and portability](#failure-and-portability) if generation or publication fails.
+For generation or publication failures, follow [contract troubleshooting](../reference/troubleshooting.md#contract-generation-fails-or-is-interrupted).
 
 ## One model, related outputs
 
@@ -180,8 +180,8 @@ shows conversation, event and session requirements with their separate limits.
 
 Jig replaces only outputs it previously generated, or adopts existing outputs
 whose bytes already equal the requested result. An independently edited or
-different unowned file causes a conflict. Preserve those edits and resolve the
-conflicting file before regeneration; Jig does not guess which version wins.
+different unowned file causes a conflict. Jig does not guess which version wins.
+For conflicts, follow [contract-generation troubleshooting](../reference/troubleshooting.md#contract-generation-fails-or-is-interrupted).
 
 To omit implementation types, change `types` to `false` in the managed source
 header and run `jig review --generate-contracts`. Removed projections and disabled types
@@ -194,14 +194,13 @@ JSON, remaining projections and declarations become manually maintained.
 The preceding source and affected files remain in local `.jig/authoring` recovery
 records. They are not part of the portable package.
 
-## Failure and portability
+## Publication and portability
 
-A compilation failure leaves previous outputs intact but stale. Interrupted
-publication blocks normal review; `--generate-contracts` settles the recorded batch before
-processing further edits. Recovery refuses any file containing a third value.
-It does not rerun the Flow or approve execution. Separate packages may finish
-generation before another fails; these are per-package batches, not a project-wide
-atomic write. Existing admitted Runs remain unchanged.
+Separate packages may finish generation before another fails.
+Publication uses per-package batches rather than a project-wide atomic write.
+Existing admitted Runs remain unchanged.
+
+For failed or interrupted generation, follow [contract-generation troubleshooting](../reference/troubleshooting.md#contract-generation-fails-or-is-interrupted).
 
 The publisher coordinates through Jig's project session. Individual replacements
 are atomic; the complete file set is not an atomic filesystem snapshot. Stop

@@ -99,7 +99,7 @@ execution evidence.
   channel output, project policy, help, and the results guide.
 
   Combined operation and session-close diagnostics preserve bounded phase classifications and cleanup uncertainty.
-  Their recovery guidance must match the results guide without authorizing replay or introducing a review JSON envelope.
+  Their recovery guidance must match the troubleshooting guide without authorizing replay or introducing a review JSON envelope.
 
 - Specify observable guarantees and explicit limits. Keep private mechanisms
   private unless users must rely on them.

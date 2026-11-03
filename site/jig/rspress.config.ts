@@ -46,7 +46,7 @@ const build = [
       { text: 'Work with files', link: '/build/files' },
       { text: 'Delegate HTTP access', link: '/build/http' },
       { text: 'Show live progress', link: '/build/channels' },
-      { text: 'Results and recovery', link: '/build/results' },
+      { text: 'Results', link: '/build/results' },
     ],
   },
   {
@@ -97,6 +97,7 @@ const reference = [
       { text: 'Find an exact answer', link: '/reference/' },
       { text: 'Settings and configuration', link: '/reference/configuration' },
       { text: 'Limits and defaults', link: '/reference/limits' },
+      { text: 'Troubleshooting', link: '/reference/troubleshooting' },
       { text: 'Glossary and questions', link: '/reference/glossary' },
     ],
   },
