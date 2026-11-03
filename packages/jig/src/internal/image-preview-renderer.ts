@@ -157,7 +157,7 @@ function inertSvg(text: string, depth: number, budget: SvgBudget): boolean {
       budget.rasterPixels += image.width * image.height
       if (
         !Number.isSafeInteger(budget.rasterPixels) ||
-        budget.rasterPixels > PRIVATE_PREVIEW_LIMITS.pixels
+        budget.rasterPixels > PRIVATE_PREVIEW_LIMITS.svgPixels
       )
         return false
     }

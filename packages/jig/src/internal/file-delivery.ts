@@ -197,7 +197,11 @@ export class PrivateFileDeliveryOwner {
       const reserved = this.#previewCharges.get(file) ?? 0
       const charge = privatePreviewStringBytes(image.base64)
       const extra = Math.max(0, charge - reserved)
-      if (this.#inspectionBytes + extra <= PRIVATE_PREVIEW_LIMITS.retainedBytes) {
+      const raster = contents[0] === 137 || (contents[0] === 255 && contents[1] === 216)
+      const limit = raster
+        ? PRIVATE_PREVIEW_LIMITS.retainedBytes
+        : PRIVATE_PREVIEW_LIMITS.svgRetainedBytes
+      if (this.#inspectionBytes + extra <= limit) {
         this.#previewCharges.set(file, Math.max(reserved, charge))
         this.#inspectionBytes += extra
         return { state: 'image', image, bytes, clipped: false }
