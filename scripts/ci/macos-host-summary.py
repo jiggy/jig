@@ -81,14 +81,16 @@ def cohort_timings(revision, count, evidence, host_profile, jobs):
             if (
                 not isinstance(receipt, dict)
                 or set(receipt) != {"kind", "sourceRevision", "runId", "runAttempt",
-                                   "worker", "jobId", "profile", "role", "claimArtifact", "conflicts"}
-                or receipt["kind"] != "macos-host-cohort-worker/1"
+                                   "worker", "jobId", "allocatorJobId", "profile", "role",
+                                   "readyArtifact", "announcementArtifact", "assignmentArtifact"}
+                or receipt["kind"] != "macos-host-cohort-worker/2"
                 or receipt["sourceRevision"] != revision
                 or not positive_integer(receipt["runId"]) or receipt["runId"] != run_id
                 or not positive_integer(receipt["runAttempt"]) or receipt["runAttempt"] != run_attempt
                 or type(receipt["role"]) is not int or receipt["role"] != role
                 or type(receipt["worker"]) is not int or not 0 <= receipt["worker"] < 5
                 or not positive_integer(receipt["jobId"])
+                or not positive_integer(receipt["allocatorJobId"])
                 or receipt["profile"] != host_profile
             ):
                 continue

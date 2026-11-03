@@ -7,18 +7,26 @@ import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
 import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-profiles.mjs'
 
-// With two admitted profiles, five workers contain three of one exact profile.
-// Workers claim immediately available roles; they never hold a runner waiting
-// for another worker to be scheduled. Claims are not qualification evidence.
+// One already-running Linux allocator owns every role decision. Artifact names
+// are identities, never locks: the service can accept duplicates across jobs.
 export const MAC_PR_COHORT = Object.freeze({ workers: 5, shards: 3 })
 export const MAC_COHORT_ARTIFACT_CLIENT_VERSION = '2.3.2'
+export const MAC_COHORT_ALLOCATOR_NAME = 'Allocate exact-profile Mac roles'
+export const MAC_COHORT_READY_JOB_NAME = 'Require an active Mac role allocator'
 const PROFILE_FIELDS = ['arch', 'kernel', 'build', 'bun', 'revision']
 const RUN_FIELDS = ['sourceRevision', 'runId', 'runAttempt']
 const WORKER_FIELDS = [...RUN_FIELDS, 'worker', 'jobId']
-const CLAIM_KIND = 'macos-host-cohort-claim/1'
-const WORKER_KIND = 'macos-host-cohort-worker/1'
-const MAX_CLAIM_BYTES = 8192
-const MAX_CLAIM_ARCHIVE_BYTES = 16_384
+const OWNER_FIELDS = [...WORKER_FIELDS, 'allocatorJobId']
+const ARTIFACT_FIELDS = ['id', 'name', 'digest']
+const KINDS = Object.freeze({
+  ready: 'macos-host-cohort-ready/1',
+  announcement: 'macos-host-cohort-announcement/1',
+  assignment: 'macos-host-cohort-assignment/1',
+  ledger: 'macos-host-cohort-ledger/1',
+})
+const WORKER_KIND = 'macos-host-cohort-worker/2'
+const MAX_RECORD_BYTES = 8192
+const MAX_RECORD_ARCHIVE_BYTES = 16_384
 
 function requireObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -47,13 +55,14 @@ function requireRun(identity) {
 
 function requireWorker(identity) {
   requireRun(identity)
-  if (
-    !Number.isInteger(identity.worker) ||
-    identity.worker < 0 ||
-    identity.worker >= MAC_PR_COHORT.workers
-  )
-    throw new Error('Invalid Mac cohort worker index')
+  macHostCohortWorkerName(identity.worker)
   requirePositiveInteger(identity.jobId, 'job ID')
+}
+
+function requireAllocatorIdentity(identity, allocatorJobId) {
+  requireFields(identity, RUN_FIELDS, 'run identity')
+  requireRun(identity)
+  requirePositiveInteger(allocatorJobId, 'allocator job ID')
 }
 
 function sameFields(left, right, fields) {
@@ -105,23 +114,13 @@ export function macHostCohortWorkerName(worker) {
   return `Native host worker — arm64 / ${worker}`
 }
 
-export function macHostCohortClaimName(identity, profile, role) {
+export function macHostCohortArtifactName(type, identity, worker) {
   requireRun(identity)
-  if (!Number.isInteger(role) || role < 0 || role >= MAC_PR_COHORT.shards)
-    throw new Error('Invalid Mac cohort role')
-  return `macos-cohort-claim-${identity.sourceRevision}-r${identity.runId}-a${identity.runAttempt}-${macHostProfileKey(profile)}-${role}`
-}
-
-// The pinned official client exposes this server conflict as an Error message.
-// Never interpret a failed upload/finalization, a generic 409 or an ambiguous
-// network failure as an occupied role and proceed with different work.
-export function isMacHostRoleConflict(error) {
-  return (
-    error instanceof Error &&
-    /^Failed to CreateArtifact: Received non-retryable error: Failed request: \(409\) Conflict: an artifact with this name already exists on the workflow run\.?$/.test(
-      error.message,
-    )
-  )
+  if (!Object.hasOwn(KINDS, type)) throw new Error('Unknown Mac cohort record type')
+  const ownsWorker = type === 'announcement' || type === 'assignment'
+  if (ownsWorker) macHostCohortWorkerName(worker)
+  else if (worker !== undefined) throw new Error('Mac coordinator record cannot name a worker')
+  return `macos-cohort-${type}${ownsWorker ? `-${worker}` : ''}-${identity.sourceRevision}-r${identity.runId}-a${identity.runAttempt}`
 }
 
 function artifactDigest(value) {
@@ -138,303 +137,446 @@ function requireArtifact(artifact, name) {
   return { id: artifact.id, name, digest: artifactDigest(artifact.digest) }
 }
 
-function deadlineValue(deadlineMs) {
-  if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= Date.now())
-    throw new Error('Mac cohort claim deadline expired or invalid')
-  return deadlineMs
+function artifactReference(artifact, name) {
+  requireFields(artifact, ARTIFACT_FIELDS, 'artifact reference')
+  return requireArtifact(artifact, name)
 }
 
-async function beforeDeadline(operation, deadlineMs) {
-  const remaining = deadlineValue(deadlineMs) - Date.now()
-  let timer
-  try {
-    return await Promise.race([
-      Promise.resolve().then(operation),
-      new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Mac cohort claim deadline expired')), remaining)
-      }),
-    ])
-  } finally {
-    clearTimeout(timer)
+function sameArtifact(left, right) {
+  return sameFields(left, right, ARTIFACT_FIELDS)
+}
+
+function recordType(record) {
+  requireObject(record, 'record')
+  const type = Object.keys(KINDS).find((name) => KINDS[name] === record.kind)
+  if (!type) throw new Error('Unknown Mac cohort record kind')
+  return type
+}
+
+function requireRecord(record, identity, allocatorJobId) {
+  const type = recordType(record)
+  const fields = ['kind', ...RUN_FIELDS, 'allocatorJobId']
+  if (type === 'announcement' || type === 'assignment') fields.push('worker', 'jobId', 'profile')
+  if (type === 'assignment') fields.push('role', 'announcementArtifact')
+  if (type === 'ledger') fields.push('readyArtifact', 'assignmentArtifacts')
+  requireFields(record, fields, 'record')
+  requireRun(record)
+  requirePositiveInteger(record.allocatorJobId, 'allocator job ID')
+  if (!sameFields(record, identity, RUN_FIELDS) || record.allocatorJobId !== allocatorJobId)
+    throw new Error('Mac cohort record has a foreign source, run, attempt or allocator')
+  if (type === 'announcement' || type === 'assignment') {
+    requireWorker(record)
+    requireProfile(record.profile)
+    if (record.jobId === allocatorJobId) throw new Error('Allocator cannot own a Mac worker')
+  }
+  if (type === 'assignment') {
+    if (
+      record.role !== null &&
+      (!Number.isInteger(record.role) || record.role < 0 || record.role >= MAC_PR_COHORT.shards)
+    )
+      throw new Error('Invalid Mac cohort role')
+    artifactReference(
+      record.announcementArtifact,
+      macHostCohortArtifactName('announcement', identity, record.worker),
+    )
+  }
+  if (type === 'ledger') {
+    artifactReference(record.readyArtifact, macHostCohortArtifactName('ready', identity))
+    if (
+      !Array.isArray(record.assignmentArtifacts) ||
+      record.assignmentArtifacts.length !== MAC_PR_COHORT.workers
+    )
+      throw new Error('Mac cohort ledger requires five assignments')
+    const names = new Set(
+      Array.from({ length: MAC_PR_COHORT.workers }, (_, worker) =>
+        macHostCohortArtifactName('assignment', identity, worker),
+      ),
+    )
+    const ids = new Set()
+    for (const artifact of record.assignmentArtifacts) {
+      artifactReference(artifact, artifact.name)
+      if (!names.delete(artifact.name) || ids.has(artifact.id))
+        throw new Error('Mac cohort ledger repeats or invents an assignment')
+      ids.add(artifact.id)
+    }
+  }
+  return type
+}
+
+/** Validate partial listings without requiring referenced records to be visible yet. */
+export function validateMacHostCohortRecords({ identity, allocatorJobId, records }) {
+  requireAllocatorIdentity(identity, allocatorJobId)
+  if (!Array.isArray(records)) throw new Error('Missing Mac cohort record inventory')
+  const names = new Set()
+  const ids = new Set()
+  return records.map((entry) => {
+    const type = requireRecord(entry?.record, identity, allocatorJobId)
+    const name = macHostCohortArtifactName(
+      type,
+      identity,
+      type === 'announcement' || type === 'assignment' ? entry.record.worker : undefined,
+    )
+    const artifact = requireArtifact(entry.artifact, name)
+    if (names.has(name) || ids.has(artifact.id))
+      throw new Error('Mac cohort repeats a published record name or artifact ID')
+    names.add(name)
+    ids.add(artifact.id)
+    return { artifact, record: entry.record }
+  })
+}
+
+function typedEnvelope(type, entry, identity, allocatorJobId) {
+  const [normalized] = validateMacHostCohortRecords({ identity, allocatorJobId, records: [entry] })
+  if (normalized.record.kind !== KINDS[type]) throw new Error(`Expected Mac cohort ${type} record`)
+  return normalized
+}
+
+function assignmentSequence(assignments, identity, allocatorJobId) {
+  const entries = validateMacHostCohortRecords({ identity, allocatorJobId, records: assignments })
+  const workers = new Set()
+  const jobIds = new Set()
+  const counts = new Map()
+  for (const { record } of entries) {
+    if (record.kind !== KINDS.assignment || workers.has(record.worker) || jobIds.has(record.jobId))
+      throw new Error('Mac cohort assignment sequence repeats or changes a worker')
+    const profile = macHostProfileKey(record.profile)
+    const count = counts.get(profile) ?? 0
+    if (record.role !== (count < MAC_PR_COHORT.shards ? count : null))
+      throw new Error('Mac cohort assignment sequence changes an owned role or invents surplus')
+    counts.set(profile, count + 1)
+    workers.add(record.worker)
+    jobIds.add(record.jobId)
+  }
+  return entries
+}
+
+export function createMacHostCohortReady({ identity, allocatorJobId }) {
+  requireAllocatorIdentity(identity, allocatorJobId)
+  requireMacHostCohortProfiles()
+  return { kind: KINDS.ready, ...identity, allocatorJobId }
+}
+
+export function createMacHostCohortAnnouncement({ identity, allocatorJobId, prerequisites }) {
+  requireFields(identity, WORKER_FIELDS, 'worker identity')
+  requireWorker(identity)
+  requirePositiveInteger(allocatorJobId, 'allocator job ID')
+  if (identity.jobId === allocatorJobId) throw new Error('Allocator cannot own a Mac worker')
+  return {
+    kind: KINDS.announcement,
+    ...identity,
+    allocatorJobId,
+    profile: macHostCohortProfile(prerequisites),
   }
 }
 
-export async function claimMacHostRole({
+/** Only the singleton allocator calls this, after each earlier upload succeeds. */
+export function createMacHostCohortAssignment({
   identity,
+  allocatorJobId,
+  announcement,
+  assignments,
+}) {
+  const owner = typedEnvelope('announcement', announcement, identity, allocatorJobId)
+  const previous = assignmentSequence(assignments, identity, allocatorJobId)
+  if (
+    previous.some(
+      ({ record }) => record.worker === owner.record.worker || record.jobId === owner.record.jobId,
+    )
+  )
+    throw new Error('Mac cohort worker already has an immutable assignment')
+  const count = previous.filter(({ record }) =>
+    sameFields(record.profile, owner.record.profile, PROFILE_FIELDS),
+  ).length
+  const record = owner.record
+  return {
+    kind: KINDS.assignment,
+    ...identity,
+    allocatorJobId,
+    worker: record.worker,
+    jobId: record.jobId,
+    profile: { ...record.profile },
+    role: count < MAC_PR_COHORT.shards ? count : null,
+    announcementArtifact: owner.artifact,
+  }
+}
+
+export function createMacHostCohortLedger({ identity, allocatorJobId, ready, assignments }) {
+  const start = typedEnvelope('ready', ready, identity, allocatorJobId)
+  const entries = assignmentSequence(assignments, identity, allocatorJobId)
+  if (entries.length !== MAC_PR_COHORT.workers)
+    throw new Error('Mac cohort ledger requires all five assigned workers')
+  validateMacHostCohortRecords({ identity, allocatorJobId, records: [start, ...entries] })
+  return {
+    kind: KINDS.ledger,
+    ...identity,
+    allocatorJobId,
+    readyArtifact: start.artifact,
+    assignmentArtifacts: entries.map(({ artifact }) => artifact),
+  }
+}
+
+export function createMacHostCohortWorkerReceipt({
+  identity,
+  allocatorJobId,
+  ready,
+  announcement,
+  assignment,
   prerequisites,
-  artifacts,
-  deadlineMs = Date.now() + 60_000,
 }) {
   requireFields(identity, WORKER_FIELDS, 'worker identity')
   requireWorker(identity)
+  const run = Object.fromEntries(RUN_FIELDS.map((field) => [field, identity[field]]))
+  const start = typedEnvelope('ready', ready, run, allocatorJobId)
+  const observed = typedEnvelope('announcement', announcement, run, allocatorJobId)
+  const assigned = typedEnvelope('assignment', assignment, run, allocatorJobId)
+  validateMacHostCohortRecords({ identity: run, allocatorJobId, records: [start, observed, assigned] })
   const profile = macHostCohortProfile(prerequisites)
-  deadlineValue(deadlineMs)
-  if (typeof artifacts?.upload !== 'function') throw new Error('Missing Mac cohort artifact uploader')
-  const conflicts = []
-  for (let role = 0; role < MAC_PR_COHORT.shards; role++) {
-    const name = macHostCohortClaimName(identity, profile, role)
-    const claim = { kind: CLAIM_KIND, ...identity, profile, role }
-    let artifact
-    try {
-      artifact = await beforeDeadline(() => artifacts.upload(name, claim), deadlineMs)
-    } catch (error) {
-      if (!isMacHostRoleConflict(error)) throw error
-      conflicts.push(name)
-      continue
-    }
-    return {
-      kind: WORKER_KIND,
-      ...identity,
-      profile,
-      role,
-      claimArtifact: requireArtifact(artifact, name),
-      conflicts,
-    }
+  if (
+    !sameFields(observed.record, identity, WORKER_FIELDS) ||
+    !sameFields(assigned.record, identity, WORKER_FIELDS) ||
+    !sameFields(observed.record.profile, profile, PROFILE_FIELDS) ||
+    !sameFields(assigned.record.profile, profile, PROFILE_FIELDS) ||
+    !sameArtifact(observed.artifact, assigned.record.announcementArtifact)
+  )
+    throw new Error('Mac cohort assignment differs from its announced worker and profile')
+  return {
+    kind: WORKER_KIND,
+    ...identity,
+    allocatorJobId,
+    profile,
+    role: assigned.record.role,
+    readyArtifact: start.artifact,
+    announcementArtifact: observed.artifact,
+    assignmentArtifact: assigned.artifact,
   }
-  // Three explicit server conflicts permit this worker to release its runner.
-  // They do not establish finalized claims or passing tests. The final aggregate
-  // must independently find and validate all three owners before accepting this
-  // surplus receipt, including owners on a non-selected profile.
-  return { kind: WORKER_KIND, ...identity, profile, role: null, claimArtifact: null, conflicts }
 }
 
-function requireClaim(claim, identity) {
-  requireFields(claim, ['kind', ...WORKER_FIELDS, 'profile', 'role'], 'claim')
-  requireWorker(claim)
-  requireProfile(claim.profile)
-  if (claim.kind !== CLAIM_KIND || !sameFields(claim, identity, RUN_FIELDS))
-    throw new Error('Mac cohort claim has a foreign source, run or attempt')
-  macHostCohortClaimName(claim, claim.profile, claim.role)
-  return claim
-}
-
-function requireReceipt(receipt, identity) {
-  requireFields(
-    receipt,
-    ['kind', ...WORKER_FIELDS, 'profile', 'role', 'claimArtifact', 'conflicts'],
-    'worker receipt',
+function successfulJob(jobs, identity, name, expectedId) {
+  const matches = jobs.filter((job) => job?.name === name)
+  if (matches.length !== 1) throw new Error('Mac cohort requires one exact current-attempt job')
+  const job = matches[0]
+  requirePositiveInteger(job.id, 'observed job ID')
+  if (
+    (expectedId !== undefined && job.id !== expectedId) ||
+    job.run_id !== identity.runId ||
+    job.run_attempt !== identity.runAttempt ||
+    job.status !== 'completed' ||
+    job.conclusion !== 'success'
   )
-  requireWorker(receipt)
-  requireProfile(receipt.profile)
-  if (receipt.kind !== WORKER_KIND || !sameFields(receipt, identity, RUN_FIELDS))
-    throw new Error('Mac cohort worker has a foreign source, run or attempt')
-  if (receipt.role !== null) macHostCohortClaimName(receipt, receipt.profile, receipt.role)
-  const count = receipt.role === null ? MAC_PR_COHORT.shards : receipt.role
-  const conflicts = Array.from({ length: count }, (_, role) =>
-    macHostCohortClaimName(receipt, receipt.profile, role),
-  )
-  if (!Array.isArray(receipt.conflicts) || JSON.stringify(receipt.conflicts) !== JSON.stringify(conflicts))
-    throw new Error('Mac cohort worker has incomplete role conflict evidence')
-  if (receipt.role === null && receipt.claimArtifact !== null)
-    throw new Error('Surplus Mac cohort worker cannot own an artifact')
-  return receipt
+    throw new Error('Mac cohort requires each exact current-attempt job to succeed')
+  return job
 }
 
-/** Select assignment evidence only; callers still validate every executed suite and residue. */
-export function validateMacHostCohort({ identity, workers, claims, jobs }) {
+/** Assignment evidence only: callers independently verify every executed suite. */
+export function validateMacHostCohort({ identity, workers, records, jobs }) {
   requireFields(identity, RUN_FIELDS, 'run identity')
   requireRun(identity)
   requireMacHostCohortProfiles()
-  if (!Array.isArray(workers) || workers.length !== MAC_PR_COHORT.workers)
-    throw new Error('Mac cohort requires all five current-attempt worker receipts')
-  if (!Array.isArray(claims) || !Array.isArray(jobs))
-    throw new Error('Mac cohort requires finalized claims and observed jobs')
+  if (!Array.isArray(workers) || workers.length !== MAC_PR_COHORT.workers || !Array.isArray(jobs))
+    throw new Error('Mac cohort requires all five worker receipts and observed jobs')
+  const allocatorJobId = successfulJob(jobs, identity, MAC_COHORT_ALLOCATOR_NAME).id
+  const readyJobId = successfulJob(jobs, identity, MAC_COHORT_READY_JOB_NAME).id
   if (
-    jobs.filter((job) => job.name?.startsWith('Native host worker — arm64 / ')).length !==
+    jobs.filter((job) => job?.name?.startsWith('Native host worker — arm64 / ')).length !==
     MAC_PR_COHORT.workers
   )
     throw new Error('Mac cohort observed job inventory differs from its five workers')
+  const entries = validateMacHostCohortRecords({ identity, allocatorJobId, records })
+  if (entries.length !== 2 + 2 * MAC_PR_COHORT.workers)
+    throw new Error('Mac cohort requires its complete ready, announcement, assignment and ledger inventory')
+  const byName = new Map(entries.map((entry) => [entry.artifact.name, entry]))
+  const ready = byName.get(macHostCohortArtifactName('ready', identity))
+  const ledger = byName.get(macHostCohortArtifactName('ledger', identity))
+  if (!ready || !ledger || !sameArtifact(ready.artifact, ledger.record.readyArtifact))
+    throw new Error('Mac cohort ledger is missing or differs from allocator readiness')
+  const ordered = ledger.record.assignmentArtifacts.map((reference) => {
+    const entry = byName.get(reference.name)
+    if (!entry || !sameArtifact(entry.artifact, reference))
+      throw new Error('Mac cohort ledger differs from its published assignments')
+    return entry
+  })
+  assignmentSequence(ordered, identity, allocatorJobId)
   const receipts = workers.map(({ receipt, prerequisites }) => {
-    requireReceipt(receipt, identity)
-    if (!sameFields(receipt.profile, macHostCohortProfile(prerequisites), PROFILE_FIELDS))
-      throw new Error('Mac cohort worker profile differs from its native prerequisites')
-    const matching = jobs.filter((job) => job.name === macHostCohortWorkerName(receipt.worker))
-    if (
-      matching.length !== 1 ||
-      matching[0].id !== receipt.jobId ||
-      matching[0].run_id !== identity.runId ||
-      matching[0].run_attempt !== identity.runAttempt ||
-      matching[0].status !== 'completed' ||
-      matching[0].conclusion !== 'success'
+    requireFields(
+      receipt,
+      ['kind', ...OWNER_FIELDS, 'profile', 'role',
+        'readyArtifact', 'announcementArtifact', 'assignmentArtifact'],
+      'worker receipt',
     )
-      throw new Error('Mac cohort requires each exact current-attempt worker job to succeed')
+    requireWorker(receipt)
+    const announcement = byName.get(macHostCohortArtifactName('announcement', identity, receipt.worker))
+    const assignment = byName.get(macHostCohortArtifactName('assignment', identity, receipt.worker))
+    const workerIdentity = Object.fromEntries(WORKER_FIELDS.map((field) => [field, receipt[field]]))
+    const expected = createMacHostCohortWorkerReceipt({
+      identity: workerIdentity,
+      allocatorJobId,
+      ready,
+      announcement,
+      assignment,
+      prerequisites,
+    })
+    requireProfile(receipt.profile)
+    if (
+      !sameFields(receipt, expected, ['kind', ...OWNER_FIELDS, 'role']) ||
+      !sameFields(receipt, identity, RUN_FIELDS) ||
+      !sameFields(receipt.profile, expected.profile, PROFILE_FIELDS) ||
+      ['readyArtifact', 'announcementArtifact', 'assignmentArtifact'].some((field) =>
+        !sameArtifact(artifactReference(receipt[field], expected[field].name), expected[field]),
+      )
+    )
+      throw new Error('Mac cohort worker receipt differs from its immutable assignment')
+    successfulJob(jobs, identity, macHostCohortWorkerName(receipt.worker), receipt.jobId)
     return receipt
   })
   if (
-    new Set(receipts.map((receipt) => receipt.worker)).size !== MAC_PR_COHORT.workers ||
-    new Set(receipts.map((receipt) => receipt.jobId)).size !== MAC_PR_COHORT.workers
+    new Set(receipts.map(({ worker }) => worker)).size !== MAC_PR_COHORT.workers ||
+    new Set([allocatorJobId, readyJobId, ...receipts.map(({ jobId }) => jobId)]).size !==
+      MAC_PR_COHORT.workers + 2
   )
     throw new Error('Mac cohort repeats a worker or job')
-  const byName = new Map()
-  const artifactIds = new Set()
-  for (const entry of claims) {
-    const claim = requireClaim(entry.claim, identity)
-    const name = macHostCohortClaimName(claim, claim.profile, claim.role)
-    const artifact = requireArtifact(entry.artifact, name)
-    if (byName.has(name) || artifactIds.has(artifact.id))
-      throw new Error('Mac cohort repeats a finalized claim or artifact')
-    artifactIds.add(artifact.id)
-    byName.set(name, { claim, artifact })
-  }
-  const owners = receipts.filter((receipt) => receipt.role !== null)
-  if (byName.size !== owners.length)
-    throw new Error('Mac cohort finalized claim inventory differs from its workers')
-  for (const receipt of receipts) {
-    if (receipt.role !== null) {
-      const name = macHostCohortClaimName(receipt, receipt.profile, receipt.role)
-      const entry = byName.get(name)
-      const expectedArtifact = requireArtifact(receipt.claimArtifact, name)
-      if (
-        !entry ||
-        !sameFields(entry.claim, receipt, WORKER_FIELDS) ||
-        entry.artifact.id !== expectedArtifact.id ||
-        entry.artifact.digest !== expectedArtifact.digest
-      )
-        throw new Error('Mac cohort finalized claim does not belong to its executing worker')
-    }
-    for (const conflict of receipt.conflicts) {
-      const entry = byName.get(conflict)
-      if (!entry || entry.claim.worker === receipt.worker || entry.claim.jobId === receipt.jobId)
-        throw new Error('Mac cohort conflict lacks a different finalized current-attempt owner')
-    }
-  }
   const complete = requireMacHostCohortProfiles()
     .map((profile) => ({ arch: 'arm64', ...profile }))
     .map((profile) => ({
       profile,
-      roles: owners
-        .filter((owner) => sameFields(owner.profile, profile, PROFILE_FIELDS))
+      roles: receipts
+        .filter((owner) => owner.role !== null && sameFields(owner.profile, profile, PROFILE_FIELDS))
         .sort((left, right) => left.role - right.role),
     }))
     .filter(({ roles }) =>
       roles.length === MAC_PR_COHORT.shards && roles.every((owner, role) => owner.role === role),
     )
-  if (complete.length !== 1)
-    throw new Error('Mac cohort has no unique complete exact-profile role set')
+  if (complete.length !== 1) throw new Error('Mac cohort has no unique complete exact-profile role set')
   return {
     ...identity,
+    allocatorJobId,
+    ledgerArtifact: ledger.artifact,
     profile: complete[0].profile,
     roles: complete[0].roles,
     workers: [...receipts].sort((left, right) => left.worker - right.worker),
   }
 }
 
-export function readMacHostCohortClaim(path) {
+export function readMacHostCohortRecord(path) {
   if (!constants.O_NOFOLLOW || !constants.O_NONBLOCK)
-    throw new Error('Mac cohort claim reads require no-follow and nonblocking support')
+    throw new Error('Mac cohort record reads require no-follow and nonblocking support')
   const descriptor = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const metadata = fstatSync(descriptor)
-    if (!metadata.isFile() || metadata.size > MAX_CLAIM_BYTES)
-      throw new Error('Mac cohort claims require bounded regular files')
-    const bytes = Buffer.alloc(MAX_CLAIM_BYTES + 1)
+    if (!metadata.isFile() || metadata.size > MAX_RECORD_BYTES)
+      throw new Error('Mac cohort records require bounded regular files')
+    const bytes = Buffer.alloc(MAX_RECORD_BYTES + 1)
     let length = 0
     while (length < bytes.length) {
       const count = readSync(descriptor, bytes, length, bytes.length - length, null)
       if (count === 0) break
       length += count
     }
-    if (length > MAX_CLAIM_BYTES) throw new Error('Mac cohort claim exceeds its byte limit')
+    if (length > MAX_RECORD_BYTES) throw new Error('Mac cohort record exceeds its byte limit')
     return JSON.parse(bytes.subarray(0, length).toString('utf8'))
   } finally {
     closeSync(descriptor)
   }
 }
 
-function requireClaimArchiveMetadata(artifact) {
+function requireRecordArchiveMetadata(artifact) {
   const name = artifact?.name
   if (
     typeof name !== 'string' ||
-    !/^macos-cohort-claim-[0-9a-f]{40}-r[1-9][0-9]*-a[1-9][0-9]*-[0-9a-f]{64}-[0-2]$/.test(name) ||
+    !/^macos-cohort-(?:ready|ledger|(?:announcement|assignment)-[0-4])-[0-9a-f]{40}-r[1-9][0-9]*-a[1-9][0-9]*$/.test(
+      name,
+    ) ||
     artifact.expired !== false ||
     !Number.isSafeInteger(artifact.size_in_bytes) ||
     artifact.size_in_bytes <= 0 ||
-    artifact.size_in_bytes > MAX_CLAIM_ARCHIVE_BYTES
+    artifact.size_in_bytes > MAX_RECORD_ARCHIVE_BYTES
   )
-    throw new Error('Mac cohort claim archive metadata has invalid name, size or expiry')
+    throw new Error('Mac cohort record archive metadata has invalid name, size or expiry')
   return requireArtifact(artifact, name)
 }
 
-const READ_CLAIM_ARCHIVE = `import io, json, stat, sys, zipfile
-archive = sys.stdin.buffer.read(${MAX_CLAIM_ARCHIVE_BYTES + 1})
-if len(archive) > ${MAX_CLAIM_ARCHIVE_BYTES}:
-    raise ValueError('oversized claim archive')
+const READ_RECORD_ARCHIVE = `import io, json, stat, sys, zipfile
+archive = sys.stdin.buffer.read(${MAX_RECORD_ARCHIVE_BYTES + 1})
+if len(archive) > ${MAX_RECORD_ARCHIVE_BYTES}:
+    raise ValueError('oversized record archive')
 with zipfile.ZipFile(io.BytesIO(archive)) as archive_file:
     entries = archive_file.infolist()
     if len(entries) != 1:
-        raise ValueError('claim archive requires exactly one entry')
+        raise ValueError('record archive requires exactly one entry')
     entry = entries[0]
     mode = entry.external_attr >> 16
-    if (entry.filename != 'claim.json' or entry.orig_filename != 'claim.json'
+    if (entry.filename != 'record.json' or entry.orig_filename != 'record.json'
             or entry.is_dir() or entry.external_attr & 0x10
             or stat.S_IFMT(mode) not in (0, stat.S_IFREG)
             or entry.flag_bits & (1 | 64)
             or entry.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
-            or entry.file_size < 0 or entry.file_size > ${MAX_CLAIM_BYTES}):
-        raise ValueError('unsafe claim archive entry')
+            or entry.file_size < 0 or entry.file_size > ${MAX_RECORD_BYTES}):
+        raise ValueError('unsafe record archive entry')
     with archive_file.open(entry) as source:
-        claim = source.read(${MAX_CLAIM_BYTES + 1})
-    if len(claim) > ${MAX_CLAIM_BYTES} or len(claim) != entry.file_size:
-        raise ValueError('oversized or incomplete claim')
-    json.loads(claim.decode('utf-8'))
-    sys.stdout.buffer.write(claim)
+        record = source.read(${MAX_RECORD_BYTES + 1})
+    if len(record) > ${MAX_RECORD_BYTES} or len(record) != entry.file_size:
+        raise ValueError('oversized or incomplete record')
+    json.loads(record.decode('utf-8'))
+    sys.stdout.buffer.write(record)
 `
 
 /** Verify the raw transport before reading one inert ZIP member without extraction. */
-export function decodeMacHostCohortClaim(bytes, artifact) {
-  const metadata = requireClaimArchiveMetadata(artifact)
+export function decodeMacHostCohortRecord(bytes, artifact) {
+  const metadata = requireRecordArchiveMetadata(artifact)
   if (
     !(bytes instanceof Uint8Array) ||
-    bytes.byteLength > MAX_CLAIM_ARCHIVE_BYTES ||
+    bytes.byteLength > MAX_RECORD_ARCHIVE_BYTES ||
     bytes.byteLength !== artifact.size_in_bytes
   )
-    throw new Error('Mac cohort claim archive transport size does not match')
+    throw new Error('Mac cohort record archive transport size does not match')
   const archive = Buffer.from(bytes)
   if (`sha256:${createHash('sha256').update(archive).digest('hex')}` !== metadata.digest)
-    throw new Error('Mac cohort claim archive transport digest does not match')
+    throw new Error('Mac cohort record archive transport digest does not match')
   try {
-    const claim = execFileSync('python3', ['-I', '-c', READ_CLAIM_ARCHIVE], {
+    const record = execFileSync('python3', ['-I', '-c', READ_RECORD_ARCHIVE], {
       input: archive,
       timeout: 5000,
-      maxBuffer: MAX_CLAIM_BYTES + 1,
+      maxBuffer: MAX_RECORD_BYTES + 1,
       stdio: ['pipe', 'pipe', 'pipe'],
     })
-    return JSON.parse(claim.toString('utf8'))
+    return JSON.parse(record.toString('utf8'))
   } catch {
-    throw new Error('Mac cohort claim archive is malformed or unsafe')
+    throw new Error('Mac cohort record archive is malformed or unsafe')
   }
 }
 
-export function downloadMacHostCohortClaim(repository, artifact) {
+export function downloadMacHostCohortRecord(repository, artifact) {
   if (
     typeof repository !== 'string' ||
     !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
     repository.split('/').some((part) => part === '.' || part === '..')
   )
-    throw new Error('Invalid Mac cohort claim repository')
-  const metadata = requireClaimArchiveMetadata(artifact)
+    throw new Error('Invalid Mac cohort record repository')
+  const metadata = requireRecordArchiveMetadata(artifact)
   let bytes
   try {
     bytes = execFileSync(
       'gh',
       ['api', `repos/${repository}/actions/artifacts/${metadata.id}/zip`],
-      { timeout: 20_000, maxBuffer: MAX_CLAIM_ARCHIVE_BYTES, stdio: ['pipe', 'pipe', 'pipe'] },
+      { timeout: 20_000, maxBuffer: MAX_RECORD_ARCHIVE_BYTES, stdio: ['pipe', 'pipe', 'pipe'] },
     )
   } catch {
-    throw new Error('Unable to download the bounded Mac cohort claim archive')
+    throw new Error('Unable to download the bounded Mac cohort record archive')
   }
-  return decodeMacHostCohortClaim(bytes, artifact)
+  return decodeMacHostCohortRecord(bytes, artifact)
 }
 
 /** The caller supplies an isolated, exact-version official artifact client. */
 export function createMacHostCohortArtifacts(client, directory = tmpdir()) {
   if (!isAbsolute(directory)) throw new Error('Mac cohort artifact scratch must be absolute')
   return {
-    async upload(name, claim) {
-      const temporary = await mkdtemp(join(directory, 'jig-mac-claim-'))
+    async upload(name, record) {
+      const bytes = Buffer.from(`${JSON.stringify(record)}\n`)
+      if (bytes.length > MAX_RECORD_BYTES)
+        throw new Error('Mac cohort record exceeds its byte limit')
+      const temporary = await mkdtemp(join(directory, 'jig-mac-record-'))
       try {
-        const path = join(temporary, 'claim.json')
-        await writeFile(path, `${JSON.stringify(claim)}\n`, { flag: 'wx', mode: 0o600 })
+        const path = join(temporary, 'record.json')
+        await writeFile(path, bytes, { flag: 'wx', mode: 0o600 })
         const artifact = await client.uploadArtifact(name, [path], temporary, { retentionDays: 7 })
         return requireArtifact({ ...artifact, name }, name)
       } finally {

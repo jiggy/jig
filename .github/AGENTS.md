@@ -375,17 +375,21 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   PRs use five workers and three logical roles per exact observed profile.
   With two admitted profiles, five workers contain at least three matching hosts.
-  Each worker claims the first available role through an immutable artifact name.
-  Only an exact creation conflict permits trying the next role. Workers start
-  their role immediately, without a barrier or replacement-worker loop.
+  One Ubuntu allocator assigns roles from unique worker announcements. A readiness
+  gate verifies the running allocator before workers can occupy Mac runners.
+  Each worker receives its role independently, without waiting for another Mac
+  worker to start. Artifact names carry records without providing a lock.
 
-  Require all five current-attempt jobs to succeed. Verify every executing role,
+  Require the allocator and all five current-attempt worker jobs to succeed.
+  Reconcile announcements, assignments and the final allocator ledger, rejecting
+  duplicate or ambiguous records. Verify every executing role,
   including an incomplete minority profile, against the canonical archives and
-  full source-pinned reports. Surplus workers retain prerequisite and conflict
+  full source-pinned reports. Surplus workers retain prerequisite and assignment
   receipts without execution credit. Select one complete matching three-role set.
   Roles from different builds cannot combine into qualification.
 
-  Main and manual runs keep one complete host. Aggregate evidence names the
+  Main and manual runs keep one complete host. Their allocator and readiness jobs
+  succeed without assigning roles. Aggregate evidence names the
   observed architecture, kernel, build and pinned Bun revision in either plan.
 
   The complete ARM job retains main's 60-minute allocation, or 90 minutes with
