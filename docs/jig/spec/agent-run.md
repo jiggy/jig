@@ -147,12 +147,13 @@ and match. Cancellation, host deadlines and operational failures remain errors.
 the requested schema, including on a blocked or limited result.
 
 An ordinary Flow offering the exact descriptor can replace the Agent through
-a project default or explicit Binding route. Its own grants supply its powers; matching a
-descriptor grants neither credentials nor network access. Supported optional
-channels still require qualification by the selected implementation.
+a project default or explicit Binding route. Its own grants supply its powers.
+Matching a descriptor grants neither credentials nor network access. Supported
+optional channels still require qualification by the selected implementation.
+
 The optional `session` input requests native retention or restoration under a
 separately reviewed grant. Its receipt appears only in the final invocation
-output, after resource settlement; calls without a request omit it. The supplied
+output, after resource settlement. Calls without a request omit it. The supplied
 HTTP method rejects a session request before dispatch. See
 [retaining a native conversation](#retaining-a-native-conversation).
 
@@ -189,9 +190,9 @@ not native completion. Each turn separately produces one of:
 
 - `{type:"result", turn, result}` with a complete ordinary Agent Run result;
 - `{type:"cancelled", turn}` after native cancellation settlement; or
-- `{type:"error", turn, code:"INVALID_RESULT", message}` when a settled answer
+- `{type:"error", turn, code:"INVALID_RESULT", message}` when a completed answer
   cannot satisfy the requested structured result. A caller may issue another
-  turn after that error; malformed ACP or uncertain native work is fatal instead.
+  turn after that error. Malformed ACP or uncertain native work is fatal instead.
 
 Per-turn results contain the answer's `text` and optional `structured` value,
 never a `session` receipt. Only the initial invocation input may request
