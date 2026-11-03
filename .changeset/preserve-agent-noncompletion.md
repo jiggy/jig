@@ -1,6 +1,7 @@
 ---
 "@jigging/agent-method": minor
 "@jigging/agent-acp": minor
+"@jigging/jig": patch
 ---
 
 Preserve refusal and limit outcomes with their original text when structured
