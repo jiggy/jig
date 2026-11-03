@@ -57,8 +57,8 @@ test('the complete contact page previews whole records and discloses omitted rec
       file: 'preview.json',
     }),
   )
-  const accepted = item.sections[2].blocks[0]
-  const rejected = item.sections[3].blocks[0]
+  const accepted = item.sections[0].blocks[0]
+  const rejected = item.sections[1].blocks[0]
   expect(accepted.rows).toHaveLength(12)
   expect(rejected.rows).toHaveLength(12)
   expect(accepted.total).toBe(100)

@@ -119,6 +119,13 @@ function filesSection(files: string[]): Section {
         })),
         total: files.length,
       },
+      ...files
+        .filter((path) => path.endsWith('.patch'))
+        .map((path) => ({
+          kind: 'content' as const,
+          title: path,
+          reference: { kind: 'artifact' as const, attachment: 'deliverables', path },
+        })),
     ],
   }
 }

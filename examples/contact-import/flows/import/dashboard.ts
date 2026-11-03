@@ -171,7 +171,8 @@ export function contactPreviewView(state: ImportState): ViewSnapshot {
     },
   ]
   if (state.headers) sections.push(mappingSection(state))
-  if (preview?.status === 'ready') sections.push(acceptedSection(preview), rejectedSection(preview))
+  if (preview?.status === 'ready')
+    sections.unshift(acceptedSection(preview), rejectedSection(preview))
   if (state.file)
     sections.push({
       title: 'Your complete preview',

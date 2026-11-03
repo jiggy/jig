@@ -13,6 +13,7 @@ while application checks and operator authority control file effects.
   Catalogue-derived application targets distinguish finite collections without assigning Run provenance.
 
   Photos exposes captured originals before the Agent call.
+  Organise groups those photographs into event galleries, followed by status and caveats.
   The completed contact-sheet page leads with visual content and a manifest reference.
   The coordinator calls grouping and both independent file Flows. It writes no files.
 - `flows/group` owns the caption-only grouping contract, one Agent call and its

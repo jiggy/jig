@@ -29,11 +29,11 @@ test('the application keeps the request, relevant charges, policy and reply toge
     }),
   )
   expect(final.sections.map((section: any) => section.title)).toEqual([
-    'Case status',
     'Customer request',
+    'Draft reply',
+    'Case status',
     'Supplied charges',
     'Interpretation and policy',
-    'Draft reply',
   ])
   expect(JSON.stringify(final)).toContain('none has been issued')
   expect(JSON.stringify(final)).toContain('earlier settled payment')
@@ -58,8 +58,12 @@ test('maximum escaped requests and charges fit the complete page with disclosed 
     supportCaseView({ input: maximal, phase: 'blocked', reason: '\u0001'.repeat(4096) }),
   )
   expect(JSON.stringify(item)).toContain('[Excerpt; complete value')
-  expect(item.sections[2].blocks[0].rows).toHaveLength(12)
-  expect(item.sections[2].blocks[0].total).toBe(32)
+  expect(
+    item.sections.find((section: any) => section.title === 'Supplied charges').blocks[0].rows,
+  ).toHaveLength(12)
+  expect(
+    item.sections.find((section: any) => section.title === 'Supplied charges').blocks[0].total,
+  ).toBe(32)
   checked(proposal(maximal, true))
   checked(proposalCharges(maximal))
 })
@@ -77,7 +81,9 @@ test('a disputed charge beyond the excerpt and its earlier match remain visible'
     phase: 'checking',
     proposal: { chargeId: 'charge-31', requestedCreditCents: 2400 },
   }
-  const visible = checked(supportCaseView(state)).sections[2].blocks[0].rows
+  const visible = checked(supportCaseView(state)).sections.find(
+    (section: any) => section.title === 'Supplied charges',
+  ).blocks[0].rows
   expect(visible.map((row: any) => row.cells.charge)).toContain('charge-31')
   expect(visible.map((row: any) => row.cells.charge)).toContain('charge-24')
   expect(visible.find((row: any) => row.cells.charge === 'charge-31').cells.proposed).toBe(true)
