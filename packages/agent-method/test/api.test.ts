@@ -101,22 +101,28 @@ test('provider-enforced schemas require explicit selection and never replace loc
   expect(structured.request.responseSchema?.$schema).toBe(schema.$schema)
 })
 
-test('HTTP and malformed replies remain failures, without echoing provider data', () => {
+test('Chat Completions keeps transport failures distinct from structured outcomes', () => {
+  const request = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
   for (const status of [301, 400, 401, 429, 500]) {
     expect(() =>
-      chatResult({ outcome: 'done', output: { status, body: 'private-provider-error' } }),
+      finishAgent(
+        request,
+        chatResult({ outcome: 'done', output: { status, body: 'private-provider-error' } }),
+      ),
     ).toThrow(`HTTP ${status}`)
   }
   for (const result of [
     response(null),
     response('x', 'tool_calls'),
     response('x', null),
+    response('{"different":"shape"}', 'cancelled'),
+    response('{"different":"shape"}', 'timeout'),
     response('x', 'stop', { tool_calls: [{ id: 'call', type: 'function' }] }),
     response(['not text']),
     { outcome: 'done', output: { status: 200, body: '{"choices":[],"choices":[]}' } },
     { outcome: 'done', output: { status: 200, body: 'not json' } },
   ])
-    expect(() => chatResult(result)).toThrow()
+    expect(() => finishAgent(request, chatResult(result))).toThrow(AgentMethodError)
 })
 
 test('HTTP diagnostics identify safe status facts and corrective settings without provider text', () => {
@@ -226,24 +232,16 @@ test('complete answers, refusals and exhausted completions retain distinct outco
   )
 })
 
-test('the method validates structured output independently of the provider finish reason', () => {
-  const request = prepareAgent({
-    instructions: 'Answer.',
-    responseSchema: {
-      $schema: 'https://flow.jig.md/schemas/schema-0.json',
-      type: 'object',
-      properties: { answer: { type: 'string' } },
-      required: ['answer'],
-      additionalProperties: false,
-    },
+test('Chat Completions requires valid structured data for completed answers', () => {
+  const request = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
+  expect(finishAgent(request, chatResult(response('{"answer":"yes"}')))).toEqual({
+    outcome: 'done',
+    output: { text: '{"answer":"yes"}', structured: { answer: 'yes' } },
   })
-  expect(finishAgent(request, chatResult(response('{"answer":"yes"}'))).output.structured).toEqual({
-    answer: 'yes',
-  })
-  expect(() => finishAgent(request, chatResult(response('{"answer":42}')))).toThrow(
-    'responseSchema',
-  )
-  expect(() => finishAgent(request, chatResult(response('not JSON')))).toThrow('JSON/0')
+  for (const body of ['{"answer":42}', '{"different":"shape"}'])
+    expect(() => finishAgent(request, chatResult(response(body)))).toThrow('responseSchema')
+  for (const body of ['not JSON', '{"answer":"one","answer":"two"}'])
+    expect(() => finishAgent(request, chatResult(response(body)))).toThrow('JSON/0')
 })
 
 test('ordinary Agent declares its packaged HTTP descriptor', async () => {
@@ -270,6 +268,49 @@ const message = (content: unknown, status = 'completed', role = 'assistant') => 
   content,
 })
 const text = (value: unknown) => ({ type: 'output_text', text: value })
+
+for (const api of ['chat-completions', 'responses'] as const) {
+  test(`${api} preserves noncompletion text and includes only valid structured data`, () => {
+    const request = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
+    for (const [body, structured] of [
+      ['{unfinished', undefined],
+      ['Cannot comply.', undefined],
+      ['{"different":"shape"}', undefined],
+      ['{"answer":"yes"}', { answer: 'yes' }],
+    ] as const) {
+      const replies =
+        api === 'chat-completions'
+          ? ([
+              ['limit', response(body, 'length')],
+              ['blocked', response(null, 'stop', { refusal: body })],
+              ['blocked', response(body, 'content_filter')],
+            ] as const)
+          : ([
+              [
+                'limit',
+                responses([message([text(body)], 'incomplete')], 'incomplete', {
+                  incomplete_details: { reason: 'max_output_tokens' },
+                }),
+              ],
+              ['blocked', responses([message([{ type: 'refusal', refusal: body }])])],
+              [
+                'blocked',
+                responses([message([text(body)], 'incomplete')], 'incomplete', {
+                  incomplete_details: { reason: 'content_filter' },
+                }),
+              ],
+            ] as const)
+      for (const [outcome, reply] of replies) {
+        const result = finishAgent(request, parseApiResult(reply, api))
+        expect(result).toEqual({
+          outcome,
+          output: { text: body, ...(structured === undefined ? {} : { structured }) },
+        })
+        expect(Object.hasOwn(result.output, 'structured')).toBe(structured !== undefined)
+      }
+    }
+  })
+}
 
 test('Responses separates completed text, explicit refusal and actual token exhaustion', () => {
   expect(
@@ -326,16 +367,20 @@ test('Responses separates completed text, explicit refusal and actual token exha
 })
 
 test('Responses rejects unsettled, failed, tool-bearing, malformed and inconsistent results', () => {
+  const request = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
   for (const value of [
     responses([], 'queued'),
     responses([], 'in_progress'),
     responses([], 'failed', { error: { message: 'private-provider-error' } }),
-    responses([], 'cancelled'),
+    responses([message([text('{"different":"shape"}')], 'incomplete')], 'cancelled'),
     responses([message([text('Answer.')])], 'completed', {
       error: { message: 'private-provider-error' },
     }),
     responses([], 'incomplete'),
     responses([], 'incomplete', { incomplete_details: { reason: 'steered' } }),
+    responses([message([text('{"different":"shape"}')], 'incomplete')], 'incomplete', {
+      incomplete_details: { reason: 'timeout' },
+    }),
     responses([message([text('Answer.')])], 'completed', {
       incomplete_details: { reason: 'max_output_tokens' },
     }),
@@ -352,29 +397,37 @@ test('Responses rejects unsettled, failed, tool-bearing, malformed and inconsist
   ]) {
     let error: unknown
     try {
-      responsesResult(value)
+      finishAgent(request, responsesResult(value))
     } catch (failure) {
       error = failure
     }
-    expect(error).toBeInstanceOf(Error)
+    expect(error).toBeInstanceOf(AgentMethodError)
+    expect((error as AgentMethodError).code).toBe('INVALID_RESULT')
     expect(String(error)).not.toContain('private-provider-error')
   }
   expect(() => chatResult(responses([message([text('Answer.')])]))).toThrow()
 })
 
-test('Responses structured results are independently checked even after a completed response', () => {
+test('Responses requires valid structured data for completed answers', () => {
   const request = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
   expect(
-    finishAgent(request, responsesResult(responses([message([text('{"answer":"yes"}')])]))).output
-      .structured,
-  ).toEqual({ answer: 'yes' })
-  for (const body of ['{"answer":42}', 'not JSON', '{"answer":"one","answer":"two"}'])
+    finishAgent(request, responsesResult(responses([message([text('{"answer":"yes"}')])]))),
+  ).toEqual({
+    outcome: 'done',
+    output: { text: '{"answer":"yes"}', structured: { answer: 'yes' } },
+  })
+  for (const body of ['{"answer":42}', '{"different":"shape"}'])
     expect(() =>
       finishAgent(request, responsesResult(responses([message([text(body)])]))),
-    ).toThrow()
+    ).toThrow('responseSchema')
+  for (const body of ['not JSON', '{"answer":"one","answer":"two"}'])
+    expect(() =>
+      finishAgent(request, responsesResult(responses([message([text(body)])]))),
+    ).toThrow('JSON/0')
 })
 
 test('both APIs preserve the complete HTTP byte bounds and JSON/0 failure behavior', () => {
+  const request = prepareAgent({ instructions: 'Answer.', responseSchema: schema })
   for (const api of ['chat-completions', 'responses'] as const) {
     expect(() =>
       prepareApiRequest(prepareAgent({ instructions: 'x'.repeat(262144) }), { api, model: 'x' }),
@@ -393,9 +446,12 @@ test('both APIs preserve the complete HTTP byte bounds and JSON/0 failure behavi
       ).toThrow()
     for (const status of [400, 401, 429, 500])
       expect(() =>
-        parseApiResult(
-          { outcome: 'done', output: { status, body: 'private-provider-error' } },
-          api,
+        finishAgent(
+          request,
+          parseApiResult(
+            { outcome: 'done', output: { status, body: 'private-provider-error' } },
+            api,
+          ),
         ),
       ).toThrow(`HTTP ${status}`)
   }

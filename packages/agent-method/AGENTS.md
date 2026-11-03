@@ -23,6 +23,12 @@ ordinary Flow, preserving operator ownership of Agent execution.
 
 - Pure exports perform no provider dispatch or filesystem access. The separate
   `./skills` export reads only explicitly selected package-local Skill trees.
+- `finishAgent` preserves provider refusal and limit outcomes with their text.
+  With a response schema, include `structured` only when decoded JSON matches.
+  A completed answer must decode and match. Valid structured data never changes
+  a noncompletion outcome to `done`. `checkAgentResult` rejects any supplied
+  structured value that fails the requested schema. Cancellation, host deadlines
+  and operational failures remain distinct from provider noncompletion.
 - `./conversation` composes the public Agent Run contract through ordinary calls
   and channels. It owns correlation, local endpoint disposal and an uncancelled
   invocation waiter. It imports no native or private host code. Received turn

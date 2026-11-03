@@ -87,25 +87,32 @@ the root FLOW `$schema` removed for a provider's structured-output API.
 The transport supplies `{ outcome: 'done', output: { text, stop } }`, where `stop`
 is `end-turn`, `refusal` or `limit`. Finishing returns
 `{ outcome: 'done' | 'blocked' | 'limit', output: { text, structured? } }`.
-With a response schema, a completed answer must contain valid matching JSON.
-One complete `json` Markdown fence is accepted, as is raw JSON; surrounding
-prose, duplicate members and malformed JSON reject. For blocked or limited
-answers, non-JSON text is retained without `structured`. If such an answer
-does contain JSON, that value must still match the requested schema.
 
-`finishAgent` returns only the interpreted answer; it never manufactures a
+With a response schema, a completed answer must contain valid matching JSON.
+One complete `json` Markdown fence is accepted, as is raw JSON. Surrounding
+prose, duplicate members and malformed JSON reject.
+
+For blocked or limited answers, finishing retains the original text. It includes
+`structured` only when the text contains valid matching JSON. Otherwise it omits
+`structured`. A matching value still leaves the outcome `blocked` or `limit`.
+
+`finishAgent` returns only the interpreted answer. It never manufactures a
 session receipt. A selected native Agent Flow can add `output.session` after
 its resource settles. `AgentSessionReceipt` is
 `{ status: 'retained', reference: string } | { status: 'unavailable', reason }`.
 The closed reasons are `not-cleanly-closed`, `missing-history`, `unsupported-history`
-and `capacity`; they describe retention, not answer quality.
+and `capacity`. They describe retention, not answer quality.
+
 `checkAgentResult` validates that optional receipt's closed shape and UUID
 alongside the answer, but does not access storage or establish host authority.
+With a supplied response schema, it rejects any included `structured` value
+that does not match, including on a blocked or limited result.
 
-Invalid inputs and prepared values throw `AgentMethodError('INVALID_INPUT')`;
-explicit method bounds use `RESOURCE_EXHAUSTED`; invalid transport facts or
-structured answers use `INVALID_RESULT`. Operational transport failures remain
-failures and are never converted to a domain outcome or retried.
+Invalid inputs and prepared values throw `AgentMethodError('INVALID_INPUT')`.
+Explicit method bounds use `RESOURCE_EXHAUSTED`. Invalid transport facts and
+completed answers that fail decoding or schema validation use `INVALID_RESULT`.
+Operational transport failures remain failures and are never converted to a
+domain outcome or retried.
 
 ## Conversation caller
 

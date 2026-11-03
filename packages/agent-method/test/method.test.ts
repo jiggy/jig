@@ -129,14 +129,73 @@ describe('shared Agent method', () => {
       outcome: 'limit',
       output: { text: 'partial' },
     })
-    const structured = prepareAgent({ instructions: 'Answer.', responseSchema: answerSchema })
-    expect(finishAgent(structured, exchange('partial', 'limit')).output).toEqual({
-      text: 'partial',
+  })
+
+  for (const [label, stop, text, outcome] of [
+    ['completed-valid', 'end-turn', '{"answer":"ok"}', 'done'],
+    ['completed-invalid', 'end-turn', '{"different":"shape"}', 'INVALID_RESULT'],
+    ['limit-truncated', 'limit', '{unfinished', 'limit'],
+    ['limit-parseable', 'limit', '{"different":"shape"}', 'limit'],
+    ['refusal-text', 'refusal', 'Cannot comply.', 'blocked'],
+    ['refusal-parseable', 'refusal', '{"different":"shape"}', 'blocked'],
+  ] as const) {
+    test(`structured completion policy: ${label}`, () => {
+      const prepared = prepareAgent({
+        instructions: 'Answer.',
+        responseSchema: schema({ answer: { type: 'string' } }),
+      })
+      if (outcome === 'INVALID_RESULT') {
+        expect(() => finishAgent(prepared, exchange(text, stop))).toThrow(
+          new AgentMethodError(
+            'INVALID_RESULT',
+            'Structured Agent output does not match responseSchema',
+          ),
+        )
+        return
+      }
+      const result = finishAgent(prepared, exchange(text, stop))
+      expect(result).toEqual({
+        outcome,
+        output: { text, ...(outcome === 'done' ? { structured: { answer: 'ok' } } : {}) },
+      })
+      expect(Object.hasOwn(result.output, 'structured')).toBe(outcome === 'done')
     })
-    expect(
-      finishAgent(structured, exchange('{"answer":"READY"}', 'refusal')).output.structured,
-    ).toEqual({ answer: 'READY' })
-    expect(() => finishAgent(structured, exchange('{"answer":"WRONG"}', 'limit'))).toThrow()
+  }
+
+  test('retains valid structured data without promoting refusal or limit to completion', () => {
+    const prepared = prepareAgent({ instructions: 'Answer.', responseSchema: answerSchema })
+    for (const [stop, outcome] of [['refusal', 'blocked'], ['limit', 'limit']] as const) {
+      for (const text of ['{"answer":"READY"}', '```json\n{"answer":"READY"}\n```']) {
+        expect(finishAgent(prepared, exchange(text, stop))).toEqual({
+          outcome,
+          output: { text, structured: { answer: 'READY' } },
+        })
+      }
+    }
+  })
+
+  test('omits invalid structured values from noncompletion without changing their text', () => {
+    const prepared = prepareAgent({ instructions: 'Answer.', responseSchema: answerSchema })
+    for (const [stop, outcome] of [['refusal', 'blocked'], ['limit', 'limit']] as const) {
+      for (const text of [
+        '',
+        'null',
+        'false',
+        '0',
+        '"partial"',
+        '[]',
+        '{"answer":42}',
+        '{"answer":"WRONG"}',
+        '{"answer":"READY","extra":true}',
+        '{"answer":"READY","answer":"READY"}',
+        '```json\n{"different":"shape"}\n```',
+      ]) {
+        const result = finishAgent(prepared, exchange(text, stop))
+        expect(result).toEqual({ outcome, output: { text } })
+        expect(Object.hasOwn(result.output, 'structured')).toBe(false)
+      }
+      expect(() => finishAgent(prepared, exchange('\ud800', stop))).toThrow(AgentMethodError)
+    }
   })
 
   test('accepts raw JSON and one complete JSON fence; rejects prose and duplicate members', () => {
@@ -162,6 +221,9 @@ describe('shared Agent method', () => {
     for (const result of [
       { outcome: 'blocked', output: { text: 'no', stop: 'refusal' } },
       exchange('yes', 'output-limit'),
+      exchange('partial', 'cancelled'),
+      exchange('partial', 'deadline-exceeded'),
+      exchange('partial', 'execution-failed'),
       { outcome: 'done', output: { text: 'yes', stop: ['end-turn'] } },
       { ...exchange('yes'), extra: true },
       { outcome: 'done', output: { text: 'yes', stop: 'end-turn', structured: {} } },

@@ -147,7 +147,11 @@ Application code still checks its truth and meaning. For a replacement Agent
 implementation, use `checkAgentResult(result, responseSchema)` to check the
 complete result independently.
 
-It permits honest `blocked` and `limit` results and throws on malformed results.
+The supplied methods retain text for `blocked` and `limit` and include
+`structured` only when it matches the requested schema. Matching data never
+changes either outcome to `done`. `checkAgentResult` accepts these outcomes
+without structured data. It still rejects malformed results and any supplied
+structured value that does not match.
 
 Optional [managed response generation](contracts.md#one-model-related-outputs)
 helps interfaces that actually share constraints. Keep distinct shapes separate
@@ -182,9 +186,11 @@ through its exact `http` slot. Jig holds credentials and network access. The
 method interprets status, answer text, and stop reason. A refusal returns
 `blocked`.
 
-Token exhaustion returns `limit`. Tool requests, malformed responses, and
-non-200 statuses fail execution. The CLI reports host execution status
-separately from the method's outcome.
+Token exhaustion returns `limit`. Both outcomes retain text under the
+[structured-answer rule](#request-a-structured-answer). Tool requests,
+malformed responses, and non-200 statuses fail execution. Cancellation and
+host deadlines remain operational failures. The CLI reports host execution
+status separately from the method's outcome.
 
 ### Use an OpenAI-compatible gateway
 

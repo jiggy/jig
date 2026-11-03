@@ -129,12 +129,23 @@ Its result is:
 
 On the Run/0 wire and in the SDK, `run.call()` returns that complete result.
 An Agent `blocked` or `limit` outcome is ordinary domain data, not an execution
-error. A `done` call requesting `responseSchema` includes `output.structured`;
+error. A `done` call requesting `responseSchema` includes `output.structured`.
 The consumer must check it against the requested schema before using it. The pure
 `checkAgentResult(result, responseSchema)` helper supplies this check without
-dispatch or authority. Jig validates the static invocation contract for every
-implementation. The supplied ordinary methods also check the dynamic schema;
-a consumer still checks independently when accepting a replacement.
+dispatch or authority.
+
+Jig validates the static invocation contract for every implementation. The
+supplied ordinary methods also check the dynamic schema. A consumer still
+checks independently when accepting a replacement.
+
+The supplied methods preserve refusal and limit text even when it is not valid
+JSON or does not match the requested schema. They include `output.structured`
+only when the value matches. A valid structured value does not change a
+`blocked` or `limit` outcome to `done`. Completed structured answers must decode
+and match. Cancellation, host deadlines and operational failures remain errors.
+`checkAgentResult` rejects any supplied structured value that does not match
+the requested schema, including on a blocked or limited result.
+
 An ordinary Flow offering the exact descriptor can replace the Agent through
 a project default or explicit Binding route. Its own grants supply its powers; matching a
 descriptor grants neither credentials nor network access. Supported optional
