@@ -512,9 +512,9 @@ escalation refuses within a separate bounded settlement wait. A timeout is
 failure even if the child later exits successfully. Command exit never
 establishes native cleanup.
 
-The Mac qualifier may supply `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY` for a
-bounded package-smoke refusal. Retain only these facts in exclusive mode-0600
-JSON:
+The Mac qualifier and Linux installed-evidence command may supply `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`.
+Use a canonical same-user directory without group or world write permission.
+Retain only these facts in exclusive mode-0600 JSON:
 - The command ordinal.
 - Closed phase and helper-refusal labels.
 - The original budget and elapsed time.

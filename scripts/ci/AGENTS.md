@@ -280,14 +280,16 @@ They consume frozen package exports with tracked test helpers and installed
   consumer and genuine-client checks on each architecture. Both roles run once
   on the single Apple Silicon host.
 
-  The full Jig package smoke
-  receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY` only from the existing Mac
-  evidence directory. Its flat exclusive mode-0600 JSON retains closed
-  failed-command metadata.
+  The full Jig package smoke receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`
+  from the existing Mac evidence directory or Linux's installed-evidence command directory.
+  Linux selects its canonical same-user, mode-0700 `linux-command-evidence` directory.
+  The command-scoped selection does not reach later commands or Flow input.
+  Exclusive mode-0600 JSON retains closed failed-command metadata.
+  Fixed mapped-files leaf and composed profiles retain bounded phases, timings, outcomes, and allowlisted causes.
 
-  The existing JSON upload pattern carries it on failure. Raw command
-  transcripts and private consumer trees stay outside hosted artifacts. Metadata
-  is diagnostic, never cleanup or qualification. Hosted qualification consumes
+  Existing Mac upload patterns and Linux's seven-day host evidence artifact retain these bounded files.
+  Raw private command transcripts and consumer trees stay outside hosted artifacts.
+  Diagnostics establish neither cleanup nor qualification. Hosted qualification consumes
   `JIG_CI_CANDIDATE_DIRECTORY` after verifying provenance and copies its exact
   archives. Ordinary platform source builds remain separate. Full self-hosted
   local mode uses the owning local packers.

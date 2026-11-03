@@ -275,6 +275,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   independent Node checks. Pass the runner's absolute Node and npm executables
   to the packed smoke test.
 
+  Only that packed smoke command receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`.
+  Select the canonical same-user, mode-0700 `linux-command-evidence` directory.
+  Its existing seven-day artifact retains bounded mapped-files profiles and closed failure metadata.
+  Raw command files remain beside the failed private consumer.
+  Diagnostics cannot change outcomes, deadlines, inventories, archive identity, or residue requirements.
+
   The acquisition host uses a fixed path that excludes runner tool-cache
   binaries. The trusted npm installation step uses the selected Node directory
   for its interpreter. Contained package execution keeps its ordinary policy.
