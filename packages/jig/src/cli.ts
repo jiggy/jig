@@ -2719,7 +2719,7 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'Jig could not identify the unsupported dependency source. Inspect the workspace manifest, lock and patch declarations; see https://jig.md/build/dependencies.',
       PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED: unsupportedRegistryLockHint(error),
       PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED:
-        'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.13 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
+        'the supplied Bun lock format is unsupported by this host; generate it explicitly with Bun 1.3.3 for Linux and Mac, or Bun 1.4.2 for Mac, then review again. Jig does not convert or replace supplied locks',
       PACKAGE_BUN_MANIFEST_SHAPE: 'package.json must contain an object',
       PACKAGE_BUN_MANIFEST_FIELD:
         'the indicated manifest field is unsupported here; use default npm registry dependencies or declared workspace members, with patches declared only at the workspace root',

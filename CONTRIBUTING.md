@@ -67,7 +67,7 @@ direnv allow
 ```
 
 Alternatively, run `nix-shell` from the repository root. The first entry fetches
-the pinned Nixpkgs toolchain: Bun 1.3.13, Node 24 with npm, Python with package
+the pinned Nixpkgs toolchain: Bun 1.3.3, Node 24 with npm, Python with package
 build dependencies, Bubblewrap 0.12, Just 1.51.0, and common development tools.
 `FLOW_NODE`, `FLOW_NPM`, `JIG_NPM`, and `PYTHON` point to those tools; Python is also on `PATH` for
 conformance tests. The Bun pin follows Jig's exact build requirement, not the

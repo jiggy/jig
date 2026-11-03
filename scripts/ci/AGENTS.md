@@ -138,7 +138,7 @@ preparation never becomes a consumer requirement.
   It checks the window's minimum request cost
   before collecting individual run histories. Insufficient budget refuses the
   complete report without sampling. Use a narrower manual window after refusal.
-- `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.13/Just 1.43.1, normal
+- `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry
   pending qualification. Expensive consumer tests run after artifact retention.

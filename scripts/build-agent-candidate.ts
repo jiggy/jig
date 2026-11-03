@@ -31,9 +31,9 @@ for (const [label, executable] of [
 ] as const)
   if (!executable || !isAbsolute(executable))
     throw new Error(`set ${label} to its absolute executable`)
-if (Bun.version !== '1.3.13' || Bun.revision !== 'bf2e2cecf27e800962b1e7f03d66278f9d5d2e79')
+if (Bun.version !== '1.3.3' || Bun.revision !== '274e01c737e85f8142070a9745b43a2ba09fce4c')
   throw new Error(
-    'Agent candidates require exact Bun 1.3.13 revision bf2e2cecf27e800962b1e7f03d66278f9d5d2e79',
+    'Agent candidates require exact Bun 1.3.3 revision 274e01c737e85f8142070a9745b43a2ba09fce4c',
   )
 command(node!, ['-e', 'if(process.release.name!=="node"||process.versions.bun)process.exit(70)'])
 if (command('git', ['status', '--porcelain', '--untracked-files=no']))

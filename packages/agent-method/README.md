@@ -361,7 +361,7 @@ absolute value bounds apply throughout.
 
 In the repository, install workspace dependencies at the root, build the FLOW
 SDK first (`just flow::build`), then run `just agent::build`. The package recipe
-builds only this package. Supported development inputs are Bun 1.3.13,
+builds only this package. Supported development inputs are Bun 1.3.3,
 TypeScript 7.0.2, Node types 24.13.3 and Just 1.43.1 or newer.
 
 To adapt extracted source, run `bun install --ignore-scripts`, then `just build`.
