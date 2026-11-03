@@ -10,3 +10,4 @@ Restore the application workbench hierarchy with compact navigation, readable re
 Add portable document covers, chapter locators, verified downloads and readable application instance labels in both reporting SDKs.
 Resolve forwarded output references through verified publisher and attachment bindings while preserving packet paths.
 Retain bounded document-sized raster previews while preserving SVG, decoder memory and source limits.
+Preserve event identity, captured-source access, filter-clear focus and header-only delimited tables across application layouts.

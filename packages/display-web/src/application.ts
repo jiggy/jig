@@ -31,6 +31,7 @@ type ApplicationPageProps = {
   onSelect: (key: string) => void
   onRecordKeyDown: (event: KeyboardEvent) => void
   onFilter: (collection: string, query: string) => void
+  onClearFilters: () => void
   onSort: (collection: string, key: string, descending: boolean) => void
   renderBlock: (block: DetailBlock, record: PrivateBrowserRecord) => ComponentChildren
   renderValue: (value: Value, record: PrivateBrowserRecord) => ComponentChildren
@@ -289,9 +290,7 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
             'button',
             {
               type: 'button',
-              onClick: () => {
-                for (const id of local.filters.keys()) props.onFilter(id, '')
-              },
+              onClick: props.onClearFilters,
             },
             'Clear filters',
           ),
@@ -417,7 +416,7 @@ export function DocumentPage(
             block.kind === 'content'
               ? h(
                   'figure',
-                  { class: 'document-photo' },
+                  { class: 'document-content' },
                   props.renderMedia?.(
                     block.reference,
                     record,
@@ -515,7 +514,7 @@ export function CapturedContent({
           'Captured excerpt; open the source to inspect available evidence.',
         )
       : null,
-    rows && rows.length > 1
+    rows
       ? h(
           'div',
           {
