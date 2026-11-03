@@ -150,7 +150,7 @@ async function captureWorkspace(
   const sources = await openPrivateWorkspaceSourceRoots({
     workspaceRoot: root,
     projectRoot: input.projectRoot,
-    sourceRoots: input.sourceRoots,
+    ...(input.sourceRoots === undefined ? {} : { sourceRoots: input.sourceRoots }),
   })
   const failures: unknown[] = []
   let result: PrivateBunWorkspace | undefined
