@@ -256,6 +256,7 @@ and response format, never the destination or permissions.
 | `api` | `chat-completions` (default), `responses` | Select the wire API matching the granted endpoint. |
 | `structuredOutput` | `prompt` (default), `json-schema` | Request a supplied `responseSchema` through prompt guidance alone or through the provider's strict schema format as well. |
 | `maxCompletionTokens` | 1–65536; default 4096 | Bound generated tokens using the selected API's token field. |
+| `omitStore` | `false` (default), `true` | Omit the `store` field when the endpoint does not accept it. |
 
 [Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
 uses `max_completion_tokens`, one choice, and optional `response_format.json_schema`.
@@ -274,11 +275,15 @@ slots: {
 },
 ```
 
-Both APIs request `store: false`, omit tools, and validate structured answers
-locally. Strict output requires support from the selected endpoint and model;
-rejection is a failure, never a retry in prompt mode. Without a supplied
-`responseSchema`, either setting requests ordinary text. Settings guide the
-method; the grant enforces any required body restrictions.
+Both APIs send `store: false` by default. Set `omitStore: true` to omit that
+field for endpoints that reject it. Omission does not establish the provider's
+data retention policy.
+
+Both APIs omit tools and validate structured answers locally. Strict output
+requires support from the selected endpoint and model. Rejection is a failure,
+never a retry in prompt mode. Without a supplied `responseSchema`, either output
+mode requests ordinary text. Settings guide the method. The grant enforces any
+required body restrictions.
 
 Only settled responses are accepted. Chat requires one complete choice;
 Responses accepts assistant text/refusals and ignores reasoning metadata.
