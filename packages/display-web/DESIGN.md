@@ -3,13 +3,6 @@
 The browser display makes application material readable inside a shared inspection shell.
 Applications choose content and priorities. Jig owns layout, navigation and evidence access.
 
-## Design reference
-
-The approved [Jig workbench prototype](https://jig-web-workspace.wittysmile129.chatgpt.site) is the visual reference.
-The reference source revision is `8b9af51d7b812ebea03014f310066971adbd5e85`.
-Its `DESIGN.md` and `DISPLAY-LANGUAGE.md` explain the design language.
-The prototype's sample data and commands do not establish runtime capabilities.
-
 ## Principles
 
 1. Let purpose determine presentation. Reading, observing, comparing and investigating are complete uses.
@@ -26,6 +19,8 @@ The prototype's sample data and commands do not establish runtime capabilities.
 - Use one page identity in the shared header. Avoid repeated headings when a section contains one identically named collection.
 - Put search and sorting beside their collection. Counts describe retained records and disclose reported totals.
 - Gallery images and captions lead. Preserve every supplied column in a metadata disclosure.
+- Choose layouts from supplied block types and explicit presentation roles, independently of application names or example fields.
+- Preserve document images' proportions and full content, including charts and screenshots. Keep captured-source disclosures accessible for content and covers.
 - Use readable prose surfaces for correspondence. Preserve whitespace, code and literal diff formatting.
 - Render captured text and patches inline. Complete rectangular CSV excerpts can use a table with raw text available.
 - Preserve authentication, exact capture identity, preview bounds and cleanup. No authored URL or path grants file access.
@@ -44,7 +39,7 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
 - Contacts leads with completed records, retaining mapping and correction reasons.
 - Patch review displays captured patches alongside their independently validated checks.
 - Plain reports remain useful without selection, search or commands.
-- Filtering never silently changes the inspected record.
+- Filtering never silently changes the inspected record. Clearing filters returns focus to its visible control, or the detail Back button on narrow layouts. Typing in search retains focus.
 - Unavailable evidence remains a readable state, without a broken image or fabricated successful result.
 
 `test/material.node.mjs` checks semantic rendering, captured content, large galleries and actual HTTP behavior.

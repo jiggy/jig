@@ -63,12 +63,16 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   viewer-local.
 - The compact application frame puts routine host facts in Run details while retaining visible attention and Close.
 - Document covers and downloads use exact current capture bindings and generation checks.
+- Presentation follows supplied block types and explicit roles, independently of application names.
+  Document content preserves image proportions. Content and covers retain accessible captured-source disclosures.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
   inspection destinations.
 - Follow [DESIGN.md](DESIGN.md) for the approved workbench hierarchy and material-specific acceptance criteria.
 - Preserve application selection through local filtering. Explain hidden selections and allow clearing filters without selecting another record.
+  Clear filters restores focus to the selected control, or the visible detail Back button at narrow widths.
+  Search input keeps focus while typing.
 - Render captured text, delimited tables and diffs inline. Keep unavailable and clipped captures explicit.
 - Preserve list/context/expanded-evidence hierarchy, keyboard focus, compact
   navigation, diagnostic uncertainty and captured-file findings.

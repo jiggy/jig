@@ -60,6 +60,7 @@ const props = (view) => ({
   onSelect() {},
   onRecordKeyDown() {},
   onFilter() {},
+  onClearFilters() {},
   onSort() {},
   renderBlock: (block) => block.text ?? 'Content',
   renderValue: (value) => (typeof value === 'object' ? JSON.stringify(value) : String(value)),
@@ -607,7 +608,7 @@ test('a filtered-out selection keeps its own context and can clear filters witho
     ...props(view),
     local,
     records: browserRecords(view, local),
-    onFilter: (id, query) => local.filters.set(id, query),
+    onClearFilters: () => local.filters.clear(),
   }
   const page = ApplicationPage(options)
   assert(text(page).includes('Alex is outside the current filters'))
@@ -615,7 +616,7 @@ test('a filtered-out selection keeps its own context and can clear filters witho
   walk(notice)
     .find((node) => node.type === 'button')
     .props.onClick()
-  assert.equal(local.filters.get('people'), '')
+  assert.equal(local.filters.size, 0)
   assert.equal(local.selected, selected.key)
   assert.equal(
     browserRecords(view, local).find((item) => item.key === local.selected).row.details[0].text,
@@ -656,6 +657,30 @@ test('complete captured CSV renders a bounded table and preserves its raw text',
     const raw = captured('text', { path: 'roster.csv', ...value })
     assert.equal(walk(raw).filter((node) => node.type === 'table').length, 0)
     assert(text(raw).includes(value.text))
+  }
+})
+
+test('header-only CSV and TSV expose their columns and raw text without inventing records', () => {
+  for (const [path, source] of [
+    ['empty.csv', 'Name,Reply\n'],
+    ['empty.tsv', 'Name\tReply\n'],
+  ]) {
+    const page = captured('text', { path, text: source })
+    assert.equal(walk(page).filter((node) => node.type === 'table').length, 1)
+    assert.deepEqual(
+      walk(page)
+        .filter((node) => node.type === 'th')
+        .map(text),
+      ['Name', 'Reply'],
+    )
+    assert.equal(text(walk(page).find((node) => node.type === 'tbody')), '')
+    assert(text(walk(page).find((node) => node.type === 'details')).includes(source))
+    assert.equal(
+      walk(captured('text', { path, text: source, clipped: true })).filter(
+        (node) => node.type === 'table',
+      ).length,
+      0,
+    )
   }
 })
 

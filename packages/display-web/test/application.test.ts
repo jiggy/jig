@@ -91,6 +91,7 @@ test('application sections compose a full page with all columns and working insp
     onFilter: (_collection: string, value: string) => {
       query = value
     },
+    onClearFilters: () => local.filters.clear(),
     onSort: (_collection: string, key: string) => {
       sortKey = key
     },
