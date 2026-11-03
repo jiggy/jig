@@ -46,6 +46,7 @@ import { type PrivateCapturedInput, requirePrivateCapturedInput } from './input-
 import { privateInstallationFileDigest } from './installation-verification.js'
 import { PRIVATE_LINUX_EVALUATION_FILES } from './linux-evaluation-workspace.js'
 import { privateDuplicateInputForStdio, privateVerifyLinuxSealedFile } from './linux-file-input.js'
+import { privateLinuxInheritedStdio } from './linux-inherited-stdio.js'
 import {
   acquirePrivateRootlessLinux,
   inspectPrivateRootlessLinuxSupport,
@@ -653,14 +654,14 @@ export class PrivateLinuxCgroupBackend {
     let control: Socket | undefined
     let preparedReached = false
     let outputDirectory: FileHandle | undefined
+    const inputFds: number[] = []
     try {
       await listen(server, controlPath)
       if (signal?.aborted) throw new Error('rootless Linux Run was cancelled before startup')
       const accepted = acceptOne(server, this.#options.startupTimeoutMs)
-      const inputFds: number[] = []
       try {
-        // Bun remaps stdio slots in ascending order. Sources inside the target
-        // interval can be overwritten before a later input is copied.
+        // Keep copied readers outside the reserved control slots. Inherit them
+        // in place so Bun cannot acquire a second owner for these descriptors.
         const minimum = 6 + data.sealedPlan.capturedInputs.length
         for (const file of data.sealedPlan.capturedInputs)
           inputFds.push(privateDuplicateInputForStdio(file.fd, minimum))
@@ -680,7 +681,10 @@ export class PrivateLinuxCgroupBackend {
                 LD_LIBRARY_PATH: data.mechanism.support.trustedCoordinatorLibraryPath,
               },
               detached: true,
-              stdio: ['pipe', 'pipe', 'pipe', 'ignore', 'ignore', 'ignore', ...inputFds],
+              stdio: privateLinuxInheritedStdio(
+                ['pipe', 'pipe', 'pipe', 'ignore', 'ignore', 'ignore'],
+                inputFds,
+              ),
             },
           ),
         )
@@ -702,7 +706,7 @@ export class PrivateLinuxCgroupBackend {
       const messages = readJsonLines(control)[Symbol.asyncIterator]()
       writeControl(control, {
         type: 'start',
-        configuration: supervisorConfiguration(data),
+        configuration: supervisorConfiguration(data, inputFds),
       })
       const cancel = (): void => writeControlBestEffort(control!, { type: 'cancel' })
       signal?.addEventListener('abort', cancel, { once: true })
@@ -1606,7 +1610,7 @@ export function requirePrivateLinuxMechanismUnchanged(
   }
 }
 
-function supervisorConfiguration(data: SealedOwnerData): object {
+function supervisorConfiguration(data: SealedOwnerData, inputFds: readonly number[]): object {
   return Object.freeze({
     runCgroup: data.identity.runCgroup,
     delegatedCgroup: data.identity.delegatedCgroup,
@@ -1628,7 +1632,7 @@ function supervisorConfiguration(data: SealedOwnerData): object {
     output: data.sealedPlan.output,
     preparationOutput: data.sealedPlan.preparationOutput ?? null,
     capturedInputs: data.sealedPlan.capturedInputs.map((file, index) => ({
-      fd: 6 + index,
+      fd: inputFds[index],
       destination: file.destination,
       bytes: file.bytes,
       digest: file.digest,

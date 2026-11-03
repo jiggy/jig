@@ -29,6 +29,7 @@ import {
   privateCopyLinuxEvaluationWorkspace,
   privateLinuxEvaluationWorkspaceArguments,
 } from './linux-evaluation-workspace.js'
+import { privateLinuxInheritedStdio } from './linux-inherited-stdio.js'
 import {
   normalizePrivateBootDeadline,
   type PrivateBootDeadline,
@@ -293,15 +294,17 @@ async function superviseConnected(control: Socket, startupDeadlineUnixMs: number
         env: {
           LD_LIBRARY_PATH: configuration.bunHostLibraryPath,
         },
-        stdio: [
-          'inherit',
-          'inherit',
-          'inherit',
-          'pipe',
-          'pipe',
-          configuration.output || configuration.preparationOutput !== null ? 'pipe' : 'ignore',
-          ...configuration.capturedInputs.map((file) => file.fd),
-        ],
+        stdio: privateLinuxInheritedStdio(
+          [
+            'inherit',
+            'inherit',
+            'inherit',
+            'pipe',
+            'pipe',
+            configuration.output || configuration.preparationOutput !== null ? 'pipe' : 'ignore',
+          ],
+          configuration.capturedInputs.map((file) => file.fd),
+        ),
       },
     )
     childExit = childClose(launched)
@@ -504,7 +507,11 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   const inputDescriptors = envelopeArguments.flatMap((arg, index) =>
     arg === '--file' ? [Number(envelopeArguments[index + 1])] : [],
   )
-  if (inputDescriptors.some((fd, index) => fd !== 6 + index))
+  if (
+    inputDescriptors.length > 64 ||
+    new Set(inputDescriptors).size !== inputDescriptors.length ||
+    inputDescriptors.some((fd) => !Number.isSafeInteger(fd) || fd < 6 || fd >= 1_048_576)
+  )
     throw new Error('invalid captured input descriptor order')
   restrictInheritedDescriptors(process.env.LD_LIBRARY_PATH, [
     ...(output ? [4, 5] : []),
@@ -513,15 +520,17 @@ async function enterMain(arguments_: readonly string[]): Promise<void> {
   const child = spawn(bubblewrap!, bubblewrapArguments_, {
     cwd: '/',
     env: {},
-    stdio: [
-      'inherit',
-      'inherit',
-      'inherit',
-      'ignore',
-      output ? 4 : 'ignore',
-      output ? 5 : 'ignore',
-      ...inputDescriptors,
-    ],
+    stdio: privateLinuxInheritedStdio(
+      [
+        'inherit',
+        'inherit',
+        'inherit',
+        'ignore',
+        output ? 'inherit' : 'ignore',
+        output ? 'inherit' : 'ignore',
+      ],
+      inputDescriptors,
+    ),
   })
   for (const fd of inputDescriptors) closeSync(fd)
   if (output) {
@@ -1104,10 +1113,12 @@ function requireStart(value: unknown): Configuration {
         !/^\/jig-input\/[a-z0-9]+(?:-[a-z0-9]+)*$/.test(path),
     ) ||
     configuration.capturedInputs.some(
-      (file, index) =>
+      (file) =>
         file === null ||
         typeof file !== 'object' ||
-        file.fd !== 6 + index ||
+        !Number.isSafeInteger(file.fd) ||
+        file.fd < 6 ||
+        file.fd >= 1_048_576 ||
         !absolute(file.destination) ||
         !Number.isSafeInteger(file.bytes) ||
         file.bytes < 0 ||
@@ -1115,6 +1126,8 @@ function requireStart(value: unknown): Configuration {
         !DIGEST.test(file.digest) ||
         !configuration.inputDirectories.some((path) => file.destination.startsWith(`${path}/`)),
     ) ||
+    new Set(configuration.capturedInputs.map((file) => file.fd)).size !==
+      configuration.capturedInputs.length ||
     !positiveInteger(configuration.payloadUid) ||
     !positiveInteger(configuration.payloadGid) ||
     !validLimits(configuration.limits) ||

@@ -11,3 +11,4 @@ Add portable document covers, chapter locators, verified downloads and readable 
 Resolve forwarded output references through verified publisher and attachment bindings while preserving packet paths.
 Retain bounded document-sized raster previews while preserving SVG, decoder memory and source limits.
 Preserve event identity, captured-source access, filter-clear focus and header-only delimited tables across application layouts.
+Preserve Linux input descriptor custody across subprocess finalization and reuse.

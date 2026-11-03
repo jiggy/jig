@@ -3,7 +3,17 @@ import { dirname as suiteDirname } from 'node:path'
 const suiteTestRoot = suiteDirname(import.meta.dir)
 
 import { expect, test } from 'bun:test'
-import { closeSync, fstatSync, readFileSync, readSync, writeSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
+import {
+  closeSync,
+  constants,
+  fstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  writeSync,
+} from 'node:fs'
 import { link, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -22,7 +32,60 @@ import {
   privateDuplicateInputForStdio,
   privateVerifyLinuxSealedFile,
 } from '../../src/internal/linux-file-input.js'
+import { privateLinuxInheritedStdio } from '../../src/internal/linux-inherited-stdio.js'
 import { fixture } from '.././file-input.fixture.js'
+
+test('inherited input custody survives subprocess collection and descriptor reuse', async () => {
+  const capture = capturePrivateInput(Buffer.from('retained input bytes'))
+  const input = requirePrivateCapturedInput(capture)
+  try {
+    for (let iteration = 0; iteration < 16; iteration++) {
+      const fd = privateDuplicateInputForStdio(input.fd, 6)
+      let ownsFd = true
+      const sentinels: number[] = []
+      try {
+        // Return without retaining the ChildProcess, so GC can finalize its native handle.
+        const execute = async () => {
+          const child = spawn(
+            process.execPath,
+            ['-e', `process.stdout.write(require('node:fs').readFileSync(${fd}))`],
+            {
+              stdio: privateLinuxInheritedStdio(
+                ['ignore', 'pipe', 'pipe', 'ignore', 'ignore', 'ignore'],
+                [fd],
+              ),
+            },
+          )
+          const output: Buffer[] = []
+          child.stdout!.on('data', (bytes) => output.push(Buffer.from(bytes)))
+          const closed = once(child, 'close')
+          closeSync(fd)
+          ownsFd = false
+          // Occupy the released slot before native finalization can run.
+          let sentinel: number
+          do {
+            sentinel = openSync('/dev/null', constants.O_RDONLY)
+            sentinels.push(sentinel)
+          } while (sentinel < fd)
+          expect(await closed).toEqual([0, null])
+          expect(sentinel).toBe(fd)
+          expect(Buffer.concat(output).toString()).toBe('retained input bytes')
+        }
+        await execute()
+        for (let turn = 0; turn < 3; turn++) {
+          Bun.gc(true)
+          await new Promise<void>((resolve) => setImmediate(resolve))
+        }
+        for (const sentinel of sentinels) expect(fstatSync(sentinel).isCharacterDevice()).toBe(true)
+      } finally {
+        if (ownsFd) closeSync(fd)
+        for (const sentinel of sentinels) closeSync(sentinel)
+      }
+    }
+  } finally {
+    capture.close()
+  }
+})
 
 test('reuses one sealed capture with independent sequential and sibling read positions', () => {
   const bytes = Buffer.from([0, 255, 128, 2, 45, 99, 10])

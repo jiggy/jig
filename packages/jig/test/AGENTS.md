@@ -15,6 +15,9 @@ These checks grant no native execution or cleanup evidence.
 Its synthetic errors establish no native cleanup, artifact retention or installed-host evidence.
 Successful closure preserves ordinary operation exit codes, including exit 1 for `STALE_PLAN`.
 
+`linux/file-input.test.ts` forces subprocess collection after input-descriptor reuse and checks that replacement descriptors remain open.
+Its real subprocesses establish descriptor custody, not native containment or fencing.
+
 - `portable/` owns source checks without native host admission or model
   credentials.
 - `linux/` owns Linux platform checks that can run in the ordinary source job.

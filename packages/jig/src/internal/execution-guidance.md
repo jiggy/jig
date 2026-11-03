@@ -231,6 +231,9 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### execution-intent
 
+- `linux-inherited-stdio.ts` preserves caller custody for captured input readers across native launch hops.
+  Only selected live descriptors inherit at their existing slots. Other extra slots remain ignored.
+
 - `preparationOutput` selects only production or evaluation package collection.
   It cannot share ordinary output or an evaluation workspace.
 
