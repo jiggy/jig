@@ -7,13 +7,16 @@ Teach practical applications built from code and Agent methods.
 ## Ownership
 
 Task guides own composition, Agent setup, dependencies, effects, files,
-conversations, progress, project design, collaboration, and recovery.
+conversations, progress, project design, collaboration, and result interpretation.
+`../reference/troubleshooting.md` owns operational diagnosis and recovery procedures.
 
 ## Local Contracts
 
-Start with prerequisites, complete setup, expected results, and recovery.
+Start with prerequisites, complete setup, expected results, and a contextual troubleshooting link.
 Introduce optional controls only when the task needs them.
 Centralize Agent setup in `agents.md`.
+Keep result semantics and required safety conditions beside their actions.
+Link repair procedures to the shared troubleshooting guide instead of duplicating them.
 Keep portable method semantics with FLOW and exact host requirements in `../spec/`.
 
 ## Work Guidance

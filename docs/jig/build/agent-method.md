@@ -32,7 +32,7 @@ Read execution status first, then the method's outcome:
 
 A successful command does not prove a correct answer. Operational failures
 remain execution errors. Nothing is retried automatically.
-[Results and recovery](./results.md) explains host status, delivery, and cleanup.
+[Results](./results.md) explains host status, delivery, and cleanup.
 
 ## Call the Agent from your own Flow
 
@@ -83,26 +83,8 @@ again if you change the caller or its Agent selection.
 
 Your application owns factual checks and decisions based on the answer.
 
-## Diagnose a failed request
-
-| Observation | Action |
-| --- | --- |
-| Selected native client fails review | Follow [client-check recovery](./agents.md#repair-a-client-check). |
-| HTTP 401 or 403 | Check the operator credential and account permissions for the reviewed grant. Keep credentials in the operator environment. |
-| HTTP 422 | Check the Binding's model, API format, output mode, and token settings. |
-| HTTP 404 | Check endpoint and model availability. Either may explain the status. The exact cause can remain unknown. |
-| HTTP 5xx | Check provider availability. The response does not prove whether remote work occurred. No automatic retry occurs. |
-| `blocked` or `limit` | Read the method's output before choosing another action. |
-| Transport, execution, or cleanup is uncertain | Preserve evidence. Follow [Results and recovery](./results.md). Do not automatically replay work. |
-
-Use the operation path to identify the selected method and Binding. HTTP errors
-retain `phase`, `api`, `status`, `category`, and `retry: "not-attempted"` in
-`details`. An optional `parameter` names only a recognized API field reported by
-the provider. Errors do not print provider bodies or invent a cause.
-
-An HTTP response proves the endpoint responded, not that remote effects were
-undone or safe to repeat. Review changed settings or grants before new work. The
-method never switches providers automatically.
+For failed requests, see
+[Agent execution troubleshooting](../reference/troubleshooting.md#agent-execution-fails).
 
 ## Input reference
 
@@ -191,6 +173,15 @@ Token exhaustion returns `limit`. Both outcomes retain text under the
 malformed responses, and non-200 statuses fail execution. Cancellation and
 host deadlines remain operational failures. The CLI reports host execution
 status separately from the method's outcome.
+
+HTTP errors retain `phase`, `api`, `status`, `category`, and
+`retry: "not-attempted"` in `details`. An optional `parameter` names only a
+recognized API field reported by the provider. Errors do not print provider
+bodies or invent a cause.
+
+An HTTP response proves the endpoint responded, not that remote effects were
+undone or safe to repeat. Review changed settings or grants before new work. The
+method never switches providers automatically.
 
 ### Use an OpenAI-compatible gateway
 

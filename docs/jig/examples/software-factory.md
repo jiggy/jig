@@ -42,7 +42,7 @@ Inspect `batch.json`, the Agent Binding, both repair Bindings, and the two named
 The inline policy in `bindings/agent.ts` selects native Codex through ACP as an example choice.
 Edit that Binding for a lasting choice, or explicitly propose another client during review.
 If the selected client is unavailable, review stops before new approval.
-Correct its setup or deliberately select another client, then review again.
+See [Agent client troubleshooting](../reference/troubleshooting.md#agent-client-check-fails).
 Review never rewrites policy.
 
 Review prepares the ordinary declared dependencies. To use an HTTP Agent method
@@ -118,9 +118,10 @@ explicit machine records, or `--updates off` to disable automatic observation.
 Rapid phase replacements and slow observers may omit intermediate activity. A
 checkpoint notice follows durable storage.
 
-Counts measure saved jobs, including failures. If live updates stop early, check
-the final report and saved evidence. These views report application
-observations. The final result and retained evidence determine whether a patch
+Counts measure saved jobs, including failures. If live updates stop early, see
+[live update troubleshooting](../reference/troubleshooting.md#live-updates-stop).
+These views report application observations.
+The final result and retained evidence determine whether a patch
 is review-ready. The factory's `checkpoint` slot separately retains settled job
 evidence and original request files across interruption.
 
@@ -154,7 +155,7 @@ patches pass when combined. Apply selected patches to a disposable copy, run
 combined checks, and review the changes before a human merge decision.
 
 If a job is blocked, inspect its reason and evidence before changing the batch.
-For failed execution or uncertain delivery, follow [Results and recovery](../build/results.md) before retrying.
+For failed execution or uncertain delivery, follow [Troubleshooting](../reference/troubleshooting.md) before retrying.
 
 ## Make one change
 

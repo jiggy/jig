@@ -84,8 +84,8 @@ Change the notice text, then review and run again.
 Use `--updates off` to run without automatic observation.
 The result remains available in either case.
 
-If dependency preparation fails, use [dependency recovery](./dependencies.md#if-preparation-fails).
-If publication or execution fails, inspect [Results and recovery](./results.md) before repeating work.
+If dependency preparation fails, use [dependency troubleshooting](../reference/troubleshooting.md#dependency-preparation-fails).
+For publication or execution failures, use [Troubleshooting](../reference/troubleshooting.md) before deciding on further work.
 A closed update stream does not establish successful execution or cleanup.
 
 Other hosts can copy the same agreement and its license from the

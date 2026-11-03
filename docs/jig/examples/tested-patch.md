@@ -34,7 +34,7 @@ Inspect `issue.json`, `bindings/specialist.ts`, and `flows/read-project/logs-cas
 Review prepares the declared dependencies.
 The resolution flag permits dependency-selected network requests before approval.
 If the selected client is unavailable, review stops before new approval.
-Correct its setup or deliberately select another client, then review again.
+See [Agent client troubleshooting](../reference/troubleshooting.md#agent-client-check-fails).
 Run from the example directory:
 
 ```sh
@@ -141,9 +141,9 @@ not execution evidence.
 
 Cancellation, deadlines, uncertain execution, and unavailable support never
 trigger a correction or automatic replay. This example delivers final patches
-only; interruption does not retain unfinished patches. File delivery is separate
-from execution: inspect an existing destination after a lost acknowledgement
-instead of blindly starting another Run. See [working with files](../build/files.md).
+only. Interruption does not retain unfinished patches. File delivery is separate
+from execution. For a lost acknowledgement, see
+[result delivery troubleshooting](../reference/troubleshooting.md#result-delivery-is-unconfirmed).
 
 ## Make one change
 
@@ -237,5 +237,5 @@ root settlement removes their stored state, so the packet is evidence, not a
 source of cross-Run continuation. Retained transcripts contain the supplied
 source and feedback; the host's retention limits and expiry still apply.
 
-For failed execution or delivery, follow [Results and recovery](../build/results.md) before retrying.
+For failed execution or delivery, follow [Troubleshooting](../reference/troubleshooting.md) before retrying.
 Next, [run a small software factory](./software-factory.md) to keep separate patch evidence for two issues.

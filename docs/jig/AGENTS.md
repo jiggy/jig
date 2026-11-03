@@ -11,9 +11,9 @@ use-case and orchestration hypotheses.
   Each docs area has a focused sidebar. Persistent utilities serve people and Agents.
 - `start/` owns the connected greeting and application-client tutorials.
   It centralizes installation and supported-host prerequisites.
-- `build/` owns practical composition, Agent, file, effect, conversation, and recovery tasks.
+- `build/` owns practical composition, Agent, file, effect, conversation, and result-inspection tasks.
 - `understand/` explains responsibility boundaries and workflow choices.
-- `reference/` owns configuration, generated limits, terminology, and exact-contract discovery.
+- `reference/` owns configuration, generated limits, troubleshooting, terminology, and exact-contract discovery.
 - `examples/` owns complete application walkthroughs and their acquisition instructions.
 - `research/` isolates hypotheses from current supported behavior.
 - `for-agents.md` owns authoring-skill installation and machine-readable entry paths.
@@ -35,13 +35,13 @@ use-case and orchestration hypotheses.
   Its platform guidance distinguishes required Linux/Apple Silicon release
   checks from complete nightly Intel compatibility and its regression window.
 - `build/agents.md` owns API and native setup, operator selection, resource
-  configuration, installation recovery, review checks, and current adapter
+  configuration, review checks, and current adapter
   limits. Setup instructions belong here. Other guides link to the relevant
   setup section. Review readiness and installed-client session qualification
   remain distinct. Neither proves model execution. Exact native selection limits
   belong in `spec/finite-acp.md`.
 - `build/conversations.md` owns the complete two-turn tutorial, expected
-  results, and basic recovery. Show all required source before review and
+  results, and contextual troubleshooting links. Show all required source before review and
   execution.
 - `build/conversation-control.md` owns interruption, direct channel composition,
   helper errors, and observation loss.
@@ -55,8 +55,7 @@ use-case and orchestration hypotheses.
 - `build/dependencies.md` starts with a complete library example and owns
   dependency preparation guidance. Its workspace
   examples follow `spec/project-policy.md`'s root selection, direct membership,
-  and supported lock formats. Stale-lock recovery identifies the authored lock
-  and workspace. Resolution permission does not update a supplied lock.
+  and supported lock formats. Resolution permission does not update a supplied lock.
 
   It also explains explicit review selection of separately mounted dependency roots.
   Keep invocation-relative operands distinct from project-relative diagnostic locations.
@@ -100,13 +99,15 @@ use-case and orchestration hypotheses.
 - `research/use-cases.md` records outcome-oriented product hypotheses.
 - `research/orchestration-patterns.md` records candidate reusable methods.
 
-- `build/results.md` owns execution, application outcome, delivery, cleanup,
-  failure diagnosis, and retained-state recovery.
+- `build/results.md` owns execution status, application outcomes, delivery,
+  cleanup evidence, and result inspection.
   It distinguishes saved packets from explicitly retained application views.
   Neither inspection starts execution.
-  Cleanup recovery distinguishes original-ticket observation from escalation without a usable ticket or packet.
-  Settings and appearance belong in `reference/configuration.md`, and Agent setup recovery belongs in `build/agents.md`.
+  Settings and appearance belong in `reference/configuration.md`.
   The quickstart links to results after the first outcome.
+- `reference/troubleshooting.md` owns operational diagnosis and recovery across
+  setup, review, execution, conversations, results, retained state, and cleanup.
+  Topic guides link to its relevant section instead of duplicating repair procedures.
 - `index.html` owns the standalone marketing page. `index.md` preserves its
   complete meaning in generated Markdown, including every example, method
   strategy, setup path, and qualification.
@@ -196,7 +197,7 @@ use-case and orchestration hypotheses.
 - Keep shared component principles in FLOW guidance and Jig project practices in their canonical guide.
 
 - Start task guides with prerequisites, one complete example, expected results,
-  and recovery. Put optional configuration and exact reference details afterward.
+  and a short path to troubleshooting. Put optional configuration and exact reference details afterward.
   Name the author or operator when their responsibilities differ.
   Keep authority conditions and failure limits beside the actions they constrain.
   Use ordinary language for consequences and link to exact contract owners.
@@ -210,9 +211,12 @@ use-case and orchestration hypotheses.
   free personal use and evaluation. Introduce small-business eligibility,
   financial thresholds, and purchase terms in the business section. Link to the
   license for edge cases instead of turning the page into legal commentary.
-- Keep introductory guides focused on the first useful result. Put optional
-  tuning, environment variables, cache internals, and configuration tradeoffs in
-  `reference/configuration.md`, reachable through Reference navigation and links.
+- Keep introductory guides focused on concepts and the first useful result.
+  Group reference content by the reader's task rather than by individual diagnostics.
+  Consolidate diagnosis and repair in `reference/troubleshooting.md`, settings in
+  `reference/configuration.md`, and numeric bounds in `reference/limits.md`.
+  Guides use brief contextual links to these owners. Do not create a separate page for one exceptional error.
+  Keep API error semantics, domain outcomes, and required safety conditions beside the actions they explain.
 - First-run file guidance explains that operating-system cleanup may remove
   automatic temporary packets. `--out` chooses a new retained location without
   overwriting an earlier result. Result-only examples do not promise a packet
@@ -241,7 +245,7 @@ use-case and orchestration hypotheses.
 - [start/AGENTS.md](start/AGENTS.md) — Connected first-use tutorials and their source diagram.
 - [build/AGENTS.md](build/AGENTS.md) — Practical application and operator tasks.
 - [understand/AGENTS.md](understand/AGENTS.md) — Explanations and workflow choices.
-- [reference/AGENTS.md](reference/AGENTS.md) — Lookup pages and generated limits.
+- [reference/AGENTS.md](reference/AGENTS.md) — Lookup pages, troubleshooting, and generated limits.
 - [examples/AGENTS.md](examples/AGENTS.md) — Complete application walkthroughs.
 - [research/AGENTS.md](research/AGENTS.md) — Non-normative hypotheses and evaluation criteria.
 

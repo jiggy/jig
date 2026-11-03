@@ -11,7 +11,7 @@ walkthroughs explain their matching repository examples.
 
 ## Local Contracts
 
-Include ordinary source acquisition, prerequisites, expected results, and recovery.
+Include ordinary source acquisition, prerequisites, expected results, and contextual troubleshooting links.
 State illustrative domain assumptions beside the relevant decision.
 Keep the software-factory style exclusion until its planned replacement.
 Link to shared setup instead of duplicating it.

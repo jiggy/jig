@@ -1,12 +1,12 @@
 ---
 title: Jig reference
-description: Look up settings, limits, vocabulary, application APIs, and exact host contracts.
+description: Look up settings, limits, troubleshooting guidance, vocabulary, application APIs, and exact host contracts.
 ---
 
 # Reference
 
-Use this section to look up a setting, term, or exact requirement.
-For a complete procedure, follow [Start here](../start/index.md) or [Build](../build/index.md).
+Find settings, limits, terms, troubleshooting guidance, and exact requirements here.
+To create or extend an application, follow [Start here](../start/index.md) or [Build](../build/index.md).
 
 ## Everyday lookup
 
@@ -16,7 +16,8 @@ For a complete procedure, follow [Start here](../start/index.md) or [Build](../b
 | Which settings can I change? | [Settings and configuration](./configuration.md) |
 | What are the defaults and supported overrides? | [Limits](./limits.md) |
 | What does a term mean? | [Glossary and questions](./glossary.md) |
-| How do I interpret a failed run? | [Results and recovery](../build/results.md) |
+| How do I interpret a run's result? | [Results](../build/results.md) |
+| How do I diagnose a failure or recover safely? | [Troubleshooting](./troubleshooting.md) |
 | What interface can my application call? | [Application client](../spec/execution-client.md) |
 
 ## Exact host contracts
@@ -34,7 +35,7 @@ Reader guides explain how to use them without changing their authority.
 | Dependency-backed checks | [Project Evaluation](../spec/project-evaluation.md) | [Contact import](../examples/contact-import.md) |
 | Generated declarations | [Contract authoring](../spec/contract-authoring.md) | [Author contracts](../build/contracts.md) |
 | Messages and progress | [Channels](../spec/channels.md), [reporting](../spec/reporting.md) | [Live progress](../build/channels.md) |
-| Retained output | [Run Checkpoint](../spec/run-checkpoint.md), [display archives](../spec/display-archive.md) | [Results and recovery](../build/results.md) |
+| Retained output | [Run Checkpoint](../spec/run-checkpoint.md), [display archives](../spec/display-archive.md) | [Results](../build/results.md) |
 | Terminal and browser presentation | [CLI experience](../spec/cli-experience.md), [web display](../spec/web-display.md) | [Configuration](./configuration.md) |
 
 ## Named capability contracts

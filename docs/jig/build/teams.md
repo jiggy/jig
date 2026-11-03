@@ -59,7 +59,7 @@ Make your application's consequence policy equally clear.
 
 Distinguish successful execution, a useful domain outcome, and confirmed file delivery.
 Name who handles a blocked result, cancellation, or uncertainty.
-[Results and recovery](./results.md) explains these boundaries.
+[Results](./results.md) explains these boundaries.
 
 ## Start with the smallest useful collaboration
 

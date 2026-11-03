@@ -84,20 +84,7 @@ afresh without source review.
 
 Review again if you change the Flow or its contract.
 
-## If the copy does not complete
-
-| Observation | Action |
-| --- | --- |
-| Input or attachment validation fails | Correct the input and declared mapping. These checks fail before package dispatch. |
-| `note.txt` is absent | Supply that file in the selected input directory. Inspect the reported execution failure before new work. |
-| The destination already exists | Choose a new directory. A repeated command starts new work. It does not resume delivery. |
-| Delivery or cleanup is uncertain | Inspect the destination and retained evidence. Follow [Results and recovery](./results.md) before further work. |
-| Ctrl-C interrupts the command | Wait for cleanup. An interruption may leave no terminal packet and does not prove the handler started. |
-
-Execution and delivery are separate facts. An accepted execution result can
-survive failed delivery. A delivered file does not prove application
-correctness. See [delivery and interruption](#understand-failures) for
-checkpoints and exact failure behavior.
+If the copy fails, follow [file troubleshooting](../reference/troubleshooting.md#file-input-or-destination-is-rejected).
 
 ## Choose what to share
 
@@ -276,7 +263,7 @@ Exported directories are private (`0700`) and files are owner-readable/writable
 Use [recorded result inspection](./results.md#reopen-a-saved-result) to read a
 saved packet without starting work.
 
-## Understand failures
+## Read file evidence
 
 `status` describes execution. `delivery` describes packet publication.
 `delivery.source` is `final`, `checkpoint`, or `none`. An application outcome
@@ -324,12 +311,9 @@ published packet. Connection loss can leave delivery unknown even when the
 packet exists. `JIG_REPORT_LIMIT` keeps the terminal on stdout and reports
 delivery separately on stderr.
 
-Inspect the destination before new work. Repeating the command always starts new
-work.
-
 `--timeout` bounds execution, with a 30-second default. Capture, export, and
 cleanup have separate bounds.
 [Root file policy](../spec/project-policy.md#root-file-runs) owns exact
 collection, publication, modes, report limits, and interruption behavior.
-[Results and recovery](./results.md) explains how to act on execution and delivery
-uncertainty.
+[Troubleshooting](../reference/troubleshooting.md#result-delivery-is-unconfirmed) owns recovery
+when delivery or cleanup is uncertain.

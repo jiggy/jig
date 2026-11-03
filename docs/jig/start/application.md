@@ -188,13 +188,7 @@ Acknowledgement confirms the request, rather than complete cleanup.
 Read observations until the original owner settles.
 Connection loss revokes owned execution but cannot undo remote effects already accepted by a provider.
 
-| Observation | Next action |
-| --- | --- |
-| Review or approval changed | Inspect the selected target and review its source. Do not silently substitute another approval. |
-| The task record already exists | Recover that task before deciding whether to start different work. |
-| `AttemptClientError.uncertain` is true | Use the recorded ticket. Do not automatically submit a new request. |
-| Cleanup is pending or unresolved | Preserve the task identity and follow [Results and recovery](../build/results.md). |
-| Output expired or became unavailable | Preserve the execution observation. Missing bytes do not authorize repeating effects. |
+Use [Troubleshooting](../reference/troubleshooting.md) for approval errors, existing task records, uncertain execution, or unavailable output.
 
 Next, [choose an Agent](../build/agents.md) for interpreted work, then [compose methods](../build/compose.md).
 The application boundary stays the same when the accepted method uses code, Agent judgment, or both.

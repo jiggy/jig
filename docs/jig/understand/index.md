@@ -103,7 +103,7 @@ An execution failure remains a failure.
 Jig accounts for owned work through completion, cancellation, and cleanup.
 
 Cancellation cannot retract a provider's accepted request or undo a completed external effect.
-See [execution policy](../spec/project-policy.md) and [results and recovery](../build/results.md) for the exact guarantees.
+See [execution policy](../spec/project-policy.md) and [results](../build/results.md) for the exact guarantees.
 
 ## Build a system you can direct
 

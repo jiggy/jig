@@ -32,7 +32,8 @@ Jig adds reviewed local configuration, powers, and execution around those method
 | Read captured inputs and deliver artifacts | [Work with files](./files.md) |
 | Make authorized requests without exposing credentials | [Delegate HTTP access](./http.md) |
 | Report progress and render application views | [Show live progress](./channels.md) |
-| Interpret outcomes and recover retained evidence | [Results and recovery](./results.md) |
+| Interpret outcomes and inspect retained evidence | [Results](./results.md) |
+| Diagnose failures and recover safely | [Troubleshooting](../reference/troubleshooting.md) |
 
 ## Continue Agent work
 

@@ -34,6 +34,7 @@
       "docs/jig/reference/limits.md",
       "docs/jig/spec/execution-client.md",
       "docs/jig/build/results.md",
+      "docs/jig/reference/troubleshooting.md",
       "docs/jig/spec/machine/jig-lock-1.schema.json",
       "docs/jig/spec/machine/project-authoring-1.schema.json",
       "docs/jig/spec/machine/project-evaluation-recipe-1.schema.json",

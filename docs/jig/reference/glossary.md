@@ -21,7 +21,7 @@ Jig calls their intended result **agency: power under control**.
 | Review | Inspecting a proposed revision before granting execution authority | [Review and run](../start/index.md#2-review-and-approve) |
 | Admission | The host's recorded authorization of exact reviewed meaning | [Execution policy](../spec/project-policy.md) |
 | Run | One bounded invocation and its owned execution | [Results](../build/results.md) |
-| Outcome | The method's application-level result, such as `done` or `blocked` | [Results and recovery](../build/results.md) |
+| Outcome | The method's application-level result, such as `done` or `blocked` | [Results](../build/results.md) |
 | Channel | A declared connection carrying bounded data during work | [Live progress](../build/channels.md) |
 | Checkpoint | Accepted application output retained before final completion | [Run Checkpoint](../spec/run-checkpoint.md) |
 
@@ -65,7 +65,7 @@ It does not grant resolution networking.
 A method may execute correctly and return `blocked`.
 File delivery is also separate from execution.
 Inspect the Run status, outcome, output, and delivery information.
-[Results and recovery](../build/results.md) shows how.
+[Results](../build/results.md) shows how.
 
 ## Can cancellation undo an external effect?
 

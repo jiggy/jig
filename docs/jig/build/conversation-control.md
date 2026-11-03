@@ -51,13 +51,8 @@ case the control may be `not-running` and the prompt still returns its result.
 Leaving a live turn unfinished at callback return fails rather than detaching
 it.
 
-## Check interruption and recover
-
-Check the same turn promise before starting subsequent work. An accepted control
-does not prove cancellation. Natural completion may win the race. If native
-interruption exceeds its five-second limit, the client terminates and cannot
-accept another prompt. Use [Results and recovery](./results.md) for uncertain
-execution or cleanup.
+For interruption failures or incomplete observations, see
+[conversation troubleshooting](../reference/troubleshooting.md#conversation-fails-or-loses-observation).
 
 ## Handle errors and observation loss
 

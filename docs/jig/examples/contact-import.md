@@ -73,8 +73,9 @@ jig review --allow-resolution-network
 
 The initial selection leaves Agent routes outside review. After enabling them,
 review checks the selected client even if you plan to run the code Binding. An
-unavailable selected client stops new approval. Mixed still requires its Agent
-route when a particular input takes its code branch.
+unavailable selected client stops new approval.
+See [Agent client troubleshooting](../reference/troubleshooting.md#agent-client-check-fails).
+Mixed still requires its Agent route when a particular input takes its code branch.
 
 Use `jig review --agent CLIENT --allow-resolution-network` to propose another
 installed client (`codex`, `claude` or `pi`) for that review. Source stays
@@ -202,6 +203,6 @@ workspace setup. Tests use deterministic Agent substitutes and include a
 structurally valid semantic mistake to make the limit of validation explicit.
 The release gate also tests the application against the packed SDK.
 
-If review cannot resolve dependencies, check the diagnostic before authorizing another resolution attempt.
-For execution or delivery failures, follow [Results and recovery](../build/results.md).
+If review cannot resolve dependencies, follow [dependency preparation troubleshooting](../reference/troubleshooting.md#dependency-preparation-fails).
+For execution or delivery failures, follow [Troubleshooting](../reference/troubleshooting.md).
 Next, [handle a disputed charge](./support-case.md) to check an Agent proposal against application policy.

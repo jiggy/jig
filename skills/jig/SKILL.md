@@ -85,7 +85,8 @@ Complete this step when the intended approved revision has produced terminal evi
 
 ## 5. Verify the result and explain the evidence
 
-Read [results and recovery](reference/build/results.md) before interpreting completion, delivery, failure, or interruption.
+Read [results](reference/build/results.md) before interpreting completion, delivery, failure, or interruption.
+Use [troubleshooting](reference/reference/troubleshooting.md) for diagnosis and recovery steps.
 Distinguish host execution status, application outcome, output delivery, and cleanup.
 Check the actual result against the application's acceptance criteria.
 For changed behavior, exercise a representative useful case and an affected failure case through ordinary public interfaces.

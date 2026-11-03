@@ -105,9 +105,9 @@ Palettes use [Atom One Dark](https://github.com/atom/one-dark-syntax),
 ## Agent settings
 
 Use [Choose an Agent](../build/agents.md) to configure API access or a native client.
-That guide owns dependency selection, Bindings, grants, credentials and client
-recovery. Credentials stay in the operator environment, outside Flow input and
-package source.
+That guide owns dependency selection, Bindings, grants, and credentials.
+Credentials stay in the operator environment, outside Flow input and package source.
+For client-check failures, use [troubleshooting](./troubleshooting.md#agent-client-check-fails).
 
 Use [client switching](../build/agents.md#switching) for permanent source changes or a
 review-only `--agent` proposal. Exporting credentials alone does not select a
@@ -155,7 +155,7 @@ significant.
 
 Run `jig <command> --help` for the complete arguments for a command. See
 [dependency review](../build/dependencies.md) for resolution effects and retained
-preparation, and [results and recovery](../build/results.md) for output handling.
+preparation, and [results](../build/results.md) for output handling.
 
 `--allow-resolution-network` produces one dependency preparation warning for the
 entire review. Per-package progress identifies the package being prepared. This
@@ -235,15 +235,10 @@ Engine metadata records the host requirement without adding Jig to the project d
 Generated projects and repository examples supply this metadata.
 Bare projects can omit it.
 
-If review reports `PROJECT_JIG_VERSION_MISMATCH`, compare the displayed running and required versions.
-Install the required version using the bun/npm command in the diagnostic, then retry review.
-The check works offline and changes no files.
+The version check works offline and changes no files.
 A newer release’s existence alone does not establish incompatibility.
 
-For contributor builds, rebuild from Jig’s repository root with `just jig::build`.
-The checkout launcher detects changed source or generated output even when the version number stays unchanged.
-Ordinary installed packages receive installation instructions instead.
-Run `jig --version` to identify the executing build.
+For version or build errors, follow [version troubleshooting](./troubleshooting.md#jig-version-or-build-mismatch).
 See the [exact project requirement](../spec/project-policy.md#jig-version-requirements).
 
 ## Host configuration

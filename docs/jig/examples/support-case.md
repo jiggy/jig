@@ -39,7 +39,7 @@ jig run
 ```
 
 If the selected client is unavailable, review stops before approval.
-Correct its setup or deliberately select another client, then review again.
+See [Agent client troubleshooting](../reference/troubleshooting.md#agent-client-check-fails).
 
 The entrypoint supplies the fixture and two-minute deadline. This result-only
 target returns its decision on stdout without creating a packet directory.
@@ -194,5 +194,5 @@ These checks cover wrong proposals, policy limits, inconsistent facts, malformed
 results, and honest failure. They establish application behavior using Agent
 substitutes, not model accuracy or production throughput.
 
-For failed execution or uncertain dispatch, follow [Results and recovery](../build/results.md) before retrying.
+For failed execution or uncertain dispatch, follow [Troubleshooting](../reference/troubleshooting.md) before retrying.
 Next, [produce a tested patch](./tested-patch.md) to combine Agent proposals with independent execution evidence.

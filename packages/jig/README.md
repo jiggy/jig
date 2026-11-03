@@ -176,7 +176,7 @@ launch readiness or remote availability; Run still revalidates before execution.
 file and diagnostic evidence without starting work or requiring a project.
 Use `--display web` for browser inspection instead.
 These are recorded local claims, not a new execution verdict. File previews use
-captured bytes checked against the packet manifest. See [results and recovery](https://jig.md/build/results).
+captured bytes checked against the packet manifest. See [results](https://jig.md/build/results).
 
 `run` executes the approved revision and shows a YAML terminal result after
 settling owned work. `--receive` streams labelled channel text. Redirect stdout

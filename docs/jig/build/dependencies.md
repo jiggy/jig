@@ -70,25 +70,7 @@ Expect execution status `succeeded`, method outcome `done`, and output
 `&lt;note&gt;`. Try input `"A & B"`. Expect `A &amp; B`. Review again if you
 change the code or dependencies.
 
-## If preparation fails
-
-| Observation | Action |
-| --- | --- |
-| No authored lock exists | Decide whether to permit fresh resolution for this review. Read the network conditions below. |
-| The supplied lock is stale or invalid | Update it with Bun. Review again. Jig does not repair it implicitly. |
-| `PACKAGE_BUN_LOCK_VERSION_UNSUPPORTED` | Use a [supported lock format](#lock-formats). Changing dependency sources cannot fix the format. |
-| `PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED` | Configure the default npm registry and regenerate the indicated lock. Review the new dependency versions. |
-| `PACKAGE_BUN_MANIFEST_SOURCE` | Replace unsupported sources with default-registry versions or [declared workspace members](#local-workspace-packages). A `file:` archive is not supported. |
-| `PACKAGE_BUN_WORKSPACE_MOUNT` | Select the [mounted workspace root](#separately-mounted-workspace-roots) explicitly, or use source without nested mounts. |
-| `PACKAGE_BUN_WORKSPACE_SOURCE_MISSING` or `PACKAGE_BUN_SOURCE_ROOT_MISSING` | Restore the indicated source or correct its declaration or operator path. |
-| `PACKAGE_BUN_WORKSPACE_SOURCE_SYMLINK` | Replace the link with ordinary source. Source-root selection does not permit links. |
-| `PACKAGE_BUN_WORKSPACE_SOURCE_INVALID` | Use an ordinary directory at the indicated location. A link or another file type cannot serve as a directory. |
-| `PACKAGE_BUN_WORKSPACE_SOURCE_ACCESS` or `PACKAGE_BUN_SOURCE_ROOT_UNREADABLE` | Check permissions at the indicated source location. |
-| `PACKAGE_BUN_SOURCE_ROOT_INVALID` | Select a distinct directory below the workspace root that contains declared members. Omit the already selected project root. |
-| `PACKAGE_BUN_WORKSPACE_SOURCE_UNAVAILABLE` or `PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE` | Check that the source remains stable and accessible on a qualified host. |
-| A workspace member or build output is missing | Correct the declaration or build the library. Jig does not fall back to npm. |
-| `PACKAGE_BUN_OUTPUT_LIMIT` | Inspect the reported manifest and runtime dependencies. Increase the documented [dependency preparation limits](../reference/limits.md#override-dependency-preparation-limits) when the complete tree is necessary. |
-| Approved bytes are missing or corrupt | Preserve the reported evidence. Jig refuses instead of resolving packages again. |
+If review cannot prepare dependencies, use [dependency troubleshooting](../reference/troubleshooting.md#dependency-preparation-fails).
 
 ## Fresh resolution and network access
 
@@ -143,25 +125,6 @@ permits fresh version selection. It is not permission merely to fetch locked
 bytes.
 
 Invalid or stale locks remain errors even with that permission.
-
-### When the dependency lock is out of date
-
-`PACKAGE_BUN_LOCK_STALE` means package declarations changed after the supplied
-`bun.lock` was created. Review identifies the manifest, field and lock when known.
-It provides a command to update that lock. Run the command from the reviewed
-project directory. If the workspace root is two levels above, use:
-
-```sh
-bun install --lockfile-only --ignore-scripts --cwd '../..'
-```
-
-The command updates the authored lock and may use the network. Inspect the
-changed lock, then repeat `jig review`. Updating a lock does not approve
-execution. `--allow-resolution-network` permits resolution when a lock is
-missing.
-
-It does not repair a supplied lock. In a workspace, update the root lock. Do
-not add a separate lock beside each Flow.
 
 Root `name` or `version` edits do not make a lock stale. Bun does not reliably
 retain that metadata. Jig still checks dependency selections and member metadata.
@@ -236,7 +199,7 @@ Include nested Flows explicitly.
 An application's own workspace list cannot expand the outer root. An application
 may retain its own workspace declaration for standalone use.
 
-If a supplied lock is stale, follow the [lock recovery instructions](#when-the-dependency-lock-is-out-of-date)
+If a supplied lock is stale, follow the [lock recovery instructions](../reference/troubleshooting.md#dependency-lock-is-out-of-date)
 to update the workspace root lock and review again.
 
 ### Separately mounted workspace roots
