@@ -125,7 +125,7 @@ test('successful close preserves the ordinary known operation diagnostic', async
     failure(new ProjectAdministrationError('STALE_PLAN', operationSecret)),
     success,
   )
-  expect(result.exit).toBe(2)
+  expect(result.exit).toBe(1)
   expect(result.output).toEqual([])
   expect(result.text).toContain('STALE_PLAN')
   expect(result.text).toContain('$ jig review')
