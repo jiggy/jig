@@ -721,7 +721,6 @@ test('an incomplete or skipped minority role prevents normalization of the compl
   const directory = f.directories[3]
   const file = f.shards[1].groups[0].file
   const path = join(directory, 'shard-1-group-0.xml')
-  const original = await readFile(path)
   for (const malformed of [xml([]), xml([file], '<skipped/>'), xml([file], '<failure/>')]) {
     await writeFile(path, malformed)
     await refusesBeforeNormalization(f)
@@ -729,8 +728,11 @@ test('an incomplete or skipped minority role prevents normalization of the compl
   await rm(path)
   assert.equal(existsSync(path), false)
   await refusesBeforeNormalization(f)
-  await writeFile(path, original, { flag: 'wx' })
-  await rm(join(directory, 'shard-1.complete'))
+})
+
+test('a missing minority completion marker prevents normalization of the complete majority', async (t) => {
+  const f = await fixture(t)
+  await rm(join(f.directories[3], 'shard-1.complete'))
   await refusesBeforeNormalization(f, {}, /ENOENT/)
 })
 
