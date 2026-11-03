@@ -13,6 +13,7 @@ These checks grant no native execution or cleanup evidence.
 
 `portable/cli-session-failure.test.ts` checks phase-specific failure diagnostics through the private CLI seam.
 Its synthetic errors establish no native cleanup, artifact retention or installed-host evidence.
+Successful closure preserves ordinary operation exit codes, including exit 1 for `STALE_PLAN`.
 
 - `portable/` owns source checks without native host admission or model
   credentials.
@@ -191,6 +192,9 @@ Each case uses the installed CLI for review and the authored default invocation.
 assertions verify stdout and complete delivered artifacts. Source hashes must
 remain unchanged through setup and execution. Native residue and archive checks
 also run after failure.
+
+Failed example and factory CLI Runs report bounded phases through `fixtures/private-profile-diagnostics.ts`.
+Raw profiles and command transcripts remain private beside each failed consumer.
 
 The genuine Codex client uses a controlled HTTPS Responses endpoint through
 ordinary operator settings and host certificate trust. The protocol peer computes

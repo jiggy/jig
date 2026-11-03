@@ -21,6 +21,7 @@ import {
   foundationEnvironment,
   foundationResidue,
 } from './host-foundation/materialize.js'
+import { profilePhaseSummary } from './private-profile-diagnostics.js'
 
 const repository = resolve(import.meta.dir, '../../../..')
 const archiveInputs = [
@@ -152,19 +153,33 @@ export async function runInstalledExampleSmoke(options: {
       assert.ok(remaining > 0, 'Example setup exceeded its seven-minute budget')
       timeoutMs = Math.min(timeoutMs, remaining)
     }
+    const commandEvidence = join(evidence, String(++sequence).padStart(3, '0'))
+    const runProfile = args[1] === 'run' ? `${commandEvidence}.run.jsonl` : undefined
     const child = Bun.spawn(args, {
       cwd,
-      env: environment,
+      env: {
+        ...environment,
+        ...(runProfile === undefined ? {} : { JIG_PRIVATE_PROFILE_FILE: runProfile }),
+      },
       stdin: 'ignore',
       stdout: 'pipe',
       stderr: 'pipe',
     })
     const output = await settleTestCommand(child, {
-      evidence: join(evidence, String(++sequence).padStart(3, '0')),
+      evidence: commandEvidence,
       timeoutMs,
       graceMs: 10_000,
     })
     const code = /Diagnostic code: ([A-Z][A-Z0-9_]{0,63})\b/.exec(output.stderr)?.[1]
+    if (runProfile !== undefined) {
+      let failed = output.code !== 0
+      try {
+        const result = JSON.parse(output.stdout)
+        failed ||= result.status === 'failed' || result.outcome === 'blocked'
+      } catch {}
+      if (failed)
+        console.error(`Example Run phases: ${await profilePhaseSummary(runProfile, 'run')}`)
+    }
     assert.equal(
       output.code,
       0,

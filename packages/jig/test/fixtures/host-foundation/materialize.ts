@@ -173,7 +173,8 @@ export function foundationCommands(evidence: string, timing = false) {
     const commandEvidence = join(evidence, String(++sequence).padStart(3, '0'))
     const reviewProfile =
       args[1] === 'review' ? resolve(`${commandEvidence}.review.jsonl`) : undefined
-    const runProfile = profile === 'run' ? resolve(`${commandEvidence}.run.jsonl`) : undefined
+    const runProfile =
+      profile === 'run' || args[1] === 'run' ? resolve(`${commandEvidence}.run.jsonl`) : undefined
     const commandTiming = timing
       ? startHostTestTiming(
           'foundation',
@@ -191,6 +192,9 @@ export function foundationCommands(evidence: string, timing = false) {
       env: {
         ...foundationEnvironment(),
         ...(reviewProfile === undefined ? {} : { JIG_PRIVATE_PROFILE_FILE: reviewProfile }),
+        ...(args[1] !== 'run' || runProfile === undefined
+          ? {}
+          : { JIG_PRIVATE_PROFILE_FILE: runProfile }),
         ...(runProfile === undefined ? {} : { JIG_FOUNDATION_RUN_PROFILE_FILE: runProfile }),
       },
       stdin: 'ignore',

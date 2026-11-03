@@ -147,8 +147,8 @@
     {
       "source": "docs/jig/spec/reporting.md",
       "destination": "spec/reporting.md",
-      "sourceSha256": "691ebe18283d594453af4628bbf5738f3623e376b22a70a0e2970cd3b2483a9f",
-      "outputSha256": "bea361f0e01f1166f48054c8d2b84c1439e37694f759611a920d8ed62711f680"
+      "sourceSha256": "c19c8ec84e52848e2cf1e677dfbe388638d2029c45cd80d297ec821a813d81d2",
+      "outputSha256": "57d49ce302692dd7eae912edbfc2f37a43e2fe8e1f5ec29c06bb7de90015cefa"
     },
     {
       "source": "docs/jig/build/conversations.md",

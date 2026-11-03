@@ -1,4 +1,3 @@
-import { flowSdkDirectory } from './flow-dependency'
 import { expect } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { cp, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
@@ -14,7 +13,9 @@ import {
   assertRequestedJob,
   assertTypedObservation,
 } from './factory-observation.js'
+import { flowSdkDirectory } from './flow-dependency'
 import { type FixtureTimingPhase, timeFixturePhase } from './phase-timing.js'
+import { profilePhaseSummary } from './private-profile-diagnostics.js'
 
 const testRoot = join(import.meta.dir, '..')
 
@@ -34,17 +35,25 @@ export async function qualifyInstalledSoftwareFactory(
   await mkdir(evidence)
   const command = (args: string[], cwd: string, phase: FixtureTimingPhase) =>
     timeFixturePhase('installed-factory', phase, async () => {
+      const commandEvidence = join(evidence, String(++sequence))
+      const runProfile = args[1] === 'run' ? `${commandEvidence}.run.jsonl` : undefined
       const child = Bun.spawn(args, {
         cwd,
-        env: { ...process.env, NO_COLOR: '1' },
+        env: {
+          ...process.env,
+          NO_COLOR: '1',
+          ...(runProfile === undefined ? {} : { JIG_PRIVATE_PROFILE_FILE: runProfile }),
+        },
         stdin: 'ignore',
         stdout: 'pipe',
         stderr: 'pipe',
       })
       const result = await settleTestCommand(child, {
-        evidence: join(evidence, String(++sequence)),
+        evidence: commandEvidence,
         timeoutMs: MACOS_FIXTURE_SETTLEMENT_MS,
       })
+      if (result.code !== 0 && runProfile !== undefined)
+        console.error(`Factory Run phases: ${await profilePhaseSummary(runProfile, 'run')}`)
       expect(result.code, result.stdout + result.stderr).toBe(0)
       return result.stdout
     })
