@@ -2599,7 +2599,8 @@ async function defaultPause(milliseconds: number): Promise<void> {
   await delay(milliseconds)
 }
 
-function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
+/** Package-private presentation of an already classified command failure. */
+export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeError'>): 1 | 2 {
   if (
     error instanceof CheckError &&
     ['PROJECT_JIG_VERSION_MISMATCH', 'PROJECT_JIG_REQUIREMENT_INVALID'].includes(error.code)
@@ -2741,6 +2742,12 @@ function renderFailure(error: unknown, runtime: CliRuntime): 1 | 2 {
         'a child slot references a target not selected by jig.ts; correct the slot or project membership',
       PROJECT_BINDING_SLOT_NOT_DIRECT:
         'the selected child Flow cannot run directly with its current slots or settings. Configure its required providers through defaultProviders in jig.ts, or select a Binding that supplies its slots and settings. Then run jig review. No Flow was started by this review.',
+      PROJECT_CHILD_ROOT_ONLY:
+        'The selected child requires Run Checkpoint, which this host supports only for root Runs. From the operator application, invoke the method as a root through @jigging/jig/client. Save the complete Prepared value before submission. Inspect the original result and confirmed cleanup before exporting retained checkpoint files. No Flow was started by this review. See https://jig.md/spec/run-checkpoint.',
+      PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED:
+        'The selected child Binding already retains its own attachments. Select a child Binding without retained attachments. Configure its files through the complete attachment map at this caller slot. No Flow was started by this review. See https://jig.md/build/files.',
+      PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID:
+        'The child attachment map does not match the caller and child interfaces. Map every declared child attachment with compatible access. Use create only for a writable child attachment. No Flow was started by this review. See https://jig.md/build/files.',
       PROJECT_GRANT_MISSING:
         'the slot names a grant not included by jig.ts; include grants: discover("./grants") and provide the matching <name>.json, or use an inline policy',
       PROJECT_GRANT_INVALID:

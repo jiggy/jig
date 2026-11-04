@@ -862,6 +862,38 @@ describe('private finite project session', () => {
       message: 'plan is unavailable',
     })
   })
+  test('projects child composition refusals with their caller slot and no private message', () => {
+    for (const code of [
+      'PROJECT_CHILD_ROOT_ONLY',
+      'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
+      'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
+    ]) {
+      const failure = new CheckError(
+        'invalid',
+        code,
+        'private child detail /private/host SYNTHETIC_TICKET',
+        'bindings/parent.ts',
+        '/slots/child',
+      )
+      expect(projectError(failure, 'plan').toJSON()).toEqual({
+        code: 'INVALID_CANDIDATE',
+        message: 'project candidate is invalid',
+        diagnostic: { code, path: 'bindings/parent.ts', pointer: '/slots/child' },
+      })
+    }
+    expect(
+      projectError(
+        new CheckError('invalid', 'PROJECT_CHILD_PRIVATE', 'private detail', 'bindings/parent.ts'),
+        'plan',
+      ).toJSON(),
+    ).toEqual({ code: 'INTERNAL', message: 'plan failed' })
+    expect(
+      projectError(
+        new CheckError('invalid', 'PROJECT_CHILD_ROOT_ONLY', 'private detail', '.jig/private'),
+        'plan',
+      ).toJSON(),
+    ).toEqual({ code: 'INVALID_CANDIDATE', message: 'project candidate is invalid' })
+  })
   test('scopes known preparation and Agent failures without projecting private protocol details', () => {
     const missingClient = new CheckError(
       'unavailable',

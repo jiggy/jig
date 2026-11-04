@@ -7,13 +7,62 @@ import {
   type ProjectSession,
 } from '../../src/administration/project.js'
 import { RootAdministrationError, type RootRunTerminal } from '../../src/administration/root.js'
-import { main, privateCliRunFailure } from '../../src/cli.js'
+import { main, privateCliRunFailure, renderFailure } from '../../src/cli.js'
+import { CheckError } from '../../src/diagnostics.js'
+import { projectError } from '../../src/internal/project-session-controller.js'
 import type { PrivateAgentReadinessReport } from '../../src/internal/review-agent-setup.js'
 
 const operationSecret =
   'SYNTHETIC_OPERATION_FAILURE /private/input Authorization=Bearer SYNTHETIC_TICKET'
 const closeSecret = 'SYNTHETIC_CLOSE_FAILURE /private/host SYNTHETIC_RECOVERY_TICKET'
 const recovery = 'https://jig.md/reference/troubleshooting#unconfirmed-cleanup'
+
+for (const { code, pointer, guidance } of [
+  {
+    code: 'PROJECT_CHILD_ROOT_ONLY',
+    pointer: '/slots/child',
+    guidance: [
+      'Run Checkpoint',
+      'supports only for root Runs',
+      '@jigging/jig/client',
+      'Save the complete Prepared value before submission',
+      'confirmed cleanup',
+      'https://jig.md/spec/run-checkpoint',
+    ],
+  },
+  {
+    code: 'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
+    pointer: '/slots/child',
+    guidance: ['child Binding without retained attachments', 'complete attachment map'],
+  },
+  {
+    code: 'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
+    pointer: '/slots/child/attachments',
+    guidance: ['caller and child interfaces', 'compatible access', 'writable child attachment'],
+  },
+]) {
+  test(`${code} renders its caller location and supported correction`, () => {
+    const projected = projectError(
+      new CheckError('invalid', code, operationSecret, 'bindings/parent.ts', pointer),
+      'plan',
+    )
+    const output: string[] = []
+    const exit = renderFailure(projected, { writeError: (text) => output.push(text) })
+    expect(exit).toBe(1)
+    expect(output).toHaveLength(1)
+    const text = output[0]!
+    expect(text).toContain('Review could not finish')
+    expect(text).toContain('Location: "bindings/parent.ts"')
+    expect(text).toContain(`Value: "${pointer}"`)
+    expect(text).toContain(`Diagnostic code: ${code}`)
+    expect(text).toContain('Category: INVALID_CANDIDATE')
+    expect(text).toContain('No Flow was started by this review')
+    for (const statement of guidance) expect(text).toContain(statement)
+    expect(text).not.toContain('INTERNAL')
+    expect(text).not.toContain('SYNTHETIC_')
+    expect(text).not.toContain('/private/')
+  })
+}
 
 type Failure = { failed: false } | { failed: true; value: unknown }
 const success: Failure = { failed: false }

@@ -57,6 +57,7 @@ execution evidence.
 - Child file routes distinguish fixed reads, supplied held artifacts, and fresh
   operation-created outputs. Forwarded artifact results are separate from domain
   results. The original protected attempt owns the latest accepted checkpoint.
+  Checkpoint-enabled methods remain root-only. Application recovery wrappers use the execution client outside contained Flows and preserve the original prepared ticket.
 - `project-policy.md` owns installation verification modes and their integrity
   limits. `--verification` overrides `JIG_VERIFICATION`. Cached is the installed
   default. Fast may miss changed tool bytes. Agent and CLI contracts reference

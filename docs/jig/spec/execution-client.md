@@ -32,6 +32,18 @@ Prepare file entries use `{ port, source,
 selection }`. Canonical file entries instead identify captured bytes with
 `{ port, manifestDigest, bytes }`. Submit the returned request unchanged.
 
+### Wrap a checkpoint-enabled method
+
+Applications can add recovery handling around a [checkpoint-enabled method](run-checkpoint.md#compose-from-an-application) while retaining its accepted progress.
+Select the method's reviewed Flow or Binding as the client's root target.
+Keep its package and checkpoint declaration unchanged.
+The wrapper runs outside contained Flows and does not use a child `run.call()` route.
+
+Persist the complete `Prepared` value before submission, as in the [application call below](#a-complete-application-call).
+The joined helper also supports `client.run(request, { persist })` for this boundary.
+After interruption, use the saved ticket to [retrieve and export its checkpoint](#export-an-accepted-checkpoint).
+This preserves the original attempt and execution status without automatically retrying uncertain work.
+
 ### A complete application call
 
 This example assumes an already reviewed `binding:repair` with one unbound
@@ -256,6 +268,8 @@ packet inspection are different operations.
 
 Export replies must match the requested destination, resolved against the client working directory, and selected source.
 Omitting `source` selects `final`.
+
+### Export an accepted checkpoint
 
 Checkpoint export selects the latest accepted aggregate rather than unfinished
 scratch or a previous final result. After confirmed cleanup it can preserve

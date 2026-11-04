@@ -800,6 +800,73 @@ describe('private package-project linker', () => {
       },
     )
   })
+  test('mapped child review rejects only the checkpoint declaration and preserves root eligibility', async () => {
+    const checkpoint = await readFile(
+      new URL('../../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),
+      'utf8',
+    )
+    const bindings = [
+      binding('bindings/parent.ts', {
+        package: 'flows/parent',
+        slots: {
+          child: {
+            target: 'flow:flows/child',
+            attachments: { deliverables: { create: true } },
+          },
+        },
+      }),
+    ]
+    for (const phase of ['valid', 'checkpoint', 'restored']) {
+      await withFlows(
+        {
+          'flows/parent': {
+            ...run('parent'),
+            'FLOW.meta.json': metadata({ uses: { child: {} } }),
+          },
+          'flows/child': {
+            ...run('child'),
+            'FLOW.contract.json': invocation({ attachments: { deliverables: 'read-write' } }),
+            'contracts/checkpoint.json': checkpoint,
+            ...(phase === 'checkpoint'
+              ? {
+                  'FLOW.meta.json': metadata({
+                    name: 'child',
+                    description: 'child.',
+                    uses: { checkpoint: { contract: './contracts/checkpoint.json' } },
+                  }),
+                }
+              : {}),
+          },
+        },
+        (flows) => {
+          const roots = linkPackageProject({ flows, bindings: [] })
+          expect(
+            roots.flows.find((flow) => flow.provenance.projectPath === 'flows/child')!.directRun,
+          ).toBeTrue()
+          if (phase === 'checkpoint') {
+            let thrown: unknown
+            try {
+              linkPackageProject({ flows, bindings })
+            } catch (error) {
+              thrown = error
+            }
+            expect(thrown).toMatchObject({
+              code: 'PROJECT_CHILD_ROOT_ONLY',
+              path: 'bindings/parent.ts',
+              pointer: '/slots/child',
+            })
+          } else {
+            const linked = linkPackageProject({ flows, bindings })
+            expect(linked.bindings[0]!.slots.child).toMatchObject({
+              kind: 'route',
+              target: { kind: 'flow', path: 'flows/child' },
+              attachments: { deliverables: { create: true } },
+            })
+          }
+        },
+      )
+    }
+  })
   test('links and canonically orders minimal direct Run packages', async () => {
     await withFlows(
       {
