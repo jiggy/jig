@@ -503,14 +503,15 @@ test('the singleton allocator publishes arriving roles without waiting for queue
   const f = await coordinationProtocol(t)
   await f.announce(4)
   const allocation = allocateMacHostRoles(f)
-  await f.waitForRecord('assignment', 4)
+  const first = await f.waitForRecord('assignment', 4)
+  assert.equal(first.record.role, 2)
   assert.ok((await f.readJobs()).filter((job) => job.name.startsWith('Native host worker') && job.id !== 1004)
     .every((job) => job.status === 'queued'))
   for (const worker of [1, 0, 3, 2]) await f.announce(worker, [1, 3].includes(worker) ? '24G830' : '24H232')
   const result = await allocation
   assert.deepEqual(result.assignments.map(({ record }) => [record.worker, record.role])
     .sort(([left], [right]) => left - right), [
-    [0, 1], [1, 0], [2, 2], [3, 1], [4, 0],
+    [0, 0], [1, 2], [2, 1], [3, 0], [4, 2],
   ])
   assert.deepEqual(result.ledger.record.assignmentArtifacts, result.assignments.map(({ artifact }) => artifact))
   assert.equal((await f.entries()).length, 12)
@@ -548,7 +549,7 @@ test('the real readiness and assignment readers consume published records and en
   await f.publish('ledger', createMacHostCohortLedger({ ...f, ready, assignments }))
   await f.setJob(allocatorJobId, { status: 'completed', conclusion: 'success' })
   const actual = await receipt
-  assert.equal(actual.role, 2)
+  assert.equal(actual.role, 1)
   assert.equal(actual.worker, 4)
   await assert.rejects(waitForMacHostAllocator(f), /allocator completed before worker readiness/)
 
@@ -690,16 +691,16 @@ test('3+2 workers validate every executed role and normalize one complete exact 
   assert.equal(Object.hasOwn(result, 'qualified'), false)
   assert.equal(result.profile.build, '24H232')
   assert.deepEqual(result.roles.map(({ worker, role }) => ({ worker, role })), [
-    { worker: 0, role: 0 },
-    { worker: 2, role: 1 },
-    { worker: 4, role: 2 },
+    { worker: 2, role: 0 },
+    { worker: 4, role: 1 },
+    { worker: 0, role: 2 },
   ])
   assert.deepEqual(result.reports.map(({ worker, role }) => ({ worker, role })), [
-    { worker: 0, role: 0 },
-    { worker: 1, role: 0 },
-    { worker: 2, role: 1 },
-    { worker: 3, role: 1 },
-    { worker: 4, role: 2 },
+    { worker: 0, role: 2 },
+    { worker: 1, role: 2 },
+    { worker: 2, role: 0 },
+    { worker: 3, role: 0 },
+    { worker: 4, role: 1 },
   ])
   assert.ok(result.reports.every((report) => report.executed > 0))
   assert.deepEqual(
@@ -728,8 +729,9 @@ test('3+2 workers validate every executed role and normalize one complete exact 
 test('an incomplete or skipped minority role prevents normalization of the complete majority', async (t) => {
   const f = await fixture(t)
   const directory = f.directories[3]
-  const file = f.shards[1].groups[0].file
-  const path = join(directory, 'shard-1-group-0.xml')
+  assert.equal(f.receipts[3].role, 0)
+  const file = f.shards[0].groups[0].file
+  const path = join(directory, 'shard-0-group-0.xml')
   for (const malformed of [xml([]), xml([file], '<skipped/>'), xml([file], '<failure/>')]) {
     await writeFile(path, malformed)
     await refusesBeforeNormalization(f)
@@ -741,7 +743,22 @@ test('an incomplete or skipped minority role prevents normalization of the compl
 
 test('a missing minority completion marker prevents normalization of the complete majority', async (t) => {
   const f = await fixture(t)
-  await rm(join(f.directories[3], 'shard-1.complete'))
+  assert.equal(f.receipts[3].role, 0)
+  await rm(join(f.directories[3], 'shard-0.complete'))
+  await refusesBeforeNormalization(f, {}, /ENOENT/)
+})
+
+test('the earliest minority installed role requires its installed flag and complete startup report', async (t) => {
+  const f = await fixture(t)
+  assert.equal(f.receipts[1].role, 2)
+  const directory = f.directories[1]
+  const planPath = join(directory, 'test-plan.json')
+  const plan = JSON.parse(await readFile(planPath, 'utf8'))
+  assert.equal(plan.installed, true)
+  await writeFile(planPath, JSON.stringify({ ...plan, installed: false }))
+  await refusesBeforeNormalization(f)
+  await writeFile(planPath, JSON.stringify(plan))
+  await rm(join(directory, 'installed-startup.xml'))
   await refusesBeforeNormalization(f, {}, /ENOENT/)
 })
 
@@ -801,7 +818,7 @@ test('all five exact directories and regular files are required, without linked 
   await refusesBeforeNormalization(f, {}, /exactly five current-attempt/)
   await rename(stale, current)
   const linkedFile = join(current, 'linked.xml')
-  await symlink(join(current, 'native-tests.xml'), linkedFile)
+  await symlink(join(current, 'installed-startup.xml'), linkedFile)
   await refusesBeforeNormalization(f, {}, /only regular files/)
   await rm(linkedFile)
   const moved = join(f.temporary, 'moved-worker')
@@ -814,7 +831,7 @@ test('same-profile surplus workers retain no execution proof and still need succ
   const f = await fixture(t, Array(5).fill('24G830'))
   const result = await f.reconcile()
   assert.equal(result.profile.build, '24G830')
-  assert.deepEqual(result.workers.map(({ role }) => role), [0, 1, 2, null, null])
+  assert.deepEqual(result.workers.map(({ role }) => role), [2, 0, 1, null, null])
   assert.equal(result.reports.length, 3)
   await rm(f.normalizedDirectory, { recursive: true })
   for (const file of [

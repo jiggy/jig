@@ -339,6 +339,9 @@ They consume frozen package exports with tracked test helpers and installed
   assignments. A readiness gate starts workers only after the allocator is live.
   Workers never wait for an unscheduled Mac peer. Artifact names are not locks.
 
+  Dispatch each profile's roles in the source-owned order 2, 0, 1 and replay that order when validating assignments.
+  The installed role starts on the earliest matching worker. Native prerequisites remain on role zero, and whole-file ownership is unchanged.
+
   Worker allocation overlaps canonical production. Each executing worker acquires verified canonical inputs after host preparation and before native qualification.
 
   Records bind the tested merge, run, attempt, allocator, worker job and complete
@@ -369,6 +372,9 @@ They consume frozen package exports with tracked test helpers and installed
   Queue delays and retries consume that original allowance. Bound child process
   groups by the remaining work time and reject completion after the final deadline.
   PR command ownership settles remaining descendants even after a successful leader exit.
+
+  Floor work minutes for admission, but round the GitHub step backstop up from raw remaining milliseconds plus bounded termination grace.
+  The exact Node deadline remains authoritative. Integer-minute rounding must not interrupt its process-group cleanup early.
 
   Its PR matrix guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
   Missing, failed, ambiguous or overdue workers fail the guard and activate matrix cancellation, including queued siblings.

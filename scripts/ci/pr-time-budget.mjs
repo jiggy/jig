@@ -12,6 +12,7 @@ import {
 
 export const PR_BUDGET_SECONDS = 25 * 60
 export const PR_SETTLEMENT_RESERVE_SECONDS = 120
+const commandTerminationGraceMs = 5000
 const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const shaPattern = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
 const githubApiOrigin = 'https://api.github.com'
@@ -146,12 +147,17 @@ export function remainingPrTimeBudget(
   if (now >= budget.deadlineEpochMs) throw new Error('The 25-minute PR deadline has elapsed')
   const remainingSeconds = Math.floor((budget.deadlineEpochMs - now) / 1000)
   const workSeconds = Math.max(0, remainingSeconds - reserveSeconds)
+  const workMilliseconds = Math.max(0, budget.deadlineEpochMs - now - reserveSeconds * 1000)
+  const terminationGraceMs = Math.min(commandTerminationGraceMs, reserveSeconds * 1000)
   return {
     deadline_epoch_ms: budget.deadlineEpochMs,
     remaining_seconds: remainingSeconds,
     reserve_seconds: reserveSeconds,
     work_seconds: workSeconds,
     work_minutes: Math.floor(workSeconds / 60),
+    // GitHub's whole-minute limit is a backstop. Let the absolute Node deadline
+    // and its bounded process-group termination finish before that limit fires.
+    step_timeout_minutes: Math.ceil((workMilliseconds + terminationGraceMs) / 60_000),
   }
 }
 
@@ -280,7 +286,7 @@ export async function guardMacPrMatrix(
 export async function runCommandBeforeDeadline(
   command,
   args,
-  { deadlineEpochMs, terminationGraceMs = 5000 } = {},
+  { deadlineEpochMs, terminationGraceMs = commandTerminationGraceMs } = {},
 ) {
   if (!['linux', 'darwin'].includes(process.platform))
     throw new Error('PR command deadlines require POSIX process groups')
@@ -297,7 +303,8 @@ export async function runCommandBeforeDeadline(
     if (Date.now() >= deadlineEpochMs) throw new Error('The PR command work deadline has elapsed')
   }
   integer(terminationGraceMs, 'command termination grace', 0)
-  if (terminationGraceMs > 5000) throw new Error('Command termination grace exceeds five seconds')
+  if (terminationGraceMs > commandTerminationGraceMs)
+    throw new Error('Command termination grace exceeds five seconds')
 
   const child = spawn(command, args, { detached: true, stdio: 'inherit' })
   const completion = new Promise((resolve, reject) => {
@@ -469,7 +476,9 @@ async function runCli(args, environment) {
       deadlineEpochMs,
       // Settlement may consume the reserve, but its escalation must not add a
       // fresh grace interval beyond the original absolute workflow deadline.
-      terminationGraceMs: deadlineEpochMs === null ? 5000 : Math.min(5000, reserveSeconds * 1000),
+      terminationGraceMs: deadlineEpochMs === null
+        ? commandTerminationGraceMs
+        : Math.min(commandTerminationGraceMs, reserveSeconds * 1000),
     })
   }
   if (!['start', 'remaining', 'check'].includes(mode))

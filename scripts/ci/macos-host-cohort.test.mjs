@@ -7,6 +7,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   MAC_PR_COHORT,
+  MAC_PR_COHORT_ROLE_ORDER,
   MAC_COHORT_ALLOCATOR_NAME,
   MAC_COHORT_GUARD_JOB_NAME,
   MAC_COHORT_READY_JOB_NAME,
@@ -113,22 +114,56 @@ test('all pool distributions and independent arrival orders produce one complete
       assert.equal(result.workers.length, 5)
       assert.equal(result.allocatorJobId, allocatorJobId)
       assert.equal(Object.hasOwn(result, 'qualified'), false)
+      for (const build of ['24H232', '24G830']) {
+        const assignments = input.assignments.filter(({ record }) => record.profile.build === build)
+        assert.deepEqual(assignments.map(({ record }) => record.role),
+          [2, 0, 1, null, null].slice(0, assignments.length))
+      }
     }
   }
 })
 
-test('the allocator can assign the first observed worker without waiting for lower indices', () => {
+test('the first ready matching host receives the installed role without waiting for lower indices', () => {
   const input = fixture(Array(5).fill('24H232'), [4, 1, 0, 3, 2])
   const first = createMacHostCohortAssignment({ identity: input.identity, allocatorJobId,
     announcement: input.announcements[4], assignments: [] })
   assert.equal(first.worker, 4)
-  assert.equal(first.role, 0)
+  assert.equal(first.role, 2)
   const prior = [input.assignments[0]]
   assert.throws(() => createMacHostCohortAssignment({ identity: input.identity, allocatorJobId,
     announcement: input.announcements[4], assignments: prior }), /already has an immutable assignment/)
   assert.throws(() => createMacHostCohortLedger({ identity: input.identity, allocatorJobId,
     ready: input.ready, assignments: prior }), /all five/)
-  assert.deepEqual(input.assignments.map(({ record }) => record.role), [0, 1, 2, null, null])
+  assert.deepEqual(input.assignments.map(({ record }) => record.role), [2, 0, 1, null, null])
+})
+
+test('creation and ledger replay reject a coherent obsolete or reordered dispatch sequence', () => {
+  const input = fixture(Array(5).fill('24H232'))
+  for (const roles of [[0, 1, 2, null, null], [2, 1, 0, null, null]]) {
+    const assignments = input.assignments.map(({ record, artifact }, index) =>
+      envelope({ ...record, role: roles[index] }, artifact.id))
+    assert.throws(() => createMacHostCohortAssignment({
+      identity: input.identity, allocatorJobId,
+      announcement: input.announcements[4], assignments: assignments.slice(0, 3),
+    }), /assignment sequence/)
+    assert.throws(() => createMacHostCohortLedger({
+      identity: input.identity, allocatorJobId, ready: input.ready, assignments,
+    }), /assignment sequence/)
+    const ledger = envelope({
+      ...input.ledger.record,
+      assignmentArtifacts: assignments.map(({ artifact }) => artifact),
+    }, input.ledger.artifact.id)
+    const workers = input.workers.map(({ prerequisites }, worker) => ({
+      prerequisites,
+      receipt: createMacHostCohortWorkerReceipt({
+        identity: workerIdentity(worker), allocatorJobId, ready: input.ready,
+        announcement: input.announcements[worker], assignment: assignments[worker], prerequisites,
+      }),
+    }))
+    assert.throws(() => validateMacHostCohort({
+      ...input, workers, records: [input.ready, ...input.announcements, ...assignments, ledger],
+    }), /assignment sequence/)
+  }
 })
 
 test('partial listings can validate references before their records become visible but cannot complete', () => {
@@ -238,7 +273,7 @@ test('successful native workers cannot qualify without one successful current-at
 
 test('surplus needs an explicit assignment after three same-profile owners and its successful job', () => {
   const original = fixture(Array(5).fill('24H232'))
-  assert.deepEqual(validateMacHostCohort(original).workers.map(({ role }) => role), [0, 1, 2, null, null])
+  assert.deepEqual(validateMacHostCohort(original).workers.map(({ role }) => role), [2, 0, 1, null, null])
   const early = structuredClone(original)
   early.records[6].record.role = null
   early.workers[0].receipt.role = null
@@ -258,13 +293,18 @@ test('the fifth worker can consume an assignment after successful allocator comp
   const receipt = createMacHostCohortWorkerReceipt({ identity: workerIdentity(4), allocatorJobId,
     ready: input.ready, announcement: input.announcements[4],
     assignment: input.assignments[4], prerequisites: prerequisites('24H232') })
-  assert.equal(receipt.role, 2)
+  assert.equal(receipt.role, 1)
   assert.deepEqual(receipt, input.workers[4].receipt)
   assert.equal(validateMacHostCohort(input).roles.length, 3)
 })
 
 test('the source-owned profile and worker counts cannot be extended by records', () => {
   assert.deepEqual(MAC_PR_COHORT, { workers: 5, shards: 3 })
+  assert.deepEqual(MAC_PR_COHORT_ROLE_ORDER, [2, 0, 1])
+  assert.deepEqual([...MAC_PR_COHORT_ROLE_ORDER].sort(), [0, 1, 2])
+  assert.equal(MAC_PR_COHORT_ROLE_ORDER.length, MAC_PR_COHORT.shards)
+  assert.equal(Object.isFrozen(MAC_PR_COHORT_ROLE_ORDER), true)
+  assert.throws(() => { MAC_PR_COHORT_ROLE_ORDER[0] = 0 }, TypeError)
   assert.equal(requireMacHostCohortProfiles().length, 2)
   for (const profiles of [[], [MAC_HOST_PROFILES.arm64[0]],
     [...MAC_HOST_PROFILES.arm64, { ...MAC_HOST_PROFILES.arm64[1], build: '24H233' }],

@@ -45,6 +45,7 @@ test('queue delay consumes the allowance and a rerun cannot restart its clock', 
     reserve_seconds: 120,
     work_seconds: 1080,
     work_minutes: 18,
+    step_timeout_minutes: 19,
   })
   const retried = prTimeBudgetFromRun(
     { ...metadata, run_attempt: 2, run_started_at: '2026-11-03T12:30:00Z' },
@@ -99,6 +100,31 @@ test('phase time rounds down and reserves settlement without extending the absol
   )
   for (const reserveSeconds of [-1, 1.5, Infinity, PR_BUDGET_SECONDS])
     assert.throws(() => remainingPrTimeBudget(budget, { now: created, reserveSeconds }))
+})
+
+test('GitHub step backstops cover the exact work deadline and bounded termination grace', () => {
+  const budget = prTimeBudgetFromRun(metadata, expected, created)
+  for (const [reserveSeconds, workMilliseconds, workMinutes, stepMinutes] of [
+    // The observed failed phase had 857 seconds left but received only 14 minutes.
+    [120, 857_889, 14, 15],
+    [120, 60_000, 1, 2],
+    [120, 115_000, 1, 2],
+    // Flooring milliseconds before rounding up would race the last millisecond of grace.
+    [120, 115_001, 1, 3],
+    [2, 118_000, 1, 2],
+    [0, 60_000, 1, 1],
+  ]) {
+    const workDeadline = budget.deadlineEpochMs - reserveSeconds * 1000
+    const now = workDeadline - workMilliseconds
+    const phase = remainingPrTimeBudget(budget, { now, reserveSeconds })
+    assert.equal(phase.work_minutes, workMinutes)
+    assert.equal(phase.step_timeout_minutes, stepMinutes)
+    assert.equal(phase.deadline_epoch_ms, budget.deadlineEpochMs)
+    const terminationDeadline = workDeadline + Math.min(5000, reserveSeconds * 1000)
+    const stepDeadline = now + phase.step_timeout_minutes * 60_000
+    assert.ok(stepDeadline >= terminationDeadline)
+    assert.ok(stepDeadline < terminationDeadline + 60_000)
+  }
 })
 
 test('metadata acquisition refuses missing credentials and invalid identity before requesting GitHub', async () => {
@@ -366,9 +392,12 @@ test('actual CLI emits only numeric phase outputs and refuses a zero-minute step
     const phase = JSON.parse(result.stdout)
     assert.ok(phase.work_minutes > 0 && phase.work_minutes <= 18)
     assert.equal(phase.work_minutes, Math.floor(phase.work_seconds / 60))
+    assert.ok(Number.isSafeInteger(phase.step_timeout_minutes))
+    assert.ok(phase.step_timeout_minutes > phase.work_minutes)
+    assert.ok(phase.step_timeout_minutes <= phase.work_minutes + 2)
     assert.equal(phase.reserve_seconds, 120)
     const outputs = await readFile(destination, 'utf8')
-    assert.match(outputs, /^deadline_epoch_ms=\d+\nremaining_seconds=\d+\nreserve_seconds=120\nwork_seconds=\d+\nwork_minutes=\d+\n$/)
+    assert.match(outputs, /^deadline_epoch_ms=\d+\nremaining_seconds=\d+\nreserve_seconds=120\nwork_seconds=\d+\nwork_minutes=\d+\nstep_timeout_minutes=\d+\n$/)
     const short = cli(['remaining'], environment(Date.now() - 23 * 60_000))
     assert.equal(short.status, 1)
     assert.match(short.stderr, /Less than one work minute/)

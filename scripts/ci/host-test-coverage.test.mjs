@@ -619,8 +619,8 @@ test('PR roles retain native and installed ownership while complete hosts keep t
           installed: String(role === count - 1),
         },
       },
-      'native-budget': { outputs: { work_minutes: '11' } },
-      'qualify-budget': { outputs: { work_minutes: '9' } },
+      'native-budget': { outputs: { work_minutes: '11', step_timeout_minutes: '12' } },
+      'qualify-budget': { outputs: { work_minutes: '9', step_timeout_minutes: '10' } },
     },
   })
   for (const profile of [false, true]) {
@@ -637,11 +637,11 @@ test('PR roles retain native and installed ownership while complete hosts keep t
         )
         assert.equal(
           evaluate(native['timeout-minutes'], selected),
-          event === 'pull_request' ? 11 : 60,
+          event === 'pull_request' ? 12 : 60,
         )
         assert.equal(
           evaluate(qualifier['timeout-minutes'], selected),
-          event === 'pull_request' ? 9 : profile ? 90 : 60,
+          event === 'pull_request' ? 10 : profile ? 90 : 60,
         )
       }
     }

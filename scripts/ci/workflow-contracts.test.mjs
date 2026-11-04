@@ -320,9 +320,9 @@ test('PR phases retain the original attempt deadline before granting final quali
     const context = {
       github: { event_name: 'pull_request' },
       inputs: { include_startup_profile: false },
-      steps: { [budgetId]: { outputs: { work_minutes: '7' } } },
+      steps: { [budgetId]: { outputs: { work_minutes: '7', step_timeout_minutes: '8' } } },
     }
-    assert.equal(expressionValue(job.steps[phase]['timeout-minutes'], context), 7)
+    assert.equal(expressionValue(job.steps[phase]['timeout-minutes'], context), 8)
     context.github.event_name = 'push'
     assert.equal(expressionValue(job.steps[phase]['timeout-minutes'], context), completeMinutes)
   }

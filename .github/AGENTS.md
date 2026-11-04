@@ -366,6 +366,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   and final checks. A rerun cannot reset the original deadline.
 
   Bound child process groups and native steps by the remaining allowance.
+  Integer-minute step limits round up the remaining work plus bounded termination grace.
+  The Node wrapper owns the exact work deadline. The GitHub timer is a later backstop.
+
   Late, failed, cancelled or incomplete work cannot produce a passing final gate.
   A read-only Ubuntu deadline guard shares the PR worker matrix.
   Six matrix slots prevent waiting Mac jobs from occupying the guard's slot.
@@ -386,6 +389,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   gate verifies the running allocator before workers can occupy Mac runners.
   Each worker receives its role independently, without waiting for another Mac
   worker to start. Artifact names carry records without providing a lock.
+
+  Within each exact profile, dispatch roles in the fixed order 2, 0, 1.
+  The earliest matching host receives role 2 and its installed-consumer tail.
+  Role 0 retains native prerequisites. Role 1 retains its source files.
+  Ledger replay verifies that issuance order. Complete qualification still requires all three logical roles.
 
   Require the allocator, deadline guard and all five current-attempt worker jobs to succeed.
   Reconcile announcements, assignments and the final allocator ledger, rejecting

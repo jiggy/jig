@@ -10,6 +10,9 @@ import { MAC_HOST_PROFILES, requireMacHostPrerequisites } from './macos-host-pro
 // One already-running Linux allocator owns every role decision. Artifact names
 // are identities, never locks: the service can accept duplicates across jobs.
 export const MAC_PR_COHORT = Object.freeze({ workers: 5, shards: 3 })
+// Give the installed tail the first ready matching host. Logical role ownership
+// and the complete source-pinned file plans remain unchanged.
+export const MAC_PR_COHORT_ROLE_ORDER = Object.freeze([2, 0, 1])
 export const MAC_COHORT_ARTIFACT_CLIENT_VERSION = '2.3.2'
 export const MAC_COHORT_ALLOCATOR_NAME = 'Allocate exact-profile Mac roles'
 export const MAC_COHORT_READY_JOB_NAME = 'Require an active Mac role allocator'
@@ -242,7 +245,7 @@ function assignmentSequence(assignments, identity, allocatorJobId) {
       throw new Error('Mac cohort assignment sequence repeats or changes a worker')
     const profile = macHostProfileKey(record.profile)
     const count = counts.get(profile) ?? 0
-    if (record.role !== (count < MAC_PR_COHORT.shards ? count : null))
+    if (record.role !== (MAC_PR_COHORT_ROLE_ORDER[count] ?? null))
       throw new Error('Mac cohort assignment sequence changes an owned role or invents surplus')
     counts.set(profile, count + 1)
     workers.add(record.worker)
@@ -296,7 +299,7 @@ export function createMacHostCohortAssignment({
     worker: record.worker,
     jobId: record.jobId,
     profile: { ...record.profile },
-    role: count < MAC_PR_COHORT.shards ? count : null,
+    role: MAC_PR_COHORT_ROLE_ORDER[count] ?? null,
     announcementArtifact: owner.artifact,
   }
 }

@@ -200,7 +200,7 @@ jobs:
         run: 'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"'
       -
         name: "Acquire the exact canonical CI candidates"
-        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.acquire-budget.outputs.work_minutes) || 45 }}"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.acquire-budget.outputs.step_timeout_minutes) || 45 }}"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: |
@@ -355,7 +355,7 @@ jobs:
       -
         name: "Test native containment and recovery"
         if: "${{ !matrix.guard && steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
-        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.native-budget.outputs.work_minutes) || 60 }}"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.native-budget.outputs.step_timeout_minutes) || 60 }}"
         env:
           JIG_MACOS_PROCESS_TEST: "1"
         run: |
@@ -377,7 +377,7 @@ jobs:
       -
         name: "Qualify the complete rootless host and installed consumer"
         if: "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}"
-        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.qualify-budget.outputs.work_minutes) || (inputs.include_startup_profile && 90 || 60) }}"
+        timeout-minutes: "${{ github.event_name == 'pull_request' && fromJSON(steps.qualify-budget.outputs.step_timeout_minutes) || (inputs.include_startup_profile && 90 || 60) }}"
         env:
           MAC_HOST_ROLE: "${{ steps.role.outputs.role }}"
           JIG_MACOS_TEST_TIMINGS_DIRECTORY: "${{ runner.temp }}/mac-evidence"
