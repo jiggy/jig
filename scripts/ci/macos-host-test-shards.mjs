@@ -4,14 +4,20 @@ import { writeFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { balanceWholeFiles, HOST_TEST_DURATIONS, hostTestSeconds } from './host-test-scheduling.mjs'
+import { MAC_PR_COHORT } from './macos-host-cohort.mjs'
 import { discoverRepositoryTests, filesForTarget, suiteTestFiles } from './suite-inventory.mjs'
 
-// Keep the complete ARM role on one runner during hosted image rollouts.
-// Different kernel builds cannot supply parts of one profile's qualification.
+// Main and manual qualification retain their complete single ARM host.
+// PR roles qualify only when the cohort proves one complete exact profile.
 export const MAC_HOST_SHARDS = Object.freeze({ x64: 4, arm64: 1 })
-export function macHostShardCount(architecture) {
+export function macHostShardCount(architecture, plan = 'complete') {
   if (!Object.hasOwn(MAC_HOST_SHARDS, architecture))
     throw new Error('Mac qualification requires x64 or arm64')
+  if (!['complete', 'pull-request'].includes(plan)) throw new Error('Unknown Mac host test plan')
+  if (plan === 'pull-request') {
+    if (architecture !== 'arm64') throw new Error('The PR cohort requires Apple Silicon')
+    return MAC_PR_COHORT.shards
+  }
   return MAC_HOST_SHARDS[architecture]
 }
 export const INSTALLED_STARTUP_TEST = 'packages/jig/test/startup/native-agent-startup.test.ts'
@@ -77,12 +83,13 @@ export function planMacHostTests(
   files,
   architecture,
   {
+    plan = 'complete',
     weights = WEIGHTS,
     nativePrerequisiteSeconds = NATIVE_PREREQUISITE_WEIGHTS[architecture],
     installedConsumerSeconds = INSTALLED_CONSUMER_WEIGHTS[architecture],
   } = {},
 ) {
-  const count = macHostShardCount(architecture)
+  const count = macHostShardCount(architecture, plan)
   const unique = new Set(files)
   if (unique.size !== files.length) {
     throw new Error('Mac host test inventory repeats a file')
@@ -137,7 +144,10 @@ export function commandsForShard(shard, bun = 'bun', node = 'node') {
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const mode = process.argv[2]
   const architecture = process.argv[3]
-  const count = Object.hasOwn(MAC_HOST_SHARDS, architecture) ? macHostShardCount(architecture) : 0
+  const planMode = process.env.JIG_MACOS_TEST_PLAN || 'complete'
+  const count = Object.hasOwn(MAC_HOST_SHARDS, architecture)
+    ? macHostShardCount(architecture, planMode)
+    : 0
   const index = Number(process.argv[4])
   if (mode === 'count' && count && process.argv.length === 4) {
     console.log(count)
@@ -158,6 +168,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const shards = planMacHostTests(
     await discoverHostTests(process.cwd(), architecture),
     architecture,
+    { plan: planMode },
   )
   const shard = shards[index]
   const node = process.env.FLOW_NODE

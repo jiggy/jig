@@ -4,6 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { parse } from 'yaml'
 import {
   digest,
   PACKAGE_LAYOUT,
@@ -668,60 +669,24 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
 })
 
 test('the actual Mac acquisition step waits for Quick before complete native allocation', async () => {
-  const workflow = await readFile(
-    new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
-    'utf8',
+  const workflow = parse(
+    await readFile(
+      new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
+      'utf8',
+    ),
   )
-  const start = workflow.indexOf('        name: "Acquire the exact canonical CI candidates"\n')
-  assert.ok(start >= 0)
-  const end = workflow.indexOf('      -\n', start)
-  assert.ok(end > start)
-  const step = workflow.slice(start, end)
-  assert.doesNotMatch(step, /AFTER_QUICK|needs\.plan/)
-  const commands = step.split('        run: |\n')[1]
-  assert.ok(commands)
-  const shell = commands
-    .split('\n')
-    .filter((line) => line.length)
-    .map((line) => {
-      assert.ok(line.startsWith('          '))
-      return line.slice(10)
-    })
-    .join('\n')
-  const temporary = await mkdtemp(join(tmpdir(), 'jig-mac-acquisition-step-test-'))
-  try {
-    const bin = join(temporary, 'bin'),
-      captured = join(temporary, 'arguments.txt')
-    await mkdir(bin)
-    await writeFile(join(bin, 'node'), '#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURED_ARGUMENTS"\n', {
-      mode: 0o700,
-    })
-    execFileSync('/bin/sh', ['-c', shell], {
-      env: {
-        PATH: `${bin}:/usr/bin:/bin`,
-        RUNNER_TEMP: temporary,
-        GITHUB_SHA: source,
-        CAPTURED_ARGUMENTS: captured,
-      },
-      timeout: 5000,
-      stdio: 'pipe',
-    })
-    assert.deepEqual((await readFile(captured, 'utf8')).trimEnd().split('\n'), [
-      'scripts/ci/candidate-transfer.mjs',
-      'acquire',
-      join(temporary, 'macos-host-artifacts'),
-      '--source',
-      source,
-      '--after-quick',
-      'true',
-      '--producer-timeout-seconds',
-      '1800',
-      '--timeout-seconds',
-      '600',
-    ])
-  } finally {
-    await rm(temporary, { recursive: true, force: true })
-  }
+  const acquisition = workflow.jobs['host-artifacts']
+  const step = acquisition.steps.find((entry) =>
+    entry.run?.includes('scripts/ci/candidate-transfer.mjs acquire'),
+  )
+  assert.ok(step)
+  assert.match(
+    step.run,
+    /node scripts\/ci\/pr-time-budget\.mjs run -- node scripts\/ci\/candidate-transfer\.mjs acquire "\$RUNNER_TEMP\/macos-host-artifacts" --source "\$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600/,
+  )
+  assert.doesNotMatch(step.run, /AFTER_QUICK|needs\.plan/)
+  assert.ok(acquisition.steps.findIndex((entry) => entry.id === 'acquire-budget') < acquisition.steps.indexOf(step))
+  assert.deepEqual(workflow.jobs.prerequisites.needs, ['scope', 'host-artifacts'])
 })
 
 test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {

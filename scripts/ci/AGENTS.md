@@ -124,6 +124,11 @@ preparation never becomes a consumer requirement.
   and runner allocation waits without identifying either cause. Event-head groups provide
   diagnostic workflow envelopes without establishing tested merge identity.
 
+  PR envelope reporting includes P95, maximum, and 25-minute breaches.
+  Preserve failed, cancelled, incomplete and ambiguous groups in the denominator.
+  Separate runs with and without retries. Measure from original workflow creation
+  through observed completion, without claiming exact push or merge-ready latency.
+
   Earlier successful jobs retained in the latest history supply observed runner
   time only. Receipt acceptance and hypothetical latency savings remain unproved.
   Copied successful checks contribute no execution time. Their unique observed
@@ -275,10 +280,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   Observed paths never authorize cleanup or detachment. Its full mode remains
   the self-hosted entrypoint. Hosted `--shard` runs one isolated portion of the
-  same complete suite: four Intel shards or one complete Apple Silicon host.
+  same complete suite. Intel uses four shards. Apple Silicon uses one complete
+  main/manual host or three PR roles selected from five workers.
+
   Shard zero runs native prerequisites and the final shard runs installed
   consumer and genuine-client checks on each architecture. Both roles run once
-  on the single Apple Silicon host.
+  on the single main/manual Apple Silicon host.
 
   The full Jig package smoke receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`
   from the existing Mac evidence directory or Linux's installed-evidence command directory.
@@ -299,10 +306,9 @@ They consume frozen package exports with tracked test helpers and installed
   diagnostics. Their closed wall intervals and bounded profile projections appear
   in the existing job log. Timing changes no deadlines, inventories or outcomes.
 
-  The workflow reallocates the former two Apple Silicon jobs' allowance to one
-  complete host, with a smaller aggregate allowance and shared setup. Per-test
-  and product deadlines stay unchanged. The exact allocations belong to
-  `.github/AGENTS.md` and the workflow.
+  Per-test and product deadlines stay unchanged. PR work shares an absolute
+  workflow budget. Main/manual runs retain their complete-host allowance.
+  Exact allocations belong to `.github/AGENTS.md` and the workflow.
 - `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
   catalog, retaining portable files until a separate audit proves host
   neutrality. Eight native prerequisite files run once on shard zero and genuine
@@ -327,6 +333,36 @@ They consume frozen package exports with tracked test helpers and installed
 
   This exposes primitive failures early without moving files between runners or
   changing weights, commands, limits or qualification obligations.
+- `macos-host-cohort.mjs` owns the PR assignment protocol. Five workers claim
+  three roles independently within exactly two admitted ARM profiles.
+  Only the pinned official artifact client's exact creation conflict advances
+  to another role. Failed uploads, ambiguous responses and deadlines fail closed.
+
+  Claims bind the tested merge, run, attempt, worker, job and complete host tuple.
+  The current-attempt aggregate requires every worker job to succeed and every
+  conflict to have a different finalized owner. Claims grant no execution credit.
+  Claim downloads verify immutable IDs, byte counts and SHA-256 before bounded
+  ZIP parsing. Parse one regular JSON member without filesystem extraction.
+
+  `macos-host-cohort-run.mjs` validates every executing worker's exact source
+  reports and canonical metadata, including minority profiles. Only then does it
+  normalize one complete matching role set for the existing full report reader.
+  Surplus workers cannot retain execution proof. Main/manual runs use role zero
+  directly and do not participate in claims.
+
+  Keep artifact runtime credentials inside the pinned JavaScript action and child.
+  Install the exact official client in isolated runner scratch without lifecycle
+  scripts. Never export artifact runtime credentials into later steps.
+- `pr-time-budget.mjs` owns the fixed 1,500-second PR workflow allowance and
+  120-second evidence reserve. Verify creation metadata against repository, run,
+  attempt and PR event head before retaining its deadline. Test evidence remains
+  bound to the separate tested merge SHA.
+
+  Queue delays and retries consume that original allowance. Bound child process
+  groups by the remaining work time and reject completion after the final deadline.
+  Main/manual commands retain their existing allowances. Missing metadata or
+  invalid retained values fail closed. This policy cannot allocate GitHub runners
+  or cancel jobs before GitHub schedules them.
 - `merge-attempts.mjs` selects the newest authoritative execution of each named
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
   acquisition and per-job evidence across attempts within one original run.
@@ -357,6 +393,10 @@ They consume frozen package exports with tracked test helpers and installed
   Mac validator reconstructs the complete source-pinned shard plan and reads
   every owning report and completion marker once.
 
+  `readMacRoleReport` validates one complete role without granting qualification.
+  `readMacReports` requires every role for the explicitly selected plan.
+  The default plan retains ARM1 and Intel4. The PR plan requires ARM3.
+
   Every shard's retained prerequisites must match an exact admitted architecture,
   kernel, build and Bun tuple. A complete architecture plan must use one observed
   tuple. Its summary and retained qualification artifact name that tuple, without
@@ -366,6 +406,8 @@ They consume frozen package exports with tracked test helpers and installed
   exact single-file JUnit reports
   beside their transcripts. Installed scripts retain completion markers.
   `macos-host-summary.py` projects validated Mac counts and optional job timing.
+  PR timing maps each selected role to its exact current worker job through the
+  normalized receipt. Missing or malformed mappings leave timing unavailable.
 
   It does not implement another XML or plan validator. Timing cannot grant or
   remove qualification. The evidence writer consumes that owning summary without

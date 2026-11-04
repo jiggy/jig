@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
 import {
@@ -12,8 +12,13 @@ import {
   writeCandidateReceipt,
 } from './candidate-provenance.mjs'
 import {
+  macHostCohortClaimName,
+  macHostCohortProfile,
+  macHostCohortWorkerName,
+} from './macos-host-cohort.mjs'
+import {
   INSTALLED_STARTUP_TEST,
-  MAC_HOST_SHARDS,
+  macHostShardCount,
   NATIVE_PREREQUISITE_TESTS,
   planMacHostTests,
 } from './macos-host-test-shards.mjs'
@@ -45,17 +50,21 @@ const prerequisites = (arch) => ({
   backendQualified: false,
 })
 
-async function fixture(architecture, run) {
+async function fixture(
+  architecture,
+  run,
+  { plan = 'complete', sourceRepository = repository, sourceRevision = revision } = {},
+) {
   const root = await mkdtemp(resolve(tmpdir(), 'jig-mac-summary-'))
   try {
-    const count = MAC_HOST_SHARDS[architecture]
+    const count = macHostShardCount(architecture, plan)
     const directories = []
     const files = filesForTarget(
-      gitRepositoryTests(repository, revision),
+      gitRepositoryTests(sourceRepository, sourceRevision),
       `macos-${architecture}`,
       catalog,
     )
-    const plans = planMacHostTests(files, architecture).map((shard) => ({
+    const plans = planMacHostTests(files, architecture, { plan }).map((shard) => ({
       architecture,
       shard: shard.index,
       shardCount: count,
@@ -65,7 +74,10 @@ async function fixture(architecture, run) {
     }))
     for (const plan of plans) {
       const shard = plan.shard
-      const directory = resolve(root, `macos-prerequisites-${architecture}-${shard}-${revision}`)
+      const directory = resolve(
+        root,
+        `macos-prerequisites-${architecture}-${shard}-${sourceRevision}`,
+      )
       await mkdir(directory)
       directories.push(directory)
       await writeFile(
@@ -75,7 +87,7 @@ async function fixture(architecture, run) {
       await writeFile(resolve(directory, 'test-plan.json'), JSON.stringify(plan))
       await writeFile(
         resolve(directory, `shard-${shard}.complete`),
-        `${revision} ${architecture} ${shard}\n`,
+        `${sourceRevision} ${architecture} ${shard}\n`,
       )
       for (const [index, group] of plan.groups.entries())
         await writeFile(
@@ -104,20 +116,32 @@ async function fixture(architecture, run) {
     }))
     const jobsPath = resolve(root, 'jobs.json')
     await writeFile(jobsPath, JSON.stringify(jobs))
-    const summarize = async (expectedShardCount = count) => {
+    const summarize = async (expectedShardCount = count, environment = {}, timeout) => {
       const output = resolve(root, 'summary.json')
       const result = spawnSync(
         'python3',
         [
-          'scripts/ci/macos-host-summary.py',
+          resolve(repository, 'scripts/ci/macos-host-summary.py'),
           architecture,
-          revision,
+          sourceRevision,
           String(expectedShardCount),
           root,
           jobsPath,
           output,
         ],
-        { cwd: repository, encoding: 'utf8' },
+        {
+          cwd: sourceRepository,
+          encoding: 'utf8',
+          timeout,
+          env: {
+            ...process.env,
+            JIG_MACOS_TEST_PLAN: plan,
+            GITHUB_EVENT_NAME: plan === 'pull-request' ? 'pull_request' : 'push',
+            GITHUB_RUN_ID: '42',
+            GITHUB_RUN_ATTEMPT: '2',
+            ...environment,
+          },
+        },
       )
       assert.equal(result.error, undefined)
       return { ...result, report: JSON.parse(await readFile(output, 'utf8')) }
@@ -125,6 +149,9 @@ async function fixture(architecture, run) {
     await run({
       root,
       architecture,
+      plan,
+      sourceRepository,
+      sourceRevision,
       count,
       directories,
       plans,
@@ -135,6 +162,88 @@ async function fixture(architecture, run) {
     })
   } finally {
     await rm(root, { recursive: true, force: true })
+  }
+}
+
+async function addCohortReceipts(f) {
+  const workers = [4, 0, 2]
+  const identity = { sourceRevision: f.sourceRevision, runId: 42, runAttempt: 2 }
+  const profile = macHostCohortProfile(prerequisites('arm64'))
+  const receipts = []
+  const start = Date.parse('2026-10-01T00:00:00Z')
+  const timestamp = (seconds) => new Date(start + seconds * 1000).toISOString()
+  const jobs = Array.from({ length: 5 }, (_, worker) => ({
+    id: 1000 + worker,
+    name: macHostCohortWorkerName(worker),
+    run_id: identity.runId,
+    run_attempt: identity.runAttempt,
+    status: 'completed',
+    conclusion: 'success',
+    created_at: timestamp(0),
+    started_at: timestamp(60 * (worker + 1)),
+    completed_at: timestamp(60 * (worker + 1) + 500 + 100 * worker),
+  }))
+  for (const [role, worker] of workers.entries()) {
+    const receipt = {
+      kind: 'macos-host-cohort-worker/1',
+      ...identity,
+      worker,
+      jobId: 1000 + worker,
+      profile,
+      role,
+      claimArtifact: {
+        id: 2000 + worker,
+        name: macHostCohortClaimName(identity, profile, role),
+        digest: `sha256:${'2'.repeat(64)}`,
+      },
+      conflicts: Array.from({ length: role }, (_, prior) =>
+        macHostCohortClaimName(identity, profile, prior),
+      ),
+    }
+    receipts.push(receipt)
+    await writeFile(resolve(f.directories[role], 'worker.json'), JSON.stringify(receipt))
+  }
+  await writeFile(f.jobsPath, JSON.stringify([...jobs].reverse()))
+  return { ...f, workers, receipts, jobs }
+}
+
+// Small real source inventories keep repeated diagnostic refusals inexpensive.
+// Inert receipts and reports establish parser behavior, never native execution.
+async function cohortFixture(run) {
+  const sourceRepository = await mkdtemp(resolve(tmpdir(), 'jig-mac-summary-source-'))
+  try {
+    const git = (args) => execFileSync('git', ['-C', sourceRepository, ...args], { encoding: 'utf8' })
+    git(['init', '--quiet'])
+    const files = [
+      ...NATIVE_PREREQUISITE_TESTS,
+      INSTALLED_STARTUP_TEST,
+      ...Array.from({ length: 12 }, (_, index) => `packages/jig/test/host/summary-${index}.test.ts`),
+    ]
+    for (const file of files) {
+      await mkdir(dirname(resolve(sourceRepository, file)), { recursive: true })
+      await writeFile(resolve(sourceRepository, file), 'test("fixture case", () => {})\n')
+    }
+    git(['add', '.'])
+    git([
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '--quiet',
+      '-m',
+      'fixture source inventory',
+    ])
+    const sourceRevision = git(['rev-parse', 'HEAD']).trim()
+    await fixture('arm64', async (f) => run(await addCohortReceipts(f)), {
+      plan: 'pull-request',
+      sourceRepository,
+      sourceRevision,
+    })
+  } finally {
+    await rm(sourceRepository, { recursive: true, force: true })
   }
 }
 
@@ -228,8 +337,121 @@ test('summary refuses missing or unsupported kernel prerequisites despite comple
     })
 })
 
+async function diagnosticsUnavailable(f, roles = [0], environment = {}, timeout) {
+  const result = await f.summarize(f.count, environment, timeout)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.report.qualified, true)
+  assert.equal(result.report.executed, f.expectedCount)
+  assert.equal(result.report.timing_available, false)
+  for (const role of roles) assert.equal(result.report.shards[role].timing, null)
+  return result
+}
+
+test('PR timing follows selected physical workers instead of logical role numbers', async () => {
+  await cohortFixture(async (f) => {
+    const result = await f.summarize()
+    assert.equal(result.status, 0, result.stderr)
+    assert.equal(result.report.qualified, true)
+    assert.equal(result.report.executed, f.expectedCount)
+    assert.equal(result.report.timing_available, true)
+    assert.deepEqual(result.report.shards.map(({ timing }) => timing), [
+      { wait_seconds: 300, job_seconds: 900 },
+      { wait_seconds: 60, job_seconds: 500 },
+      { wait_seconds: 180, job_seconds: 700 },
+    ])
+  })
+})
+
+test('foreign, swapped or repeated PR worker mappings cannot supply diagnostic timings', async () => {
+  await cohortFixture(async (f) => {
+    const path = resolve(f.directories[0], 'worker.json')
+    for (const changes of [
+      { sourceRevision: 'a'.repeat(40) },
+      { runId: 41 },
+      { runAttempt: 1 },
+      { worker: 1 },
+      { jobId: 1001 },
+      { role: 1 },
+      { role: false },
+      { profile: { ...f.receipts[0].profile, build: '24G830' } },
+      { qualified: true },
+    ]) {
+      await writeFile(path, JSON.stringify({ ...f.receipts[0], ...changes }))
+      await diagnosticsUnavailable(f)
+    }
+    const secondPath = resolve(f.directories[1], 'worker.json')
+    await writeFile(path, JSON.stringify(f.receipts[1]))
+    await writeFile(secondPath, JSON.stringify(f.receipts[0]))
+    await diagnosticsUnavailable(f, [0, 1])
+    await writeFile(secondPath, JSON.stringify(f.receipts[1]))
+    await writeFile(path, JSON.stringify({ ...f.receipts[1], role: 0 }))
+    await diagnosticsUnavailable(f, [0, 1])
+  })
+})
+
+test('PR job metadata must match one successful current-attempt worker and valid intervals', async () => {
+  await cohortFixture(async (f) => {
+    for (const changes of [
+      { id: 9999 },
+      { name: 'Native host worker — arm64 / 3' },
+      { run_id: 41 },
+      { run_attempt: 1 },
+      { status: 'in_progress' },
+      { conclusion: 'failure' },
+      { created_at: 'malformed' },
+      { completed_at: '2026-09-30T23:00:00Z' },
+    ]) {
+      await writeFile(
+        f.jobsPath,
+        JSON.stringify(
+          f.jobs.map((job, worker) =>
+            worker === f.workers[0] ? { ...job, ...changes } : job,
+          ),
+        ),
+      )
+      await diagnosticsUnavailable(f)
+    }
+    await writeFile(f.jobsPath, JSON.stringify([...f.jobs, f.jobs[f.workers[0]]]))
+    await diagnosticsUnavailable(f)
+    await writeFile(f.jobsPath, JSON.stringify(f.jobs))
+    await diagnosticsUnavailable(f, [0, 1, 2], { GITHUB_RUN_ID: '' })
+    await diagnosticsUnavailable(f, [0, 1, 2], { GITHUB_RUN_ATTEMPT: '3' })
+  })
+})
+
+test('missing, malformed, oversized or linked PR receipts remove timings without changing proof', async () => {
+  await cohortFixture(async (f) => {
+    const path = resolve(f.directories[0], 'worker.json')
+    for (const bytes of [
+      'malformed',
+      'null',
+      `${JSON.stringify(f.receipts[0])}${' '.repeat(8193)}`,
+      `${'['.repeat(4096)}${']'.repeat(4096)}`,
+    ]) {
+      await writeFile(path, bytes)
+      await diagnosticsUnavailable(f)
+    }
+    await rm(path)
+    // A same-number static job cannot substitute for the missing PR mapping.
+    await writeFile(
+      f.jobsPath,
+      JSON.stringify([...f.jobs, { ...f.jobs[0], name: 'Native host shard — arm64 / 0' }]),
+    )
+    await diagnosticsUnavailable(f)
+    const outside = resolve(f.root, 'outside-worker.json')
+    await writeFile(outside, JSON.stringify(f.receipts[0]))
+    await symlink(outside, path)
+    await diagnosticsUnavailable(f)
+    await rm(path)
+    execFileSync('mkfifo', [path])
+    await diagnosticsUnavailable(f, [0], {}, 5000)
+  })
+})
+
 test('the actual workflow summary step consumes exact shard evidence and refuses an incomplete run', async () => {
-  await fixture('arm64', async (f) => {
+  const verify = async (f) => {
+    const plan = f.plan
+    if (plan === 'pull-request') await addCohortReceipts(f)
     const workflow = parse(
       await readFile(resolve(repository, '.github/workflows/macos-hosted-candidates.yml'), 'utf8'),
     )
@@ -323,10 +545,12 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     const run = async () => {
       await rm(evidence, { recursive: true, force: true })
       await mkdir(evidence)
-      for (const directory of f.directories)
-        await cp(directory, resolve(evidence, `${directory.split('/').at(-1)}-r42-a2`), {
+      for (const directory of f.directories) {
+        const suffix = plan === 'pull-request' ? '' : '-r42-a2'
+        await cp(directory, resolve(evidence, `${directory.split('/').at(-1)}${suffix}`), {
           recursive: true,
         })
+      }
       return spawnSync('/bin/sh', ['-c', script], {
         cwd: repository,
         encoding: 'utf8',
@@ -338,6 +562,8 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
           SHARD_COUNT: String(f.count),
           GITHUB_RUN_ID: '42',
           GITHUB_RUN_ATTEMPT: '2',
+          GITHUB_EVENT_NAME: plan === 'pull-request' ? 'pull_request' : 'push',
+          JIG_MACOS_TEST_PLAN: plan,
           GITHUB_STEP_SUMMARY: markdown,
         },
       })
@@ -346,7 +572,13 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     assert.equal(successful.status, 0, successful.stderr)
     assert.match(await readFile(markdown, 'utf8'), /Qualification: \*\*passed\*\*/)
     const jsonPath = resolve(f.root, 'mac-summary.json')
-    assert.equal(JSON.parse(await readFile(jsonPath, 'utf8')).qualified, true)
+    const summary = JSON.parse(await readFile(jsonPath, 'utf8'))
+    assert.equal(summary.qualified, true)
+    assert.equal(summary.timing_available, true)
+    if (plan === 'pull-request') {
+      assert.deepEqual(summary.shards.map(({ timing }) => timing.job_seconds), [900, 500, 700])
+      return
+    }
     const marker = resolve(f.directories[0], 'shard-0.complete')
     await rm(marker)
     assert.equal((await run()).status, 1)
@@ -356,5 +588,6 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     const wrongCandidate = await run()
     assert.equal(wrongCandidate.status, 1)
     assert.match(wrongCandidate.stderr, /different canonical candidate/)
-  })
+  }
+  for (const plan of ['complete', 'pull-request']) await fixture('arm64', verify, { plan })
 })

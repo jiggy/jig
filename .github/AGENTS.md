@@ -323,8 +323,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
   variables. This candidate workflow does not replace Linux publication gates or
   claim live model/API qualification.
-- `workflows/macos-hosted-candidates.yml` requires one complete Apple Silicon
-  host on `macos-15` for applicable PRs, generated main releases, uncertain sources, and manual runs. `affected-macos`
+- `workflows/macos-hosted-candidates.yml` requires complete Apple Silicon
+  qualification on `macos-15` for applicable PRs, generated main releases, uncertain sources, and manual runs. `affected-macos`
   reconciles only this architecture. Linux and Apple Silicon remain release
   gates. Intel evidence never grants publication readiness.
 
@@ -336,7 +336,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   number, so successive main jobs can select the same lane.
 
   Lane assignment does not balance load or guarantee both lanes are occupied.
-  PR branches retain their existing cancellation groups and runner allocation behavior.
+  PR branches retain their cancellation groups. Their five independent workers
+  have distinct concurrency keys and never wait for another worker to start.
 
   Each lane uses GitHub's `queue: max` to retain up to 100 pending jobs.
   GitHub cancels submissions beyond that limit, which cannot qualify publication.
@@ -356,13 +357,36 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   settlement. Exact profiles, frozen archive identities, complete coverage and
   zero-residue checks stay mandatory.
 
+  PR acquisition and execution share the original workflow's 25-minute deadline.
+  Read that creation time through the Actions API, verified against the PR head,
+  repository, run and attempt. Workflow creation is the available push-time proxy.
+  Queueing and reruns consume the same allowance. Reserve 120 seconds for evidence
+  and final checks. A rerun cannot reset the original deadline.
+
+  Bound child process groups and native steps by the remaining allowance.
+  Late, failed, cancelled or incomplete work cannot produce a passing final gate.
+  GitHub controls queued jobs, so this policy cannot guarantee timely allocation
+  or cancel an unscheduled job at the deadline. Report breaches explicitly.
+
   Manual startup profiling remains optional and non-gating.
 
   The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
   The hosted probe rejects other tuples before compilation or dependency setup.
-  One host executes the complete native, source and installed plan, so results
-  from different kernel builds cannot be combined. Aggregate evidence names the
-  observed architecture, kernel, build and pinned Bun revision.
+
+  PRs use five workers and three logical roles per exact observed profile.
+  With two admitted profiles, five workers contain at least three matching hosts.
+  Each worker claims the first available role through an immutable artifact name.
+  Only an exact creation conflict permits trying the next role. Workers start
+  their role immediately, without a barrier or replacement-worker loop.
+
+  Require all five current-attempt jobs to succeed. Verify every executing role,
+  including an incomplete minority profile, against the canonical archives and
+  full source-pinned reports. Surplus workers retain prerequisite and conflict
+  receipts without execution credit. Select one complete matching three-role set.
+  Roles from different builds cannot combine into qualification.
+
+  Main and manual runs keep one complete host. Aggregate evidence names the
+  observed architecture, kernel, build and pinned Bun revision in either plan.
 
   The complete ARM job retains main's 60-minute allocation, or 90 minutes with
   optional profiling. Individual test and product deadlines stay unchanged.
