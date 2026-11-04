@@ -465,19 +465,25 @@ execution and dependency artifacts and compare-and-sets the captured policy
 heads. Missing or corrupt admitted bytes fail closed; they are not silently
 fetched again under an otherwise reusable admission.
 
-After bounded project capture, the alpha's dependency-planning phase permits
-16 distinct actual preparations, 256 MiB of aggregate prepared content, and
-one 180-second cancellation deadline. Each contained preparation has the
-earlier 60-second hard deadline. Reused admitted execution packages consume
-none of the preparation count or output budget. One package accepts at most
-4,096 source files and 16 MiB before installation.
+One review defaults to 16 distinct new dependency preparations.
+`limits.dependencies.maxPreparations` accepts a bounded allowance from 1 through 256.
+The corresponding operator environment variable takes precedence, as defined by the [authoring contract](project-sdk.md#dependency-preparation-limits).
+Flow preparation, npm Flow adoption, and evaluation recipe preparation share this count.
+Each distinct captured package digest counts once.
+Reusing admitted dependencies consumes neither this count nor the aggregate prepared-output allowance.
+
+All new preparations share 256 MiB of aggregate prepared content and one 180-second cancellation deadline.
+Each contained preparation retains the earlier 60-second hard deadline.
+Increasing the count does not restart deadlines or enlarge the aggregate byte allowance.
+One package accepts at most 4,096 source files and 16 MiB before installation.
 
 Production output defaults to 4,096 combined file/alias records and 32 MiB, including layout metadata.
 Project `limits.dependencies` and corresponding operator environment variables can change these output budgets.
 The [authoring contract](project-sdk.md#dependency-preparation-limits) defines supported ranges, precedence, and combined artifact capacity.
 Fresh preparation and assembly with reused dependencies enforce the same resolved values.
 
-Review rejects incompatible limits before installation. Increasing these budgets does not change source, evaluation, project aggregate, or storage limits.
+Review rejects incompatible limits before installation.
+Increasing output budgets does not change source, evaluation output, aggregate content, deadline, or storage limits.
 
 Source, author-closure, and prepared Package/0 artifacts share one protected
 content-addressed store. Its fixed limits are 192 MiB per canonical artifact
@@ -859,6 +865,10 @@ honest Binding/slot fallback. It does not label a provider's executable Flow
 as the client declaration. Failure preserves the previous complete admission.
 Failure to prepare dependencies includes `PACKAGE_BUN_PREPARATION_FAILED` and
 its project-relative `package.json` location.
+
+`PACKAGE_BUN_PROJECT_COUNT_LIMIT` reports the first rejected preparation count, the effective maximum, and the value's origin.
+That observed count is a lower bound, since review stops before preparing the over-limit package.
+The diagnostic identifies `limits.dependencies.maxPreparations` and its environment override as the supported remedy within the documented range.
 
 These diagnostics include fixed guidance, not credentials, raw provider
 errors, or installer output. Manifest-policy refusals identify the manifest
