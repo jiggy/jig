@@ -146,6 +146,10 @@ recovery. Result and selected-scope export use the original ticket after confirm
 cleanup. Preserve the lost terminal, original root start count and all existing
 root checkpoint cases. Never manufacture submission, checkpoint or recovery records.
 
+The submit adapter has no live command presentation.
+Its fixture adds only a diagnostic observer for actual stderr bytes.
+Public result reads still establish accepted checkpoint identity before coordinator loss.
+
 Canonicalize fixture-owned temporary roots before deriving absolute packet paths
 or private SQLite observations. Keep no-follow acquisition and publication checks
 unchanged, including on Macs whose temporary-directory spelling is a symlink.

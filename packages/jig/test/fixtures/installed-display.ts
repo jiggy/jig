@@ -56,6 +56,7 @@ export const expectedInstalledFiles = [
     'project-evaluation',
     'http-request',
     'run-checkpoint',
+    'child-checkpoint',
     'finite-acp',
   ].flatMap((name) => [
     `libexec/contracts/${name}/contract.json`,

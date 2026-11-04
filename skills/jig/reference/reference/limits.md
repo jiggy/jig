@@ -203,7 +203,8 @@ The fixed checkpoint profile bounds retained evidence during one root lifetime. 
 | --- | --- | --- |
 | Encoded checkpoint request | 2 MiB (2,097,152 bytes) | Fixed |
 | Checkpoint text files / aggregate text content | 64 / 1 MiB (1,048,576 bytes) | Fixed |
-| Checkpoint saves | 16 | Fixed |
+| Checkpoint saves per invocation | 16 | Fixed |
+| Retained checkpoint scopes per attempt, including root | 64 | Fixed |
 
 Policy owners: [`internal/private-run-checkpoint.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/private-run-checkpoint.ts).
 
@@ -246,5 +247,5 @@ See [mounted workspace roots](../build/dependencies.md#separately-mounted-worksp
 for selection and diagnosis.
 
 For resource setup, see [Agent settings](../build/agents.md), [HTTP access](../build/http.md),
-[files](../build/files.md), and [checkpoints](https://jig.md/spec/run-checkpoint.md). Terminal and
+[files](../build/files.md), and [checkpoints](../spec/run-checkpoint.md). Terminal and
 installation preferences belong in [Settings and configuration](configuration.md).

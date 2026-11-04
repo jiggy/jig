@@ -190,7 +190,7 @@ A Flow is a direct Run target only when it:
 
 - has one qualified `FLOW.<ext>` entrypoint and invocation profile;
 - has all invocation requirements resolved through matching ordinary project
-  defaults or qualified root Run Checkpoint support;
+  defaults or qualified native Run Checkpoint and Child Checkpoint support.
 - declares at most eight attachments, at most one writable; and
 - accepts `{}` as settings.
 
@@ -221,11 +221,10 @@ Project Command, HTTP Request and Finite ACP require a Binding's reviewed
 resource grants at the declared invocation slots. Packages requiring those
 resources are invoked through configured Bindings, not direct targets.
 
-[Run Checkpoint](https://jig.md/spec/run-checkpoint.md) is root-only but requires neither a writable
-attachment nor an output destination. Its accepted aggregate belongs to the
-original protected attempt and survives client or command loss under that
-attempt's bounded retention contract. File delivery independently owns any
-publication and requires confirmed native fencing and cleanup.
+[Run Checkpoint](run-checkpoint.md) supports root and child invocations without a writable attachment or output destination.
+Each invocation's accepted aggregate belongs to the original protected attempt and shares its bounded retention contract.
+[Child Checkpoint](child-checkpoint.md) lets an active caller retrieve its settled direct child's accepted work through a successful native result.
+File delivery independently owns publication and requires confirmed native fencing and cleanup.
 
 Jig qualifies `FLOW.ts` through installed Bun and `FLOW.md` through the
 bundled [Markdown interpreter](https://flow.jig.md/spec/markdown-runtime),
@@ -585,13 +584,14 @@ a candidate catalogue nor authority to select a different child at runtime.
 uncontracted requirements with `{}` or named requirements with a local
 `contract` path. A typed Flow route must offer the identical contract ID,
 version and descriptor/closure digest in its root `FLOW.contract.json`. An explicit
-route wins or fails; it never falls back. Uncontracted exact Binding routes
-need no additional declaration and cannot receive project defaults. Without a
-selected ordinary default, only qualified root Run Checkpoint requirements
+route wins or fails. It never falls back. Uncontracted exact Binding routes
+need no additional declaration and cannot receive project defaults.
+
+Without a
+selected ordinary default, only qualified Run Checkpoint and Child Checkpoint requirements
 resolve implicitly to host support. Agent requirements resolve to ordinary
-Flows offering the exact contract. HTTP Request, Finite ACP and Project Command
-require explicit grants; these three contracts and Run Checkpoint remain
-host-only evidence/authority interfaces. Claiming a
+Flows offering the exact contract. HTTP Request, Finite ACP, Project Command, and Project Evaluation require explicit grants.
+These resource contracts and both checkpoint contracts remain host-only evidence and authority interfaces. Claiming a
 descriptor grants no credentials, endpoint access, command execution or
 retention authority.
 Review shows the resolved route and expected contract for each target slot.
@@ -642,8 +642,8 @@ For each target and requirement, review resolves in this order:
    required ID, version and closure digest supplies the route. Zero remains
    unresolved; several require an explicit selection. Each configured Binding
    is distinct, including an empty Binding and its directly invokable package.
-4. A qualified root Run Checkpoint implementation may satisfy its unmapped
-   requirement. Other native resources require explicit grants.
+4. Qualified Run Checkpoint and Child Checkpoint implementations may satisfy their unmapped requirements.
+   Other native resources require explicit grants.
 
 Candidate construction does not allocate resources or test provider health.
 Targets with root attachments, invalid settings, missing explicit native grants,
@@ -669,9 +669,8 @@ with that mismatch rejects the candidate. An explicit matching Binding override
 can still make the package usable. Anonymous requirements need explicit slots.
 
 Each selected default must itself be invokable and require no attachments.
-A `flow:` selection must be a direct target; a `binding:` selection uses its
-own settings and exact admitted routes and grants. HTTP Request, Project Command
-and Run Checkpoint cannot be ordinary defaults. A default selects an
+A `flow:` selection must be a direct target. A `binding:` selection uses its
+own settings and exact admitted routes and grants. Native resource and checkpoint contracts cannot be ordinary defaults. A default selects an
 implementation, not resource authority: grant admission and recipient checks
 remain unchanged.
 
@@ -1321,13 +1320,17 @@ inode, device, provider, and credential evidence is not exported.
 `delivery.status` is `written`, `failed`, or `unknown`, independently of execution
 `status`. A written receipt's `source` is `final`, `checkpoint`, or `none`.
 A known successful terminal is not downgraded when coordinator loss leaves only
-earlier checkpoint files for delivery; the source identifies those bytes.
+earlier checkpoint files for delivery. The source identifies those bytes.
+
 A valid custom outcome may publish files. Operational execution or
 result-validation failure publishes only the actual host record when available,
-unless the root declared [Run Checkpoint](https://jig.md/spec/run-checkpoint.md). That native invocation
+unless the root declared [Run Checkpoint](run-checkpoint.md). That native invocation
 delivers its latest accepted aggregate after confirmed cleanup and adds an
-explicit checkpoint record or `null`; it never exports unfinished scratch.
-unconfirmed Project Session cleanup also suppresses Flow files and returns a
+explicit root checkpoint record or `null`. It never exports unfinished scratch.
+Retained child checkpoints remain separately selectable through the original application ticket.
+They do not replace the root packet's checkpoint or fallback file source.
+
+Unconfirmed Project Session cleanup also suppresses Flow files and returns a
 nonzero command result while preserving a known terminal.
 
 After confirmed interrupted settlement, publication may retain the actual host

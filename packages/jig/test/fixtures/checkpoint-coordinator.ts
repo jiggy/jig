@@ -8,6 +8,7 @@ import {
   openPrivateProjectSession,
   recoverPrivateCheckpointRun,
 } from '../../src/internal/project-session-controller.js'
+import type { PrivateRunChannelOutput } from '../../src/internal/run-channels.js'
 import { canonicalJson } from '../../src/json.js'
 import { installedBunLocation } from './installed-bun-location.js'
 
@@ -23,8 +24,22 @@ await withPrivateInstallationVerification({}, async () => {
     )
   } else {
     const delivery = await privateConnectFileOwner()
-    if (delivery === undefined && !(args[0] === 'attempt' && args[1] === 'submit'))
+    const attemptSubmission = args[0] === 'attempt' && args[1] === 'submit'
+    if (delivery === undefined && !attemptSubmission)
       throw new Error('checkpoint command requires its independent delivery owner')
+    // Attempt submit has no live command presentation. Observe actual child
+    // stderr without supplying acceptance, channel data or execution authority.
+    const attemptObservation: PrivateRunChannelOutput | undefined = attemptSubmission
+      ? {
+          receive: [],
+          record: async () => {
+            throw new Error('checkpoint submit observer selected no channel records')
+          },
+          diagnostic: (bytes) => {
+            process.stderr.write(bytes)
+          },
+        }
+      : undefined
     // The parent's real channel/protected-store barriers can stop us only after
     // this identity marker exists. Preserve forced cancellation escalation on
     // Darwin, whose default SIGTERM action also terminates stopped processes.
@@ -36,8 +51,9 @@ await withPrivateInstallationVerification({}, async () => {
         executeAttempt: executePrivateCliAttempt,
         host: {
           ...(delivery === undefined ? {} : { delivery }),
-          acquire: (directory, options) =>
-            openPrivateProjectSession({
+          acquire: (directory, options) => {
+            const channelOutput = options?.channelOutput ?? attemptObservation
+            return openPrivateProjectSession({
               directory,
               host: {
                 ...host,
@@ -46,11 +62,10 @@ await withPrivateInstallationVerification({}, async () => {
                   : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
                 runTimeoutMs: options?.runTimeoutMs ?? host.runTimeoutMs,
                 ...(options?.files === undefined ? {} : { files: options.files }),
-                ...(options?.channelOutput === undefined
-                  ? {}
-                  : { channelOutput: options.channelOutput }),
+                ...(channelOutput === undefined ? {} : { channelOutput }),
               },
-            }),
+            })
+          },
         },
       })
     } finally {

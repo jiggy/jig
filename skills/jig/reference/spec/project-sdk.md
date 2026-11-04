@@ -368,19 +368,19 @@ example, `bindings/review.ts` has ID `review`. There is no duplicate `id`
 field, profile inheritance, overlay, ambient environment fallback, or per-Run
 settings override.
 
-Bindings are optional. A discovered Run package which is valid with empty
-settings, fits the root attachment profile, and has all requirements resolved
-by reviewed ordinary defaults or qualified root Run Checkpoint support is also an
-exact direct Flow target. A package without requirements needs no defaults.
-The complete direct-Flow and Binding graph must be acyclic and each branch must
-fit the fixed root resource budget (currently at most five child levels with
-one effect allowance). Concurrent branches also share that budget. There is no
-hidden generated Binding.
+Bindings are optional. A discovered Run package can also qualify as an exact direct Flow target.
+It must accept empty settings and fit the root attachment profile.
+Every requirement must resolve through reviewed ordinary defaults or qualified Run Checkpoint or Child Checkpoint support.
+A package without requirements needs no defaults.
+
+The complete direct-Flow and Binding graph must be acyclic.
+Each branch must fit the fixed root resource budget: at most five child levels with one effect allowance.
+Concurrent branches share that budget. There is no hidden generated Binding.
 
 A required named invocation is declared by `uses.<slot>.contract` in package
 metadata. The selected Flow must offer exactly that ID, version and digest
 through its root `FLOW.contract.json`; anonymous ordinary calls need no contract.
-Only qualified [Run Checkpoint](https://jig.md/spec/run-checkpoint.md) slots resolve implicitly to
+Only qualified [Run Checkpoint](run-checkpoint.md) slots resolve implicitly to
 host support. HTTP Request, Finite ACP and Project Command require explicit
 slot grants. Those three contracts and Run Checkpoint cannot be
 implemented by mapping a package that merely claims their host-only identity.
