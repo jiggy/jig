@@ -863,14 +863,18 @@ test('coordination deadlines and polling delays preserve absolute caps without a
 test('allocator startup waits for missing and queued metadata through the real jobs API', async (t) => {
   const f = await coordinationProtocol(t)
   await f.setJobs([])
-  const startup = waitForMacHostAllocatorStart({ ...f, pollIntervalMs: 20 })
-  await f.waitForJobResponse((jobs) => jobs.length === 0)
-  const jobs = coordinationJobs()
-  jobs[0].status = 'queued'
-  await f.setJobs(jobs)
-  await f.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
-  await f.setJob(allocatorJobId, { status: 'in_progress' })
-  assert.equal(await startup, allocatorJobId)
+  const [startup] = await Promise.all([
+    waitForMacHostAllocatorStart({ ...f, pollIntervalMs: 20 }),
+    (async () => {
+      await f.waitForJobResponse((jobs) => jobs.length === 0)
+      const jobs = coordinationJobs()
+      jobs[0].status = 'queued'
+      await f.setJobs(jobs)
+      await f.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
+      await f.setJob(allocatorJobId, { status: 'in_progress' })
+    })(),
+  ])
+  assert.equal(startup, allocatorJobId)
   assert.equal((await f.entries()).length, 0)
 })
 
@@ -892,10 +896,16 @@ test('allocator startup pins its observed job and refuses duplicate, foreign or 
   }
   const changed = await coordinationProtocol(t)
   await changed.setJob(allocatorJobId, { status: 'queued' })
-  const startup = waitForMacHostAllocatorStart({ ...changed, pollIntervalMs: 20 })
-  await changed.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
-  await changed.setJob(allocatorJobId, { id: 9005, status: 'in_progress' })
-  await assert.rejects(startup, /identity changed before startup/)
+  // Observe both promises before the HTTP state transition can trigger rejection.
+  await Promise.all([
+    assert.rejects(waitForMacHostAllocatorStart({ ...changed, pollIntervalMs: 20 }),
+      /identity changed before startup/),
+    (async () => {
+      await changed.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
+      await changed.setJob(allocatorJobId, { id: 9005, status: 'in_progress' })
+      await changed.waitForJobResponse((jobs) => jobs[0]?.id === 9005)
+    })(),
+  ])
 })
 
 test('allocator metadata waiting cannot extend its supplied deadline', async (t) => {
