@@ -66,7 +66,7 @@ export const LIMIT_REFERENCE: readonly Group[] = [
   {
     title: 'Prepare runtime dependencies',
     explanation:
-      'The prepared package controls apply to production dependencies of each selected package. Other preparation budgets remain fixed to bound review work.',
+      'The preparation count covers one review. Byte and file controls apply to each production package. Fixed aggregate content and deadline bounds still apply.',
     sources: [
       'project/limits.ts',
       'internal/bun-native-preparation-protocol.ts',
@@ -75,6 +75,11 @@ export const LIMIT_REFERENCE: readonly Group[] = [
       'internal/workspace-source-roots.ts',
     ],
     limits: [
+      {
+        name: '`limits.dependencies.maxPreparations` (per review)',
+        value: `Default ${integer(DEPENDENCY_PREPARATION_LIMIT_POLICY.default.maxPreparations)}. Supported maximum ${integer(DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparations)}`,
+        control: 'Config / environment',
+      },
       {
         name: '`limits.dependencies.maxPreparedBytes`',
         value: `Default ${bytes(DEPENDENCY_PREPARATION_LIMIT_POLICY.default.maxPreparedBytes)}. Supported maximum ${bytes(DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparedBytes)}`,
@@ -88,10 +93,6 @@ export const LIMIT_REFERENCE: readonly Group[] = [
       fixed(
         'Captured source before installation, per package',
         `${bytes(PRIVATE_BUN_PREPARATION_LIMITS.sourceBytes)} / ${integer(PRIVATE_BUN_PREPARATION_LIMITS.sourceFiles)} files`,
-      ),
-      fixed(
-        'Distinct actual preparations, per review',
-        integer(PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.distinctPackages),
       ),
       fixed(
         'Aggregate prepared content, per review',
@@ -333,7 +334,10 @@ export const LIMIT_REFERENCE: readonly Group[] = [
         `${RUN_CHECKPOINT_LIMITS.files} / ${bytes(RUN_CHECKPOINT_LIMITS.fileBytes)}`,
       ),
       fixed('Checkpoint saves per invocation', integer(RUN_CHECKPOINT_LIMITS.saves)),
-      fixed('Retained checkpoint scopes per attempt, including root', integer(RUN_CHECKPOINT_LIMITS.scopes)),
+      fixed(
+        'Retained checkpoint scopes per attempt, including root',
+        integer(RUN_CHECKPOINT_LIMITS.scopes),
+      ),
     ],
   },
   {

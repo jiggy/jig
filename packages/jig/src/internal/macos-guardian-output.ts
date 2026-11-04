@@ -1,6 +1,6 @@
 import type { FileHandle } from 'node:fs/promises'
 import type { CapturedPackage } from '../package/capture.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import type { PrivateBunPreparationMode } from './bun-native-preparation-protocol.js'
 import { capturePrivateBunPreparationOutput } from './bun-preparation-output.js'
 import { capturePrivateOutput, type PrivateCapturedOutput } from './captured-output.js'
@@ -16,7 +16,7 @@ import type { PrivateMacosGuardian } from './macos-guardian-client.js'
 export function retainPrivateMacosPreparationOutput(
   guardian: PrivateMacosGuardian,
   mode: PrivateBunPreparationMode,
-  dependencyLimits?: ProjectDependencyLimits,
+  dependencyLimits?: DependencyPreparationOutputLimits,
 ) {
   let captured: CapturedPackage | undefined
   let captureError: unknown

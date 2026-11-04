@@ -7,7 +7,7 @@ import {
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { assertNoPathCollisions, comparePathBytes } from '../package/paths.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   type PrivateBunExecutionLayout,
@@ -106,7 +106,7 @@ export async function capturePrivateBunDependencies(
 /** Assemble a new immutable image, never an execution-time overlay onto mutable source. */
 export async function assemblePrivateBunExecution(input: {
   readonly source: CapturedPackage
-  readonly dependencyLimits?: ProjectDependencyLimits
+  readonly dependencyLimits?: DependencyPreparationOutputLimits
   readonly sourcePaths: ReadonlySet<string>
   readonly dependencies: CapturedPackage
   readonly layout: PrivateBunExecutionLayout

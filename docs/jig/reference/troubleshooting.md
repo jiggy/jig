@@ -96,6 +96,7 @@ The [Agent setup contract](../spec/cli-experience.md#agent-setup-during-review) 
 | `PACKAGE_BUN_SOURCE_ROOT_INVALID` | Select a distinct directory below the workspace root that contains declared members. Omit the already selected project root. |
 | `PACKAGE_BUN_WORKSPACE_SOURCE_UNAVAILABLE` or `PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE` | Check that the source remains stable and accessible on a qualified host. |
 | A workspace member or build output is missing | Correct the declaration or build the library. Jig never falls back to npm. |
+| `PACKAGE_BUN_PROJECT_COUNT_LIMIT` | Check the reported count, effective limit, and source. Increase [`maxPreparations`](./limits.md#override-dependency-preparation-limits) for a larger library, then repeat review. |
 | `PACKAGE_BUN_OUTPUT_LIMIT` | Inspect runtime dependencies. Increase [preparation limits](./limits.md#override-dependency-preparation-limits) only when the complete tree is necessary. |
 | Approved bytes are missing or corrupt | Preserve the evidence. Jig refuses without resolving again. |
 

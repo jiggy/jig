@@ -17,9 +17,8 @@ remain in [project policy](../spec/project-policy.md).
 
 ## Override dependency preparation limits
 
-`PACKAGE_BUN_OUTPUT_LIMIT` means one package's prepared runtime dependency tree
-exceeded its byte or file allowance. Check its production dependencies first.
-When the complete runtime tree is necessary, increase its allowance in `jig.ts`:
+`PACKAGE_BUN_PROJECT_COUNT_LIMIT` means review reached its allowance for distinct dependency preparations.
+For a larger Flow library, increase only the count in `jig.ts`:
 
 ```ts
 import { defineJig, discover } from '@jigging/jig'
@@ -29,15 +28,41 @@ export default defineJig({
   bindings: discover('./bindings'),
   limits: {
     dependencies: {
-      maxPreparedBytes: 64 * 1024 * 1024,
-      maxPreparedFiles: 8192,
+      maxPreparations: 32,
     },
   },
 })
 ```
 
-For one operator environment, supply the same fields through environment
-variables. Values are decimal integers in bytes or file counts:
+Or select the allowance for one review through the operator environment:
+
+```sh
+JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS=32 jig review
+```
+
+The count includes Flow dependencies, declared npm Flow adoption, and evaluation recipes that require preparation.
+Each distinct captured preparation input counts once during that review.
+Reusing admitted dependencies consumes no preparation count.
+The count can therefore differ from the number of Flows.
+
+The diagnostic reports the first rejected count as a lower bound, the effective limit, and its source.
+Review stops at that boundary, so the diagnostic does not establish the library's total preparation count.
+The aggregate content and deadline limits below still apply when you increase `maxPreparations`.
+
+`PACKAGE_BUN_OUTPUT_LIMIT` means one package's prepared runtime dependency tree exceeded its byte or file allowance.
+Check its production dependencies first.
+When the complete tree is necessary, set the affected output allowance under `limits.dependencies`:
+
+```ts
+limits: {
+  dependencies: {
+    maxPreparedBytes: 64 * 1024 * 1024,
+    maxPreparedFiles: 8192,
+  },
+},
+```
+
+The corresponding environment variables accept decimal integers in bytes or file counts:
 
 ```sh
 JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES=67108864 \
@@ -49,10 +74,9 @@ Each field resolves independently: **environment variable → `jig.ts` → built
 default**. An invalid explicit value fails, including an empty environment
 variable. Jig does not load project `.env` files automatically.
 
-Both fields must be positive safe integers within the supported maxima below.
-Their combination must also fit the canonical artifact capacity, including
-maximum-length paths and archive metadata. Reduce either allowance if that
-combination exceeds capacity. File content alone does not measure archive size.
+All three fields must be positive safe integers within the supported maxima below.
+The byte and file combination must also fit the canonical artifact capacity, including maximum-length paths and archive metadata.
+Reduce either output allowance if that combination exceeds capacity. File content alone does not measure archive size.
 
 When preparation exceeds an allowance, its diagnostic reports the effective
 limit and source. Project limits form part of the reviewed configuration. An
@@ -84,14 +108,14 @@ still apply on both hosts. See
 
 ## Prepare runtime dependencies
 
-The prepared package controls apply to production dependencies of each selected package. Other preparation budgets remain fixed to bound review work.
+The preparation count covers one review. Byte and file controls apply to each production package. Fixed aggregate content and deadline bounds still apply.
 
 | Setting or bound | Value | Control |
 | --- | --- | --- |
+| `limits.dependencies.maxPreparations` (per review) | Default 16. Supported maximum 256 | Config / environment |
 | `limits.dependencies.maxPreparedBytes` | Default 32 MiB (33,554,432 bytes). Supported maximum 128 MiB (134,217,728 bytes) | Config / environment |
 | `limits.dependencies.maxPreparedFiles` | Default 4,096. Supported maximum 65,536 | Config / environment |
 | Captured source before installation, per package | 16 MiB (16,777,216 bytes) / 4,096 files | Fixed |
-| Distinct actual preparations, per review | 16 | Fixed |
 | Aggregate prepared content, per review | 256 MiB (268,435,456 bytes) | Fixed |
 | Whole preparation phase deadline | 180 seconds | Fixed |
 | Workspace members in execution layout | 256 | Fixed |
@@ -225,10 +249,10 @@ Policy owners: [`json.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/s
 
 ## Related constraints and recovery
 
-The dependency byte and file settings cover production preparation. They do
-not change source capture, evaluation preparation, alias layout, aggregate
-review budgets, or artifact storage. Reused admitted packages consume none of
-the new-preparation count or aggregate output allowance.
+The dependency count setting covers distinct new preparations in one review, including evaluation recipes.
+The byte and file settings cover each production preparation, including assembly with reused dependencies.
+They do not change source capture, evaluation output, alias layout, aggregate review content, deadlines, or artifact storage.
+Reused admitted packages consume none of the new-preparation count or aggregate output allowance.
 
 The captured package store retains evidence from declined and superseded
 reviews. It performs no implicit garbage collection and offers no selective

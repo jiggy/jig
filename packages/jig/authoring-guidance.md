@@ -29,6 +29,9 @@ These links locate module rules. All selected domain requirements still apply.
   storage. Validate prepared byte/file combinations against canonical archive
   overhead, including maximum-length paths, before starting preparation.
 
+  `maxPreparations` bounds distinct new dependency preparations per review.
+  The controller owns that count. Workers and native collectors receive only the validated byte/file pair.
+
 - `src/project/author.ts` also owns shipped attachment-route data types:
   fixed `{from}`, call-supplied `{supplied:"read"}` and operation-owned
   `{create:true}` mappings. `attachment-routes.ts` validates their closed maps

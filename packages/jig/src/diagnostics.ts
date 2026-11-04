@@ -2,7 +2,7 @@ export type DiagnosticKind = 'invalid' | 'unavailable'
 
 /** Bounded resource facts, without worker messages or private filesystem names. */
 export interface DependencyPreparationLimitDiagnostic {
-  readonly dimension: 'files' | 'bytes'
+  readonly dimension: 'files' | 'bytes' | 'preparations'
   readonly observed: number
   readonly maximum: number
   readonly origin?: 'default' | 'project' | 'environment'

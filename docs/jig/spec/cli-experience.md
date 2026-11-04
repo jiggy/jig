@@ -479,9 +479,18 @@ When bounded numeric evidence exists, report the exhausted dimension, observed l
 Identify the corresponding project field and environment variable. Explain environment precedence and link to [limits and defaults](../reference/limits.md).
 Do not expose worker messages or assume production dependencies are misplaced development tools.
 
+`PACKAGE_BUN_PROJECT_COUNT_LIMIT` identifies the review's allowance for distinct new dependency preparations.
+Report the first rejected count as a lower bound, the effective cap, and its source.
+Direct the operator to `limits.dependencies.maxPreparations` or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS` within the supported range.
+Explain that a larger count preserves the aggregate byte allowance and deadlines.
+The reported count does not establish how many preparations the complete library requires.
+
 The SDK diagnostic retains these facts in optional `preparationLimit` with `dimension`, `observed`, `maximum`, and optional `origin`.
-Dimensions are `bytes` or `files`. Origins are `default`, `project`, or `environment`.
-The fixed evaluation profile additionally carries `profile: "evaluation"`. Its diagnostics never suggest production overrides.
+Dimensions are `bytes` or `files` for `PACKAGE_BUN_OUTPUT_LIMIT`, and `preparations` for `PACKAGE_BUN_PROJECT_COUNT_LIMIT`.
+Origins are `default`, `project`, or `environment`.
+
+The fixed evaluation output profile additionally carries `profile: "evaluation"`. Its diagnostics never suggest production output overrides.
+Preparation counts share the review's selected allowance, including evaluation recipes. Count diagnostics cannot carry the fixed evaluation profile.
 Unknown or malformed evidence cannot become a limit diagnosis.
 
 ### Installation verification help

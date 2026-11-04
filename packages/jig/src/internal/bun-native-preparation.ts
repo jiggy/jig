@@ -4,7 +4,7 @@ import { CheckError } from '../diagnostics.js'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
 import { assertNoPathCollisions, comparePathBytes } from '../package/paths.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import {
   type PrivateBunPreparationOwnerFact,
   type PrivateProjectCoordinator,
@@ -130,7 +130,7 @@ export interface PrivatePreparedBunPackage {
 export async function preparePrivateBunPackage(input: {
   readonly captured: CapturedPackage
   readonly mode?: PrivateBunPreparationMode
-  readonly dependencyLimits?: ProjectDependencyLimits
+  readonly dependencyLimits?: DependencyPreparationOutputLimits
   readonly installedSupport: PrivateInstalledBunSupport
   readonly backend: PrivateExecutionBackend
   readonly projectRoot: string
@@ -285,7 +285,7 @@ async function interact(
   input: {
     readonly captured: CapturedPackage
     readonly mode?: PrivateBunPreparationMode
-    readonly dependencyLimits?: ProjectDependencyLimits
+    readonly dependencyLimits?: DependencyPreparationOutputLimits
     readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
   },
 ): Promise<{
@@ -488,7 +488,7 @@ function preparationPlan(
   now: number,
   requestedDeadlineUnixMs: number | undefined,
   mode: PrivateBunPreparationMode = 'production',
-  dependencyLimits?: ProjectDependencyLimits,
+  dependencyLimits?: DependencyPreparationOutputLimits,
 ): PrivateExecutionIntent {
   const deadlineUnixMs = Math.min(
     now + (mode === 'evaluation' ? 120_000 : PREPARATION_WALL_MS),
@@ -641,7 +641,7 @@ export async function decodePrivateBunPreparedResult(
   input: {
     readonly captured: CapturedPackage
     readonly mode?: PrivateBunPreparationMode
-    readonly dependencyLimits?: ProjectDependencyLimits
+    readonly dependencyLimits?: DependencyPreparationOutputLimits
     readonly workspace?: { readonly target: string; readonly selected: readonly string[] }
   },
 ): Promise<PrivatePreparedBunPackage> {

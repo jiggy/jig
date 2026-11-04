@@ -290,6 +290,12 @@ Repeat the flag on later reviews; a bare review derives choices from source agai
 Run uses the approved client and code together; review never rewrites grants.
 Supplied locks stay frozen; stale locks must be updated explicitly.
 
+Review defaults to ${DEPENDENCY_PREPARATION_LIMIT_POLICY.default.maxPreparations} distinct dependency preparations.
+For larger libraries, set limits.dependencies.maxPreparations in jig.ts
+or ${DEPENDENCY_PREPARATION_LIMIT_POLICY.environment.maxPreparations}.
+The supported range is ${DEPENDENCY_PREPARATION_LIMIT_POLICY.minimum}-${DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparations}. Exported environment values take precedence.
+Aggregate byte and time limits still apply. See https://jig.md/reference/limits.
+
 --source-root selects additional directories inside the enclosing Bun workspace.
 Paths may be absolute or relative to the invocation directory.
 The optional [project] operand does not change path resolution.
@@ -2758,8 +2764,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
         'project members have colliding paths or names; give each selected member a distinct identity',
       PROJECT_EVALUATION_FAILED:
         'the project definition could not be evaluated; check the indicated module for unknown fields, invalid values, syntax or import errors. defineJig accepts flows, bindings, grants, defaultProviders, entrypoint and limits',
-      PROJECT_LIMITS_INVALID:
-        'Check limits.dependencies in jig.ts and the JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES and JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES environment variables. Their combined values must fit artifact capacity. See https://jig.md/reference/limits.',
+      PROJECT_LIMITS_INVALID: `Check limits.dependencies in jig.ts and these environment variables: ${Object.values(DEPENDENCY_PREPARATION_LIMIT_POLICY.environment).join(', ')}. Values must stay within supported ranges. Prepared byte and file limits must also fit artifact capacity. See https://jig.md/reference/limits.`,
       PROJECT_EVALUATION_LIMIT:
         'project evaluation exceeded a capture or execution limit; keep authoring modules small and inert. The specific limiting resource was not retained. Preserve this diagnostic if a small declaration fails. No Flow was started',
       PROJECT_DECLARATION_INVALID:
@@ -2829,6 +2834,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       PACKAGE_BUN_INPUT_LIMIT:
         'the selected package sources exceed the preparation limit; reduce captured package files and see https://jig.md/build/dependencies',
       PACKAGE_BUN_OUTPUT_LIMIT: dependencyPreparationLimitHint(error),
+      PACKAGE_BUN_PROJECT_COUNT_LIMIT: dependencyPreparationLimitHint(error),
     }
     const hint =
       candidateHints[error.diagnostic?.code ?? ''] ??
@@ -3182,6 +3188,8 @@ function unsupportedRegistryLockHint(error: ProjectAdministrationError): string 
 }
 
 function dependencyPreparationLimitHint(error: ProjectAdministrationError): string {
+  if (error.diagnostic?.code === 'PACKAGE_BUN_PROJECT_COUNT_LIMIT')
+    return `Set limits.dependencies.maxPreparations in jig.ts or ${DEPENDENCY_PREPARATION_LIMIT_POLICY.environment.maxPreparations} to an integer between ${DEPENDENCY_PREPARATION_LIMIT_POLICY.minimum} and ${DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparations}. Exported environment values take precedence. The allowance counts distinct dependency preparations per review. Aggregate byte and time limits still apply. It grants no additional network or Run authority.\n\n    Rerun your review command after adjusting the allowance. See https://jig.md/reference/limits.`
   const detail = error.diagnostic?.preparationLimit
   if (detail?.profile === 'evaluation')
     return 'The evaluation dependency tree exceeds its fixed preparation profile. Reduce its dependencies and see https://jig.md/reference/limits. Production dependency overrides do not apply to evaluation.'
@@ -3207,17 +3215,30 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
       ? 'The package declarations in package.json no longer match bun.lock.'
       : diagnostic.code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'
         ? 'The dependency lock contains a non-default registry source.'
-        : ACP_SETUP_CAUSES[diagnostic.code]
+        : diagnostic.code === 'PACKAGE_BUN_PROJECT_COUNT_LIMIT'
+          ? 'Review reached its limit for distinct dependency preparations. No Flow was started by this review.'
+          : ACP_SETUP_CAUSES[diagnostic.code]
   const lock =
     diagnostic.lockPath === undefined || diagnostic.lockPath === diagnostic.path
       ? ''
       : `\n  Dependency lock: ${asciiJsonString(diagnostic.lockPath)}`
   const detail = diagnostic.preparationLimit
-  const field = detail?.dimension === 'bytes' ? 'maxPreparedBytes' : 'maxPreparedFiles'
+  const field =
+    detail?.dimension === 'preparations'
+      ? 'maxPreparations'
+      : detail?.dimension === 'bytes'
+        ? 'maxPreparedBytes'
+        : 'maxPreparedFiles'
+  const unit =
+    detail?.dimension === 'preparations'
+      ? 'distinct dependency preparations'
+      : detail?.dimension === 'bytes'
+        ? 'bytes'
+        : 'file/alias records'
   const limit =
     detail === undefined
       ? ''
-      : `\n  Observed: at least ${detail.observed} ${detail.dimension === 'bytes' ? 'bytes' : 'file/alias records'}\n  Effective limit: ${detail.maximum}\n  Limit source: ${detail.profile === 'evaluation' ? 'fixed evaluation profile' : detail.origin === 'environment' ? DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field] : detail.origin === 'project' ? `jig.ts limits.dependencies.${field}` : detail.origin === 'default' ? 'built-in default' : 'preparation policy'}`
+      : `\n  Observed: at least ${detail.observed} ${unit}\n  Effective limit: ${detail.maximum}\n  Limit source: ${detail.profile === 'evaluation' ? 'fixed evaluation profile' : detail.origin === 'environment' ? DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field] : detail.origin === 'project' ? `jig.ts limits.dependencies.${field}` : detail.origin === 'default' ? 'built-in default' : 'preparation policy'}`
   const selection =
     cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
       ? '\n  Agent selection: the resource grant at this Binding slot.'

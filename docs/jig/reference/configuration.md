@@ -18,7 +18,8 @@ Start with the setting that matches your task.
 | Agent client, model, and credentials | Inline policy in an ordinary Agent Binding and operator credentials. See [Agent settings](#agent-settings) |
 | ACP client for one reviewed proposal | `review --agent codex\|claude\|pi`. Source stays unchanged and later reviews start from source again |
 | Flows, Bindings, and application settings | `jig.ts`. See [Project settings](#project-settings) |
-| Prepared runtime dependency capacity | `limits.dependencies` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` and `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES`. See [Limits and defaults](./limits.md) |
+| Dependency preparation count per review | `limits.dependencies.maxPreparations` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS`. See [Limits and defaults](./limits.md#override-dependency-preparation-limits) |
+| Prepared runtime dependency capacity per package | `limits.dependencies` in `jig.ts`, or `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` and `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES`. See [Limits and defaults](./limits.md) |
 | Application starting point and default Run arguments | `entrypoint` in `jig.ts`. See [Project entrypoint](#project-entrypoint) |
 | Input, deadline, and output for one Run | Command arguments. See [Per-command options](#per-command-options) |
 | Bubblewrap executable | Absolute `JIG_BWRAP_PATH`. See [Host configuration](#host-configuration) |

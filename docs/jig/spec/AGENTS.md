@@ -48,6 +48,7 @@ execution evidence.
 - Keep prose, machine schemas, exact descriptors, implementation, fixtures, and
   tests synchronized.
 - Project authoring owns dependency preparation overrides and precedence. The central limits reference derives values from their implementation owners.
+  Keep the review-wide preparation count separate from per-package output allowances and fixed aggregate byte and deadline bounds.
 - A descriptor-byte change must reconcile its documented digest, host allowlist,
   fixtures, lock constants, and published exact bytes.
 - Current exclusions must match the implementation and guide claims.

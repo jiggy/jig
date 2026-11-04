@@ -6,9 +6,16 @@ import {
 import { snapshotJsonObject } from './author-value.js'
 
 export interface ProjectDependencyLimits {
+  readonly maxPreparations: number
   readonly maxPreparedBytes: number
   readonly maxPreparedFiles: number
 }
+
+/** Per-package collection policy. The review controller owns the preparation count. */
+export type DependencyPreparationOutputLimits = Pick<
+  ProjectDependencyLimits,
+  'maxPreparedBytes' | 'maxPreparedFiles'
+>
 
 export interface JigLimitsInput {
   readonly dependencies?: Partial<ProjectDependencyLimits>
@@ -19,25 +26,29 @@ export interface JigLimits {
 }
 
 export const DEFAULT_PROJECT_DEPENDENCY_LIMITS: ProjectDependencyLimits = Object.freeze({
+  maxPreparations: 16,
   maxPreparedBytes: 32 * 1024 * 1024,
   maxPreparedFiles: 4096,
 })
 
-/** Preparation choices remain bounded by Package/0 and retained archive capacity. */
+/** Review capacity stays finite; per-package output also fits retained archive capacity. */
 export const DEPENDENCY_PREPARATION_LIMIT_POLICY = Object.freeze({
   default: DEFAULT_PROJECT_DEPENDENCY_LIMITS,
   minimum: 1,
   maximum: Object.freeze({
+    maxPreparations: 256,
     maxPreparedBytes: 128 * 1024 * 1024,
     maxPreparedFiles: PACKAGE_1_LIMITS.files,
   }),
   environment: Object.freeze({
+    maxPreparations: 'JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS',
     maxPreparedBytes: 'JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES',
     maxPreparedFiles: 'JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES',
   }),
 })
 
-const fields = ['maxPreparedBytes', 'maxPreparedFiles'] as const
+const outputFields = ['maxPreparedBytes', 'maxPreparedFiles'] as const
+const fields = ['maxPreparations', ...outputFields] as const
 
 /** Preserve explicit project choices without copying defaults into authored policy. */
 export function normalizeJigLimits(value: unknown): JigLimits {
@@ -62,10 +73,25 @@ export function normalizeJigLimits(value: unknown): JigLimits {
   return Object.freeze({ dependencies: Object.freeze(output) })
 }
 
-/** Validate complete limits crossing a private preparation/worker boundary. */
+/** Validate the complete review policy without passing the count into workers. */
 export function normalizeProjectDependencyLimits(value: unknown): ProjectDependencyLimits {
   const input = snapshotJsonObject(value, 'dependency preparation limits')
   closed(input, fields, 'dependency preparation limits')
+  return Object.freeze({
+    maxPreparations: requireDependencyPreparationLimit(input.maxPreparations, 'maxPreparations'),
+    ...normalizeDependencyPreparationOutputLimits({
+      maxPreparedBytes: input.maxPreparedBytes,
+      maxPreparedFiles: input.maxPreparedFiles,
+    }),
+  })
+}
+
+/** Validate only the output pair crossing a private preparation/worker boundary. */
+export function normalizeDependencyPreparationOutputLimits(
+  value: unknown,
+): DependencyPreparationOutputLimits {
+  const input = snapshotJsonObject(value, 'dependency preparation output limits')
+  closed(input, outputFields, 'dependency preparation output limits')
   const limits = Object.freeze({
     maxPreparedBytes: requireDependencyPreparationLimit(input.maxPreparedBytes, 'maxPreparedBytes'),
     maxPreparedFiles: requireDependencyPreparationLimit(input.maxPreparedFiles, 'maxPreparedFiles'),

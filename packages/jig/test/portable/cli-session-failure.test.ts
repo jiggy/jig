@@ -8,6 +8,7 @@ import {
 } from '../../src/administration/project.js'
 import { RootAdministrationError, type RootRunTerminal } from '../../src/administration/root.js'
 import { main, privateCliRunFailure, renderFailure } from '../../src/cli.js'
+import { privateCliHumanText } from '../../src/cli-presentation.js'
 import { CheckError } from '../../src/diagnostics.js'
 import { projectError } from '../../src/internal/project-session-controller.js'
 import type { PrivateAgentReadinessReport } from '../../src/internal/review-agent-setup.js'
@@ -16,6 +17,110 @@ const operationSecret =
   'SYNTHETIC_OPERATION_FAILURE /private/input Authorization=Bearer SYNTHETIC_TICKET'
 const closeSecret = 'SYNTHETIC_CLOSE_FAILURE /private/host SYNTHETIC_RECOVERY_TICKET'
 const recovery = 'https://jig.md/reference/troubleshooting#unconfirmed-cleanup'
+
+for (const [origin, source] of [
+  ['default', 'built-in default'],
+  ['project', 'jig.ts limits.dependencies.maxPreparations'],
+  ['environment', 'JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS'],
+] as const) {
+  test(`preparation count refusal explains the ${origin} allowance without private details`, () => {
+    const projected = projectError(
+      new CheckError(
+        'invalid',
+        'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
+        operationSecret,
+        'flows/item-16',
+        undefined,
+        undefined,
+        undefined,
+        { dimension: 'preparations', observed: 17, maximum: 16, origin },
+      ),
+      'plan',
+    )
+    const output: string[] = []
+    expect(renderFailure(projected, { writeError: (text) => output.push(text) })).toBe(1)
+    expect(output).toHaveLength(1)
+    const text = output[0]!
+    for (const expected of [
+      'Review could not finish',
+      'Location: "flows/item-16"',
+      'Observed: at least 17 distinct dependency preparations',
+      'Effective limit: 16',
+      `Limit source: ${source}`,
+      'limits.dependencies.maxPreparations in jig.ts',
+      'JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS',
+      'integer between 1 and 256',
+      'Exported environment values take precedence',
+      'Aggregate byte and time limits still apply',
+      'no additional network or Run authority',
+      'No Flow was started by this review',
+      'Rerun your review command after adjusting the allowance',
+      'https://jig.md/reference/limits',
+      'Diagnostic code: PACKAGE_BUN_PROJECT_COUNT_LIMIT',
+      'Category: INVALID_CANDIDATE',
+    ]) {
+      expect(text).toContain(expected)
+    }
+    expect(text).not.toContain('maxPreparedFiles')
+    expect(text).not.toContain('17 Flows')
+    expect(text).not.toContain('SYNTHETIC_')
+    expect(text).not.toContain('/private/')
+    expect(text).not.toContain('\u001b')
+    // This pure presentation check does not qualify preparation or host cleanup.
+    for (const theme of ['one-dark', 'one-light', 'macchiato']) {
+      const environment = { JIG_THEME: theme, TERM: 'xterm-256color' }
+      for (const width of [40, 80]) {
+        const plain = privateCliHumanText(text, false, width, environment)
+        const styled = privateCliHumanText(text, true, width, environment)
+        // biome-ignore lint/suspicious/noControlCharactersInRegex: Strip actual SGR sequences from terminal acceptance output.
+        expect(styled.replace(/\u001b\[[0-9;]*m/g, '')).toBe(plain)
+        expect(styled).toContain('\u001b[1;31m')
+        expect(plain.replace(/\s+/g, ' ')).toContain(
+          'Observed: at least 17 distinct dependency preparations',
+        )
+        expect(plain).toContain('JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS')
+      }
+    }
+  })
+}
+
+test('preparation count refusal without numeric evidence does not invent observed values', () => {
+  const projected = projectError(
+    new CheckError('invalid', 'PACKAGE_BUN_PROJECT_COUNT_LIMIT', operationSecret, 'flows/overflow'),
+    'plan',
+  )
+  const output: string[] = []
+  expect(renderFailure(projected, { writeError: (text) => output.push(text) })).toBe(1)
+  expect(output).toHaveLength(1)
+  expect(output[0]).toContain('limits.dependencies.maxPreparations')
+  expect(output[0]).toContain('integer between 1 and 256')
+  expect(output[0]).not.toContain('Observed:')
+  expect(output[0]).not.toContain('Effective limit:')
+  expect(output[0]).not.toContain('Limit source:')
+  expect(output[0]).not.toContain('SYNTHETIC_')
+})
+
+test('evaluation output refusal retains its fixed profile and omits count overrides', () => {
+  const failure = new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+    code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+    path: 'recipes/evaluate',
+    preparationLimit: {
+      dimension: 'files',
+      observed: 8193,
+      maximum: 8192,
+      profile: 'evaluation',
+    },
+  })
+  const output: string[] = []
+  expect(renderFailure(failure, { writeError: (text) => output.push(text) })).toBe(1)
+  expect(output).toHaveLength(1)
+  expect(output[0]).toContain('Observed: at least 8193 file/alias records')
+  expect(output[0]).toContain('Effective limit: 8192')
+  expect(output[0]).toContain('Limit source: fixed evaluation profile')
+  expect(output[0]).toContain('Production dependency overrides do not apply to evaluation')
+  expect(output[0]).not.toContain('maxPreparations')
+  expect(output[0]).not.toContain('JIG_LIMITS_DEPENDENCIES')
+})
 
 for (const { code, pointer, guidance } of [
   {

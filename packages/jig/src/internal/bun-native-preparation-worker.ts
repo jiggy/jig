@@ -2,8 +2,8 @@ import { spawn } from 'node:child_process'
 import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import {
-  normalizeProjectDependencyLimits,
-  type ProjectDependencyLimits,
+  type DependencyPreparationOutputLimits,
+  normalizeDependencyPreparationOutputLimits,
 } from '../project/limits.js'
 import { privateBunNativeInputs } from './bun-native-inputs.js'
 import {
@@ -43,7 +43,7 @@ const CHILD_ENVIRONMENT: Readonly<Record<string, string>> = Object.freeze(
 
 let workspace: Workspace | undefined
 let mode: PrivateBunPreparationMode = 'production'
-let dependencyLimits: ProjectDependencyLimits | undefined
+let dependencyLimits: DependencyPreparationOutputLimits | undefined
 
 let outputQueue = Promise.resolve()
 const allowResolutionNetwork =
@@ -401,18 +401,18 @@ function requireSource(value: unknown): {
   readonly files: readonly SourceFile[]
   readonly workspace?: Workspace
   readonly mode: PrivateBunPreparationMode
-  readonly dependencyLimits?: ProjectDependencyLimits
+  readonly dependencyLimits?: DependencyPreparationOutputLimits
 } {
   const root = ordinaryRecord(value)
   if (root?.mode !== undefined && root.mode !== 'evaluation')
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'unsupported preparation mode')
   const selectedMode = root?.mode === 'evaluation' ? 'evaluation' : 'production'
-  let selectedLimits: ProjectDependencyLimits | undefined
+  let selectedLimits: DependencyPreparationOutputLimits | undefined
   try {
     selectedLimits =
       root?.dependencyLimits === undefined
         ? undefined
-        : normalizeProjectDependencyLimits(root.dependencyLimits)
+        : normalizeDependencyPreparationOutputLimits(root.dependencyLimits)
     privateBunPreparationLimits(selectedMode, selectedLimits)
   } catch {
     throw new WorkerFailure('PACKAGE_BUN_PROTOCOL', 'invalid preparation limits')
