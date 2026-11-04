@@ -214,29 +214,20 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Collection preserves the qualification API reserve and refuses incomplete windows.
   Manual dispatch permits one, three or seven complete days after budget refusal.
   Reports establish no qualification, flake rate or automatic scheduling changes.
-- `workflows/sync-skill-references.yml` processes same-repository PR documents under `pull_request` with read permission and no secrets.
-  It runs tooling from the PR base and treats PR files as inert input.
-  New or changed generation tooling requires local synchronization until reviewed.
-  Forks use ordinary read-only CI checks.
+- `workflows/notify-skills.yml` notifies `jiggy/skills` after changes to Jig documentation or license files on `main`.
+  It calls the central reusable workflow at an exact commit.
+  Manual runs also require this repository's `main` branch.
+  It checks out no source and grants no `GITHUB_TOKEN` permissions.
 
-  `workflows/write-skill-references.yml` runs from the default branch after a successful producer completes.
-  It verifies the producer's repository, workflow, event, PR, source, and attempt against current GitHub metadata.
-  It downloads one immutable artifact and verifies its digest before validating the generated data.
-  Closed, retargeted, stale, fork, and default-branch sources cannot receive writes.
-  The writer never checks out PR code or installs dependencies.
-  Its cancellation group includes the producer workflow and repository identities, so foreign producers cannot cancel eligible writes.
+  Optional `SKILLS_DISPATCH_TOKEN` enables immediate notifications.
+  Use a fine-grained token scoped to `jiggy/skills` with Contents: write.
+  Store it as an Actions repository secret, or an organization secret available to this repository.
+  The central workflow reports a missing token explicitly.
+  Its hourly reconciliation rebuilds from current source even when notifications are unavailable.
 
-  It creates a repository-scoped App token with only contents write permission after validation.
-  It commits only regular files under generated reference directories, using an exact expected-head lease.
-  Reuse `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` from release automation.
-  App commits trigger genuine PR checks. Never substitute manually dispatched qualification or a built-in-token push.
-
-  Current references require no App configuration.
-  Missing App configuration leaves stale branches unchanged and explains `just sync-skills`, commit, and push in the workflow summary.
-  Rerun the generation workflow after configuration changes. Every producer attempt requires freshly generated data.
-  Automatic writes begin after the trusted writer reaches the default branch.
-- Ordinary CI checks committed reference freshness through `just check-skills` in the required Quick job.
-  This check never writes generated content.
+  [jiggy/skills](https://github.com/jiggy/skills) owns skill instructions, reference selection, generation, validation, and committed output.
+  Jig owns the canonical public documents and license notices consumed by that builder.
+  Changes to central tooling and authored skills belong in that repository.
 - The CI site job checks documentation metadata, local links, source anchors,
   changed technical paragraphs, and the rendered Jig site before recording success.
   PR style checks use the base SHA. Push checks use the previous SHA.

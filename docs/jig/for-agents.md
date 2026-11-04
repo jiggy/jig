@@ -15,8 +15,8 @@ For a new Jig project, install both authoring skills in your development Agent.
 Run these commands from the project directory:
 
 ```sh
-npx skills add jiggy/flow --skill flow
-npx skills add jiggy/jig --skill jig
+npx skills add jiggy/skills --skill flow
+npx skills add jiggy/skills --skill jig
 ```
 
 | Skill | Use it for |
@@ -27,6 +27,7 @@ npx skills add jiggy/jig --skill jig
 Use both when building an application from reusable Flows.
 Use Jig's skill alone for host tasks that do not change methods.
 
+The [Jiggy skills repository](https://github.com/jiggy/skills) maintains both skills.
 Each skill bundles its references inside its installable directory.
 Load the relevant guidance when the task needs it.
 Your project's instructions still own its domain, acceptance criteria, and delegated authority.

@@ -52,19 +52,6 @@ preparation never becomes a consumer requirement.
   names the tested version/source and last recorded passing published version.
   Missing, stale or foreign proof fails. Health never grants release readiness.
 
-- `skill-reference-changes.mjs` transfers generated references as inert data between read-only generation and a fresh trusted writer.
-  Bind every transfer to its exact PR source and originating workflow run and attempt.
-  Explicit source identity remains distinct from the writer's own run identity.
-  Admit only regular files under `skills/*/reference/`, preserving original blob identities and rejecting linked ancestors.
-  Build the replacement Git tree with a temporary index, without checking out or executing PR code.
-
-  The workflow commits that tree as a direct child and uses an exact branch lease.
-  Concurrent updates and resets must remain untouched.
-- `skill-reference-run.mjs` selects a successful same-repository PR producer from current GitHub metadata.
-  It verifies the workflow path, source, attempt, and one matching open PR into the default branch.
-  It reuses candidate-transfer helpers for exact artifact selection, digest verification, and safe inert extraction.
-  Producer or PR changes during transfer prevent writing.
-  Missing artifacts indicate no prepared changes and acquire no write authority.
 - `release-base.mjs` selects the required release check's comparison commit.
   It verifies the workflow source and both parents of a PR merge.
   The second parent must equal the event head. The event base must be an
@@ -458,16 +445,6 @@ They consume frozen package exports with tracked test helpers and installed
 - Review the matching host-conformance workflow in the same change.
 
 ## Verification
-
-- `node --test scripts/ci/skill-reference-*.test.mjs` checks generation, producer selection, and generated-data transfer.
-  Real Git repositories exercise additions, removals, unchanged authored files, malformed transfers, and concurrent branch changes.
-  Workflow checks cover fork refusal, credential separation, exact artifact selection, and missing App or base-tooling configuration.
-  Metadata checks reject stale attempts, wrong workflows, foreign sources, closed PRs, retargeting, and expired or ambiguous artifacts.
-- `node --test scripts/ci/sync-skills.test.mjs` exercises deterministic reference generation, drift detection, and standalone links.
-  It verifies preserved examples, machine bytes, licenses, private-source refusals, and symbolic-link refusals.
-  Real Git branches verify that independent documentation edits merge without generated checksum conflicts.
-  Equivalent manifest formatting and source order must leave generated references unchanged.
-  Trusted-tooling checks process a separate source checkout without executing its scripts.
 
 - `node --test scripts/ci/ci-performance.test.mjs` checks actual snapshot CLI
   execution, independent timing intervals, partial retries, copied checks, failure classifications
