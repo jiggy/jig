@@ -1297,7 +1297,6 @@ function isCandidateDiagnosticCode(code: string): boolean {
       'AUTHORING_CONFLICT',
       'PROJECT_JIG_VERSION_MISMATCH',
       'PROJECT_JIG_REQUIREMENT_INVALID',
-      'PROJECT_CHILD_ROOT_ONLY',
       'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
       'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
     ].includes(code) ||

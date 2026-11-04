@@ -1,3 +1,4 @@
+import type { AttemptCheckpointEntry, AttemptResults, CheckpointScope } from '../attempt-contract.js'
 import { canonicalJson, decodeJson1, type JsonValue } from '../json.js'
 import { type PrivateCapturedOutput, readPrivateCapturedOutput } from './captured-output.js'
 import { privateFilePath, sha256 } from './file-input.js'
@@ -10,6 +11,8 @@ import {
   type PrivateAttemptRow,
 } from './prepared-attempt-store.js'
 import {
+  isPrivateCheckpointScope,
+  parseRunCheckpointIdentity,
   parseRunCheckpointInput,
   type RetainedRunCheckpoint,
   RUN_CHECKPOINT_LIMITS,
@@ -102,6 +105,7 @@ export function retainPrivateAttemptCheckpoint(
   value: unknown,
   artifacts: Readonly<Record<string, PrivateCapturedOutput>> = {},
 ): RetainedRunCheckpoint {
+  identity = parseRunCheckpointIdentity(identity)
   const row = attemptQuery<PrivateAttemptRow>(
     db,
     'SELECT * FROM prepared_attempts WHERE run_id = ?1',
@@ -112,6 +116,16 @@ export function retainPrivateAttemptCheckpoint(
   if (attemptQuery(db, 'SELECT run_id FROM root_terminals WHERE run_id = ?1', [runId]).length !== 0)
     attemptRefuse('UNAVAILABLE', 'Checkpoint Run is terminal.')
   const input = parseRunCheckpointInput(value)
+  const latest = readPrivateAttemptCheckpoint(db, runId, identity.scope)
+  if (
+    !latest &&
+    attemptQuery<{ count: bigint }>(
+      db,
+      "SELECT count(*) AS count FROM attempt_blobs WHERE nonce = ?1 AND purpose = 'checkpoint-record'",
+      [row.nonce],
+    )[0]!.count >= BigInt(RUN_CHECKPOINT_LIMITS.scopes)
+  )
+    attemptRefuse('RESOURCE_EXHAUSTED', 'Attempt checkpoint scope capacity is exhausted.')
   const names = Object.keys(input.artifacts ?? {}).sort()
   if (names.join('\0') !== Object.keys(artifacts).sort().join('\0'))
     throw new TypeError('checkpoint associations require authentic held snapshots')
@@ -151,17 +165,17 @@ export function retainPrivateAttemptCheckpoint(
   }
   if (directories.size + files.length > 256)
     attemptRefuse('RESOURCE_EXHAUSTED', 'Checkpoint exceeds its tree entry capacity.')
-  const finalBytes = Number(
+  const otherBytes = Number(
     attemptQuery<{ bytes: bigint }>(
       db,
-      "SELECT coalesce(sum(length(content)), 0) AS bytes FROM attempt_blobs WHERE nonce = ?1 AND purpose = 'artifact'",
-      [row.nonce],
+      "SELECT coalesce(sum(length(content)), 0) AS bytes FROM attempt_blobs WHERE nonce = ?1 AND (purpose = 'artifact' OR (purpose = 'checkpoint' AND name <> ?2))",
+      [row.nonce, identity.scope],
     )[0]!.bytes,
   )
   if (
     files.length > RUN_CHECKPOINT_LIMITS.files ||
     files.reduce((sum, file) => sum + file.contents.length, 0) >
-      Math.min(16 * 1024 ** 2, Number(row.artifact_limit) - finalBytes)
+      Math.min(16 * 1024 ** 2, Number(row.artifact_limit) - otherBytes)
   )
     attemptRefuse('RESOURCE_EXHAUSTED', 'Checkpoint exceeds aggregate artifact capacity.')
   const record = {
@@ -175,7 +189,6 @@ export function retainPrivateAttemptCheckpoint(
     })),
   }
   const digest = sha256(canonicalJson(record as unknown as JsonValue))
-  const latest = readPrivateAttemptCheckpoint(db, runId)
   if (
     latest &&
     !Buffer.from(canonicalJson(latest.identity as unknown as JsonValue)).equals(
@@ -201,8 +214,8 @@ export function retainPrivateAttemptCheckpoint(
   const previous = Number(
     attemptQuery<{ bytes: bigint }>(
       db,
-      "SELECT coalesce(sum(length(content)), 0) AS bytes FROM attempt_blobs WHERE nonce = ?1 AND purpose = 'checkpoint'",
-      [row.nonce],
+      "SELECT coalesce(sum(length(content)), 0) AS bytes FROM attempt_blobs WHERE nonce = ?1 AND purpose = 'checkpoint' AND name = ?2",
+      [row.nonce, identity.scope],
     )[0]!.bytes,
   )
   const next = files.reduce((sum, file) => sum + file.contents.length, 0)
@@ -212,13 +225,13 @@ export function retainPrivateAttemptCheckpoint(
   // Transaction rollback preserves the complete previous aggregate on any failure.
   attemptWrite(
     db,
-    "DELETE FROM attempt_blobs WHERE nonce = ?1 AND purpose IN ('checkpoint', 'checkpoint-record')",
-    [row.nonce],
+    "DELETE FROM attempt_blobs WHERE nonce = ?1 AND purpose IN ('checkpoint', 'checkpoint-record') AND name = ?2",
+    [row.nonce, identity.scope],
   )
   attemptWrite(db, 'INSERT INTO attempt_blobs VALUES (?1, ?2, ?3, ?4, ?5, ?6)', [
     row.nonce,
     'checkpoint-record',
-    '',
+    identity.scope,
     '',
     sha256(bytes),
     bytes,
@@ -227,7 +240,7 @@ export function retainPrivateAttemptCheckpoint(
     attemptWrite(db, 'INSERT INTO attempt_blobs VALUES (?1, ?2, ?3, ?4, ?5, ?6)', [
       row.nonce,
       'checkpoint',
-      '',
+      identity.scope,
       file.path,
       file.digest,
       file.contents,
@@ -239,12 +252,14 @@ export function retainPrivateAttemptCheckpoint(
 export function readPrivateAttemptCheckpoint(
   db: AttemptDatabase,
   runId: string,
+  scope: CheckpointScope = 'root',
 ): RetainedRunCheckpoint | undefined {
+  requireCheckpointScope(scope)
   const row = attemptQuery<{ content: Uint8Array; digest: string }>(
     db,
     `SELECT b.content, b.digest FROM attempt_blobs b JOIN prepared_attempts p ON p.nonce = b.nonce
-     WHERE p.run_id = ?1 AND p.retired = 0 AND b.purpose = 'checkpoint-record'`,
-    [runId],
+     WHERE p.run_id = ?1 AND p.retired = 0 AND b.purpose = 'checkpoint-record' AND b.name = ?2 AND b.path = ''`,
+    [runId, scope],
   )[0]
   if (!row) return undefined
   if (sha256(row.content) !== row.digest)
@@ -256,51 +271,106 @@ export function readPrivateAttemptCheckpoint(
     files: record.files,
     ...(record.artifacts === undefined ? {} : { artifacts: record.artifacts }),
   })
-  if (record.identity.runId !== runId)
-    return attemptRefuse('UNAVAILABLE', 'Protected checkpoint Run differs.')
+  const identity = parseRunCheckpointIdentity(record.identity)
+  if (identity.runId !== runId || identity.scope !== scope)
+    return attemptRefuse('UNAVAILABLE', 'Protected checkpoint invocation differs.')
   const { digest, ...content } = record
   if (sha256(canonicalJson(content as unknown as JsonValue)) !== digest)
     return attemptRefuse('UNAVAILABLE', 'Protected checkpoint digest differs.')
   return record
 }
 
+/** Bounded record discovery. Byte availability is checked for the selected scope separately. */
+export function listPrivateAttemptCheckpointScopes(
+  db: AttemptDatabase,
+  runId: string,
+): AttemptCheckpointEntry[] {
+  const rows = attemptQuery<{ name: string }>(
+    db,
+    `SELECT b.name FROM attempt_blobs b JOIN prepared_attempts p ON p.nonce = b.nonce
+     WHERE p.run_id = ?1 AND p.retired = 0 AND b.purpose = 'checkpoint-record' AND b.path = ''
+     ORDER BY b.name LIMIT ?2`,
+    [runId, RUN_CHECKPOINT_LIMITS.scopes + 1],
+  )
+  if (rows.length > RUN_CHECKPOINT_LIMITS.scopes)
+    return attemptRefuse('UNAVAILABLE', 'Protected checkpoint scope count is inconsistent.')
+  return rows.map(({ name }) => {
+    requireCheckpointScope(name)
+    const record = readPrivateAttemptCheckpoint(db, runId, name)
+    if (!record) return attemptRefuse('UNAVAILABLE', 'Protected checkpoint scope is unavailable.')
+    return { scope: name, sequence: record.sequence, digest: record.digest }
+  })
+}
+
+function requireCheckpointScope(value: unknown): asserts value is CheckpointScope {
+  if (!isPrivateCheckpointScope(value)) throw new TypeError('invalid checkpoint scope')
+}
+
+/** Discovery failure cannot erase independently authenticated terminal or selected-scope evidence. */
+export function readPrivateAttemptCheckpointInventory(
+  db: AttemptDatabase,
+  runId: string | undefined,
+  retention: 'available' | 'expired' | 'unavailable',
+): Pick<AttemptResults['result'], 'checkpointInventory' | 'checkpoints'> {
+  if (retention === 'expired') return { checkpointInventory: 'expired', checkpoints: [] }
+  if (runId === undefined) return { checkpointInventory: 'unavailable', checkpoints: [] }
+  try {
+    return {
+      checkpointInventory: 'available',
+      checkpoints: listPrivateAttemptCheckpointScopes(db, runId),
+    }
+  } catch {
+    return { checkpointInventory: 'unavailable', checkpoints: [] }
+  }
+}
+
 /** Verified immutable byte copies; caller must hold an export pin across publication. */
-export function readPrivateAttemptCheckpointFiles(db: AttemptDatabase, runId: string) {
-  const record = readPrivateAttemptCheckpoint(db, runId)
+export function readPrivateAttemptCheckpointFiles(
+  db: AttemptDatabase,
+  runId: string,
+  scope: CheckpointScope = 'root',
+) {
+  const record = readPrivateAttemptCheckpoint(db, runId, scope)
   if (!record) return undefined
   const rows = attemptQuery<{ path: string; digest: string; content: Uint8Array }>(
     db,
     `SELECT b.path, b.digest, b.content FROM attempt_blobs b JOIN prepared_attempts p ON p.nonce = b.nonce
-     WHERE p.run_id = ?1 AND b.purpose = 'checkpoint' ORDER BY b.path`,
-    [runId],
+     WHERE p.run_id = ?1 AND b.purpose = 'checkpoint' AND b.name = ?2 ORDER BY b.path`,
+    [runId, scope],
   )
   if (rows.length !== record.manifest?.length)
     return attemptRefuse('UNAVAILABLE', 'Protected checkpoint files are unavailable.')
-  const files = record.manifest.map((file) => {
-    const row = rows.find((row) => row.path === file.path)
-    if (
-      !row ||
-      row.digest !== file.digest ||
-      row.content.length !== file.bytes ||
-      sha256(row.content) !== file.digest
-    )
-      return attemptRefuse('UNAVAILABLE', 'Protected checkpoint bytes are inconsistent.')
-    return {
-      path: privateFilePath(file.path),
-      bytes: Buffer.from(row.content),
-      digest: file.digest,
+  const files: { path: string; bytes: Buffer; digest: string }[] = []
+  try {
+    for (const file of record.manifest) {
+      const row = rows.find((row) => row.path === file.path)
+      if (
+        !row ||
+        row.digest !== file.digest ||
+        row.content.length !== file.bytes ||
+        sha256(row.content) !== file.digest
+      )
+        attemptRefuse('UNAVAILABLE', 'Protected checkpoint bytes are inconsistent.')
+      files.push({
+        path: privateFilePath(file.path),
+        bytes: Buffer.from(row.content),
+        digest: file.digest,
+      })
     }
-  })
-  const directories = new Set(
-    Object.values(record.associations ?? {}).flatMap(
-      (value) => (value as { directories: string[] }).directories,
-    ),
-  )
-  for (const name of Object.keys(record.associations ?? {})) directories.add(`artifacts/${name}`)
-  for (const path of [...files.map((file) => file.path), ...directories]) {
-    const parts = path.split('/')
-    for (let count = 1; count < parts.length; count++)
-      directories.add(parts.slice(0, count).join('/'))
+    const directories = new Set(
+      Object.values(record.associations ?? {}).flatMap(
+        (value) => (value as { directories: string[] }).directories,
+      ),
+    )
+    for (const name of Object.keys(record.associations ?? {})) directories.add(`artifacts/${name}`)
+    for (const path of [...files.map((file) => file.path), ...directories]) {
+      const parts = path.split('/')
+      for (let count = 1; count < parts.length; count++)
+        directories.add(parts.slice(0, count).join('/'))
+    }
+    return { record, files, directories: [...directories].sort() }
+  } catch (error) {
+    for (const file of files) file.bytes.fill(0)
+    throw error
   }
-  return { record, files, directories: [...directories].sort() }
 }

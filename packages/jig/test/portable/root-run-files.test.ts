@@ -61,7 +61,7 @@ test('successful checkpoint-only packets ignore undeclared native output and ret
     const checkpoint = {
       sequence: 16,
       digest: sha256(Buffer.from('packet descriptor')),
-      identity: { runId, method: null, input: null },
+      identity: { runId, scope: 'root' as const, method: null, input: null },
       evidence: { completed: true },
       files: { 'saved.txt': 'latest saved aggregate' },
     }

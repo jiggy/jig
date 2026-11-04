@@ -19,18 +19,6 @@ const recovery = 'https://jig.md/reference/troubleshooting#unconfirmed-cleanup'
 
 for (const { code, pointer, guidance } of [
   {
-    code: 'PROJECT_CHILD_ROOT_ONLY',
-    pointer: '/slots/child',
-    guidance: [
-      'Run Checkpoint',
-      'supports only for root Runs',
-      '@jigging/jig/client',
-      'Save the complete Prepared value before submission',
-      'confirmed cleanup',
-      'https://jig.md/spec/run-checkpoint',
-    ],
-  },
-  {
     code: 'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
     pointer: '/slots/child',
     guidance: ['child Binding without retained attachments', 'complete attachment map'],

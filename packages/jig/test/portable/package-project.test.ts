@@ -780,15 +780,26 @@ describe('private package-project linker', () => {
       new URL('../../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),
       'utf8',
     )
+    const childCheckpoint = await readFile(
+      new URL(
+        '../../../../docs/jig/spec/contracts/child-checkpoint/contract.json',
+        import.meta.url,
+      ),
+      'utf8',
+    )
     await withFlows(
       {
         'flows/progress': {
           ...run('progress'),
           'FLOW.meta.json': metadata({
             name: 'progress',
-            uses: { progress: { contract: './contracts/checkpoint.json' } },
+            uses: {
+              progress: { contract: './contracts/checkpoint.json' },
+              recover: { contract: './contracts/child-checkpoint.json' },
+            },
           }),
           'contracts/checkpoint.json': checkpoint,
+          'contracts/child-checkpoint.json': childCheckpoint,
         },
       },
       (flows) => {
@@ -796,11 +807,12 @@ describe('private package-project linker', () => {
         expect(linked.flows[0]!.directRun).toBeTrue()
         expect(buildPrivateActivationRequests(linked)[0]!.slots).toMatchObject({
           progress: { kind: 'native', native: 'run-checkpoint' },
+          recover: { kind: 'native', native: 'child-checkpoint' },
         })
       },
     )
   })
-  test('mapped child review rejects only the checkpoint declaration and preserves root eligibility', async () => {
+  test('mapped child review composes the checkpoint declaration and preserves root eligibility', async () => {
     const checkpoint = await readFile(
       new URL('../../../../docs/jig/spec/contracts/run-checkpoint/contract.json', import.meta.url),
       'utf8',
@@ -843,26 +855,18 @@ describe('private package-project linker', () => {
           expect(
             roots.flows.find((flow) => flow.provenance.projectPath === 'flows/child')!.directRun,
           ).toBeTrue()
-          if (phase === 'checkpoint') {
-            let thrown: unknown
-            try {
-              linkPackageProject({ flows, bindings })
-            } catch (error) {
-              thrown = error
-            }
-            expect(thrown).toMatchObject({
-              code: 'PROJECT_CHILD_ROOT_ONLY',
-              path: 'bindings/parent.ts',
-              pointer: '/slots/child',
-            })
-          } else {
-            const linked = linkPackageProject({ flows, bindings })
-            expect(linked.bindings[0]!.slots.child).toMatchObject({
-              kind: 'route',
-              target: { kind: 'flow', path: 'flows/child' },
-              attachments: { deliverables: { create: true } },
-            })
-          }
+          const linked = linkPackageProject({ flows, bindings })
+          expect(linked.bindings[0]!.slots.child).toMatchObject({
+            kind: 'route',
+            target: { kind: 'flow', path: 'flows/child' },
+            attachments: { deliverables: { create: true } },
+          })
+          if (phase === 'checkpoint')
+            expect(
+              buildPrivateActivationRequests(linked).find(
+                (request) => request.packagePath === 'flows/child',
+              )!.slots.checkpoint,
+            ).toMatchObject({ kind: 'native', native: 'run-checkpoint' })
         },
       )
     }

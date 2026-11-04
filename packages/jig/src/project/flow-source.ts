@@ -713,7 +713,7 @@ export function isDirectRunEligible(
     if (id === undefined || version === undefined) return false
     if (resolved?.[slot]?.kind === 'flow') continue
     const native = nativeInvocationKind({ id, version, digest: reference.contract.digest })
-    if (native !== 'run-checkpoint') return false
+    if (native !== 'run-checkpoint' && native !== 'child-checkpoint') return false
     seen.add(reference.contract.digest)
   }
   try {

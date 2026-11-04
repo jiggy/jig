@@ -2,7 +2,7 @@
 
 *Status: prerelease Jig native invocation contract.*
 
-Retain completed work without treating interruption as success. A root Flow
+Retain completed work without treating interruption as success. A Flow invocation
 saves a complete, bounded aggregate of evidence and deliverable bytes. Jig's
 protected attempt owner commits those bytes before acknowledging them.
 Later failure cannot turn unfinished scratch files into accepted progress.
@@ -17,7 +17,7 @@ into the Flow package and declare its local slot in `FLOW.meta.json`
 {"uses":{"progress":{"contract":"./contracts/run-checkpoint/contract.json"}}}
 ```
 
-The operator reviews this exact package and invokes it as a root Run.
+The operator reviews this exact package and its selected routes before execution.
 Checkpointing requires no writable attachment or output destination to save evidence, text, or already-held artifact views.
 `--out` chooses a packet destination independently of retained checkpoint ownership.
 The Flow selects neither a host path nor another Run.
@@ -42,31 +42,30 @@ version `0.1.0`, with canonical descriptor digest
 `sha256:5e9304b91930242a6c09d3ea96376dfa64950abb39a083ec26eb39cff799b0b2`.
 It uses ordinary Run/0 `flow/call`. FLOW does not require this Jig policy.
 
-## Compose from an application
+## Compose inside a Flow
 
-This profile is root-only. A child `run.call()` route cannot select a target that declares Run Checkpoint.
-Review reports `PROJECT_CHILD_ROOT_ONLY` and identifies the unsupported dependency.
-This restriction applies even when the child never calls its checkpoint slot.
+A reviewed child `run.call()` target can declare and use Run Checkpoint unchanged.
+Each invocation has its own sequence and latest aggregate under the original root attempt.
+Repeated calls and siblings do not replace each other's accepted work.
+Child failure does not erase an accepted checkpoint or make it a successful child result.
 
-An application can wrap the unchanged method through [`@jigging/jig/client`](execution-client.md#wrap-a-checkpoint-enabled-method).
-The client runs in the application process, outside contained Flows.
-The method remains a root target with its own accepted checkpoint, sequence, and artifact associations.
-Another Flow does not inherit that checkpoint authority.
+After the child settles, its immediate caller can use [Child Checkpoint](child-checkpoint.md) to read the latest accepted data.
+That successful native call supplies a new held artifact for the complete saved tree.
+The caller can inspect it, pass it through reviewed attachment routes, or save its own accepted aggregate.
+The caller's checkpoint remains independent of the child's checkpoint.
 
-1. Move the wrapper's control logic into the application process.
-   Remove the former child call, parent slot declaration, and route from the reviewed project.
-   Review the method's Flow or Binding as a root target.
-2. Persist the complete `Prepared` value before submission, using separate prepare/submit calls or `client.run(request, { persist })`.
-3. After interruption, read `result` using the original ticket.
-4. After confirmed cleanup, export an available checkpoint with `source: 'checkpoint'` to a new destination.
+A router Flow chooses whether the saved work is useful and whether another reviewed target should continue it.
+Jig does not interpret application verdicts, choose replacement methods, or replay an uncertain operation.
+Root cancellation still closes the complete execution tree and prevents further child work.
 
-The [complete application call](execution-client.md#a-complete-application-call) and [checkpoint export example](execution-client.md#export-an-accepted-checkpoint) show these operations.
-Retrieval and export preserve the original execution status without restarting the method.
-They do not resume program execution or authorize automatic retry.
+Applications can also use [`@jigging/jig/client`](execution-client.md) outside contained Flows.
+Persist the original prepared ticket before submission and use it for later retrieval or export.
+Those operations preserve the original execution status without restarting the method.
 
 ## Bounds and identity
 
-- Sequence starts at 1 and advances by one, up to 16 accepted saves.
+- Sequence starts at 1 for each invocation and advances by one, up to 16 accepted saves.
+  One root attempt retains at most 64 invocation scopes, including the root scope.
 - Each complete input is at most 2 MiB of canonical JSON/0. Its `files` map
   contains at most 64 UTF-8 files totaling 1 MiB. Relative paths follow Jig's
   file-delivery path rules. Traversal and file/directory collisions are invalid.
@@ -75,7 +74,7 @@ They do not resume program execution or authorize automatic retry.
 - Optional `artifacts` maps at most eight lower-case LocalNames (1–64 characters)
   to opaque public `Artifact.reference` strings. Only this explicit Jig native
   control contract interprets those identities. The host resolves them against
-  the current root participant's held rights, rejecting guessed, released, and
+  the saving invocation's held rights, rejecting guessed, released, and
   foreign references. No filesystem, launch, or onward delegation right is added.
 
   Associated trees appear beneath `artifacts/<LocalName>/`. Text files cannot use
@@ -83,10 +82,10 @@ They do not resume program execution or authorize automatic retry.
   and 16 MiB, within the attempt's shared retained `artifactBytes` allowance.
   Retained final artifacts, checkpoint bytes, and their outstanding export loans
   share that allowance. It is not an additional checkpoint pool.
-- One save may be in flight. It has separate control capacity from the two
+- One checkpoint operation may be in flight per invocation. It has separate control capacity from the two
   active worker branches, so occupied worker slots do not prevent saving.
   Application code serializes its own aggregate updates.
-- Jig adds the actual Run ID, admitted method/configuration identity, JSON
+- Jig adds the actual Run ID, authenticated invocation ancestry, admitted method/configuration identity, JSON
   input digest, and captured attachment identities. The receipt digest is
   SHA-256 of the canonical retained identity, input, associations, and complete
   byte manifest (excluding the digest field itself).
@@ -96,14 +95,15 @@ The application must associate a verdict with the exact candidate it checked.
 A new candidate cannot inherit an earlier candidate's acceptance.
 
 Ordinary operation-identity join/conflict rules apply. A cancelled request or
-lost reply may have been accepted already. Inspect the final checkpoint.
+lost reply may have been accepted already. Inspect the accepted checkpoint after settlement.
 Uncertain acknowledgement does not authorize automatic replay.
 
 ## Delivery and interruption
 
-The single output packet includes `checkpoint`: the retained record
-with its digest and identity, or `null` when this native invocation was bound but no
-save was accepted. On normal success, `files/` contains the accepted final
+The single output packet includes `checkpoint`: the root scope's retained record with its digest and identity.
+The field is `null` when this native invocation was bound but no save was accepted.
+Child checkpoints never silently replace this root field or its fallback files.
+On normal success, `files/` contains the accepted final
 native output and selected forwarded artifacts. The checkpoint remains
 separately identified in `result.json`.
 
@@ -144,6 +144,20 @@ erase an accepted record. Ticket result retrieval and explicit checkpoint export
 read that original attempt without dispatching or replaying it. Missing or corrupt
 bytes report checkpoint unavailability separately and never rewrite a known
 execution terminal.
+
+Application ticket results include a bounded `checkpoints` inventory of retained scopes, sequences, and digests.
+The separate `checkpointInventory` status is `available`, `expired`, or `unavailable`.
+It describes metadata discovery, not retained file availability.
+
+An unavailable inventory leaves `checkpoints` empty without discarding a known execution result or selected checkpoint detail.
+An empty unavailable inventory does not prove that no save was accepted.
+
+The optional `checkpointScope` selects checkpoint detail. Omission selects `root`.
+Explicit checkpoint export accepts the same selector only with `source: 'checkpoint'`.
+The export receipt identifies the selected scope.
+
+All child records share the original attempt's lifetime, quota, cancellation, and cleanup requirements.
+Parent success does not erase them, and reading or exporting them does not extend retention.
 
 Native fencing and cleanup remain required before fallback
 publication. Retention does not promise hardware-failure durability, arbitrary

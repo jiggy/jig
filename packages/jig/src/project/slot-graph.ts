@@ -8,8 +8,6 @@ interface Node {
   readonly packagePath: string
   readonly declarationPath?: string
   readonly slots: Readonly<Record<string, ProjectSlotTarget>>
-  /** Derived from the exact selected interface, never persisted as authority. */
-  readonly rootOnly?: boolean
 }
 
 /** Validate once per target and return longest descendant paths (edge counts). */
@@ -24,23 +22,12 @@ export function validateChildGraph(
   ])
   const depths = new Map<string, number>()
   let work = 0
-  const visit = (
-    id: string,
-    path: readonly string[],
-    incoming?: { readonly path: string; readonly pointer: string },
-  ): number => {
+  const visit = (id: string, path: readonly string[]): number => {
     consume?.(1)
     if (++work > 1_000_000) invalid('PROJECT_PACKAGE_WORK_LIMIT', 'Flow graph work limit exceeded')
     const binding = nodes.get(id)
     if (binding === undefined)
       invalid('PROJECT_BINDING_SLOT_MISSING', 'Flow graph selects an unknown target')
-    if (incoming !== undefined && binding.rootOnly)
-      invalid(
-        'PROJECT_CHILD_ROOT_ONLY',
-        'Run Checkpoint requires a root invocation. Invoke this target as a root through the application client to retain its checkpoints.',
-        incoming.path,
-        incoming.pointer,
-      )
     if (path.includes(id))
       invalid(
         'PROJECT_BINDING_SLOT_RECURSIVE',
@@ -60,7 +47,7 @@ export function validateChildGraph(
       return known
     }
     let depth = 0
-    for (const [slot, selected] of Object.entries(binding.slots)) {
+    for (const selected of Object.values(binding.slots)) {
       if (selected.kind === 'grant') continue
       const target = selected.kind === 'route' ? selected.target : selected
       if (path.length >= MAX_CHILD_FLOW_LEVELS)
@@ -71,14 +58,7 @@ export function validateChildGraph(
           '/slots',
         )
       const key = target.kind === 'binding' ? `binding:${target.id}` : `flow:${target.path}`
-      depth = Math.max(
-        depth,
-        1 +
-          visit(key, [...path, id], {
-            path: binding.declarationPath ?? binding.packagePath,
-            pointer: `/slots/${slot.replaceAll('~', '~0').replaceAll('/', '~1')}`,
-          }),
-      )
+      depth = Math.max(depth, 1 + visit(key, [...path, id]))
     }
     depths.set(id, depth)
     return depth

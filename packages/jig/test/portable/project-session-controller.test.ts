@@ -864,7 +864,6 @@ describe('private finite project session', () => {
   })
   test('projects child composition refusals with their caller slot and no private message', () => {
     for (const code of [
-      'PROJECT_CHILD_ROOT_ONLY',
       'PROJECT_CHILD_BOUND_ATTACHMENTS_UNSUPPORTED',
       'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
     ]) {
@@ -889,7 +888,7 @@ describe('private finite project session', () => {
     ).toEqual({ code: 'INTERNAL', message: 'plan failed' })
     expect(
       projectError(
-        new CheckError('invalid', 'PROJECT_CHILD_ROOT_ONLY', 'private detail', '.jig/private'),
+        new CheckError('invalid', 'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID', 'private detail', '.jig/private'),
         'plan',
       ).toJSON(),
     ).toEqual({ code: 'INVALID_CANDIDATE', message: 'project candidate is invalid' })

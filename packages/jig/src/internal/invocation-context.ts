@@ -11,6 +11,7 @@ import {
   type PrivateReacquiredRootExecutionWork,
   privateAttemptRunDeadline,
 } from './activation-admission-store.js'
+import { privateDomainDigest } from './identity.js'
 import {
   normalizePrivateBootDeadline,
   type PrivateBootDeadline,
@@ -78,6 +79,35 @@ export interface PrivateParentFlow {
   readonly target: RunTargetIdentity
   readonly requestDigest: string
   readonly parent: PrivateParentFlow | null
+}
+
+/** Ordered host-owned ancestry. A local wire ID alone never identifies a checkpoint scope. */
+export function privateInvocationOperationPath(
+  parentFlow: PrivateParentFlow | undefined,
+): readonly string[] {
+  let parent =
+    parentFlow === undefined
+      ? null
+      : normalizeParentFlow(parentFlow, parentFlow.operationId)
+  const path: string[] = []
+  while (parent !== null) {
+    path.push(parent.operationId)
+    parent = parent.parent
+  }
+  return Object.freeze(path.reverse())
+}
+
+/** Keep the caller's wire identifier separate from its protected child owner identity. */
+export function privateChildOperationId(
+  parentFlow: PrivateParentFlow | undefined,
+  operationId: string,
+): string {
+  return parentFlow === undefined
+    ? operationId
+    : `f-${privateDomainDigest('JIG-Private-Nested-Flow/1', {
+        parent: parentFlow.operationId,
+        operation: operationId,
+      }).slice(7)}`
 }
 
 export function requireParentTarget(input: PrivateInvocationContext) {

@@ -348,14 +348,20 @@ function logicalLaunchDigest(
       inputBytes: PRIVATE_CAPTURE_LIMITS.input,
       inputFiles: PRIVATE_FILE_LIMITS.files,
       outputBytes: PRIVATE_CAPTURE_LIMITS.output,
-      rootOnly: true,
+      invocationScoped: true,
     },
     slots: request.slots,
     ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'project-command')
       ? { commandLimits: PROJECT_COMMAND_LIMITS }
       : {}),
-    ...(nativeSlotRoutes(request.slots).some((route) => route.native === 'run-checkpoint')
-      ? { checkpointLimits: RUN_CHECKPOINT_LIMITS }
+    ...(nativeSlotRoutes(request.slots).some(
+      (route) => route.native === 'run-checkpoint' || route.native === 'child-checkpoint',
+    )
+      ? {
+          checkpointLimits: RUN_CHECKPOINT_LIMITS,
+          checkpointScope: 'invocation',
+          checkpointRetrieval: 'settled-direct-child',
+        }
       : {}),
   } as unknown as JsonValue)
 }

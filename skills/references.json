@@ -33,6 +33,8 @@
       "docs/jig/build/conversation-restoration.md",
       "docs/jig/reference/limits.md",
       "docs/jig/spec/execution-client.md",
+      "docs/jig/spec/run-checkpoint.md",
+      "docs/jig/spec/child-checkpoint.md",
       "docs/jig/build/results.md",
       "docs/jig/reference/troubleshooting.md",
       "docs/jig/spec/machine/jig-lock-1.schema.json",
@@ -49,7 +51,8 @@
       "docs/jig/spec/contracts/http-request/contract.json",
       "docs/jig/spec/contracts/project-command/contract.json",
       "docs/jig/spec/contracts/project-evaluation/contract.json",
-      "docs/jig/spec/contracts/run-checkpoint/contract.json"
+      "docs/jig/spec/contracts/run-checkpoint/contract.json",
+      "docs/jig/spec/contracts/child-checkpoint/contract.json"
     ]
   }
 }

@@ -5,6 +5,7 @@ import publicUpdates from '../../../../docs/jig/spec/contracts/acp-public-update
 import { parseChannelContract } from '../channel-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
 import { markdownAgentContract } from './markdown-agent-contract.js'
+import { CHILD_CHECKPOINT_CONTRACT_DIGEST } from './private-child-checkpoint.js'
 import { FINITE_ACP_CONTRACT_DIGEST } from './private-finite-acp-contract.js'
 import { HTTP_REQUEST_CONTRACT_DIGEST } from './private-http-request.js'
 import { PROJECT_COMMAND_CONTRACT_DIGEST } from './private-project-command.js'
@@ -48,6 +49,13 @@ export const JIG_STANDARD_CONTRACTS = Object.freeze(
       file: 'contract.json',
       digest: RUN_CHECKPOINT_CONTRACT_DIGEST,
       description: 'Save settled results while other work continues.',
+    },
+    {
+      name: 'child-checkpoint',
+      kind: 'invocation',
+      file: 'contract.json',
+      digest: CHILD_CHECKPOINT_CONTRACT_DIGEST,
+      description: 'Read the latest accepted checkpoint of a settled child call.',
     },
     {
       name: 'finite-acp',

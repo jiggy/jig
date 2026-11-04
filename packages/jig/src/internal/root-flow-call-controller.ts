@@ -2,7 +2,7 @@ import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PrivateCallEvent } from '../cli-run-model.js'
 import { CheckError } from '../diagnostics.js'
-import type { JsonValue } from '../json.js'
+import { canonicalJson, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
 import { flowSlotTargets } from '../project/invocation-slots.js'
 import {
@@ -37,6 +37,7 @@ import {
   recordPrivateRootChildCleanup,
   recordPrivateRootChildFence,
   recordPrivateRootChildSandbox,
+  savePrivateAttemptRunCheckpoint,
 } from './activation-admission-store.js'
 import { privateBunExecutionMaterialization } from './bun-execution-layout.js'
 import type { PrivateCapturedOutput } from './captured-output.js'
@@ -72,6 +73,7 @@ import {
   PrivateOutputRetirementUnconfirmedError,
 } from './execution-output.js'
 import { privateFlowExecutionIntent } from './flow-execution-intent.js'
+import { sha256 } from './file-input.js'
 import {
   capturePrivateFlowArtifact,
   commitPrivateFlowArtifacts,
@@ -80,6 +82,7 @@ import {
   type PrivateChildFlowFilePlan,
   type PrivateFlowFileContext,
   planPrivateChildFlowFiles,
+  privateFlowFileCheckpointInputs,
   privateFlowFileExecutionProjection,
   releasePrivateFlowArtifact,
   selectedPrivateFlowArtifacts,
@@ -87,8 +90,11 @@ import {
 import type { PrivateHttpGrants } from './http-grants.js'
 import { privateDomainDigest } from './identity.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
+import { PrivateInvocationCheckpoints } from './invocation-checkpoints.js'
 import {
   normalizeParentFlow,
+  privateChildOperationId,
+  privateInvocationOperationPath,
   type PrivateParentFlow,
   requireParentFlowOwner,
   requireParentTarget,
@@ -106,6 +112,7 @@ import {
 } from './package-materialization.js'
 import { admitPrivatePackageResult } from './package-result-admission.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
+import { privateRunCheckpointScope } from './private-run-checkpoint.js'
 import {
   executePrivateContainedEffect,
   type PrivateContainedEffectFailurePhase,
@@ -117,6 +124,7 @@ import {
   recoverPrivateRootFiniteAcpOwners,
 } from './root-finite-acp-controller.js'
 import { isPrivateBranchDepth } from './root-operation-limits.js'
+import { privateCheckpointArtifacts, privateCheckpointMethodIdentity } from './root-run-files.js'
 import {
   channelContractResolver,
   type PrivateChannelContractCache,
@@ -211,8 +219,7 @@ type ChildCallInput = ChildInput & {
 export async function executePrivateRootFlowCall(
   request: ChildCallInput,
 ): Promise<RunHostOperationTerminal> {
-  // Wire identifiers remain local to their caller. The host-owned nested Flow
-  // identity also names its durable scope and cannot collide across siblings.
+  // Wire identifiers remain caller-local. Checkpoints separately bind full ancestry.
   const input =
     request.parentFlow === undefined
       ? request
@@ -220,10 +227,7 @@ export async function executePrivateRootFlowCall(
           ...request,
           call: {
             ...request.call,
-            operationId: `f-${privateDomainDigest('JIG-Private-Nested-Flow/1', {
-              parent: request.parentFlow.operationId,
-              operation: request.call.operationId,
-            }).slice(7)}`,
+            operationId: privateChildOperationId(request.parentFlow, request.call.operationId),
           },
         }
   const selected = selectChild(input, input.call.slot)
@@ -697,6 +701,40 @@ function specialistDispatcher(
   files: PrivateFlowFileContext | undefined,
 ): RunHostOperationDispatcher {
   let active = false
+  const parentFlow: PrivateParentFlow = {
+    operationId: input.call.operationId,
+    target: selected.request.target,
+    requestDigest: selected.request.digest,
+    parent: input.parentFlow ?? null,
+  }
+  const operationPath = privateInvocationOperationPath(parentFlow)
+  const checkpoints = new PrivateInvocationCheckpoints({
+    projectRoot: input.projectRoot,
+    runId: input.parent.run.runId,
+    epoch: input.parent.run.coordinatorEpoch,
+    operationPath,
+    files,
+    save: async (value) => {
+      if (files === undefined) throw new Error('checkpoint file owner unavailable')
+      return await savePrivateAttemptRunCheckpoint({
+        projectRoot: input.projectRoot,
+        runId: input.parent.run.runId,
+        epoch: input.parent.run.coordinatorEpoch,
+        operationPath,
+        identity: {
+          runId: input.parent.run.runId,
+          scope: privateRunCheckpointScope(input.parent.run.runId, operationPath),
+          method: privateCheckpointMethodIdentity(selected.request) as unknown as JsonValue,
+          input: {
+            digest: sha256(canonicalJson(input.call.input)),
+            attachments: privateFlowFileCheckpointInputs(files),
+          },
+        },
+        value,
+        artifacts: privateCheckpointArtifacts(files, value),
+      })
+    },
+  })
   return {
     ...(participant === undefined ? {} : { channels: participant }),
     onCall: (call, state, cause) =>
@@ -732,23 +770,23 @@ function specialistDispatcher(
     },
     async call(call, signal) {
       const route = selected.request.slots[call.slot]
-      if (route === undefined || (route.kind === 'native' && route.native === 'run-checkpoint'))
+      if (route === undefined)
         return failed('UNAVAILABLE', 'the specialist slot has no admitted implementation')
+      if (
+        route.kind === 'native' &&
+        (route.native === 'run-checkpoint' || route.native === 'child-checkpoint')
+      )
+        return await checkpoints.call(route.native, call, signal)
       if (active)
         return failed('RESOURCE_EXHAUSTED', 'the specialist already has an active operation')
       active = true
       try {
         if (route.kind === 'flow') {
-          return await executePrivateRootFlowCall({
+          const result = await executePrivateRootFlowCall({
             ...input,
             ...(files === undefined ? {} : { files }),
             diagnosticPath: [...(input.diagnosticPath ?? []), call.operationId],
-            parentFlow: {
-              operationId: input.call.operationId,
-              target: selected.request.target,
-              requestDigest: selected.request.digest,
-              parent: input.parentFlow ?? null,
-            },
+            parentFlow,
             ...(participant === undefined || input.channels === undefined
               ? {}
               : {
@@ -758,6 +796,11 @@ function specialistDispatcher(
             parentDeadlineUnixMs,
             signal,
           })
+          checkpoints.settledChild(
+            call.operationId,
+            privateChildOperationId(parentFlow, call.operationId),
+          )
+          return result
         }
         if (
           route.native === 'project-command' ||
@@ -770,12 +813,7 @@ function specialistDispatcher(
             ...input,
             ...(files === undefined ? {} : { files }),
             onFailure: input.onEffectFailure,
-            parentFlow: {
-              operationId: input.call.operationId,
-              target: selected.request.target,
-              requestDigest: selected.request.digest,
-              parent: input.parentFlow ?? null,
-            },
+            parentFlow,
             call,
             parentDeadlineUnixMs,
             signal,
@@ -790,12 +828,7 @@ function specialistDispatcher(
           ...(participant === undefined || input.channels === undefined
             ? {}
             : { channels: { caller: participant, broker: input.channels.broker } }),
-          parentFlow: {
-            operationId: input.call.operationId,
-            target: selected.request.target,
-            requestDigest: selected.request.digest,
-            parent: input.parentFlow ?? null,
-          },
+          parentFlow,
           call,
           parentDeadlineUnixMs,
           signal,

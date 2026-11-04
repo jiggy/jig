@@ -55,6 +55,16 @@ Version metadata is checked before evaluation and reverified before capture comp
   Its private snapshot is neither a public lookup response nor proof of current execution ownership.
   Checkpoint and export storage contracts are in [file guidance](files-guidance.md#attempt-checkpoint-and-export).
 
+  Checkpoint scope identity binds the original Run and complete authenticated invocation ancestry.
+  Save and live retrieval verify the active root, accepted ticket, and every caller ancestor in one protected transaction.
+  Cancellation, deadline expiry, fencing, or missing ancestry cannot admit new saves or retrieval grants.
+  Settled-child retrieval also requires the target owner to be absent.
+  The live dispatcher proves the caller's completed direct-child operation before this private read.
+
+  Accepted scopes share the original attempt's retention, artifact allowance, and control reservation.
+  Keep bounded inventory separate from one selected checkpoint payload.
+  Selected-target inspection detects checkpoint use through the admitted dependency graph for ordinary command retention allocation.
+
   Failed state opening attempts database, directory and owned-root closure before
   releasing its local turn. Preserve primary and cleanup errors together.
   Cleanup uncertainty must not become a retriable contention refusal.
@@ -373,9 +383,11 @@ Version metadata is checked before evaluation and reverified before capture comp
 
   Initial npm dependency adoption applies the same preparation-error scoping as later target preparation.
   Known preparation failures without worker locations refer to the application's canonical `package.json`.
+
   Run Checkpoint must follow its exact declared native interface and protected attempt association.
   Do not infer checkpoint authority from a writable attachment or optional FLOW port.
-  Preserve known child checkpoint and attachment refusals through candidate projection with their caller locations.
+  Preserve known child attachment refusals through candidate projection with their caller locations.
+  Native checkpoint composition retains each invocation separately under its original attempt.
   Unknown child codes and private exception messages remain closed.
 
   Unsupported Volta selections retain the existing wrapper diagnostic, including

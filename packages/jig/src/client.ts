@@ -14,6 +14,7 @@ import {
   type AttemptRequests,
   type AttemptResults,
   type AttemptVerb,
+  type CheckpointScope,
   decodeAttemptLine,
   type Prepared,
   type PrepareRequest,
@@ -85,7 +86,10 @@ export function createAttemptClient(options: AttemptClientOptions) {
     // Serialize once, then validate and retain exactly the JSON sent to the peer.
     // Reading the caller's object again could observe getters, toJSON, or mutation.
     let bytes: Buffer
-    let expectedExport: { destination: string; source: 'final' | 'checkpoint' } | undefined
+    let expectedExport:
+      | { destination: string; source: 'final' | 'checkpoint'; checkpointScope?: CheckpointScope }
+      | undefined
+    let expectedCheckpointScope: CheckpointScope | undefined
     try {
       bytes = Buffer.from(`${JSON.stringify({ protocolVersion: 1, operation: verb, request })}\n`)
       if (bytes.length > ATTEMPT_REQUEST_BYTES) throw new AttemptContractError()
@@ -100,8 +104,14 @@ export function createAttemptClient(options: AttemptClientOptions) {
           // destination symlinks: the copier only normalizes that path lexically.
           destination: resolve(realpathSync(options.cwd), exported.destination),
           source: exported.source ?? 'final',
+          ...(exported.source === 'checkpoint'
+            ? { checkpointScope: exported.checkpointScope ?? 'root' }
+            : {}),
         }
       }
+      if (verb === 'result')
+        expectedCheckpointScope =
+          (request as AttemptRequests['result']).checkpointScope ?? 'root'
     } catch {
       throw new AttemptContractError()
     }
@@ -268,7 +278,15 @@ export function createAttemptClient(options: AttemptClientOptions) {
           value.operation === 'export' &&
           value.event === 'result' &&
           (value.value.destination !== expectedExport?.destination ||
-            value.value.source !== expectedExport?.source)
+            value.value.source !== expectedExport?.source ||
+            (value.value.source === 'checkpoint' &&
+              value.value.checkpointScope !== expectedExport?.checkpointScope))
+        )
+          throw new AttemptContractError()
+        if (
+          value.operation === 'result' &&
+          value.event === 'result' &&
+          value.value.checkpoint.scope !== expectedCheckpointScope
         )
           throw new AttemptContractError()
         finalFrame = value

@@ -10,6 +10,7 @@ These links locate module rules. All selected domain requirements still apply.
 - [private-profile](#private-profile)
 - [root-run-timeout-policy](#root-run-timeout-policy)
 - [invocation-context](#invocation-context)
+- [invocation checkpoints](#invocation-checkpoints)
 - [execution-intent](#execution-intent)
 - [execution-backend](#execution-backend)
 - [linux-rootless-delegation](#linux-rootless-delegation)
@@ -20,6 +21,24 @@ These links locate module rules. All selected domain requirements still apply.
 - [declaration evaluation](#declaration-evaluation)
 
 ## Ownership
+
+### Invocation checkpoints
+
+- `invocation-checkpoints.ts` provides one native checkpoint control lane per live invocation.
+  It remains separate from that invocation's child or effect lane, under the original root limits.
+  Root and child saves use the same descriptor. Protected acceptance authenticates the producer's entire ancestry.
+  Each producer keeps its own sequence and latest aggregate. No descendant save renews execution or retention.
+
+- A dispatcher records a direct child only after `executePrivateRootFlowCall` returns.
+  Never record it in a finally block or after fatal cleanup failure.
+  The local table shares Run/0's bounded request lifetime and creates no durable execution history.
+  Retrieval rechecks live caller ancestry and exact child settlement in protected state.
+  A known child without a save returns null. Active, foreign and unknown calls remain unavailable.
+
+- Failed and domain-rejected children retain their original terminals.
+  Applications decide whether to use retained evidence, repair inputs or call another reviewed specialist.
+  File handoff follows [checkpoint custody](files-guidance.md#attempt-checkpoint-and-export).
+  It grants neither automatic replay nor inherited execution authority.
 
 ### Declaration evaluation
 

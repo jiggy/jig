@@ -1,5 +1,10 @@
 import { isContractId, isContractVersion } from '../contract-identity.js'
 import {
+  CHILD_CHECKPOINT_CONTRACT_DIGEST,
+  CHILD_CHECKPOINT_CONTRACT_ID,
+  CHILD_CHECKPOINT_CONTRACT_VERSION,
+} from '../internal/private-child-checkpoint.js'
+import {
   FINITE_ACP_CONTRACT_DIGEST,
   FINITE_ACP_CONTRACT_ID,
   FINITE_ACP_CONTRACT_VERSION,
@@ -50,6 +55,7 @@ export type NativeInvocation =
   | 'project-command'
   | 'project-evaluation'
   | 'run-checkpoint'
+  | 'child-checkpoint'
   | 'finite-acp'
 export type InvocationSlot =
   | {
@@ -92,6 +98,11 @@ const NATIVE: Readonly<Record<NativeInvocation, InvocationIdentity>> = Object.fr
     id: RUN_CHECKPOINT_CONTRACT_ID,
     version: RUN_CHECKPOINT_CONTRACT_VERSION,
     digest: RUN_CHECKPOINT_CONTRACT_DIGEST,
+  }),
+  'child-checkpoint': Object.freeze({
+    id: CHILD_CHECKPOINT_CONTRACT_ID,
+    version: CHILD_CHECKPOINT_CONTRACT_VERSION,
+    digest: CHILD_CHECKPOINT_CONTRACT_DIGEST,
   }),
 })
 
@@ -141,14 +152,14 @@ export function sameInvocationIdentity(
   )
 }
 
-/** Resolve an unrouted requirement set; only root checkpoint may be implicit. */
+/** Resolve an unrouted requirement set; only exact checkpoint contracts may be implicit. */
 export function defaultInvocationSlots(
   uses: Readonly<Record<string, InvocationRequirement>>,
 ): InvocationSlots {
   return resolveInvocationSlots(uses, {})
 }
 
-/** Resolve retained ordinary routes and explicit grants, with implicit root checkpoint only. */
+/** Resolve retained ordinary routes, explicit grants, and implicit checkpoint contracts. */
 export function resolveInvocationSlots(
   uses: Readonly<Record<string, InvocationRequirement>>,
   targets: Readonly<Record<string, ProjectSlotTarget>>,

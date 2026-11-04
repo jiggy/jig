@@ -87,11 +87,13 @@ These links locate module rules. All selected domain requirements still apply.
   caches longest paths per immutable candidate. Repeated routes must not expand
   into repeated dependency-tree traversal.
 
-- Exact native checkpoint requirements make a target root-only.
-  Derive this fact from selected interfaces during linking, lock decoding and admitted graph analysis.
-  Cached root analysis cannot authorize a child route or create a persisted caller-controlled authority flag.
-  Child refusal identifies the caller's selected slot and preserves `PROJECT_CHILD_ROOT_ONLY` through review diagnostics.
-  Recovery wrappers invoke the unchanged method as a root through the application client.
+- Exact native Run Checkpoint and Child Checkpoint requirements resolve implicitly
+  for root and child invocations. Preserve their descriptor identities in the
+  lock and admitted graph. The graph still enforces its existing cycle and depth
+  bounds. Checkpoint support does not grant another invocation's file authority.
+  The protected root owner scopes saves to authenticated invocation ancestry.
+  Child Checkpoint reads only a settled direct child's accepted data and supplies
+  new held artifact custody through its own successful native result.
 
 - `src/invocation-contract.ts` validates optional `artifactResults`: at most
   256 unique LocalNames without writable-port collisions.

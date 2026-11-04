@@ -5,8 +5,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { CanonicalRequest } from '../../src/attempt-contract.js'
 import {
+  listPrivateAttemptCheckpointScopes,
   readPrivateAttemptCheckpoint,
   readPrivateAttemptCheckpointFiles,
+  readPrivateAttemptCheckpointInventory,
   retainPrivateAttemptCheckpoint,
 } from '../../src/internal/attempt-checkpoint-store.js'
 import { capturePrivateRetainedOutput } from '../../src/internal/captured-output.js'
@@ -34,6 +36,7 @@ import {
   retainPrivateAttemptArtifacts,
   retirePrivateAttempts,
 } from '../../src/internal/prepared-attempt-store.js'
+import { privateRunCheckpointScope } from '../../src/internal/private-run-checkpoint.js'
 
 const project = `sha256:${'a'.repeat(64)}`
 const clock = { bootId: 'boot-one', monotonicMs: 50_000, unixMs: 1_800_000_000_000 }
@@ -74,18 +77,20 @@ function transaction(db: Database, operation: () => void): void {
   }
 }
 describe('protected prepared-attempt records', () => {
-  test('accepted checkpoint survives closing and reopening the original EXTRA-synced SQLite owner', () => {
+  test('accepted checkpoint scopes survive reopening the original EXTRA-synced SQLite owner', () => {
     const directory = realpathSync(mkdtempSync(join(tmpdir(), 'jig-checkpoint-reopen-')))
     const filename = join(directory, 'admission.sqlite')
     const { db, close } = fixture(filename)
     const runId = `sha256:${'e'.repeat(64)}`
+    const childScope = privateRunCheckpointScope(runId, ['router', 'draft'])
     let expected = ''
+    let expectedChild = ''
     try {
       const prepared = persistPrivatePreparedAttempt(
         db,
         project,
         clock,
-        { ...request, constraints: { ...request.constraints, artifactBytes: 8 } },
+        { ...request, constraints: { ...request.constraints, artifactBytes: 13 } },
         [],
       )
       attemptWrite(db, 'INSERT INTO root_runs VALUES (?1)', [runId])
@@ -95,8 +100,14 @@ describe('protected prepared-attempt records', () => {
         expected = retainPrivateAttemptCheckpoint(
           db,
           runId,
-          { runId, method: null, input: null },
+          { runId, scope: 'root', method: null, input: null },
           { sequence: 1, evidence: { saved: true }, files: { 'saved.txt': 'accepted' } },
+        ).digest
+        expectedChild = retainPrivateAttemptCheckpoint(
+          db,
+          runId,
+          { runId, scope: childScope, method: null, input: null },
+          { sequence: 1, evidence: { child: true }, files: { 'saved.txt': 'child' } },
         ).digest
       })
     } finally {
@@ -111,9 +122,117 @@ describe('protected prepared-attempt records', () => {
       expect(readPrivateAttemptCheckpointFiles(reopened, runId)?.files[0]?.bytes.toString()).toBe(
         'accepted',
       )
+      expect(readPrivateAttemptCheckpoint(reopened, runId, childScope)?.digest).toBe(expectedChild)
+      expect(
+        readPrivateAttemptCheckpointFiles(reopened, runId, childScope)?.files[0]?.bytes.toString(),
+      ).toBe('child')
+      expect(listPrivateAttemptCheckpointScopes(reopened, runId)).toHaveLength(2)
     } finally {
       reopened.close(true)
       rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  test('checkpoint scopes advance independently within one shared artifact reservation', () => {
+    const { db, close } = fixture()
+    const runId = `sha256:${'f'.repeat(64)}`
+    const first = privateRunCheckpointScope(runId, ['router', 'first'])
+    const second = privateRunCheckpointScope(runId, ['router', 'second'])
+    const identity = { runId, method: null, input: null }
+    try {
+      const prepared = persistPrivatePreparedAttempt(
+        db,
+        project,
+        clock,
+        { ...request, constraints: { ...request.constraints, artifactBytes: 12 } },
+        [],
+      )
+      attemptWrite(db, 'INSERT INTO root_runs VALUES (?1)', [runId])
+      const attempt = authenticatePrivateAttempt(db, project, prepared.ticket)
+      transaction(db, () => acceptPrivatePreparedAttempt(db, attempt, runId, clock))
+      transaction(db, () => {
+        for (const [scope, text] of [['root', 'root'], [first, 'one'], [second, 'two']] as const)
+          retainPrivateAttemptCheckpoint(db, runId, { ...identity, scope }, {
+            sequence: 1, evidence: text, files: { 'saved.txt': text },
+          })
+      })
+      const before = listPrivateAttemptCheckpointScopes(db, runId)
+      transaction(db, () => {
+        retainPrivateAttemptCheckpoint(db, runId, { ...identity, scope: first }, {
+          sequence: 2, evidence: 'revised', files: { 'saved.txt': 'first' },
+        })
+      })
+      expect(readPrivateAttemptCheckpoint(db, runId)?.sequence).toBe(1)
+      expect(readPrivateAttemptCheckpoint(db, runId, first)?.sequence).toBe(2)
+      expect(readPrivateAttemptCheckpoint(db, runId, second)?.digest).toBe(
+        before.find((entry) => entry.scope === second)!.digest,
+      )
+      expect(() => transaction(db, () => {
+        retainPrivateAttemptCheckpoint(db, runId, { ...identity, scope: second }, {
+          sequence: 2, evidence: null, files: { 'saved.txt': 'four' },
+        })
+      })).toThrow('aggregate artifact capacity')
+      const selected = readPrivateAttemptCheckpointFiles(db, runId, second)!
+      expect(selected.files[0]!.bytes.toString()).toBe('two')
+      selected.files[0]!.bytes.fill(0)
+      expect(readPrivateAttemptCheckpointFiles(db, runId, second)?.files[0]?.bytes.toString()).toBe('two')
+      expect(readPrivateAttemptCheckpointFiles(db, runId)?.files[0]?.bytes.toString()).toBe('root')
+      expect(readPrivateAttemptCheckpointFiles(db, runId, first)?.files[0]?.bytes.toString()).toBe('first')
+      expect(listPrivateAttemptCheckpointScopes(db, runId)).toHaveLength(3)
+      expect(readPrivateAttemptCheckpoint(db, runId, privateRunCheckpointScope(runId, ['absent']))).toBeUndefined()
+      attemptWrite(db, "UPDATE attempt_blobs SET content = ?1 WHERE purpose = 'checkpoint' AND name = ?2", [
+        Buffer.from('bad'), second,
+      ])
+      expect(() => readPrivateAttemptCheckpointFiles(db, runId, second)).toThrow('inconsistent')
+      expect(readPrivateAttemptCheckpointFiles(db, runId, first)?.files[0]?.bytes.toString()).toBe('first')
+      expect(readPrivateAttemptCheckpointInventory(db, runId, 'available').checkpointInventory).toBe('available')
+      attemptWrite(db, "UPDATE attempt_blobs SET content = ?1 WHERE purpose = 'checkpoint-record' AND name = ?2", [
+        Buffer.from('{}'), second,
+      ])
+      expect(readPrivateAttemptCheckpointInventory(db, runId, 'available')).toEqual({
+        checkpointInventory: 'unavailable', checkpoints: [],
+      })
+      expect(readPrivateAttemptCheckpointInventory(db, runId, 'expired')).toEqual({
+        checkpointInventory: 'expired', checkpoints: [],
+      })
+      expect(readPrivateAttemptCheckpointFiles(db, runId)?.files[0]?.bytes.toString()).toBe('root')
+      expect(readPrivateAttemptCheckpoint(db, runId, first)?.sequence).toBe(2)
+    } finally {
+      close()
+    }
+  })
+
+  test('scope capacity refuses the sixty-fifth scope without evicting accepted progress', () => {
+    const { db, prepare, close } = fixture()
+    const runId = `sha256:${'7'.repeat(64)}`
+    try {
+      const prepared = prepare()
+      attemptWrite(db, 'INSERT INTO root_runs VALUES (?1)', [runId])
+      const attempt = authenticatePrivateAttempt(db, project, prepared.ticket)
+      transaction(db, () => acceptPrivatePreparedAttempt(db, attempt, runId, clock))
+      transaction(db, () => {
+        for (let index = 0; index < 64; index++) {
+          const scope = privateRunCheckpointScope(runId, index === 0 ? [] : [`child-${index}`])
+          retainPrivateAttemptCheckpoint(db, runId, { runId, scope, method: null, input: null }, {
+            sequence: 1, evidence: index, files: {},
+          })
+        }
+      })
+      const before = listPrivateAttemptCheckpointScopes(db, runId)
+      expect(before).toHaveLength(64)
+      expect(() => transaction(db, () => {
+        retainPrivateAttemptCheckpoint(db, runId, {
+          runId, scope: privateRunCheckpointScope(runId, ['overflow']), method: null, input: null,
+        }, { sequence: 1, evidence: null, files: {} })
+      })).toThrow('scope capacity')
+      expect(listPrivateAttemptCheckpointScopes(db, runId)).toEqual(before)
+      transaction(db, () => retainPrivateAttemptCheckpoint(db, runId, {
+        runId, scope: 'root', method: null, input: null,
+      }, { sequence: 2, evidence: 'root still advances', files: {} }))
+      expect(listPrivateAttemptCheckpointScopes(db, runId)).toHaveLength(64)
+      expect(readPrivateAttemptCheckpoint(db, runId)?.sequence).toBe(2)
+    } finally {
+      close()
     }
   })
 
@@ -136,7 +255,7 @@ describe('protected prepared-attempt records', () => {
       attemptWrite(db, 'INSERT INTO root_runs VALUES (?1)', [runId])
       const attempt = authenticatePrivateAttempt(db, project, prepared.ticket)
       transaction(db, () => acceptPrivatePreparedAttempt(db, attempt, runId, clock))
-      const identity = { runId, method: null, input: null }
+      const identity = { runId, scope: 'root' as const, method: null, input: null }
       const value = {
         sequence: 1,
         evidence: null,
@@ -207,7 +326,7 @@ describe('protected prepared-attempt records', () => {
       attemptWrite(db, 'INSERT INTO root_runs VALUES (?1)', [runId])
       const attempt = authenticatePrivateAttempt(db, project, prepared.ticket)
       transaction(db, () => acceptPrivatePreparedAttempt(db, attempt, runId, clock))
-      const identity = { runId, method: null, input: null }
+      const identity = { runId, scope: 'root' as const, method: null, input: null }
       const first = { sequence: 1, evidence: { complete: false }, files: { 'work/one.txt': 'one' } }
       let digest = ''
       const storage = privateAttemptStorageBytes(db)
@@ -371,7 +490,7 @@ describe('protected prepared-attempt records', () => {
         retainPrivateAttemptCheckpoint(
           db,
           runId,
-          { runId, method: null, input: null },
+          { runId, scope: 'root', method: null, input: null },
           { sequence: 1, evidence: null, files: { 'saved.txt': 'one' } },
         ),
       )
@@ -389,7 +508,7 @@ describe('protected prepared-attempt records', () => {
         retainPrivateAttemptCheckpoint(
           db,
           runId,
-          { runId, method: null, input: null },
+          { runId, scope: 'root', method: null, input: null },
           { sequence: 2, evidence: null, files: { 'saved.txt': 'ok' } },
         ),
       )

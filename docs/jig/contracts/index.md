@@ -20,6 +20,7 @@ Channel agreements such as reporting belong under `channels`, rather than `uses`
 | [jig:project-evaluation](project-evaluation.md) | Invocation | Generate, compile and test an immutable Bun/TypeScript candidate using reviewed dependencies. |
 | [jig:http-request](http-request.md) | Invocation | Make a request through a reviewed HTTP grant. |
 | [jig:run-checkpoint](run-checkpoint.md) | Invocation | Save settled results while other work continues. |
+| [jig:child-checkpoint](child-checkpoint.md) | Invocation | Read the latest accepted checkpoint of a settled child call. |
 | [jig:finite-acp](finite-acp.md) | Invocation | Use one bounded ACP conversation. |
 | [jig:acp-public-updates](acp-public-updates.md) | Channel | Observe public updates supplied by an AI client. |
 | [jig:reporting](reporting.md) | Channel | Report progress, messages and application views. |

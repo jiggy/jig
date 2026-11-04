@@ -1,7 +1,6 @@
 import { CheckError, invalid } from '../diagnostics.js'
 import { type BoundAttachments, normalizeBoundAttachments } from '../internal/bound-attachments.js'
 import { MARKDOWN_AGENT_SLOT, markdownAgentContract } from '../internal/markdown-agent-contract.js'
-import { isRunCheckpointContract } from '../internal/private-run-checkpoint.js'
 import {
   normalizePrivateRetainedProjectEvaluation,
   type PrivateRetainedProjectEvaluation,
@@ -288,17 +287,7 @@ export function linkPackageProject(
     )
   }
   validateChildGraph(
-    new Map(
-      value.bindings.map((binding) => [
-        binding.id,
-        {
-          ...binding,
-          rootOnly: Object.values(flowByPath.get(binding.packagePath)!.value.uses).some(
-            isRunCheckpointContract,
-          ),
-        },
-      ]),
-    ),
+    new Map(value.bindings.map((binding) => [binding.id, binding])),
     new Map(
       value.flows
         .filter((flow) => flow.directRun)
@@ -307,7 +296,6 @@ export function linkPackageProject(
           {
             packagePath: flow.provenance.projectPath,
             slots: flow.slots ?? {},
-            rootOnly: Object.values(flow.uses).some(isRunCheckpointContract),
           },
         ]),
     ),

@@ -66,6 +66,7 @@ import {
 } from './flow-file-context.js'
 import type { PrivateHttpGrants } from './http-grants.js'
 import { revalidatePrivateInstalledBunSupport } from './installed-bun-support.js'
+import { PrivateInvocationCheckpoints } from './invocation-checkpoints.js'
 import {
   normalizePrivateBootDeadline,
   type PrivateBootDeadline,
@@ -89,7 +90,6 @@ import {
 import { admitPrivatePackageResult } from './package-result-admission.js'
 import type { PrivateAcpResources } from './private-acp-resources.js'
 import { privateProfileSpan } from './private-profile.js'
-import { PrivateCheckpointRejected, parseRunCheckpointInput } from './private-run-checkpoint.js'
 import {
   executePrivateContainedEffect,
   type PrivateContainedEffectFailurePhase,
@@ -227,6 +227,7 @@ export async function executePrivateRootRunLaunch(input: {
           projectRoot: input.projectRoot,
           runId: input.runId,
           epoch: work.run.coordinatorEpoch,
+          operationPath: [],
           ...checkpoint,
         }),
     )
@@ -1408,7 +1409,17 @@ function operationDispatcher(
   if (target === undefined) return undefined
   let activeFlows = 0
   let activeEffect = false
-  let activeCheckpoint = false
+  const checkpoints = new PrivateInvocationCheckpoints({
+    projectRoot: input.projectRoot,
+    runId: parent.run.runId,
+    epoch: parent.run.coordinatorEpoch,
+    operationPath: [],
+    files,
+    save: async (value) => {
+      if (input.files === undefined) throw new Error('checkpoint owner unavailable')
+      return await input.files.saveCheckpoint(value, files)
+    },
+  })
   const enter = async <T>(
     kind: 'flow' | 'effect',
     run: () => Promise<T>,
@@ -1483,8 +1494,8 @@ function operationDispatcher(
       if (route.kind === 'flow')
         return enter(
           'flow',
-          () =>
-            executePrivateRootFlowCall({
+          async () => {
+            const result = await executePrivateRootFlowCall({
               ...operationInput(input, parent),
               onFatalOperation,
               files,
@@ -1511,7 +1522,10 @@ function operationDispatcher(
               call,
               parentDeadlineUnixMs,
               signal,
-            }),
+            })
+            checkpoints.settledChild(call.operationId, call.operationId)
+            return result
+          },
           operationBusy(),
         )
       if (Object.keys(call.channels ?? {}).length !== 0 && route.native !== 'finite-acp')
@@ -1520,45 +1534,8 @@ function operationDispatcher(
           code: 'UNAVAILABLE',
           message: 'this invocation has no supported channels',
         }
-      if (route.native === 'run-checkpoint') {
-        if (activeCheckpoint) return operationBusy()
-        let checkpoint: ReturnType<typeof parseRunCheckpointInput>
-        try {
-          checkpoint = parseRunCheckpointInput(call.input)
-        } catch {
-          return {
-            status: 'failed',
-            code: 'INVALID_INPUT',
-            message: 'checkpoint exceeds its declared shape or limits',
-          }
-        }
-        if (signal.aborted)
-          return {
-            status: 'failed',
-            code: 'CANCELLED',
-            message: 'checkpoint request cancelled',
-          }
-        activeCheckpoint = true
-        try {
-          if (input.files === undefined) throw new Error('checkpoint owner unavailable')
-          const receipt = await input.files.saveCheckpoint(checkpoint, files)
-          return {
-            status: 'succeeded',
-            result: { outcome: 'done', output: receipt as unknown as JsonValue },
-          }
-        } catch (error) {
-          return {
-            status: 'failed',
-            code: error instanceof PrivateCheckpointRejected ? 'INVALID_INPUT' : 'UNCERTAIN',
-            message:
-              error instanceof PrivateCheckpointRejected
-                ? 'checkpoint replacement rejected; earlier progress is unchanged'
-                : 'checkpoint acknowledgement unavailable; inspect the final retained checkpoint',
-          }
-        } finally {
-          activeCheckpoint = false
-        }
-      }
+      if (route.native === 'run-checkpoint' || route.native === 'child-checkpoint')
+        return await checkpoints.call(route.native, call, signal)
       if (
         route.native === 'project-command' ||
         route.native === 'http-request' ||

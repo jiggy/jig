@@ -20,13 +20,18 @@ application responsibilities.
 | `submit` | `ticket` plus the exact `canonicalRequest` as `request`. Returns owner/observer acceptance and its receipt. Only the owner connection carries execution completion. |
 | `lookup` | `ticket`. Reads identity, dispatch, execution, terminal, cleanup and retention observations without advancing execution. |
 | `cancel` | `ticket`. Requests scoped revocation and returns `acknowledged` plus an observation. Acknowledgement is not confirmed cleanup. |
-| `result` | `ticket`. Reads the observation, retained `output` when available, `artifactResults` and optional latest `checkpoint`. |
-| `export` | `ticket`, new `destination`, optional `source: 'final' \| 'checkpoint'` and optional final `artifactResult`. Publishes retained bytes without execution and returns destination, manifest digest and actual source. |
+| `result` | `ticket`, optional `checkpointScope`. Reads the observation, retained `output`, final `artifactResults`, checkpoint inventory, and selected checkpoint detail. |
+| `export` | `ticket`, new `destination`, optional `source: 'final' \| 'checkpoint'`, optional final `artifactResult`, or checkpoint `checkpointScope`. Returns destination, manifest digest, actual source, and selected checkpoint scope when applicable. |
 
 `source` defaults to `final`. `artifactResult` selects one final name and
 cannot be combined with `source: 'checkpoint'`. `outputIntent.receive` selects
 retained artifact names, not live channel subscriptions. `packet` records packet
 intent, not a destination path.
+
+`checkpointScope` defaults to `root`. Export accepts it only with explicit
+`source: 'checkpoint'`. A child scope is an opaque `sha256:` identifier from
+the result inventory. It identifies retained progress under the original ticket,
+without granting live invocation authority.
 
 Prepare file entries use `{ port, source,
 selection }`. Canonical file entries instead identify captured bytes with
@@ -34,14 +39,18 @@ selection }`. Canonical file entries instead identify captured bytes with
 
 ### Wrap a checkpoint-enabled method
 
-Applications can add recovery handling around a [checkpoint-enabled method](run-checkpoint.md#compose-from-an-application) while retaining its accepted progress.
-Select the method's reviewed Flow or Binding as the client's root target.
-Keep its package and checkpoint declaration unchanged.
-The wrapper runs outside contained Flows and does not use a child `run.call()` route.
+Applications can submit a checkpoint-enabled method directly or select a reviewed Flow that wraps it.
+[Flow composition](run-checkpoint.md#compose-inside-a-flow) gives each invocation a separate checkpoint scope under the original root attempt.
+A Flow wrapper can retrieve a settled direct child's progress through the [Child Checkpoint contract](child-checkpoint.md).
+The method's package and checkpoint declaration can remain unchanged.
+
+An external application can also wrap the method through this client.
+Select the method's reviewed Flow or Binding as the root target.
+This application wrapper runs outside contained Flows.
 
 Persist the complete `Prepared` value before submission, as in the [application call below](#a-complete-application-call).
 The joined helper also supports `client.run(request, { persist })` for this boundary.
-After interruption, use the saved ticket to [retrieve and export its checkpoint](#export-an-accepted-checkpoint).
+After interruption, use the saved ticket to [retrieve and export accepted checkpoint scopes](#export-an-accepted-checkpoint).
 This preserves the original attempt and execution status without automatically retrying uncertain work.
 
 ### A complete application call
@@ -247,6 +256,21 @@ Result replies repeat their observation receipt's artifact availability exactly.
 Without a receipt, their final-artifact list is empty.
 Checkpoint artifacts remain a separate observation.
 
+`checkpoints` lists at most 64 accepted scopes as `{ scope, sequence, digest }`.
+It omits checkpoint payloads and private invocation identities.
+`checkpointInventory` reports `available`, `expired`, or `unavailable` discovery.
+Failed discovery returns an empty inventory without hiding the original execution observation or independently readable selected checkpoint.
+An empty unavailable inventory does not establish that no checkpoint was saved.
+
+`checkpoint` always reports the selected scope and its byte availability.
+An unknown scope has `availability: 'unavailable'` and an empty `artifactResults` list.
+Available detail includes the accepted `sequence`, `digest`, `evidence`, text `files`, and associated artifact availability.
+Expired retention cannot expose saved payloads.
+
+Result inspection does not retrieve a live artifact for a Flow.
+That operation uses the separate settled-child contract and requires an active caller.
+Ticket inspection and export preserve progress after root settlement, cancellation, or coordinator loss when retention and cleanup permit access.
+
 The normal joined helper coordinates these facts without reducing them to an
 application-success boolean. A method's `blocked` outcome remains a domain
 answer, not a host decision that a task succeeded.
@@ -268,39 +292,56 @@ packet inspection are different operations.
 
 Export replies must match the requested destination, resolved against the client working directory, and selected source.
 Omitting `source` selects `final`.
+Checkpoint replies also echo `checkpointScope`.
+The selected scope participates in the publication digest and protected delivery reconciliation.
 
 ### Export an accepted checkpoint
 
-Checkpoint export selects the latest accepted aggregate rather than unfinished
-scratch or a previous final result. After confirmed cleanup it can preserve
-useful progress from a failed or lost Run without rewriting that original status:
+Checkpoint export selects one invocation's latest accepted aggregate.
+After confirmed root cleanup it can preserve useful progress from a failed or lost Run without rewriting that original status.
+Inspect `result.checkpoints` to select a child scope, then request its detailed availability.
+The default selection and ordinary command fallback remain the root scope.
 
 ```ts
-import { createAttemptClient, type Prepared } from '@jigging/jig/client'
+import {
+  createAttemptClient,
+  type CheckpointScope,
+  type Prepared,
+} from '@jigging/jig/client'
 
 export async function exportProgress(
   executable: string,
   projectDirectory: string,
   prepared: Prepared, // Loaded from the application's durable task record.
+  checkpointScope: CheckpointScope = 'root',
 ) {
   const client = createAttemptClient({ executable, cwd: projectDirectory })
-  const result = await client.result({ ticket: prepared.ticket })
+  const result = await client.result({ ticket: prepared.ticket, checkpointScope })
   if (result.observation.cleanup !== 'confirmed' ||
-      result.checkpoint?.availability !== 'available') return result
+      result.checkpoint.availability !== 'available') return result
   const publication = await client.export({
     ticket: prepared.ticket,
     destination: './exports/repair-001-checkpoint',
     source: 'checkpoint',
+    checkpointScope,
   })
   return { result, publication }
 }
 ```
 
+Checkpoint evidence records saved application data, not application acceptance or proof that external effects did not occur.
+Validate progress before using it in another reviewed invocation.
+Neither inspection nor export resumes execution or automatically retries uncertain work.
+
 ### Capacity and time limits
 
 Request limits are 24 hours duration, 1 MiB result JSON and 256 MiB artifact
-allowance. The artifact allowance bounds retained final and latest checkpoint
-bytes together. Checkpoint aggregates also retain their own 16 MiB ceiling.
+allowance. The artifact allowance bounds retained final artifacts and every
+scope's latest checkpoint bytes together. Each checkpoint aggregate also retains
+its own 16 MiB ceiling. At most 64 scopes, including root, may retain progress.
+Checkpoint metadata shares the original 32 MiB control reservation.
+Reaching capacity refuses the new save without evicting accepted scopes.
+
 These are distinct from the live invocation's 256-reference, 16-snapshot,
 256-MiB aggregate artifact budget, which counts retained and materialized live
 bytes. Aliases do not create more live snapshot bytes.

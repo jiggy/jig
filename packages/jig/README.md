@@ -125,12 +125,19 @@ target and approval. Duplicate observers never take over or cancel its owner.
 Read [application execution](https://jig.md/spec/execution-client) for complete
 typed examples, conservative dispatch observations and recovery without replay.
 
-Export uses retained final bytes or the latest accepted checkpoint without
-rerunning work. Checkpoints need no writable root attachment or output
-destination; after confirmed cleanup, checkpoint export preserves the original
-failed/lost status. Native root writable files stay flat under packet `files/`;
-forwarded snapshots use `files/<result-name>/`. Explicit final-name export
+Export uses retained final bytes or a selected invocation's latest accepted checkpoint without
+rerunning work. Checkpoints need no writable attachment or output
+destination. After confirmed cleanup, checkpoint export preserves the original
+failed/lost status. Native root writable files stay flat under packet `files/`.
+Forwarded snapshots use `files/<result-name>/`. Explicit final-name export
 selects that snapshot without its name prefix.
+
+Checkpoint-enabled methods compose through ordinary reviewed child routes.
+Each invocation keeps its own sequence and accepted aggregate under the original root attempt.
+A parent Flow uses [Child Checkpoint](https://jig.md/spec/child-checkpoint) to retrieve a settled direct child's saved evidence, text, and associated artifacts.
+It can inspect that work and pass it to another reviewed method while preserving the original child's result.
+Application tickets expose the retained scope inventory, its availability, and selected checkpoint export after the root ends.
+Retrieval does not replay work or decide whether an application should accept it.
 
 Live artifacts have a 256 MiB aggregate budget. Durable requests separately
 select retained artifact allowance up to 256 MiB for final and latest checkpoint

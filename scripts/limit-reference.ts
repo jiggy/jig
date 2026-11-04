@@ -332,7 +332,8 @@ export const LIMIT_REFERENCE: readonly Group[] = [
         'Checkpoint text files / aggregate text content',
         `${RUN_CHECKPOINT_LIMITS.files} / ${bytes(RUN_CHECKPOINT_LIMITS.fileBytes)}`,
       ),
-      fixed('Checkpoint saves', integer(RUN_CHECKPOINT_LIMITS.saves)),
+      fixed('Checkpoint saves per invocation', integer(RUN_CHECKPOINT_LIMITS.saves)),
+      fixed('Retained checkpoint scopes per attempt, including root', integer(RUN_CHECKPOINT_LIMITS.scopes)),
     ],
   },
   {

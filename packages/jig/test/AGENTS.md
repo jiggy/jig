@@ -100,9 +100,26 @@ Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
 Protected acceptance, replacement and save limits require actual SQLite ownership.
 Native command loss, independent fencing and installed recovery remain host gates.
 
-Child checkpoint review cases preserve root eligibility while refusing direct, Binding and mapped child routes at the caller's slot.
-Diagnostic projection and presentation retain the specific code without exposing private exception messages.
-These cases establish review behavior, not native checkpoint retention or nested invocation support.
+Child checkpoint review cases preserve direct, Binding and mapped composition.
+Use exact native contracts.
+Review and parsing cases establish no native checkpoint acceptance, retrieval or cleanup evidence.
+
+`host/installed-child-checkpoints.test.ts` owns the frozen public consumer in
+`fixtures/installed-child-checkpoints.ts`. Its outer Flow calls a router that
+repairs a failed or unsuccessful child through its retained checkpoint.
+Keep read-only artifact handoff, repeated local IDs across callers, absent/foreign/native-operation refusals, and no-save cases.
+The root saves no checkpoint. Per-scope result selection and export must preserve
+all accepted worker/router identities, binary and empty-file bytes, and shared
+export identity. Read-only protected counts and native residue establish no replay
+and complete cleanup independently of the application result.
+
+`host/installed-child-checkpoint-cancellation.test.ts` owns a separate installed consumer.
+Its selected-channel barrier proves an acknowledged child save while that child remains active.
+Retrieval must refuse that active child. Abort the child call through the public SDK.
+Join the exact original operation without the cancelled waiter signal before retrieving.
+
+The successful outer result and exports must preserve the cancelled child's accepted bytes.
+Keep the original root identity, native residue checks and protected owner observations.
 
 Checkpoint loss barriers must match the authoritative commit boundary.
 Delivery callbacks run after the protected save commits.
@@ -120,6 +137,14 @@ Busy or incomplete channel frames never establish acceptance.
 Trusted coordinator compositions forward the CLI's actual `channelOutput`.
 Do not drop selected channels while copying file or timeout options.
 Primitive fixtures copy the complete built public SDK runtime, not a source-file shortlist.
+
+The nested checkpoint loss case prepares and persists an ordinary public ticket,
+then runs the genuine submit adapter in `fixtures/checkpoint-coordinator.ts`.
+Await the descendant's save acknowledgement and independently read its accepted
+scope before killing the actual coordinator. A new real project owner performs
+recovery. Result and selected-scope export use the original ticket after confirmed
+cleanup. Preserve the lost terminal, original root start count and all existing
+root checkpoint cases. Never manufacture submission, checkpoint or recovery records.
 
 Canonicalize fixture-owned temporary roots before deriving absolute packet paths
 or private SQLite observations. Keep no-follow acquisition and publication checks

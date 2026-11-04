@@ -204,6 +204,24 @@ These links locate module rules. All selected domain requirements still apply.
 
 ### test host installed-* tests
 
+- `test/host/installed-child-checkpoints.test.ts` qualifies ordinary nested
+  checkpoint recovery through frozen Jig/FLOW archives. A child router retrieves
+  its own failed or unsuccessful child's accepted work and delegates a held
+  read-only checkpoint artifact to an ordinary repair method. Separate saved
+  scopes retain identical local operation IDs without sharing sequence or bytes.
+
+  Its public application verifies selected-scope exports and a successful outer
+  result without giving the root a save declaration. The native checkpoint
+  lifecycle suite separately kills the real root coordinator and exports the
+  retained descendant through its original prepared ticket after actual recovery.
+  Both require complete native cleanup and no replay. Neither uses a model.
+
+- `test/host/installed-child-checkpoint-cancellation.test.ts` uses a fresh public
+  consumer to hold an acknowledged child save behind selected channels. Retrieval
+  refuses the active child. The router cancels and rejoins that original call,
+  then retrieves its checkpoint after native cleanup. The outer Run succeeds and
+  exports the retained child bytes through the original ticket.
+
 - `test/host/installed-*.test.ts` and
   `test/host/package-provider-observation.test.ts`, under
   `JIG_LINUX_ROOTLESS_HOSTILE=1` or `JIG_MACOS_PROCESS_TEST=1`, exercises public

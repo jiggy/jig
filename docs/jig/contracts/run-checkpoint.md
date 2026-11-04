@@ -18,6 +18,7 @@ package-local descriptor offline; the operator reviews the native invocation and
 chooses the output destination.
 
 - [Contract and limits](../spec/run-checkpoint.md)
+- [Read a settled child's checkpoint](child-checkpoint.md)
 - [Exact JSON descriptor](https://jig.md/contracts/run-checkpoint/contract.json)
 
 The latest accepted checkpoint shares the original protected attempt's bounded

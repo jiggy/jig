@@ -6,6 +6,8 @@ export const ATTEMPT_FRAME_BYTES = 16_777_216
 export const ATTEMPT_STDERR_BYTES = 65_536
 export const ATTEMPT_DIAGNOSTIC_TEXT_BYTES = 3 * ATTEMPT_STDERR_BYTES
 export const ATTEMPT_PROTOCOL_VERSION = 1
+export const ATTEMPT_CHECKPOINT_SCOPES = 64
+export type CheckpointScope = 'root' | `sha256:${string}`
 export type AttemptVerb =
   | 'inspect'
   | 'prepare'
@@ -113,7 +115,13 @@ export interface AttemptObservation {
   retained?: 'available' | 'expired' | 'unavailable'
   reason?: AttemptErrorCode
 }
+export interface AttemptCheckpointEntry {
+  scope: CheckpointScope
+  sequence: number
+  digest: string
+}
 export interface AttemptCheckpoint {
+  scope: CheckpointScope
   availability: 'available' | 'expired' | 'unavailable'
   sequence?: number
   digest?: string
@@ -127,12 +135,13 @@ export interface AttemptRequests {
   submit: { ticket: string; request: CanonicalRequest }
   lookup: { ticket: string }
   cancel: { ticket: string }
-  result: { ticket: string }
+  result: { ticket: string; checkpointScope?: CheckpointScope }
   export: {
     ticket: string
     destination: string
     artifactResult?: string
     source?: 'final' | 'checkpoint'
+    checkpointScope?: CheckpointScope
   }
 }
 export interface AttemptResults {
@@ -144,9 +153,18 @@ export interface AttemptResults {
     observation: AttemptObservation
     output?: JsonValue
     artifactResults: ArtifactAvailability[]
-    checkpoint?: AttemptCheckpoint
+    checkpointInventory: 'available' | 'expired' | 'unavailable'
+    checkpoints: AttemptCheckpointEntry[]
+    checkpoint: AttemptCheckpoint
   }
-  export: { destination: string; manifestDigest: string; source: 'final' | 'checkpoint' }
+  export:
+    | { destination: string; manifestDigest: string; source: 'final' }
+    | {
+        destination: string
+        manifestDigest: string
+        source: 'checkpoint'
+        checkpointScope: CheckpointScope
+      }
 }
 export type AttemptFrame =
   | {
@@ -251,13 +269,25 @@ const artifact = record(
   { name: string, availability: choice(['pending', 'available', 'expired', 'unavailable']) },
   { manifestDigest: digest },
 )
+const checkpointScope: Check = (value) => {
+  if (value !== 'root') {
+    digest(value)
+    if ((value as string).length !== 71) fail()
+  }
+}
+const checkpointSequence: Check = (value) => {
+  positive(value)
+  if ((value as number) > 16) fail()
+}
+const checkpointEntry = record({ scope: checkpointScope, sequence: checkpointSequence, digest })
 const checkpoint = record(
   {
+    scope: checkpointScope,
     availability: choice(['available', 'expired', 'unavailable']),
     artifactResults: array(artifact),
   },
   {
-    sequence: positive,
+    sequence: checkpointSequence,
     digest,
     evidence: json,
     files: (v) => {
@@ -355,17 +385,19 @@ const requests: Record<AttemptVerb, Check> = {
   submit: record({ ticket, request: canonical }),
   lookup: record({ ticket }),
   cancel: record({ ticket }),
-  result: record({ ticket }),
+  result: record({ ticket }, { checkpointScope }),
   export: (value) => {
     record(
       { ticket, destination: string },
       {
         artifactResult: string,
         source: choice(['final', 'checkpoint']),
+        checkpointScope,
       },
     )(value)
     const request = value as AttemptRequests['export']
     if (request.source === 'checkpoint' && request.artifactResult !== undefined) fail()
+    if (request.source !== 'checkpoint' && request.checkpointScope !== undefined) fail()
   },
 }
 const results: Record<keyof AttemptResults, Check> = {
@@ -380,8 +412,36 @@ const results: Record<keyof AttemptResults, Check> = {
   lookup: observation,
   cancel: record({ acknowledged: boolean, observation }),
   result: (value) => {
-    record({ observation, artifactResults: array(artifact) }, { output: json, checkpoint })(value)
+    record(
+      {
+        observation,
+        artifactResults: array(artifact),
+        checkpointInventory: choice(['available', 'expired', 'unavailable']),
+        checkpoints: array(checkpointEntry),
+        checkpoint,
+      },
+      { output: json },
+    )(value)
     const result = value as AttemptResults['result']
+    if (
+      result.checkpoints.length > ATTEMPT_CHECKPOINT_SCOPES ||
+      new Set(result.checkpoints.map((entry) => entry.scope)).size !== result.checkpoints.length ||
+      (result.checkpointInventory !== 'available' && result.checkpoints.length !== 0)
+    )
+      fail()
+    const selected = result.checkpoint
+    const hasCheckpoint = selected.sequence !== undefined
+    if (
+      hasCheckpoint !== (selected.digest !== undefined) ||
+      hasCheckpoint !== Object.hasOwn(selected, 'evidence') ||
+      hasCheckpoint !== Object.hasOwn(selected, 'files') ||
+      (selected.availability === 'available' && !hasCheckpoint)
+    )
+      fail()
+    if (hasCheckpoint && result.checkpointInventory === 'available') {
+      const entry = result.checkpoints.find((entry) => entry.scope === selected.scope)
+      if (!entry || entry.sequence !== selected.sequence || entry.digest !== selected.digest) fail()
+    }
     const artifacts = result.observation.receipt?.artifactResults ?? []
     if (
       result.artifactResults.length !== artifacts.length ||
@@ -406,11 +466,14 @@ const results: Record<keyof AttemptResults, Check> = {
     )
       fail()
   },
-  export: record({
-    destination: string,
-    manifestDigest: digest,
-    source: choice(['final', 'checkpoint']),
-  }),
+  export: (value) => {
+    record(
+      { destination: string, manifestDigest: digest, source: choice(['final', 'checkpoint']) },
+      { checkpointScope },
+    )(value)
+    const result = value as AttemptResults['export']
+    if ((result.source === 'checkpoint') !== Object.hasOwn(result, 'checkpointScope')) fail()
+  },
 }
 export function parseAttemptRequest<V extends AttemptVerb>(
   verb: V,

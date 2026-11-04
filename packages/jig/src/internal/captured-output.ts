@@ -420,8 +420,8 @@ function mint(
   return output
 }
 
-/** Trusted ticket/export owner only: reseal bytes read under its accepted export pin.
- * This is not a packet decoder or a source of participant artifact rights. */
+/** Reseal verified protected bytes under an export pin or a live settled-child read.
+ * The trusted caller proves that boundary. Public packets never grant custody. */
 export function capturePrivateRetainedOutput(input: {
   readonly files: readonly {
     readonly path: string

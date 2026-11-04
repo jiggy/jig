@@ -105,7 +105,7 @@ export async function copyPrivateAttemptExport(
           : 'Export publication failed. Select a new destination for a new delivery.',
       )
     }
-    const result = {
+    const result: AttemptResults['export'] = {
       destination: receipt.destination,
       manifestDigest: privateDomainDigest('JIG-Attempt-Export/1', {
         requestDigest: pin.observation.receipt!.requestDigest,
@@ -117,9 +117,12 @@ export async function copyPrivateAttemptExport(
               : null,
         source,
         artifactResult: input.artifactResult ?? null,
+        checkpointScope: source === 'checkpoint' ? pin.checkpoint!.record.identity.scope : null,
         files: (receipt.files ?? []) as unknown as JsonValue,
       }),
-      source,
+      ...(source === 'checkpoint'
+        ? { source, checkpointScope: pin.checkpoint!.record.identity.scope }
+        : { source }),
     }
     await completePrivateAttemptExportDelivery({
       projectRoot: request.projectRoot,
