@@ -124,6 +124,11 @@ preparation never becomes a consumer requirement.
   and runner allocation waits without identifying either cause. Event-head groups provide
   diagnostic workflow envelopes without establishing tested merge identity.
 
+  PR envelope reporting includes P95, maximum, and 25-minute breaches.
+  Preserve failed, cancelled, incomplete and ambiguous groups in the denominator.
+  Separate runs with and without retries. Measure from original workflow creation
+  through observed completion, without claiming exact push or merge-ready latency.
+
   Earlier successful jobs retained in the latest history supply observed runner
   time only. Receipt acceptance and hypothetical latency savings remain unproved.
   Copied successful checks contribute no execution time. Their unique observed
@@ -275,10 +280,12 @@ They consume frozen package exports with tracked test helpers and installed
 
   Observed paths never authorize cleanup or detachment. Its full mode remains
   the self-hosted entrypoint. Hosted `--shard` runs one isolated portion of the
-  same complete suite: four Intel shards or one complete Apple Silicon host.
+  same complete suite. Intel uses four shards. Apple Silicon uses one complete
+  main/manual host or three PR roles selected from five workers.
+
   Shard zero runs native prerequisites and the final shard runs installed
   consumer and genuine-client checks on each architecture. Both roles run once
-  on the single Apple Silicon host.
+  on the single main/manual Apple Silicon host.
 
   The full Jig package smoke receives `JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY`
   from the existing Mac evidence directory or Linux's installed-evidence command directory.
@@ -299,10 +306,9 @@ They consume frozen package exports with tracked test helpers and installed
   diagnostics. Their closed wall intervals and bounded profile projections appear
   in the existing job log. Timing changes no deadlines, inventories or outcomes.
 
-  The workflow reallocates the former two Apple Silicon jobs' allowance to one
-  complete host, with a smaller aggregate allowance and shared setup. Per-test
-  and product deadlines stay unchanged. The exact allocations belong to
-  `.github/AGENTS.md` and the workflow.
+  Per-test and product deadlines stay unchanged. PR work shares an absolute
+  workflow budget. Main/manual runs retain their complete-host allowance.
+  Exact allocations belong to `.github/AGENTS.md` and the workflow.
 - `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
   catalog, retaining portable files until a separate audit proves host
   neutrality. Eight native prerequisite files run once on shard zero and genuine
@@ -327,6 +333,65 @@ They consume frozen package exports with tracked test helpers and installed
 
   This exposes primitive failures early without moving files between runners or
   changing weights, commands, limits or qualification obligations.
+- `macos-host-cohort.mjs` owns the PR assignment protocol. One running Ubuntu
+  allocator assigns three roles independently within exactly two admitted ARM
+  profiles. Five workers publish unique announcements and await their own
+  assignments. A readiness gate starts workers only after the allocator is live.
+  Workers never wait for an unscheduled Mac peer. Artifact names are not locks.
+
+  Dispatch each profile's roles in the source-owned order 2, 0, 1 and replay that order when validating assignments.
+  The installed role starts on the earliest matching worker. Native prerequisites remain on role zero, and whole-file ownership is unchanged.
+
+  Worker allocation overlaps canonical production. Each executing worker acquires verified canonical inputs after host preparation and before native qualification.
+
+  Records bind the tested merge, run, attempt, allocator, worker job and complete
+  host tuple. Reconcile the final ledger with every announcement, assignment and
+  worker receipt. Require the allocator, readiness gate, deadline guard and every worker job to succeed in the current attempt.
+  Failed uploads, duplicate records, ambiguous responses and
+  deadlines fail closed. Assignment alone grants no execution credit.
+
+  After a verified claim, log each worker's logical role and exact host profile.
+  Surplus summaries explain that no test role was assigned.
+  Assignment summaries make no completion claim.
+
+  Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
+  parsing. Parse one regular JSON member without filesystem extraction.
+
+  `macos-host-cohort-run.mjs` validates every executing worker's exact source
+  reports and canonical metadata, including minority profiles. Only then does it
+  normalize one complete matching role set for the existing full report reader.
+  Retained timing data includes only validated current worker identities and UTC intervals.
+  Surplus workers cannot retain execution proof. Main/manual runs use role zero
+  directly and do not participate in allocation. Their allocator and readiness
+  jobs succeed without publishing records, preserving dependency success.
+
+  Keep artifact runtime credentials inside the pinned JavaScript action and child.
+  Copy the isolated `mac-cohort-client/` manifest and generated Bun lock into runner scratch.
+  Install the exact official client and locked dependency digests with `--frozen-lockfile --ignore-scripts`.
+  Regenerate the tool lock with the workflow's pinned Bun version when updating dependencies.
+  Never export artifact runtime credentials into later steps.
+- `pr-time-budget.mjs` owns the fixed 1,500-second PR workflow allowance and
+  120-second evidence reserve. Verify creation metadata against repository, run,
+  attempt and PR event head before retaining its deadline. Test evidence remains
+  bound to the separate tested merge SHA.
+
+  Queue delays and retries consume that original allowance. Bound child process
+  groups by the remaining work time and reject completion after the final deadline.
+  PR command ownership settles remaining descendants even after a successful leader exit.
+
+  Floor work minutes for admission, but round the GitHub step backstop up from raw remaining milliseconds plus bounded termination grace.
+  The exact Node deadline remains authoritative. Integer-minute rounding must not interrupt its process-group cleanup early.
+
+  Its PR matrix guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
+  Missing, failed, ambiguous or overdue workers fail the guard and activate matrix cancellation, including queued siblings.
+  The guard has a separate Ubuntu matrix slot and grants no native execution credit.
+
+  CLI logs show original creation, work cutoff and final deadline without changing JSON output.
+  Successful monitor summaries explain intentionally unused native steps.
+  Summary output never delays a guard failure or grants qualification.
+
+  Main/manual commands retain their existing allowances. Missing metadata or
+  invalid retained values fail closed. GitHub still owns guard allocation and cancellation settlement.
 - `merge-attempts.mjs` selects the newest authoritative execution of each named
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
   acquisition and per-job evidence across attempts within one original run.
@@ -357,6 +422,10 @@ They consume frozen package exports with tracked test helpers and installed
   Mac validator reconstructs the complete source-pinned shard plan and reads
   every owning report and completion marker once.
 
+  `readMacRoleReport` validates one complete role without granting qualification.
+  `readMacReports` requires every role for the explicitly selected plan.
+  The default plan retains ARM1 and Intel4. The PR plan requires ARM3.
+
   Every shard's retained prerequisites must match an exact admitted architecture,
   kernel, build and Bun tuple. A complete architecture plan must use one observed
   tuple. Its summary and retained qualification artifact name that tuple, without
@@ -365,7 +434,9 @@ They consume frozen package exports with tracked test helpers and installed
   Linux Bun commands retain their stdout parser. Linux Node commands retain
   exact single-file JUnit reports
   beside their transcripts. Installed scripts retain completion markers.
-  `macos-host-summary.py` projects validated Mac counts and optional job timing.
+  `macos-host-summary.py` projects validated file and case counts, complete planned coverage, and optional job timing.
+  PR summaries map each selected role to its exact current worker job through the normalized receipt.
+  Missing or malformed mappings leave job links and timing unavailable.
 
   It does not implement another XML or plan validator. Timing cannot grant or
   remove qualification. The evidence writer consumes that owning summary without

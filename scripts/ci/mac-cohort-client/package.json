@@ -1,0 +1,7 @@
+{
+  "name": "jig-ci-mac-cohort-client",
+  "private": true,
+  "dependencies": {
+    "@actions/artifact": "2.3.2"
+  }
+}

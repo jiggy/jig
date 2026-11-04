@@ -8,6 +8,7 @@ import { parse } from 'yaml'
 import {
   analyzeCiPerformance,
   PERFORMANCE_WORKFLOWS,
+  performanceMarkdown,
   performanceRequestBudget,
   requireCollectionBudget,
 } from './ci-performance.mjs'
@@ -52,6 +53,31 @@ function entry(changes = {}) {
 }
 function snapshot(runs = [entry()]) {
   return { repository: 'jiggy/jig', since: stamp(-1), until: stamp(3600), runs }
+}
+
+function workflowGroup(idBase, elapsedSeconds = 600, event = 'pull_request') {
+  const head = idBase.toString(16).padStart(40, '0')
+  return PERFORMANCE_WORKFLOWS.map((path, index) => {
+    const run = entry()
+    Object.assign(run.run, {
+      id: idBase + index,
+      path,
+      event,
+      head_sha: head,
+      created_at: stamp(index * 3),
+    })
+    run.attempts[0].startedAt = run.run.created_at
+    run.attempts[0].jobs = [
+      job(idBase * 10 + index, 'host', 1, {
+        run_id: run.run.id,
+        head_sha: head,
+        created_at: stamp(10 + index * 3),
+        started_at: stamp(20 + index * 3),
+        completed_at: stamp(elapsedSeconds - (2 - index) * 30),
+      }),
+    ]
+    return run
+  })
 }
 
 test('workflow waiting, job queue, release offsets and concurrent work remain separate observations', () => {
@@ -421,6 +447,135 @@ test('only a complete unambiguous three-workflow success receives an event-head 
   assert.equal(ambiguous.envelopes[0].reason, 'missing-or-duplicate-workflow')
 })
 
+test('PR budget reporting keeps failed, cancelled, incomplete and ambiguous groups in its denominator', () => {
+  const failed = workflowGroup(130)
+  failed[1].run.conclusion = failed[1].attempts[0].conclusion = 'failure'
+  failed[1].attempts[0].jobs[0].conclusion = 'failure'
+  failed[2].run.conclusion = failed[2].attempts[0].conclusion = 'cancelled'
+  failed[2].attempts[0].jobs[0].conclusion = 'cancelled'
+  const cancelled = workflowGroup(140)
+  cancelled[2].run.conclusion = cancelled[2].attempts[0].conclusion = 'cancelled'
+  cancelled[2].attempts[0].jobs[0].conclusion = 'cancelled'
+  const pending = workflowGroup(160)
+  pending[2].run.conclusion = pending[2].attempts[0].conclusion = null
+  Object.assign(pending[2].attempts[0].jobs[0], { conclusion: null, completed_at: null })
+  const ambiguous = workflowGroup(170)
+  const duplicate = structuredClone(ambiguous[0])
+  duplicate.run.id = 173
+  Object.assign(duplicate.attempts[0].jobs[0], { id: 1730, run_id: 173 })
+  const report = analyzeCiPerformance(
+    snapshot([
+      ...workflowGroup(100, 600),
+      ...workflowGroup(110, 1500),
+      ...workflowGroup(120, 1501),
+      ...failed,
+      ...cancelled,
+      ...workflowGroup(150).slice(0, 2),
+      ...pending,
+      ...ambiguous,
+      duplicate,
+      ...workflowGroup(180, 1800, 'push'),
+    ]),
+  )
+  assert.equal(report.prEnvelopeSummary.budgetSeconds, 1500)
+  assert.equal(report.prEnvelopeSummary.groupCount, 8)
+  assert.deepEqual(report.prEnvelopeSummary.outcomes, {
+    success: 3,
+    failed: 1,
+    cancelled: 1,
+    incomplete: 2,
+    ambiguous: 1,
+  })
+  assert.deepEqual(report.prEnvelopeSummary.successful, {
+    count: 3,
+    medianSeconds: 1500,
+    p90Seconds: 1501,
+    p95Seconds: 1501,
+    maxSeconds: 1501,
+    overBudgetCount: 1,
+  })
+  assert.deepEqual(
+    report.envelopes
+      .filter((row) => row.outcome !== 'success')
+      .map((row) => row.threeWorkflowEnvelopeSeconds),
+    [null, null, null, null, null],
+  )
+  const markdown = performanceMarkdown(report)
+  assert.ok(markdown.includes('Observed PR event-head groups: 8.'))
+  assert.ok(markdown.includes('| 3 | 1 | 1 | 2 | 1 |'))
+  assert.ok(markdown.includes('| All latest successes | 3 | 25.0 | 25.0 | 25.0 | 25.0 | 1 |'))
+  assert.ok(markdown.includes('not distinct pushes or verified branch-policy readiness'))
+})
+
+test('PR timing quantiles and maximum use successful envelopes rather than summed workflow durations', () => {
+  const runs = Array.from({ length: 20 }, (_, index) =>
+    workflowGroup(1000 + index * 10, 600 + index * 60),
+  ).flat()
+  const report = analyzeCiPerformance(snapshot(runs))
+  assert.deepEqual(report.prEnvelopeSummary.successful, {
+    count: 20,
+    medianSeconds: 1170,
+    p90Seconds: 1620,
+    p95Seconds: 1680,
+    maxSeconds: 1740,
+    overBudgetCount: 4,
+  })
+  assert.deepEqual(
+    report.prEnvelopeSummary.successfulFirstAttempts,
+    report.prEnvelopeSummary.successful,
+  )
+})
+
+test('successful retry envelopes retain the original creation time and preceding unsuccessful attempt', () => {
+  const runs = workflowGroup(200)
+  const retried = runs[2]
+  retried.run.run_attempt = 2
+  retried.attempts[0].conclusion = retried.attempts[0].jobs[0].conclusion = 'failure'
+  retried.attempts.push({
+    number: 2,
+    startedAt: stamp(1800),
+    conclusion: 'success',
+    jobs: [
+      job(2030, 'host', 2, {
+        run_id: retried.run.id,
+        head_sha: retried.run.head_sha,
+        created_at: stamp(1810),
+        started_at: stamp(1820),
+        completed_at: stamp(1860),
+      }),
+    ],
+  })
+  const report = analyzeCiPerformance(snapshot(runs))
+  assert.equal(report.envelopes[0].hasRetries, true)
+  assert.equal(report.envelopes[0].threeWorkflowEnvelopeSeconds, 1860)
+  assert.equal(report.latestRuns[2].elapsedSeconds, 60)
+  assert.equal(report.attempts[2].conclusion, 'failure')
+  assert.equal(report.prEnvelopeSummary.successfulFirstAttempts.count, 0)
+  assert.deepEqual(report.prEnvelopeSummary.successfulWithRetries, {
+    count: 1,
+    medianSeconds: 1860,
+    p90Seconds: 1860,
+    p95Seconds: 1860,
+    maxSeconds: 1860,
+    overBudgetCount: 1,
+  })
+  assert.ok(performanceMarkdown(report).includes('| After reruns | 1 | 31.0 | 31.0 | 31.0 | 31.0 | 1 |'))
+})
+
+test('a window without PR successes reports empty timing without a fast-success fallback', () => {
+  const report = analyzeCiPerformance(snapshot(workflowGroup(300, 1800, 'push')))
+  assert.equal(report.prEnvelopeSummary.groupCount, 0)
+  assert.deepEqual(report.prEnvelopeSummary.successful, {
+    count: 0,
+    medianSeconds: null,
+    p90Seconds: null,
+    p95Seconds: null,
+    maxSeconds: null,
+    overBudgetCount: 0,
+  })
+  assert.ok(performanceMarkdown(report).includes('| All latest successes | 0 | — | — | — | — | 0 |'))
+})
+
 test('foreign identity, duplicate jobs, reversed timing and missing attempts refuse the report', () => {
   const mutations = [
     (s) => {
@@ -480,6 +635,10 @@ test('the real snapshot CLI is read-only and rejects ambiguous command options',
     assert.equal(rendered.status, 0, rendered.stderr)
     assert.ok(rendered.stdout.includes('| ci.yml | pull_request | 1 | 8.0 | 8.0 | success: 1 |'))
     assert.ok(rendered.stdout.includes('no flake rate'))
+    assert.ok(rendered.stdout.includes('PR three-workflow elapsed envelope'))
+    assert.ok(rendered.stdout.includes('latest observed job completion in the successful workflows'))
+    assert.ok(rendered.stdout.includes('Observed PR event-head groups: 1.'))
+    assert.ok(rendered.stdout.includes('| 0 | 0 | 0 | 1 | 0 |'))
     for (const args of [
       ['--snapshot', file, '--repository', 'jiggy/jig'],
       ['--snapshot', file, '--snapshot', file],

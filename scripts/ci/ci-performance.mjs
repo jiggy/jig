@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { PR_BUDGET_SECONDS } from './pr-time-budget.mjs'
 
 export const PERFORMANCE_WORKFLOWS = Object.freeze([
   '.github/workflows/ci.yml',
@@ -91,13 +92,37 @@ function executionKey(job) {
   ])
 }
 function summarize(values) {
-  if (!values.length) return { count: 0, medianSeconds: null, p90Seconds: null }
+  if (!values.length)
+    return { count: 0, medianSeconds: null, p90Seconds: null, p95Seconds: null, maxSeconds: null }
   const sorted = [...values].sort((a, b) => a - b)
   const middle = Math.floor(sorted.length / 2)
   return {
     count: sorted.length,
     medianSeconds: sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2,
     p90Seconds: sorted[Math.ceil(sorted.length * 0.9) - 1],
+    p95Seconds: sorted[Math.ceil(sorted.length * 0.95) - 1],
+    maxSeconds: sorted.at(-1),
+  }
+}
+
+function summarizePrEnvelopes(envelopes) {
+  const selected = envelopes.filter((envelope) => envelope.event === 'pull_request')
+  const outcomes = { success: 0, failed: 0, cancelled: 0, incomplete: 0, ambiguous: 0 }
+  for (const envelope of selected) outcomes[envelope.outcome]++
+  const successful = selected.filter((envelope) => envelope.outcome === 'success')
+  const durations = (rows) => ({
+    ...summarize(rows.map((row) => row.threeWorkflowEnvelopeSeconds)),
+    overBudgetCount: rows.filter(
+      (row) => row.threeWorkflowEnvelopeSeconds > PR_BUDGET_SECONDS,
+    ).length,
+  })
+  return {
+    budgetSeconds: PR_BUDGET_SECONDS,
+    groupCount: selected.length,
+    outcomes,
+    successful: durations(successful),
+    successfulFirstAttempts: durations(successful.filter((row) => !row.hasRetries)),
+    successfulWithRetries: durations(successful.filter((row) => row.hasRetries)),
   }
 }
 
@@ -324,17 +349,30 @@ export function analyzeCiPerformance(snapshot) {
     JSON.stringify([run.event, run.branch, run.eventHeadSha]),
   )
   const envelopes = [...groups.values()].map((group) => {
+    const duplicate = new Set(group.map((run) => run.workflow)).size !== group.length
     const complete =
-      group.length === PERFORMANCE_WORKFLOWS.length &&
-      new Set(group.map((run) => run.workflow)).size === PERFORMANCE_WORKFLOWS.length
+      !duplicate && group.length === PERFORMANCE_WORKFLOWS.length
     const successful =
       complete && group.every((run) => run.conclusion === 'success' && run.completedAt)
+    const outcome = duplicate
+      ? 'ambiguous'
+      : !complete
+        ? 'incomplete'
+        : successful
+          ? 'success'
+          : group.some((run) => ['failure', 'timed_out', 'startup_failure'].includes(run.conclusion))
+            ? 'failed'
+            : group.some((run) => run.conclusion === 'cancelled')
+              ? 'cancelled'
+              : 'incomplete'
     const first = group[0]
     return {
       event: first.event,
       branch: first.branch,
       eventHeadSha: first.eventHeadSha,
       runIds: group.map((run) => run.runId),
+      outcome,
+      hasRetries: group.some((run) => run.attempt > 1),
       reason: !complete
         ? 'missing-or-duplicate-workflow'
         : !successful
@@ -359,6 +397,7 @@ export function analyzeCiPerformance(snapshot) {
     until,
     workflowSummaries,
     envelopes,
+    prEnvelopeSummary: summarizePrEnvelopes(envelopes),
     attempts,
     latestRuns,
     notes: [
@@ -368,6 +407,9 @@ export function analyzeCiPerformance(snapshot) {
       'Observed retained runner time requires no new execution; receipt acceptance and wall-clock savings are not established.',
       'Carried successful checks add no execution time; missing or ambiguous execution origins remain explicit.',
       'Event head groups do not establish an exact tested PR merge source or branch-policy readiness.',
+      'Workflow-creation envelopes do not measure the exact push time or identify distinct push events.',
+      'Successful retry envelopes include waiting and earlier attempts from the original workflow creation.',
+      'The 25-minute comparison is diagnostic; it neither cancels work nor changes qualification.',
       'Conclusions and failed steps classify observations; no flake rate is inferred.',
       'Reports grant no qualification and never update scheduling weights.',
     ],
@@ -495,6 +537,7 @@ export function performanceMarkdown(report) {
       .replaceAll('|', '\\|')
       .replace(/[\r\n]/g, ' ')
   const minutes = (value) => (value === null ? '—' : (value / 60).toFixed(1))
+  const pr = report.prEnvelopeSummary
   return [
     '## CI performance observations',
     '',
@@ -512,6 +555,34 @@ export function performanceMarkdown(report) {
             .join(', '),
         )} |`,
     ),
+    '',
+    '### PR three-workflow elapsed envelope',
+    '',
+    'Elapsed time runs from the earliest workflow creation to the latest observed job completion in the successful workflows.',
+    'This diagnostic groups event heads, not distinct pushes or verified branch-policy readiness.',
+    `Observed PR event-head groups: ${pr.groupCount}. Budget comparison: ${minutes(pr.budgetSeconds)} minutes.`,
+    '',
+    '| Success | Failed | Cancelled | Incomplete | Ambiguous |',
+    '| ---: | ---: | ---: | ---: | ---: |',
+    `| ${pr.outcomes.success} | ${pr.outcomes.failed} | ${pr.outcomes.cancelled} | ${pr.outcomes.incomplete} | ${pr.outcomes.ambiguous} |`,
+    '',
+    'Missing workflows are incomplete. Duplicate workflows are ambiguous. Failed outcomes take precedence over cancellation within complete groups.',
+    'Other unfinished or non-success outcomes remain incomplete. These groups remain in the denominator and contribute no successful timing.',
+    '',
+    '| Successful PR groups | Count | Median minutes | P90 minutes | P95 minutes | Maximum minutes | Over 25 minutes |',
+    '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
+    ...[
+      ['All latest successes', pr.successful],
+      ['Without reruns', pr.successfulFirstAttempts],
+      ['After reruns', pr.successfulWithRetries],
+    ].map(
+      ([label, row]) =>
+        `| ${label} | ${row.count} | ${minutes(row.medianSeconds)} | ${minutes(row.p90Seconds)} | ` +
+        `${minutes(row.p95Seconds)} | ${minutes(row.maxSeconds)} | ${row.overBudgetCount} |`,
+    ),
+    '',
+    'Rerun timing includes the earlier attempts and the wait before retry. A cancelled run is never a fast success.',
+    'Breach counts use unrounded seconds. Exactly 25 minutes remains within budget.',
     '',
     `Measured ${report.latestRuns.length} runs and ${report.attempts.length} attempts.`,
     'JSON retains individual job queues, release offsets, pre-job delay and execution intervals.',
@@ -544,6 +615,7 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
         !Array.isArray(report.workflowSummaries) ||
         !Array.isArray(report.attempts) ||
         !Array.isArray(report.latestRuns) ||
+        !report.prEnvelopeSummary ||
         !Array.isArray(report.notes)
       )
         throw new Error('Malformed performance report')

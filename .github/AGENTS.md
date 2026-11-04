@@ -323,8 +323,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   `JIG_CODEX_STARTUP_PATH`, `JIG_CLAUDE_STARTUP_PATH`, and `JIG_PI_STARTUP_PATH`
   variables. This candidate workflow does not replace Linux publication gates or
   claim live model/API qualification.
-- `workflows/macos-hosted-candidates.yml` requires one complete Apple Silicon
-  host on `macos-15` for applicable PRs, generated main releases, uncertain sources, and manual runs. `affected-macos`
+- `workflows/macos-hosted-candidates.yml` requires complete Apple Silicon
+  qualification on `macos-15` for applicable PRs, generated main releases, uncertain sources, and manual runs. `affected-macos`
   reconciles only this architecture. Linux and Apple Silicon remain release
   gates. Intel evidence never grants publication readiness.
 
@@ -336,7 +336,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   number, so successive main jobs can select the same lane.
 
   Lane assignment does not balance load or guarantee both lanes are occupied.
-  PR branches retain their existing cancellation groups and runner allocation behavior.
+  PR branches retain their cancellation groups. Their five independent workers
+  have distinct concurrency keys and never wait for another worker to start.
 
   Each lane uses GitHub's `queue: max` to retain up to 100 pending jobs.
   GitHub cancels submissions beyond that limit, which cannot qualify publication.
@@ -349,20 +350,70 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   require current-attempt success. Producer readiness permits 1,800 seconds,
   including runner queues. Failed or invalid producer jobs refuse immediately.
 
-  Hosted Mac also requires that producer's latest `Quick development checks`
-  success before native allocation. Main/manual runs require current-attempt
-  Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
+  Mac workers queue after scope and allocator readiness, while canonical production continues.
+  Host setup overlaps producer waiting. Each executing worker acquires the exact canonical bundle before native qualification.
+
+  Acquisition requires the producer's latest `Quick development checks` success.
+  Main/manual runs require current-attempt Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
   Acquisition jobs allow 40 and 45 minutes respectively, including setup and
   settlement. Exact profiles, frozen archive identities, complete coverage and
   zero-residue checks stay mandatory.
+
+  PR acquisition and execution share the original workflow's 25-minute deadline.
+  Read that creation time through the Actions API, verified against the PR head,
+  repository, run and attempt. Workflow creation is the available push-time proxy.
+  Queueing and reruns consume the same allowance. Reserve 120 seconds for evidence
+  and final checks. A rerun cannot reset the original deadline.
+
+  Bound child process groups and native steps by the remaining allowance.
+  Integer-minute step limits round up the remaining work plus bounded termination grace.
+  The Node wrapper owns the exact work deadline. The GitHub timer is a later backstop.
+
+  Late, failed, cancelled or incomplete work cannot produce a passing final gate.
+  A read-only Ubuntu deadline guard shares the PR worker matrix.
+  Six matrix slots prevent waiting Mac jobs from occupying the guard's slot.
+  The guard requires every current-attempt worker to succeed before the work deadline.
+  Its failure activates matrix fail-fast cancellation, including workers that have no runner.
+
+  Step summaries distinguish the Ubuntu monitor, worker assignments and aggregate proof.
+  The monitor explains its skipped native rows and reports the original work cutoff and final deadline.
+  Worker summaries identify assigned roles or unassigned surplus workers.
+  The aggregate links each selected role to its executing job and reports verified file and case counts.
+
+  Guard failure and cancelled work cannot qualify execution.
+  GitHub controls guard allocation and cancellation settlement, so terminal timing remains subject to those services. Report breaches explicitly.
 
   Manual startup profiling remains optional and non-gating.
 
   The Apple Silicon pool admits exact Darwin 24.6.0 builds 24G830 and 24H232.
   The hosted probe rejects other tuples before compilation or dependency setup.
-  One host executes the complete native, source and installed plan, so results
-  from different kernel builds cannot be combined. Aggregate evidence names the
-  observed architecture, kernel, build and pinned Bun revision.
+
+  PRs use five workers and three logical roles per exact observed profile.
+  With two admitted profiles, five workers contain at least three matching hosts.
+  One Ubuntu allocator assigns roles from unique worker announcements. A readiness
+  gate verifies the running allocator before workers can occupy Mac runners.
+  Each worker receives its role independently, without waiting for another Mac
+  worker to start. Artifact names carry records without providing a lock.
+
+  The allocator and workers copy the isolated artifact-client manifest and generated Bun lock into runner scratch.
+  Install with `--frozen-lockfile --ignore-scripts` to retain exact dependency versions and integrity checks.
+
+  Within each exact profile, dispatch roles in the fixed order 2, 0, 1.
+  The earliest matching host receives role 2 and its installed-consumer tail.
+  Role 0 retains native prerequisites. Role 1 retains its source files.
+  Ledger replay verifies that issuance order. Complete qualification still requires all three logical roles.
+
+  Require the allocator, deadline guard and all five current-attempt worker jobs to succeed.
+  Reconcile announcements, assignments and the final allocator ledger, rejecting
+  duplicate or ambiguous records. Verify every executing role,
+  including an incomplete minority profile, against the canonical archives and
+  full source-pinned reports. Surplus workers retain prerequisite and assignment
+  receipts without execution credit. Select one complete matching three-role set.
+  Roles from different builds cannot combine into qualification.
+
+  Main and manual runs keep one complete host. Their allocator and readiness jobs
+  succeed without assigning roles. Aggregate evidence names the
+  observed architecture, kernel, build and pinned Bun revision in either plan.
 
   The complete ARM job retains main's 60-minute allocation, or 90 minutes with
   optional profiling. Individual test and product deadlines stay unchanged.

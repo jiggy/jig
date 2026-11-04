@@ -181,14 +181,40 @@ function fixture(architecture) {
 test('both full Mac architecture readers own every report once including native and installed startup', () => {
   for (const arch of ['x64', 'arm64']) {
     const f = fixture(arch)
-    assert.equal(
-      readMacReports({
-        repository: f.root,
-        source: f.source,
-        targetId: `macos-${arch}`,
-        evidenceDirectory: f.evidence,
-      }).count,
-      f.files.length,
+    const original = readFileSync(f.reports[0], 'utf8')
+    const owningFile = /<testcase file="([^"]+)"/.exec(original)[1]
+    writeFileSync(
+      f.reports[0],
+      original.replace('tests="1"', 'tests="2"').replace(
+        '</testsuites>',
+        `<testcase file="${owningFile}" classname="suite" name="second case"/></testsuites>`,
+      ),
+    )
+    const options = {
+      repository: f.root,
+      source: f.source,
+      targetId: `macos-${arch}`,
+      evidenceDirectory: f.evidence,
+    }
+    assert.deepEqual(readMacReports(options), {
+      count: f.files.length + 1,
+      skipped: 0,
+      filtered: 0,
+      skippedCases: [],
+      basis: 'test-cases',
+    })
+    const detailed = readMacReports({ ...options, detailed: true })
+    assert.equal(detailed.executed, f.files.length + 1)
+    assert.equal(detailed.files, f.files.length)
+    assert.equal(detailed.planned_files, f.files.length)
+    assert.equal(detailed.shards.reduce((total, row) => total + row.files, 0), f.files.length)
+    const planned = planMacHostTests(f.files, arch)
+    assert.deepEqual(
+      detailed.shards.map((row) => row.files),
+      planned.map((shard) =>
+        shard.groups.length + (shard.index === 0 ? NATIVE_PREREQUISITE_TESTS.length : 0) +
+        (shard.index === planned.length - 1 ? 1 : 0),
+      ),
     )
   }
 })

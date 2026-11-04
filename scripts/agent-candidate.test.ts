@@ -130,7 +130,8 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     Bun.YAML.parse(await Bun.file(join(root, '.github/workflows', file)).text()) as any
   const mac = await load('macos-hosted-candidates.yml')
   const intel = await load('macos-intel-nightly.yml')
-  const { MAC_HOST_SHARDS } = await import('./ci/macos-host-test-shards.mjs')
+  const { MAC_HOST_SHARDS, macHostShardCount } = await import('./ci/macos-host-test-shards.mjs')
+  const { macHostWorkerMatrix } = await import('./ci/macos-host-cohort-run.mjs')
   const ci = await load('ci.yml')
   expect(Object.hasOwn(workflowTriggers(mac), 'pull_request')).toBeTrue()
   expect(workflowTriggers(mac).pull_request?.paths).toBeUndefined()
@@ -141,6 +142,11 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(workflowTriggers(mac).schedule).toBeUndefined()
   const scope = mac.jobs.scope
   expect(scope.outputs.required).toBe('${{ steps.scope.outputs.required }}')
+  expect(scope.outputs.workers).toBe('${{ steps.plan.outputs.workers }}')
+  expect(scope.outputs.shard_count).toBe('${{ steps.plan.outputs.shard_count }}')
+  expect(scope.steps.find((step: any) => step.id === 'plan').run).toBe(
+    'node scripts/ci/macos-host-cohort-run.mjs plan',
+  )
   expect(scope.steps.find((step: any) => step.run?.includes('host-scope.mjs')).run).toContain(
     '--scope macos --github-output "$GITHUB_OUTPUT"',
   )
@@ -155,6 +161,8 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(mac.jobs['affected-macos'].needs).toEqual([
     'scope',
     'host-artifacts',
+    'cohort-allocator',
+    'allocator-ready',
     'prerequisites',
     'qualified-architecture',
   ])
@@ -165,21 +173,45 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
-  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBeFalse()
-  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(MAC_HOST_SHARDS.arm64)
+  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBe("${{ github.event_name == 'pull_request' }}")
+  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(6)
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
-  const entries = mac.jobs.prerequisites.strategy.matrix.include
-  expect(entries).toHaveLength(MAC_HOST_SHARDS.arm64)
-  expect(entries.every((entry: any) => entry.arch === 'arm64')).toBeTrue()
-  // host-test-coverage.test.mjs evaluates allocation and timeout semantics.
-  for (const [arch, count] of Object.entries({ arm64: MAC_HOST_SHARDS.arm64 })) {
-    const selected = entries.filter((e: any) => e.arch === arch)
-    expect(selected.map((e: any) => e.shard).sort()).toEqual(
-      Array.from({ length: count }, (_, i) => i),
-    )
-    expect(selected.filter((e: any) => e.installed).map((e: any) => e.shard)).toEqual([count - 1])
+  expect(mac.jobs['qualified-architecture'].needs).toContain('cohort-allocator')
+  expect(mac.jobs['qualified-architecture'].needs).toContain('allocator-ready')
+  expect(mac.jobs.prerequisites.needs).toEqual(['scope', 'allocator-ready'])
+  for (const id of ['cohort-allocator', 'allocator-ready']) {
+    expect(mac.jobs[id].needs).toBe('scope')
+    expect(mac.jobs[id].if).toBe("${{ needs.scope.outputs.required == 'true' }}")
+    expect(mac.jobs[id]['runs-on']).toBe('ubuntu-24.04')
+    expect(mac.jobs[id].permissions).toEqual({ contents: 'read', actions: 'read' })
+    expect(mac.jobs[id].strategy).toBeUndefined()
+    expect(mac.jobs[id]['continue-on-error']).toBeUndefined()
   }
+  expect(mac.jobs.prerequisites.strategy.matrix).toBe(
+    '${{ fromJSON(needs.scope.outputs.workers) }}',
+  )
+  expect(MAC_HOST_SHARDS).toEqual({ x64: 4, arm64: 1 })
+  expect(macHostShardCount('arm64', 'pull-request')).toBe(3)
+  expect(macHostShardCount('arm64')).toBe(1)
+  expect(macHostShardCount('x64')).toBe(4)
+  expect(macHostWorkerMatrix('pull_request')).toEqual({
+    include: [
+      { arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true },
+      ...Array.from({ length: 5 }, (_, worker) => ({
+        arch: 'arm64', worker, runner: 'macos-15', guard: false,
+      })),
+    ],
+  })
+  for (const event of ['push', 'workflow_dispatch'])
+    expect(macHostWorkerMatrix(event)).toEqual({
+      include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }],
+    })
+  // The Node coverage tests execute the scope planner and prove complete inventory,
+  // role ownership, surplus refusal, and main/manual timeout semantics.
+  expect(mac.jobs.prerequisites.env.JIG_MACOS_TEST_PLAN).toBe(
+    "${{ github.event_name == 'pull_request' && 'pull-request' || 'complete' }}",
+  )
   expect(Object.hasOwn(workflowTriggers(intel), 'pull_request')).toBeFalse()
   expect(Object.hasOwn(workflowTriggers(intel), 'push')).toBeFalse()
   expect(workflowTriggers(intel).schedule).toEqual([{ cron: '23 2 * * *' }])
@@ -190,19 +222,37 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(intel.jobs.prerequisites.strategy.matrix).toBe(
     '${{ fromJSON(needs.select.outputs.shards) }}',
   )
-  for (const name of [
-    'Test native containment and recovery',
-    'Qualify the complete rootless host and installed consumer',
+  for (const command of [
+    'bun test packages/jig/test/macos/',
+    'scripts/ci/qualify-macos-host.sh --shard',
   ]) {
-    const required = mac.jobs.prerequisites.steps.find((step: any) => step.name === name)
-    const nightly = intel.jobs.prerequisites.steps.find((step: any) => step.name === name)
-    expect(nightly.run).toBe(required.run)
-    expect(nightly.if).toBe(required.if)
+    const required = mac.jobs.prerequisites.steps.find((step: any) => step.run?.includes(command))
+    const nightly = intel.jobs.prerequisites.steps.find((step: any) => step.run?.includes(command))
+    expect(nightly.run.replace('"${{ matrix.shard }}"', '"$MAC_HOST_ROLE"')).toBe(
+      required.run.replaceAll('node scripts/ci/pr-time-budget.mjs run -- ', ''),
+    )
+    expect(required.if).toBe(
+      command.startsWith('bun test ')
+        ? "${{ !matrix.guard && steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
+        : "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
+    )
+    expect(nightly.if).toBe(
+      command.startsWith('bun test ') ? 'matrix.shard == 0' : undefined,
+    )
+    expect(required['continue-on-error']).toBeUndefined()
     expect(nightly['continue-on-error']).toBeUndefined()
   }
+  expect(
+    mac.jobs.prerequisites.steps.find(
+      (step: any) => step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
+    ).env.MAC_HOST_ROLE,
+  ).toBe('${{ steps.role.outputs.role }}')
   expect(mac.jobs['qualified-architecture'].strategy.matrix.include).toEqual([
-    { arch: 'arm64', count: MAC_HOST_SHARDS.arm64 },
+    { arch: 'arm64', count: '${{ fromJSON(needs.scope.outputs.shard_count) }}' },
   ])
+  expect(mac.jobs['qualified-architecture'].env.JIG_MACOS_TEST_PLAN).toBe(
+    mac.jobs.prerequisites.env.JIG_MACOS_TEST_PLAN,
+  )
   expect(mac.jobs['qualified-architecture'].permissions).toEqual({
     contents: 'read',
     actions: 'read',
@@ -215,6 +265,11 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(summary.run).toContain('>> "$GITHUB_STEP_SUMMARY"')
   expect(
     mac.jobs.prerequisites.steps.find((s: any) =>
+      s.run?.includes('scripts/ci/install-macos-test-clients.ts'),
+    ).if,
+  ).toBe("${{ !matrix.guard && steps.role.outputs.installed == 'true' }}")
+  expect(
+    intel.jobs.prerequisites.steps.find((s: any) =>
       s.run?.includes('scripts/ci/install-macos-test-clients.ts'),
     ).if,
   ).toBe('matrix.installed')
