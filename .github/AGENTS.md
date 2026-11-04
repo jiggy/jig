@@ -281,6 +281,12 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Raw command files remain beside the failed private consumer.
   Diagnostics cannot change outcomes, deadlines, inventories, archive identity, or residue requirements.
 
+  The hostile memory probe receives `JIG_CI_LINUX_EVIDENCE_DIRECTORY` through its acquisition-host command.
+  Its closed `installed-memory-diagnostic.json` stays inside the existing command evidence directory and seven-day upload.
+  Rejections retain the validation stage. Outcome categories and counters require validated exhaustion, fencing, release, and terminal integrity.
+  Raw terminal payloads, private fixtures, and admission databases stay outside hosted artifacts.
+  These diagnostics grant no qualification and preserve every acceptance check.
+
   The acquisition host uses a fixed path that excludes runner tool-cache
   binaries. The trusted npm installation step uses the selected Node directory
   for its interpreter. Contained package execution keeps its ordinary policy.

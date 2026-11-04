@@ -14,7 +14,10 @@ import {
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { isAbsolute, join } from 'node:path'
-import { checkInstalledMemoryProof, selectFreshInstalledRun } from './installed-memory-proof.js'
+import {
+  checkInstalledMemoryProofWithDiagnostics,
+  selectFreshInstalledRun,
+} from './installed-memory-proof.js'
 import { finishOperationalBaseline } from './operational-baseline-checks.js'
 
 const systemctl = await fixedSystemctl()
@@ -300,12 +303,15 @@ try {
   const memoryAfter = await readInstalledRunEvidence(project, beforeRunIds)
   assert.deepEqual(memoryAfter.project, memoryBefore.project)
   assert.deepEqual(memoryAfter.database, memoryBefore.database)
-  const memoryProof = checkInstalledMemoryProof({
-    row: memoryAfter.fresh!,
-    beforeRunIds,
-    project: memoryAfter.project,
-    command: memory,
-  })
+  const memoryProof = await checkInstalledMemoryProofWithDiagnostics(
+    {
+      row: memoryAfter.fresh!,
+      beforeRunIds,
+      project: memoryAfter.project,
+      command: memory,
+    },
+    process.env.JIG_CI_LINUX_EVIDENCE_DIRECTORY,
+  )
   process.stdout.write(`Installed memory enforcement: ${JSON.stringify(memoryProof)}\n`)
   await eventuallyNoJigResidue()
 

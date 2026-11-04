@@ -310,13 +310,14 @@ jobs:
         if: "matrix.suite == 'installed-evidence'"
         run: |
           set -euo pipefail
-          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
+          scripts/ci/provision-github-rootless-host.sh run-acquisition-host env "JIG_CI_LINUX_EVIDENCE_DIRECTORY=$JIG_CI_LINUX_EVIDENCE_DIRECTORY" "DISPLAY_MODEL_PACKAGE_ARCHIVE=$DISPLAY_MODEL_PACKAGE_ARCHIVE" "DISPLAY_WEB_PACKAGE_ARCHIVE=$DISPLAY_WEB_PACKAGE_ARCHIVE" "DISPLAY_TUI_PACKAGE_ARCHIVE=$DISPLAY_TUI_PACKAGE_ARCHIVE" "FLOW_SDK_PACKAGE_ARCHIVE=$FLOW_SDK_PACKAGE_ARCHIVE" "REPORTING_PACKAGE_ARCHIVE=$REPORTING_PACKAGE_ARCHIVE" "AGENT_METHOD_PACKAGE_ARCHIVE=$AGENT_METHOD_PACKAGE_ARCHIVE" "AGENT_ACP_PACKAGE_ARCHIVE=$AGENT_ACP_PACKAGE_ARCHIVE" "JIG_PACKAGE_ARCHIVE=$JIG_PACKAGE_ARCHIVE" "$JIG_CI_BUN" scripts/test-installed-hostile-baseline.ts 2>&1 | tee "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
 
           printf 'CI installed script complete: %s\n' 'scripts/test-installed-hostile-baseline.ts' >> "$RUNNER_TEMP/linux-command-evidence/command-14.txt"
           node -e 'const fs=require("node:fs"); const filename=process.argv[1]; const manifest=JSON.parse(fs.readFileSync(filename)); manifest.commands.push(JSON.parse(process.env.JIG_CI_COMMAND_CONTEXT)); fs.writeFileSync(filename, JSON.stringify(manifest));' "$RUNNER_TEMP/linux-command-evidence/manifest.json"
         shell: "bash"
         env:
           JIG_CI_COMMAND_CONTEXT: "{\"transcript\":\"command-14.txt\",\"files\":[\"scripts/test-installed-hostile-baseline.ts\"],\"commandKind\":\"installed-script\"}"
+          JIG_CI_LINUX_EVIDENCE_DIRECTORY: "${{ runner.temp }}/linux-command-evidence"
       -
         name: "Qualify standalone display-model frozen package"
         if: "matrix.suite == 'installed-evidence'"
