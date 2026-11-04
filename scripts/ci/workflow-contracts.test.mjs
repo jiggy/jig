@@ -227,6 +227,36 @@ test('release readiness requires every canonical Linux shard including example e
   ])
 })
 
+test('Linux memory rejection diagnostics cross acquisition into existing retained evidence', async () => {
+  const workflow = parse(await readFile(new URL('linux-host-conformance.yml', workflows), 'utf8'))
+  const steps = workflow.jobs['host-suite'].steps
+  const selected = steps.filter((step) => step.env?.JIG_CI_LINUX_EVIDENCE_DIRECTORY)
+  assert.equal(selected.length, 1)
+  const hostile = selected[0]
+  assert.equal(hostile.if, "matrix.suite == 'installed-evidence'")
+  assert.equal(hostile['continue-on-error'], undefined)
+  assert.equal(
+    hostile.env.JIG_CI_LINUX_EVIDENCE_DIRECTORY,
+    '${{ runner.temp }}/linux-command-evidence',
+  )
+  assert.match(
+    hostile.run,
+    /run-acquisition-host env "JIG_CI_LINUX_EVIDENCE_DIRECTORY=\$JIG_CI_LINUX_EVIDENCE_DIRECTORY"/,
+  )
+  assert.match(hostile.run, /scripts\/test-installed-hostile-baseline\.ts/)
+  assert.match(hostile.run, /set -euo pipefail/)
+  const evidence = steps.find((step) => step.with?.name?.startsWith('linux-shard-'))
+  assert.ok(evidence?.uses?.startsWith('actions/upload-artifact@'))
+  assert.equal(evidence.if, 'always()')
+  assert.equal(evidence.with['retention-days'], 7)
+  assert.deepEqual(evidence.with.path.trim().split('\n'), [
+    '${{ runner.temp }}/linux-command-evidence',
+    '${{ runner.temp }}/linux-shard.complete',
+    '${{ runner.temp }}/CANDIDATE.json',
+    '${{ runner.temp }}/ARTIFACT.json',
+  ])
+})
+
 test('Mac admission requires prepared canonical inputs and one live Ubuntu allocator', async () => {
   const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
   const allocator = mac.jobs['cohort-allocator']

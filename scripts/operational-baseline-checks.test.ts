@@ -1,9 +1,13 @@
 import { expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { checkInstalledMemoryProof, selectFreshInstalledRun } from './installed-memory-proof.js'
+import {
+  checkInstalledMemoryProof,
+  checkInstalledMemoryProofWithDiagnostics,
+  selectFreshInstalledRun,
+} from './installed-memory-proof.js'
 import { checkInvalidRunTarget, finishOperationalBaseline } from './operational-baseline-checks.js'
 
 test('invalid target assertion requires every current selector and the closed diagnostic', () => {
@@ -411,6 +415,27 @@ function mutateMemoryCheckpoint(
   )
 }
 
+function mutateMemoryTerminal(
+  fixture: ReturnType<typeof memoryProofFixture>,
+  change: (terminal: MemoryRecord) => void,
+): void {
+  const terminal = JSON.parse(Buffer.from(fixture.row.terminal_bytes as Uint8Array).toString())
+  change(terminal)
+  fixture.row.terminal_bytes = Buffer.from(memoryCanonical(terminal))
+  fixture.row.terminal_digest = memoryDigest('JIG-Private-Root-Terminal/1', terminal)
+  for (const name of ['provisional', 'admitted']) {
+    mutateMemoryCheckpoint(fixture, name, (value) => {
+      for (const key of Object.keys(value)) delete value[key]
+      Object.assign(value, terminal)
+    })
+  }
+  fixture.command.stdout = JSON.stringify(
+    terminal.status === 'succeeded'
+      ? { status: 'succeeded', ...terminal.result, diagnostics: terminal.diagnostics }
+      : terminal,
+  )
+}
+
 for (const victim of ['descendant', 'root'] as const) {
   test(`memory exhaustion requires a fresh confirmed OOM fence with ${victim} terminal shape`, () => {
     const fixture = memoryProofFixture(victim)
@@ -444,7 +469,7 @@ for (const victim of ['descendant', 'root'] as const) {
   for (const stage of [
     'command-json',
     'command-terminal',
-    'parent-terminal',
+    victim === 'root' ? 'parent-failure-message' : 'parent-success-outcome',
     'parent-receipt',
     'command-exit',
     'command-stderr',
@@ -456,7 +481,7 @@ for (const victim of ['descendant', 'root'] as const) {
       if (stage === 'command-terminal') {
         fixture.command.stdout = JSON.stringify({ privateText })
       }
-      if (stage === 'parent-terminal') {
+      if (stage === 'parent-failure-message' || stage === 'parent-success-outcome') {
         const terminal = JSON.parse(
           Buffer.from(fixture.row.terminal_bytes as Uint8Array).toString(),
         ) as MemoryRecord
@@ -505,6 +530,195 @@ for (const victim of ['descendant', 'root'] as const) {
       expect((rejection as Error).stack).not.toContain(privateText)
     })
   }
+}
+
+for (const [value, category] of [
+  [0, 'zero'],
+  [-1, 'negative'],
+  [1.5, 'invalid'],
+  [null, 'null'],
+] as const) {
+  test(`memory diagnostic identifies rejected child exit ${category} without qualifying it`, async () => {
+    const temporary = await mkdtemp(join(tmpdir(), 'jig-memory-diagnostic-'))
+    try {
+      const fixture = memoryProofFixture('descendant')
+      mutateMemoryTerminal(fixture, (terminal) => {
+        memoryRecord(memoryRecord(terminal.result).output).exitCode = value
+      })
+      await expect(checkInstalledMemoryProofWithDiagnostics(fixture, temporary)).rejects.toThrow(
+        'rejected at parent-child-exit;',
+      )
+      const path = join(temporary, 'installed-memory-diagnostic.json')
+      const diagnostic = JSON.parse(await readFile(path, 'utf8'))
+      expect(diagnostic.stage).toBe('parent-child-exit')
+      expect(diagnostic.observation.childExit).toBe(category)
+      expect(diagnostic.observation.receiptExit).toBe('zero')
+      expect(diagnostic.observation.memoryEvents).toEqual({ max: 19, oom: 1, oom_kill: 1 })
+      expect(diagnostic.observation.fenced).toBe(true)
+      expect(diagnostic.observation.released).toBe(true)
+      expect((await stat(path)).mode & 0o777).toBe(0o600)
+    } finally {
+      await rm(temporary, { recursive: true, force: true })
+    }
+  })
+}
+
+test('memory diagnostic distinguishes a rejected EOF terminal and preserves exclusive failure evidence', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-memory-diagnostic-'))
+  try {
+    const fixture = memoryProofFixture('root')
+    mutateMemoryTerminal(fixture, (terminal) => {
+      terminal.code = 'CHANNEL_LOST'
+      terminal.message = 'component stdout closed before a root response'
+    })
+    await expect(checkInstalledMemoryProofWithDiagnostics(fixture, temporary)).rejects.toThrow(
+      'rejected at parent-failure-code;',
+    )
+    const path = join(temporary, 'installed-memory-diagnostic.json')
+    const first = await readFile(path, 'utf8')
+    expect(Buffer.byteLength(first)).toBeLessThanOrEqual(4096)
+    expect(JSON.parse(first)).toMatchObject({
+      schemaVersion: 1,
+      kind: 'installed-memory-proof-rejection',
+      stage: 'parent-failure-code',
+      observation: {
+        terminalStatus: 'failed',
+        terminalCode: 'CHANNEL_LOST',
+        terminalMessage: 'stdout-closed-before-response',
+        receiptExit: 'null',
+        receiptSignal: 'SIGKILL',
+        commandExit: 'one',
+        commandStderr: 'nonempty',
+      },
+    })
+    await expect(checkInstalledMemoryProofWithDiagnostics(fixture, temporary)).rejects.toThrow(
+      'rejected at parent-failure-code;',
+    )
+    expect(await readFile(path, 'utf8')).toBe(first)
+    expect(await readdir(temporary)).toEqual(['installed-memory-diagnostic.json'])
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('memory diagnostics suppress private values and do not invent validated exhaustion', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-memory-diagnostic-'))
+  const secret = 'private-owner-or-terminal-value-must-not-be-retained'
+  try {
+    const fixture = memoryProofFixture('root')
+    mutateMemoryTerminal(fixture, (terminal) => {
+      terminal.message = secret
+    })
+    fixture.command.stderr = secret
+    await expect(checkInstalledMemoryProofWithDiagnostics(fixture, temporary)).rejects.toThrow(
+      'rejected at parent-failure-message;',
+    )
+    const path = join(temporary, 'installed-memory-diagnostic.json')
+    const data = await readFile(path, 'utf8')
+    expect(data).not.toContain(secret)
+    expect(data).not.toContain(fixture.project.path)
+    expect(data).not.toContain('a'.repeat(64))
+    expect(JSON.parse(data).observation.terminalMessage).toBe('other')
+    await rm(path)
+    const privateCode = memoryProofFixture('root')
+    mutateMemoryTerminal(privateCode, (terminal) => {
+      terminal.code = secret
+      terminal.message = secret
+    })
+    await expect(checkInstalledMemoryProofWithDiagnostics(privateCode, temporary)).rejects.toThrow(
+      'rejected at parent-failure-code;',
+    )
+    const codeData = await readFile(path, 'utf8')
+    expect(codeData).not.toContain(secret)
+    expect(JSON.parse(codeData).observation.terminalCode).toBe('other')
+    await rm(path)
+    const privateResult = memoryProofFixture('descendant')
+    mutateMemoryTerminal(privateResult, (terminal) => {
+      memoryRecord(terminal.result).outcome = secret
+      memoryRecord(memoryRecord(terminal.result).output).exitCode = secret
+    })
+    await expect(
+      checkInstalledMemoryProofWithDiagnostics(privateResult, temporary),
+    ).rejects.toThrow('rejected at parent-success-outcome;')
+    const resultData = await readFile(path, 'utf8')
+    expect(resultData).not.toContain(secret)
+    expect(JSON.parse(resultData).observation.resultOutcome).toBe('other')
+    expect(JSON.parse(resultData).observation.childExit).toBe('invalid')
+    await rm(path)
+    fixture.row.sandbox_bytes = Buffer.from(`{"ownerToken":"${secret}","broken":`)
+    await expect(checkInstalledMemoryProofWithDiagnostics(fixture, temporary)).rejects.toThrow(
+      'rejected at allocation;',
+    )
+    expect(JSON.parse(await readFile(path, 'utf8'))).toEqual({
+      schemaVersion: 1,
+      kind: 'installed-memory-proof-rejection',
+      stage: 'allocation',
+    })
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+test('successful memory proof writes no rejection artifact and unavailable diagnostics remain failed', async () => {
+  const temporary = await mkdtemp(join(tmpdir(), 'jig-memory-diagnostic-'))
+  try {
+    for (const victim of ['root', 'descendant'] as const) {
+      const accepted = memoryProofFixture(victim)
+      expect(await checkInstalledMemoryProofWithDiagnostics(accepted, temporary)).toEqual(
+        checkInstalledMemoryProof(accepted),
+      )
+    }
+    expect(await readdir(temporary)).toEqual([])
+    const fixture = memoryProofFixture('descendant')
+    mutateMemoryTerminal(fixture, (terminal) => {
+      memoryRecord(terminal.result).outcome = 'unrecognized private outcome'
+    })
+    for (const directory of [undefined, join(temporary, 'missing'), 'relative']) {
+      await expect(checkInstalledMemoryProofWithDiagnostics(fixture, directory)).rejects.toThrow(
+        'rejected at parent-success-outcome;',
+      )
+    }
+    expect(await readdir(temporary)).toEqual([])
+  } finally {
+    await rm(temporary, { recursive: true, force: true })
+  }
+})
+
+for (const [victim, stage, change] of [
+  [
+    'descendant',
+    'parent-success-envelope',
+    (value: MemoryRecord) => {
+      value.extra = 'private'
+    },
+  ],
+  [
+    'descendant',
+    'parent-success-result',
+    (value: MemoryRecord) => {
+      memoryRecord(value.result).extra = 'private'
+    },
+  ],
+  [
+    'descendant',
+    'parent-success-output',
+    (value: MemoryRecord) => {
+      memoryRecord(memoryRecord(value.result).output).extra = 'private'
+    },
+  ],
+  [
+    'root',
+    'parent-failure-envelope',
+    (value: MemoryRecord) => {
+      value.extra = 'private'
+    },
+  ],
+] as const) {
+  test(`memory proof distinguishes ${stage} without accepting an altered envelope`, () => {
+    const fixture = memoryProofFixture(victim)
+    mutateMemoryTerminal(fixture, change)
+    expect(() => checkInstalledMemoryProof(fixture)).toThrow(`rejected at ${stage};`)
+  })
 }
 
 test('memory proof requires the current no-output request identity', () => {

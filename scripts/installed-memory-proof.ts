@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
-import { posix } from 'node:path'
+import { writeFile } from 'node:fs/promises'
+import { isAbsolute, join, posix } from 'node:path'
 
 type RecordValue = Record<string, unknown>
 type MemoryProofStage =
@@ -14,7 +15,14 @@ type MemoryProofStage =
   | 'terminal-record'
   | 'command-json'
   | 'command-terminal'
-  | 'parent-terminal'
+  | 'parent-success-envelope'
+  | 'parent-success-result'
+  | 'parent-success-outcome'
+  | 'parent-success-output'
+  | 'parent-child-exit'
+  | 'parent-failure-envelope'
+  | 'parent-failure-code'
+  | 'parent-failure-message'
   | 'parent-receipt'
   | 'command-exit'
   | 'command-stderr'
@@ -43,15 +51,63 @@ export function checkInstalledMemoryProof(
   input: Parameters<typeof validateMemoryProof>[0],
 ): RecordValue {
   let stage: MemoryProofStage = 'run-request'
+  let observation: RecordValue | undefined
   try {
-    return validateMemoryProof(input, (next) => {
-      stage = next
-    })
+    return validateMemoryProof(
+      input,
+      (next) => {
+        stage = next
+      },
+      (value) => {
+        observation = value
+      },
+    )
   } catch {
     // Only literal stages cross this boundary; private values and causes stay private.
-    throw new Error(
+    throw new InstalledMemoryProofRejection(stage, observation)
+  }
+}
+
+class InstalledMemoryProofRejection extends Error {
+  readonly diagnostic: Readonly<RecordValue>
+
+  constructor(stage: MemoryProofStage, observation: RecordValue | undefined) {
+    super(
       `Installed memory enforcement proof rejected at ${stage}; inspect the retained private fixture`,
     )
+    this.diagnostic = Object.freeze({
+      schemaVersion: 1,
+      kind: 'installed-memory-proof-rejection',
+      stage,
+      ...(observation === undefined ? {} : { observation }),
+    })
+  }
+}
+
+/** Retain only closed diagnostic data; neither writing nor its failure changes proof acceptance. */
+export async function checkInstalledMemoryProofWithDiagnostics(
+  input: Parameters<typeof checkInstalledMemoryProof>[0],
+  directory?: string,
+): Promise<RecordValue> {
+  try {
+    return checkInstalledMemoryProof(input)
+  } catch (error) {
+    if (directory !== undefined && error instanceof InstalledMemoryProofRejection) {
+      try {
+        assert.ok(isAbsolute(directory) && !directory.includes('\0'))
+        const data = `${JSON.stringify(error.diagnostic)}\n`
+        assert.ok(Buffer.byteLength(data) <= 4096)
+        await writeFile(join(directory, 'installed-memory-diagnostic.json'), data, {
+          mode: 0o600,
+          flag: 'wx',
+        })
+      } catch {
+        console.error(
+          'Installed memory diagnostic could not be retained; the proof rejection remains.',
+        )
+      }
+    }
+    throw error
   }
 }
 
@@ -67,6 +123,7 @@ function validateMemoryProof(
     }
   },
   setStage: (stage: MemoryProofStage) => void,
+  observe: (value: RecordValue) => void,
 ): RecordValue {
   const { row, project, command } = input
   digest(row.run_id)
@@ -403,15 +460,22 @@ function validateMemoryProof(
   const commandTerminal: unknown = JSON.parse(command.stdout)
   setStage('command-terminal')
   assert.deepEqual(commandTerminal, publicTerminal)
-  setStage('parent-terminal')
+  // These counters, settlement facts and terminal have passed their integrity checks.
+  // The outcome categories explain a rejection, never substitute for qualification.
+  observe(memoryOutcomeObservation(terminal, receipt, memory, command))
   let terminalShape: 'parent-succeeded' | 'parent-sigkill'
   if (terminal.status === 'succeeded') {
+    setStage('parent-success-envelope')
     exact(terminal, ['status', 'result', 'diagnostics'])
+    setStage('parent-success-result')
     const result = record(terminal.result)
     exact(result, ['outcome', 'output'])
+    setStage('parent-success-outcome')
     assert.equal(result.outcome, 'done')
+    setStage('parent-success-output')
     const output = record(result.output)
     exact(output, ['exitCode'])
+    setStage('parent-child-exit')
     positive(output.exitCode)
     setStage('parent-receipt')
     assert.equal(receipt.exitCode, 0)
@@ -422,12 +486,13 @@ function validateMemoryProof(
     assert.equal(command.stderr, '')
     terminalShape = 'parent-succeeded'
   } else {
-    assert.deepEqual(terminal, {
-      status: 'failed',
-      code: 'EXECUTION_FAILED',
-      message: 'component exited with code null and signal SIGKILL',
-      diagnostics,
-    })
+    setStage('parent-failure-envelope')
+    exact(terminal, ['status', 'code', 'message', 'diagnostics'])
+    assert.equal(terminal.status, 'failed')
+    setStage('parent-failure-code')
+    assert.equal(terminal.code, 'EXECUTION_FAILED')
+    setStage('parent-failure-message')
+    assert.equal(terminal.message, 'component exited with code null and signal SIGKILL')
     setStage('parent-receipt')
     assert.equal(receipt.exitCode, null)
     assert.equal(receipt.signal, 'SIGKILL')
@@ -455,6 +520,67 @@ function validateMemoryProof(
     fenceDigest: row.fence_digest,
     ownerDigest: receipt.ownerDigest,
     memoryEvents: memory,
+    fenced: true,
+    released: true,
+  }
+}
+
+function memoryOutcomeObservation(
+  terminal: RecordValue,
+  receipt: RecordValue,
+  memory: RecordValue,
+  command: { readonly exitCode: number; readonly stderr: string },
+): RecordValue {
+  const object = (value: unknown): RecordValue | undefined =>
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+      ? (value as RecordValue)
+      : undefined
+  const category = (value: unknown, allowed: readonly string[]): string =>
+    value === undefined ? 'absent' : (allowed.find((entry) => entry === value) ?? 'other')
+  const exit = (value: unknown): string => {
+    if (value === undefined) return 'absent'
+    if (value === null) return 'null'
+    if (!Number.isSafeInteger(value)) return 'invalid'
+    if (value === 0) return 'zero'
+    if (value === 1) return 'one'
+    if (value === 137) return 'exit-137'
+    return (value as number) > 0 ? 'other-positive' : 'negative'
+  }
+  const message = category(terminal.message, [
+    'component exited with code null and signal SIGKILL',
+    'component stdout closed before a root response',
+    'component exited before a root response',
+    'component did not quiesce after its terminal response',
+    'component cleanup or fencing failed',
+  ])
+  const messageClasses: Record<string, string> = {
+    'component exited with code null and signal SIGKILL': 'component-sigkill',
+    'component stdout closed before a root response': 'stdout-closed-before-response',
+    'component exited before a root response': 'exit-before-response',
+    'component did not quiesce after its terminal response': 'post-response-termination',
+    'component cleanup or fencing failed': 'cleanup-or-fence',
+  }
+  const result = object(terminal.result)
+  return {
+    terminalStatus: category(terminal.status, ['succeeded', 'failed']),
+    terminalCode: category(terminal.code, [
+      'EXECUTION_FAILED',
+      'CHANNEL_LOST',
+      'PROTOCOL_ERROR',
+      'INVALID_RESULT',
+      'RESOURCE_EXHAUSTED',
+      'DEADLINE_EXCEEDED',
+      'CANCELLED',
+      'UNAVAILABLE',
+    ]),
+    terminalMessage: Object.hasOwn(messageClasses, message) ? messageClasses[message] : message,
+    resultOutcome: category(result?.outcome, ['done', 'blocked']),
+    childExit: exit(object(result?.output)?.exitCode),
+    receiptExit: exit(receipt.exitCode),
+    receiptSignal: receipt.signal === null ? 'null' : category(receipt.signal, ['SIGKILL']),
+    commandExit: exit(command.exitCode),
+    commandStderr: command.stderr === '' ? 'empty' : 'nonempty',
+    memoryEvents: { max: memory.max, oom: memory.oom, oom_kill: memory.oom_kill },
     fenced: true,
     released: true,
   }

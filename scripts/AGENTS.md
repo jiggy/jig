@@ -187,6 +187,14 @@ operational baselines, and public-site assembly.
   name only a closed validation stage and never render private values or causes.
   Command checks distinguish JSON parsing, terminal equality, parent terminal
   shape, receipt disposition, exit status and stderr without changing acceptance.
+
+  Parent checks separately identify envelope, result, outcome, output, child exit,
+  failure code and failure message rejection. A supplied `JIG_CI_LINUX_EVIDENCE_DIRECTORY`
+  retains one exclusive, mode-0600 `installed-memory-diagnostic.json` of at most 4 KiB.
+  It contains only closed outcome categories and previously validated OOM counters,
+  fence and release facts. It contains no raw message, private payload, path or owner token.
+  Diagnostic retention failure preserves the original proof rejection.
+
   Like the operational baseline, it always checks live residue.
   `finishOperationalBaseline` removes only successful fixtures. It retains
   failed private state and the bounded memory command transcript.
