@@ -66,38 +66,46 @@ flows: ["./flows/build", "./flows/review"]
 
 ### Dependency preparation limits
 
-`limits.dependencies` optionally configures production dependency preparation during review:
+`limits.dependencies` optionally configures dependency preparation during review:
 
 ```ts
 limits: {
   dependencies: {
+    maxPreparations: 32,
     maxPreparedBytes: 64 * 1024 * 1024,
     maxPreparedFiles: 8192,
   },
 },
 ```
 
-Both fields accept positive integer values. Omitted fields use their individual defaults.
+All fields accept positive integer values. Omitted fields use their individual defaults.
+`maxPreparations` defaults to 16 distinct preparations per review and accepts at most 256.
+It counts distinct captured package digests that require new dependency preparation, including Flow dependencies, npm Flow adoption, and evaluation recipes.
+Repeated digests count once. Reusing admitted dependencies consumes no preparation count.
+
 `maxPreparedBytes` defaults to 33,554,432 bytes and accepts at most 134,217,728 bytes.
 `maxPreparedFiles` defaults to 4,096 combined file/alias records and accepts at most 65,536 records.
-The complete prepared tree includes selected source, production dependencies, lock bytes, and layout JSON.
+Both output limits apply per production package, including selected source, production dependencies, lock bytes, and layout JSON.
 
-The combined budgets must fit a 192 MiB canonical artifact, including headers and maximum-length paths.
-Jig rejects incompatible combinations before preparation. Project-wide preparation and storage budgets still apply.
-Source capture and evaluation preparation retain their separate limits.
+The combined byte and file budgets must fit a 192 MiB canonical artifact, including headers and maximum-length paths.
+Jig rejects incompatible combinations before preparation.
+The shared 256 MiB preparation budget and 180-second deadline still apply, independently of the count allowance.
+Source capture, evaluation output, and storage retain their separate limits.
 
 The operator can override each field through its corresponding exported environment variable:
 
 | Field | Environment variable |
 | --- | --- |
+| `maxPreparations` | `JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS` |
 | `maxPreparedBytes` | `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES` |
 | `maxPreparedFiles` | `JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES` |
 
 Environment values must be positive decimal integers. They take precedence over project values, followed by built-in defaults.
 Jig snapshots these variables before project evaluation. It resolves the effective limits once from the captured declaration.
-Workers receive explicit validated values. They do not read the operator environment.
+The review controller enforces the count. Workers receive explicit validated byte and file limits, never the operator environment.
 
-These settings govern review preparation, including assembly with reused dependencies. They grant no execution authority or resolution-network permission.
+The byte and file limits also apply during assembly with reused dependencies.
+These settings grant no execution authority or resolution-network permission.
 Run consumes admitted bytes without preparing dependencies again. Later environment changes cannot replace those bytes or enlarge reviewed resource grants.
 See [limits and defaults](../reference/limits.md) for related constraints and override policies.
 
