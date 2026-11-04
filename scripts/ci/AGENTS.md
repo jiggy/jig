@@ -333,22 +333,27 @@ They consume frozen package exports with tracked test helpers and installed
 
   This exposes primitive failures early without moving files between runners or
   changing weights, commands, limits or qualification obligations.
-- `macos-host-cohort.mjs` owns the PR assignment protocol. Five workers claim
-  three roles independently within exactly two admitted ARM profiles.
-  Only the pinned official artifact client's exact creation conflict advances
-  to another role. Failed uploads, ambiguous responses and deadlines fail closed.
+- `macos-host-cohort.mjs` owns the PR assignment protocol. One running Ubuntu
+  allocator assigns three roles independently within exactly two admitted ARM
+  profiles. Five workers publish unique announcements and await their own
+  assignments. A readiness gate starts workers only after the allocator is live.
+  Workers never wait for an unscheduled Mac peer. Artifact names are not locks.
 
-  Claims bind the tested merge, run, attempt, worker, job and complete host tuple.
-  The current-attempt aggregate requires every worker job to succeed and every
-  conflict to have a different finalized owner. Claims grant no execution credit.
-  Claim downloads verify immutable IDs, byte counts and SHA-256 before bounded
-  ZIP parsing. Parse one regular JSON member without filesystem extraction.
+  Records bind the tested merge, run, attempt, allocator, worker job and complete
+  host tuple. Reconcile the final ledger with every announcement, assignment and
+  worker receipt. Require the allocator and every worker job to succeed in the
+  current attempt. Failed uploads, duplicate records, ambiguous responses and
+  deadlines fail closed. Assignment alone grants no execution credit.
+
+  Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
+  parsing. Parse one regular JSON member without filesystem extraction.
 
   `macos-host-cohort-run.mjs` validates every executing worker's exact source
   reports and canonical metadata, including minority profiles. Only then does it
   normalize one complete matching role set for the existing full report reader.
   Surplus workers cannot retain execution proof. Main/manual runs use role zero
-  directly and do not participate in claims.
+  directly and do not participate in allocation. Their allocator and readiness
+  jobs succeed without publishing records, preserving dependency success.
 
   Keep artifact runtime credentials inside the pinned JavaScript action and child.
   Install the exact official client in isolated runner scratch without lifecycle

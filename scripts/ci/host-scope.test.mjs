@@ -87,7 +87,16 @@ test('unverified main, manual, unavailable and forged PR comparisons cannot omit
 test('always-present host gates require successful scope and exactly complete or omitted role sets', () => {
   for (const [scope, jobs] of [
     ['linux', ['host-artifacts', 'host-suite', 'rootless-linux']],
-    ['macos', ['host-artifacts', 'prerequisites', 'qualified-architecture']],
+    [
+      'macos',
+      [
+        'host-artifacts',
+        'cohort-allocator',
+        'allocator-ready',
+        'prerequisites',
+        'qualified-architecture',
+      ],
+    ],
   ]) {
     for (const required of [true, false]) {
       const report = { required },
@@ -96,8 +105,9 @@ test('always-present host gates require successful scope and exactly complete or
           ...Object.fromEntries(jobs.map((job) => [job, required ? 'success' : 'skipped'])),
         }
       assert.equal(checkHostJobs(scope, report, statuses), report)
-      for (const state of ['failure', 'cancelled', required ? 'skipped' : 'success'])
-        assert.throws(() => checkHostJobs(scope, report, { ...statuses, [jobs[0]]: state }))
+      for (const job of jobs)
+        for (const state of ['failure', 'cancelled', required ? 'skipped' : 'success'])
+          assert.throws(() => checkHostJobs(scope, report, { ...statuses, [job]: state }))
       assert.throws(() => checkHostJobs(scope, report, { ...statuses, scope: 'failure' }))
       const missing = { ...statuses }
       delete missing[jobs[1]]

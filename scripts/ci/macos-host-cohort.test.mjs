@@ -1,32 +1,34 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { once } from 'node:events'
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
-import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   MAC_PR_COHORT,
-  claimMacHostRole,
-  decodeMacHostCohortClaim,
-  downloadMacHostCohortClaim,
-  isMacHostRoleConflict,
-  macHostCohortClaimName,
+  MAC_COHORT_ALLOCATOR_NAME,
+  MAC_COHORT_READY_JOB_NAME,
+  createMacHostCohortReady,
+  createMacHostCohortAnnouncement,
+  createMacHostCohortAssignment,
+  createMacHostCohortLedger,
+  createMacHostCohortWorkerReceipt,
+  decodeMacHostCohortRecord,
+  downloadMacHostCohortRecord,
+  macHostCohortArtifactName,
   macHostCohortProfile,
   macHostCohortWorkerName,
   macHostProfileKey,
-  readMacHostCohortClaim,
+  readMacHostCohortRecord,
   requireMacHostCohortProfiles,
   validateMacHostCohort,
+  validateMacHostCohortRecords,
 } from './macos-host-cohort.mjs'
 import { MAC_HOST_PROFILES } from './macos-host-profiles.mjs'
 
-const sourceRevision = 'a'.repeat(40)
-const runIdentity = { sourceRevision, runId: 41636509252, runAttempt: 2 }
-const conflictMessage =
-  'Failed to CreateArtifact: Received non-retryable error: Failed request: (409) Conflict: an artifact with this name already exists on the workflow run'
+const runIdentity = { sourceRevision: 'a'.repeat(40), runId: 41636509252, runAttempt: 2 }
+const allocatorJobId = 900
 const prerequisites = (build) => ({
   kind: 'macos-host-prerequisites/1',
   arch: 'arm64',
@@ -38,311 +40,244 @@ const prerequisites = (build) => ({
   backendQualified: false,
 })
 const workerIdentity = (worker, identity = runIdentity) => ({
-  ...identity,
-  worker,
-  jobId: 125921198936 + worker,
+  ...identity, worker, jobId: 1000 + worker,
 })
 
-// A controlled artifact protocol server exercises real competing HTTP requests.
-// Its records are assignment data only: no fixture claims native execution.
-async function artifactServer(run) {
-  const reserved = new Map()
-  const finalized = new Map()
-  const held = []
-  let nextId = 100
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url, 'http://localhost')
-    const send = (code, value) => {
-      response.writeHead(code, { 'Content-Type': 'application/json' })
-      response.end(JSON.stringify(value))
-    }
-    if (url.pathname === '/denied') return send(403, { message: 'Forbidden' })
-    if (url.pathname === '/other-conflict') return send(409, { message: 'Unrelated conflict' })
-    if (request.method !== 'PUT' || !url.pathname.startsWith('/claims/'))
-      return send(404, { message: 'Not found' })
-    const name = decodeURIComponent(url.pathname.slice('/claims/'.length))
-    const chunks = []
-    for await (const chunk of request) chunks.push(chunk)
-    const bytes = Buffer.concat(chunks)
-    if (bytes.length > 8192) return send(413, { message: 'Claim too large' })
-    let claim
-    try {
-      claim = JSON.parse(bytes.toString())
-    } catch {
-      return send(400, { message: 'Invalid JSON' })
-    }
-    if (reserved.has(name)) return send(409, { message: 'an artifact with this name already exists on the workflow run' })
-    const artifact = {
-      id: nextId++,
-      name,
-      digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
-    }
-    reserved.set(name, { artifact, claim })
-    const finish = () => {
-      finalized.set(name, { artifact, claim })
-      send(201, artifact)
-    }
-    if (url.searchParams.get('hold') === 'true') held.push(finish)
-    else finish()
-    server.emit('reservation', name)
-  })
-  server.listen(0, '127.0.0.1')
-  await once(server, 'listening')
-  const origin = `http://127.0.0.1:${server.address().port}`
-  const controller = new AbortController()
-  const client = ({ hold = false, path } = {}) => ({
-    async upload(name, claim) {
-      const response = await fetch(
-        `${origin}${path ?? `/claims/${encodeURIComponent(name)}`}?hold=${hold}`,
-        { method: 'PUT', body: JSON.stringify(claim), signal: controller.signal },
-      )
-      const value = await response.json()
-      if (!response.ok)
-        throw new Error(
-          `Failed to CreateArtifact: Received non-retryable error: Failed request: (${response.status}) ${response.statusText}: ${value.message}`,
-        )
-      return value
+// Ordinary data fixtures exercise assignment validation, never native proof.
+// ZIP transport checks below independently use actual archive bytes and hashes.
+function envelope(record, id) {
+  const type = record.kind.replace('macos-host-cohort-', '').replace('/1', '')
+  return {
+    record,
+    artifact: {
+      id,
+      name: macHostCohortArtifactName(type, record,
+        type === 'announcement' || type === 'assignment' ? record.worker : undefined),
+      digest: `sha256:${createHash('sha256').update(JSON.stringify(record)).digest('hex')}`,
     },
-  })
-  try {
-    await run({
-      server,
-      client,
-      claims: () => [...finalized.values()],
-      reservations: () => [...reserved.values()],
-      release: () => held.splice(0).forEach((finish) => finish()),
-    })
-  } finally {
-    controller.abort()
-    held.splice(0).forEach((finish) => finish())
-    server.closeAllConnections()
-    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
   }
 }
 
-async function cohort(server, builds, identity = runIdentity) {
-  const workers = await Promise.all(builds.map(async (build, worker) => {
-    const observed = prerequisites(build)
-    return {
-      prerequisites: observed,
-      receipt: await claimMacHostRole({
-        identity: workerIdentity(worker, identity),
-        prerequisites: observed,
-        artifacts: server.client(),
-      }),
-    }
+function fixture(builds = ['24H232', '24G830', '24H232', '24G830', '24H232'], order = [0, 1, 2, 3, 4]) {
+  const identity = { ...runIdentity }
+  const ready = envelope(createMacHostCohortReady({ identity, allocatorJobId }), 2000)
+  const announcements = builds.map((build, worker) => envelope(createMacHostCohortAnnouncement({
+    identity: workerIdentity(worker), allocatorJobId, prerequisites: prerequisites(build),
+  }), 2100 + worker))
+  const assignments = []
+  for (const worker of order) {
+    const record = createMacHostCohortAssignment({
+      identity, allocatorJobId, announcement: announcements[worker], assignments,
+    })
+    assignments.push(envelope(record, 2200 + worker))
+  }
+  const ledger = envelope(createMacHostCohortLedger({ identity, allocatorJobId, ready, assignments }), 2300)
+  const workers = builds.map((build, worker) => ({
+    prerequisites: prerequisites(build),
+    receipt: createMacHostCohortWorkerReceipt({
+      identity: workerIdentity(worker), allocatorJobId, ready,
+      announcement: announcements[worker],
+      assignment: assignments.find(({ record }) => record.worker === worker),
+      prerequisites: prerequisites(build),
+    }),
   }))
+  const job = (id, name) => ({ id, name, run_id: identity.runId, run_attempt: identity.runAttempt,
+    status: 'completed', conclusion: 'success' })
   return {
     identity,
     workers,
-    claims: server.claims().filter(({ claim }) => claim.runId === identity.runId),
-    // Ordinary GitHub metadata fixtures test the assignment validator's binding.
-    // Source/native reports must be independently checked by the full aggregate.
-    jobs: workers.map(({ receipt }) => ({
-      id: receipt.jobId,
-      name: macHostCohortWorkerName(receipt.worker),
-      run_id: identity.runId,
-      run_attempt: identity.runAttempt,
-      status: 'completed',
-      conclusion: 'success',
-    })),
+    records: [ready, ...announcements, ...assignments, ledger],
+    jobs: [job(allocatorJobId, MAC_COHORT_ALLOCATOR_NAME), job(901, MAC_COHORT_READY_JOB_NAME),
+      ...workers.map(({ receipt }) => job(receipt.jobId, macHostCohortWorkerName(receipt.worker)))],
+    ready,
+    announcements,
+    assignments,
+    ledger,
   }
 }
 
-test('all 32 pool assignments produce a complete exact-profile cohort through competing HTTP claims', async () => {
-  await artifactServer(async (server) => {
-    for (let assignment = 0; assignment < 32; assignment++) {
-      const builds = Array.from({ length: MAC_PR_COHORT.workers }, (_, worker) =>
-        assignment & (1 << worker) ? '24H232' : '24G830',
-      )
-      const input = await cohort(server, builds, { ...runIdentity, runId: runIdentity.runId + assignment })
-      const selected = validateMacHostCohort(input)
-      assert.equal(selected.roles.length, 3)
-      assert.deepEqual(selected.roles.map(({ role }) => role), [0, 1, 2])
+test('all pool distributions and independent arrival orders produce one complete exact profile', () => {
+  for (let distribution = 0; distribution < 32; distribution++) {
+    const builds = Array.from({ length: 5 }, (_, worker) =>
+      distribution & (1 << worker) ? '24H232' : '24G830')
+    for (const order of [[0, 1, 2, 3, 4], [4, 3, 2, 1, 0], [3, 0, 4, 1, 2]]) {
+      const input = fixture(builds, order)
+      input.records.reverse() // REST response order cannot determine role ownership.
+      const result = validateMacHostCohort(input)
       const expected = builds.filter((build) => build === '24H232').length >= 3 ? '24H232' : '24G830'
-      assert.equal(selected.profile.build, expected)
-      assert.ok(selected.roles.every(({ profile }) => profile.build === expected))
-      assert.equal(selected.workers.length, 5)
-      const gCount = builds.filter((build) => build === '24G830').length
-      assert.equal(input.claims.length, Math.min(gCount, 3) + Math.min(5 - gCount, 3))
+      assert.equal(result.profile.build, expected)
+      assert.deepEqual(result.roles.map(({ role }) => role), [0, 1, 2])
+      assert.ok(result.roles.every(({ profile }) => profile.build === expected))
+      assert.equal(result.workers.length, 5)
+      assert.equal(result.allocatorJobId, allocatorJobId)
+      assert.equal(Object.hasOwn(result, 'qualified'), false)
     }
-  })
+  }
 })
 
-test('workers advance after a name reservation without waiting for that owner to finish uploading', { timeout: 5000 }, async () => {
-  await artifactServer(async (server) => {
-    const reservation = once(server.server, 'reservation')
-    const first = claimMacHostRole({
-      identity: workerIdentity(0),
-      prerequisites: prerequisites('24H232'),
-      artifacts: server.client({ hold: true }),
-    })
-    await reservation
-    assert.equal(server.claims().length, 0)
-    const second = await claimMacHostRole({
-      identity: workerIdentity(1),
-      prerequisites: prerequisites('24H232'),
-      artifacts: server.client(),
-    })
-    assert.equal(second.role, 1)
-    assert.equal(server.claims().length, 1)
-    server.release()
-    assert.equal((await first).role, 0)
-    assert.equal(server.claims().length, 2)
-  })
+test('the allocator can assign the first observed worker without waiting for lower indices', () => {
+  const input = fixture(Array(5).fill('24H232'), [4, 1, 0, 3, 2])
+  const first = createMacHostCohortAssignment({ identity: input.identity, allocatorJobId,
+    announcement: input.announcements[4], assignments: [] })
+  assert.equal(first.worker, 4)
+  assert.equal(first.role, 0)
+  const prior = [input.assignments[0]]
+  assert.throws(() => createMacHostCohortAssignment({ identity: input.identity, allocatorJobId,
+    announcement: input.announcements[4], assignments: prior }), /already has an immutable assignment/)
+  assert.throws(() => createMacHostCohortLedger({ identity: input.identity, allocatorJobId,
+    ready: input.ready, assignments: prior }), /all five/)
+  assert.deepEqual(input.assignments.map(({ record }) => record.role), [0, 1, 2, null, null])
 })
 
-test('the assignment theorem refuses a changed profile count or duplicate tuple', () => {
-  assert.equal(requireMacHostCohortProfiles().length, 2)
-  for (const profiles of [[], [MAC_HOST_PROFILES.arm64[0]], [...MAC_HOST_PROFILES.arm64, { ...MAC_HOST_PROFILES.arm64[1], build: '24H233' }], [MAC_HOST_PROFILES.arm64[0], Object.fromEntries(Object.entries(MAC_HOST_PROFILES.arm64[0]).reverse())]])
-    assert.throws(() => requireMacHostCohortProfiles(profiles), /exactly two distinct/)
+test('partial listings can validate references before their records become visible but cannot complete', () => {
+  const input = fixture()
+  for (const records of [[input.assignments[0]], [input.ledger], [input.ready], []]) {
+    assert.equal(validateMacHostCohortRecords({ identity: input.identity, allocatorJobId, records }).length, records.length)
+    assert.throws(() => validateMacHostCohort({ ...input, records }), /complete ready/)
+  }
 })
 
-test('profile and run identities bind claim names without permitting arbitrary counts or unsafe identifiers', async () => {
-  const g = macHostCohortProfile(prerequisites('24G830'))
-  const h = macHostCohortProfile(prerequisites('24H232'))
-  assert.notEqual(macHostProfileKey(g), macHostProfileKey(h))
-  const original = macHostCohortClaimName(runIdentity, g, 0)
-  for (const [identity, profile, role] of [
-    [{ ...runIdentity, sourceRevision: 'b'.repeat(40) }, g, 0],
-    [{ ...runIdentity, runId: runIdentity.runId + 1 }, g, 0],
-    [{ ...runIdentity, runAttempt: 3 }, g, 0],
-    [runIdentity, h, 0],
-    [runIdentity, g, 1],
-  ]) assert.notEqual(macHostCohortClaimName(identity, profile, role), original)
-  for (const mutate of [{ build: '24H233' }, { arch: 'x64' }, { bun: '1.4.3' }, { revision: 'b'.repeat(40) }, { backendQualified: true }])
-    assert.throws(() => macHostCohortProfile({ ...prerequisites('24H232'), ...mutate }))
-  for (const role of [-1, 3, '0', null, 0.5])
-    assert.throws(() => macHostCohortClaimName(runIdentity, g, role))
-  for (const identity of [{ ...runIdentity, runAttempt: 0 }, { ...runIdentity, runId: NaN }, { ...runIdentity, sourceRevision: '../forged' }])
-    assert.throws(() => macHostCohortClaimName(identity, g, 0))
-  await artifactServer(async (server) => {
-    await assert.rejects(claimMacHostRole({ identity: { ...workerIdentity(0), shards: 1 }, prerequisites: prerequisites('24H232'), artifacts: server.client() }), /fields/)
-    assert.equal(server.reservations().length, 0)
-  })
-})
-
-test('only the explicit CreateArtifact duplicate-name conflict permits another role', async () => {
-  assert.equal(isMacHostRoleConflict(new Error(conflictMessage)), true)
-  for (const message of [
-    '409 Conflict',
-    conflictMessage.replace('CreateArtifact', 'FinalizeArtifact'),
-    conflictMessage.replace('409', '429'),
-    `${conflictMessage}\nunknown failure`,
-    conflictMessage.replace('an artifact with this name already exists on the workflow run', 'unrelated conflict'),
-  ]) assert.equal(isMacHostRoleConflict(new Error(message)), false)
-  assert.equal(isMacHostRoleConflict({ message: conflictMessage }), false)
-  await artifactServer(async (server) => {
-    for (const path of ['/denied', '/other-conflict'])
-      await assert.rejects(claimMacHostRole({ identity: workerIdentity(0), prerequisites: prerequisites('24H232'), artifacts: server.client({ path }) }))
-    assert.equal(server.reservations().length, 0)
-  })
-})
-
-test('the claim deadline bounds a stalled server without selecting another role', { timeout: 5000 }, async () => {
-  await artifactServer(async (server) => {
-    await assert.rejects(claimMacHostRole({
-      identity: workerIdentity(0),
-      prerequisites: prerequisites('24H232'),
-      artifacts: server.client({ hold: true }),
-      deadlineMs: Date.now() + 100,
-    }), /deadline expired/)
-    assert.equal(server.reservations().length, 1)
-    assert.equal(server.claims().length, 0)
-    server.release()
-    await assert.rejects(claimMacHostRole({ identity: workerIdentity(1), prerequisites: prerequisites('24H232'), artifacts: server.client(), deadlineMs: Date.now() - 1 }), /deadline/)
-    assert.equal(server.reservations().length, 1)
-  })
-})
-
-test('final aggregation rejects incomplete, stale, foreign, duplicated or failed assignment evidence', async () => {
-  await artifactServer(async (server) => {
-    const original = await cohort(server, ['24H232', '24G830', '24H232', '24G830', '24H232'])
-    assert.equal(validateMacHostCohort(original).profile.build, '24H232')
-    const changes = [
-      (input) => input.workers.pop(),
-      (input) => input.workers[1] = structuredClone(input.workers[0]),
-      (input) => input.workers[0].receipt.runAttempt--,
-      (input) => input.workers[0].receipt.sourceRevision = 'c'.repeat(40),
-      (input) => input.workers[0].receipt.shardCount = 1,
-      (input) => input.workers[0].receipt.jobId++,
-      (input) => input.workers[0].prerequisites.build = '24G830',
-      (input) => input.claims.pop(),
-      (input) => input.claims.push(structuredClone(input.claims[0])),
-      (input) => input.claims[0].claim.worker = 4,
-      (input) => input.claims[0].claim.runAttempt--,
-      (input) => input.claims[0].claim.sourceRevision = 'c'.repeat(40),
-      (input) => input.claims[0].claim.profile.build = '24G830',
-      (input) => input.claims[0].artifact.id++,
-      (input) => input.claims[0].artifact.digest = `sha256:${'0'.repeat(64)}`,
-      (input) => input.claims[0].artifact.expired = true,
-      (input) => input.jobs.pop(),
-      (input) => input.jobs[0].run_attempt--,
-      (input) => input.jobs[0].run_id++,
-      (input) => input.jobs[0].conclusion = 'cancelled',
-      (input) => input.jobs[0].status = 'in_progress',
-      (input) => input.jobs[0].name = macHostCohortWorkerName(4),
-      (input) => input.jobs.push({ ...input.jobs[0], name: 'Native host worker — arm64 / 5' }),
-      // A failure on the incomplete, non-selected profile must remain visible.
-      (input) => input.jobs[1].conclusion = 'failure',
-    ]
-    for (const change of changes) {
-      const input = structuredClone(original)
-      change(input)
-      assert.throws(() => validateMacHostCohort(input), undefined, change.toString())
+test('duplicate artifact names are fatal even when their record content is identical', () => {
+  const input = fixture()
+  for (const record of [input.ready, input.announcements[0], input.assignments[0], input.ledger]) {
+    for (const duplicate of [record, { ...record, artifact: { ...record.artifact, id: 99999 } }]) {
+      const records = [...input.records, duplicate]
+      assert.throws(() => validateMacHostCohortRecords({ identity: input.identity, allocatorJobId, records }), /repeats a published record/)
+      assert.throws(() => validateMacHostCohort({ ...input, records }), /repeats a published record/)
     }
-  })
+  }
+  const copy = structuredClone(input)
+  copy.records[1].artifact.id = copy.records[0].artifact.id
+  assert.throws(() => validateMacHostCohort(copy), /repeats a published record/)
 })
 
-test('surplus receipts require all three other finalized owners and their successful jobs', async () => {
-  await artifactServer(async (server) => {
-    const input = await cohort(server, Array(5).fill('24H232'))
-    const selected = validateMacHostCohort(input)
-    assert.equal(selected.roles.length, 3)
-    const surplus = input.workers.filter(({ receipt }) => receipt.role === null)
-    assert.equal(surplus.length, 2)
-    assert.ok(surplus.every(({ receipt }) => receipt.conflicts.length === 3))
-    for (const change of [
-      (copy) => copy.claims.splice(1, 1),
-      (copy) => copy.workers.find(({ receipt }) => receipt.role === null).receipt.conflicts.pop(),
-      (copy) => copy.workers.find(({ receipt }) => receipt.role === null).receipt.claimArtifact = copy.claims[0].artifact,
-      (copy) => copy.jobs.find((job) => job.id === surplus[0].receipt.jobId).conclusion = 'failure',
+test('announcements, immutable assignments, worker receipts and ledger bind every identity and reference', () => {
+  const original = fixture()
+  const changes = [
+    (input) => { input.records[1].record.sourceRevision = 'b'.repeat(40) },
+    (input) => { input.records[1].record.runId++ },
+    (input) => { input.records[1].record.runAttempt-- },
+    (input) => { input.records[1].record.allocatorJobId++ },
+    (input) => { input.records[1].record.jobId++ },
+    (input) => { input.records[1].record.worker = 4 },
+    (input) => { input.records[1].record.profile.build = '24G830' },
+    (input) => { input.records[6].record.role = 1 },
+    (input) => { input.records[6].record.announcementArtifact.id++ },
+    (input) => { input.records[6].record.announcementArtifact.digest = `sha256:${'f'.repeat(64)}` },
+    (input) => { input.records[11].record.readyArtifact.id++ },
+    (input) => { input.records[11].record.assignmentArtifacts.reverse() },
+    (input) => { input.records[11].record.assignmentArtifacts.pop() },
+    (input) => { input.workers[0].receipt.kind = 'macos-host-cohort-worker/1' },
+    (input) => { input.workers[0].receipt.allocatorJobId++ },
+    (input) => { input.workers[0].receipt.role = null },
+    (input) => { input.workers[0].receipt.readyArtifact.id++ },
+    (input) => { input.workers[0].receipt.announcementArtifact.id++ },
+    (input) => { input.workers[0].receipt.assignmentArtifact.id++ },
+    (input) => { input.workers[0].receipt.sourceRevision = 'b'.repeat(40) },
+    (input) => { input.workers[0].receipt.qualified = true },
+    (input) => { input.workers[0].prerequisites.build = '24G830' },
+    (input) => { input.workers.pop() },
+    (input) => { input.workers[4] = input.workers[0] },
+  ]
+  for (const change of changes) {
+    const input = structuredClone(original)
+    change(input)
+    assert.throws(() => validateMacHostCohort(input), undefined, change.toString())
+  }
+})
+
+test('partial publication or a failed allocator, readiness job or minority worker cannot qualify', () => {
+  const original = fixture()
+  for (let index = 0; index < original.records.length; index++) {
+    const records = original.records.filter((_, other) => other !== index)
+    assert.throws(() => validateMacHostCohort({ ...original, records }))
+  }
+  for (let index = 0; index < original.jobs.length; index++) {
+    for (const changes of [
+      { conclusion: 'failure' }, { conclusion: 'cancelled' },
+      { status: 'in_progress', conclusion: null }, { run_attempt: 1 }, { run_id: 1 },
     ]) {
-      const copy = structuredClone(input)
-      change(copy)
-      assert.throws(() => validateMacHostCohort(copy))
+      const input = structuredClone(original)
+      Object.assign(input.jobs[index], changes)
+      assert.throws(() => validateMacHostCohort(input))
     }
-  })
+  }
+  const repeated = structuredClone(original)
+  repeated.jobs.push({ ...repeated.jobs[2], name: 'Native host worker — arm64 / 5' })
+  assert.throws(() => validateMacHostCohort(repeated), /job inventory/)
 })
 
-test('claim file reads refuse links, directories, malformed JSON and growth beyond the byte bound', async () => {
+test('surplus needs an explicit assignment after three same-profile owners and its successful job', () => {
+  const original = fixture(Array(5).fill('24H232'))
+  assert.deepEqual(validateMacHostCohort(original).workers.map(({ role }) => role), [0, 1, 2, null, null])
+  const early = structuredClone(original)
+  early.records[6].record.role = null
+  early.workers[0].receipt.role = null
+  assert.throws(() => validateMacHostCohort(early), /invents surplus/)
+  const missing = structuredClone(original)
+  missing.records.splice(9, 1)
+  assert.throws(() => validateMacHostCohort(missing))
+  const failed = structuredClone(original)
+  failed.jobs[6].conclusion = 'failure'
+  assert.throws(() => validateMacHostCohort(failed), /job to succeed/)
+})
+
+test('the fifth worker can consume an assignment after successful allocator completion', () => {
+  const input = fixture()
+  assert.equal(input.jobs[0].status, 'completed')
+  assert.equal(input.jobs[0].conclusion, 'success')
+  const receipt = createMacHostCohortWorkerReceipt({ identity: workerIdentity(4), allocatorJobId,
+    ready: input.ready, announcement: input.announcements[4],
+    assignment: input.assignments[4], prerequisites: prerequisites('24H232') })
+  assert.equal(receipt.role, 2)
+  assert.deepEqual(receipt, input.workers[4].receipt)
+  assert.equal(validateMacHostCohort(input).roles.length, 3)
+})
+
+test('the source-owned profile and worker counts cannot be extended by records', () => {
+  assert.deepEqual(MAC_PR_COHORT, { workers: 5, shards: 3 })
+  assert.equal(requireMacHostCohortProfiles().length, 2)
+  for (const profiles of [[], [MAC_HOST_PROFILES.arm64[0]],
+    [...MAC_HOST_PROFILES.arm64, { ...MAC_HOST_PROFILES.arm64[1], build: '24H233' }],
+    [MAC_HOST_PROFILES.arm64[0], Object.fromEntries(Object.entries(MAC_HOST_PROFILES.arm64[0]).reverse())]])
+    assert.throws(() => requireMacHostCohortProfiles(profiles), /exactly two distinct/)
+  for (const worker of [-1, 5, '1', 0.5])
+    assert.throws(() => macHostCohortArtifactName('announcement', runIdentity, worker), /worker index/)
+  assert.throws(() => macHostCohortArtifactName('claim', runIdentity, 0), /record type/)
+  assert.throws(() => macHostCohortArtifactName('ready', runIdentity, 0), /cannot name a worker/)
+  assert.notEqual(macHostProfileKey(macHostCohortProfile(prerequisites('24G830'))),
+    macHostProfileKey(macHostCohortProfile(prerequisites('24H232'))))
+  const input = fixture()
+  assert.ok(Buffer.byteLength(JSON.stringify(input.ledger.record)) < 8192)
+  const bytes = recordArchive([{ name: 'record.json', body: JSON.stringify(input.ledger.record) }])
+  assert.deepEqual(decodeMacHostCohortRecord(bytes, {
+    ...archiveMetadata(bytes), name: macHostCohortArtifactName('ledger', runIdentity),
+  }), input.ledger.record)
+})
+
+test('record file reads refuse links, directories, malformed JSON and oversized records', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-cohort-reader-'))
   try {
-    const path = join(directory, 'claim.json')
-    const claim = {
-      kind: 'macos-host-cohort-claim/1',
-      ...workerIdentity(0),
-      profile: macHostCohortProfile(prerequisites('24H232')),
-      role: 0,
-    }
-    await writeFile(path, JSON.stringify(claim).padEnd(8192))
-    assert.deepEqual(readMacHostCohortClaim(path), claim)
+    const path = join(directory, 'record.json')
+    const record = createMacHostCohortReady({ identity: runIdentity, allocatorJobId })
+    await writeFile(path, JSON.stringify(record).padEnd(8192))
+    assert.deepEqual(readMacHostCohortRecord(path), record)
     await symlink(path, join(directory, 'linked.json'))
-    assert.throws(() => readMacHostCohortClaim(join(directory, 'linked.json')), /ELOOP/)
+    assert.throws(() => readMacHostCohortRecord(join(directory, 'linked.json')), /ELOOP/)
     await mkdir(join(directory, 'subdirectory'))
-    assert.throws(() => readMacHostCohortClaim(join(directory, 'subdirectory')), /regular file/)
-    await writeFile(path, JSON.stringify(claim).padEnd(8193))
-    assert.throws(() => readMacHostCohortClaim(path), /bounded regular/)
+    assert.throws(() => readMacHostCohortRecord(join(directory, 'subdirectory')), /regular file/)
+    await writeFile(path, JSON.stringify(record).padEnd(8193))
+    assert.throws(() => readMacHostCohortRecord(path), /bounded regular/)
     await writeFile(path, '{')
-    assert.throws(() => readMacHostCohortClaim(path), SyntaxError)
+    assert.throws(() => readMacHostCohortRecord(path), SyntaxError)
   } finally {
     await rm(directory, { recursive: true, force: true })
   }
 })
 
 // Real Python ZIP producers and the production decoder exercise the subprocess
-// boundary. These inert claim objects do not assert native execution evidence.
-function claimArchive(entries) {
+// boundary. These inert record objects do not assert native execution evidence.
+function recordArchive(entries) {
   return execFileSync('python3', ['-I', '-c', `import base64, io, json, sys, zipfile
 entries = json.load(sys.stdin)
 output = io.BytesIO()
@@ -370,29 +305,28 @@ sys.stdout.buffer.write(output.getvalue())
 function archiveMetadata(bytes) {
   return {
     id: 417,
-    name: macHostCohortClaimName(runIdentity, macHostCohortProfile(prerequisites('24H232')), 0),
+    name: macHostCohortArtifactName('announcement', runIdentity, 0),
     size_in_bytes: bytes.length,
     digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
     expired: false,
   }
 }
 
-test('claim ZIP decoding verifies actual transport bytes and reads one bounded regular JSON member', () => {
-  const claim = {
-    kind: 'macos-host-cohort-claim/1',
-    ...workerIdentity(0),
-    profile: macHostCohortProfile(prerequisites('24H232')),
-    role: 0,
-  }
+test('record ZIP decoding verifies actual transport bytes and reads one bounded regular JSON member', () => {
+  const record = createMacHostCohortAnnouncement({
+    identity: workerIdentity(0),
+    allocatorJobId,
+    prerequisites: prerequisites('24H232'),
+  })
   for (const compression of [0, 8]) {
-    const bytes = claimArchive([{ name: 'claim.json', body: JSON.stringify(claim).padEnd(8192), compression }])
-    assert.deepEqual(decodeMacHostCohortClaim(bytes, archiveMetadata(bytes)), claim)
-    assert.deepEqual(decodeMacHostCohortClaim(new Uint8Array(bytes), archiveMetadata(bytes)), claim)
+    const bytes = recordArchive([{ name: 'record.json', body: JSON.stringify(record).padEnd(8192), compression }])
+    assert.deepEqual(decodeMacHostCohortRecord(bytes, archiveMetadata(bytes)), record)
+    assert.deepEqual(decodeMacHostCohortRecord(new Uint8Array(bytes), archiveMetadata(bytes)), record)
   }
 })
 
-test('claim ZIP transport rejects altered hashes, lengths, expiry and malformed artifact identity', () => {
-  const bytes = claimArchive([{ name: 'claim.json' }])
+test('record ZIP transport rejects altered hashes, lengths, expiry and malformed artifact identity', () => {
+  const bytes = recordArchive([{ name: 'record.json' }])
   const original = archiveMetadata(bytes)
   for (const change of [
     (metadata) => metadata.digest = `sha256:${'0'.repeat(64)}`,
@@ -402,73 +336,73 @@ test('claim ZIP transport rejects altered hashes, lengths, expiry and malformed 
     (metadata) => metadata.size_in_bytes = 0,
     (metadata) => metadata.expired = true,
     (metadata) => delete metadata.expired,
-    (metadata) => metadata.name = 'claim.json',
+    (metadata) => metadata.name = 'record.json',
     (metadata) => metadata.id = 0,
     (metadata) => metadata.id = Number.MAX_SAFE_INTEGER + 1,
   ]) {
     const metadata = structuredClone(original)
     change(metadata)
-    assert.throws(() => decodeMacHostCohortClaim(bytes, metadata), undefined, change.toString())
+    assert.throws(() => decodeMacHostCohortRecord(bytes, metadata), undefined, change.toString())
   }
   const altered = Buffer.from(bytes)
   altered[0] ^= 1
-  assert.throws(() => decodeMacHostCohortClaim(altered, original), /digest/)
-  assert.throws(() => decodeMacHostCohortClaim(bytes.subarray(1), original), /size/)
-  assert.throws(() => decodeMacHostCohortClaim([...bytes], original), /size/)
-  const oversized = claimArchive([{ name: 'claim.json', body: ' '.repeat(16_384), compression: 0 }])
+  assert.throws(() => decodeMacHostCohortRecord(altered, original), /digest/)
+  assert.throws(() => decodeMacHostCohortRecord(bytes.subarray(1), original), /size/)
+  assert.throws(() => decodeMacHostCohortRecord([...bytes], original), /size/)
+  const oversized = recordArchive([{ name: 'record.json', body: ' '.repeat(16_384), compression: 0 }])
   assert.ok(oversized.length > 16_384)
-  assert.throws(() => decodeMacHostCohortClaim(oversized, archiveMetadata(oversized)), /metadata/)
-  assert.throws(() => downloadMacHostCohortClaim('../jig', original), /repository/)
-  assert.throws(() => downloadMacHostCohortClaim('jiggy/jig?query', original), /repository/)
-  assert.throws(() => downloadMacHostCohortClaim('jiggy/jig', { ...original, expired: true }), /metadata/)
+  assert.throws(() => decodeMacHostCohortRecord(oversized, archiveMetadata(oversized)), /metadata/)
+  assert.throws(() => downloadMacHostCohortRecord('../jig', original), /repository/)
+  assert.throws(() => downloadMacHostCohortRecord('jiggy/jig?query', original), /repository/)
+  assert.throws(() => downloadMacHostCohortRecord('jiggy/jig', { ...original, expired: true }), /metadata/)
 })
 
-test('claim ZIP decoding rejects extra entries, unsafe names and non-regular or encrypted members', () => {
+test('record ZIP decoding rejects extra entries, unsafe names and non-regular or encrypted members', () => {
   for (const entries of [
     [],
-    [{ name: 'claim.json' }, { name: 'other.json' }],
-    [{ name: 'claim.json' }, { name: 'claim.json' }],
-    ...['../claim.json', '/claim.json', 'nested/claim.json', 'claim.json/'].map((name) => [{ name }]),
-    [{ name: 'claim.json', mode: 0o120777 }],
-    [{ name: 'claim.json', mode: 0o040700 }],
-    [{ name: 'claim.json', mode: 0o010600 }],
-    [{ name: 'claim.json', directory: true }],
-    [{ name: 'claim.json', compression: 12 }],
-    [{ name: 'claim.json', compression: 14 }],
+    [{ name: 'record.json' }, { name: 'other.json' }],
+    [{ name: 'record.json' }, { name: 'record.json' }],
+    ...['../record.json', '/record.json', 'nested/record.json', 'record.json/'].map((name) => [{ name }]),
+    [{ name: 'record.json', mode: 0o120777 }],
+    [{ name: 'record.json', mode: 0o040700 }],
+    [{ name: 'record.json', mode: 0o010600 }],
+    [{ name: 'record.json', directory: true }],
+    [{ name: 'record.json', compression: 12 }],
+    [{ name: 'record.json', compression: 14 }],
   ]) {
-    const bytes = claimArchive(entries)
-    assert.throws(() => decodeMacHostCohortClaim(bytes, archiveMetadata(bytes)), /malformed or unsafe/, JSON.stringify(entries))
+    const bytes = recordArchive(entries)
+    assert.throws(() => decodeMacHostCohortRecord(bytes, archiveMetadata(bytes)), /malformed or unsafe/, JSON.stringify(entries))
   }
-  const encrypted = claimArchive([{ name: 'claim.json' }])
+  const encrypted = recordArchive([{ name: 'record.json' }])
   const central = encrypted.indexOf(Buffer.from([0x50, 0x4b, 0x01, 0x02]))
   assert.ok(central > 0)
   encrypted.writeUInt16LE(encrypted.readUInt16LE(6) | 1, 6)
   encrypted.writeUInt16LE(encrypted.readUInt16LE(central + 8) | 1, central + 8)
-  assert.throws(() => decodeMacHostCohortClaim(encrypted, archiveMetadata(encrypted)), /malformed or unsafe/)
+  assert.throws(() => decodeMacHostCohortRecord(encrypted, archiveMetadata(encrypted)), /malformed or unsafe/)
 
-  const nulName = claimArchive([{ name: 'claim.jsonXhidden' }])
-  const filename = Buffer.from('claim.jsonXhidden')
+  const nulName = recordArchive([{ name: 'record.jsonXhidden' }])
+  const filename = Buffer.from('record.jsonXhidden')
   let count = 0
   for (let offset = nulName.indexOf(filename); offset >= 0; offset = nulName.indexOf(filename, offset + 1)) {
-    nulName[offset + 'claim.json'.length] = 0
+    nulName[offset + 'record.json'.length] = 0
     count++
   }
   assert.equal(count, 2)
-  assert.throws(() => decodeMacHostCohortClaim(nulName, archiveMetadata(nulName)), /malformed or unsafe/)
+  assert.throws(() => decodeMacHostCohortRecord(nulName, archiveMetadata(nulName)), /malformed or unsafe/)
 })
 
-test('claim ZIP decoding rejects expansion beyond the JSON bound, invalid UTF-8, invalid JSON and bad CRC', () => {
+test('record ZIP decoding rejects expansion beyond the JSON bound, invalid UTF-8, invalid JSON and bad CRC', () => {
   for (const body of ['{}'.padEnd(8193), '{', Buffer.from([0xff, 0xfe])]) {
-    const bytes = claimArchive([{ name: 'claim.json', body }])
+    const bytes = recordArchive([{ name: 'record.json', body }])
     assert.ok(bytes.length < 16_384)
-    assert.throws(() => decodeMacHostCohortClaim(bytes, archiveMetadata(bytes)), /malformed or unsafe/)
+    assert.throws(() => decodeMacHostCohortRecord(bytes, archiveMetadata(bytes)), /malformed or unsafe/)
   }
   const malformed = Buffer.from('not a ZIP archive')
-  assert.throws(() => decodeMacHostCohortClaim(malformed, archiveMetadata(malformed)), /malformed or unsafe/)
+  assert.throws(() => decodeMacHostCohortRecord(malformed, archiveMetadata(malformed)), /malformed or unsafe/)
 
-  const badCrc = claimArchive([{ name: 'claim.json', body: '{"role":0}', compression: 0 }])
+  const badCrc = recordArchive([{ name: 'record.json', body: '{"role":0}', compression: 0 }])
   const content = badCrc.indexOf(Buffer.from('{"role":0}'))
   assert.ok(content > 0)
   badCrc[content + 8] = '1'.charCodeAt(0)
-  assert.throws(() => decodeMacHostCohortClaim(badCrc, archiveMetadata(badCrc)), /malformed or unsafe/)
+  assert.throws(() => decodeMacHostCohortRecord(badCrc, archiveMetadata(badCrc)), /malformed or unsafe/)
 })

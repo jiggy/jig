@@ -161,6 +161,8 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(mac.jobs['affected-macos'].needs).toEqual([
     'scope',
     'host-artifacts',
+    'cohort-allocator',
+    'allocator-ready',
     'prerequisites',
     'qualified-architecture',
   ])
@@ -175,6 +177,17 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(5)
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
+  expect(mac.jobs['qualified-architecture'].needs).toContain('cohort-allocator')
+  expect(mac.jobs['qualified-architecture'].needs).toContain('allocator-ready')
+  expect(mac.jobs.prerequisites.needs).toEqual(['scope', 'host-artifacts', 'allocator-ready'])
+  for (const id of ['cohort-allocator', 'allocator-ready']) {
+    expect(mac.jobs[id].needs).toBe('scope')
+    expect(mac.jobs[id].if).toBe("${{ needs.scope.outputs.required == 'true' }}")
+    expect(mac.jobs[id]['runs-on']).toBe('ubuntu-24.04')
+    expect(mac.jobs[id].permissions).toEqual({ contents: 'read', actions: 'read' })
+    expect(mac.jobs[id].strategy).toBeUndefined()
+    expect(mac.jobs[id]['continue-on-error']).toBeUndefined()
+  }
   expect(mac.jobs.prerequisites.strategy.matrix).toBe(
     '${{ fromJSON(needs.scope.outputs.workers) }}',
   )

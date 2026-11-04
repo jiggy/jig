@@ -55,6 +55,116 @@ jobs:
           if (!/^[1-9][0-9]*$/.test(number ?? '')) throw Error('Missing exact workflow run number')
           appendFileSync(process.env.GITHUB_OUTPUT, `lane=${BigInt(number) % 2n}\n`)
           JS
+  cohort-allocator:
+    name: "Allocate exact-profile Mac roles"
+    needs: "scope"
+    if: "${{ needs.scope.outputs.required == 'true' }}"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 25
+    permissions:
+      contents: "read"
+      actions: "read"
+    steps:
+      -
+        name: "Keep complete-host allocation unchanged"
+        if: "github.event_name != 'pull_request'"
+        run: "echo 'Main and manual runs use one complete Apple Silicon host.'"
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        if: "github.event_name == 'pull_request'"
+        with:
+          persist-credentials: false
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        if: "github.event_name == 'pull_request'"
+        with:
+          node-version: "24"
+      -
+        name: "Read the original 25-minute PR deadline"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+      -
+        uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
+        if: "github.event_name == 'pull_request'"
+        with:
+          bun-version: "1.4.2"
+      -
+        name: "Install the pinned official artifact client in isolated scratch"
+        if: "github.event_name == 'pull_request'"
+        timeout-minutes: 2
+        run: |
+          set -eu
+          mkdir "$RUNNER_TEMP/mac-cohort-client"
+          printf '{"private":true}\n' > "$RUNNER_TEMP/mac-cohort-client/package.json"
+          node scripts/ci/pr-time-budget.mjs run -- bun add --cwd "$RUNNER_TEMP/mac-cohort-client" --ignore-scripts --exact @actions/artifact@2.3.2
+      -
+        name: "Announce readiness and assign each worker exactly once"
+        if: "github.event_name == 'pull_request'"
+        uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        with:
+          script: |
+            const { execFileSync } = require('node:child_process');
+            execFileSync('node', ['scripts/ci/pr-time-budget.mjs', 'run', '--',
+              'node', 'scripts/ci/macos-host-cohort-run.mjs', 'allocate'], {
+              stdio: 'inherit', env: process.env,
+            });
+      -
+        name: "Require completion within the original PR deadline"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
+  allocator-ready:
+    name: "Require an active Mac role allocator"
+    needs: "scope"
+    if: "${{ needs.scope.outputs.required == 'true' }}"
+    runs-on: "ubuntu-24.04"
+    timeout-minutes: 25
+    permissions:
+      contents: "read"
+      actions: "read"
+    steps:
+      -
+        name: "Keep complete-host readiness unchanged"
+        if: "github.event_name != 'pull_request'"
+        run: "echo 'Main and manual runs require no PR allocator.'"
+      -
+        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+        if: "github.event_name == 'pull_request'"
+        with:
+          persist-credentials: false
+      -
+        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
+        if: "github.event_name == 'pull_request'"
+        with:
+          node-version: "24"
+      -
+        name: "Read the original 25-minute PR deadline"
+        if: "github.event_name == 'pull_request'"
+        env:
+          GH_TOKEN: "${{ github.token }}"
+          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+        run: |
+          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
+            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
+            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+      -
+        name: "Verify the allocator is ready and still running"
+        if: "github.event_name == 'pull_request'"
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: "node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready"
+      -
+        name: "Require completion within the original PR deadline"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
   host-artifacts:
     name: "Acquire canonical macos host artifacts"
     needs: "scope"
@@ -111,7 +221,7 @@ jobs:
       group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || format('{0}-{1}', github.run_id, matrix.worker) }}"
       queue: "max"
       cancel-in-progress: false
-    # PR workers start immediately after claiming one role on their observed profile.
+    # A running Ubuntu allocator assigns each PR worker a role on its observed profile.
     # Main and manual runs retain one complete host and their existing allowance.
     timeout-minutes: "${{ github.event_name == 'pull_request' && 25 || (inputs.include_startup_profile && 90 || 60) }}"
     permissions:
@@ -173,9 +283,9 @@ jobs:
           printf '{"private":true}\n' > "$RUNNER_TEMP/mac-cohort-client/package.json"
           node scripts/ci/pr-time-budget.mjs run -- bun add --cwd "$RUNNER_TEMP/mac-cohort-client" --ignore-scripts --exact @actions/artifact@2.3.2
       -
-        name: "Claim an independent role on this exact host profile"
+        name: "Announce this exact host and await its assigned role"
         id: "role"
-        timeout-minutes: 2
+        timeout-minutes: 3
         uses: "actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd"
         env:
           MAC_HOST_WORKER: "${{ matrix.worker }}"
@@ -306,6 +416,7 @@ jobs:
     needs:
       - "scope"
       - "host-artifacts"
+      - "allocator-ready"
     if: "${{ needs.scope.outputs.required == 'true' }}"
   qualified-architecture:
     name: "Native host qualification — ${{ matrix.arch }}"
@@ -313,6 +424,8 @@ jobs:
     needs:
       - "scope"
       - "host-artifacts"
+      - "cohort-allocator"
+      - "allocator-ready"
       - "prerequisites"
     runs-on: "ubuntu-24.04"
     permissions:
@@ -469,6 +582,8 @@ jobs:
     needs:
       - "scope"
       - "host-artifacts"
+      - "cohort-allocator"
+      - "allocator-ready"
       - "prerequisites"
       - "qualified-architecture"
     runs-on: "ubuntu-24.04"

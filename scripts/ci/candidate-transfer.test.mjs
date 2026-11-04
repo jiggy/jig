@@ -686,7 +686,9 @@ test('the actual Mac acquisition step waits for Quick before complete native all
   )
   assert.doesNotMatch(step.run, /AFTER_QUICK|needs\.plan/)
   assert.ok(acquisition.steps.findIndex((entry) => entry.id === 'acquire-budget') < acquisition.steps.indexOf(step))
-  assert.deepEqual(workflow.jobs.prerequisites.needs, ['scope', 'host-artifacts'])
+  assert.deepEqual(workflow.jobs.prerequisites.needs, [
+    'scope', 'host-artifacts', 'allocator-ready',
+  ])
 })
 
 test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {

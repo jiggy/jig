@@ -12,7 +12,7 @@ import {
   writeCandidateReceipt,
 } from './candidate-provenance.mjs'
 import {
-  macHostCohortClaimName,
+  macHostCohortArtifactName,
   macHostCohortProfile,
   macHostCohortWorkerName,
 } from './macos-host-cohort.mjs'
@@ -185,20 +185,28 @@ async function addCohortReceipts(f) {
   }))
   for (const [role, worker] of workers.entries()) {
     const receipt = {
-      kind: 'macos-host-cohort-worker/1',
+      kind: 'macos-host-cohort-worker/2',
       ...identity,
       worker,
       jobId: 1000 + worker,
+      allocatorJobId: 900,
       profile,
       role,
-      claimArtifact: {
-        id: 2000 + worker,
-        name: macHostCohortClaimName(identity, profile, role),
+      readyArtifact: {
+        id: 2000,
+        name: macHostCohortArtifactName('ready', identity),
         digest: `sha256:${'2'.repeat(64)}`,
       },
-      conflicts: Array.from({ length: role }, (_, prior) =>
-        macHostCohortClaimName(identity, profile, prior),
-      ),
+      announcementArtifact: {
+        id: 3000 + worker,
+        name: macHostCohortArtifactName('announcement', identity, worker),
+        digest: `sha256:${'3'.repeat(64)}`,
+      },
+      assignmentArtifact: {
+        id: 4000 + worker,
+        name: macHostCohortArtifactName('assignment', identity, worker),
+        digest: `sha256:${'4'.repeat(64)}`,
+      },
     }
     receipts.push(receipt)
     await writeFile(resolve(f.directories[role], 'worker.json'), JSON.stringify(receipt))
@@ -371,6 +379,8 @@ test('foreign, swapped or repeated PR worker mappings cannot supply diagnostic t
       { runAttempt: 1 },
       { worker: 1 },
       { jobId: 1001 },
+      { allocatorJobId: false },
+      { kind: 'macos-host-cohort-worker/1' },
       { role: 1 },
       { role: false },
       { profile: { ...f.receipts[0].profile, build: '24G830' } },

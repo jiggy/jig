@@ -209,9 +209,50 @@ test('release readiness requires every canonical Linux shard including example e
   ])
 })
 
+test('Mac workers wait for one active Ubuntu allocator without depending on its completion', async () => {
+  const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
+  const allocator = mac.jobs['cohort-allocator']
+  const readiness = mac.jobs['allocator-ready']
+  assert.equal(allocator.name, 'Allocate exact-profile Mac roles')
+  assert.equal(readiness.name, 'Require an active Mac role allocator')
+  for (const job of [allocator, readiness]) {
+    assert.equal(job.needs, 'scope')
+    assert.equal(job.if, "${{ needs.scope.outputs.required == 'true' }}")
+    assert.equal(job['runs-on'], 'ubuntu-24.04')
+    assert.equal(job['timeout-minutes'], 25)
+    assert.equal(job.strategy, undefined)
+    assert.equal(job.concurrency, undefined)
+    assert.deepEqual(job.permissions, { contents: 'read', actions: 'read' })
+    assert.equal(job.environment, undefined)
+    const complete = job.steps.filter((step) => step.if === "github.event_name != 'pull_request'")
+    assert.equal(complete.length, 1)
+    assert.match(complete[0].run, /^echo /)
+    for (const step of job.steps.filter((step) => step !== complete[0]))
+      assert.equal(step.if, "github.event_name == 'pull_request'")
+  }
+  assert.deepEqual(mac.jobs.prerequisites.needs, ['scope', 'host-artifacts', 'allocator-ready'])
+  for (const id of ['qualified-architecture', 'affected-macos'])
+    for (const dependency of ['cohort-allocator', 'allocator-ready', 'prerequisites'])
+      assert.ok(mac.jobs[id].needs.includes(dependency), `${id} requires ${dependency}`)
+  const execute = allocator.steps.find((step) => step.uses?.startsWith('actions/github-script@'))
+  assert.equal(execute.env.GH_TOKEN, '${{ github.token }}')
+  assert.match(
+    execute.with.script,
+    /execFileSync\('node', \['scripts\/ci\/pr-time-budget\.mjs', 'run', '--',\s*'node', 'scripts\/ci\/macos-host-cohort-run\.mjs', 'allocate'\]/,
+  )
+  const install = allocator.steps.find((step) => step.run?.includes('bun add --cwd'))
+  assert.match(install.run, /--ignore-scripts --exact @actions\/artifact@2\.3\.2/)
+  assert.ok(allocator.steps.indexOf(install) < allocator.steps.indexOf(execute))
+  assert.ok(readiness.steps.some((step) => step.run ===
+    'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready'))
+})
+
 test('PR phases retain the original attempt deadline before granting final qualification', async () => {
   const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
-  for (const id of ['host-artifacts', 'prerequisites', 'qualified-architecture', 'affected-macos']) {
+  for (const id of [
+    'host-artifacts', 'cohort-allocator', 'allocator-ready',
+    'prerequisites', 'qualified-architecture', 'affected-macos',
+  ]) {
     const job = mac.jobs[id]
     const starts = job.steps.filter((step) => step.run?.includes('pr-time-budget.mjs start'))
     assert.equal(starts.length, 1, id)
@@ -246,6 +287,8 @@ test('PR phases retain the original attempt deadline before granting final quali
   }
   for (const [id, command, count] of [
     ['host-artifacts', 'node scripts/ci/candidate-transfer.mjs acquire', 1],
+    ['cohort-allocator', 'bun add --cwd', 1],
+    ['allocator-ready', 'node scripts/ci/macos-host-cohort-run.mjs ready', 1],
     ['prerequisites', 'bun scripts/ci/probe-macos-host.ts --hosted', 1],
     ['prerequisites', 'bun add --cwd', 1],
     ['prerequisites', 'clang -Wall', 2],
@@ -278,7 +321,9 @@ test('PR phases retain the original attempt deadline before granting final quali
     claim.with.script,
     /execFileSync\('node', \['scripts\/ci\/pr-time-budget\.mjs', 'run', '--',\s*'node', 'scripts\/ci\/macos-host-cohort-run\.mjs', 'claim'\]/,
   )
-  for (const id of ['prerequisites', 'qualified-architecture', 'affected-macos']) {
+  for (const id of [
+    'cohort-allocator', 'allocator-ready', 'prerequisites', 'qualified-architecture', 'affected-macos',
+  ]) {
     const final = mac.jobs[id].steps.at(-1)
     assert.equal(final.if, "github.event_name == 'pull_request'")
     assert.equal(final.run, 'node scripts/ci/pr-time-budget.mjs check')
