@@ -293,27 +293,30 @@ try {
   assert.deepEqual(orphanTerminal.output, { cgroupVisible: false, childStarted: true })
   await eventuallyNoJigResidue()
 
-  process.stdout.write('Installed hostile case: aggregate memory pressure\n')
-  const memoryBefore = await readInstalledRunEvidence(project)
-  const beforeRunIds = memoryBefore.rows.map((row) => row.run_id as string)
-  const memory = await run([jig, 'run', 'flow:flows/memory-pressure'], project, [0, 1], 60_000)
-  await writeFile(join(temporary, 'memory-command.json'), `${JSON.stringify(memory)}\n`, {
-    mode: 0o600,
-  })
-  const memoryAfter = await readInstalledRunEvidence(project, beforeRunIds)
-  assert.deepEqual(memoryAfter.project, memoryBefore.project)
-  assert.deepEqual(memoryAfter.database, memoryBefore.database)
-  const memoryProof = await checkInstalledMemoryProofWithDiagnostics(
-    {
-      row: memoryAfter.fresh!,
-      beforeRunIds,
-      project: memoryAfter.project,
-      command: memory,
-    },
-    process.env.JIG_CI_LINUX_EVIDENCE_DIRECTORY,
-  )
-  process.stdout.write(`Installed memory enforcement: ${JSON.stringify(memoryProof)}\n`)
-  await eventuallyNoJigResidue()
+  // Every fresh probe must pass. Never retry a rejected proof to obtain a success.
+  for (let probe = 1; probe <= 5; probe++) {
+    process.stdout.write(`Installed hostile case: aggregate memory pressure (${probe}/5)\n`)
+    const memoryBefore = await readInstalledRunEvidence(project)
+    const beforeRunIds = memoryBefore.rows.map((row) => row.run_id as string)
+    const memory = await run([jig, 'run', 'flow:flows/memory-pressure'], project, [0, 1], 60_000)
+    await writeFile(join(temporary, 'memory-command.json'), `${JSON.stringify(memory)}\n`, {
+      mode: 0o600,
+    })
+    const memoryAfter = await readInstalledRunEvidence(project, beforeRunIds)
+    assert.deepEqual(memoryAfter.project, memoryBefore.project)
+    assert.deepEqual(memoryAfter.database, memoryBefore.database)
+    const memoryProof = await checkInstalledMemoryProofWithDiagnostics(
+      {
+        row: memoryAfter.fresh!,
+        beforeRunIds,
+        project: memoryAfter.project,
+        command: memory,
+      },
+      process.env.JIG_CI_LINUX_EVIDENCE_DIRECTORY,
+    )
+    process.stdout.write(`Installed memory enforcement: ${JSON.stringify(memoryProof)}\n`)
+    await eventuallyNoJigResidue()
+  }
 
   process.stdout.write('Installed hostile case: fixed wall-clock deadline\n')
   const deadlineStartedUnixMs = Date.now()

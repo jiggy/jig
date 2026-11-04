@@ -164,6 +164,9 @@ operational baselines, and public-site assembly.
   invocation identity and admitted activation-request identity retain their
   distinct protocol domains. Intent and plan bind that target's meaning.
 
+  Five consecutive fresh memory Runs must each pass the complete proof and residue checks.
+  The first rejection stops the probe and retains its diagnostic. Later successes cannot replace a failed observation.
+
   The plan retains both closed native boot coordinates and the sealed owner's
   matching boot identity. It never derives native coordinates from wall time.
   The same proof requires a prepared Linux owner, positive `memory.events`
