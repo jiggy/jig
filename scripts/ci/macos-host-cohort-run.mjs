@@ -422,16 +422,29 @@ export async function awaitMacHostRole({
   }
 }
 
-async function githubMetadata(environment, suffix, key, deadlineMs) {
+const maxMetadataBytes = 4 * 1024 * 1024
+
+async function githubMetadataPage(
+  environment, suffix, key, deadlineMs,
+  { apiOrigin = 'https://api.github.com', maxBytes = maxMetadataBytes } = {},
+) {
   const repository = environment.GITHUB_REPOSITORY
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') || !environment.GH_TOKEN)
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? '') ||
+      repository.split('/').some((part) => part === '.' || part === '..') || !environment.GH_TOKEN)
     throw new Error('Mac cohort requires repository-scoped Actions read access')
+  const origin = new URL(apiOrigin)
+  if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' ||
+      (origin.protocol !== 'https:' && !(origin.protocol === 'http:' &&
+        ['127.0.0.1', '[::1]'].includes(origin.hostname))))
+    throw new Error('Invalid Mac cohort metadata API origin')
   const remaining = deadlineMs - Date.now()
   if (!Number.isSafeInteger(remaining) || remaining <= 0)
     throw new Error('Mac cohort metadata deadline expired or invalid')
+  if (!Number.isSafeInteger(maxBytes) || maxBytes <= 0 || maxBytes > maxMetadataBytes)
+    throw new Error('Mac cohort metadata byte allowance expired or invalid')
   let response
   try {
-    response = await fetch(`https://api.github.com/repos/${repository}/${suffix}`, {
+    response = await fetch(`${origin.origin}/repos/${repository}/${suffix}`, {
       redirect: 'error',
       signal: AbortSignal.timeout(Math.min(10_000, remaining)),
       headers: {
@@ -452,21 +465,84 @@ async function githubMetadata(environment, suffix, key, deadlineMs) {
     }
     throw new Error(`Mac cohort ${key} metadata request failed: ${JSON.stringify(details)}`)
   }
-  let result
+  const chunks = []
+  let bytes = 0
   try {
-    result = await response.json()
+    for await (const chunk of response.body) {
+      bytes += chunk.byteLength
+      if (bytes > maxBytes) throw new Error('Oversized metadata')
+      chunks.push(chunk)
+    }
   } catch {
-    throw new Error(`Mac cohort ${key} metadata response was not valid JSON`)
+    throw new Error(`Mac cohort ${key} metadata body exceeded its byte or time allowance`)
   }
+  let result
+  try { result = JSON.parse(Buffer.concat(chunks).toString('utf8')) }
+  catch { throw new Error(`Mac cohort ${key} metadata response was not valid JSON`) }
   if (
-    !Number.isSafeInteger(result.total_count) ||
+    !Number.isSafeInteger(result?.total_count) ||
     result.total_count < 0 ||
-    result.total_count > 100 ||
     !Array.isArray(result[key]) ||
-    result[key].length !== result.total_count
+    result[key].length > 100
   )
     throw new Error('Mac cohort refuses an incomplete metadata inventory')
+  return { result, bytes }
+}
+
+async function githubMetadata(environment, suffix, key, deadlineMs) {
+  const { result } = await githubMetadataPage(environment, suffix, key, deadlineMs)
+  if (result.total_count > 100 || result[key].length !== result.total_count)
+    throw new Error('Mac cohort refuses an incomplete metadata inventory')
   return result[key]
+}
+
+/** Retained earlier attempts may span pages; current-attempt selection follows a complete read. */
+export async function listMacHostCohortArtifacts(environment, identity, deadlineMs, { apiOrigin } = {}) {
+  const runId = positiveInteger(identity?.runId, 'artifact run ID')
+  requireDeadline(deadlineMs, Date.now)
+  const deadline = Math.min(deadlineMs, Date.now() + 30_000)
+  let remainingBytes = maxMetadataBytes
+  for (let pass = 0; pass < 3; pass++) {
+    const artifacts = []
+    const ids = new Set()
+    let total
+    let changed = false
+    for (let page = 1; page <= 10; page++) {
+      const { result, bytes } = await githubMetadataPage(
+        environment, `actions/runs/${runId}/artifacts?per_page=100&page=${page}`,
+        'artifacts', deadline, { apiOrigin, maxBytes: remainingBytes },
+      )
+      remainingBytes -= bytes
+      requireDeadline(deadline, Date.now)
+      if (result.total_count > 1000)
+        throw new Error('Mac cohort artifact inventory exceeds its 1000-artifact bound')
+      const expected = Math.min(100, Math.max(0, result.total_count - (page - 1) * 100))
+      if (result.artifacts.length !== expected)
+        throw new Error('Mac cohort refuses an incomplete artifact inventory page')
+      const pageIds = new Set()
+      for (const artifact of result.artifacts) {
+        if (!Number.isSafeInteger(artifact?.id) || artifact.id <= 0 ||
+            typeof artifact.name !== 'string' || !artifact.name || pageIds.has(artifact.id))
+          throw new Error('Mac cohort artifact inventory has malformed or duplicate identities')
+        pageIds.add(artifact.id)
+      }
+      if (total !== undefined && result.total_count !== total) {
+        changed = true
+        break
+      }
+      total = result.total_count
+      for (const artifact of result.artifacts) {
+        if (ids.has(artifact.id))
+          throw new Error('Mac cohort artifact inventory repeats an artifact across pages')
+        ids.add(artifact.id)
+        artifacts.push(artifact)
+      }
+      if (artifacts.length === total) return artifacts
+    }
+    if (!changed || pass === 2)
+      throw new Error('Mac cohort artifact inventory did not stabilize within its bounded pagination passes')
+    await pollPause(deadline, Date.now, pause, 1000 * (pass + 1))
+  }
 }
 
 async function currentJobs(environment, identity, deadlineMs) {
@@ -707,12 +783,7 @@ async function main(mode, environment) {
   const readJobs = (deadline = deadlineMs) => currentJobs(environment, identity, Math.min(deadline, deadlineMs))
   const readRecords = macHostCohortRecordReader({
     identity,
-    listArtifacts: () => githubMetadata(
-      environment,
-      `actions/runs/${identity.runId}/artifacts?per_page=100`,
-      'artifacts',
-      deadlineMs,
-    ),
+    listArtifacts: () => listMacHostCohortArtifacts(environment, identity, deadlineMs),
     download: (artifact) => downloadMacHostCohortRecord(environment.GITHUB_REPOSITORY, artifact, {
       token: environment.GH_TOKEN, deadlineMs,
     }),

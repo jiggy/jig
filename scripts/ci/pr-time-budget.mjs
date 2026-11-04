@@ -232,15 +232,26 @@ async function readPrMetadata(
           chunks.push(chunk)
         }
       } catch {
-        throw new Error('Unable to read bounded PR metadata body')
+        if (bytes > maxMetadataBytes) throw new Error('Oversized PR metadata')
+        if (Date.now() >= deadline) throw new Error('The PR metadata deadline has elapsed')
+        failure = new Error('Unable to read bounded PR metadata body')
       }
-      return JSON.parse(Buffer.concat(chunks).toString('utf8'))
+      if (!failure) {
+        const parsed = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+        if (Date.now() >= deadline) throw new Error('The PR metadata deadline has elapsed')
+        return parsed
+      }
     }
-    if (response) {
+    if (response && !response.ok) {
       await response.body?.cancel()
       failure = new Error(`PR workflow metadata request failed (HTTP ${response.status})`)
-      if (response.status !== 429 && response.status < 500) throw failure
-      if (response.status === 429) {
+      const rateLimited =
+        response.status === 429 ||
+        (response.status === 403 &&
+          (response.headers.has('retry-after') ||
+            response.headers.get('x-ratelimit-remaining') === '0'))
+      if (!rateLimited && response.status < 500) throw failure
+      if (rateLimited) {
         const retryAfter = response.headers.get('retry-after')
         const reset = response.headers.get('x-ratelimit-reset')
         let retryAfterDelayMs
@@ -262,7 +273,7 @@ async function readPrMetadata(
           resetDelayMs ?? 0,
         )
         failure = new Error(
-          `PR workflow metadata rate limited (HTTP 429; retry wait ${Math.ceil(retryDelayMs / 1000)} seconds)`,
+          `PR workflow metadata rate limited (HTTP ${response.status}; retry wait ${Math.ceil(retryDelayMs / 1000)} seconds)`,
         )
         if (Date.now() + retryDelayMs >= deadline)
           throw new Error(
@@ -540,8 +551,25 @@ export async function guardMacPrMatrix(
   if (pollIntervalMs > 60_000) throw new Error('PR matrix polling interval exceeds sixty seconds')
   const deadlineEpochMs = budget.deadlineEpochMs - PR_SETTLEMENT_RESERVE_SECONDS * 1000
   const options = { token, apiOrigin, deadlineEpochMs }
+  let state = { jobIds: {}, jobStarts: {}, pending: [] }
+  const requireWorkTime = () => {
+    if (Date.now() >= deadlineEpochMs) {
+      const pending = state.pending.map(({ name, status }) => `${name} (${status})`).join(', ')
+      throw new Error(
+        `The Mac coordination allowance has elapsed; unfinished jobs: ${pending || 'unverified'}`,
+      )
+    }
+  }
   const verifyBudget = async () => {
-    const observed = await fetchPrTimeBudget(budget, options)
+    requireWorkTime()
+    let observed
+    try {
+      observed = await fetchPrTimeBudget(budget, options)
+    } catch (error) {
+      requireWorkTime()
+      throw error
+    }
+    requireWorkTime()
     if (
       observed.createdEpochMs !== budget.createdEpochMs ||
       observed.attemptStartedEpochMs !== budget.attemptStartedEpochMs ||
@@ -553,15 +581,6 @@ export async function guardMacPrMatrix(
       throw new Error('PR matrix monitor identity or assigned-job deadline changed')
   }
   await verifyBudget()
-  let state = { jobIds: {}, jobStarts: {}, pending: [] }
-  const requireWorkTime = () => {
-    if (Date.now() >= deadlineEpochMs) {
-      const pending = state.pending.map(({ name, status }) => `${name} (${status})`).join(', ')
-      throw new Error(
-        `The Mac coordination allowance has elapsed; unfinished jobs: ${pending || 'unverified'}`,
-      )
-    }
-  }
   for (;;) {
     requireWorkTime()
     let snapshot

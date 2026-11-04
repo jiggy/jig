@@ -308,7 +308,11 @@ test('Mac admission requires prepared canonical inputs and one live Ubuntu alloc
   assert.equal(download.with['artifact-ids'], '${{ needs.host-artifacts.outputs.artifact_id }}')
   assert.equal(download.with['merge-multiple'], true)
   assert.equal(download.with.name, undefined)
-  assert.equal(download['timeout-minutes'], 2)
+  for (const event of ['pull_request', 'push', 'workflow_dispatch'])
+    assert.equal(
+      expressionValue(download['timeout-minutes'], { github: { event_name: event } }),
+      event === 'pull_request' ? 2 : 10,
+    )
   assert.equal(
     mac.jobs.prerequisites.steps.some((step) =>
       step.run?.includes('candidate-transfer.mjs acquire'),
@@ -402,6 +406,14 @@ test('the PR deadline guard can start beside queued Macs and never executes nati
     expressionValue(selected[2].env.PR_BUDGET_JOB_NAME, context),
     'Enforce Mac PR deadline',
   )
+  for (const row of rows.filter((row) => !row.guard)) {
+    const workerContext = { ...context, matrix: row }
+    const name = `Native host worker — ${row.arch} / ${row.worker}`
+    assert.equal(expressionValue(selected[2].env.PR_BUDGET_KIND, workerContext), 'worker')
+    assert.equal(expressionValue(selected[2].env.PR_BUDGET_JOB_NAME, workerContext), name)
+    assert.equal(expressionValue(job.name, workerContext), name)
+    assert.equal(expressionValue(job['timeout-minutes'], workerContext), 25)
+  }
   assert.equal(selected[3].env.GH_TOKEN, '${{ github.token }}')
   for (const step of selected) assert.equal(step['continue-on-error'], undefined)
 })
