@@ -121,6 +121,11 @@ Join the exact original operation without the cancelled waiter signal before ret
 The successful outer result and exports must preserve the cancelled child's accepted bytes.
 Keep the original root identity, native residue checks and protected owner observations.
 
+Failed cancellation consumers may expose closed router phases and public operation codes.
+Keep the original exception as the cause and preserve every assertion and allowance.
+Read their observation file without following links, within 4096 bytes.
+Print only whitelisted phases, terminal codes and cleanup labels. Never emit raw error text or private state.
+
 Checkpoint loss barriers must match the authoritative commit boundary.
 Delivery callbacks run after the protected save commits.
 Use a real selected-channel send followed by a hold before the next save.
