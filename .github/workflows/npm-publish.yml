@@ -136,7 +136,7 @@ jobs:
               snapshot.group !== 'host' || process.env.RELEASE_GROUP !== 'host' || snapshot.sourceRevision !== process.env.SOURCE_REVISION ||
               snapshot.candidate?.receiptSha256 !== process.env.EXPECTED_RECEIPT_SHA256 ||
               !Array.isArray(snapshot.runs) || snapshot.runs.length !== 4 ||
-              !Array.isArray(snapshot.artifacts) || snapshot.artifacts.length !== 7)
+              !Array.isArray(snapshot.artifacts) || snapshot.artifacts.length !== 6)
             throw new Error('Invalid authorized qualification snapshot');
           const api = (path) => JSON.parse(execFileSync('gh', ['api', path], {
             encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
