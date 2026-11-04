@@ -233,8 +233,8 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     )
     expect(required.if).toBe(
       name === 'Test native containment and recovery'
-        ? "steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0'"
-        : "steps.role.outputs.execute == 'true'",
+        ? "${{ !matrix.guard && steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
+        : "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
     )
     expect(nightly.if).toBe(
       name === 'Test native containment and recovery' ? 'matrix.shard == 0' : undefined,
@@ -267,7 +267,7 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     mac.jobs.prerequisites.steps.find((s: any) =>
       s.run?.includes('scripts/ci/install-macos-test-clients.ts'),
     ).if,
-  ).toBe("steps.role.outputs.installed == 'true'")
+  ).toBe("${{ !matrix.guard && steps.role.outputs.installed == 'true' }}")
   expect(
     intel.jobs.prerequisites.steps.find((s: any) =>
       s.run?.includes('scripts/ci/install-macos-test-clients.ts'),
