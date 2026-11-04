@@ -607,6 +607,13 @@ test('PR roles retain native and installed ownership while complete hosts keep t
   const qualifier = job.steps.find((step) => /qualify-macos-host\.sh --shard/.test(step.run ?? ''))
   assert.match(qualifier.run, /--shard "\$MAC_HOST_ROLE"/)
   assert.equal(qualifier.env.MAC_HOST_ROLE, '${{ steps.role.outputs.role }}')
+  const coordinatorInstalls = job.steps.filter((step) =>
+    step.run?.split('\n').some((line) => line.trim() ===
+      'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts'),
+  )
+  assert.equal(coordinatorInstalls.length, 1)
+  const coordinator = coordinatorInstalls[0]
+  assert.ok(job.steps.indexOf(coordinator) < job.steps.findIndex((step) => step.id === 'role'))
   const context = (event, role, count, profile = false) => ({
     github: { event_name: event },
     matrix: { guard: false },
@@ -631,6 +638,7 @@ test('PR roles retain native and installed ownership while complete hosts keep t
         assert.equal(evaluate(native.if, selected), role === 0)
         assert.equal(evaluate(clients.if, selected), role === count - 1)
         assert.equal(evaluate(qualifier.if, selected), true)
+        assert.equal(evaluate(coordinator.if, selected), event === 'pull_request')
         assert.equal(
           evaluate(job['timeout-minutes'], selected),
           event === 'pull_request' ? 25 : profile ? 90 : 60,
@@ -663,15 +671,20 @@ test('PR roles retain native and installed ownership while complete hosts keep t
     assert.ok(total < (profile ? 270 : 210))
   }
   const surplus = context('pull_request', null, 3)
+  assert.equal(evaluate(coordinator.if, surplus), true)
+  assert.equal(evaluate(coordinator.if, { ...surplus, steps: {} }), true)
   const executed = job.steps.filter((step) =>
-    /clang |bun install |just --justfile|candidate-provenance\.mjs verify|shard-\$MAC_HOST_ROLE\.complete/.test(step.run ?? '') ||
-    step.uses?.startsWith('actions/download-artifact@'),
+    step !== coordinator && (
+      /clang |bun install |just --justfile|candidate-provenance\.mjs verify|shard-\$MAC_HOST_ROLE\.complete/.test(step.run ?? '') ||
+      step.uses?.startsWith('actions/download-artifact@')
+    ),
   )
   assert.ok(executed.length >= 6)
   for (const step of [...executed, native, clients, qualifier])
     assert.equal(evaluate(step.if, surplus), false, step.name ?? step.uses)
   for (const role of [0, 2]) {
     const guard = { ...context('pull_request', role, 3), matrix: { guard: true } }
+    assert.equal(evaluate(coordinator.if, guard), false)
     for (const step of [...executed, native, clients, qualifier])
       assert.equal(evaluate(step.if, guard), false, step.name ?? step.uses)
   }
