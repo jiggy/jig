@@ -196,6 +196,9 @@ export async function runCommandBeforeDeadline(
       deadlineExceeded = true
       stop('SIGTERM')
     }
+    // A completed leader can leave descendants holding a pipeline open. PR
+    // ownership ends only after its remaining process group has settled.
+    if (deadlineEpochMs !== null && !termination && signalGroup(0)) stop('SIGTERM')
     if (termination) {
       // A leader can exit on TERM while descendants ignore it. Retain the KILL
       // timer until the group disappears or escalation has actually run.

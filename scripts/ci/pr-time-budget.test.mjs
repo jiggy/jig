@@ -263,6 +263,65 @@ test('deadline escalation kills descendants even after their leader exits succes
   }
 })
 
+test('a normal exit settles PR descendants while preserving commands without deadlines', async () => {
+  for (const bounded of [true, false]) {
+    const directory = await mkdtemp(join(tmpdir(), 'jig-pr-normal-exit-'))
+    let descendantPid
+    try {
+      const pidPath = join(directory, 'descendant.pid')
+      const termPath = join(directory, 'descendant.term')
+      const heartbeatPath = join(directory, 'descendant.heartbeat')
+      const descendant = `
+        const fs = require('node:fs')
+        process.on('SIGTERM', () => fs.writeFileSync(process.argv[2], 'received'))
+        fs.writeFileSync(process.argv[1], String(process.pid))
+        fs.writeFileSync(process.argv[3], 'x')
+        setInterval(() => fs.appendFileSync(process.argv[3], 'x'), 10)
+        process.send('ready')
+      `
+      const leader = `
+        const { spawn } = require('node:child_process')
+        const child = spawn(process.execPath, ['-e', process.argv[1], ...process.argv.slice(2)], {
+          stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
+        })
+        child.once('message', () => {
+          child.disconnect()
+          process.exit(0)
+        })
+      `
+      const result = await runCommandBeforeDeadline(
+        process.execPath,
+        ['-e', leader, descendant, pidPath, termPath, heartbeatPath],
+        {
+          deadlineEpochMs: bounded ? Date.now() + 10_000 : null,
+          terminationGraceMs: 150,
+        },
+      )
+      descendantPid = Number(await readFile(pidPath, 'utf8'))
+      assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 0)
+      assert.deepEqual(result, { code: 0, signal: null, deadlineExceeded: false })
+      const heartbeat = await readFile(heartbeatPath, 'utf8')
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      if (bounded) {
+        assert.equal(await readFile(termPath, 'utf8'), 'received')
+        assert.equal(await readFile(heartbeatPath, 'utf8'), heartbeat)
+      } else {
+        await assert.rejects(readFile(termPath), { code: 'ENOENT' })
+        assert.ok((await readFile(heartbeatPath, 'utf8')).length > heartbeat.length)
+      }
+    } finally {
+      if (descendantPid) {
+        try {
+          process.kill(descendantPid, 'SIGKILL')
+        } catch (error) {
+          if (error.code !== 'ESRCH') throw error
+        }
+      }
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+})
+
 test('a delayed timer callback cannot accept a zero exit beyond the absolute deadline', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-pr-late-exit-'))
   try {

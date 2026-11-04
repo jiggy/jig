@@ -39,6 +39,7 @@ import {
   allocateMacHostRoles,
   awaitMacHostRole,
   macHostCohortCoordinationDeadline,
+  macHostCohortJobTimings,
   macHostCohortPollDelay,
   macHostCohortRecordReader,
   macHostWorkerMatrix,
@@ -125,8 +126,8 @@ async function canonicalBundle(temporary, sourceRevision) {
       headRepository: 'local/local',
     },
     buildProfile: {
-      version: '1.3.13',
-      revision: 'bf2e2cecf27e800962b1e7f03d66278f9d5d2e79',
+      version: '1.3.3',
+      revision: '274e01c737e85f8142070a9745b43a2ba09fce4c',
       platform: 'linux',
       architecture: 'x64',
       nodeVersion: process.versions.node,
@@ -311,6 +312,53 @@ const coordinationJobs = () => [
     coordinationJob(1000 + worker, macHostCohortWorkerName(worker), 'queued')),
 ]
 
+test('optional cohort timing retains only exact worker identities and valid UTC intervals', () => {
+  const worker = { worker: 0, jobId: 1000 }
+  const job = {
+    ...coordinationJob(worker.jobId, macHostCohortWorkerName(worker.worker), 'completed'),
+    conclusion: 'success',
+    created_at: '2026-11-03T12:00:00Z',
+    started_at: '2026-11-03T12:00:15.000Z',
+    completed_at: '2026-11-03T12:05:00Z',
+    runner_name: 'unneeded remote metadata',
+    steps: [{ name: 'unneeded remote step' }],
+  }
+  const timing = (jobs) => macHostCohortJobTimings({
+    identity: coordinationIdentity,
+    workers: [worker],
+    jobs,
+  })
+  assert.deepEqual(timing([job]), [
+    {
+      id: 1000,
+      name: 'Native host worker — arm64 / 0',
+      run_id: 500,
+      run_attempt: 2,
+      status: 'completed',
+      conclusion: 'success',
+      created_at: '2026-11-03T12:00:00.000Z',
+      started_at: '2026-11-03T12:00:15.000Z',
+      completed_at: '2026-11-03T12:05:00.000Z',
+    },
+  ])
+  for (const changes of [
+    { id: 1001 },
+    { name: 'Native host worker — arm64 / 1' },
+    { run_id: 501 },
+    { run_attempt: 1 },
+    { status: 'in_progress' },
+    { conclusion: 'failure' },
+    { created_at: 'malformed' },
+    { created_at: '2026-02-31T12:00:00Z' },
+    { completed_at: null },
+    { started_at: '2026-11-03T11:59:59Z' },
+    { completed_at: '2026-11-03T12:00:14Z' },
+  ])
+    assert.deepEqual(timing([{ ...job, ...changes }]), [])
+  assert.deepEqual(timing([]), [])
+  assert.deepEqual(timing([job, job]), [])
+})
+
 // A real controlled HTTP service persists each publication in a temporary
 // directory and serves the actual ZIP bytes. It can lose an upload response
 // after publication. These are coordination protocol tests, not native proof.
@@ -331,16 +379,19 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
   let publication = Promise.resolve()
   const server = createServer(async (request, response) => {
     try {
-      await appendFile(requestsPath, JSON.stringify({ method: request.method, path: request.url }) + '\n')
       if (request.method === 'GET' && request.url === '/jobs') {
+        await appendFile(requestsPath, '"jobs"\n')
         response.setHeader('content-type', 'application/json')
         response.end(await readFile(jobsPath))
       } else if (request.method === 'GET' && request.url === '/artifacts') {
+        await appendFile(requestsPath, '"list"\n')
         response.setHeader('content-type', 'application/json')
         response.end(JSON.stringify((await entries()).map(({ artifact }) => artifact)))
       } else if (request.method === 'GET' && /^\/artifacts\/[0-9]+\/zip$/.test(request.url)) {
+        await appendFile(requestsPath, '"download"\n')
         response.end(await readFile(join(published, request.url.split('/')[2], 'record.zip')))
       } else if (request.method === 'POST' && request.url === '/artifacts') {
+        await appendFile(requestsPath, '"upload"\n')
         const chunks = []
         for await (const chunk of request) chunks.push(chunk)
         const { name, record } = JSON.parse(Buffer.concat(chunks).toString('utf8'))
@@ -513,7 +564,7 @@ test('real record polling caches ZIP transfers and refuses changed metadata or d
   const ready = await f.publish('ready', createMacHostCohortReady(f))
   assert.equal((await f.readRecords()).length, 1)
   assert.equal((await f.readRecords()).length, 1)
-  assert.equal((await f.requests()).filter(({ path }) => path.endsWith('/zip')).length, 1)
+  assert.equal((await f.requests()).filter((operation) => operation === 'download').length, 1)
   const original = await readFile(f.metadataPath(ready.artifact.id), 'utf8')
   await writeFile(f.metadataPath(ready.artifact.id), JSON.stringify({
     ...JSON.parse(original), digest: 'sha256:' + 'f'.repeat(64),
@@ -527,7 +578,7 @@ test('real record polling caches ZIP transfers and refuses changed metadata or d
     ...second, id: ready.artifact.id, name: macHostCohortArtifactName('ledger', f.identity),
   }))
   await assert.rejects(f.readRecords(), /duplicate record artifacts/)
-  assert.equal((await f.requests()).filter(({ path }) => path.endsWith('/zip')).length, 1)
+  assert.equal((await f.requests()).filter((operation) => operation === 'download').length, 1)
   assert.equal((await f.entries()).length, 2)
 })
 
@@ -678,7 +729,7 @@ test('an incomplete or skipped minority role prevents normalization of the compl
   await rm(path)
   assert.equal(existsSync(path), false)
   await refusesBeforeNormalization(f)
-  await writeFile(path, original)
+  await writeFile(path, original, { flag: 'wx' })
   await rm(join(directory, 'shard-1.complete'))
   await refusesBeforeNormalization(f, {}, /ENOENT/)
 })

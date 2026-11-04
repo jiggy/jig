@@ -414,6 +414,58 @@ async function currentJobs(environment, identity) {
   )
 }
 
+/** Retain only validated optional timing fields, never the remote job payload. */
+export function macHostCohortJobTimings({ identity, workers, jobs }) {
+  return workers.flatMap(({ worker, jobId }) => {
+    const name = macHostCohortWorkerName(worker)
+    const matches = jobs.filter((job) => job?.id === jobId || job?.name === name)
+    if (matches.length !== 1) return []
+    const job = matches[0]
+    if (
+      job.id !== jobId ||
+      job.name !== name ||
+      job.run_id !== identity.runId ||
+      job.run_attempt !== identity.runAttempt ||
+      job.status !== 'completed' ||
+      job.conclusion !== 'success'
+    )
+      return []
+    const timestamps = ['created_at', 'started_at', 'completed_at'].map((field) => {
+      const value = job[field]
+      if (
+        typeof value !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)
+      )
+        return null
+      const epoch = Date.parse(value)
+      if (!Number.isFinite(epoch)) return null
+      const normalized = new Date(epoch).toISOString()
+      return normalized === value || normalized.replace('.000Z', 'Z') === value
+        ? normalized
+        : null
+    })
+    if (
+      timestamps.some((value) => value === null) ||
+      timestamps[0] > timestamps[1] ||
+      timestamps[1] > timestamps[2]
+    )
+      return []
+    return [
+      {
+        id: jobId,
+        name,
+        run_id: identity.runId,
+        run_attempt: identity.runAttempt,
+        status: 'completed',
+        conclusion: 'success',
+        created_at: timestamps[0],
+        started_at: timestamps[1],
+        completed_at: timestamps[2],
+      },
+    ]
+  })
+}
+
 function workerDirectory(identity, worker) {
   return `macos-cohort-worker-${worker}-${identity.sourceRevision}-r${identity.runId}-a${identity.runAttempt}`
 }
@@ -611,7 +663,8 @@ async function main(mode, environment) {
     jobs,
   })
   await writeFile(join(scratch, 'mac-cohort.json'), `${JSON.stringify(assignment, null, 2)}\n`)
-  await writeFile(join(scratch, 'mac-job-timings.json'), `${JSON.stringify(jobs)}\n`)
+  const timings = macHostCohortJobTimings({ identity, workers: assignment.workers, jobs })
+  await writeFile(join(scratch, 'mac-job-timings.json'), `${JSON.stringify(timings)}\n`)
   console.log(
     JSON.stringify({
       profile: assignment.profile,

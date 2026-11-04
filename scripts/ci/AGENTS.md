@@ -351,6 +351,7 @@ They consume frozen package exports with tracked test helpers and installed
   `macos-host-cohort-run.mjs` validates every executing worker's exact source
   reports and canonical metadata, including minority profiles. Only then does it
   normalize one complete matching role set for the existing full report reader.
+  Retained timing data includes only validated current worker identities and UTC intervals.
   Surplus workers cannot retain execution proof. Main/manual runs use role zero
   directly and do not participate in allocation. Their allocator and readiness
   jobs succeed without publishing records, preserving dependency success.
@@ -365,6 +366,7 @@ They consume frozen package exports with tracked test helpers and installed
 
   Queue delays and retries consume that original allowance. Bound child process
   groups by the remaining work time and reject completion after the final deadline.
+  PR command ownership settles remaining descendants even after a successful leader exit.
   Main/manual commands retain their existing allowances. Missing metadata or
   invalid retained values fail closed. This policy cannot allocate GitHub runners
   or cancel jobs before GitHub schedules them.
