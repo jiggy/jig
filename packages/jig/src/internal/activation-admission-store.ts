@@ -5,10 +5,12 @@ import { createRequire } from 'node:module'
 import { join } from 'node:path'
 import { ProjectAdministrationError } from '../administration/project.js'
 import type {
+  AttemptCheckpoint,
   AttemptConstraints,
   AttemptObservation,
   AttemptReceipt,
   CanonicalRequest,
+  CheckpointScope,
   Prepared,
 } from '../attempt-contract.js'
 import { parseAttemptFrame } from '../attempt-contract.js'
@@ -53,6 +55,7 @@ import {
 } from './activation-admission.js'
 import { privateActivationTargetKey } from './activation-planning.js'
 import {
+  readPrivateAttemptCheckpointInventory,
   readPrivateAttemptCheckpoint,
   readPrivateAttemptCheckpointFiles,
   retainPrivateAttemptCheckpoint,
@@ -119,6 +122,7 @@ import {
   privateAttemptRequest,
   privateAttemptResultDigest,
   privateAttemptRetentionState,
+  type PrivateAttemptRow,
   readPrivateAttemptInputs,
   reconcilePrivateAttemptExportOwners,
   requirePrivateAttemptAcceptable,
@@ -129,7 +133,12 @@ import {
   retirePrivateAttempts,
 } from './prepared-attempt-store.js'
 import { privateProfileSpan, privateProfileSyncSpan } from './private-profile.js'
-import { PrivateCheckpointRejected, type RunCheckpointIdentity } from './private-run-checkpoint.js'
+import {
+  isPrivateCheckpointScope,
+  PrivateCheckpointRejected,
+  privateRunCheckpointScope,
+  type RunCheckpointIdentity,
+} from './private-run-checkpoint.js'
 import { verifyPrivateRetainedProjectEvaluation } from './project-evaluation-retention.js'
 import {
   decodePrivateProjectLocalLock,
@@ -2535,6 +2544,7 @@ export async function savePrivateAttemptRunCheckpoint(input: {
   readonly projectRoot: string
   readonly runId: string
   readonly epoch: number
+  readonly operationPath: readonly string[]
   readonly identity: RunCheckpointIdentity
   readonly value: unknown
   readonly artifacts: Readonly<Record<string, PrivateCapturedOutput>>
@@ -2542,14 +2552,10 @@ export async function savePrivateAttemptRunCheckpoint(input: {
   const owner = await openStateOwner(input.projectRoot, false)
   let failure: unknown
   try {
-    const result = await immediate(owner, () => {
-      const run = loadRootRunSnapshot(
-        owner.database,
-        requireRootRunRow(owner.database, input.runId),
-        owner.root,
-      )
-      if (run.state === 'terminal' || run.coordinatorEpoch !== input.epoch)
-        attemptRefuse('UNAVAILABLE', 'Checkpoint Run owner is unavailable.')
+    const result = await immediate(owner, async () => {
+      const scope = await requireActiveCheckpointInvocation(owner, input)
+      if (input.identity.runId !== input.runId || input.identity.scope !== scope)
+        attemptRefuse('REQUEST_CONFLICT', 'Checkpoint invocation identity differs.')
       return retainPrivateAttemptCheckpoint(
         owner.database,
         input.runId,
@@ -2563,21 +2569,133 @@ export async function savePrivateAttemptRunCheckpoint(input: {
   } catch (error) {
     failure = error
     if (error instanceof PrivateAttemptError && error.code !== 'UNAVAILABLE')
-      throw new PrivateCheckpointRejected('checkpoint replacement was rejected')
+      throw new PrivateCheckpointRejected(
+        'checkpoint replacement was rejected',
+        error.code === 'RESOURCE_EXHAUSTED' ? 'RESOURCE_EXHAUSTED' : 'INVALID_INPUT',
+      )
     throw error
   } finally {
     await disposeOperation(owner, undefined, failure)
   }
 }
 
+/** Authenticate the complete producer/caller ancestry in the held transaction. */
+async function requireActiveCheckpointInvocation(
+  owner: StateOwner,
+  input: { readonly runId: string; readonly epoch: number; readonly operationPath: readonly string[] },
+): Promise<CheckpointScope> {
+  const scope = privateRunCheckpointScope(input.runId, input.operationPath)
+  const run = loadRootRunSnapshot(
+    owner.database,
+    requireRootRunRow(owner.database, input.runId),
+    owner.root,
+  )
+  const lifecycle = requireRootExecutionLifecycle(owner.database, input.runId)
+  if (
+    run.state === 'terminal' ||
+    run.coordinatorEpoch !== input.epoch ||
+    lifecycle.sandbox_digest === null ||
+    lifecycle.fence_digest !== null
+  )
+    attemptRefuse('UNAVAILABLE', 'Checkpoint Run owner is unavailable.')
+  const attempt = attemptQuery<PrivateAttemptRow>(
+    owner.database,
+    'SELECT * FROM prepared_attempts WHERE run_id = ?1',
+    [input.runId],
+  )[0]
+  if (!attempt || attempt.retired !== 0n || attempt.deadline_monotonic_ms === null)
+    attemptRefuse('UNAVAILABLE', 'Checkpoint attempt is unavailable.')
+  if (attempt.revoked !== 0n)
+    throw new PrivateCheckpointRejected('Checkpoint Run was cancelled.', 'CANCELLED')
+  const clock = await readPrivateAttemptClock()
+  if (attempt.accepted_boot !== clock.bootId)
+    attemptRefuse('UNAVAILABLE', 'Checkpoint Run clock is unavailable.')
+  if (clock.monotonicMs >= Number(attempt.deadline_monotonic_ms))
+    throw new PrivateCheckpointRejected('Checkpoint Run deadline elapsed.', 'DEADLINE_EXCEEDED')
+  let parentOperationId: string | undefined
+  for (const operationId of input.operationPath) {
+    const row = findRootChildOwner(owner.database, input.runId, operationId, parentOperationId)
+    if (
+      row === null ||
+      row.sandbox_digest === null ||
+      row.fence_digest !== null ||
+      row.cleanup_digest !== null ||
+      !isPrivateChildFlowAllocation(loadRootChildOwner(row).allocation.value)
+    )
+      attemptRefuse('UNAVAILABLE', 'Checkpoint invocation owner is unavailable.')
+    const allocation = loadRootChildOwner(row).allocation.value as Record<string, JsonValue>
+    if (allocation.coordinatorEpoch !== input.epoch)
+      attemptRefuse('UNAVAILABLE', 'Checkpoint invocation epoch is unavailable.')
+    const deadline = normalizePrivateBootDeadline(allocation.effectiveBootDeadline)
+    if (deadline.bootId !== clock.bootId)
+      attemptRefuse('UNAVAILABLE', 'Checkpoint invocation clock is unavailable.')
+    if (clock.monotonicMs >= deadline.monotonicMs)
+      throw new PrivateCheckpointRejected(
+        'Checkpoint invocation deadline elapsed.',
+        'DEADLINE_EXCEEDED',
+      )
+    parentOperationId = operationId
+  }
+  return scope
+}
+
+/** The live dispatcher first proves this was its own conclusively settled child call. */
+export async function readPrivateSettledChildCheckpoint(input: {
+  readonly projectRoot: string
+  readonly runId: string
+  readonly epoch: number
+  readonly callerOperationPath: readonly string[]
+  readonly childOperationId: string
+}) {
+  const callerOperationPath = [...input.callerOperationPath]
+  const childOperationId = input.childOperationId
+  const scope = privateRunCheckpointScope(input.runId, [
+    ...callerOperationPath,
+    childOperationId,
+  ])
+  const owner = await openStateOwner(input.projectRoot, false, 'read-only')
+  let failure: unknown
+  let checkpoint: ReturnType<typeof readPrivateAttemptCheckpointFiles>
+  try {
+    await requireActiveCheckpointInvocation(owner, {
+      ...input,
+      operationPath: callerOperationPath,
+    })
+    if (
+      findRootChildOwner(
+        owner.database,
+        input.runId,
+        childOperationId,
+        callerOperationPath.at(-1),
+      ) !== null
+    )
+      attemptRefuse('CLEANUP_UNRESOLVED', 'The child checkpoint is not settled.')
+    checkpoint = readPrivateAttemptCheckpointFiles(owner.database, input.runId, scope)
+    await owner.finish()
+    return checkpoint
+  } catch (error) {
+    for (const file of checkpoint?.files ?? []) file.bytes.fill(0)
+    failure = error
+    throw error
+  } finally {
+    try {
+      await disposeOperation(owner, undefined, failure)
+    } catch (error) {
+      for (const file of checkpoint?.files ?? []) file.bytes.fill(0)
+      throw error
+    }
+  }
+}
+
 export async function readPrivateAttemptRunCheckpoint(input: {
   readonly projectRoot: string
   readonly runId: string
+  readonly scope?: CheckpointScope
 }) {
   const owner = await openStateOwner(input.projectRoot, false, 'read-only')
   let failure: unknown
   try {
-    const checkpoint = readPrivateAttemptCheckpoint(owner.database, input.runId)
+    const checkpoint = readPrivateAttemptCheckpoint(owner.database, input.runId, input.scope)
     await owner.finish()
     return checkpoint
   } catch (error) {
@@ -2593,29 +2711,23 @@ function privateAttemptCheckpointSummary(
   owner: StateOwner,
   attempt: PrivateAuthenticatedAttempt,
   retention: 'available' | 'expired' | 'unavailable',
-) {
+  scope: CheckpointScope,
+): AttemptCheckpoint {
   const runId = attempt.row?.run_id
   const expired = retention === 'expired'
-  let summary: {
-    sequence?: number
-    digest?: string
-    evidence?: JsonValue
-    files?: Readonly<Record<string, string>>
-    artifactResults: {
-      name: string
-      manifestDigest?: string
-      availability: 'available' | 'unavailable' | 'expired'
-    }[]
-    availability: 'available' | 'unavailable' | 'expired'
-  } = { availability: expired ? 'expired' : 'unavailable', artifactResults: [] }
+  let summary: AttemptCheckpoint = {
+    scope,
+    availability: expired ? 'expired' : 'unavailable',
+    artifactResults: [],
+  }
   if (runId && !expired) {
     try {
-      const record = readPrivateAttemptCheckpoint(owner.database, runId)
+      const record = readPrivateAttemptCheckpoint(owner.database, runId, scope)
       if (record) {
         let availability: 'available' | 'unavailable' = 'unavailable'
         if (retention === 'available') {
           try {
-            const captured = readPrivateAttemptCheckpointFiles(owner.database, runId)
+            const captured = readPrivateAttemptCheckpointFiles(owner.database, runId, scope)
             if (captured) {
               availability = 'available'
               for (const file of captured.files) file.bytes.fill(0)
@@ -2623,6 +2735,7 @@ function privateAttemptCheckpointSummary(
           } catch {}
         }
         summary = {
+          scope,
           sequence: record.sequence,
           digest: record.digest,
           evidence: record.evidence,
@@ -2765,6 +2878,7 @@ export async function privateAttemptRunConstraints(input: {
 export async function readPrivateAttemptResult(input: {
   readonly projectRoot: string
   readonly ticket: string
+  readonly checkpointScope?: CheckpointScope
 }) {
   const owner = await privateProfileSpan('result-open', () =>
     openStateOwner(input.projectRoot, false, 'read-only'),
@@ -2781,7 +2895,12 @@ export async function readPrivateAttemptResult(input: {
       observePrivateAttempt(owner, attempt, retention),
     )
     const checkpoint = privateProfileSyncSpan('result-checkpoint', () =>
-      privateAttemptCheckpointSummary(owner, attempt, retention),
+      privateAttemptCheckpointSummary(owner, attempt, retention, input.checkpointScope ?? 'root'),
+    )
+    const inventory = readPrivateAttemptCheckpointInventory(
+      owner.database,
+      attempt.row?.run_id ?? undefined,
+      retention,
     )
     const output =
       retained.run?.terminal?.status === 'succeeded' &&
@@ -2792,6 +2911,7 @@ export async function readPrivateAttemptResult(input: {
       observation: retained.observation,
       ...(output === undefined ? {} : { output }),
       artifactResults: retained.observation.receipt?.artifactResults ?? [],
+      ...inventory,
       checkpoint,
     }
     await privateProfileSpan('result-finish', () => owner.finish())
@@ -2835,14 +2955,34 @@ export interface PrivateAttemptExportArtifact {
   readonly directories: readonly string[]
 }
 
+function privateAttemptExportSelection(input: {
+  readonly source?: 'final' | 'checkpoint'
+  readonly artifactResult?: string
+  readonly checkpointScope?: CheckpointScope
+}): string {
+  if (input.source !== 'checkpoint') {
+    if (input.checkpointScope !== undefined)
+      attemptRefuse('INVALID_REQUEST', 'A checkpoint scope requires checkpoint export.')
+    return input.artifactResult ?? ''
+  }
+  if (input.artifactResult !== undefined)
+    attemptRefuse('INVALID_REQUEST', 'Checkpoint export selects the complete aggregate.')
+  const scope = input.checkpointScope ?? 'root'
+  if (!isPrivateCheckpointScope(scope))
+    attemptRefuse('INVALID_REQUEST', 'Checkpoint scope is invalid.')
+  return scope
+}
+
 /** One finite copier receives owned bytes; expiry does not silently release its pin. */
 export async function acquirePrivateAttemptExport(input: {
   readonly projectRoot: string
   readonly ticket: string
   readonly artifactResult?: string
   readonly source?: 'final' | 'checkpoint'
+  readonly checkpointScope?: CheckpointScope
   readonly destination?: string
 }) {
+  const selection = privateAttemptExportSelection(input)
   const owner = await openStateOwner(input.projectRoot, false)
   let failure: unknown
   try {
@@ -2872,8 +3012,6 @@ export async function acquirePrivateAttemptExport(input: {
         !attempt.request!.outputIntent.receive.includes(input.artifactResult)
       )
         attemptRefuse('INVALID_REQUEST', 'Artifact result is not declared by this attempt.')
-      if (checkpointSource && input.artifactResult !== undefined)
-        attemptRefuse('INVALID_REQUEST', 'Checkpoint export selects the complete aggregate.')
       const globalPins = attemptQuery<{ count: bigint }>(
         owner.database,
         'SELECT count(*) AS count FROM attempt_export_pins WHERE released = 0',
@@ -2887,7 +3025,11 @@ export async function acquirePrivateAttemptExport(input: {
         attemptRefuse('RESOURCE_EXHAUSTED', 'Export pin capacity is exhausted.')
       const artifacts: Record<string, PrivateAttemptExportArtifact> = Object.create(null)
       const checkpoint = checkpointSource
-        ? readPrivateAttemptCheckpointFiles(owner.database, attempt.row.run_id!)
+        ? readPrivateAttemptCheckpointFiles(
+            owner.database,
+            attempt.row.run_id!,
+            input.checkpointScope ?? 'root',
+          )
         : undefined
       if (checkpointSource && !checkpoint)
         attemptRefuse('UNAVAILABLE', 'Checkpoint bytes are unavailable.')
@@ -2945,7 +3087,7 @@ export async function acquirePrivateAttemptExport(input: {
               attempt.row.nonce,
               input.destination,
               input.source ?? 'final',
-              input.artifactResult ?? '',
+              selection,
             ],
           ).length
         )
@@ -2958,7 +3100,7 @@ export async function acquirePrivateAttemptExport(input: {
           : {
               nonce: attempt.row.nonce,
               destination: input.destination,
-              selection: input.artifactResult ?? '',
+              selection,
             },
       )
       attemptWrite(owner.database, 'INSERT INTO attempt_export_pins VALUES (?1, ?2, ?3, ?4, 0)', [
@@ -2980,7 +3122,7 @@ export async function acquirePrivateAttemptExport(input: {
             attempt.row.nonce,
             input.destination,
             input.source ?? 'final',
-            input.artifactResult ?? '',
+            selection,
           ],
         )
       return {
@@ -3013,7 +3155,9 @@ export async function reconcilePrivateAttemptExportDelivery(input: {
   readonly destination: string
   readonly source?: 'final' | 'checkpoint'
   readonly artifactResult?: string
+  readonly checkpointScope?: CheckpointScope
 }): Promise<import('../attempt-contract.js').AttemptResults['export'] | undefined> {
+  const selection = privateAttemptExportSelection(input)
   const owner = await openStateOwner(input.projectRoot, false)
   let failure: unknown
   try {
@@ -3031,7 +3175,7 @@ export async function reconcilePrivateAttemptExportDelivery(input: {
           attempt.claims.ticketNonce,
           input.destination,
           input.source ?? 'final',
-          input.artifactResult ?? '',
+          selection,
         ],
       )[0]
       if (!row) return undefined
@@ -3087,9 +3231,9 @@ export async function completePrivateAttemptExportDelivery(input: {
         ) !== 0
       )
         attemptRefuse('IDENTITY_UNAVAILABLE', 'Export copier identity is unavailable.')
-      const delivery = attemptQuery<{ destination: string; source: string }>(
+      const delivery = attemptQuery<{ destination: string; source: string; selection: string }>(
         owner.database,
-        'SELECT destination, source FROM attempt_export_deliveries WHERE pin_id = ?1',
+        'SELECT destination, source, selection FROM attempt_export_deliveries WHERE pin_id = ?1',
         [input.pinId],
       )[0]
       if (!delivery) attemptRefuse('IDENTITY_UNAVAILABLE', 'Export delivery intent is unavailable.')
@@ -3102,7 +3246,9 @@ export async function completePrivateAttemptExportDelivery(input: {
         })
         if (
           input.result.destination !== delivery.destination ||
-          input.result.source !== delivery.source
+          input.result.source !== delivery.source ||
+          (input.result.source === 'checkpoint' &&
+            input.result.checkpointScope !== delivery.selection)
         )
           attemptRefuse('INVALID_REQUEST', 'Export delivery evidence differs from its intent.')
       }
@@ -4823,6 +4969,25 @@ export async function inspectPrivateApprovedProject(
       availability: disposition.state === 'ready' ? { state: 'ready' } : disposition,
     }))
     const targetIndexes = new Map(targets.map((item, index) => [item.target, index]))
+    const checkpointGraphs = new Map<number, boolean>()
+    const hasCheckpoints = (index: number): boolean => {
+      const existing = checkpointGraphs.get(index)
+      if (existing !== undefined) return existing
+      const available = Object.values(candidate.candidate.targets[index]!.request.slots).some(
+        (route) => {
+          if (route.kind === 'native') return route.native === 'run-checkpoint'
+          if (route.kind !== 'flow') return false
+          const child = route.target
+          const childSelector =
+            child.kind === 'flow' ? flowSelector(child.path) : `binding:${child.id}`
+          const childIndex = targetIndexes.get(childSelector)
+          if (childIndex === undefined) corrupt('approved checkpoint route is unavailable')
+          return hasCheckpoints(childIndex)
+        },
+      )
+      checkpointGraphs.set(index, available)
+      return available
+    }
     const selectedIndex = selector === undefined ? undefined : targetIndexes.get(selector)
     if (selector !== undefined && selectedIndex === undefined)
       invalid('INSPECTION_TARGET_MISSING', 'target is not in the approved revision')
@@ -4956,6 +5121,7 @@ export async function inspectPrivateApprovedProject(
               }),
           settings: request.settings,
           slots: request.slots as unknown as JsonValue,
+          checkpoints: hasCheckpoints(index),
           attachments: request.attachments,
           artifactResults: request.artifactResults ?? [],
           boundReadAttachments: Object.keys(request.boundAttachments ?? {}).sort(),

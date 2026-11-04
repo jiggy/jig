@@ -126,6 +126,7 @@ const reference = [
       { text: 'Channels', link: '/spec/channels' },
       { text: 'Reporting', link: '/spec/reporting' },
       { text: 'Run Checkpoint', link: '/spec/run-checkpoint' },
+      { text: 'Child Checkpoint', link: '/spec/child-checkpoint' },
       { text: 'Display archives', link: '/spec/display-archive' },
       { text: 'Web display', link: '/spec/web-display' },
     ],
@@ -144,6 +145,7 @@ const reference = [
       { text: 'HTTP Request', link: '/contracts/http-request' },
       { text: 'Finite ACP', link: '/contracts/finite-acp' },
       { text: 'Run Checkpoint', link: '/contracts/run-checkpoint' },
+      { text: 'Child Checkpoint', link: '/contracts/child-checkpoint' },
     ],
   },
 ]

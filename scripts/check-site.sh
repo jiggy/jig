@@ -28,7 +28,8 @@ docs/jig/spec/contracts/acp-public-updates.json|contracts/acp-public-updates.jso
 docs/jig/spec/contracts/http-request/contract.json|contracts/http-request/contract.json
 docs/jig/spec/contracts/project-command/contract.json|contracts/project-command/contract.json
 docs/jig/spec/contracts/project-evaluation/contract.json|contracts/project-evaluation/contract.json
-docs/jig/spec/contracts/run-checkpoint/contract.json|contracts/run-checkpoint/contract.json'
+docs/jig/spec/contracts/run-checkpoint/contract.json|contracts/run-checkpoint/contract.json
+docs/jig/spec/contracts/child-checkpoint/contract.json|contracts/child-checkpoint/contract.json'
     ;;
   *)
     echo "the site must be jig" >&2
@@ -64,7 +65,7 @@ grep -Fq "$home_title" "$temporary/index.html"
 grep -Fq "$guide_title" "$temporary/guide.html"
 
 if [ "$site_name" = jig ]; then
-  for contract in reporting agent-run project-command project-evaluation http-request run-checkpoint acp-public-updates finite-acp; do
+  for contract in reporting agent-run project-command project-evaluation http-request run-checkpoint child-checkpoint acp-public-updates finite-acp; do
     case $contract in
       agent-run) title='<title>Agent Run contract - Jig</title>' ;;
       reporting) title='<title>Reporting contract - Jig</title>' ;;
@@ -72,6 +73,7 @@ if [ "$site_name" = jig ]; then
       project-command) title='<title>Project Command contract - Jig</title>' ;;
       project-evaluation) title='<title>Project Evaluation contract - Jig</title>' ;;
       run-checkpoint) title='<title>Run Checkpoint contract - Jig</title>' ;;
+      child-checkpoint) title='<title>Child Checkpoint contract - Jig</title>' ;;
       acp-public-updates) title='<title>ACP public updates contract - Jig</title>' ;;
       finite-acp) title='<title>Finite ACP contract - Jig</title>' ;;
     esac

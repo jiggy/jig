@@ -76,21 +76,37 @@ These links locate module rules. All selected domain requirements still apply.
 
   Delivery remains separately owned. Do not restore staged child imports or destination-folder mutation controls.
   Root packet selection includes native output only for declared writable ports.
-  Without final output, accepted checkpoint bytes remain eligible for packet delivery.
+  Without final output, accepted root-scope checkpoint bytes remain eligible for packet delivery.
   The root file owner still retires every retained native output handle.
 
 ### Attempt checkpoint and export
 
-- `attempt-checkpoint-store.ts` owns the original attempt's sole latest checkpoint in admission SQLite.
+- `attempt-checkpoint-store.ts` owns one latest checkpoint per invocation under the original attempt in admission SQLite.
+  Derive child scopes from the original Run and complete authenticated ancestry.
+  Root uses its explicit root scope. Never share sequence numbers or overwrite a sibling's aggregate.
+  Retain at most 64 scopes, including root, without eviction.
+
   Commit authenticated held-artifact snapshot bytes before acknowledgement.
   Replacement is transactional and retains no history.
   Metadata consumes the existing control reservation.
   Bytes exchange existing result chunks and share final-artifact capacity, retirement and export pins.
   Both final-result admission and terminal commit count checkpoint payloads within the accepted artifact allowance.
 
-- Root checkpoint associations are explicit native identity data resolved against current participant rights.
+- Checkpoint associations are explicit native identity data resolved against the saving participant's current rights.
   They are neither optional FLOW ports nor new filesystem authority.
   The command owner reads accepted records for publication and independently fences recovery before fallback.
+  Automatic fallback selects only root. Ticket inspection lists bounded scope identities and expands only the explicitly selected checkpoint.
+  Selected checkpoint export binds its scope into intent, manifest identity and receipt.
+
+- `invocation-checkpoints.ts` retrieves only a live caller's known, settled direct child.
+  Record settlement only after the actual child controller returns with cleanup confirmed.
+  The protected transaction checks the root, every caller ancestor and absence of the exact child owner.
+  Missing accepted bytes are unavailable, never a no-save result.
+  Validate complete response limits before resealing verified bytes and granting a fresh caller-held artifact.
+
+  The fresh snapshot uses the existing root snapshot, byte and reference allowances.
+  Recheck caller lifetime and cancellation before granting custody. Failed handoff retires its unissued snapshot and preserves cleanup uncertainty.
+  Retrieval never changes the child's terminal or grants producer references, execution authority or subtree browsing.
 
 - `attempt-export-copier.ts` and `attempt-export-owner.ts` use the independent file-command owner.
   They own retained acquisition, immutable capture, no-replace publication, outcome commit and pin retirement.
@@ -181,9 +197,9 @@ These links locate module rules. All selected domain requirements still apply.
   and bytes remain command-owned and cannot be recreated from serialized
   metadata.
 
-- `capturePrivateRetainedOutput` is reserved for trusted ticket export after store verification under an accepted export pin.
+- `capturePrivateRetainedOutput` reseals verified bytes under an accepted export pin or an authenticated live settled-child read.
   Recheck all hashes, tree paths and unchanged 16 MiB /64-file bounds while resealing.
-  This creates no participant right or authority from a public packet.
+  Only the live caller's file owner may grant participant custody. Public packets cannot establish that authority.
 
 ### execution-output
 
@@ -462,10 +478,9 @@ These links locate module rules. All selected domain requirements still apply.
   exact trusted child after escalation. Independent cgroup fencing still owns
   payload cleanup.
 
-- Run Checkpoint uses one separate bounded control operation, not a worker
-  reservation. Only the root's independent output owner accepts immutable
-  aggregate bytes before acknowledgement. Bind exact Run, admitted method,
-  captured input, project identity and coordinator epoch before dispatch.
+- Run Checkpoint uses one separate bounded control operation per invocation, under the original root reservation.
+  Protected acceptance binds the Run, producer scope, admitted method, captured input, project identity and coordinator epoch.
+  Only root saves enter the independent output owner's automatic packet fallback.
   Interrupted publication uses accepted bytes only after complete fencing.
   Recovery may settle that exact older Run but never submit or replay work. Keep
   rejected replacement, lost acknowledgement, owner lifetime, output collision

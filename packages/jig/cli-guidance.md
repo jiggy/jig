@@ -43,6 +43,11 @@ All selected domain requirements still apply.
   Validate lifecycle consistency and retained-output digests, not only reply field shapes.
   Export replies retain the selected source and destination. Final artifact availability repeats its receipt exactly.
 
+  Result replies include bounded checkpoint inventory and detail for the requested scope, defaulting to root.
+  Checkpoint export alone accepts a scope selector and echoes it in the receipt.
+  Correlate both replies with the exact transmitted selector, including caller mutation and serialization behavior.
+  Root packet fallback never selects a child scope implicitly.
+
   Observational machine commands may reacquire a read-only snapshot only after
   typed `ADMISSION_STATE_BUSY` and completed disposal. Use one existing command
   allowance and preserve caller cancellation, without renewing either deadline.
@@ -66,7 +71,7 @@ All selected domain requirements still apply.
 ### Command grammar and review
 
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.
-  Checkpoint guidance directs applications to root submission and recovery through the retained ticket.
+  Checkpoint guidance distinguishes settled-child Flow retrieval from application recovery through the original retained ticket.
 
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy. `--details` includes unchanged policy. Run

@@ -6,15 +6,19 @@ const suiteTestRoot = suiteDirname(import.meta.dir)
 import { constants, Database } from 'bun:sqlite'
 import { describe, expect, test } from 'bun:test'
 import { spawnSync } from 'node:child_process'
-import { cp, mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { cp, mkdir, mkdtemp, open, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { type CheckpointScope, parseAttemptFrame } from '../../src/attempt-contract.js'
+import { createAttemptClient } from '../../src/client.js'
 import {
   readPrivateAttemptRunCheckpoint,
   readPrivateRootRun,
   savePrivateAttemptRunCheckpoint,
 } from '../../src/internal/activation-admission-store.js'
 import { privateOwnFileCommand } from '../../src/internal/file-command.js'
+import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
+import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
 import { startHostTestTiming } from '../fixtures/host-test-timing.mjs'
 import { installedBunLocation } from '.././fixtures/installed-bun-location.js'
 
@@ -319,6 +323,7 @@ describe.serial('root retained progress', () => {
             projectRoot: root,
             runId: run.runId,
             epoch: run.coordinatorEpoch,
+            operationPath: [],
             identity: protectedCheckpoint.identity,
             value: { sequence: 16, evidence: null, files: {} },
             artifacts: {},
@@ -505,6 +510,234 @@ describe.serial('root retained progress', () => {
       },
       process.platform === 'darwin' ? 120_000 : 60_000,
     )
+})
+
+async function nestedCheckpointFixture(): Promise<string> {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-child-checkpoint-loss-')))
+  for (const name of ['outer', 'router', 'worker']) {
+    const path = join(root, 'flows', name)
+    await mkdir(join(path, 'contracts'), { recursive: true })
+    await cp(flowSdkRuntimeDirectory, join(path, 'sdk'), { recursive: true })
+    await writeFile(
+      join(path, 'FLOW.meta.json'),
+      JSON.stringify({
+        name,
+        description: 'Retain accepted descendant work across actual coordinator loss.',
+        uses:
+          name === 'worker'
+            ? { progress: { contract: './contracts/run-checkpoint/contract.json' } }
+            : { child: {} },
+      }),
+    )
+    await writeFile(
+      join(path, 'FLOW.contract.json'),
+      JSON.stringify({ $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json' }),
+    )
+    await writeFile(
+      join(path, 'FLOW.ts'),
+      name === 'worker'
+        ? `import {handle} from './sdk/index.js'; await handle(async run=>{
+          console.error('nested-checkpoint-worker-started');
+          await run.call({operationId:'save',slot:'progress',input:{sequence:1,
+            evidence:{role:'worker',accepted:true},files:{'progress.txt':'accepted nested work'}}});
+          console.error('nested-checkpoint-acknowledged');
+          await new Promise(()=>{});
+        });`
+        : `import {handle} from './sdk/index.js'; await handle(async run=>{
+          console.error('nested-checkpoint-${name}-started');
+          return await run.call({operationId:'child',slot:'child',input:null});
+        });`,
+    )
+    if (name === 'worker')
+      await cp(
+        join(suiteTestRoot, '../../../docs/jig/spec/contracts/run-checkpoint'),
+        join(path, 'contracts/run-checkpoint'),
+        { recursive: true },
+      )
+  }
+  await mkdir(join(root, 'bindings'))
+  await writeFile(
+    join(root, 'jig.ts'),
+    `import {defineJig,discover} from '@jigging/jig'; export default defineJig({flows:discover('flows'),bindings:discover('bindings')});`,
+  )
+  await writeFile(
+    join(root, 'bindings/outer.ts'),
+    `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/outer',slots:{child:'binding:router'}});`,
+  )
+  await writeFile(
+    join(root, 'bindings/router.ts'),
+    `import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'flows/router',slots:{child:'flow:flows/worker'}});`,
+  )
+  const reviewed = await cli(root, ['review', '--yes'])
+  if (reviewed.code !== 0)
+    throw new Error(`nested checkpoint fixture review failed: ${reviewed.stderr}\n${reviewed.stdout}`)
+  return root
+}
+
+describe.serial('child retained progress', () => {
+  test('original ticket exports an accepted descendant checkpoint after actual root coordinator loss', async () => {
+    const root = await nestedCheckpointFixture()
+    const client = createAttemptClient({ executable: jig, cwd: root, timeoutMs: 150_000 })
+    const stdout = await open(join(root, 'submission.ndjson'), 'wx', 0o600)
+    const stderr = await open(join(root, 'coordinator.stderr'), 'wx', 0o600)
+    const start = () =>
+      Bun.spawn(
+        [
+          installedBunLocation.executablePath,
+          '--no-env-file',
+          '--no-install',
+          '--config=/dev/null',
+          join(suiteTestRoot, 'fixtures/checkpoint-coordinator.ts'),
+          root,
+          'attempt',
+          'submit',
+          '--json',
+        ],
+        { cwd: root, stdin: 'pipe', stdout: stdout.fd, stderr: stderr.fd },
+      )
+    let coordinator: ReturnType<typeof start> | undefined
+    let recovered = false
+    let completed = false
+    try {
+      const inspected = await client.inspect({ target: 'binding:outer' })
+      if (
+        inspected === null ||
+        typeof inspected !== 'object' ||
+        Array.isArray(inspected) ||
+        typeof inspected.approval !== 'string'
+      )
+        throw new Error('nested checkpoint target has no reviewed approval')
+      const prepared = await client.prepare({
+        expectedApproval: inspected.approval,
+        target: 'binding:outer',
+        input: null,
+        files: [],
+        constraints: { durationMs: 120_000, resultBytes: 1_048_576, artifactBytes: 1_048_576 },
+        outputIntent: { packet: true, receive: [] },
+      })
+      await writeFile(join(root, 'prepared.json'), JSON.stringify(prepared), {
+        flag: 'wx',
+        mode: 0o600,
+      })
+      coordinator = start()
+      coordinator.stdin.write(
+        JSON.stringify({
+          protocolVersion: 1,
+          operation: 'submit',
+          request: { ticket: prepared.ticket, request: prepared.canonicalRequest },
+        }) + '\n',
+      )
+      await coordinator.stdin.flush()
+      let scope: CheckpointScope | undefined
+      let runId: string | undefined
+      const until = Date.now() + 60_000
+      while (coordinator.exitCode === null && Date.now() < until) {
+        const diagnostics = await readFile(join(root, 'coordinator.stderr'), 'utf8')
+        if (
+          ['outer-started', 'router-started', 'worker-started', 'acknowledged'].every((phase) =>
+            diagnostics.includes(`nested-checkpoint-${phase}`),
+          )
+        ) {
+          const current = await client.result({ ticket: prepared.ticket })
+          expect(current.checkpoints).toHaveLength(1)
+          const checkpoint = current.checkpoints[0]!
+          expect(checkpoint.sequence).toBe(1)
+          expect(checkpoint.scope).toMatch(/^sha256:[0-9a-f]{64}$/)
+          const selected = await client.result({
+            ticket: prepared.ticket,
+            checkpointScope: checkpoint.scope,
+          })
+          expect(selected.checkpoint).toMatchObject({
+            scope: checkpoint.scope,
+            availability: 'available',
+            sequence: 1,
+            digest: checkpoint.digest,
+            evidence: { role: 'worker', accepted: true },
+            files: { 'progress.txt': 'accepted nested work' },
+          })
+          scope = checkpoint.scope
+          runId = current.observation.receipt!.runId
+          break
+        }
+        await Bun.sleep(20)
+      }
+      if (scope === undefined || runId === undefined)
+        throw new Error('nested child did not acknowledge its protected checkpoint before loss')
+      const transcript = await readFile(join(root, 'submission.ndjson'), 'utf8')
+      const frames = transcript
+        .slice(0, transcript.lastIndexOf('\n') + 1)
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => parseAttemptFrame('submit', JSON.parse(line)))
+      expect(frames).toHaveLength(1)
+      expect(frames[0]).toMatchObject({
+        event: 'accepted',
+        role: 'owner',
+        receipt: { runId, requestDigest: prepared.requestDigest },
+      })
+      expect(Number(await readFile(join(root, 'coordinator.started'), 'utf8'))).toBe(
+        coordinator.pid,
+      )
+      coordinator.kill('SIGKILL')
+      await coordinator.exited
+      expect(coordinator.signalCode).toBe('SIGKILL')
+      // A real replacement owner fences the original native tree; it never submits work.
+      const session = await openPrivateProjectSession({
+        directory: root,
+        host: await openPrivateInstalledBunHost(installedBunLocation, {}),
+      })
+      await session.close()
+      recovered = true
+      const selected = await client.result({ ticket: prepared.ticket, checkpointScope: scope })
+      expect(selected.observation).toMatchObject({
+        receipt: { runId },
+        terminal: { status: 'lost', code: 'COORDINATOR_LOST' },
+        cleanup: 'confirmed',
+      })
+      expect(selected.checkpoint).toMatchObject({
+        scope,
+        availability: 'available',
+        sequence: 1,
+        evidence: { role: 'worker', accepted: true },
+        files: { 'progress.txt': 'accepted nested work' },
+      })
+      const destination = join(root, 'retained-child')
+      const receipt = await client.export({
+        ticket: prepared.ticket,
+        destination,
+        source: 'checkpoint',
+        checkpointScope: scope,
+      })
+      expect(receipt).toMatchObject({ destination, source: 'checkpoint', checkpointScope: scope })
+      const packet = JSON.parse(await readFile(join(destination, 'result.json'), 'utf8'))
+      expect(packet).toMatchObject({ runId, status: 'lost', code: 'COORDINATOR_LOST' })
+      expect(await readFile(join(destination, 'files/progress.txt'), 'utf8')).toBe(
+        'accepted nested work',
+      )
+      expect((await client.lookup({ ticket: prepared.ticket })).receipt?.runId).toBe(runId)
+      await noOwners(root)
+      completed = true
+    } finally {
+      try {
+        if (coordinator !== undefined) {
+          if (coordinator.exitCode === null) coordinator.kill('SIGKILL')
+          await coordinator.exited
+          coordinator.stdin.end()
+          if (!recovered) {
+            const session = await openPrivateProjectSession({
+              directory: root,
+              host: await openPrivateInstalledBunHost(installedBunLocation, {}),
+            })
+            await session.close()
+          }
+        }
+      } finally {
+        await Promise.all([stdout.close(), stderr.close()])
+        if (completed) await rm(root, { recursive: true, force: true })
+        else console.error(`Nested checkpoint loss evidence retained at ${root}`)
+      }
+    }
+  }, 240_000)
 })
 
 if (

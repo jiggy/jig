@@ -98,7 +98,10 @@ process.stdin.on('data', chunk => {
  } else if(operation === 'export') {
    const destination = resolve(process.cwd(),envelope.request.destination);
    const source = envelope.request.source ?? 'final';
-   emit({event:'result',value:{destination:mode==='export-destination'?destination+'-other':mode==='export-relative'?envelope.request.destination:destination,manifestDigest:digest,source:mode==='export-source'?(source==='final'?'checkpoint':'final'):source}});
+   const actualSource = mode==='export-source'?(source==='final'?'checkpoint':'final'):source;
+   emit({event:'result',value:{destination:mode==='export-destination'?destination+'-other':mode==='export-relative'?envelope.request.destination:destination,manifestDigest:digest,source:actualSource,...(actualSource==='checkpoint'?{checkpointScope:mode==='export-scope'?'sha256:'+'f'.repeat(64):envelope.request.checkpointScope??'root'}:{})}});
+ } else if(operation === 'result') {
+   emit({event:'result',value:{observation,artifactResults:[],checkpointInventory:'available',checkpoints:[],checkpoint:{scope:mode==='result-scope'?'sha256:'+'f'.repeat(64):envelope.request.checkpointScope??'root',availability:'unavailable',artifactResults:[]}}});
  } else emit({event:'result',value:observation});
 });
 process.stdin.on('end', () => {
@@ -512,9 +515,37 @@ for (const source of [undefined, 'final', 'checkpoint'] as const) {
       destination: resolve(directory, destination),
       manifestDigest: digest,
       source: source ?? 'final',
+      ...(source === 'checkpoint' ? { checkpointScope: 'root' } : {}),
     })
   })
 }
+
+test('result and export correlate explicit checkpoint scopes with their serialized request', async () => {
+  const checkpointScope = digest as `sha256:${string}`
+  const selected = await client().result({ ticket: 'private-ticket', checkpointScope })
+  expect(selected.checkpoint.scope).toBe(checkpointScope)
+  expect((await client().result({ ticket: 'private-ticket' })).checkpoint.scope).toBe('root')
+  expect(await client().export({
+    ticket: 'private-ticket', destination: './exports/child', source: 'checkpoint', checkpointScope,
+  })).toMatchObject({ source: 'checkpoint', checkpointScope })
+  await expect(client('result-scope').result({ ticket: 'private-ticket', checkpointScope })).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+  await expect(client('export-scope').export({
+    ticket: 'private-ticket', destination: './exports/child', source: 'checkpoint', checkpointScope,
+  })).rejects.toHaveProperty('code', 'PROTOCOL_ERROR')
+})
+
+test('checkpoint scope correlation uses the transmitted snapshot after caller mutation', async () => {
+  const value = { ticket: 'private-ticket', checkpointScope: 'root' as 'root' | `sha256:${string}` }
+  const pending = client().result(value)
+  value.checkpointScope = digest as `sha256:${string}`
+  expect((await pending).checkpoint.scope).toBe('root')
+  const publication = {
+    ...value, destination: './exports/child', source: 'checkpoint' as const,
+  }
+  const exporting = client().export(publication)
+  publication.checkpointScope = 'root'
+  expect(await exporting).toHaveProperty('checkpointScope', digest)
+})
 
 for (const mode of ['export-destination', 'export-source', 'export-relative']) {
   test(`export rejects ${mode} unrelated to the serialized request`, async () => {

@@ -60,19 +60,7 @@ export async function preparePrivateCliRun(input: {
   if (declarations !== null && typeof declarations === 'object' && !Array.isArray(declarations))
     for (const [name, access] of Object.entries(declarations))
       if (access === 'read-write') names.add(name)
-  const slots = facts.slots
-  const checkpoints =
-    slots !== null &&
-    typeof slots === 'object' &&
-    !Array.isArray(slots) &&
-    Object.values(slots).some(
-      (slot) =>
-        slot !== null &&
-        typeof slot === 'object' &&
-        !Array.isArray(slot) &&
-        (slot as JsonObject).kind === 'native' &&
-        (slot as JsonObject).native === 'run-checkpoint',
-    )
+  const checkpoints = facts.checkpoints === true
   return await preparePrivateAttempt({
     projectRoot: input.projectRoot,
     captured: input.captured,
@@ -142,9 +130,9 @@ export const executePrivateCliAttempt: NonNullable<PrivateCliOptions['executeAtt
         return 0
       }
       case 'result': {
-        const { ticket } = invocation.request as AttemptRequests['result']
+        const request = invocation.request as AttemptRequests['result']
         const value = await observeProtectedState(
-          () => readPrivateAttemptResult({ projectRoot, ticket }),
+          () => readPrivateAttemptResult({ projectRoot, ...request }),
           invocation.signal,
         )
         await write({ protocolVersion: 1, operation, event: 'result', value })

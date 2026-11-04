@@ -18,7 +18,7 @@
     cp ../reporting/LICENSE libexec/contracts/reporting/LICENSE
     cp ../../docs/jig/spec/contracts/acp-public-updates.json libexec/contracts/acp-public-updates/acp-public-updates.json
     cp ../../LICENSE.md libexec/contracts/acp-public-updates/LICENSE
-    for name in agent-run project-command project-evaluation http-request run-checkpoint finite-acp; do cp -R ../../docs/jig/spec/contracts/$name libexec/contracts/$name; cp ../../LICENSE.md libexec/contracts/$name/LICENSE; done
+    for name in agent-run project-command project-evaluation http-request run-checkpoint child-checkpoint finite-acp; do cp -R ../../docs/jig/spec/contracts/$name libexec/contracts/$name; cp ../../LICENSE.md libexec/contracts/$name/LICENSE; done
     cp scripts/installed-jig.sh bin/jig
     chmod 755 bin/jig
     bun node_modules/typescript/bin/tsc -p tsconfig.json

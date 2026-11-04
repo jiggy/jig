@@ -135,10 +135,12 @@ Ticket possession identifies a record, not additional operator authority.
 Native enforcement uses a once-frozen boot identity and suspend-inclusive
 monotonic cutoff. Unix timestamps are presentation and retention hints, not
 execution authority. Clock loss or a changed boot fails execution closed while
-cleanup remains active; it is not reported as proof of elapsed deadline.
+cleanup remains active. It is not reported as proof of elapsed deadline.
 Execution terminal, cleanup, retained bytes and delivery are independent facts.
+
 Checkpoint and final artifact bytes share the accepted retained allowance.
-Retirement commits before collection; unresolved execution and copier owners
+Every invocation's latest checkpoint remains under the original root attempt's ownership, quota, and retirement policy.
+Retirement commits before collection. Unresolved execution and copier owners
 continue to hold their accounting and bytes.
 
 These recovery rules cover ordinary process loss under the documented protected
@@ -394,8 +396,12 @@ Existing Mac output collection may retain one <=16 MiB anonymous snapshot per
 Flow while its source volume retires, conservatively <=96 MiB across six
 Flows. Streaming capture borrows <=64 KiB per active stream rather
 than retaining whole-tree buffers. A root final packet may add <=16 MiB of
-file staging. Accepted and replacing checkpoint aggregates can overlap.
-Each retains <=1 MiB of files and <=2 MiB canonical JSON under the existing checkpoint policy.
+file staging.
+
+Accepted and replacing checkpoint aggregates can overlap.
+Each invocation retains at most 1 MiB of text and 2 MiB of canonical checkpoint JSON.
+Associated artifact trees make the complete saved tree at most 16 MiB.
+At most 64 checkpoint scopes share the original root attempt's retained artifact allowance.
 
 The original <=64 MiB input captures, bounded capture buffers, protocol records,
 checkpoint JSON and existing command/provider evidence have their separate
@@ -457,16 +463,25 @@ publish its terminal record and previously accepted checkpoint, never unfinished
 final output files. No automatic replay or general artifact-recovery service
 is provided. Cleanup failures are surfaced rather than reported as zero residue.
 
-Run Checkpoint is an optional, reviewed root-only effect with a writable output
-mapping. Its independent command owner retains one accepted aggregate (up to
-2 MiB canonical JSON, including 64 UTF-8 files totaling 1 MiB) plus a bounded
-replacement. Protocol decoding, immutable snapshots, serialized replies, file
-buffers, and final staging can coexist; these trusted-owner allocations are
-separate from the Run's cgroup memory ceiling and remain bounded by the request
-and publication limits. At most 16 saves and one in-flight save are accepted;
-worker reservations are unchanged. No control socket, project descriptor or
-host output path enters package code. A retained record's identity is supplied
-by the host; application evidence is not certified by retention.
+Run Checkpoint is an optional, reviewed native effect for root and child invocations.
+It requires no writable attachment or host output destination.
+The protected original attempt retains one accepted aggregate per invocation, plus bounded replacement state.
+The host derives each scope from the root Run and full authenticated invocation ancestry.
+Sibling and repeated calls cannot overwrite one another's sequence or bytes.
+
+The fixed maximum is 64 scopes, with 16 accepted saves and one active checkpoint control operation per invocation.
+Worker reservations remain unchanged.
+
+Child Checkpoint authenticates a settled direct child through the caller's original operation ID.
+The caller must remain active under its complete ancestor chain.
+The host verifies retained bytes and issues new held artifact custody through a successful retrieval operation.
+Child failure itself grants no artifacts.
+Another Run, sibling, grandchild, or active child cannot be selected through this interface.
+
+Protocol decoding, immutable snapshots, serialized replies, file buffers, and final staging can coexist.
+These trusted-owner allocations remain separate from the Run's cgroup memory ceiling and bounded by request, retention, and publication limits.
+No control socket, project descriptor or host output path enters package code.
+A retained record's identity is supplied by the host. Application evidence is not certified by retention.
 
 On coordinator loss, that owner opens one recovery-only coordinator for the
 bound project inode, epoch and Run. It must fence and release the complete tree

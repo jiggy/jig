@@ -40,25 +40,27 @@ These checks do not contact a registry or update software automatically.
 
 ### Contract import
 
-`jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>` is explicit offline
-authoring. It captures and validates one standalone channel descriptor, or an invocation descriptor and its exact
-channel closure (at most 64 agreements, 256 KiB per file, 1 MiB captured bytes),
-preserves bytes and relative paths, and publishes only to an absent destination
-whose parent already exists. An exact `npm:` selector resolves an installed
-package by searching `node_modules` from the destination parent upward, nearest
-first, for `FLOW.contract.json`; an existing package without that descriptor
-does not fall back to a different installation. Direct descriptor paths remain
-supported. It may resolve the selected source root through an installed-package
-link; it rejects links within the selected closure.
+`jig import-contract <jig:name|descriptor.json|npm:package> <new-directory>` is explicit offline authoring.
+It captures and validates one standalone channel descriptor, or an invocation descriptor and its exact channel closure.
+The limits are 64 agreements, 256 KiB per file, and 1 MiB of captured bytes.
+It preserves bytes and relative paths, then publishes only to an absent destination whose parent already exists.
+
+An exact `npm:` selector searches `node_modules` upward from the destination parent for the nearest installed package.
+That package must contain `FLOW.contract.json`. A missing descriptor never causes fallback to another installation.
+Direct descriptor paths remain supported.
+The importer may resolve the selected source root through an installed-package link, but rejects links within the selected closure.
+
 It does not evaluate package code, fetch dependencies, acquire execution
-authority or approve a Run. Cancellation before publication leaves no destination;
-completed publication is not undone. Process loss may leave an unpublished
+authority or approve a Run. Cancellation before publication leaves no destination.
+Completed publication is not undone. Process loss may leave an unpublished
 `.jig-contract-*` staging directory, not a successfully imported bundle.
+
 `jig import-contract --list` lists the installed standard agreements and their
 purposes without project loading or host acquisition. Exact `jig:` selectors
-cover Agent Run, Project Command, HTTP Request, Run Checkpoint, Finite ACP,
+cover Agent Run, Project Command, Project Evaluation, HTTP Request, Run Checkpoint, Child Checkpoint, Finite ACP,
 ACP public updates and reporting. They copy the bundled canonical descriptor,
-referenced agreements and license; unsupported names fail without a fallback.
+referenced agreements and license. Unsupported names fail without a fallback.
+
 The installed catalog checks each exact supported digest. A copied standard
 agreement is a project-owned snapshot, never a runtime resolver, implementation
 selection or authority grant. Reporting retains its MPL-2.0 license.

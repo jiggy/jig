@@ -117,7 +117,7 @@ for (const change of ['none', 'path', 'bytes', 'digest', 'missing', 'extra'] as 
       const capture = capturePrivateOutput(fd)
       closeSync(fd)
       const owner = new PrivateFileDeliveryOwner(new AbortController().signal)
-      const identity = { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null }
+      const identity = { runId: `sha256:${'a'.repeat(64)}`, scope: 'root' as const, method: null, input: null }
       const manifest = capture.files.map(({ path, bytes, digest }) => ({ path, bytes, digest }))
       if (change === 'path') manifest[0]!.path = 'other.txt'
       if (change === 'bytes') manifest[0]!.bytes++
@@ -182,7 +182,7 @@ test('checkpoint packet publication preserves the supplied failure and binary ma
       ],
       directories: ['artifacts', 'artifacts/candidate', 'artifacts/candidate/empty'],
     })
-    const identity = { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null }
+    const identity = { runId: `sha256:${'a'.repeat(64)}`, scope: 'root' as const, method: null, input: null }
     const checkpoint = {
       sequence: 1,
       digest: sha256(Buffer.from('checkpoint')),
@@ -583,7 +583,7 @@ test('checkpoint packet selection respects cancellation, cleanup fields and outp
       const abort = new AbortController()
       const owner = new PrivateFileDeliveryOwner(abort.signal)
       const retained = {
-        identity: { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null },
+        identity: { runId: `sha256:${'a'.repeat(64)}`, scope: 'root' as const, method: null, input: null },
         sequence: 1,
         digest: sha256(Buffer.from('publisher descriptor')),
         evidence: { passed: false },
@@ -690,7 +690,7 @@ test('a checkpoint descriptor never makes final-file capture survive cancellatio
     const abort = new AbortController()
     const owner = new PrivateFileDeliveryOwner(abort.signal)
     const checkpoint = {
-      identity: { runId: `sha256:${'a'.repeat(64)}`, method: null, input: null },
+      identity: { runId: `sha256:${'a'.repeat(64)}`, scope: 'root' as const, method: null, input: null },
       sequence: 1,
       digest: sha256(Buffer.from('publisher descriptor')),
       evidence: null,

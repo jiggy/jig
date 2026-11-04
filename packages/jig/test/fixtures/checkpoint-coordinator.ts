@@ -1,5 +1,6 @@
 import { writeFile } from 'node:fs/promises'
 import { main, publicTerminal } from '../../src/cli.js'
+import { executePrivateCliAttempt } from '../../src/cli-attempt-execution.js'
 import { privateConnectFileOwner, privateFileRecovery } from '../../src/internal/file-command.js'
 import { withPrivateInstallationVerification } from '../../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
@@ -21,7 +22,9 @@ await withPrivateInstallationVerification({}, async () => {
       ).toString() + '\n',
     )
   } else {
-    const delivery = (await privateConnectFileOwner())!
+    const delivery = await privateConnectFileOwner()
+    if (delivery === undefined && !(args[0] === 'attempt' && args[1] === 'submit'))
+      throw new Error('checkpoint command requires its independent delivery owner')
     // The parent's real channel/protected-store barriers can stop us only after
     // this identity marker exists. Preserve forced cancellation escalation on
     // Darwin, whose default SIGTERM action also terminates stopped processes.
@@ -30,13 +33,17 @@ await withPrivateInstallationVerification({}, async () => {
     try {
       process.exitCode = await main(args, {
         currentDirectory: root,
+        executeAttempt: executePrivateCliAttempt,
         host: {
-          delivery,
+          ...(delivery === undefined ? {} : { delivery }),
           acquire: (directory, options) =>
             openPrivateProjectSession({
               directory,
               host: {
                 ...host,
+                ...(options?.expectedAdmissionDigest === undefined
+                  ? {}
+                  : { expectedAdmissionDigest: options.expectedAdmissionDigest }),
                 runTimeoutMs: options?.runTimeoutMs ?? host.runTimeoutMs,
                 ...(options?.files === undefined ? {} : { files: options.files }),
                 ...(options?.channelOutput === undefined
@@ -47,7 +54,7 @@ await withPrivateInstallationVerification({}, async () => {
         },
       })
     } finally {
-      delivery.close()
+      delivery?.close()
     }
   }
 })

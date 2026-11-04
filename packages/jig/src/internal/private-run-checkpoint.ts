@@ -1,8 +1,11 @@
+import { ATTEMPT_CHECKPOINT_SCOPES, type CheckpointScope } from '../attempt-contract.js'
 import { type ParsedInvocationContract, parseInvocationContract } from '../invocation-contract.js'
 import { canonicalJson, type JsonValue } from '../json.js'
 import { bindingAttachmentLocalName } from '../project/attachment-routes.js'
 import { privateFilePath } from './file-input.js'
+import { privateDomainDigest } from './identity.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
+import { PRIVATE_MAX_CHILD_FLOW_LEVELS } from './root-operation-limits.js'
 
 export const RUN_CHECKPOINT_CONTRACT_ID = 'https://jig.md/contracts/run-checkpoint'
 export const RUN_CHECKPOINT_CONTRACT_VERSION = '0.1.0'
@@ -13,7 +16,43 @@ export const RUN_CHECKPOINT_LIMITS = Object.freeze({
   fileBytes: 1024 * 1024,
   files: 64,
   saves: 16,
+  scopes: ATTEMPT_CHECKPOINT_SCOPES,
 })
+
+/** Inert identity only. The protected owner separately authenticates every ancestor. */
+export function privateRunCheckpointScope(
+  runId: string,
+  operationPath: readonly string[],
+): CheckpointScope {
+  if (
+    typeof runId !== 'string' ||
+    runId.length !== 71 ||
+    !/^sha256:[a-f0-9]{64}$/.test(runId) ||
+    !Array.isArray(operationPath) ||
+    operationPath.length > PRIVATE_MAX_CHILD_FLOW_LEVELS ||
+    operationPath.some(
+      (id) =>
+        typeof id !== 'string' ||
+        id.length > 128 ||
+        !/^[A-Za-z0-9]/.test(id) ||
+        /[^A-Za-z0-9._:/-]/.test(id),
+    )
+  )
+    throw new TypeError('invalid checkpoint invocation identity')
+  return operationPath.length === 0
+    ? 'root'
+    : (privateDomainDigest('JIG-Run-Checkpoint-Scope/1', {
+        runId,
+        operationPath: [...operationPath],
+      }) as CheckpointScope)
+}
+
+export function isPrivateCheckpointScope(value: unknown): value is CheckpointScope {
+  return (
+    value === 'root' ||
+    (typeof value === 'string' && value.length === 71 && /^sha256:[a-f0-9]{64}$/.test(value))
+  )
+}
 
 export function isRunCheckpointContract(value: {
   readonly id?: unknown
@@ -48,6 +87,7 @@ export interface RunCheckpointInput {
 }
 export interface RunCheckpointIdentity {
   readonly runId: string
+  readonly scope: CheckpointScope
   readonly method: JsonValue
   readonly input: JsonValue
 }
@@ -56,7 +96,15 @@ export interface RunCheckpointReceipt {
   readonly digest: string
 }
 /** A definite negative acknowledgement, distinct from losing the control channel. */
-export class PrivateCheckpointRejected extends Error {}
+export class PrivateCheckpointRejected extends Error {
+  constructor(
+    message: string,
+    readonly code: 'INVALID_INPUT' | 'RESOURCE_EXHAUSTED' | 'CANCELLED' | 'DEADLINE_EXCEEDED' =
+      'INVALID_INPUT',
+  ) {
+    super(message)
+  }
+}
 export interface RetainedRunCheckpoint extends RunCheckpointInput, RunCheckpointReceipt {
   readonly identity: RunCheckpointIdentity
   readonly associations?: Readonly<Record<string, JsonValue>>
@@ -134,8 +182,11 @@ export function parseRunCheckpointIdentity(value: unknown): RunCheckpointIdentit
     !identity ||
     typeof identity !== 'object' ||
     Array.isArray(identity) ||
-    Object.keys(identity).sort().join(',') !== 'input,method,runId' ||
-    !/^sha256:[a-f0-9]{64}$/.test(identity.runId)
+    Object.keys(identity).sort().join(',') !== 'input,method,runId,scope' ||
+    typeof identity.runId !== 'string' ||
+    identity.runId.length !== 71 ||
+    !/^sha256:[a-f0-9]{64}$/.test(identity.runId) ||
+    !isPrivateCheckpointScope(identity.scope)
   )
     throw new TypeError('invalid checkpoint Run identity')
   return identity

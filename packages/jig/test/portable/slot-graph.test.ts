@@ -1,5 +1,4 @@
 import { expect, test } from 'bun:test'
-import { CheckError } from '../../src/diagnostics.js'
 import type { RunTargetIdentity } from '../../src/project/package-project.js'
 import { validateChildGraph } from '../../src/project/slot-graph.js'
 
@@ -97,75 +96,4 @@ test('a missing direct Flow is rejected instead of treated as a leaf', () => {
     ['application', routed('flows/application', { kind: 'flow', path: 'flows/missing' })],
   ])
   expect(() => validateChildGraph(bindings, new Map())).toThrow()
-})
-
-test('root-only targets cannot become children through a memoized direct or Binding route', () => {
-  const checkpoint = { ...routed('flows/checkpoint'), rootOnly: true }
-  const flows = new Map([['flows/checkpoint', checkpoint]])
-  expect(() => validateChildGraph(new Map(), flows)).not.toThrow()
-  const caller = routed('flows/caller', { kind: 'flow', path: 'flows/checkpoint' })
-  expect(() => validateChildGraph(new Map([['caller', caller]]), flows)).toThrow('root invocation')
-  const bindings = new Map([
-    ['checkpoint', { ...node('flows/checkpoint'), rootOnly: true }],
-    ['caller', { ...node('flows/caller', 'checkpoint'), rootOnly: false }],
-  ])
-  expect(() => validateChildGraph(bindings, new Map())).toThrow('root invocation')
-})
-
-test('root-only diagnostics identify the incoming caller slot for direct, Binding and mapped routes', () => {
-  const checkpoint = { ...node('flows/checkpoint'), rootOnly: true }
-  for (const target of [
-    { kind: 'flow' as const, path: 'flows/checkpoint' },
-    { kind: 'binding' as const, id: 'checkpoint' },
-  ]) {
-    for (const mapped of [false, true]) {
-      const selected = mapped
-        ? {
-            kind: 'route' as const,
-            target,
-            attachments: { deliverables: { create: true as const } },
-          }
-        : target
-      const caller = {
-        packagePath: 'flows/caller',
-        declarationPath: 'bindings/caller.ts',
-        slots: { child: selected },
-      }
-      const bindings = new Map<string, typeof checkpoint | typeof caller>([
-        ['checkpoint', checkpoint],
-        ['caller', caller],
-      ])
-      try {
-        validateChildGraph(bindings, new Map([['flows/checkpoint', checkpoint]]))
-        throw new Error('checkpoint child route was accepted')
-      } catch (error) {
-        expect(error).toBeInstanceOf(CheckError)
-        expect(error).toMatchObject({
-          code: 'PROJECT_CHILD_ROOT_ONLY',
-          path: 'bindings/caller.ts',
-          pointer: '/slots/child',
-        })
-      }
-    }
-  }
-})
-
-test('a transitive default route reports its immediate Flow caller after root depth caching', () => {
-  const checkpoint = { ...node('flows/checkpoint'), rootOnly: true }
-  const flows = new Map([
-    ['flows/checkpoint', checkpoint],
-    ['flows/application', routed('flows/application', { kind: 'flow', path: 'flows/wrapper' })],
-    ['flows/wrapper', routed('flows/wrapper', { kind: 'flow', path: 'flows/checkpoint' })],
-  ])
-  try {
-    validateChildGraph(new Map(), flows)
-    throw new Error('transitive checkpoint child route was accepted')
-  } catch (error) {
-    expect(error).toBeInstanceOf(CheckError)
-    expect(error).toMatchObject({
-      code: 'PROJECT_CHILD_ROOT_ONLY',
-      path: 'flows/wrapper',
-      pointer: '/slots/next',
-    })
-  }
 })

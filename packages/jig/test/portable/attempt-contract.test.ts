@@ -4,11 +4,13 @@ import {
   AttemptContractError,
   type AttemptObservation,
   parseAttemptFrame,
+  parseAttemptRequest,
 } from '../../src/attempt-contract.js'
 import { canonicalJson, type JsonValue } from '../../src/json.js'
 
 const digest = `sha256:${'a'.repeat(64)}`
 const diagnostics = { stderr: '', stderrBytes: 0, stderrTruncated: false }
+const noCheckpoint = { scope: 'root', availability: 'unavailable', artifactResults: [] }
 const receipt = {
   runId: 'run',
   requestDigest: digest,
@@ -38,7 +40,7 @@ function result(observation: AttemptObservation, fields: object = {}) {
     protocolVersion: 1,
     operation: 'result',
     event: 'result',
-    value: { observation, artifactResults: [], ...fields },
+    value: { observation, artifactResults: [], checkpointInventory: 'available', checkpoints: [], checkpoint: noCheckpoint, ...fields },
   })
 }
 function observe(operation: 'lookup' | 'cancel' | 'result', observation: unknown) {
@@ -51,11 +53,69 @@ function observe(operation: 'lookup' | 'cancel' | 'result', observation: unknown
         ? observation
         : operation === 'cancel'
           ? { acknowledged: true, observation }
-          : { observation, artifactResults: [] },
+          : { observation, artifactResults: [], checkpointInventory: 'available', checkpoints: [], checkpoint: noCheckpoint },
   })
 }
 
 describe('attempt machine contract consistency', () => {
+  test('checkpoint selectors use exact scopes and only checkpoint export accepts them', () => {
+    for (const checkpointScope of ['root', digest]) {
+      expect(() => parseAttemptRequest('result', { ticket: 't', checkpointScope })).not.toThrow()
+      expect(() => parseAttemptRequest('export', {
+        ticket: 't', destination: './saved', source: 'checkpoint', checkpointScope,
+      })).not.toThrow()
+      for (const source of [undefined, 'final'])
+        expect(() => parseAttemptRequest('export', {
+          ticket: 't', destination: './saved', ...(source === undefined ? {} : { source }), checkpointScope,
+        })).toThrow(AttemptContractError)
+    }
+    for (const checkpointScope of ['', 'child', digest + '\n', 'sha256:' + 'A'.repeat(64)])
+      expect(() => parseAttemptRequest('result', { ticket: 't', checkpointScope })).toThrow(AttemptContractError)
+    expect(() => parseAttemptRequest('export', {
+      ticket: 't', destination: './saved', source: 'checkpoint', artifactResult: 'draft',
+    })).toThrow(AttemptContractError)
+  })
+
+  test('checkpoint inventory is bounded and selected detail agrees with its scope record', () => {
+    const entry = { scope: digest, sequence: 1, digest }
+    const checkpoint = {
+      ...entry, availability: 'available', evidence: null, files: { 'saved.txt': 'saved' }, artifactResults: [],
+    }
+    const valid = { output: null, checkpoints: [entry], checkpoint }
+    expect(() => result(success(null), valid)).not.toThrow()
+    expect(() => result(success(null), {
+      ...valid, checkpointInventory: 'unavailable', checkpoints: [],
+    })).not.toThrow()
+    expect(() => result(success(null), { ...valid, checkpoint: { ...checkpoint, availability: 'unavailable' } })).not.toThrow()
+    for (const fields of [
+      { ...valid, checkpoints: [] },
+      { ...valid, checkpoints: [entry, entry] },
+      { ...valid, checkpointInventory: 'unavailable' },
+      { ...valid, checkpoints: [{ ...entry, sequence: 17 }] },
+      { ...valid, checkpoint: { ...checkpoint, scope: 'root' } },
+      { ...valid, checkpoint: { ...checkpoint, sequence: 2 } },
+      { ...valid, checkpoint: { ...checkpoint, digest: 'sha256:' + 'b'.repeat(64) } },
+      { ...valid, checkpoint: { ...noCheckpoint, availability: 'available' } },
+    ]) expect(() => result(success(null), fields)).toThrow(AttemptContractError)
+    const checkpoints = Array.from({ length: 64 }, (_, index) => ({
+      ...entry, scope: 'sha256:' + index.toString(16).padStart(64, '0'),
+    }))
+    expect(() => result(success(null), { output: null, checkpoints })).not.toThrow()
+    expect(() => result(success(null), { output: null, checkpoints: [...checkpoints, { ...entry, scope: 'root' }] })).toThrow(AttemptContractError)
+  })
+
+  test('checkpoint export receipts require the actual scope and final receipts forbid it', () => {
+    const exported = (fields: object) => parseAttemptFrame('export', {
+      protocolVersion: 1, operation: 'export', event: 'result',
+      value: { destination: '/saved', manifestDigest: digest, ...fields },
+    })
+    expect(() => exported({ source: 'final' })).not.toThrow()
+    expect(() => exported({ source: 'checkpoint', checkpointScope: digest })).not.toThrow()
+    expect(() => exported({ source: 'checkpoint', checkpointScope: 'root' })).not.toThrow()
+    expect(() => exported({ source: 'checkpoint' })).toThrow(AttemptContractError)
+    expect(() => exported({ source: 'final', checkpointScope: 'root' })).toThrow(AttemptContractError)
+  })
+
   test('result verifies canonical output, including null and reordered object keys', () => {
     expect(() => result(success(null), { output: null })).not.toThrow()
     expect(() =>

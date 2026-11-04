@@ -8,6 +8,7 @@ import {
 } from '../../src/internal/captured-output.js'
 import {
   capturePrivateFlowArtifact,
+  capturePrivateRetainedFlowArtifact,
   commitPrivateFlowArtifact,
   createPrivateChildFlowFileContext,
   createPrivateRootFlowFileContext,
@@ -17,6 +18,7 @@ import {
   resolvePrivateFlowArtifact,
   selectedPrivateFlowArtifacts,
 } from '../../src/internal/flow-file-context.js'
+import { sha256 } from '../../src/internal/file-input.js'
 import { readPrivateCapturedInput } from '../../src/internal/input-capture.js'
 import { PrivateRootRunFiles } from '../../src/internal/root-run-files.js'
 
@@ -114,5 +116,62 @@ test('artifact snapshot count is bounded for the whole root, including ungranted
     root.close()
     await source.close()
     await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('verified retained bytes receive fresh local custody and keep the existing root artifact limit', async () => {
+  const root = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
+  const stranger = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
+  const bytes = Buffer.from([0, 255, 128])
+  const retained = {
+    files: [{ path: 'artifacts/source/binary.bin', bytes, digest: sha256(bytes) }],
+    directories: ['artifacts', 'artifacts/source', 'artifacts/source/empty'],
+  }
+  try {
+    const reference = await capturePrivateRetainedFlowArtifact(root, retained, new AbortController().signal)
+    const snapshot = resolvePrivateFlowArtifact(root, reference)
+    bytes.fill(0)
+    expect(readPrivateCapturedOutput(snapshot)[0]!.contents).toEqual(Buffer.from([0, 255, 128]))
+    expect(snapshot.directories).toContain('artifacts/source/empty')
+    expect(() => resolvePrivateFlowArtifact(stranger, reference)).toThrow('does not hold')
+    for (let count = 1; count < 16; count++)
+      await capturePrivateRetainedFlowArtifact(
+        root,
+        { files: [], directories: [] },
+        new AbortController().signal,
+      )
+    await expect(
+      capturePrivateRetainedFlowArtifact(root, { files: [], directories: [] }, new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+    releasePrivateFlowArtifact(root, reference)
+    expect(() => resolvePrivateFlowArtifact(root, reference)).toThrow('does not hold')
+  } finally {
+    root.close()
+    stranger.close()
+  }
+})
+
+test('cancelled retained handoff retires the unissued snapshot before returning capacity', async () => {
+  const root = createPrivateRootFlowFileContext({ declarations: {}, captured: [] })
+  const stop = new AbortController()
+  try {
+    const pending = capturePrivateRetainedFlowArtifact(root, { files: [], directories: [] }, stop.signal)
+    const rejected = pending.then(
+      () => false,
+      () => true,
+    )
+    stop.abort()
+    expect(await rejected).toBeTrue()
+    for (let count = 0; count < 16; count++)
+      await capturePrivateRetainedFlowArtifact(
+        root,
+        { files: [], directories: [] },
+        new AbortController().signal,
+      )
+    await expect(
+      capturePrivateRetainedFlowArtifact(root, { files: [], directories: [] }, new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'RESOURCE_EXHAUSTED' })
+  } finally {
+    root.close()
   }
 })

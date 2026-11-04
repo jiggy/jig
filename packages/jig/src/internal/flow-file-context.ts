@@ -5,10 +5,11 @@ import {
 } from '../project/attachment-routes.js'
 import type { BindingAttachmentMap } from '../project/author.js'
 import { ChannelOperationError } from '../run/channels.js'
-import type { RunHostCall } from '../run/session.js'
+import { type RunHostCall, RunHostFatalOperationError } from '../run/session.js'
 import {
   capturePrivateInputViewOutput,
   capturePrivateOutput,
+  capturePrivateRetainedOutput,
   type PrivateCapturedOutput,
 } from './captured-output.js'
 import type { PrivateExecutionIntent } from './execution-intent.js'
@@ -227,6 +228,62 @@ export function privateFlowFileExecutionProjection(context: PrivateFlowFileConte
   }
 }
 
+/** Inert producer input identity from its actual held immutable attachment views. */
+export function privateFlowFileCheckpointInputs(context: PrivateFlowFileContext) {
+  const held = requireContext(context)
+  return [...held.reads]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, files]) => ({
+      name,
+      files: files.map(({ path, input: { bytes, digest } }) => ({ path, bytes, digest })),
+      directories:
+        held.rights.get(held.readArtifacts.get(name)!)?.snapshot?.directories ?? [],
+    }))
+}
+
+/** The caller has authenticated a settled direct child's protected checkpoint bytes. */
+export async function capturePrivateRetainedFlowArtifact(
+  context: PrivateFlowFileContext,
+  input: Parameters<typeof capturePrivateRetainedOutput>[0],
+  signal: AbortSignal,
+): Promise<string> {
+  const held = requireContext(context)
+  signal.throwIfAborted()
+  if (
+    held.root.references >= 256 ||
+    held.root.artifacts.size + held.root.pendingCaptures >= 16 ||
+    held.root.bytes + (held.root.pendingCaptures + 1) * 16 * 1024 * 1024 > 256 * 1024 * 1024
+  )
+    throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root artifact retention limit exceeded')
+  const snapshot = capturePrivateRetainedOutput(input)
+  try {
+    await capturePrivateFlowArtifact(context, { kind: 'snapshot', ready: Promise.resolve(snapshot) }, signal)
+    signal.throwIfAborted()
+    return commitPrivateFlowArtifact(context, snapshot)
+  } catch (error) {
+    // This fresh snapshot has never been exposed. A failed handoff keeps no hidden grant.
+    let artifact = [...held.root.artifacts].find((item) => item.snapshot === snapshot)
+    try {
+      snapshot.close()
+    } catch (cleanupError) {
+      if (artifact === undefined) {
+        artifact = { root: held.root, snapshot }
+        held.root.artifacts.add(artifact)
+        held.root.bytes += snapshot.bytes
+      }
+      uncertainArtifacts.add(artifact)
+      throw new RunHostFatalOperationError('UNCERTAIN', {
+        cause: new AggregateError([error, cleanupError], 'checkpoint artifact retirement failed'),
+      })
+    }
+    if (artifact !== undefined) {
+      held.root.artifacts.delete(artifact)
+      held.root.bytes -= snapshot.bytes
+    }
+    throw error
+  }
+}
+
 /** Capture before native cleanup; this does not issue any participant right. */
 export async function capturePrivateFlowArtifact(
   context: PrivateFlowFileContext,
@@ -343,13 +400,13 @@ export function selectedPrivateFlowArtifacts(
     const artifact = requireRight(held, selected[name]!)
     if (artifact.snapshot === undefined) {
       if (held.root.artifacts.size + held.root.pendingCaptures >= 16)
-        throw new TypeError('root artifact retention limit exceeded')
+        throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root artifact retention limit exceeded')
       const bytes = artifact.reads!.reduce((sum, file) => sum + file.input.bytes, 0)
       if (
         held.root.bytes + held.root.pendingCaptures * 16 * 1024 * 1024 + bytes >
         256 * 1024 * 1024
       ) {
-        throw new TypeError('root artifact byte limit exceeded')
+        throw new ChannelOperationError('RESOURCE_EXHAUSTED', 'root artifact byte limit exceeded')
       }
       const snapshot = capturePrivateInputViewOutput(artifact.reads!)
       artifact.snapshot = snapshot

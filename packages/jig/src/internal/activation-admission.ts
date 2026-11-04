@@ -22,7 +22,6 @@ import {
 import { type PrivateDirectRunRecipe, requirePrivateDirectRunRecipe } from './direct-run.js'
 import { privateDomainDigest } from './identity.js'
 import { normalizePackageArtifactRef, type PackageArtifactRef } from './package-artifact-store.js'
-import { isRunCheckpointContract } from './private-run-checkpoint.js'
 import { privateProjectFeatureFailures } from './project-feature-qualification.js'
 import {
   createPrivateProjectLocalLock,
@@ -351,7 +350,6 @@ export function privateActivationCandidateFlowDepth(
     type Node = {
       packagePath: string
       slots: Readonly<Record<string, RunTargetIdentity>>
-      rootOnly: boolean
     }
     const bindings = new Map<string, Node>()
     const flows = new Map<string, Node>()
@@ -360,9 +358,6 @@ export function privateActivationCandidateFlowDepth(
       const node = {
         packagePath: request.packagePath,
         slots: flowSlotTargets(request.slots),
-        rootOnly: Object.values(request.slots).some(
-          (slot) => slot.kind === 'native' && isRunCheckpointContract(slot.contract),
-        ),
       }
       if (target.kind === 'binding') bindings.set(target.id, node)
       else flows.set(target.path, node)

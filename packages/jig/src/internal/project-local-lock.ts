@@ -30,7 +30,6 @@ import { validateChildGraph } from '../project/slot-graph.js'
 import { PRIVATE_ACTIVATION_TARGET_LIMIT } from './activation-planning.js'
 import { type BoundAttachments, normalizeBoundAttachments } from './bound-attachments.js'
 import { privateDomainDigest } from './identity.js'
-import { isRunCheckpointContract } from './private-run-checkpoint.js'
 import { normalizePrivateRetainedProjectEvaluation } from './project-evaluation-retention.js'
 
 const DIGEST = /^sha256:[0-9a-f]{64}$/
@@ -305,7 +304,6 @@ function validateReferences(
         {
           packagePath: path,
           slots: flow.slots ?? {},
-          rootOnly: Object.values(flow.uses).some(isRunCheckpointContract),
         },
       ]),
   )
@@ -341,17 +339,7 @@ function validateReferences(
     }
   }
   validateChildGraph(
-    new Map(
-      Object.entries(bindings).map(([id, binding]) => [
-        id,
-        {
-          ...binding,
-          rootOnly: Object.values(packages[binding.packagePath]!.uses).some(
-            isRunCheckpointContract,
-          ),
-        },
-      ]),
-    ),
+    new Map(Object.entries(bindings)),
     directFlows,
   )
 }

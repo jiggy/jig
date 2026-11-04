@@ -320,7 +320,7 @@ describe('private package-project portable lock projection', () => {
       expect(() => decodePrivateProjectLocalLock(lockWith(malformed))).toThrow()
     }
   })
-  test('checkpoint authority is exact, root-only, and retained in lock identity', async () => {
+  test('checkpoint requirements retain their exact identity through root and child routes', async () => {
     const descriptor = await readFile(
       new URL('../../../docs/jig/spec/contracts/run-checkpoint/contract.json', suiteTestUrl),
       'utf8',
@@ -357,30 +357,26 @@ describe('private package-project portable lock projection', () => {
           const child = Object.hasOwn(attachments, 'out')
             ? { target: 'flow:flows/checkpoint', attachments: { out: { create: true } } }
             : 'flow:flows/checkpoint'
-          expect(() =>
-            linkPackageProject({
-              flows,
-              bindings: [
-                binding('bindings/parent.ts', {
-                  package: 'flows/parent',
-                  slots: { child },
-                }),
-              ],
-            }),
-          ).toThrow('root invocation')
-          const forged = {
-            ...lock,
-            bindings: {
-              parent: {
-                packagePath: 'flows/parent',
-                settings: {},
-                slots: { child: { kind: 'flow', path: 'flows/checkpoint' } },
-              },
-            },
-          }
-          expect(() => decodePrivateProjectLocalLock(canonicalJson(forged as JsonValue))).toThrow(
-            'root invocation',
+          const composed = linkPackageProject({
+            flows,
+            bindings: [
+              binding('bindings/parent.ts', {
+                package: 'flows/parent',
+                slots: { child },
+              }),
+            ],
+          })
+          const composedLock = createPrivateProjectLocalLock(composed)
+          const decoded = decodePrivateProjectLocalLock(encodePrivateProjectLocalLock(composedLock))
+          expect(decoded).toEqual(composedLock)
+          expect(decoded.packages['flows/checkpoint']!.uses).toEqual(
+            lock.packages['flows/checkpoint']!.uses,
           )
+          expect(
+            buildPrivateActivationRequests(composed).find(
+              (request) => request.packagePath === 'flows/checkpoint',
+            )!.slots.progress,
+          ).toMatchObject({ kind: 'native', native: 'run-checkpoint' })
         },
       )
     }

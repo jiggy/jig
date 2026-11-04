@@ -24,7 +24,8 @@ sections.
 | `execution-client.md` | Non-dispatching preparation and lookup, exact ticket acceptance, owner/observer roles, scoped cancellation, bounded retention, forgetting, and export without re-execution |
 | `project-command.md` | Bounded candidate execution and trusted command evidence collection |
 | `project-evaluation.md` | Reviewed Bun/TypeScript evaluation, exact descriptor, closed recipes, and candidate evidence distinct from application acceptance |
-| `run-checkpoint.md` | Root-owned latest aggregate retention, held artifact associations, and publication independent of writable root attachments |
+| `run-checkpoint.md` | Per-invocation latest aggregate retention under the original root attempt, held artifact associations, and bounded publication |
+| `child-checkpoint.md` | Settled direct-child checkpoint retrieval, caller-local operation identity, and fresh held artifact custody |
 | `contract-authoring.md` | Explicit generation, freshness, compiler limits, generated ownership, and publication recovery |
 | `grants.md` | Resource policy, capture, recipient identity, reuse, and explicit authority approval |
 | `channels.md` | Direct and broadcast support, local limits, and installed NDJSON output |
@@ -56,8 +57,10 @@ execution evidence.
   archives remain distinct. Logical reservations do not promise physical space.
 - Child file routes distinguish fixed reads, supplied held artifacts, and fresh
   operation-created outputs. Forwarded artifact results are separate from domain
-  results. The original protected attempt owns the latest accepted checkpoint.
-  Checkpoint-enabled methods remain root-only. Application recovery wrappers use the execution client outside contained Flows and preserve the original prepared ticket.
+  results. The original protected attempt owns each invocation's latest accepted checkpoint.
+  Native retrieval identifies a settled direct child through its caller-local operation ID.
+  It grants a new artifact through a successful retrieval, never through the child's failure result.
+  Application ticket access can select retained scopes without creating child Runs or extending retention.
 - `project-policy.md` owns installation verification modes and their integrity
   limits. `--verification` overrides `JIG_VERIFICATION`. Cached is the installed
   default. Fast may miss changed tool bytes. Agent and CLI contracts reference

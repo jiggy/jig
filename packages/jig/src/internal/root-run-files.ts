@@ -39,6 +39,44 @@ export type PrivateCheckpointCommit = (input: {
   readonly artifacts: Readonly<Record<string, PrivateCapturedOutput>>
 }) => Promise<RunCheckpointReceipt>
 
+/** Same admitted method identity for a root or nested checkpoint producer. */
+export function privateCheckpointMethodIdentity(request: PrivateActivationRequest) {
+  return Object.freeze({
+    package: request.package,
+    configurationDigest: privateDomainDigest(
+      'JIG-Run-Configuration/1',
+      decodeJson1(
+        canonicalJson({
+          settings: request.settings,
+          slots: request.slots,
+          attachments: request.attachments,
+          ...(request.boundAttachments === undefined
+            ? {}
+            : { boundAttachments: request.boundAttachments }),
+        } as unknown as JsonValue),
+      ),
+    ),
+  })
+}
+
+/** Checkpoint associations borrow only this invocation's authentic held snapshots. */
+export function privateCheckpointArtifacts(
+  context: PrivateFlowFileContext,
+  input: RunCheckpointInput,
+): Readonly<Record<string, PrivateCapturedOutput>> {
+  try {
+    return selectedPrivateFlowArtifacts(
+      context,
+      Object.keys(input.artifacts ?? {}),
+      input.artifacts ?? {},
+    )
+  } catch (error) {
+    if (error instanceof PrivateArtifactPermissionError || error instanceof TypeError)
+      throw new PrivateCheckpointRejected('checkpoint artifact association was rejected')
+    throw error
+  }
+}
+
 export interface PrivateRunFileIdentity {
   readonly attachments: readonly {
     readonly name: string
@@ -342,22 +380,7 @@ export class PrivateRootRunFiles {
     this.#outputAttachments = Object.entries(request.attachments)
       .filter(([, access]) => access === 'read-write')
       .map(([name]) => name)
-    this.#method = Object.freeze({
-      package: request.package,
-      configurationDigest: privateDomainDigest(
-        'JIG-Run-Configuration/1',
-        decodeJson1(
-          canonicalJson({
-            settings: request.settings,
-            slots: request.slots,
-            attachments: request.attachments,
-            ...(request.boundAttachments === undefined
-              ? {}
-              : { boundAttachments: request.boundAttachments }),
-          } as unknown as JsonValue),
-        ),
-      ),
-    })
+    this.#method = privateCheckpointMethodIdentity(request)
   }
   retainOutput(handle: PrivateExecutionOutput | undefined): void {
     if (this.#close || this.#output !== undefined) throw new Error('output owner unavailable')
@@ -452,6 +475,7 @@ export class PrivateRootRunFiles {
     this.identify(request)
     const identity: RunCheckpointIdentity = {
       runId,
+      scope: 'root',
       method: this.#method as unknown as JsonValue,
       input: {
         digest: sha256(canonicalJson(input)),
@@ -468,18 +492,7 @@ export class PrivateRootRunFiles {
     if (!this.#checkpointBound || this.#checkpointOwner === undefined)
       throw new Error('checkpoint owner unavailable')
     const input = parseRunCheckpointInput(value)
-    let artifacts: Readonly<Record<string, PrivateCapturedOutput>>
-    try {
-      artifacts = selectedPrivateFlowArtifacts(
-        context,
-        Object.keys(input.artifacts ?? {}),
-        input.artifacts ?? {},
-      )
-    } catch (error) {
-      if (error instanceof PrivateArtifactPermissionError || error instanceof TypeError)
-        throw new PrivateCheckpointRejected('checkpoint artifact association was rejected')
-      throw error
-    }
+    const artifacts = privateCheckpointArtifacts(context, input)
     const retained = await this.#checkpointOwner.commit({
       identity: this.#checkpointOwner.identity,
       value: input,
