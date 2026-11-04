@@ -332,12 +332,10 @@ export function main(args = process.argv.slice(2)): number {
         .filter(Boolean),
     ),
   ]
-  const authoredSkill = (file: string) => /^skills\/[^/]+\/SKILL\.md$/.test(file)
   const docs = files.filter(
     (file) =>
       file.endsWith('.md') &&
       (file.startsWith('docs/') ||
-        authoredSkill(file) ||
         file.endsWith('AGENTS.md') ||
         file.endsWith('-guidance.md') ||
         file === '.agents/maintainer-guide.md'),
@@ -345,8 +343,7 @@ export function main(args = process.argv.slice(2)): number {
   // The owner excludes this tutorial's style while it awaits replacement.
   const technical = (file: string) =>
     file !== 'docs/jig/examples/software-factory.md' &&
-    (authoredSkill(file) ||
-      file.endsWith('AGENTS.md') ||
+    (file.endsWith('AGENTS.md') ||
       file.endsWith('-guidance.md') ||
       file === '.agents/maintainer-guide.md' ||
       /^docs\/(?:flow|jig)\/(?:guide|start|build|understand|reference|examples|spec)\//.test(file))

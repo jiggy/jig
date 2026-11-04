@@ -1,0 +1,20 @@
+name: Notify skills
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/jig/**
+      - LICENSE.md
+      - LICENSES.md
+      - LICENSES/**
+      - PRICING.md
+      - .github/workflows/notify-skills.yml
+  workflow_dispatch:
+permissions: {}
+jobs:
+  notify:
+    if: github.repository == 'jiggy/jig' && github.ref == 'refs/heads/main'
+    uses: jiggy/skills/.github/workflows/notify.yml@d1277d5c5fb48f1c148a08e9131e7cf0d674ab0e
+    secrets:
+      dispatch-token: ${{ secrets.SKILLS_DISPATCH_TOKEN }}

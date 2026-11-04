@@ -17,6 +17,8 @@ use-case and orchestration hypotheses.
 - `examples/` owns complete application walkthroughs and their acquisition instructions.
 - `research/` isolates hypotheses from current supported behavior.
 - `for-agents.md` owns authoring-skill installation and machine-readable entry paths.
+  Installable skills and their generated references belong to [jiggy/skills](https://github.com/jiggy/skills).
+  Keep canonical Jig guidance and specifications in this repository.
 
 - `spec/cli-experience.md` owns the mandatory experience contract for all public
   CLI output.
