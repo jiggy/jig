@@ -577,6 +577,47 @@ async function outputs(environment, values) {
   )
 }
 
+/** Retain an already validated allocator decision before explaining its pending work. */
+export async function retainMacHostWorkerAssignment(receipt, environment) {
+  await writeFile(
+    join(environment.RUNNER_TEMP, 'mac-evidence/worker.json'),
+    `${JSON.stringify(receipt)}\n`,
+    { flag: 'wx' },
+  )
+  await outputs(environment, {
+    execute: receipt.role !== null,
+    role: receipt.role ?? 'surplus',
+    installed: receipt.role === MAC_PR_COHORT.shards - 1,
+  })
+  const duties =
+    receipt.role === 0
+      ? 'source tests plus native prerequisites'
+      : receipt.role === MAC_PR_COHORT.shards - 1
+        ? 'source tests plus installed consumers and native client startup'
+        : 'source tests'
+  const assignment =
+    receipt.role === null
+      ? 'Status: **surplus**. No test role is assigned.\n' +
+        'Test steps are inapplicable on this worker and provide no execution credit.\n' +
+        'Full coverage is checked later from the required role reports.'
+      : `Assigned role: **${receipt.role}**. Assigned work: ${duties}.\n` +
+        'Execution is pending. This assignment provides no execution credit.'
+  const { arch, kernel, build, bun, revision } = receipt.profile
+  const summary =
+    `### Mac worker ${receipt.worker} assignment\n\n` +
+    'Physical worker numbers identify runner jobs. Logical role numbers identify assigned test partitions.\n\n' +
+    `${assignment}\n\n` +
+    `Observed host: \`${arch}\` Darwin \`${kernel}\` build \`${build}\`, Bun \`${bun}\` (\`${revision}\`).\n\n`
+  console.log(
+    JSON.stringify({ worker: receipt.worker, role: receipt.role, profile: receipt.profile }),
+  )
+  console.error(summary)
+  if (environment.GITHUB_STEP_SUMMARY)
+    await appendFile(environment.GITHUB_STEP_SUMMARY, summary).catch(() => {
+      console.error('Mac worker assignment summary is unavailable.')
+    })
+}
+
 async function main(mode, environment) {
   const enteredAt = Date.now()
   const event = environment.GITHUB_EVENT_NAME
@@ -646,15 +687,7 @@ async function main(mode, environment) {
       readRecords,
       deadlineMs: macHostCohortCoordinationDeadline('claim', workDeadline, enteredAt),
     })
-    await writeFile(join(scratch, 'mac-evidence/worker.json'), `${JSON.stringify(receipt)}\n`, {
-      flag: 'wx',
-    })
-    await outputs(environment, {
-      execute: receipt.role !== null,
-      role: receipt.role ?? 'surplus',
-      installed: receipt.role === MAC_PR_COHORT.shards - 1,
-    })
-    console.log(JSON.stringify({ worker, role: receipt.role, profile: receipt.profile }))
+    await retainMacHostWorkerAssignment(receipt, environment)
     return
   }
   const jobs = await readJobs()

@@ -724,14 +724,14 @@ test('Mac hosts queue early but require Quick and exact candidates before native
   )
   assert.ok(verificationIndex > acquisitionIndex)
   assert.match(workers.steps[verificationIndex].run, /candidate-provenance\.mjs verify/)
-  for (const name of [
-    'Test native containment and recovery',
-    'Qualify the complete rootless host and installed consumer',
+  for (const command of [
+    'bun test packages/jig/test/macos/',
+    'scripts/ci/qualify-macos-host.sh --shard',
   ]) {
-    const index = workers.steps.findIndex((entry) => entry.name === name)
+    const index = workers.steps.findIndex((entry) => entry.run?.includes(command))
     assert.ok(
       index > verificationIndex,
-      `${name} requires Quick and verified canonical inputs`,
+      `${command} requires Quick and verified canonical inputs`,
     )
   }
   assert.ok(workflow.jobs['qualified-architecture'].needs.includes('host-artifacts'))

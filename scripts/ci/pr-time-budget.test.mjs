@@ -9,12 +9,14 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   fetchPrTimeBudget,
+  formatPrTimeBudget,
   guardMacPrMatrix,
   macPrMatrixStatus,
   PR_BUDGET_SECONDS,
   prTimeBudgetFromRun,
   remainingPrTimeBudget,
   runCommandBeforeDeadline,
+  writeMacPrGuardSummary,
 } from './pr-time-budget.mjs'
 import {
   MAC_COHORT_ALLOCATOR_NAME,
@@ -77,6 +79,21 @@ test('only current-attempt PR metadata for the exact repository and event head s
     assert.throws(() => prTimeBudgetFromRun({ ...metadata, created_at }, expected, created))
   for (const patch of [{ repository: '../jig' }, { headSha: 'merge-ref' }, { runId: NaN }, { attempt: 0 }])
     assert.throws(() => prTimeBudgetFromRun(metadata, { ...expected, ...patch }, created))
+})
+
+test('human budget timestamps retain original creation and the work and final cutoffs across retries', () => {
+  const first = prTimeBudgetFromRun(metadata, expected, created + 5 * 60_000)
+  const retried = prTimeBudgetFromRun(
+    { ...metadata, run_attempt: 2, run_started_at: '2026-11-03T12:30:00Z' },
+    { ...expected, attempt: 2 },
+    created + 30 * 60_000,
+  )
+  const description = formatPrTimeBudget(first)
+  assert.equal(formatPrTimeBudget(retried), description)
+  assert.match(description, /Workflow created: 2026-11-03T12:00:00\.000Z/)
+  assert.match(description, /Work cutoff: 2026-11-03T12:23:00\.000Z \(23 minutes after creation\)/)
+  assert.match(description, /Final deadline: 2026-11-03T12:25:00\.000Z \(25 minutes after creation\)/)
+  assert.match(description, /Queue time and retries consume this original allowance/)
 })
 
 test('phase time rounds down and reserves settlement without extending the absolute deadline', () => {
@@ -302,8 +319,36 @@ test('real matrix polling observes queued work becoming successful without fabri
   assert.match(await f.requests(), /jobs\n/)
   await replaceMatrixMetadata(f.jobsPath, matrixSnapshot())
   assert.deepEqual(await running, { complete: true, workerJobs: 5 })
+  const summaryPath = join(f.directory, 'summary.md')
+  await writeFile(summaryPath, 'Existing job summary.\n\n')
+  await writeMacPrGuardSummary(f.budget, summaryPath)
+  const summary = await readFile(summaryPath, 'utf8')
+  assert.ok(summary.startsWith('Existing job summary.\n\n'))
+  assert.ok(summary.includes(formatPrTimeBudget(f.budget)))
+  assert.match(summary, /Native setup and test steps are intentionally skipped on this matrix row/)
+  assert.match(summary, /assigned test roles or record a surplus assignment/)
+  assert.match(summary, /Monitor succeeded: all five current-attempt Mac worker jobs/)
+  assert.match(summary, /subsequent native qualification aggregate owns qualification/)
   assert.equal((await f.requests()).split('run\n').length - 1, 2)
-  assert.deepEqual((await readdir(f.directory)).sort(), ['jobs.json', 'requests.txt', 'run.json'])
+  assert.deepEqual((await readdir(f.directory)).sort(), ['jobs.json', 'requests.txt', 'run.json', 'summary.md'])
+})
+
+test('an optional summary write failure does not fail its caller or write to stdout', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-pr-summary-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', `
+    import { writeMacPrGuardSummary } from ${JSON.stringify(new URL('./pr-time-budget.mjs', import.meta.url).href)}
+    await writeMacPrGuardSummary(JSON.parse(process.argv[1]), process.argv[2])
+    console.log('summary reporting returned')
+  `, JSON.stringify(prTimeBudgetFromRun(metadata, expected, created)), directory], {
+    encoding: 'utf8',
+    timeout: 5000,
+  })
+  assert.ifError(result.error)
+  assert.equal(result.status, 0, result.stderr)
+  assert.equal(result.stdout, 'summary reporting returned\n')
+  assert.match(result.stderr, /optional Mac PR deadline summary could not be written/)
+  assert.deepEqual(await readdir(directory), [])
 })
 
 test('an actual deadline refuses four successes and one permanently unassigned current-attempt worker', async (t) => {
@@ -367,7 +412,11 @@ function cli(args, env = environment()) {
   return result
 }
 
-test('the guard CLI is PR-only, refuses options and cannot reset an expired original work allowance', () => {
+test('the guard CLI is PR-only, refuses options and cannot reset an expired original work allowance', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-pr-guard-cli-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const summaryPath = join(directory, 'summary.md')
+  await writeFile(summaryPath, 'Existing job summary.\n')
   for (const event of ['push', 'workflow_dispatch', 'pull_request_target', '']) {
     const result = cli(['guard-matrix'], { ...environment(), GITHUB_EVENT_NAME: event })
     assert.equal(result.status, 1)
@@ -377,10 +426,14 @@ test('the guard CLI is PR-only, refuses options and cannot reset an expired orig
   const expired = cli(['guard-matrix'], {
     ...environment(Date.now() - 23 * 60_000 - 1000),
     GH_TOKEN: 'unneeded-before-request',
+    GITHUB_STEP_SUMMARY: summaryPath,
   })
   assert.equal(expired.status, 1)
   assert.match(expired.stderr, /work deadline has elapsed/)
+  assert.match(expired.stderr, /This Ubuntu deadline monitor watches all five Mac worker jobs/)
+  assert.doesNotMatch(expired.stderr, /Monitor succeeded/)
   assert.equal(expired.stdout, '')
+  assert.equal(await readFile(summaryPath, 'utf8'), 'Existing job summary.\n')
 })
 
 test('actual CLI emits only numeric phase outputs and refuses a zero-minute step allowance', async () => {

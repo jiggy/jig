@@ -122,6 +122,10 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
   const intel = parse(await readFile(new URL('macos-intel-nightly.yml', workflows), 'utf8'))
   const native = mac.jobs.prerequisites
   const aggregate = mac.jobs['qualified-architecture']
+  const qualifier = native.steps.find((step) =>
+    step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
+  )
+  assert.ok(qualifier)
   assert.equal(native['runs-on'], '${{ matrix.runner }}')
   assert.equal(native.strategy['max-parallel'], 6)
   assert.equal(native.strategy['fail-fast'], "${{ github.event_name == 'pull_request' }}")
@@ -143,6 +147,12 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
       ],
     })
     assert.equal(expressionValue(native.strategy['fail-fast'], context), pullRequest)
+    assert.equal(
+      expressionValue(qualifier.name, context),
+      pullRequest
+        ? 'Run the assigned host test role'
+        : 'Qualify the complete rootless host and installed consumer',
+    )
     assert.equal(
       expressionValue(aggregate.strategy.matrix.include[0].count, context),
       pullRequest ? 3 : 1,
@@ -185,12 +195,12 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     }
   }
   // Both architectures execute the same complete native and installed commands.
-  for (const name of [
-    'Test native containment and recovery',
-    'Qualify the complete rootless host and installed consumer',
+  for (const command of [
+    'bun test packages/jig/test/macos/',
+    'scripts/ci/qualify-macos-host.sh --shard',
   ]) {
-    const required = mac.jobs.prerequisites.steps.find((step) => step.name === name)
-    const nightly = intel.jobs.prerequisites.steps.find((step) => step.name === name)
+    const required = native.steps.find((step) => step.run?.includes(command))
+    const nightly = intel.jobs.prerequisites.steps.find((step) => step.run?.includes(command))
     assert.equal(
       nightly.run.replace('"${{ matrix.shard }}"', '"$MAC_HOST_ROLE"'),
       required.run.replaceAll('node scripts/ci/pr-time-budget.mjs run -- ', ''),
@@ -319,6 +329,7 @@ test('the PR deadline guard can start beside queued Macs and never executes nati
   assert.match(selected[1].uses, /^actions\/setup-node@[a-f0-9]{40}$/)
   assert.match(selected[2].run, /^node scripts\/ci\/pr-time-budget\.mjs start /)
   assert.equal(selected[3].run, 'node scripts/ci/pr-time-budget.mjs guard-matrix')
+  assert.equal(selected[3].name, 'Monitor five Mac workers until the 23-minute work cutoff')
   assert.equal(selected[3].env.GH_TOKEN, '${{ github.token }}')
   for (const step of selected) assert.equal(step['continue-on-error'], undefined)
 })

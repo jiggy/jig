@@ -139,6 +139,7 @@ async function fixture(
             GITHUB_EVENT_NAME: plan === 'pull-request' ? 'pull_request' : 'push',
             GITHUB_RUN_ID: '42',
             GITHUB_RUN_ATTEMPT: '2',
+            GITHUB_REPOSITORY: 'local/local',
             ...environment,
           },
         },
@@ -261,8 +262,14 @@ test('summary projects the single complete validator and optional timings on bot
       let result = await f.summarize()
       assert.equal(result.status, 0, result.stderr)
       assert.equal(result.report.executed, f.expectedCount)
+      assert.equal(result.report.files, f.expectedCount)
+      assert.equal(result.report.planned_files, f.expectedCount)
       assert.equal(result.report.qualified, true)
       assert.equal(result.report.timing_available, true)
+      assert.equal(result.report.worker_mapping_applicable, false)
+      assert.match(result.stdout, /\| Shard \| Executed files \|/)
+      assert.match(result.stdout, /Every planned shard has complete reports/)
+      assert.doesNotMatch(result.stdout, /Physical worker|Some physical worker|Every planned role/)
       assert.equal(result.report.shards.length, f.count)
       assert.ok(
         result.report.shards.every(
@@ -294,6 +301,9 @@ test('summary projects the single complete validator and optional timings on bot
       assert.equal(result.status, 1, `${arch}: ${result.stdout}${result.stderr}`)
       assert.equal(result.report.qualified, false)
       assert.match(result.stdout, /Qualification: \*\*failed\*\*/)
+      assert.match(result.stdout, /Complete planned file coverage: \*\*unavailable\*\*/)
+      assert.match(result.stdout, /Executed files, executed cases, skipped cases and failed\/error cases: \*\*unavailable\*\*/)
+      assert.doesNotMatch(result.stdout, /Executed cases: \*\*0\*\*/)
     })
 })
 
@@ -351,22 +361,61 @@ async function diagnosticsUnavailable(f, roles = [0], environment = {}, timeout)
   assert.equal(result.report.qualified, true)
   assert.equal(result.report.executed, f.expectedCount)
   assert.equal(result.report.timing_available, false)
-  for (const role of roles) assert.equal(result.report.shards[role].timing, null)
+  for (const role of roles) {
+    const row = result.report.shards[role]
+    assert.equal(row.timing, null)
+    assert.equal(row.worker, null)
+    assert.equal(row.job_id, null)
+    assert.equal(row.job_url, null)
+    assert.ok(result.stdout.includes(`| ${role} | unavailable | ${row.files} | ${row.executed} | 0 | 0 |`))
+  }
   return result
 }
 
-test('PR timing follows selected physical workers instead of logical role numbers', async () => {
+test('PR summary links selected physical workers and counts verified files independently of cases', async () => {
   await cohortFixture(async (f) => {
+    const role = f.plans.findIndex((plan) => plan.groups.length > 0)
+    const file = f.plans[role].groups[0].file
+    await writeFile(
+      resolve(f.directories[role], `shard-${role}-group-0.xml`),
+      junit(testcase(file, 'executes proof') + testcase(file, 'another case in the same file')),
+    )
     const result = await f.summarize()
     assert.equal(result.status, 0, result.stderr)
     assert.equal(result.report.qualified, true)
-    assert.equal(result.report.executed, f.expectedCount)
+    assert.equal(result.report.executed, f.expectedCount + 1)
+    assert.equal(result.report.files, f.expectedCount)
+    assert.equal(result.report.planned_files, f.expectedCount)
     assert.equal(result.report.timing_available, true)
+    assert.equal(result.report.worker_mapping_applicable, true)
+    assert.match(result.stdout, /\| Role \| Physical worker \/ job \|/)
     assert.deepEqual(result.report.shards.map(({ timing }) => timing), [
       { wait_seconds: 300, job_seconds: 900 },
       { wait_seconds: 60, job_seconds: 500 },
       { wait_seconds: 180, job_seconds: 700 },
     ])
+    assert.deepEqual(result.report.shards.map(({ worker }) => worker), f.workers)
+    assert.deepEqual(result.report.shards.map(({ job_id }) => job_id), f.workers.map((worker) => 1000 + worker))
+    for (const [role, row] of result.report.shards.entries()) {
+      const expectedFiles = f.plans[role].groups.length + f.plans[role].nativeFiles.length +
+        (f.plans[role].installed ? 1 : 0)
+      const url = `https://github.com/local/local/actions/runs/42/job/${1000 + f.workers[role]}`
+      assert.equal(row.files, expectedFiles)
+      assert.equal(row.job_url, url)
+      assert.ok(result.stdout.includes(`| ${role} | [Worker ${f.workers[role]}](${url}) | ${expectedFiles} | ${row.executed} | 0 | 0 |`))
+    }
+    assert.ok(result.stdout.includes(`Complete planned file coverage: **${f.expectedCount}/${f.expectedCount} files**`))
+    assert.match(result.stdout, /Every planned role has complete reports on the exact host profile above/)
+    assert.match(result.stdout, /Counts cover planned source, native and installed-client startup tests/)
+    assert.match(result.stdout, /Packed consumer CLI probes, archive identity and residue checks are additionally required/)
+
+    const unlinked = await f.summarize(f.count, { GITHUB_REPOSITORY: 'local/local)[foreign](https://example.invalid)' })
+    assert.equal(unlinked.status, 0, unlinked.stderr)
+    assert.equal(unlinked.report.qualified, true)
+    assert.deepEqual(unlinked.report.shards.map(({ worker }) => worker), f.workers)
+    assert.ok(unlinked.report.shards.every(({ job_url }) => job_url === null))
+    assert.doesNotMatch(unlinked.stdout, /https:\/\//)
+    assert.match(unlinked.stdout, /Some physical worker mappings or job links are unavailable/)
   })
 })
 
@@ -572,6 +621,7 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
           SHARD_COUNT: String(f.count),
           GITHUB_RUN_ID: '42',
           GITHUB_RUN_ATTEMPT: '2',
+          GITHUB_REPOSITORY: 'local/local',
           GITHUB_EVENT_NAME: plan === 'pull-request' ? 'pull_request' : 'push',
           JIG_MACOS_TEST_PLAN: plan,
           GITHUB_STEP_SUMMARY: markdown,
@@ -585,6 +635,8 @@ test('the actual workflow summary step consumes exact shard evidence and refuses
     const summary = JSON.parse(await readFile(jsonPath, 'utf8'))
     assert.equal(summary.qualified, true)
     assert.equal(summary.timing_available, true)
+    assert.equal(summary.files, f.expectedCount)
+    assert.equal(summary.planned_files, f.expectedCount)
     if (plan === 'pull-request') {
       assert.deepEqual(summary.shards.map(({ timing }) => timing.job_seconds), [900, 500, 700])
       return

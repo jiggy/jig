@@ -18,6 +18,14 @@ const shaPattern = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
 const githubApiOrigin = 'https://api.github.com'
 const maxMetadataBytes = 4 * 1024 * 1024
 const pendingJobStatuses = ['queued', 'in_progress', 'requested', 'waiting', 'pending']
+const macPrGuardExplanation =
+  'This Ubuntu deadline monitor watches all five Mac worker jobs.\n' +
+  'Native setup and test steps are intentionally skipped on this matrix row.\n' +
+  'Mac workers execute their assigned test roles or record a surplus assignment.\n' +
+  'The native qualification aggregate validates complete test evidence.'
+const macPrGuardSuccess =
+  'Monitor succeeded: all five current-attempt Mac worker jobs, the allocator and its readiness gate succeeded before the work cutoff.\n' +
+  'This monitor grants no native test credit. The subsequent native qualification aggregate owns qualification.'
 
 function integer(value, label, minimum = 1) {
   if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`Invalid ${label}`)
@@ -158,6 +166,32 @@ export function remainingPrTimeBudget(
     // GitHub's whole-minute limit is a backstop. Let the absolute Node deadline
     // and its bounded process-group termination finish before that limit fires.
     step_timeout_minutes: Math.ceil((workMilliseconds + terminationGraceMs) / 60_000),
+  }
+}
+
+/** Describe an already validated original budget without selecting a new deadline. */
+export function formatPrTimeBudget(budget) {
+  return [
+    'PR workflow budget (UTC)',
+    `Workflow created: ${new Date(budget.createdEpochMs).toISOString()}`,
+    `Work cutoff: ${new Date(budget.deadlineEpochMs - PR_SETTLEMENT_RESERVE_SECONDS * 1000).toISOString()} (23 minutes after creation)`,
+    `Final deadline: ${new Date(budget.deadlineEpochMs).toISOString()} (25 minutes after creation)`,
+    'Queue time and retries consume this original allowance.',
+    'The final two minutes are reserved for cleanup and evidence.',
+  ].join('\n')
+}
+
+/** Optional presentation after guard success; never called while propagating failure. */
+export async function writeMacPrGuardSummary(budget, destination) {
+  if (!destination) return
+  try {
+    await appendFile(
+      destination,
+      `## Mac PR deadline monitor\n\n${macPrGuardExplanation}\n\n` +
+        `\`\`\`text\n${formatPrTimeBudget(budget)}\n\`\`\`\n\n${macPrGuardSuccess}\n\n`,
+    )
+  } catch {
+    console.error('The optional Mac PR deadline summary could not be written. The successful monitor result is unchanged.')
   }
 }
 
@@ -449,8 +483,12 @@ async function runCli(args, environment) {
       !environment.GITHUB_RUN_ATTEMPT
     )
       throw new Error('PR matrix guard requires the current PR execution without options')
-    const result = await guardMacPrMatrix(retainedBudget(environment), { token: environment.GH_TOKEN })
+    const budget = retainedBudget(environment)
+    console.error(macPrGuardExplanation)
+    const result = await guardMacPrMatrix(budget, { token: environment.GH_TOKEN })
     console.log(JSON.stringify(result))
+    console.error(macPrGuardSuccess)
+    await writeMacPrGuardSummary(budget, environment.GITHUB_STEP_SUMMARY)
     return
   }
   if (mode === 'run') {
@@ -527,6 +565,7 @@ async function runCli(args, environment) {
       selected['github-output'],
       Object.entries(result).map(([key, value]) => `${key}=${value}\n`).join(''),
     )
+  if (mode === 'start') console.error(formatPrTimeBudget(budget))
   console.log(JSON.stringify(result))
 }
 

@@ -64,7 +64,7 @@ def job_timing(job):
     }
 
 
-def cohort_timings(revision, count, evidence, host_profile, jobs):
+def cohort_jobs(revision, count, evidence, host_profile, jobs):
     try:
         run_id = current_run_integer("GITHUB_RUN_ID")
         run_attempt = current_run_integer("GITHUB_RUN_ATTEMPT")
@@ -111,9 +111,14 @@ def cohort_timings(revision, count, evidence, host_profile, jobs):
             mappings.append((role, receipt["worker"], receipt["jobId"], job_timing(job)))
         except (OSError, ValueError, KeyError, TypeError, RecursionError):
             pass
-    # One physical job cannot provide two role timings, even if an optional
+    # One physical job cannot provide two role mappings, even if an optional
     # receipt was copied or changed after the owning reconciliation completed.
-    return {role: timing for role, worker, job_id, timing in mappings
+    repository = os.environ.get("GITHUB_REPOSITORY", "")
+    valid_repository = re.fullmatch(r"[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+", repository)
+    return {role: {"worker": worker, "job_id": job_id, "timing": timing,
+                   "job_url": f"https://github.com/{repository}/actions/runs/{run_id}/job/{job_id}"
+                   if valid_repository else None}
+            for role, worker, job_id, timing in mappings
             if sum(other_worker == worker or other_job == job_id
                    for _, other_worker, other_job, _ in mappings) == 1}
 
@@ -136,9 +141,14 @@ def summarize(architecture, revision, count, evidence, jobs):
         raise ValueError("wrong architecture shard count")
     # The API is optional diagnostic evidence. It cannot establish qualification.
     timings = {}
+    workers = {}
+    report["worker_mapping_applicable"] = (
+        architecture == "arm64" and os.environ.get("JIG_MACOS_TEST_PLAN") == "pull-request"
+    )
     if isinstance(jobs, list):
-        if architecture == "arm64" and os.environ.get("JIG_MACOS_TEST_PLAN") == "pull-request":
-            timings = cohort_timings(revision, count, evidence, report["hostProfile"], jobs)
+        if report["worker_mapping_applicable"]:
+            workers = cohort_jobs(revision, count, evidence, report["hostProfile"], jobs)
+            timings = {role: worker["timing"] for role, worker in workers.items()}
         else:
             for job in jobs:
                 if not isinstance(job, dict):
@@ -153,6 +163,10 @@ def summarize(architecture, revision, count, evidence, jobs):
     report["timing_available"] = len(timings) == count
     for row in report["shards"]:
         row["timing"] = timings.get(row["shard"])
+        if report["worker_mapping_applicable"]:
+            worker = workers.get(row["shard"], {})
+            for field in ("worker", "job_id", "job_url"):
+                row[field] = worker.get(field)
     return report
 
 
@@ -162,19 +176,43 @@ def markdown(report):
     if report.get("hostProfile"):
         host = report["hostProfile"]
         lines.extend([f"Tested host: `{host['arch']}` Darwin `{host['kernel']}` build `{host['build']}`, Bun `{host['bun']}` (`{host['revision']}`).", ""])
-    lines.extend([
-             "| Shard | Runner wait | Job execution | Executed cases | Skipped reports | Failed cases |",
-             "| --- | --- | --- | --- | --- | --- |"])
-    for row in report["shards"]:
-        timing = row["timing"]
-        wait = f"{timing['wait_seconds']:.0f}s" if timing else "unavailable"
-        execution = f"{timing['job_seconds']:.0f}s" if timing else "unavailable"
-        lines.append(f"| {row['shard']} | {wait} | {execution} | {row['executed']} | {row['skipped_reports']} | {row['failures']} |")
-    lines.extend(["", f"Executed cases: **{report['executed']}**. Skipped or filtered cases are not executed proof and reject selected whole-file qualification.", "",
-                  "Counts cover planned source, native and installed-client startup tests. Packed consumer CLI probes, archive identity and residue checks are additionally required by completion markers.", "",
-                  "Runner wait is measured from job creation to runner start. Job execution includes setup, proof and cleanup; neither value is a per-test runtime."])
-    if not report["timing_available"]:
-        lines.extend(["", "Some job timings are unavailable. Qualification uses completion markers and test reports, independently of the timing API."])
+    if report["qualified"]:
+        cohort = report["worker_mapping_applicable"]
+        owner = "Role" if cohort else "Shard"
+        columns = [owner] + (["Physical worker / job"] if cohort else []) + [
+            "Executed files", "Executed cases", "Skipped cases", "Failed/error cases",
+            "Runner wait", "Job execution",
+        ]
+        lines.extend([
+            "| " + " | ".join(columns) + " |",
+            "| " + " | ".join("---" for _ in columns) + " |",
+        ])
+        for row in report["shards"]:
+            timing = row["timing"]
+            wait = f"{timing['wait_seconds']:.0f}s" if timing else "unavailable"
+            execution = f"{timing['job_seconds']:.0f}s" if timing else "unavailable"
+            cells = [str(row["shard"])]
+            if cohort:
+                worker = f"Worker {row['worker']}" if row.get("worker") is not None else "unavailable"
+                if row.get("job_url"):
+                    worker = f"[{worker}]({row['job_url']})"
+                cells.append(worker)
+            cells.extend(str(row[field]) for field in ("files", "executed", "skipped_reports", "failures"))
+            cells.extend([wait, execution])
+            lines.append("| " + " | ".join(cells) + " |")
+        lines.extend(["", f"Complete planned file coverage: **{report['files']}/{report['planned_files']} files**.",
+                      f"Every planned {owner.lower()} has complete reports on the exact host profile above.", "",
+                      f"Executed cases: **{report['executed']}**. Skipped or filtered cases reject whole-file qualification.", "",
+                      "Counts cover planned source, native and installed-client startup tests. Packed consumer CLI probes, archive identity and residue checks are additionally required by completion markers.", "",
+                      "Runner wait is measured from job creation to runner start. Job execution includes setup, proof and cleanup. Neither value is a per-test runtime."])
+        if cohort and any(row.get("worker") is None or row.get("job_url") is None for row in report["shards"]):
+            lines.extend(["", "Some physical worker mappings or job links are unavailable. No worker identity is inferred from its role number."])
+        if not report["timing_available"]:
+            lines.extend(["", "Some job timings are unavailable. Qualification uses completion markers and test reports, independently of the timing API."])
+    else:
+        lines.extend(["Complete planned file coverage: **unavailable**.", "",
+                      "Executed files, executed cases, skipped cases and failed/error cases: **unavailable**.",
+                      "Complete source-pinned proof was refused. These unavailable counts do not mean zero failures or zero skipped cases."])
     lines.extend(["", *[f"- {error}" for error in report["errors"]]])
     return "\n".join(lines) + "\n"
 

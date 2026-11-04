@@ -166,7 +166,7 @@ function macReportPlan(repository, source, targetId, plan) {
   const architecture = targetId.slice(6)
   const files = filesForTarget(gitRepositoryTests(repository, source), targetId, manifest)
   const shards = planMacHostTests(files, architecture, { plan })
-  return { architecture, shards }
+  return { architecture, shards, plannedFiles: files.length }
 }
 
 function macHostProfile(directory, architecture) {
@@ -212,6 +212,7 @@ function readMacShard({
   if (actual.installed)
     reports.push({ path: 'installed-startup.xml', files: [INSTALLED_STARTUP_TEST] })
   let executed = 0
+  let files = 0
   for (const report of reports) {
     const observed = new Set()
     for (const item of readJUnitCases(inertPath(directory, report.path))) {
@@ -227,10 +228,11 @@ function readMacShard({
     }
     if (stableJson([...observed].sort()) !== stableJson([...report.files].sort()))
       throw new Error('Mac owning report omits a planned file')
+    files += observed.size
   }
   return {
     hostProfile,
-    shard: { shard: shard.index, executed, skipped_reports: 0, failures: 0 },
+    shard: { shard: shard.index, files, executed, skipped_reports: 0, failures: 0 },
   }
 }
 
@@ -261,6 +263,7 @@ export function readMacRoleReport({
     hostProfile: observed.hostProfile,
     revision: source,
     role,
+    files: observed.shard.files,
     executed: observed.shard.executed,
     skipped_reports: 0,
     failures: 0,
@@ -276,7 +279,7 @@ export function readMacReports({
   detailed = false,
   plan = 'complete',
 }) {
-  const { architecture, shards } = macReportPlan(repository, source, targetId, plan)
+  const { architecture, shards, plannedFiles } = macReportPlan(repository, source, targetId, plan)
   const shardEvidence = shards.map((shard) => {
     const directory = join(
       evidenceDirectory,
@@ -306,6 +309,8 @@ export function readMacReports({
       hostProfile,
       revision: source,
       qualified: true,
+      files: rows.reduce((total, row) => total + row.files, 0),
+      planned_files: plannedFiles,
       executed: count,
       skipped_reports: 0,
       failures: 0,

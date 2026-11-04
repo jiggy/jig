@@ -375,6 +375,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   The guard requires every current-attempt worker to succeed before the work deadline.
   Its failure activates matrix fail-fast cancellation, including workers that have no runner.
 
+  Step summaries distinguish the Ubuntu monitor, worker assignments and aggregate proof.
+  The monitor explains its skipped native rows and reports the original work cutoff and final deadline.
+  Worker summaries identify assigned roles or unassigned surplus workers.
+  The aggregate links each selected role to its executing job and reports verified file and case counts.
+
   Guard failure and cancelled work cannot qualify execution.
   GitHub controls guard allocation and cancellation settlement, so terminal timing remains subject to those services. Report breaches explicitly.
 

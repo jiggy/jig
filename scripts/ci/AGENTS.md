@@ -350,6 +350,10 @@ They consume frozen package exports with tracked test helpers and installed
   Failed uploads, duplicate records, ambiguous responses and
   deadlines fail closed. Assignment alone grants no execution credit.
 
+  After a verified claim, log each worker's logical role and exact host profile.
+  Surplus summaries explain that no test role was assigned.
+  Assignment summaries make no completion claim.
+
   Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
   parsing. Parse one regular JSON member without filesystem extraction.
 
@@ -381,6 +385,10 @@ They consume frozen package exports with tracked test helpers and installed
   Its PR matrix guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
   Missing, failed, ambiguous or overdue workers fail the guard and activate matrix cancellation, including queued siblings.
   The guard has a separate Ubuntu matrix slot and grants no native execution credit.
+
+  CLI logs show original creation, work cutoff and final deadline without changing JSON output.
+  Successful monitor summaries explain intentionally unused native steps.
+  Summary output never delays a guard failure or grants qualification.
 
   Main/manual commands retain their existing allowances. Missing metadata or
   invalid retained values fail closed. GitHub still owns guard allocation and cancellation settlement.
@@ -426,9 +434,9 @@ They consume frozen package exports with tracked test helpers and installed
   Linux Bun commands retain their stdout parser. Linux Node commands retain
   exact single-file JUnit reports
   beside their transcripts. Installed scripts retain completion markers.
-  `macos-host-summary.py` projects validated Mac counts and optional job timing.
-  PR timing maps each selected role to its exact current worker job through the
-  normalized receipt. Missing or malformed mappings leave timing unavailable.
+  `macos-host-summary.py` projects validated file and case counts, complete planned coverage, and optional job timing.
+  PR summaries map each selected role to its exact current worker job through the normalized receipt.
+  Missing or malformed mappings leave job links and timing unavailable.
 
   It does not implement another XML or plan validator. Timing cannot grant or
   remove qualification. The evidence writer consumes that owning summary without

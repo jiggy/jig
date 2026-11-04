@@ -222,29 +222,29 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(intel.jobs.prerequisites.strategy.matrix).toBe(
     '${{ fromJSON(needs.select.outputs.shards) }}',
   )
-  for (const name of [
-    'Test native containment and recovery',
-    'Qualify the complete rootless host and installed consumer',
+  for (const command of [
+    'bun test packages/jig/test/macos/',
+    'scripts/ci/qualify-macos-host.sh --shard',
   ]) {
-    const required = mac.jobs.prerequisites.steps.find((step: any) => step.name === name)
-    const nightly = intel.jobs.prerequisites.steps.find((step: any) => step.name === name)
+    const required = mac.jobs.prerequisites.steps.find((step: any) => step.run?.includes(command))
+    const nightly = intel.jobs.prerequisites.steps.find((step: any) => step.run?.includes(command))
     expect(nightly.run.replace('"${{ matrix.shard }}"', '"$MAC_HOST_ROLE"')).toBe(
       required.run.replaceAll('node scripts/ci/pr-time-budget.mjs run -- ', ''),
     )
     expect(required.if).toBe(
-      name === 'Test native containment and recovery'
+      command.startsWith('bun test ')
         ? "${{ !matrix.guard && steps.role.outputs.execute == 'true' && steps.role.outputs.role == '0' }}"
         : "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
     )
     expect(nightly.if).toBe(
-      name === 'Test native containment and recovery' ? 'matrix.shard == 0' : undefined,
+      command.startsWith('bun test ') ? 'matrix.shard == 0' : undefined,
     )
     expect(required['continue-on-error']).toBeUndefined()
     expect(nightly['continue-on-error']).toBeUndefined()
   }
   expect(
     mac.jobs.prerequisites.steps.find(
-      (step: any) => step.name === 'Qualify the complete rootless host and installed consumer',
+      (step: any) => step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
     ).env.MAC_HOST_ROLE,
   ).toBe('${{ steps.role.outputs.role }}')
   expect(mac.jobs['qualified-architecture'].strategy.matrix.include).toEqual([

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
 import {
@@ -299,6 +299,82 @@ async function refusesBeforeNormalization(f, changes = {}, pattern) {
   await assert.rejects(f.reconcile(changes), pattern)
   assert.equal(existsSync(f.normalizedDirectory), false)
 }
+
+test('retained worker assignments explain pending roles and surplus without execution credit', async (t) => {
+  const f = await fixture(t, Array(5).fill('24H232'))
+  const module = new URL('./macos-host-cohort-run.mjs', import.meta.url).href
+  const script = `import { readFileSync } from 'node:fs'
+import { retainMacHostWorkerAssignment } from ${JSON.stringify(module)}
+await retainMacHostWorkerAssignment(JSON.parse(readFileSync(0, 'utf8')), process.env)`
+  const retain = async (receipt, label, { summary = 'summary.md', output = 'output.txt' } = {}) => {
+    const scratch = join(f.temporary, label)
+    await mkdir(join(scratch, 'mac-evidence'), { recursive: true })
+    const summaryPath = summary ? join(scratch, summary) : ''
+    const outputPath = join(scratch, output)
+    const run = () => spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      input: JSON.stringify(receipt),
+      encoding: 'utf8',
+      timeout: 5000,
+      env: {
+        ...process.env,
+        RUNNER_TEMP: scratch,
+        GITHUB_OUTPUT: outputPath,
+        GITHUB_STEP_SUMMARY: summaryPath,
+      },
+    })
+    return { scratch, summaryPath, outputPath, run, result: run() }
+  }
+  for (const receipt of f.receipts.slice(0, 4)) {
+    const actual = await retain(receipt, `assignment-${receipt.worker}`)
+    assert.equal(actual.result.status, 0, actual.result.stderr)
+    assert.deepEqual(
+      JSON.parse(await readFile(join(actual.scratch, 'mac-evidence/worker.json'), 'utf8')),
+      receipt,
+    )
+    const output = await readFile(actual.outputPath, 'utf8')
+    assert.equal(output,
+      `execute=${receipt.role !== null}\nrole=${receipt.role ?? 'surplus'}\ninstalled=${receipt.role === 2}\n`)
+    assert.deepEqual(JSON.parse(actual.result.stdout), {
+      worker: receipt.worker, role: receipt.role, profile: receipt.profile,
+    })
+    const summary = await readFile(actual.summaryPath, 'utf8')
+    assert.ok(actual.result.stderr.includes(summary))
+    assert.ok(summary.includes(`### Mac worker ${receipt.worker} assignment`))
+    assert.match(summary, /Observed host: `arm64` Darwin `24\.6\.0` build `24H232`/)
+    assert.match(summary, /no execution credit/)
+    assert.match(summary, /Physical worker numbers identify runner jobs\. Logical role numbers identify assigned test partitions\./)
+    if (receipt.role === null) {
+      assert.match(summary, /Status: \*\*surplus\*\*\. No test role is assigned/)
+      assert.match(summary, /Test steps are inapplicable on this worker/)
+      assert.match(summary, /Full coverage is checked later from the required role reports/)
+      assert.doesNotMatch(summary, /Assigned work|Execution is pending/)
+    } else {
+      assert.ok(summary.includes(`Assigned role: **${receipt.role}**`))
+      assert.match(summary, /Execution is pending/)
+      if (receipt.role === 0) assert.match(summary, /source tests plus native prerequisites/)
+      else if (receipt.role === 2)
+        assert.match(summary, /source tests plus installed consumers and native client startup/)
+      else assert.match(summary, /Assigned work: source tests\./)
+    }
+    const duplicate = actual.run()
+    assert.equal(duplicate.status, 1)
+    assert.match(duplicate.stderr, /EEXIST/)
+    assert.equal(duplicate.stdout, '')
+    assert.equal(await readFile(actual.outputPath, 'utf8'), output)
+    assert.equal(await readFile(actual.summaryPath, 'utf8'), summary)
+  }
+  for (const summary of ['', '.']) {
+    const actual = await retain(f.receipts[0], `optional-summary-${summary ? 'directory' : 'absent'}`, { summary })
+    assert.equal(actual.result.status, 0, actual.result.stderr)
+    assert.match(actual.result.stderr, /Execution is pending/)
+    assert.equal(await readFile(actual.outputPath, 'utf8'), 'execute=true\nrole=2\ninstalled=true\n')
+    if (summary) assert.match(actual.result.stderr, /assignment summary is unavailable/)
+  }
+  const failed = await retain(f.receipts[0], 'failed-output', { output: '.' })
+  assert.equal(failed.result.status, 1)
+  assert.equal(failed.result.stdout, '')
+  await assert.rejects(readFile(failed.summaryPath), { code: 'ENOENT' })
+})
 
 const coordinationIdentity = { sourceRevision: 'a'.repeat(40), runId: 500, runAttempt: 2 }
 const allocatorJobId = 9000
