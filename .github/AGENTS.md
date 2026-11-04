@@ -390,6 +390,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Each worker receives its role independently, without waiting for another Mac
   worker to start. Artifact names carry records without providing a lock.
 
+  The allocator and workers copy the isolated artifact-client manifest and generated Bun lock into runner scratch.
+  Install with `--frozen-lockfile --ignore-scripts` to retain exact dependency versions and integrity checks.
+
   Within each exact profile, dispatch roles in the fixed order 2, 0, 1.
   The earliest matching host receives role 2 and its installed-consumer tail.
   Role 0 retains native prerequisites. Role 1 retains its source files.

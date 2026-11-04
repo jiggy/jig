@@ -101,8 +101,8 @@ jobs:
         run: |
           set -eu
           mkdir "$RUNNER_TEMP/mac-cohort-client"
-          printf '{"private":true}\n' > "$RUNNER_TEMP/mac-cohort-client/package.json"
-          node scripts/ci/pr-time-budget.mjs run -- bun add --cwd "$RUNNER_TEMP/mac-cohort-client" --ignore-scripts --exact @actions/artifact@2.3.2
+          cp scripts/ci/mac-cohort-client/package.json scripts/ci/mac-cohort-client/bun.lock "$RUNNER_TEMP/mac-cohort-client/"
+          node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts
       -
         name: "Announce readiness and assign each worker exactly once"
         if: "github.event_name == 'pull_request'"
@@ -290,8 +290,8 @@ jobs:
         run: |
           set -eu
           mkdir "$RUNNER_TEMP/mac-cohort-client"
-          printf '{"private":true}\n' > "$RUNNER_TEMP/mac-cohort-client/package.json"
-          node scripts/ci/pr-time-budget.mjs run -- bun add --cwd "$RUNNER_TEMP/mac-cohort-client" --ignore-scripts --exact @actions/artifact@2.3.2
+          cp scripts/ci/mac-cohort-client/package.json scripts/ci/mac-cohort-client/bun.lock "$RUNNER_TEMP/mac-cohort-client/"
+          node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts
       -
         name: "Announce this exact host and await its assigned role"
         if: "${{ !matrix.guard }}"

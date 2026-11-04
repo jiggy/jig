@@ -248,9 +248,44 @@ test('Mac workers wait for one active Ubuntu allocator without depending on its 
     execute.with.script,
     /execFileSync\('node', \['scripts\/ci\/pr-time-budget\.mjs', 'run', '--',\s*'node', 'scripts\/ci\/macos-host-cohort-run\.mjs', 'allocate'\]/,
   )
-  const install = allocator.steps.find((step) => step.run?.includes('bun add --cwd'))
-  assert.match(install.run, /--ignore-scripts --exact @actions\/artifact@2\.3\.2/)
-  assert.ok(allocator.steps.indexOf(install) < allocator.steps.indexOf(execute))
+  const client = new URL('mac-cohort-client/', import.meta.url)
+  const manifest = JSON.parse(await readFile(new URL('package.json', client), 'utf8'))
+  const lock = parse(await readFile(new URL('bun.lock', client), 'utf8'))
+  assert.equal(manifest.private, true)
+  assert.deepEqual(manifest.dependencies, { '@actions/artifact': '2.3.2' })
+  for (const field of ['workspaces', 'scripts', 'trustedDependencies'])
+    assert.equal(Object.hasOwn(manifest, field), false)
+  assert.deepEqual(lock.workspaces[''].dependencies, manifest.dependencies)
+  assert.equal(lock.packages['@actions/artifact'][0], '@actions/artifact@2.3.2')
+  assert.ok(Object.keys(lock.packages).length > 1)
+  for (const [name, entry] of Object.entries(lock.packages)) {
+    assert.ok(Array.isArray(entry), name)
+    assert.match(entry.at(-1), /^sha512-[A-Za-z0-9+/]{86}==$/, name)
+  }
+  for (const [id, condition, mode] of [
+    ['cohort-allocator', "github.event_name == 'pull_request'", 'allocate'],
+    ['prerequisites', "${{ !matrix.guard && github.event_name == 'pull_request' }}", 'claim'],
+  ]) {
+    const job = mac.jobs[id]
+    const installs = job.steps.filter((step) =>
+      step.run?.includes('bun install --cwd "$RUNNER_TEMP/mac-cohort-client"'),
+    )
+    assert.equal(installs.length, 1)
+    const install = installs[0]
+    assert.equal(install.if, condition)
+    assert.equal(install['timeout-minutes'], 2)
+    assert.deepEqual(install.run.trim().split('\n').map((line) => line.trim()), [
+      'set -eu',
+      'mkdir "$RUNNER_TEMP/mac-cohort-client"',
+      'cp scripts/ci/mac-cohort-client/package.json scripts/ci/mac-cohort-client/bun.lock "$RUNNER_TEMP/mac-cohort-client/"',
+      'node scripts/ci/pr-time-budget.mjs run -- bun install --cwd "$RUNNER_TEMP/mac-cohort-client" --frozen-lockfile --ignore-scripts',
+    ])
+    const invocation = job.steps.find((step) =>
+      step.uses?.startsWith('actions/github-script@') &&
+      step.with.script.includes(`'${mode}'`),
+    )
+    assert.ok(job.steps.indexOf(install) < job.steps.indexOf(invocation))
+  }
   assert.ok(readiness.steps.some((step) => step.run ===
     'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready'))
 })
@@ -329,10 +364,10 @@ test('PR phases retain the original attempt deadline before granting final quali
   for (const [id, command, count] of [
     ['host-artifacts', 'node scripts/ci/candidate-transfer.mjs acquire', 1],
     ['prerequisites', 'node scripts/ci/candidate-transfer.mjs acquire', 1],
-    ['cohort-allocator', 'bun add --cwd', 1],
+    ['cohort-allocator', 'bun install --cwd "$RUNNER_TEMP/mac-cohort-client"', 1],
     ['allocator-ready', 'node scripts/ci/macos-host-cohort-run.mjs ready', 1],
     ['prerequisites', 'bun scripts/ci/probe-macos-host.ts --hosted', 1],
-    ['prerequisites', 'bun add --cwd', 1],
+    ['prerequisites', 'bun install --cwd "$RUNNER_TEMP/mac-cohort-client"', 1],
     ['prerequisites', 'clang -Wall', 2],
     ['prerequisites', 'bun install --ignore-scripts', 1],
     ['prerequisites', 'just --justfile packages/jig/justfile build', 1],

@@ -362,8 +362,10 @@ They consume frozen package exports with tracked test helpers and installed
   jobs succeed without publishing records, preserving dependency success.
 
   Keep artifact runtime credentials inside the pinned JavaScript action and child.
-  Install the exact official client in isolated runner scratch without lifecycle
-  scripts. Never export artifact runtime credentials into later steps.
+  Copy the isolated `mac-cohort-client/` manifest and generated Bun lock into runner scratch.
+  Install the exact official client and locked dependency digests with `--frozen-lockfile --ignore-scripts`.
+  Regenerate the tool lock with the workflow's pinned Bun version when updating dependencies.
+  Never export artifact runtime credentials into later steps.
 - `pr-time-budget.mjs` owns the fixed 1,500-second PR workflow allowance and
   120-second evidence reserve. Verify creation metadata against repository, run,
   attempt and PR event head before retaining its deadline. Test evidence remains
