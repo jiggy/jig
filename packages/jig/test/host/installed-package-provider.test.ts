@@ -18,8 +18,12 @@ if (
 
 const testRoot = join(import.meta.dir, '..')
 
-for (const scenario of ['entrypoint', 'dependencies', 'limits', 'preparations'] as const) {
-  test(`packed project ${scenario} uses fresh reviewed data and immutable execution`, async () => {
+for (const scenario of ['entrypoint', 'dependencies', 'limits', 'preparations', 'schema'] as const) {
+  const name =
+    scenario === 'schema'
+      ? 'packed workspace Binding review identifies unsupported schema keywords'
+      : `packed project ${scenario} uses fresh reviewed data and immutable execution`
+  test(name, async () => {
     const directory = await realpath(await mkdtemp(join(tmpdir(), `jig-${scenario}-consumer-`)))
     const packageRoot = join(testRoot, '..')
     const project = join(directory, 'project')
@@ -288,6 +292,67 @@ for await (const line of lines) {
         await succeed(['review', '--yes'])
         const short = JSON.parse((await succeed(['run', '--input', '"short"', '--json'])).stdout)
         expect(short).toMatchObject({ status: 'succeeded', output: 'short' })
+        passed = true
+        return
+      }
+
+      if (scenario === 'schema') {
+        await put('package.json', {
+          name: 'schema-case',
+          private: true,
+          type: 'module',
+          workspaces: ['methods/*'],
+          dependencies: { 'schema-case-method': 'workspace:*' },
+        })
+        await put(
+          'jig.ts',
+          "import {defineJig,discover} from '@jigging/jig'; export default defineJig({bindings:discover('./bindings')});",
+        )
+        await put(
+          'bindings/probe.ts',
+          "import {defineBinding} from '@jigging/jig'; export default defineBinding({package:'npm:schema-case-method'});",
+        )
+        await put('methods/probe/package.json', {
+          name: 'schema-case-method',
+          private: true,
+          type: 'module',
+        })
+        await put('methods/probe/FLOW.ts', "throw new Error('Review must not execute this Flow');")
+        const idSchema: { type: 'string'; pattern?: string } = { type: 'string' }
+        const contract = {
+          $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+          input: {
+            type: 'object',
+            properties: { id: idSchema },
+            additionalProperties: false,
+          },
+        }
+        const contractPath = 'methods/probe/FLOW.contract.json'
+        const review = ['review', '--allow-resolution-network', '--yes']
+        await put(contractPath, contract)
+        await succeed(review)
+        const approvedLock = await readFile(join(project, 'jig.lock'))
+
+        idSchema.pattern = '^[a-z]+$'
+        await put(contractPath, contract)
+        const refused = await invoke(review)
+        expect(refused.exit, refused.stdout + refused.stderr).toBe(1)
+        expect(refused.stderr).toContain('Diagnostic code: SCHEMA_KEYWORD_UNSUPPORTED')
+        expect(refused.stderr).toContain('Category: INVALID_CANDIDATE')
+        expect(refused.stderr).toContain(
+          'The schema keyword "pattern" is not supported by FLOW Schema/0.',
+        )
+        expect(refused.stderr).toContain(`Location: "${contractPath}"`)
+        expect(refused.stderr).toContain('Value: "/input/properties/id/pattern"')
+        expect(refused.stderr).toContain('supported FLOW Schema/0 keywords')
+        expect(refused.stderr).toContain('https://flow.jig.md/spec/schema-files')
+        expect(refused.stderr).not.toContain('^[a-z]+$')
+        expect(refused.stderr).not.toContain('Diagnostic code: INTERNAL')
+        expect(await readFile(join(project, 'jig.lock'))).toEqual(approvedLock)
+
+        delete idSchema.pattern
+        await put(contractPath, contract)
+        await succeed(review)
         passed = true
         return
       }

@@ -137,6 +137,11 @@ Version metadata is checked before evaluation and reverified before capture comp
   the original dependency lookup layout with that package as the execution root.
   No provider imports, live installation traversal or new native authority.
 
+  Schema compilation failures become invalid-candidate diagnostics with their contract file and exact JSON pointer.
+  Captured workspace members use project-relative source locations, including bounded ancestor paths.
+  Registry packages use their `npm:` selector and package-relative file, without exposing prepared installation paths.
+  Diagnostic locations grant no file authority. Compiler exceptions and rejected values remain private.
+
 - Contract generation owns captured TypeSpec requests, a bounded trusted Node
   subprocess with empty environment and stdin lifetime lease, and per-package
   publication journals beneath `.jig`. It requires separate

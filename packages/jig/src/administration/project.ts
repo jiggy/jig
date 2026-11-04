@@ -268,7 +268,18 @@ function normalizeProjectAdministrationDiagnostic(
     'PACKAGE_BUN_SOURCE_ROOT_UNAVAILABLE',
     'PACKAGE_BUN_WORKSPACE_CHANGED',
   ].includes(code)
-  validateDiagnosticPath(path, ancestorFiles, workspaceSourceLocation)
+  const schemaSourceLocation = [
+    'SCHEMA_INVALID_JSON',
+    'SCHEMA_INVALID',
+    'SCHEMA_KEYWORD_UNSUPPORTED',
+    'SCHEMA_REFERENCE_INVALID',
+    'SCHEMA_LIMIT_EXCEEDED',
+  ].includes(code)
+  validateDiagnosticPath(
+    path,
+    ancestorFiles,
+    workspaceSourceLocation ? 'directory' : schemaSourceLocation ? 'file' : undefined,
+  )
 
   let lockPath: string | undefined
   if (actual.includes('lockPath')) {
@@ -377,18 +388,18 @@ function normalizeProjectAdministrationDiagnostic(
 function validateDiagnosticPath(
   path: unknown,
   ancestorFiles: readonly string[],
-  workspaceSourceLocation = false,
+  sourceLocation?: 'file' | 'directory',
 ): asserts path is string {
   try {
     if (typeof path !== 'string') throw new TypeError('invalid diagnostic path')
-    if (workspaceSourceLocation && /[\p{Cc}\u2028\u2029]/u.test(path))
+    if (sourceLocation !== undefined && /[\p{Cc}\u2028\u2029]/u.test(path))
       throw new TypeError('invalid workspace diagnostic path')
-    if (workspaceSourceLocation && (path === '.' || /^(?:\.\.\/)*\.\.$/.test(path))) {
+    if (sourceLocation === 'directory' && (path === '.' || /^(?:\.\.\/)*\.\.$/.test(path))) {
       if (path.split('/').length > 32) throw new TypeError('invalid workspace diagnostic path')
       return
     }
     const ancestor =
-      ancestorFiles.length === 0 && !workspaceSourceLocation
+      ancestorFiles.length === 0 && sourceLocation === undefined
         ? undefined
         : /^(?:\.\.\/)+/.exec(path)?.[0]
     const local = ancestor === undefined ? path : path.slice(ancestor.length)
@@ -398,7 +409,7 @@ function validateDiagnosticPath(
       (ancestor.length / 3 > 32 ||
         Buffer.byteLength(path) > 1024 ||
         path.split('/').length > 64 ||
-        (!workspaceSourceLocation && !ancestorFiles.includes(local.split('/').at(-1)!)))
+        (sourceLocation === undefined && !ancestorFiles.includes(local.split('/').at(-1)!)))
     )
       throw new TypeError('invalid workspace diagnostic path')
     if (local.split('/').some(isProtectedProjectPath))

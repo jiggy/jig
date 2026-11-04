@@ -294,6 +294,9 @@ All selected domain requirements still apply.
   authoring failures identify the required root dialect when known and route
   unsupported keywords, references and limits to FLOW Schema/0.
 
+  Unsupported-keyword diagnostics name the keyword from the validated JSON pointer, with ordinary terminal escaping.
+  Preserve the contract location and invalid-candidate classification across dependency-backed Bindings.
+
   Project session close failures retain separate operation and close classifications
   in one `JIG_CLEANUP_FAILED` diagnostic. Use approved categories or `UNCLASSIFIED`.
   Classify from trusted error types and allowlisted data properties, never exception text.

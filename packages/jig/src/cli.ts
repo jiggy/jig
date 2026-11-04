@@ -2690,7 +2690,7 @@ export function renderFailure(error: unknown, runtime: Pick<CliRuntime, 'writeEr
       SCHEMA_INVALID_JSON:
         'Use valid UTF-8 JSON/0 without duplicate keys and within its value limits; see https://flow.jig.md/spec/json-values.',
       SCHEMA_KEYWORD_UNSUPPORTED:
-        'Use only the supported FLOW Schema/0 keywords; see https://flow.jig.md/spec/schema-files.',
+        'Correct the indicated schema using supported FLOW Schema/0 keywords. Run jig review again. See https://flow.jig.md/spec/schema-files.',
       SCHEMA_REFERENCE_INVALID:
         'Use an acyclic same-document reference spelled #/$defs/<name> to an existing root definition; see https://flow.jig.md/spec/schema-files.',
       SCHEMA_LIMIT_EXCEEDED:
@@ -3212,14 +3212,23 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
   const pointer =
     diagnostic.pointer === undefined ? '' : `\n  Value: ${asciiJsonString(diagnostic.pointer)}`
   const mismatch = schemaTypeMismatchText(diagnostic.typeMismatch)
+  const schemaKeyword =
+    diagnostic.code === 'SCHEMA_KEYWORD_UNSUPPORTED' && diagnostic.pointer?.startsWith('/')
+      ? diagnostic.pointer
+          .slice(diagnostic.pointer.lastIndexOf('/') + 1)
+          .replaceAll('~1', '/')
+          .replaceAll('~0', '~')
+      : undefined
   const cause =
-    diagnostic.code === 'PACKAGE_BUN_LOCK_STALE'
-      ? 'The package declarations in package.json no longer match bun.lock.'
-      : diagnostic.code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'
-        ? 'The dependency lock contains a non-default registry source.'
-        : diagnostic.code === 'PACKAGE_BUN_PROJECT_COUNT_LIMIT'
-          ? 'Review reached its limit for distinct dependency preparations. No Flow was started by this review.'
-          : ACP_SETUP_CAUSES[diagnostic.code]
+    schemaKeyword !== undefined
+      ? `The schema keyword ${asciiJsonString(schemaKeyword)} is not supported by FLOW Schema/0.`
+      : diagnostic.code === 'PACKAGE_BUN_LOCK_STALE'
+        ? 'The package declarations in package.json no longer match bun.lock.'
+        : diagnostic.code === 'PACKAGE_BUN_LOCK_REGISTRY_UNSUPPORTED'
+          ? 'The dependency lock contains a non-default registry source.'
+          : diagnostic.code === 'PACKAGE_BUN_PROJECT_COUNT_LIMIT'
+            ? 'Review reached its limit for distinct dependency preparations. No Flow was started by this review.'
+            : ACP_SETUP_CAUSES[diagnostic.code]
   const lock =
     diagnostic.lockPath === undefined || diagnostic.lockPath === diagnostic.path
       ? ''
@@ -3242,7 +3251,7 @@ function renderProjectDiagnostic(error: ProjectAdministrationError, message: str
       ? ''
       : `\n  Observed: at least ${detail.observed} ${unit}\n  Effective limit: ${detail.maximum}\n  Limit source: ${detail.profile === 'evaluation' ? 'fixed evaluation profile' : detail.origin === 'environment' ? DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field] : detail.origin === 'project' ? `jig.ts limits.dependencies.${field}` : detail.origin === 'default' ? 'built-in default' : 'preparation policy'}`
   const selection =
-    cause !== undefined && diagnostic.pointer?.startsWith('/slots/')
+    ACP_SETUP_CAUSES[diagnostic.code] !== undefined && diagnostic.pointer?.startsWith('/slots/')
       ? '\n  Agent selection: the resource grant at this Binding slot.'
       : ''
   const alternative = selection

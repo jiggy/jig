@@ -16,6 +16,9 @@ import {
   scopePrivatePackagePlanningError,
 } from '../../src/internal/project-session-controller.js'
 import { PrivateBunWorkspaceError } from '../../src/internal/workspace-source-roots.js'
+import { parseInvocationContract } from '../../src/invocation-contract.js'
+import { scopePackageDiagnostic } from '../../src/project/flow-source.js'
+import { SchemaDiagnostic } from '../../src/schema/index.js'
 import { installedBunLocation } from '../fixtures/installed-bun-location.js'
 
 const missingPlan = `sha256:${'0'.repeat(64)}`
@@ -509,6 +512,67 @@ describe('private finite project session', () => {
       expect(
         new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', diagnostic).diagnostic,
       ).toEqual(diagnostic)
+    }
+  })
+  test('preserves compiled schema failures at authored package locations', () => {
+    let unsupported: unknown
+    try {
+      parseInvocationContract(
+        Buffer.from(
+          JSON.stringify({
+            $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+            input: {
+              type: 'object',
+              properties: { id: { type: 'string', pattern: '^[a-z]+$' } },
+              additionalProperties: false,
+            },
+          }),
+        ),
+      )
+    } catch (error) {
+      unsupported = error
+    }
+    expect(unsupported).toBeInstanceOf(SchemaDiagnostic)
+    for (const [packagePath, path] of [
+      ['.', 'FLOW.contract.json'],
+      ['methods/probe', 'methods/probe/FLOW.contract.json'],
+      ['../../packages/probe', '../../packages/probe/FLOW.contract.json'],
+      ['npm:@example/probe', 'npm:@example/probe/FLOW.contract.json'],
+    ] as const) {
+      const failure = projectError(scopePackageDiagnostic(unsupported, packagePath), 'plan')
+      expect(failure.toJSON()).toEqual({
+        code: 'INVALID_CANDIDATE',
+        message: 'project candidate is invalid',
+        diagnostic: {
+          code: 'SCHEMA_KEYWORD_UNSUPPORTED',
+          path,
+          pointer: '/input/properties/id/pattern',
+        },
+      })
+      expect(JSON.stringify(failure)).not.toContain('^[a-z]+$')
+    }
+    for (const packagePath of [
+      '/private/capture',
+      '../.jig',
+      '../../packages/.jig',
+      '../'.repeat(33) + 'probe',
+      '../packages/../../probe',
+      '../probe\n',
+    ]) {
+      const failure = projectError(scopePackageDiagnostic(unsupported, packagePath), 'plan')
+      expect(failure.toJSON()).toEqual({
+        code: 'INVALID_CANDIDATE',
+        message: 'project candidate is invalid',
+      })
+    }
+    for (const [code, path] of [
+      ['SCHEMA_KEYWORD_UNSUPPORTED', '.'],
+      ['SCHEMA_KEYWORD_UNSUPPORTED', '..'],
+      ['SCHEMA_PRIVATE', '../packages/probe/FLOW.contract.json'],
+    ] as const) {
+      expect(
+        projectError(new CheckError('invalid', code, 'private detail', path), 'plan').diagnostic,
+      ).toBeUndefined()
     }
   })
   test('preserves missing default diagnostics without exposing source error text', () => {
