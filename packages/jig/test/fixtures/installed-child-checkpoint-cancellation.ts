@@ -262,7 +262,9 @@ await handle(async run=>{
     assert.equal(retained.outcome,'done');
     assert.equal(retained.output.checkpoint.sequence,1);
     assert.equal(retained.output.checkpoint.digest,saved.value.digest);
-    assert.deepEqual(retained.output.checkpoint.evidence,{role:'worker',accepted:true});
+    assert.deepEqual(Object.keys(retained.output.checkpoint.evidence).sort(),['accepted','role']);
+    assert.equal(retained.output.checkpoint.evidence.role,'worker');
+    assert.equal(retained.output.checkpoint.evidence.accepted,true);
     assert.equal(retained.output.checkpoint.files['draft.txt'],'accepted before local cancellation');
     assert.ok(retained.artifacts?.checkpoint);
     phase('return');
@@ -356,7 +358,9 @@ try {
   assert.equal(selected.checkpoint.scope,entry.scope);
   assert.equal(selected.checkpoint.availability,'available');
   assert.equal(selected.checkpoint.digest,entry.digest);
-  assert.deepEqual(selected.checkpoint.evidence,{role:'worker',accepted:true});
+  assert.deepEqual(Object.keys(selected.checkpoint.evidence).sort(),['accepted','role']);
+  assert.equal(selected.checkpoint.evidence.role,'worker');
+  assert.equal(selected.checkpoint.evidence.accepted,true);
   assert.equal(selected.checkpoint.files['draft.txt'],'accepted before local cancellation');
   stage='export-checkpoint';
   const exported=await client.export({ticket:prepared.ticket,destination:'retained',
