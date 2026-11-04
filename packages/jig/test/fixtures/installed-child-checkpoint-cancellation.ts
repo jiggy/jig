@@ -1,7 +1,9 @@
 import { constants, Database } from 'bun:sqlite'
 import assert from 'node:assert/strict'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { constants as fsConstants } from 'node:fs'
+import { mkdir, open, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { ATTEMPT_FAILURE_CODES } from '../../src/attempt-contract.js'
 import {
   type FoundationArchives,
   type FoundationQualification,
@@ -108,11 +110,16 @@ export default defineBinding({package:'flows/router',slots:{worker:'flow:flows/w
   await command([cli, 'review', '--yes'], project)
   assert.equal(await readFile(join(project, 'bun.lock'), 'utf8'), sourceLock)
   await put('client.ts', consumer)
-  await command(
-    [process.execPath, '--no-env-file', '--no-install', join(directory, 'client.ts'), cli],
-    project,
-    600_000,
-  )
+  try {
+    await command(
+      [process.execPath, '--no-env-file', '--no-install', join(directory, 'client.ts'), cli],
+      project,
+      600_000,
+    )
+  } catch (error) {
+    await reportFailure(project)
+    throw error
+  }
   const database = Database.open(
     join(project, '.jig/jig.sqlite3'),
     constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
@@ -142,6 +149,59 @@ export default defineBinding({package:'flows/router',slots:{worker:'flow:flows/w
   })
 }
 
+/** A failed command keeps its original exception and exposes only closed fixture observations. */
+async function reportFailure(project: string): Promise<void> {
+  try {
+    const file = await open(
+      join(project, 'checkpoint-failure.json'),
+      fsConstants.O_RDONLY | fsConstants.O_NONBLOCK | fsConstants.O_NOFOLLOW,
+    )
+    try {
+      const stat = await file.stat()
+      if (!stat.isFile() || stat.nlink !== 1 || stat.size > 4096)
+        throw new Error('invalid diagnostic file')
+      const bytes = Buffer.alloc(4097)
+      const { bytesRead } = await file.read(bytes, 0, bytes.length, 0)
+      if (bytesRead !== stat.size) throw new Error('diagnostic file changed')
+      const value: unknown = JSON.parse(bytes.subarray(0, bytesRead).toString('utf8'))
+      if (value === null || typeof value !== 'object' || Array.isArray(value))
+        throw new Error('invalid diagnostic value')
+      const choices: Readonly<Record<string, readonly string[]>> = {
+        stage: ['completion'],
+        terminal: ['succeeded', 'failed', 'lost', 'unavailable'],
+        terminalCode: [...ATTEMPT_FAILURE_CODES, 'COORDINATOR_LOST'],
+        cleanup: ['pending', 'confirmed', 'unresolved', 'unavailable'],
+        checkpointPhase: [
+          'barrier',
+          'active-retrieval',
+          'cancel-waiter',
+          'join',
+          'retrieve',
+          'checkpoint-result',
+          'return',
+        ],
+        checkpointCauseCode: [...ATTEMPT_FAILURE_CODES, 'ASSERTION'],
+      }
+      const summary: Record<string, string> = { application: 'child-checkpoint-cancellation' }
+      for (const [key, allowed] of Object.entries(choices)) {
+        const selected = (value as Record<string, unknown>)[key]
+        if (typeof selected === 'string' && allowed.includes(selected)) summary[key] = selected
+      }
+      if (
+        summary.stage === undefined ||
+        summary.terminal === undefined ||
+        summary.cleanup === undefined
+      )
+        throw new Error('incomplete diagnostic value')
+      console.error(`Child checkpoint failure: ${JSON.stringify(summary)}`)
+    } finally {
+      await file.close()
+    }
+  } catch {
+    console.error('Child checkpoint failure: bounded observation unavailable')
+  }
+}
+
 const flowSources: Readonly<Record<string, string>> = {
   worker: String.raw`
 import {handle} from '@jigging/flow';
@@ -169,32 +229,52 @@ await handle(async run=>{
     throw Error('Child settled before its selected barrier');
   });
   void premature.catch(()=>{});
+  let checkpointPhase='barrier', checkpointCauseCode;
+  const phase=value=>{checkpointPhase=value;checkpointCauseCode=undefined;};
+  const expectedCode=code=>error=>{
+    if(error instanceof OperationError) checkpointCauseCode=error.code;
+    return error instanceof OperationError&&error.code===code;
+  };
   try {
     const saved=await Promise.race([ready.receive.next({signal:run.signal}),premature]);
     assert.equal(saved.done,false);
     assert.equal(saved.value.sequence,1);
     assert.match(saved.value.digest,/^sha256:[0-9a-f]{64}$/);
     // The acknowledged child is still blocked on the held channel, not a timer.
+    phase('active-retrieval');
     await assert.rejects(run.call({operationId:'active-read',slot:'retrieve',
-      input:{operationId:'attempt'}}),error=>error instanceof OperationError&&error.code==='UNAVAILABLE');
+      input:{operationId:'attempt'}}),expectedCode('UNAVAILABLE'));
+    phase('cancel-waiter');
     stop.abort();
     const cancelled=await work;
+    if('error' in cancelled&&cancelled.error instanceof OperationError)
+      checkpointCauseCode=cancelled.error.code;
     assert.ok('error' in cancelled&&cancelled.error instanceof OperationError);
     assert.equal(cancelled.error.code,'CANCELLED');
     // A fresh waiter for the exact original call joins native subtree cleanup.
-    await assert.rejects(run.call(call),error=>error instanceof OperationError&&error.code==='CANCELLED');
+    phase('join');
+    await assert.rejects(run.call(call),expectedCode('CANCELLED'));
     run.signal.throwIfAborted();
+    phase('retrieve');
     const retained=await run.call({operationId:'settled-read',slot:'retrieve',
       input:{operationId:'attempt'}});
+    phase('checkpoint-result');
     assert.equal(retained.outcome,'done');
     assert.equal(retained.output.checkpoint.sequence,1);
     assert.equal(retained.output.checkpoint.digest,saved.value.digest);
     assert.deepEqual(retained.output.checkpoint.evidence,{role:'worker',accepted:true});
     assert.equal(retained.output.checkpoint.files['draft.txt'],'accepted before local cancellation');
     assert.ok(retained.artifacts?.checkpoint);
+    phase('return');
     return {outcome:'done',output:{activeRefused:true,cancelled:true,
       sequence:retained.output.checkpoint.sequence,digest:retained.output.checkpoint.digest},
       artifactResults:{checkpoint:retained.artifacts.checkpoint}};
+  } catch(error) {
+    const code=error instanceof OperationError?error.code:'EXECUTION_FAILED';
+    const failure=new OperationError(code,'Child checkpoint cancellation fixture failed',{
+      checkpointPhase,checkpointCauseCode:checkpointCauseCode??(error instanceof OperationError?error.code:'ASSERTION')});
+    Object.defineProperty(failure,'cause',{value:error});
+    throw failure;
   } finally {
     stop.abort();
     await work;
@@ -220,10 +300,11 @@ const consumer = String.raw`
 import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
-import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
-let stage='inspect';
+import {ATTEMPT_FAILURE_CODES,AttemptClientError,createAttemptClient} from '@jigging/jig/client';
+let stage='inspect', terminalCode;
 process.on('uncaughtExceptionMonitor',error=>{
   console.error('Foundation client failure: '+JSON.stringify({application:'child-checkpoint-cancellation',stage,
+    ...(terminalCode===undefined?{}:{terminalCode}),
     ...(error instanceof AttemptClientError?{code:error.code,operation:error.operation,uncertain:error.uncertain}:{})}));
 });
 const client=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),timeoutMs:255000});
@@ -239,6 +320,20 @@ try {
   assert.equal(owner.role,'owner');
   stage='completion';
   const observation=await owner.completion;
+  terminalCode=observation.terminal?.code;
+  if(observation.cleanup!=='confirmed'||observation.terminal?.status!=='succeeded') {
+    const failure={stage,terminal:observation.terminal?.status??'unavailable',
+      cleanup:observation.cleanup??'unavailable',...(terminalCode===undefined?{}:{terminalCode})};
+    const details=observation.terminal?.details;
+    if(details!==null&&typeof details==='object'&&!Array.isArray(details)) {
+      if(['barrier','active-retrieval','cancel-waiter','join','retrieve','checkpoint-result','return']
+        .includes(details.checkpointPhase)) failure.checkpointPhase=details.checkpointPhase;
+      if([...ATTEMPT_FAILURE_CODES,'ASSERTION'].includes(details.checkpointCauseCode))
+        failure.checkpointCauseCode=details.checkpointCauseCode;
+    }
+    try { await writeFile('checkpoint-failure.json',JSON.stringify(failure),{flag:'wx',mode:0o600}); }
+    catch { /* Diagnostic capture never replaces the original completion assertion. */ }
+  }
   assert.equal(observation.cleanup,'confirmed');
   assert.equal(observation.terminal.status,'succeeded');
   stage='result';
