@@ -122,9 +122,9 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
   const intel = parse(await readFile(new URL('macos-intel-nightly.yml', workflows), 'utf8'))
   const native = mac.jobs.prerequisites
   const aggregate = mac.jobs['qualified-architecture']
-  assert.equal(native['runs-on'], 'macos-15')
-  assert.equal(native.strategy['max-parallel'], 5)
-  assert.equal(native.strategy['fail-fast'], false)
+  assert.equal(native['runs-on'], '${{ matrix.runner }}')
+  assert.equal(native.strategy['max-parallel'], 6)
+  assert.equal(native.strategy['fail-fast'], "${{ github.event_name == 'pull_request' }}")
   assert.equal(aggregate.strategy.matrix.include.length, 1)
   assert.equal(aggregate.strategy.matrix.include[0].arch, 'arm64')
   for (const event of ['pull_request', 'push', 'workflow_dispatch']) {
@@ -133,10 +133,16 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     const matrix = expressionValue(native.strategy.matrix, context)
     const pullRequest = event === 'pull_request'
     assert.deepEqual(matrix, {
-      include: Array.from({ length: pullRequest ? 5 : 1 }, (_, worker) => ({
-        arch: 'arm64', worker,
-      })),
+      include: [
+        ...(pullRequest
+          ? [{ arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true }]
+          : []),
+        ...Array.from({ length: pullRequest ? 5 : 1 }, (_, worker) => ({
+          arch: 'arm64', worker, runner: 'macos-15', guard: false,
+        })),
+      ],
     })
+    assert.equal(expressionValue(native.strategy['fail-fast'], context), pullRequest)
     assert.equal(
       expressionValue(aggregate.strategy.matrix.include[0].count, context),
       pullRequest ? 3 : 1,
@@ -149,9 +155,11 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     for (const row of matrix.include)
       assert.equal(
         expressionValue(native.name, { ...context, matrix: row }),
-        pullRequest
-          ? `Native host worker — arm64 / ${row.worker}`
-          : 'Native host shard — arm64 / 0',
+        row.guard
+          ? 'Enforce Mac PR deadline'
+          : pullRequest
+            ? `Native host worker — arm64 / ${row.worker}`
+            : 'Native host shard — arm64 / 0',
       )
   }
   assert.doesNotMatch(JSON.stringify(mac.jobs['affected-macos']), /macos-x64/)
@@ -230,7 +238,7 @@ test('Mac workers wait for one active Ubuntu allocator without depending on its 
     for (const step of job.steps.filter((step) => step !== complete[0]))
       assert.equal(step.if, "github.event_name == 'pull_request'")
   }
-  assert.deepEqual(mac.jobs.prerequisites.needs, ['scope', 'host-artifacts', 'allocator-ready'])
+  assert.deepEqual(mac.jobs.prerequisites.needs, ['scope', 'allocator-ready'])
   for (const id of ['qualified-architecture', 'affected-macos'])
     for (const dependency of ['cohort-allocator', 'allocator-ready', 'prerequisites'])
       assert.ok(mac.jobs[id].needs.includes(dependency), `${id} requires ${dependency}`)
@@ -245,6 +253,39 @@ test('Mac workers wait for one active Ubuntu allocator without depending on its 
   assert.ok(allocator.steps.indexOf(install) < allocator.steps.indexOf(execute))
   assert.ok(readiness.steps.some((step) => step.run ===
     'node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready'))
+})
+
+test('the PR deadline guard can start beside queued Macs and never executes native work', async () => {
+  const mac = parse(await readFile(new URL('macos-hosted-candidates.yml', workflows), 'utf8'))
+  const job = mac.jobs.prerequisites
+  const outputs = await macScopePlan(mac, 'pull_request')
+  const base = { github: { event_name: 'pull_request' }, needs: { scope: { outputs } } }
+  const rows = expressionValue(job.strategy.matrix, base).include
+  assert.equal(rows.length, 6)
+  assert.equal(rows[0].guard, true)
+  assert.ok(job.strategy['max-parallel'] >= rows.length)
+  assert.equal(expressionValue(job.strategy['fail-fast'], base), true)
+  assert.deepEqual(job.needs, ['scope', 'allocator-ready'])
+  assert.deepEqual(job.permissions, { contents: 'read', actions: 'read' })
+  assert.equal(job['continue-on-error'], undefined)
+  const context = {
+    ...base,
+    matrix: rows[0],
+    inputs: { include_startup_profile: true },
+    always: () => true,
+    steps: { role: { outputs: { execute: 'true', role: '0', installed: 'true' } } },
+  }
+  assert.equal(expressionValue(job['runs-on'], context), 'ubuntu-24.04')
+  assert.equal(expressionValue(job.name, context), 'Enforce Mac PR deadline')
+  const selected = job.steps.filter((step) => !step.if || expressionValue(step.if, context))
+  assert.equal(selected.length, 4)
+  assert.match(selected[0].uses, /^actions\/checkout@[a-f0-9]{40}$/)
+  assert.equal(selected[0].with['persist-credentials'], false)
+  assert.match(selected[1].uses, /^actions\/setup-node@[a-f0-9]{40}$/)
+  assert.match(selected[2].run, /^node scripts\/ci\/pr-time-budget\.mjs start /)
+  assert.equal(selected[3].run, 'node scripts/ci/pr-time-budget.mjs guard-matrix')
+  assert.equal(selected[3].env.GH_TOKEN, '${{ github.token }}')
+  for (const step of selected) assert.equal(step['continue-on-error'], undefined)
 })
 
 test('PR phases retain the original attempt deadline before granting final qualification', async () => {
@@ -287,6 +328,7 @@ test('PR phases retain the original attempt deadline before granting final quali
   }
   for (const [id, command, count] of [
     ['host-artifacts', 'node scripts/ci/candidate-transfer.mjs acquire', 1],
+    ['prerequisites', 'node scripts/ci/candidate-transfer.mjs acquire', 1],
     ['cohort-allocator', 'bun add --cwd', 1],
     ['allocator-ready', 'node scripts/ci/macos-host-cohort-run.mjs ready', 1],
     ['prerequisites', 'bun scripts/ci/probe-macos-host.ts --hosted', 1],
@@ -325,7 +367,9 @@ test('PR phases retain the original attempt deadline before granting final quali
     'cohort-allocator', 'allocator-ready', 'prerequisites', 'qualified-architecture', 'affected-macos',
   ]) {
     const final = mac.jobs[id].steps.at(-1)
-    assert.equal(final.if, "github.event_name == 'pull_request'")
+    assert.equal(final.if, id === 'prerequisites'
+      ? "${{ !matrix.guard && github.event_name == 'pull_request' }}"
+      : "github.event_name == 'pull_request'")
     assert.equal(final.run, 'node scripts/ci/pr-time-budget.mjs check')
   }
   const aggregate = mac.jobs['qualified-architecture']
@@ -391,18 +435,18 @@ test('main Mac qualification admits independent runs through two bounded native 
     evaluate(native.concurrency.group, 'refs/pull/1/merge', '100', ''),
     evaluate(native.concurrency.group, 'refs/pull/2/merge', '101', ''),
   )
-  const prGroups = Array.from({ length: 5 }, (_, worker) =>
+  const prGroups = ['guard', 0, 1, 2, 3, 4].map((worker) =>
     evaluate(native.concurrency.group, 'refs/pull/1/merge', '100', '', worker),
   )
-  assert.equal(new Set(prGroups).size, 5, 'PR workers must not queue behind one another')
+  assert.equal(new Set(prGroups).size, 6, 'PR workers and guard must not queue behind one another')
   // Main retains one complete ARM worker in each of its two bounded queues.
   const outputs = await macScopePlan(mac, 'push')
   assert.deepEqual(
     expressionValue(native.strategy.matrix, { needs: { scope: { outputs } } }),
-    { include: [{ arch: 'arm64', worker: 0 }] },
+    { include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }] },
   )
   assert.ok(native.needs.includes('scope'))
-  assert.ok(native.needs.includes('host-artifacts'))
+  assert.ok(!native.needs.includes('host-artifacts'))
   for (const id of ['scope', 'host-artifacts', 'qualified-architecture', 'affected-macos'])
     assert.equal(mac.jobs[id].concurrency, undefined, id)
   const select = mac.jobs.scope.steps.find((step) => step.id === 'native-lane')

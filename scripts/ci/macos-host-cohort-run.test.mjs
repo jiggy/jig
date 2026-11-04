@@ -31,6 +31,7 @@ import {
   createMacHostCohortWorkerReceipt,
   decodeMacHostCohortRecord,
   MAC_COHORT_ALLOCATOR_NAME,
+  MAC_COHORT_GUARD_JOB_NAME,
   MAC_COHORT_READY_JOB_NAME,
   macHostCohortArtifactName,
   macHostCohortWorkerName,
@@ -269,6 +270,7 @@ async function fixture(t, builds = ['24H232', '24G830', '24H232', '24G830', '24H
   for (const [id, name] of [
     [allocatorJobId, MAC_COHORT_ALLOCATOR_NAME],
     [9001, MAC_COHORT_READY_JOB_NAME],
+    [9002, MAC_COHORT_GUARD_JOB_NAME],
   ]) jobs.push({
     id, name, run_id: identity.runId, run_attempt: identity.runAttempt,
     status: 'completed', conclusion: 'success',
@@ -597,12 +599,12 @@ test('coordination deadlines and polling delays preserve absolute caps without a
   assert.equal(macHostCohortPollDelay(now + 60_000, now + 60_000), 5000)
 })
 
-test('observed acquisition, readiness, and native failures make further allocation impossible', () => {
+test('observed acquisition, readiness, deadline guard, and native failures stop allocation', () => {
   const identity = coordinationIdentity
   for (const name of [
     'Acquire canonical macos host artifacts', MAC_COHORT_READY_JOB_NAME,
-    macHostCohortWorkerName(3), 'prerequisites',
-    "github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)",
+    'Enforce Mac PR deadline', macHostCohortWorkerName(3), 'prerequisites',
+    "matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch))",
   ]) {
     for (const conclusion of ['failure', 'cancelled', 'skipped']) {
       const jobs = coordinationJobs()
@@ -628,12 +630,19 @@ test('allocator selection rejects missing, duplicate, stale, inactive, or failed
   ]) assert.throws(() => selectMacHostAllocatorJob(observed, coordinationIdentity), /allocator/)
 })
 
-test('only PRs select five ARM workers; main and manual execution retain one complete host', () => {
+test('PRs select an Ubuntu deadline guard and five ARM workers; main retains one complete host', () => {
   assert.deepEqual(macHostWorkerMatrix('pull_request'), {
-    include: Array.from({ length: 5 }, (_, worker) => ({ arch: 'arm64', worker })),
+    include: [
+      { arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true },
+      ...Array.from({ length: 5 }, (_, worker) => ({
+        arch: 'arm64', worker, runner: 'macos-15', guard: false,
+      })),
+    ],
   })
   for (const event of ['push', 'workflow_dispatch'])
-    assert.deepEqual(macHostWorkerMatrix(event), { include: [{ arch: 'arm64', worker: 0 }] })
+    assert.deepEqual(macHostWorkerMatrix(event), {
+      include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }],
+    })
   for (const event of [undefined, '', 'pull_request_target', 'workflow_run'])
     assert.throws(() => macHostWorkerMatrix(event), /Unknown hosted Mac workflow event/)
 })

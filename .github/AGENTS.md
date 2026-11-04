@@ -350,9 +350,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   require current-attempt success. Producer readiness permits 1,800 seconds,
   including runner queues. Failed or invalid producer jobs refuse immediately.
 
-  Hosted Mac also requires that producer's latest `Quick development checks`
-  success before native allocation. Main/manual runs require current-attempt
-  Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
+  Mac workers queue after scope and allocator readiness, while canonical production continues.
+  Host setup overlaps producer waiting. Each executing worker acquires the exact canonical bundle before native qualification.
+
+  Acquisition requires the producer's latest `Quick development checks` success.
+  Main/manual runs require current-attempt Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
   Acquisition jobs allow 40 and 45 minutes respectively, including setup and
   settlement. Exact profiles, frozen archive identities, complete coverage and
   zero-residue checks stay mandatory.
@@ -365,8 +367,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   Bound child process groups and native steps by the remaining allowance.
   Late, failed, cancelled or incomplete work cannot produce a passing final gate.
-  GitHub controls queued jobs, so this policy cannot guarantee timely allocation
-  or cancel an unscheduled job at the deadline. Report breaches explicitly.
+  A read-only Ubuntu deadline guard shares the PR worker matrix.
+  Six matrix slots prevent waiting Mac jobs from occupying the guard's slot.
+  The guard requires every current-attempt worker to succeed before the work deadline.
+  Its failure activates matrix fail-fast cancellation, including workers that have no runner.
+
+  Guard failure and cancelled work cannot qualify execution.
+  GitHub controls guard allocation and cancellation settlement, so terminal timing remains subject to those services. Report breaches explicitly.
 
   Manual startup profiling remains optional and non-gating.
 
@@ -380,7 +387,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Each worker receives its role independently, without waiting for another Mac
   worker to start. Artifact names carry records without providing a lock.
 
-  Require the allocator and all five current-attempt worker jobs to succeed.
+  Require the allocator, deadline guard and all five current-attempt worker jobs to succeed.
   Reconcile announcements, assignments and the final allocator ledger, rejecting
   duplicate or ambiguous records. Verify every executing role,
   including an incomplete minority profile, against the canonical archives and

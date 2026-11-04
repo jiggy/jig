@@ -13,6 +13,7 @@ export const MAC_PR_COHORT = Object.freeze({ workers: 5, shards: 3 })
 export const MAC_COHORT_ARTIFACT_CLIENT_VERSION = '2.3.2'
 export const MAC_COHORT_ALLOCATOR_NAME = 'Allocate exact-profile Mac roles'
 export const MAC_COHORT_READY_JOB_NAME = 'Require an active Mac role allocator'
+export const MAC_COHORT_GUARD_JOB_NAME = 'Enforce Mac PR deadline'
 const PROFILE_FIELDS = ['arch', 'kernel', 'build', 'bun', 'revision']
 const RUN_FIELDS = ['sourceRevision', 'runId', 'runAttempt']
 const WORKER_FIELDS = [...RUN_FIELDS, 'worker', 'jobId']
@@ -376,6 +377,7 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
     throw new Error('Mac cohort requires all five worker receipts and observed jobs')
   const allocatorJobId = successfulJob(jobs, identity, MAC_COHORT_ALLOCATOR_NAME).id
   const readyJobId = successfulJob(jobs, identity, MAC_COHORT_READY_JOB_NAME).id
+  const guardJobId = successfulJob(jobs, identity, MAC_COHORT_GUARD_JOB_NAME).id
   if (
     jobs.filter((job) => job?.name?.startsWith('Native host worker — arm64 / ')).length !==
     MAC_PR_COHORT.workers
@@ -430,8 +432,8 @@ export function validateMacHostCohort({ identity, workers, records, jobs }) {
   })
   if (
     new Set(receipts.map(({ worker }) => worker)).size !== MAC_PR_COHORT.workers ||
-    new Set([allocatorJobId, readyJobId, ...receipts.map(({ jobId }) => jobId)]).size !==
-      MAC_PR_COHORT.workers + 2
+    new Set([allocatorJobId, readyJobId, guardJobId, ...receipts.map(({ jobId }) => jobId)]).size !==
+      MAC_PR_COHORT.workers + 3
   )
     throw new Error('Mac cohort repeats a worker or job')
   const complete = requireMacHostCohortProfiles()

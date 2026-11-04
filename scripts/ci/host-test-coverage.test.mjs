@@ -555,7 +555,7 @@ test('every required and nightly hosted Mac shard checks its exact target before
       'utf8',
     ),
   )
-  assert.equal(workflow.jobs.prerequisites['runs-on'], 'macos-15')
+  assert.equal(workflow.jobs.prerequisites['runs-on'], '${{ matrix.runner }}')
   const nightly = parse(await readFile(
     resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'), 'utf8',
   ))
@@ -566,7 +566,7 @@ test('every required and nightly hosted Mac shard checks its exact target before
     )
     assert.equal(probes.length, 1)
     const probe = probes[0]
-    assert.equal(probe.if, undefined)
+    assert.equal(probe.if, job === workflow.jobs.prerequisites ? '${{ !matrix.guard }}' : undefined)
     assert.match(probe.env.EXPECTED_ARCH, /^\$\{\{ matrix\.arch \}\}$/)
     assert.match(probe.run, /set -o pipefail/)
     assert.match(probe.run, /tee "\$RUNNER_TEMP\/mac-evidence\/prerequisites\.json"/)
@@ -609,6 +609,7 @@ test('PR roles retain native and installed ownership while complete hosts keep t
   assert.equal(qualifier.env.MAC_HOST_ROLE, '${{ steps.role.outputs.role }}')
   const context = (event, role, count, profile = false) => ({
     github: { event_name: event },
+    matrix: { guard: false },
     inputs: { include_startup_profile: profile },
     steps: {
       role: {
@@ -669,6 +670,11 @@ test('PR roles retain native and installed ownership while complete hosts keep t
   assert.ok(executed.length >= 6)
   for (const step of [...executed, native, clients, qualifier])
     assert.equal(evaluate(step.if, surplus), false, step.name ?? step.uses)
+  for (const role of [0, 2]) {
+    const guard = { ...context('pull_request', role, 3), matrix: { guard: true } }
+    for (const step of [...executed, native, clients, qualifier])
+      assert.equal(evaluate(step.if, guard), false, step.name ?? step.uses)
+  }
   const receipt = workflow.jobs['qualified-architecture'].steps.find((step) =>
     /candidate-provenance\.mjs qualification/.test(step.run ?? ''),
   )

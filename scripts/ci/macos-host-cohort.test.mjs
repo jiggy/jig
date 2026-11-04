@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import {
   MAC_PR_COHORT,
   MAC_COHORT_ALLOCATOR_NAME,
+  MAC_COHORT_GUARD_JOB_NAME,
   MAC_COHORT_READY_JOB_NAME,
   createMacHostCohortReady,
   createMacHostCohortAnnouncement,
@@ -88,7 +89,8 @@ function fixture(builds = ['24H232', '24G830', '24H232', '24G830', '24H232'], or
     workers,
     records: [ready, ...announcements, ...assignments, ledger],
     jobs: [job(allocatorJobId, MAC_COHORT_ALLOCATOR_NAME), job(901, MAC_COHORT_READY_JOB_NAME),
-      ...workers.map(({ receipt }) => job(receipt.jobId, macHostCohortWorkerName(receipt.worker)))],
+      ...workers.map(({ receipt }) => job(receipt.jobId, macHostCohortWorkerName(receipt.worker))),
+      job(902, MAC_COHORT_GUARD_JOB_NAME)],
     ready,
     announcements,
     assignments,
@@ -186,7 +188,7 @@ test('announcements, immutable assignments, worker receipts and ledger bind ever
   }
 })
 
-test('partial publication or a failed allocator, readiness job or minority worker cannot qualify', () => {
+test('partial publication or a failed allocator, readiness job, guard or minority worker cannot qualify', () => {
   const original = fixture()
   for (let index = 0; index < original.records.length; index++) {
     const records = original.records.filter((_, other) => other !== index)
@@ -205,6 +207,33 @@ test('partial publication or a failed allocator, readiness job or minority worke
   const repeated = structuredClone(original)
   repeated.jobs.push({ ...repeated.jobs[2], name: 'Native host worker — arm64 / 5' })
   assert.throws(() => validateMacHostCohort(repeated), /job inventory/)
+})
+
+test('successful native workers cannot qualify without one successful current-attempt deadline guard', () => {
+  const original = fixture()
+  const guard = original.jobs.find((job) => job.name === MAC_COHORT_GUARD_JOB_NAME)
+  assert.equal(validateMacHostCohort(original).roles.length, 3)
+  const withoutGuard = original.jobs.filter((job) => job !== guard)
+  assert.throws(() => validateMacHostCohort({ ...original, jobs: withoutGuard }),
+    /one exact current-attempt job/)
+  for (const changes of [
+    { id: 0 }, { id: '902' },
+    { name: 'Enforce a different PR deadline' },
+    { conclusion: 'failure' }, { conclusion: 'cancelled' }, { conclusion: 'skipped' },
+    { status: 'queued', conclusion: null }, { status: 'in_progress', conclusion: null },
+    { run_id: original.identity.runId + 1 }, { run_attempt: original.identity.runAttempt - 1 },
+  ]) {
+    assert.throws(() => validateMacHostCohort({
+      ...original, jobs: [...withoutGuard, { ...guard, ...changes }],
+    }), /(?:job|current-attempt)/, JSON.stringify(changes))
+  }
+  for (const duplicate of [guard, { ...guard, id: 903 }])
+    assert.throws(() => validateMacHostCohort({ ...original, jobs: [...original.jobs, duplicate] }),
+      /one exact current-attempt job/)
+  for (const existing of withoutGuard)
+    assert.throws(() => validateMacHostCohort({
+      ...original, jobs: [...withoutGuard, { ...guard, id: existing.id }],
+    }), /repeats a worker or job/)
 })
 
 test('surplus needs an explicit assignment after three same-profile owners and its successful job', () => {

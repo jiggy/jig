@@ -2,17 +2,27 @@ import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { existsSync } from 'node:fs'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { appendFile, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   fetchPrTimeBudget,
+  guardMacPrMatrix,
+  macPrMatrixStatus,
   PR_BUDGET_SECONDS,
   prTimeBudgetFromRun,
   remainingPrTimeBudget,
   runCommandBeforeDeadline,
 } from './pr-time-budget.mjs'
+import {
+  MAC_COHORT_ALLOCATOR_NAME,
+  MAC_COHORT_GUARD_JOB_NAME,
+  MAC_COHORT_READY_JOB_NAME,
+  MAC_PR_COHORT,
+  macHostCohortWorkerName,
+} from './macos-host-cohort.mjs'
 
 const created = Date.parse('2026-11-03T12:00:00Z')
 const expected = { repository: 'jiggy/jig', runId: 41, attempt: 1, headSha: 'a'.repeat(40) }
@@ -100,6 +110,211 @@ test('metadata acquisition refuses missing credentials and invalid identity befo
   )
 })
 
+function matrixJobs() {
+  return [
+    MAC_COHORT_ALLOCATOR_NAME,
+    MAC_COHORT_READY_JOB_NAME,
+    MAC_COHORT_GUARD_JOB_NAME,
+    ...Array.from({ length: MAC_PR_COHORT.workers }, (_, worker) => macHostCohortWorkerName(worker)),
+  ].map((name, index) => ({
+    id: 1000 + index,
+    name,
+    run_id: expected.runId,
+    run_attempt: expected.attempt,
+    head_sha: expected.headSha,
+    run_url: `https://api.github.com/repos/${expected.repository}/actions/runs/${expected.runId}`,
+    status: name === MAC_COHORT_GUARD_JOB_NAME ? 'in_progress' : 'completed',
+    conclusion: name === MAC_COHORT_GUARD_JOB_NAME ? null : 'success',
+  }))
+}
+
+const matrixSnapshot = (jobs = matrixJobs()) => ({ total_count: jobs.length, jobs })
+
+async function replaceMatrixMetadata(path, value) {
+  await writeFile(`${path}.next`, JSON.stringify(value), { flag: 'wx' })
+  await rename(`${path}.next`, path)
+}
+
+test('matrix job states require every exact worker and distinguish registration from success', () => {
+  const complete = matrixSnapshot()
+  const state = macPrMatrixStatus(complete, expected)
+  assert.equal(state.complete, true)
+  assert.deepEqual(state.pending, [])
+  for (const status of ['queued', 'in_progress', 'requested', 'waiting', 'pending']) {
+    const jobs = matrixJobs()
+    Object.assign(jobs.at(-1), { status, conclusion: null, runner_id: null, steps: [] })
+    const pending = macPrMatrixStatus(matrixSnapshot(jobs), expected)
+    assert.equal(pending.complete, false)
+    assert.deepEqual(pending.pending, [{ name: macHostCohortWorkerName(4), status }])
+  }
+  const missing = matrixSnapshot(matrixJobs().slice(0, -1))
+  assert.deepEqual(macPrMatrixStatus(missing, expected).pending, [
+    { name: macHostCohortWorkerName(4), status: 'missing' },
+  ])
+  assert.throws(() => macPrMatrixStatus(missing, expected, state.jobIds), /unique current-attempt/)
+  const changed = matrixJobs()
+  changed.at(-1).id++
+  assert.throws(
+    () => macPrMatrixStatus(matrixSnapshot(changed), expected, state.jobIds),
+    /foreign, stale or invalid/,
+  )
+})
+
+test('matrix guard refuses ambiguous, foreign, incomplete and failed job observations', () => {
+  for (const change of [
+    { run_id: 42 },
+    { run_attempt: 2 },
+    { head_sha: 'b'.repeat(40) },
+    { run_url: 'https://api.github.com/repos/foreign/jig/actions/runs/41' },
+    { status: 'unknown' },
+    { status: 'queued', conclusion: 'success' },
+    { status: 'completed', conclusion: null },
+    { status: 'completed', conclusion: 'cancelled' },
+    { status: 'completed', conclusion: 'failure' },
+    { status: 'completed', conclusion: 'skipped' },
+  ]) {
+    const jobs = matrixJobs()
+    Object.assign(jobs.at(-1), change)
+    assert.throws(() => macPrMatrixStatus(matrixSnapshot(jobs), expected))
+  }
+  const jobs = matrixJobs()
+  assert.throws(() => macPrMatrixStatus(matrixSnapshot([...jobs, jobs.at(-1)]), expected), /duplicate/)
+  assert.throws(
+    () => macPrMatrixStatus(matrixSnapshot([...jobs, { ...jobs.at(-1), id: 9999 }]), expected),
+    /unique current-attempt/,
+  )
+  for (const snapshot of [
+    { total_count: 101, jobs },
+    { total_count: jobs.length + 1, jobs },
+    { jobs },
+  ])
+    assert.throws(() => macPrMatrixStatus(snapshot, expected), /incomplete job inventory/)
+  for (const name of [MAC_COHORT_ALLOCATOR_NAME, MAC_COHORT_READY_JOB_NAME]) {
+    const failed = matrixJobs().map((job) =>
+      job.name === name ? { ...job, conclusion: 'failure' } : job,
+    )
+    assert.throws(() => macPrMatrixStatus(matrixSnapshot(failed), expected), /did not succeed/)
+  }
+})
+
+// This real HTTP service reads ordinary job records from a temporary store.
+// It exercises the guard's observation/deadline boundary, not GitHub cancellation or native proof.
+async function matrixMetadataService(t, workMilliseconds = 5000) {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-matrix-metadata-'))
+  const runPath = join(directory, 'run.json')
+  const jobsPath = join(directory, 'jobs.json')
+  const requestsPath = join(directory, 'requests.txt')
+  const run = {
+    ...metadata,
+    created_at: new Date(Date.now() - 23 * 60_000 + workMilliseconds).toISOString(),
+  }
+  await writeFile(runPath, JSON.stringify(run))
+  await writeFile(jobsPath, JSON.stringify(matrixSnapshot()))
+  await writeFile(requestsPath, '')
+  const resource = `/repos/${expected.repository}/actions/runs/${expected.runId}`
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== 'GET' || request.headers.authorization !== 'Bearer local-metadata') {
+        response.writeHead(403).end()
+        return
+      }
+      response.setHeader('content-type', 'application/json')
+      if (request.url === resource) {
+        await appendFile(requestsPath, 'run\n')
+        response.end(await readFile(runPath))
+      } else if (request.url === `${resource}/attempts/${expected.attempt}/jobs?per_page=100`) {
+        const contents = await readFile(jobsPath)
+        const configuration = JSON.parse(contents)
+        if (configuration.hold_body) response.write('{"total_count":')
+        else if (configuration.http_status) response.writeHead(configuration.http_status).end()
+        else response.end(contents)
+        await appendFile(requestsPath, 'jobs\n')
+      } else {
+        response.writeHead(404).end()
+      }
+    } catch {
+      response.writeHead(500).end()
+    }
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  run.created_at = new Date(Date.now() - 23 * 60_000 + workMilliseconds).toISOString()
+  await replaceMatrixMetadata(runPath, run)
+  const budget = prTimeBudgetFromRun(run, expected)
+  t.after(async () => {
+    const stopped = once(server, 'close')
+    server.closeAllConnections()
+    server.close()
+    await stopped
+    await rm(directory, { recursive: true, force: true })
+  })
+  const options = {
+    token: 'local-metadata',
+    apiOrigin: `http://127.0.0.1:${server.address().port}`,
+    pollIntervalMs: 50,
+  }
+  return {
+    directory,
+    run,
+    budget,
+    options,
+    runPath,
+    jobsPath,
+    requests: () => readFile(requestsPath, 'utf8'),
+  }
+}
+
+test('real matrix polling observes queued work becoming successful without fabricating proof', async (t) => {
+  const f = await matrixMetadataService(t)
+  const queued = matrixJobs()
+  Object.assign(queued.at(-1), { status: 'queued', conclusion: null, runner_id: 0, steps: [] })
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(queued))
+  const running = guardMacPrMatrix(f.budget, f.options)
+  const observationDeadline = Date.now() + 2000
+  while (!(await f.requests()).includes('jobs\n') && Date.now() < observationDeadline)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.match(await f.requests(), /jobs\n/)
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot())
+  assert.deepEqual(await running, { complete: true, workerJobs: 5 })
+  assert.equal((await f.requests()).split('run\n').length - 1, 2)
+  assert.deepEqual((await readdir(f.directory)).sort(), ['jobs.json', 'requests.txt', 'run.json'])
+})
+
+test('an actual deadline refuses four successes and one permanently unassigned current-attempt worker', async (t) => {
+  const f = await matrixMetadataService(t, 3000)
+  const queued = matrixJobs()
+  Object.assign(queued.at(-1), { status: 'queued', conclusion: null, runner_id: 0, steps: [] })
+  Object.assign(queued[0], { status: 'in_progress', conclusion: null })
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(queued))
+  await assert.rejects(
+    guardMacPrMatrix(f.budget, f.options),
+    /work deadline has elapsed; unfinished jobs:.*Native host worker — arm64 \/ 4 \(queued\)/,
+  )
+  assert.match(await f.requests(), /jobs\n/)
+  assert.deepEqual((await readdir(f.directory)).sort(), ['jobs.json', 'requests.txt', 'run.json'])
+})
+
+test('real metadata reads refuse failed allocation, stale worker attempts and HTTP errors', async (t) => {
+  const f = await matrixMetadataService(t)
+  const failed = matrixJobs()
+  failed[0].conclusion = 'failure'
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(failed))
+  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /did not succeed/)
+  const stale = matrixJobs()
+  stale.at(-1).run_attempt++
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(stale))
+  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /foreign, stale or invalid/)
+  await replaceMatrixMetadata(f.jobsPath, { http_status: 503 })
+  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /HTTP 503/)
+})
+
+test('a stalled real metadata body cannot extend the original work deadline', async (t) => {
+  const f = await matrixMetadataService(t, 2000)
+  await replaceMatrixMetadata(f.jobsPath, { hold_body: true })
+  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /work deadline has elapsed/)
+  assert.match(await f.requests(), /jobs\n/)
+})
+
 function environment(createdEpochMs = Date.now() - 5 * 60_000) {
   return {
     ...process.env,
@@ -125,6 +340,22 @@ function cli(args, env = environment()) {
   assert.ifError(result.error)
   return result
 }
+
+test('the guard CLI is PR-only, refuses options and cannot reset an expired original work allowance', () => {
+  for (const event of ['push', 'workflow_dispatch', 'pull_request_target', '']) {
+    const result = cli(['guard-matrix'], { ...environment(), GITHUB_EVENT_NAME: event })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /current PR execution without options/)
+  }
+  assert.equal(cli(['guard-matrix', '--reserve-seconds', '0']).status, 1)
+  const expired = cli(['guard-matrix'], {
+    ...environment(Date.now() - 23 * 60_000 - 1000),
+    GH_TOKEN: 'unneeded-before-request',
+  })
+  assert.equal(expired.status, 1)
+  assert.match(expired.stderr, /work deadline has elapsed/)
+  assert.equal(expired.stdout, '')
+})
 
 test('actual CLI emits only numeric phase outputs and refuses a zero-minute step allowance', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-pr-budget-'))

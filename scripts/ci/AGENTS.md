@@ -339,10 +339,12 @@ They consume frozen package exports with tracked test helpers and installed
   assignments. A readiness gate starts workers only after the allocator is live.
   Workers never wait for an unscheduled Mac peer. Artifact names are not locks.
 
+  Worker allocation overlaps canonical production. Each executing worker acquires verified canonical inputs after host preparation and before native qualification.
+
   Records bind the tested merge, run, attempt, allocator, worker job and complete
   host tuple. Reconcile the final ledger with every announcement, assignment and
-  worker receipt. Require the allocator and every worker job to succeed in the
-  current attempt. Failed uploads, duplicate records, ambiguous responses and
+  worker receipt. Require the allocator, readiness gate, deadline guard and every worker job to succeed in the current attempt.
+  Failed uploads, duplicate records, ambiguous responses and
   deadlines fail closed. Assignment alone grants no execution credit.
 
   Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
@@ -367,9 +369,13 @@ They consume frozen package exports with tracked test helpers and installed
   Queue delays and retries consume that original allowance. Bound child process
   groups by the remaining work time and reject completion after the final deadline.
   PR command ownership settles remaining descendants even after a successful leader exit.
+
+  Its PR matrix guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
+  Missing, failed, ambiguous or overdue workers fail the guard and activate matrix cancellation, including queued siblings.
+  The guard has a separate Ubuntu matrix slot and grants no native execution credit.
+
   Main/manual commands retain their existing allowances. Missing metadata or
-  invalid retained values fail closed. This policy cannot allocate GitHub runners
-  or cancel jobs before GitHub schedules them.
+  invalid retained values fail closed. GitHub still owns guard allocation and cancellation settlement.
 - `merge-attempts.mjs` selects the newest authoritative execution of each named
   job without falling back from failures. `merge-retry.mjs` owns PR CI input
   acquisition and per-job evidence across attempts within one original run.

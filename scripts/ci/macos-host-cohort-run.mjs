@@ -38,10 +38,15 @@ export function macHostWorkerMatrix(event) {
     throw new Error('Unknown hosted Mac workflow event')
   if (event === 'pull_request') requireMacHostCohortProfiles()
   return {
-    include: Array.from(
-      { length: event === 'pull_request' ? MAC_PR_COHORT.workers : 1 },
-      (_, worker) => ({ arch: 'arm64', worker }),
-    ),
+    include: [
+      ...(event === 'pull_request'
+        ? [{ arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true }]
+        : []),
+      ...Array.from(
+        { length: event === 'pull_request' ? MAC_PR_COHORT.workers : 1 },
+        (_, worker) => ({ arch: 'arm64', worker, runner: 'macos-15', guard: false }),
+      ),
+    ],
   }
 }
 
@@ -134,7 +139,7 @@ function sameArtifact(left, right) {
 
 const pause = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds))
 const skippedWorkerMatrixName =
-  "github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)"
+  "matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch))"
 
 export function macHostCohortPollDelay(lastArrival, now = Date.now()) {
   if (!Number.isSafeInteger(lastArrival) || !Number.isSafeInteger(now) || lastArrival > now)
@@ -149,7 +154,7 @@ export function requireMacHostAllocationProgress(jobs, identity, allocatorJobId)
     job.name?.startsWith('Native host worker — arm64 / ') ||
     [
       MAC_COHORT_READY_JOB_NAME, 'Acquire canonical macos host artifacts',
-      'prerequisites', skippedWorkerMatrixName,
+      'Enforce Mac PR deadline', 'prerequisites', skippedWorkerMatrixName,
     ].includes(job.name),
   ))
     if (job.status === 'completed' && job.conclusion !== 'success')

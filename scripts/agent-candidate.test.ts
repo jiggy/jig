@@ -173,13 +173,13 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(workflowTriggers(mac).push.branches).toEqual(['main'])
   expect(mac.permissions).toEqual({ contents: 'read' })
   expect(mac.jobs.prerequisites.environment).toBeUndefined()
-  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBeFalse()
-  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(5)
+  expect(mac.jobs.prerequisites.strategy['fail-fast']).toBe("${{ github.event_name == 'pull_request' }}")
+  expect(mac.jobs.prerequisites.strategy['max-parallel']).toBe(6)
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
   expect(mac.jobs['qualified-architecture'].needs).toContain('cohort-allocator')
   expect(mac.jobs['qualified-architecture'].needs).toContain('allocator-ready')
-  expect(mac.jobs.prerequisites.needs).toEqual(['scope', 'host-artifacts', 'allocator-ready'])
+  expect(mac.jobs.prerequisites.needs).toEqual(['scope', 'allocator-ready'])
   for (const id of ['cohort-allocator', 'allocator-ready']) {
     expect(mac.jobs[id].needs).toBe('scope')
     expect(mac.jobs[id].if).toBe("${{ needs.scope.outputs.required == 'true' }}")
@@ -196,10 +196,17 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(macHostShardCount('arm64')).toBe(1)
   expect(macHostShardCount('x64')).toBe(4)
   expect(macHostWorkerMatrix('pull_request')).toEqual({
-    include: Array.from({ length: 5 }, (_, worker) => ({ arch: 'arm64', worker })),
+    include: [
+      { arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true },
+      ...Array.from({ length: 5 }, (_, worker) => ({
+        arch: 'arm64', worker, runner: 'macos-15', guard: false,
+      })),
+    ],
   })
   for (const event of ['push', 'workflow_dispatch'])
-    expect(macHostWorkerMatrix(event)).toEqual({ include: [{ arch: 'arm64', worker: 0 }] })
+    expect(macHostWorkerMatrix(event)).toEqual({
+      include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }],
+    })
   // The Node coverage tests execute the scope planner and prove complete inventory,
   // role ownership, surplus refusal, and main/manual timeout semantics.
   expect(mac.jobs.prerequisites.env.JIG_MACOS_TEST_PLAN).toBe(

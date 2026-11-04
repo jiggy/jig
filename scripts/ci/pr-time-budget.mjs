@@ -2,11 +2,21 @@ import { spawn } from 'node:child_process'
 import { appendFile } from 'node:fs/promises'
 import { constants as osConstants } from 'node:os'
 import { pathToFileURL } from 'node:url'
+import {
+  MAC_COHORT_ALLOCATOR_NAME,
+  MAC_COHORT_GUARD_JOB_NAME,
+  MAC_COHORT_READY_JOB_NAME,
+  MAC_PR_COHORT,
+  macHostCohortWorkerName,
+} from './macos-host-cohort.mjs'
 
 export const PR_BUDGET_SECONDS = 25 * 60
 export const PR_SETTLEMENT_RESERVE_SECONDS = 120
 const repositoryPattern = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/
 const shaPattern = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/
+const githubApiOrigin = 'https://api.github.com'
+const maxMetadataBytes = 4 * 1024 * 1024
+const pendingJobStatuses = ['queued', 'in_progress', 'requested', 'waiting', 'pending']
 
 function integer(value, label, minimum = 1) {
   if (!Number.isSafeInteger(value) || value < minimum) throw new Error(`Invalid ${label}`)
@@ -57,19 +67,36 @@ export function prTimeBudgetFromRun(run, expected, now = Date.now()) {
   }
 }
 
-/** One bounded, read-only API request; no runner allocation or GitHub mutation. */
-export async function fetchPrTimeBudget(expected, { token } = {}) {
+async function readPrMetadata(
+  expected,
+  path,
+  { token, apiOrigin = githubApiOrigin, deadlineEpochMs } = {},
+) {
   const selected = identity(expected)
   if (typeof token !== 'string' || !token) throw new Error('GH_TOKEN is required to verify the PR deadline')
+  const origin = new URL(apiOrigin)
+  if (
+    origin.username ||
+    origin.password ||
+    origin.search ||
+    origin.hash ||
+    origin.pathname !== '/' ||
+    (origin.protocol !== 'https:' &&
+      !(origin.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(origin.hostname)))
+  )
+    throw new Error('Invalid PR metadata API origin')
+  const timeout = deadlineEpochMs === undefined ? 10_000 : Math.min(10_000, deadlineEpochMs - Date.now())
+  if (!Number.isSafeInteger(timeout) || timeout <= 0)
+    throw new Error('The PR matrix work deadline has elapsed')
   let response
-  let run
+  let metadata
   try {
     response = await fetch(
-      `https://api.github.com/repos/${selected.repository}/actions/runs/${selected.runId}`,
+      `${origin.origin}/repos/${selected.repository}/${path}`,
       {
         method: 'GET',
         redirect: 'error',
-        signal: AbortSignal.timeout(10_000),
+        signal: AbortSignal.timeout(timeout),
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/vnd.github+json',
@@ -77,11 +104,29 @@ export async function fetchPrTimeBudget(expected, { token } = {}) {
         },
       },
     )
-    if (response.ok) run = await response.json()
+    if (response.ok) {
+      const chunks = []
+      let bytes = 0
+      for await (const chunk of response.body) {
+        bytes += chunk.byteLength
+        if (bytes > maxMetadataBytes) throw new Error('Oversized PR metadata')
+        chunks.push(chunk)
+      }
+      metadata = JSON.parse(Buffer.concat(chunks).toString('utf8'))
+    } else {
+      await response.body?.cancel()
+    }
   } catch {
     throw new Error('Unable to read PR workflow metadata')
   }
   if (!response.ok) throw new Error(`PR workflow metadata request failed (HTTP ${response.status})`)
+  return metadata
+}
+
+/** One bounded, read-only API request; no runner allocation or GitHub mutation. */
+export async function fetchPrTimeBudget(expected, options = {}) {
+  const selected = identity(expected)
+  const run = await readPrMetadata(selected, `actions/runs/${selected.runId}`, options)
   return prTimeBudgetFromRun(run, selected)
 }
 
@@ -107,6 +152,127 @@ export function remainingPrTimeBudget(
     reserve_seconds: reserveSeconds,
     work_seconds: workSeconds,
     work_minutes: Math.floor(workSeconds / 60),
+  }
+}
+
+/** Job states only: complete test and archive proof remains owned by the aggregate. */
+export function macPrMatrixStatus(snapshot, expected, previousIds = {}) {
+  const selected = identity(expected)
+  if (
+    !Number.isSafeInteger(snapshot?.total_count) ||
+    snapshot.total_count < 0 ||
+    snapshot.total_count > 100 ||
+    !Array.isArray(snapshot.jobs) ||
+    snapshot.jobs.length !== snapshot.total_count
+  )
+    throw new Error('PR matrix guard refuses an incomplete job inventory')
+  const workerNames = Array.from({ length: MAC_PR_COHORT.workers }, (_, worker) =>
+    macHostCohortWorkerName(worker),
+  )
+  const requiredNames = [
+    ...workerNames,
+    MAC_COHORT_ALLOCATOR_NAME,
+    MAC_COHORT_READY_JOB_NAME,
+    MAC_COHORT_GUARD_JOB_NAME,
+  ]
+  const ids = new Set()
+  for (const job of snapshot.jobs) {
+    integer(job?.id, 'matrix job ID')
+    if (
+      ids.has(job.id) ||
+      typeof job.name !== 'string' ||
+      (job.name.startsWith('Native host worker — ') && !workerNames.includes(job.name))
+    )
+      throw new Error('PR matrix guard found duplicate or unexpected jobs')
+    ids.add(job.id)
+  }
+  const jobs = new Map()
+  const pending = []
+  for (const name of requiredNames) {
+    const matches = snapshot.jobs.filter((job) => job.name === name)
+    if (!matches.length && !Object.hasOwn(previousIds, name)) {
+      pending.push({ name, status: 'missing' })
+      continue
+    }
+    if (matches.length !== 1) throw new Error('PR matrix guard requires unique current-attempt jobs')
+    const job = matches[0]
+    if (
+      job.run_id !== selected.runId ||
+      job.run_attempt !== selected.attempt ||
+      job.head_sha !== selected.headSha ||
+      job.run_url !== `${githubApiOrigin}/repos/${selected.repository}/actions/runs/${selected.runId}` ||
+      (Object.hasOwn(previousIds, name) && previousIds[name] !== job.id) ||
+      ![...pendingJobStatuses, 'completed'].includes(job.status) ||
+      (job.status !== 'completed' && job.conclusion !== null)
+    )
+      throw new Error('PR matrix guard found foreign, stale or invalid job metadata')
+    if (job.status === 'completed' && job.conclusion !== 'success')
+      throw new Error(`PR matrix prerequisite did not succeed: ${name}`)
+    if (name === MAC_COHORT_GUARD_JOB_NAME && job.status === 'completed')
+      throw new Error('PR matrix guard must be its active current-attempt job')
+    jobs.set(name, job)
+    if (name === MAC_COHORT_GUARD_JOB_NAME ? job.status !== 'in_progress' : job.status !== 'completed')
+      pending.push({ name, status: job.status })
+  }
+  return {
+    complete: pending.length === 0,
+    pending,
+    jobIds: Object.fromEntries([...jobs].map(([name, job]) => [name, job.id])),
+  }
+}
+
+/** A failing member of the PR worker matrix triggers GitHub's queued-sibling cancellation. */
+export async function guardMacPrMatrix(
+  budget,
+  { token, apiOrigin = githubApiOrigin, pollIntervalMs = 15_000 } = {},
+) {
+  identity(budget)
+  remainingPrTimeBudget(budget)
+  integer(pollIntervalMs, 'matrix polling interval')
+  if (pollIntervalMs > 15_000) throw new Error('PR matrix polling interval exceeds fifteen seconds')
+  const deadlineEpochMs = budget.deadlineEpochMs - PR_SETTLEMENT_RESERVE_SECONDS * 1000
+  const options = { token, apiOrigin, deadlineEpochMs }
+  const verifyBudget = async () => {
+    const observed = await fetchPrTimeBudget(budget, options)
+    if (
+      observed.createdEpochMs !== budget.createdEpochMs ||
+      observed.deadlineEpochMs !== budget.deadlineEpochMs
+    )
+      throw new Error('PR matrix guard deadline changed from the original workflow creation')
+  }
+  await verifyBudget()
+  let state = { jobIds: {}, pending: [] }
+  const requireWorkTime = () => {
+    if (Date.now() >= deadlineEpochMs) {
+      const pending = state.pending.map(({ name, status }) => `${name} (${status})`).join(', ')
+      throw new Error(
+        `The PR matrix work deadline has elapsed; unfinished jobs: ${pending || 'unverified'}`,
+      )
+    }
+  }
+  for (;;) {
+    requireWorkTime()
+    let snapshot
+    try {
+      snapshot = await readPrMetadata(
+        budget,
+        `actions/runs/${budget.runId}/attempts/${budget.attempt}/jobs?per_page=100`,
+        options,
+      )
+    } catch (error) {
+      requireWorkTime()
+      throw error
+    }
+    requireWorkTime()
+    state = macPrMatrixStatus(snapshot, budget, state.jobIds)
+    if (state.complete) {
+      await verifyBudget()
+      requireWorkTime()
+      return { complete: true, workerJobs: MAC_PR_COHORT.workers }
+    }
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(pollIntervalMs, deadlineEpochMs - Date.now())),
+    )
   }
 }
 
@@ -267,6 +433,19 @@ function options(args, mode) {
 
 async function runCli(args, environment) {
   const [mode, ...arguments_] = args
+  if (mode === 'guard-matrix') {
+    if (
+      arguments_.length ||
+      environment.GITHUB_EVENT_NAME !== 'pull_request' ||
+      !environment.GITHUB_REPOSITORY ||
+      !environment.GITHUB_RUN_ID ||
+      !environment.GITHUB_RUN_ATTEMPT
+    )
+      throw new Error('PR matrix guard requires the current PR execution without options')
+    const result = await guardMacPrMatrix(retainedBudget(environment), { token: environment.GH_TOKEN })
+    console.log(JSON.stringify(result))
+    return
+  }
   if (mode === 'run') {
     const separator = arguments_.indexOf('--')
     if (separator < 0 || !arguments_[separator + 1])
@@ -294,7 +473,7 @@ async function runCli(args, environment) {
     })
   }
   if (!['start', 'remaining', 'check'].includes(mode))
-    throw new Error('usage: pr-time-budget.mjs start|remaining|check|run [options]')
+    throw new Error('usage: pr-time-budget.mjs start|remaining|check|run|guard-matrix [options]')
   const selected = options(arguments_, mode)
   const budget =
     mode === 'start'

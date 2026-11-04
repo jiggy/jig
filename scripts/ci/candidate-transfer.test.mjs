@@ -668,7 +668,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('Mac acquisition wiring requires Quick before complete native allocation', async () => {
+test('Mac hosts queue early but require Quick and exact candidates before native qualification', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -688,10 +688,53 @@ test('Mac acquisition wiring requires Quick before complete native allocation', 
     ].join('\n'),
   )
   assert.doesNotMatch(step.run, /AFTER_QUICK|needs\.plan/)
-  assert.ok(acquisition.steps.findIndex((entry) => entry.id === 'acquire-budget') < acquisition.steps.indexOf(step))
-  assert.deepEqual(workflow.jobs.prerequisites.needs, [
-    'scope', 'host-artifacts', 'allocator-ready',
-  ])
+  assert.ok(
+    acquisition.steps.findIndex((entry) => entry.id === 'acquire-budget') <
+      acquisition.steps.indexOf(step),
+  )
+  const workers = workflow.jobs.prerequisites
+  assert.deepEqual(workers.needs, ['scope', 'allocator-ready'])
+  const hostAcquisition = workers.steps.find((entry) =>
+    entry.run?.includes('scripts/ci/candidate-transfer.mjs acquire'),
+  )
+  assert.ok(hostAcquisition)
+  assert.equal(hostAcquisition.run, step.run)
+  assert.equal(hostAcquisition.env.GH_TOKEN, '${{ github.token }}')
+  assert.equal(
+    hostAcquisition.if,
+    "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
+  )
+  assert.ok(!workers.steps.some((entry) => entry.uses?.startsWith('actions/download-artifact@')))
+  const acquisitionIndex = workers.steps.indexOf(hostAcquisition)
+  for (const name of [
+    'Announce this exact host and await its assigned role',
+    'Compile the native launcher and validate SDK descriptor layouts',
+    'Install build dependencies without lifecycle scripts',
+    'Build the source-test workspace packages',
+    'Prepare genuine pinned clients for offline startup and refusal checks',
+  ]) {
+    const index = workers.steps.findIndex((entry) => entry.name === name)
+    assert.ok(
+      index >= 0 && index < acquisitionIndex,
+      `${name} must not wait for canonical transfer`,
+    )
+  }
+  const verificationIndex = workers.steps.findIndex(
+    (entry) => entry.name === 'Verify exact canonical publication archives',
+  )
+  assert.ok(verificationIndex > acquisitionIndex)
+  assert.match(workers.steps[verificationIndex].run, /candidate-provenance\.mjs verify/)
+  for (const name of [
+    'Test native containment and recovery',
+    'Qualify the complete rootless host and installed consumer',
+  ]) {
+    const index = workers.steps.findIndex((entry) => entry.name === name)
+    assert.ok(
+      index > verificationIndex,
+      `${name} requires Quick and verified canonical inputs`,
+    )
+  }
+  assert.ok(workflow.jobs['qualified-architecture'].needs.includes('host-artifacts'))
 })
 
 test('host acquisition waits for the exact queued producer before starting its transfer deadline', async () => {
