@@ -162,7 +162,6 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
     'scope',
     'host-artifacts',
     'cohort-allocator',
-    'allocator-ready',
     'prerequisites',
     'qualified-architecture',
   ])
@@ -178,9 +177,9 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(mac.jobs.prerequisites['continue-on-error']).toBeUndefined()
   expect(mac.jobs['qualified-architecture'].needs).toContain('prerequisites')
   expect(mac.jobs['qualified-architecture'].needs).toContain('cohort-allocator')
-  expect(mac.jobs['qualified-architecture'].needs).toContain('allocator-ready')
-  expect(mac.jobs.prerequisites.needs).toEqual(['scope', 'allocator-ready'])
-  for (const id of ['cohort-allocator', 'allocator-ready']) {
+  expect(mac.jobs['qualified-architecture'].needs).toContain('host-artifacts')
+  expect(mac.jobs.prerequisites.needs).toEqual(['scope', 'host-artifacts'])
+  for (const id of ['cohort-allocator', 'host-artifacts']) {
     expect(mac.jobs[id].needs).toBe('scope')
     expect(mac.jobs[id].if).toBe("${{ needs.scope.outputs.required == 'true' }}")
     expect(mac.jobs[id]['runs-on']).toBe('ubuntu-24.04')

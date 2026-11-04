@@ -51,7 +51,11 @@ trap 'exit 143' TERM
 if [ -z "$report_directory" ]; then report_directory=$release_tmp/reports; fi
 mkdir -p "$report_directory"
 for stage in source-portable source-protocol source-applications source-python; do
-  if has_stage "$stage" && { [ -e "$report_directory/$stage.xml" ] || [ -e "$report_directory/$stage.txt" ]; }; then
+  if has_stage "$stage" && {
+    [ -e "$report_directory/$stage.xml" ] ||
+    [ -e "$report_directory/$stage.txt" ] ||
+    [ -e "$report_directory/$stage" ]
+  }; then
     echo "Source evidence destination must be fresh" >&2; exit 1
   fi
 done
@@ -102,6 +106,9 @@ archive_digests "$@" > "$release_tmp/archive-digests"
 
 run_source_stage() {
   stage_id=$1
+  # Raw runtime reports remain beside merged evidence when a stage fails.
+  stage_reports="$report_directory/$stage_id"
+  mkdir "$stage_reports"
   set -- --target "$stage_id" --profile "$source_profile"
   if [ "${GITHUB_ACTIONS:-}" = true ]; then set -- "$@" --revision "${GITHUB_SHA:?Missing tested source}"; fi
   "$FLOW_NODE" scripts/ci/suite-inventory.mjs "$@" > "$release_tmp/$stage_id.files"
@@ -116,17 +123,18 @@ run_source_stage() {
   if [ -s "$release_tmp/$stage_id.bun.files" ]; then
     set --
     while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.bun.files"
-    bun test "$@" --reporter=junit "--reporter-outfile=$release_tmp/$stage_id.bun.xml"
+    bun test "$@" --reporter=junit "--reporter-outfile=$stage_reports/bun.xml"
   fi
   if [ -s "$release_tmp/$stage_id.node.files" ]; then
     set --
     while IFS= read -r test_file; do set -- "$@" "./$test_file"; done < "$release_tmp/$stage_id.node.files"
-    "$FLOW_NODE" --test --test-reporter ./scripts/ci/source-node-reporter.mjs \
-      "--test-reporter-destination=$release_tmp/$stage_id.node.xml" "$@"
+    "$FLOW_NODE" --test --test-reporter=spec --test-reporter-destination=stdout \
+      --test-reporter ./scripts/ci/source-node-reporter.mjs \
+      "--test-reporter-destination=$stage_reports/node.xml" "$@"
   fi
   set --
-  if [ -s "$release_tmp/$stage_id.bun.files" ]; then set -- "$@" "$release_tmp/$stage_id.bun.xml"; fi
-  if [ -s "$release_tmp/$stage_id.node.files" ]; then set -- "$@" "$release_tmp/$stage_id.node.xml"; fi
+  if [ -s "$release_tmp/$stage_id.bun.files" ]; then set -- "$@" "$stage_reports/bun.xml"; fi
+  if [ -s "$release_tmp/$stage_id.node.files" ]; then set -- "$@" "$stage_reports/node.xml"; fi
   [ "$#" -gt 0 ] || { echo "Selected source stage is empty" >&2; exit 1; }
   "$python_bin" scripts/ci/merge-source-junit.py "$report_directory/$stage_id.xml" "$@" --files "$release_tmp/$stage_id.files"
 }

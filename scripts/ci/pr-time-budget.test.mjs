@@ -10,10 +10,14 @@ import { test } from 'node:test'
 import {
   fetchPrTimeBudget,
   formatPrTimeBudget,
+  formatPrTurnaround,
   guardMacPrMatrix,
   macPrMatrixStatus,
   PR_BUDGET_SECONDS,
-  prTimeBudgetFromRun,
+  PR_COORDINATION_BUDGET_SECONDS,
+  PR_EVIDENCE_BUDGET_SECONDS,
+  PR_PREPARATION_BUDGET_SECONDS,
+  prTimeBudgetFromJob,
   remainingPrTimeBudget,
   runCommandBeforeDeadline,
   writeMacPrGuardSummary,
@@ -27,7 +31,14 @@ import {
 } from './macos-host-cohort.mjs'
 
 const created = Date.parse('2026-11-03T12:00:00Z')
-const expected = { repository: 'jiggy/jig', runId: 41, attempt: 1, headSha: 'a'.repeat(40) }
+const expected = {
+  repository: 'jiggy/jig',
+  runId: 41,
+  attempt: 1,
+  headSha: 'a'.repeat(40),
+  kind: 'worker',
+  jobName: macHostCohortWorkerName(0),
+}
 const metadata = {
   id: expected.runId,
   run_attempt: expected.attempt,
@@ -38,26 +49,81 @@ const metadata = {
   run_started_at: '2026-11-03T12:00:00Z',
 }
 
-test('queue delay consumes the allowance and a rerun cannot restart its clock', () => {
-  const first = prTimeBudgetFromRun(metadata, expected, created + 5 * 60_000)
-  assert.equal(first.deadlineEpochMs, created + 25 * 60_000)
-  assert.deepEqual(remainingPrTimeBudget(first, { now: created + 5 * 60_000 }), {
-    deadline_epoch_ms: created + 25 * 60_000,
+const iso = (value) => new Date(value).toISOString()
+function jobMetadata({
+  name = expected.jobName,
+  start = created,
+  queued = start,
+  id = 1003,
+  ...patch
+} = {}) {
+  return {
+    id,
+    name,
+    run_id: expected.runId,
+    run_attempt: expected.attempt,
+    head_sha: expected.headSha,
+    run_url: `https://api.github.com/repos/${expected.repository}/actions/runs/${expected.runId}`,
+    status: 'in_progress',
+    conclusion: null,
+    created_at: iso(queued),
+    started_at: iso(start),
+    completed_at: null,
+    runner_id: 10001,
+    runner_name: 'GitHub Actions 10001',
+    labels: [name.startsWith('Native host worker — ') ? 'macos-15' : 'ubuntu-24.04'],
+    steps: [
+      {
+        name: 'Set up job',
+        number: 1,
+        status: 'in_progress',
+        conclusion: null,
+        started_at: iso(start),
+        completed_at: null,
+      },
+    ],
+    ...patch,
+  }
+}
+const workerBudget = () => prTimeBudgetFromJob(metadata, jobMetadata(), expected, created)
+
+test('runner queuing preserves execution time and a fresh full attempt gets a distinct job allowance', () => {
+  const first = prTimeBudgetFromJob(
+    metadata,
+    jobMetadata({ start: created + 35 * 60_000, queued: created }),
+    expected,
+    created + 40 * 60_000,
+  )
+  assert.equal(first.deadlineEpochMs, created + 60 * 60_000)
+  assert.deepEqual(remainingPrTimeBudget(first, { now: created + 40 * 60_000 }), {
+    deadline_epoch_ms: created + 60 * 60_000,
     remaining_seconds: 1200,
     reserve_seconds: 120,
     work_seconds: 1080,
     work_minutes: 18,
     step_timeout_minutes: 19,
   })
-  const retried = prTimeBudgetFromRun(
-    { ...metadata, run_attempt: 2, run_started_at: '2026-11-03T12:30:00Z' },
+  const old = workerBudget()
+  const retried = prTimeBudgetFromJob(
+    { ...metadata, run_attempt: 2, run_started_at: '2026-11-03T13:00:00Z' },
+    jobMetadata({
+      id: 2003,
+      run_attempt: 2,
+      start: created + 95 * 60_000,
+      queued: created + 60 * 60_000,
+    }),
     { ...expected, attempt: 2 },
-    created + 30 * 60_000,
+    created + 100 * 60_000,
   )
-  assert.equal(retried.deadlineEpochMs, first.deadlineEpochMs)
+  assert.equal(retried.createdEpochMs, old.createdEpochMs)
+  assert.equal(retried.deadlineEpochMs, created + 120 * 60_000)
+  assert.equal(
+    remainingPrTimeBudget(retried, { now: created + 100 * 60_000 }).remaining_seconds,
+    1200,
+  )
   assert.throws(
-    () => remainingPrTimeBudget(retried, { now: created + 30 * 60_000 }),
-    /25-minute PR deadline has elapsed/,
+    () => remainingPrTimeBudget(old, { now: created + 100 * 60_000 }),
+    /25-minute PR worker allowance has elapsed/,
   )
 })
 
@@ -72,32 +138,114 @@ test('only current-attempt PR metadata for the exact repository and event head s
     { event: 'pull_request_target' },
   ])
     assert.throws(
-      () => prTimeBudgetFromRun({ ...metadata, ...patch }, expected, created),
+      () => prTimeBudgetFromJob({ ...metadata, ...patch }, jobMetadata(), expected, created),
       /Foreign, stale or non-PR/,
     )
   for (const created_at of ['2026-02-31T12:00:00Z', 'bad', '2026-11-03T12:00:01Z'])
-    assert.throws(() => prTimeBudgetFromRun({ ...metadata, created_at }, expected, created))
-  for (const patch of [{ repository: '../jig' }, { headSha: 'merge-ref' }, { runId: NaN }, { attempt: 0 }])
-    assert.throws(() => prTimeBudgetFromRun(metadata, { ...expected, ...patch }, created))
+    assert.throws(() =>
+      prTimeBudgetFromJob({ ...metadata, created_at }, jobMetadata(), expected, created),
+    )
+  for (const patch of [
+    { repository: '../jig' },
+    { headSha: 'merge-ref' },
+    { runId: NaN },
+    { attempt: 0 },
+  ])
+    assert.throws(() =>
+      prTimeBudgetFromJob(metadata, jobMetadata(), { ...expected, ...patch }, created),
+    )
 })
 
-test('human budget timestamps retain original creation and the work and final cutoffs across retries', () => {
-  const first = prTimeBudgetFromRun(metadata, expected, created + 5 * 60_000)
-  const retried = prTimeBudgetFromRun(
-    { ...metadata, run_attempt: 2, run_started_at: '2026-11-03T12:30:00Z' },
-    { ...expected, attempt: 2 },
-    created + 30 * 60_000,
+test('an assigned job clock refuses placeholder starts, copied execution and foreign identities', () => {
+  for (const patch of [
+    { id: 0 },
+    { name: 'other job' },
+    { run_id: 42 },
+    { run_attempt: 2 },
+    { head_sha: 'b'.repeat(40) },
+    { run_url: 'https://api.github.com/repos/foreign/jig/actions/runs/41' },
+    { status: 'queued', runner_id: 0, runner_name: '', steps: [] },
+    { runner_id: 0 },
+    { runner_name: '' },
+    { steps: [] },
+    { steps: [{ status: 'completed', conclusion: 'skipped', started_at: metadata.created_at }] },
+    { labels: ['ubuntu-24.04'] },
+    { status: 'completed', conclusion: 'success' },
+    { started_at: '2026-11-03T11:59:59Z' },
+    { started_at: '2026-11-03T12:00:01Z' },
+  ])
+    assert.throws(() => prTimeBudgetFromJob(metadata, jobMetadata(patch), expected, created))
+  assert.throws(
+    () =>
+      prTimeBudgetFromJob(
+        { ...metadata, run_attempt: 2, run_started_at: '2026-11-03T13:00:00Z' },
+        jobMetadata({ run_attempt: 2, queued: created + 60 * 60_000, start: created }),
+        { ...expected, attempt: 2 },
+        created + 65 * 60_000,
+      ),
+    /stale, copied/,
+  )
+  assert.throws(
+    () =>
+      prTimeBudgetFromJob(
+        metadata,
+        jobMetadata({ start: created + 60 * 60_000, queued: created }),
+        expected,
+        created + 60 * 60_000,
+      ),
+    /60-minute queue/,
+  )
+})
+
+test('budget summaries distinguish execution from queued and total-turnaround time', () => {
+  const first = prTimeBudgetFromJob(
+    metadata,
+    jobMetadata({ start: created + 35 * 60_000, queued: created }),
+    expected,
+    created + 40 * 60_000,
   )
   const description = formatPrTimeBudget(first)
-  assert.equal(formatPrTimeBudget(retried), description)
   assert.match(description, /Workflow created: 2026-11-03T12:00:00\.000Z/)
-  assert.match(description, /Work cutoff: 2026-11-03T12:23:00\.000Z \(23 minutes after creation\)/)
-  assert.match(description, /Final deadline: 2026-11-03T12:25:00\.000Z \(25 minutes after creation\)/)
-  assert.match(description, /Queue time and retries consume this original allowance/)
+  assert.match(description, /Assigned job started: 2026-11-03T12:35:00\.000Z/)
+  assert.match(description, /Job queue: 2100 seconds/)
+  assert.match(description, /Work cutoff: 2026-11-03T12:58:00\.000Z/)
+  assert.match(
+    description,
+    /Final job deadline: 2026-11-03T13:00:00\.000Z \(25 minutes after this job started\)/,
+  )
+  assert.match(description, /does not establish the 25-minute end-to-end turnaround target/)
+  const summary = formatPrTurnaround(first, created + 40 * 60_000)
+  assert.match(summary, /turnaround so far: 2400 seconds/)
+  assert.match(summary, /25-minute end-to-end turnaround target exceeded/)
+  assert.match(summary, /successful execution check does not satisfy that target/)
+})
+
+test('queue coordination, preparation and evidence have explicit separate owning budgets', () => {
+  for (const [kind, jobName, seconds] of [
+    ['worker', expected.jobName, PR_BUDGET_SECONDS],
+    ['coordination', MAC_COHORT_GUARD_JOB_NAME, PR_COORDINATION_BUDGET_SECONDS],
+    ['coordination', MAC_COHORT_ALLOCATOR_NAME, PR_COORDINATION_BUDGET_SECONDS],
+    ['preparation', MAC_COHORT_READY_JOB_NAME, PR_PREPARATION_BUDGET_SECONDS],
+    ['evidence', 'affected-macos', PR_EVIDENCE_BUDGET_SECONDS],
+  ]) {
+    const budget = prTimeBudgetFromJob(
+      metadata,
+      jobMetadata({ name: jobName }),
+      { ...expected, kind, jobName },
+      created,
+    )
+    assert.equal(budget.deadlineEpochMs, created + seconds * 1000)
+    assert.equal(remainingPrTimeBudget(budget, { now: created }).remaining_seconds, seconds)
+  }
+  assert.throws(
+    () =>
+      prTimeBudgetFromJob(metadata, jobMetadata(), { ...expected, kind: 'coordination' }, created),
+    /owning job name/,
+  )
 })
 
 test('phase time rounds down and reserves settlement without extending the absolute deadline', () => {
-  const budget = prTimeBudgetFromRun(metadata, expected, created)
+  const budget = workerBudget()
   const phase = remainingPrTimeBudget(budget, { now: created + 1234 })
   assert.equal(phase.work_seconds, 1378)
   assert.equal(phase.work_minutes, 22)
@@ -113,14 +261,14 @@ test('phase time rounds down and reserves settlement without extending the absol
   assert.throws(() => remainingPrTimeBudget(budget, { now: budget.deadlineEpochMs }), /elapsed/)
   assert.throws(
     () => remainingPrTimeBudget({ ...budget, deadlineEpochMs: budget.deadlineEpochMs + 1 }, { now: created }),
-    /original 25-minute/,
+    /assigned job allowance/,
   )
   for (const reserveSeconds of [-1, 1.5, Infinity, PR_BUDGET_SECONDS])
     assert.throws(() => remainingPrTimeBudget(budget, { now: created, reserveSeconds }))
 })
 
 test('GitHub step backstops cover the exact work deadline and bounded termination grace', () => {
-  const budget = prTimeBudgetFromRun(metadata, expected, created)
+  const budget = workerBudget()
   for (const [reserveSeconds, workMilliseconds, workMinutes, stepMinutes] of [
     // The observed failed phase had 857 seconds left but received only 14 minutes.
     [120, 857_889, 14, 15],
@@ -153,25 +301,32 @@ test('metadata acquisition refuses missing credentials and invalid identity befo
   )
 })
 
-function matrixJobs() {
+function matrixJobs(epoch = created, guardStart = epoch) {
   return [
     MAC_COHORT_ALLOCATOR_NAME,
     MAC_COHORT_READY_JOB_NAME,
     MAC_COHORT_GUARD_JOB_NAME,
-    ...Array.from({ length: MAC_PR_COHORT.workers }, (_, worker) => macHostCohortWorkerName(worker)),
-  ].map((name, index) => ({
-    id: 1000 + index,
-    name,
-    run_id: expected.runId,
-    run_attempt: expected.attempt,
-    head_sha: expected.headSha,
-    run_url: `https://api.github.com/repos/${expected.repository}/actions/runs/${expected.runId}`,
-    status: name === MAC_COHORT_GUARD_JOB_NAME ? 'in_progress' : 'completed',
-    conclusion: name === MAC_COHORT_GUARD_JOB_NAME ? null : 'success',
-  }))
+    ...Array.from({ length: MAC_PR_COHORT.workers }, (_, worker) =>
+      macHostCohortWorkerName(worker),
+    ),
+  ].map((name, index) =>
+    jobMetadata({
+      id: 1000 + index,
+      name,
+      start: name === MAC_COHORT_GUARD_JOB_NAME ? guardStart : epoch,
+      status: name === MAC_COHORT_GUARD_JOB_NAME ? 'in_progress' : 'completed',
+      conclusion: name === MAC_COHORT_GUARD_JOB_NAME ? null : 'success',
+      completed_at: name === MAC_COHORT_GUARD_JOB_NAME ? null : iso(epoch + 60_000),
+    }),
+  )
 }
 
 const matrixSnapshot = (jobs = matrixJobs()) => ({ total_count: jobs.length, jobs })
+const monitorIdentity = { ...expected, kind: 'coordination', jobName: MAC_COHORT_GUARD_JOB_NAME }
+const monitorBudget = () =>
+  prTimeBudgetFromJob(metadata, matrixJobs()[2], monitorIdentity, created + 5 * 60_000)
+const matrixStatus = (snapshot, previous = {}, now = created + 5 * 60_000) =>
+  macPrMatrixStatus(snapshot, monitorBudget(), previous, now)
 
 async function replaceMatrixMetadata(path, value) {
   await writeFile(`${path}.next`, JSON.stringify(value), { flag: 'wx' })
@@ -180,27 +335,24 @@ async function replaceMatrixMetadata(path, value) {
 
 test('matrix job states require every exact worker and distinguish registration from success', () => {
   const complete = matrixSnapshot()
-  const state = macPrMatrixStatus(complete, expected)
+  const state = matrixStatus(complete)
   assert.equal(state.complete, true)
   assert.deepEqual(state.pending, [])
   for (const status of ['queued', 'in_progress', 'requested', 'waiting', 'pending']) {
     const jobs = matrixJobs()
     Object.assign(jobs.at(-1), { status, conclusion: null, runner_id: null, steps: [] })
-    const pending = macPrMatrixStatus(matrixSnapshot(jobs), expected)
+    const pending = matrixStatus(matrixSnapshot(jobs))
     assert.equal(pending.complete, false)
     assert.deepEqual(pending.pending, [{ name: macHostCohortWorkerName(4), status }])
   }
   const missing = matrixSnapshot(matrixJobs().slice(0, -1))
-  assert.deepEqual(macPrMatrixStatus(missing, expected).pending, [
+  assert.deepEqual(matrixStatus(missing).pending, [
     { name: macHostCohortWorkerName(4), status: 'missing' },
   ])
-  assert.throws(() => macPrMatrixStatus(missing, expected, state.jobIds), /unique current-attempt/)
+  assert.throws(() => matrixStatus(missing, state), /unique current-attempt/)
   const changed = matrixJobs()
   changed.at(-1).id++
-  assert.throws(
-    () => macPrMatrixStatus(matrixSnapshot(changed), expected, state.jobIds),
-    /foreign, stale or invalid/,
-  )
+  assert.throws(() => matrixStatus(matrixSnapshot(changed), state), /foreign, stale or invalid/)
 })
 
 test('matrix guard refuses ambiguous, foreign, incomplete and failed job observations', () => {
@@ -218,12 +370,12 @@ test('matrix guard refuses ambiguous, foreign, incomplete and failed job observa
   ]) {
     const jobs = matrixJobs()
     Object.assign(jobs.at(-1), change)
-    assert.throws(() => macPrMatrixStatus(matrixSnapshot(jobs), expected))
+    assert.throws(() => matrixStatus(matrixSnapshot(jobs)))
   }
   const jobs = matrixJobs()
-  assert.throws(() => macPrMatrixStatus(matrixSnapshot([...jobs, jobs.at(-1)]), expected), /duplicate/)
+  assert.throws(() => matrixStatus(matrixSnapshot([...jobs, jobs.at(-1)])), /duplicate/)
   assert.throws(
-    () => macPrMatrixStatus(matrixSnapshot([...jobs, { ...jobs.at(-1), id: 9999 }]), expected),
+    () => matrixStatus(matrixSnapshot([...jobs, { ...jobs.at(-1), id: 9999 }])),
     /unique current-attempt/,
   )
   for (const snapshot of [
@@ -231,13 +383,45 @@ test('matrix guard refuses ambiguous, foreign, incomplete and failed job observa
     { total_count: jobs.length + 1, jobs },
     { jobs },
   ])
-    assert.throws(() => macPrMatrixStatus(snapshot, expected), /incomplete job inventory/)
+    assert.throws(() => matrixStatus(snapshot), /incomplete job inventory/)
   for (const name of [MAC_COHORT_ALLOCATOR_NAME, MAC_COHORT_READY_JOB_NAME]) {
     const failed = matrixJobs().map((job) =>
       job.name === name ? { ...job, conclusion: 'failure' } : job,
     )
-    assert.throws(() => macPrMatrixStatus(matrixSnapshot(failed), expected), /did not succeed/)
+    assert.throws(() => matrixStatus(matrixSnapshot(failed)), /did not succeed/)
   }
+})
+
+test('queued placeholders do not spend execution allowance but neither late nor copied success qualifies', () => {
+  const queued = matrixJobs()
+  Object.assign(queued.at(-1), {
+    status: 'queued',
+    conclusion: null,
+    runner_id: 0,
+    runner_name: '',
+    steps: [],
+  })
+  assert.equal(matrixStatus(matrixSnapshot(queued), {}, created + 30 * 60_000).complete, false)
+  assert.throws(
+    () => matrixStatus(matrixSnapshot(queued), {}, created + 60 * 60_000),
+    /60-minute infrastructure/,
+  )
+  const late = matrixJobs()
+  late.at(-1).completed_at = iso(created + 25 * 60_000)
+  assert.throws(
+    () => matrixStatus(matrixSnapshot(late), {}, created + 26 * 60_000),
+    /25-minute execution allowance/,
+  )
+  const copied = matrixJobs()
+  copied.at(-1).created_at = iso(created + 2 * 60_000)
+  assert.throws(() => matrixStatus(matrixSnapshot(copied)), /stale, copied/)
+  const state = matrixStatus(matrixSnapshot())
+  const changed = matrixJobs()
+  changed.at(-1).runner_id++
+  assert.throws(
+    () => matrixStatus(matrixSnapshot(changed), state),
+    /assignment or start time changed/,
+  )
 })
 
 // This real HTTP service reads ordinary job records from a temporary store.
@@ -247,12 +431,15 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
   const runPath = join(directory, 'run.json')
   const jobsPath = join(directory, 'jobs.json')
   const requestsPath = join(directory, 'requests.txt')
+  const guardStart = Date.now() - (PR_COORDINATION_BUDGET_SECONDS - 120) * 1000 + workMilliseconds
   const run = {
     ...metadata,
-    created_at: new Date(Date.now() - 23 * 60_000 + workMilliseconds).toISOString(),
+    created_at: iso(guardStart - 120_000),
+    run_started_at: iso(guardStart - 60_000),
   }
+  const records = matrixJobs(Date.now() - 120_000, guardStart)
   await writeFile(runPath, JSON.stringify(run))
-  await writeFile(jobsPath, JSON.stringify(matrixSnapshot()))
+  await writeFile(jobsPath, JSON.stringify(matrixSnapshot(records)))
   await writeFile(requestsPath, '')
   const resource = `/repos/${expected.repository}/actions/runs/${expected.runId}`
   const server = createServer(async (request, response) => {
@@ -269,7 +456,8 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
         const contents = await readFile(jobsPath)
         const configuration = JSON.parse(contents)
         if (configuration.hold_body) response.write('{"total_count":')
-        else if (configuration.http_status) response.writeHead(configuration.http_status).end()
+        else if (configuration.http_status)
+          response.writeHead(configuration.http_status, configuration.http_headers ?? {}).end()
         else response.end(contents)
         await appendFile(requestsPath, 'jobs\n')
       } else {
@@ -281,9 +469,7 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
   })
   server.listen(0, '127.0.0.1')
   await once(server, 'listening')
-  run.created_at = new Date(Date.now() - 23 * 60_000 + workMilliseconds).toISOString()
-  await replaceMatrixMetadata(runPath, run)
-  const budget = prTimeBudgetFromRun(run, expected)
+  const budget = prTimeBudgetFromJob(run, records[2], monitorIdentity)
   t.after(async () => {
     const stopped = once(server, 'close')
     server.closeAllConnections()
@@ -303,13 +489,14 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
     options,
     runPath,
     jobsPath,
+    jobs: () => structuredClone(records),
     requests: () => readFile(requestsPath, 'utf8'),
   }
 }
 
 test('real matrix polling observes queued work becoming successful without fabricating proof', async (t) => {
   const f = await matrixMetadataService(t)
-  const queued = matrixJobs()
+  const queued = f.jobs()
   Object.assign(queued.at(-1), { status: 'queued', conclusion: null, runner_id: 0, steps: [] })
   await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(queued))
   const running = guardMacPrMatrix(f.budget, f.options)
@@ -317,7 +504,7 @@ test('real matrix polling observes queued work becoming successful without fabri
   while (!(await f.requests()).includes('jobs\n') && Date.now() < observationDeadline)
     await new Promise((resolve) => setTimeout(resolve, 10))
   assert.match(await f.requests(), /jobs\n/)
-  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot())
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
   assert.deepEqual(await running, { complete: true, workerJobs: 5 })
   const summaryPath = join(f.directory, 'summary.md')
   await writeFile(summaryPath, 'Existing job summary.\n\n')
@@ -340,10 +527,15 @@ test('an optional summary write failure does not fail its caller or write to std
     import { writeMacPrGuardSummary } from ${JSON.stringify(new URL('./pr-time-budget.mjs', import.meta.url).href)}
     await writeMacPrGuardSummary(JSON.parse(process.argv[1]), process.argv[2])
     console.log('summary reporting returned')
-  `, JSON.stringify(prTimeBudgetFromRun(metadata, expected, created)), directory], {
-    encoding: 'utf8',
-    timeout: 5000,
-  })
+  `,
+      JSON.stringify(monitorBudget()),
+      directory,
+    ],
+    {
+      encoding: 'utf8',
+      timeout: 5000,
+    },
+  )
   assert.ifError(result.error)
   assert.equal(result.status, 0, result.stderr)
   assert.equal(result.stdout, 'summary reporting returned\n')
@@ -353,40 +545,127 @@ test('an optional summary write failure does not fail its caller or write to std
 
 test('an actual deadline refuses four successes and one permanently unassigned current-attempt worker', async (t) => {
   const f = await matrixMetadataService(t, 3000)
-  const queued = matrixJobs()
+  const queued = f.jobs()
   Object.assign(queued.at(-1), { status: 'queued', conclusion: null, runner_id: 0, steps: [] })
   Object.assign(queued[0], { status: 'in_progress', conclusion: null })
   await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(queued))
   await assert.rejects(
     guardMacPrMatrix(f.budget, f.options),
-    /work deadline has elapsed; unfinished jobs:.*Native host worker — arm64 \/ 4 \(queued\)/,
+    /coordination allowance has elapsed; unfinished jobs:.*Native host worker — arm64 \/ 4 \(queued\)/,
   )
   assert.match(await f.requests(), /jobs\n/)
   assert.deepEqual((await readdir(f.directory)).sort(), ['jobs.json', 'requests.txt', 'run.json'])
 })
 
 test('real metadata reads refuse failed allocation, stale worker attempts and HTTP errors', async (t) => {
-  const f = await matrixMetadataService(t)
-  const failed = matrixJobs()
+  const f = await matrixMetadataService(t, 10_000)
+  const failed = f.jobs()
   failed[0].conclusion = 'failure'
   await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(failed))
   await assert.rejects(guardMacPrMatrix(f.budget, f.options), /did not succeed/)
-  const stale = matrixJobs()
+  const stale = f.jobs()
   stale.at(-1).run_attempt++
   await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(stale))
-  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /foreign, stale or invalid/)
+  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /[Ff]oreign, stale or invalid/)
   await replaceMatrixMetadata(f.jobsPath, { http_status: 503 })
   await assert.rejects(guardMacPrMatrix(f.budget, f.options), /HTTP 503/)
 })
 
-test('a stalled real metadata body cannot extend the original work deadline', async (t) => {
+test('a stalled real metadata body cannot extend the coordination allowance', async (t) => {
   const f = await matrixMetadataService(t, 2000)
   await replaceMatrixMetadata(f.jobsPath, { hold_body: true })
-  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /work deadline has elapsed/)
+  await assert.rejects(
+    guardMacPrMatrix(f.budget, f.options),
+    /bounded PR metadata body|coordination allowance has elapsed/,
+  )
   assert.match(await f.requests(), /jobs\n/)
 })
 
-function environment(createdEpochMs = Date.now() - 5 * 60_000) {
+test('real metadata assignment polling waits for runner visibility without using the queued start', async (t) => {
+  const f = await matrixMetadataService(t, 20_000)
+  const queued = f.jobs()
+  Object.assign(queued[2], {
+    status: 'queued',
+    conclusion: null,
+    runner_id: 0,
+    runner_name: '',
+    steps: [],
+  })
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(queued))
+  const pending = fetchPrTimeBudget(monitorIdentity, f.options)
+  const deadline = Date.now() + 2000
+  while (!(await f.requests()).includes('jobs\n') && Date.now() < deadline)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.match(await f.requests(), /jobs\n/)
+  const assignedButNotExecuting = f.jobs()
+  assignedButNotExecuting[2].steps = [{ status: 'queued', conclusion: null, started_at: null }]
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(assignedButNotExecuting))
+  const executionObservationDeadline = Date.now() + 7000
+  while (
+    (await f.requests()).split('jobs\n').length - 1 < 2 &&
+    Date.now() < executionObservationDeadline
+  )
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal((await f.requests()).split('jobs\n').length - 1, 2)
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
+  const budget = await pending
+  assert.equal(budget.jobId, f.budget.jobId)
+  assert.equal(budget.jobStartedEpochMs, f.budget.jobStartedEpochMs)
+  assert.equal(budget.deadlineEpochMs, f.budget.deadlineEpochMs)
+})
+
+test('real rate-limit responses honor Retry-After and refuse a wait outside the metadata bound', async (t) => {
+  const f = await matrixMetadataService(t, 12_000)
+  await replaceMatrixMetadata(f.jobsPath, {
+    http_status: 429,
+    http_headers: { 'retry-after': '60' },
+  })
+  await assert.rejects(
+    fetchPrTimeBudget(monitorIdentity, {
+      ...f.options,
+      deadlineEpochMs: Date.now() + 2000,
+    }),
+    /rate limited.*required wait does not fit/,
+  )
+  assert.equal(
+    (await f.requests()).split('jobs\n').length - 1,
+    1,
+    'no retry may precede the required server wait',
+  )
+  await replaceMatrixMetadata(f.jobsPath, {
+    http_status: 429,
+    http_headers: { 'retry-after': '1' },
+  })
+  const start = Date.now()
+  const pending = fetchPrTimeBudget(monitorIdentity, f.options)
+  while ((await f.requests()).split('jobs\n').length - 1 < 2 && Date.now() < start + 2000)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
+  assert.equal((await pending).jobId, f.budget.jobId)
+  assert.ok(Date.now() - start >= 1000, 'the actual HTTP retry must wait for Retry-After')
+  const resetEpoch = Math.ceil(Date.now() / 1000) + 1
+  await replaceMatrixMetadata(f.jobsPath, {
+    http_status: 429,
+    http_headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetEpoch) },
+  })
+  const previousRequests = (await f.requests()).split('jobs\n').length - 1
+  const resetPending = fetchPrTimeBudget(monitorIdentity, f.options)
+  const observationDeadline = Date.now() + 2000
+  while (
+    (await f.requests()).split('jobs\n').length - 1 === previousRequests &&
+    Date.now() < observationDeadline
+  )
+    await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal((await f.requests()).split('jobs\n').length - 1, previousRequests + 1)
+  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
+  assert.equal((await resetPending).jobId, f.budget.jobId)
+  assert.ok(
+    Date.now() >= resetEpoch * 1000,
+    'an exhausted primary limit waits for its reset without Retry-After',
+  )
+})
+
+function environment(jobStartedEpochMs = Date.now() - 5 * 60_000, kind = 'worker') {
   return {
     ...process.env,
     GITHUB_EVENT_NAME: 'pull_request',
@@ -397,8 +676,16 @@ function environment(createdEpochMs = Date.now() - 5 * 60_000) {
     JIG_PR_BUDGET_RUN_ID: String(expected.runId),
     JIG_PR_BUDGET_ATTEMPT: String(expected.attempt),
     JIG_PR_BUDGET_HEAD_SHA: expected.headSha,
-    JIG_PR_RUN_CREATED_EPOCH_MS: String(createdEpochMs),
-    JIG_PR_DEADLINE_EPOCH_MS: String(createdEpochMs + 25 * 60_000),
+    JIG_PR_BUDGET_KIND: kind,
+    JIG_PR_BUDGET_JOB_NAME: kind === 'coordination' ? MAC_COHORT_GUARD_JOB_NAME : expected.jobName,
+    JIG_PR_BUDGET_JOB_ID: kind === 'coordination' ? '1002' : '1003',
+    JIG_PR_RUN_CREATED_EPOCH_MS: String(jobStartedEpochMs - 60_000),
+    JIG_PR_ATTEMPT_STARTED_EPOCH_MS: String(jobStartedEpochMs - 60_000),
+    JIG_PR_JOB_CREATED_EPOCH_MS: String(jobStartedEpochMs),
+    JIG_PR_JOB_STARTED_EPOCH_MS: String(jobStartedEpochMs),
+    JIG_PR_DEADLINE_EPOCH_MS: String(
+      jobStartedEpochMs + (kind === 'coordination' ? 90 : 25) * 60_000,
+    ),
   }
 }
 
@@ -412,7 +699,7 @@ function cli(args, env = environment()) {
   return result
 }
 
-test('the guard CLI is PR-only, refuses options and cannot reset an expired original work allowance', async (t) => {
+test('the guard CLI is PR-only, refuses options and cannot reset an expired coordination allowance', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-pr-guard-cli-'))
   t.after(() => rm(directory, { recursive: true, force: true }))
   const summaryPath = join(directory, 'summary.md')
@@ -424,13 +711,13 @@ test('the guard CLI is PR-only, refuses options and cannot reset an expired orig
   }
   assert.equal(cli(['guard-matrix', '--reserve-seconds', '0']).status, 1)
   const expired = cli(['guard-matrix'], {
-    ...environment(Date.now() - 23 * 60_000 - 1000),
+    ...environment(Date.now() - 90 * 60_000 - 1000, 'coordination'),
     GH_TOKEN: 'unneeded-before-request',
     GITHUB_STEP_SUMMARY: summaryPath,
   })
   assert.equal(expired.status, 1)
-  assert.match(expired.stderr, /work deadline has elapsed/)
-  assert.match(expired.stderr, /This Ubuntu deadline monitor watches all five Mac worker jobs/)
+  assert.match(expired.stderr, /90-minute PR coordination allowance has elapsed/)
+  assert.match(expired.stderr, /This Ubuntu monitor watches all five Mac workers/)
   assert.doesNotMatch(expired.stderr, /Monitor succeeded/)
   assert.equal(expired.stdout, '')
   assert.equal(await readFile(summaryPath, 'utf8'), 'Existing job summary.\n')
@@ -479,6 +766,27 @@ test('actual final check permits settlement time but refuses expired, moved or f
     ['check', '--reserve-seconds', '1.5'],
   ])
     assert.equal(cli(args).status, 1)
+})
+
+test('a fresh bounded execution reports an exceeded end-to-end target without changing its result', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-pr-turnaround-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  const summary = join(directory, 'summary.md')
+  const env = {
+    ...environment(Date.now() - 2 * 60_000),
+    JIG_PR_RUN_CREATED_EPOCH_MS: String(Date.now() - 120 * 60_000),
+    JIG_PR_ATTEMPT_STARTED_EPOCH_MS: String(Date.now() - 40 * 60_000),
+    JIG_PR_JOB_CREATED_EPOCH_MS: String(Date.now() - 35 * 60_000),
+  }
+  const result = cli(['check', '--github-summary', summary], env)
+  assert.equal(result.status, 0, result.stderr)
+  assert.ok(JSON.parse(result.stdout).remaining_seconds > 0)
+  assert.match(result.stderr, /25-minute end-to-end turnaround target exceeded/)
+  const report = await readFile(summary, 'utf8')
+  assert.match(report, /PR worker allowance/)
+  assert.match(report, /Job queue: /)
+  assert.match(report, /Current attempt turnaround so far:/)
+  assert.match(report, /successful execution check does not satisfy that target/)
 })
 
 test('bounded subprocesses preserve literal arguments, actual nonzero exits and signals', async () => {

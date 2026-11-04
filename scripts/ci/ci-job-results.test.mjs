@@ -40,44 +40,53 @@ test('successful needs retain source target aliases and do not invent observed p
   })
 })
 
-test('actual failed CLI invocation writes results and diagnostics before refusing the aggregate', async (t) => {
-  const f = await fixture(t)
-  const summary = join(f.root, 'summary.md')
-  const observations = join(f.root, 'jobs.json')
-  await writeFile(
-    observations,
-    JSON.stringify([
+for (const outcome of ['cancelled', 'abandoned']) {
+  test(`${outcome} needs retain raw diagnostics and fail the actual CLI`, async (t) => {
+    const f = await fixture(t)
+    const summary = join(f.root, 'summary.md')
+    const observations = join(f.root, 'jobs.json')
+    await writeFile(
+      observations,
+      JSON.stringify([
+        {
+          id: 123,
+          name: 'Python 3.14 on macos-15',
+          conclusion: 'cancelled',
+          runner_id: 0,
+          runner_name: '',
+          steps: [],
+        },
+      ]),
+    )
+    const result = spawnSync(
+      process.execPath,
+      [helper, '--output', f.output, '--diagnostics', f.diagnostics, '--jobs', observations],
       {
-        id: 123,
-        name: 'Python 3.14 on macos-14',
-        conclusion: 'cancelled',
-        runner_name: '',
-        steps: [],
+        env: {
+          ...process.env,
+          JOB_RESULTS: JSON.stringify({
+            ...jobs,
+            'python-installed': { result: outcome, outputs: {} },
+          }),
+          GITHUB_STEP_SUMMARY: summary,
+        },
+        encoding: 'utf8',
+        timeout: 5_000,
       },
-    ]),
-  )
-  const result = spawnSync(
-    process.execPath,
-    [helper, '--output', f.output, '--diagnostics', f.diagnostics, '--jobs', observations],
-    {
-      env: {
-        ...process.env,
-        JOB_RESULTS: JSON.stringify({ ...jobs, 'python-installed': { result: 'cancelled' } }),
-        GITHUB_STEP_SUMMARY: summary,
-      },
-      encoding: 'utf8',
-      timeout: 5_000,
-    },
-  )
-  assert.ifError(result.error)
-  assert.equal(result.status, 1)
-  assert.match(result.stderr, /python-installed=cancelled/)
-  assert.equal((await f.json('results.json'))['python-installed'], 'cancelled')
-  const diagnostics = await f.json('diagnostics.json')
-  assert.deepEqual(diagnostics.failures, [{ id: 'python-installed', result: 'cancelled' }])
-  assert.equal(diagnostics.observations[0].classification, 'runner-not-assigned')
-  assert.match(await readFile(summary, 'utf8'), /Python 3.14 on macos-14: runner-not-assigned/)
-})
+    )
+    assert.ifError(result.error)
+    assert.equal(result.status, 1)
+    assert.ok(result.stderr.includes(`python-installed=${outcome}`), result.stderr)
+    assert.equal((await f.json('results.json'))['python-installed'], outcome)
+    const diagnostics = await f.json('diagnostics.json')
+    assert.deepEqual(diagnostics.failures, [{ id: 'python-installed', result: outcome }])
+    assert.equal(diagnostics.observations[0].conclusion, 'cancelled')
+    assert.equal(diagnostics.observations[0].classification, 'runner-not-assigned')
+    const summaryText = await readFile(summary, 'utf8')
+    assert.ok(summaryText.includes(`| python-installed | ${outcome} |`))
+    assert.match(summaryText, /Python 3.14 on macos-15: runner-not-assigned/)
+  })
+}
 
 test('started failures and cancellations retain their distinction without inferring a test cause', () => {
   const report = ciJobResults(jobs, [

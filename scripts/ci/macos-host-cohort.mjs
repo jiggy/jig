@@ -15,7 +15,7 @@ export const MAC_PR_COHORT = Object.freeze({ workers: 5, shards: 3 })
 export const MAC_PR_COHORT_ROLE_ORDER = Object.freeze([2, 0, 1])
 export const MAC_COHORT_ARTIFACT_CLIENT_VERSION = '2.3.2'
 export const MAC_COHORT_ALLOCATOR_NAME = 'Allocate exact-profile Mac roles'
-export const MAC_COHORT_READY_JOB_NAME = 'Require an active Mac role allocator'
+export const MAC_COHORT_READY_JOB_NAME = 'Prepare Mac inputs and confirm allocator readiness'
 export const MAC_COHORT_GUARD_JOB_NAME = 'Enforce Mac PR deadline'
 const PROFILE_FIELDS = ['arch', 'kernel', 'build', 'bun', 'revision']
 const RUN_FIELDS = ['sourceRevision', 'runId', 'runAttempt']
@@ -549,25 +549,151 @@ export function decodeMacHostCohortRecord(bytes, artifact) {
   }
 }
 
-export function downloadMacHostCohortRecord(repository, artifact) {
+class MacRecordTransportError extends Error {
+  constructor(kind, details = {}) {
+    super(`Mac cohort record transport ${kind}`)
+    this.kind = kind
+    Object.assign(this, details)
+  }
+}
+
+function recordRetryHeaders(headers) {
+  const integer = (name) => {
+    const value = headers.get(name)
+    return /^[0-9]{1,15}$/.test(value ?? '') && Number.isSafeInteger(Number(value))
+      ? Number(value) : undefined
+  }
+  const remaining = integer('x-ratelimit-remaining')
+  const reset = integer('x-ratelimit-reset')
+  const value = headers.get('retry-after')
+  const date = typeof value === 'string' && value.length <= 128 ? Date.parse(value) : NaN
+  const seconds = integer('retry-after')
+  let retryAfterMs = seconds !== undefined ? seconds * 1000
+    : Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined
+  if (remaining === 0 && reset !== undefined)
+    retryAfterMs = Math.max(retryAfterMs ?? 0, reset * 1000 - Date.now(), 0)
+  return { remaining, reset, retryAfterMs }
+}
+
+async function readMacRecordArchive(url, token, artifact, { signal, localHttp }) {
+  let phase = 'api'
+  for (let redirects = 0; ; redirects++) {
+    let response
+    try {
+      response = await fetch(url, {
+        redirect: 'manual', signal,
+        headers: redirects === 0 ? {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+        } : {},
+      })
+    } catch {
+      throw new MacRecordTransportError(signal.aborted ? 'timeout' : 'network', { phase, retryable: true })
+    }
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      await response.body?.cancel().catch(() => {})
+      let next
+      try {
+        const location = response.headers.get('location')
+        if (!location) throw new Error('Missing location')
+        next = new URL(location, url)
+      } catch {
+        throw new MacRecordTransportError('invalid-redirect', { phase })
+      }
+      if (redirects >= 3 || next.username || next.password || next.hash ||
+          (next.protocol !== 'https:' && !(localHttp && next.protocol === 'http:' &&
+            ['127.0.0.1', '[::1]'].includes(next.hostname))))
+        throw new MacRecordTransportError('invalid-redirect', { phase })
+      // The API alone receives GH_TOKEN. Signed storage redirects receive no credentials.
+      url = next
+      phase = 'archive'
+      continue
+    }
+    if (response.status !== 200) {
+      await response.body?.cancel().catch(() => {})
+      const status = response.status
+      const headers = recordRetryHeaders(response.headers)
+      const rateLimited = status === 429 || (status === 403 &&
+        (headers.remaining === 0 || headers.retryAfterMs !== undefined))
+      const created = Date.parse(artifact.created_at)
+      const fresh = Number.isFinite(created) && created <= Date.now() && Date.now() - created <= 60_000
+      throw new MacRecordTransportError('http', {
+        phase, status, ...headers,
+        retryAfterMs: rateLimited ? headers.retryAfterMs ?? 60_000 : headers.retryAfterMs,
+        retryable: rateLimited || status === 408 || (status >= 500 && status <= 599) ||
+          (status === 404 && fresh),
+      })
+    }
+    const chunks = []
+    let length = 0
+    try {
+      if (!response.body) throw new MacRecordTransportError('missing-body', { phase })
+      for await (const chunk of response.body) {
+        length += chunk.byteLength
+        if (length > MAX_RECORD_ARCHIVE_BYTES)
+          throw new MacRecordTransportError('oversized-body', { phase })
+        chunks.push(chunk)
+      }
+    } catch (error) {
+      if (error instanceof MacRecordTransportError) throw error
+      throw new MacRecordTransportError(signal.aborted ? 'timeout' : 'network', { phase, retryable: true })
+    }
+    return Buffer.concat(chunks)
+  }
+}
+
+/** Retry only reads of one immutable artifact, within the caller's existing deadline. */
+export async function downloadMacHostCohortRecord(
+  repository, artifact, { token = process.env.GH_TOKEN, deadlineMs, apiOrigin = 'https://api.github.com' } = {},
+) {
   if (
     typeof repository !== 'string' ||
     !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository) ||
     repository.split('/').some((part) => part === '.' || part === '..')
   )
     throw new Error('Invalid Mac cohort record repository')
-  const metadata = requireRecordArchiveMetadata(artifact)
-  let bytes
-  try {
-    bytes = execFileSync(
-      'gh',
-      ['api', `repos/${repository}/actions/artifacts/${metadata.id}/zip`],
-      { timeout: 20_000, maxBuffer: MAX_RECORD_ARCHIVE_BYTES, stdio: ['pipe', 'pipe', 'pipe'] },
-    )
-  } catch {
-    throw new Error('Unable to download the bounded Mac cohort record archive')
+  const selected = { ...artifact }
+  const metadata = requireRecordArchiveMetadata(selected)
+  if (typeof token !== 'string' || !token) throw new Error('Mac cohort record download requires GH_TOKEN')
+  if (!Number.isSafeInteger(deadlineMs) || deadlineMs <= Date.now())
+    throw new Error('Mac cohort record download deadline expired or invalid')
+  const origin = new URL(apiOrigin)
+  const localHttp = origin.protocol === 'http:' && ['127.0.0.1', '[::1]'].includes(origin.hostname)
+  if (origin.username || origin.password || origin.search || origin.hash || origin.pathname !== '/' ||
+      (origin.protocol !== 'https:' && !localHttp))
+    throw new Error('Invalid Mac cohort record API origin')
+  const url = new URL(`/repos/${repository}/actions/artifacts/${metadata.id}/zip`, origin)
+  const deadline = Math.min(deadlineMs, Date.now() + 30_000)
+  for (let attempt = 1; attempt <= 4; attempt++) {
+    const remaining = deadline - Date.now()
+    if (remaining <= 0) throw new Error(`Mac cohort record download deadline expired (artifact=${metadata.id})`)
+    try {
+      const bytes = await readMacRecordArchive(url, token, selected, {
+        signal: AbortSignal.timeout(Math.min(20_000, remaining)), localHttp,
+      })
+      const record = decodeMacHostCohortRecord(bytes, selected)
+      if (Date.now() >= deadline)
+        throw new Error(`Mac cohort record download deadline expired (artifact=${metadata.id})`)
+      return record
+    } catch (error) {
+      if (!(error instanceof MacRecordTransportError)) throw error
+      const delay = Math.max(1000 * 2 ** (attempt - 1), error.retryAfterMs ?? 0)
+      const retry = error.retryable === true && attempt < 4 && delay < deadline - Date.now()
+      const diagnostic = {
+        artifact: metadata.id, attempt, phase: error.phase, kind: error.kind,
+        ...(error.status === undefined ? {} : { status: error.status }),
+        ...(error.remaining === undefined ? {} : { remaining: error.remaining }),
+        ...(error.reset === undefined ? {} : { reset: error.reset }),
+        ...(error.retryAfterMs === undefined ? {} : { retryAfterMs: error.retryAfterMs }),
+        retry,
+      }
+      console.error(`Mac cohort record download: ${JSON.stringify(diagnostic)}`)
+      if (!retry)
+        throw new Error(`Unable to download the bounded Mac cohort record archive: ${JSON.stringify(diagnostic)}`)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
   }
-  return decodeMacHostCohortRecord(bytes, artifact)
 }
 
 /** The caller supplies an isolated, exact-version official artifact client. */

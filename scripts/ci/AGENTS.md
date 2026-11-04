@@ -86,6 +86,10 @@ preparation never becomes a consumer requirement.
   Both portable and protocol stages run `.node.mjs` files under verified Node.
   Actual Node events retain file identities through `source-node-reporter.mjs`.
   The report merger requires complete selected-file coverage across Node and Bun.
+  CI retains raw runtime reports beside successful merged reports.
+  Node also prints readable failure details into the existing job transcript.
+  Raw reports remain diagnostic and cannot supply successful stage evidence.
+
   Python executes every selected file, including
   nested additions, and emits exact completed-file markers only after successful
   zero-skip groups. Disposable application reports normalize file paths only
@@ -98,10 +102,12 @@ preparation never becomes a consumer requirement.
   checkout, never a supplied selection plan. Installed completion markers carry
   no test-case credit.
 - `ci-job-results.mjs` writes required job outcomes and source-stage aliases
-  before refusing an unsuccessful CI aggregate. Its separate diagnostic report
-  preserves failed job identities and optional current-attempt GitHub job
-  observations. A cancelled job with an explicitly empty runner and step list
+  before refusing an unsuccessful CI aggregate.
+  Its separate diagnostic report preserves raw failed results and optional current-attempt GitHub job conclusions.
+  An `abandoned` needs result remains unsuccessful even when the API reports `cancelled`.
+  A cancelled job with an explicitly empty runner and step list
   is reported as unassigned. Missing observations never establish that cause.
+
   Observations cannot qualify execution, bypass evidence validation or change
   required job outcomes. API unavailability leaves them absent.
 - `native-responses-probe.mjs` observes the existing free Responses endpoint
@@ -308,8 +314,8 @@ They consume frozen package exports with tracked test helpers and installed
   diagnostics. Their closed wall intervals and bounded profile projections appear
   in the existing job log. Timing changes no deadlines, inventories or outcomes.
 
-  Per-test and product deadlines stay unchanged. PR work shares an absolute
-  workflow budget. Main/manual runs retain their complete-host allowance.
+  Per-test and product deadlines stay unchanged. Each assigned PR worker has its own execution allowance.
+  Queue, preparation, coordination, and evidence limits remain separate. Main/manual runs retain their complete-host allowance.
   Exact allocations belong to `.github/AGENTS.md` and the workflow.
 - `macos-host-test-shards.mjs` obtains full Mac membership from the shared suite
   catalog, retaining portable files until a separate audit proves host
@@ -338,17 +344,18 @@ They consume frozen package exports with tracked test helpers and installed
 - `macos-host-cohort.mjs` owns the PR assignment protocol. One running Ubuntu
   allocator assigns three roles independently within exactly two admitted ARM
   profiles. Five workers publish unique announcements and await their own
-  assignments. A readiness gate starts workers only after the allocator is live.
+  assignments. One preparation gate starts workers only after canonical acquisition, Quick success, and allocator readiness.
   Workers never wait for an unscheduled Mac peer. Artifact names are not locks.
 
   Dispatch each profile's roles in the source-owned order 2, 0, 1 and replay that order when validating assignments.
   The installed role starts on the earliest matching worker. Native prerequisites remain on role zero, and whole-file ownership is unchanged.
 
-  Worker allocation overlaps canonical production. Each executing worker acquires verified canonical inputs after host preparation and before native qualification.
+  Workers queue after preparation succeeds.
+  Each executing worker downloads the immutable prepared artifact and verifies canonical provenance before native qualification.
 
   Records bind the tested merge, run, attempt, allocator, worker job and complete
   host tuple. Reconcile the final ledger with every announcement, assignment and
-  worker receipt. Require the allocator, readiness gate, deadline guard and every worker job to succeed in the current attempt.
+  worker receipt. Require preparation, the allocator, deadline guard, and every worker job to succeed in the current attempt.
   Failed uploads, duplicate records, ambiguous responses and
   deadlines fail closed. Assignment alone grants no execution credit.
 
@@ -359,36 +366,54 @@ They consume frozen package exports with tracked test helpers and installed
   Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
   parsing. Parse one regular JSON member without filesystem extraction.
 
+  Immutable coordination downloads allow four attempts within 30 seconds, clipped to the caller's phase deadline.
+  Retry transport failures, HTTP 408, 429, 5xx, explicit throttling responses, and recent already-listed artifact 404s.
+  Honor rate-limit waits only when they fit. Validate unchanged IDs, sizes, and digests after every successful transfer.
+
+  Send credentials only to the API origin, never storage redirects. Diagnostics retain bounded status and identity fields without response bodies or credentials.
+  Ownership uploads and whole claims are never replayed.
+
+  Before publishing readiness, wait at most 60 seconds for the allocator's unique current-attempt job to become active.
+  Missing and queued records may wait. Duplicate, replaced, terminal, invalid, and foreign records fail immediately.
+  Idle artifact polling and job metadata refresh use 60-second intervals.
+  New worker announcements restore five-second polling for one minute. Refresh job observations before issuing assignments.
+
   `macos-host-cohort-run.mjs` validates every executing worker's exact source
   reports and canonical metadata, including minority profiles. Only then does it
   normalize one complete matching role set for the existing full report reader.
   Retained timing data includes only validated current worker identities and UTC intervals.
   Surplus workers cannot retain execution proof. Main/manual runs use role zero
-  directly and do not participate in allocation. Their allocator and readiness
-  jobs succeed without publishing records, preserving dependency success.
+  directly and do not participate in allocation. Their allocator succeeds without publishing records, while preparation still acquires canonical inputs.
 
   Keep artifact runtime credentials inside the pinned JavaScript action and child.
   Copy the isolated `mac-cohort-client/` manifest and generated Bun lock into runner scratch.
   Install the exact official client and locked dependency digests with `--frozen-lockfile --ignore-scripts`.
   Regenerate the tool lock with the workflow's pinned Bun version when updating dependencies.
   Never export artifact runtime credentials into later steps.
-- `pr-time-budget.mjs` owns the fixed 1,500-second PR workflow allowance and
-  120-second evidence reserve. Verify creation metadata against repository, run,
-  attempt and PR event head before retaining its deadline. Test evidence remains
-  bound to the separate tested merge SHA.
+- `pr-time-budget.mjs` owns each assigned PR worker's 1,500-second execution allowance, including a 120-second cleanup and evidence reserve.
+  Verify repository, run, attempt, PR head, job identity, runner assignment, and executed steps before retaining the job's start time.
+  Queued placeholder timestamps grant no execution allowance. Test evidence remains bound to the separate tested merge SHA.
 
-  Queue delays and retries consume that original allowance. Bound child process
-  groups by the remaining work time and reject completion after the final deadline.
+  Fresh full native attempts receive fresh job allowances and require all execution and cleanup evidence from that attempt.
+  Reject copied prior-attempt jobs and partial native recovery. Previous failed attempts remain failed.
+  Bound child process groups by remaining work time and reject completion after the assigned job's final deadline.
   PR command ownership settles remaining descendants even after a successful leader exit.
+
+  Preparation, coordination, and evidence jobs have separate 45-minute, 90-minute, and five-minute allowances.
+  Unassigned workers have a 60-minute queue ceiling. The earlier applicable phase limit still wins.
+  Record original creation and current-attempt start times for turnaround reporting, never as native execution anchors.
 
   Floor work minutes for admission, but round the GitHub step backstop up from raw remaining milliseconds plus bounded termination grace.
   The exact Node deadline remains authoritative. Integer-minute rounding must not interrupt its process-group cleanup early.
 
   Its PR matrix guard waits for all five exact current-attempt Mac workers using read-only Actions metadata.
-  Missing, failed, ambiguous or overdue workers fail the guard and activate matrix cancellation, including queued siblings.
+  Failed, ambiguous, copied, or overdue workers fail the guard and activate matrix cancellation, including queued siblings.
+  Missing job registration and unassigned jobs may wait only within the infrastructure queue allowance.
+  Poll once per minute. The worker's exact process deadline and GitHub timeout enforce its execution limit between observations.
   The guard has a separate Ubuntu matrix slot and grants no native execution credit.
 
-  CLI logs show original creation, work cutoff and final deadline without changing JSON output.
+  CLI logs show original creation, attempt start, assigned job start, queue delay, work cutoff, and final job deadline.
+  Summaries report original-run and current-attempt turnaround and explicitly identify totals above the 25-minute target.
   Successful monitor summaries explain intentionally unused native steps.
   Summary output never delays a guard failure or grants qualification.
 

@@ -92,7 +92,6 @@ test('always-present host gates require successful scope and exactly complete or
       [
         'host-artifacts',
         'cohort-allocator',
-        'allocator-ready',
         'prerequisites',
         'qualified-architecture',
       ],

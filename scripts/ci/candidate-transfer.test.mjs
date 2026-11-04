@@ -668,7 +668,7 @@ test('PR scheduling binds the Quick head to the producer metadata rather than it
   })
 })
 
-test('Mac hosts queue early but require Quick and exact candidates before native qualification', async () => {
+test('Mac hosts queue after Quick and exact candidate preparation', async () => {
   const workflow = parse(
     await readFile(
       new URL('../../.github/workflows/macos-hosted-candidates.yml', import.meta.url),
@@ -693,18 +693,39 @@ test('Mac hosts queue early but require Quick and exact candidates before native
       acquisition.steps.indexOf(step),
   )
   const workers = workflow.jobs.prerequisites
-  assert.deepEqual(workers.needs, ['scope', 'allocator-ready'])
+  assert.deepEqual(workers.needs, ['scope', 'host-artifacts'])
+  const readiness = acquisition.steps.findIndex((entry) =>
+    entry.run?.includes('scripts/ci/macos-host-cohort-run.mjs ready'),
+  )
+  const prepared = acquisition.steps.find((entry) => entry.id === 'prepared-artifacts')
+  assert.ok(prepared?.uses?.startsWith('actions/upload-artifact@'))
+  assert.equal(
+    prepared.with.name,
+    'macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}',
+  )
+  assert.equal(prepared.with.path, '${{ runner.temp }}/macos-host-artifacts')
+  assert.equal(prepared.with['if-no-files-found'], 'error')
+  assert.equal(
+    acquisition.outputs.artifact_id,
+    '${{ steps.prepared-artifacts.outputs.artifact-id }}',
+  )
+  assert.ok(acquisition.steps.indexOf(prepared) > acquisition.steps.indexOf(step))
+  assert.ok(readiness > acquisition.steps.indexOf(prepared))
   const hostAcquisition = workers.steps.find((entry) =>
-    entry.run?.includes('scripts/ci/candidate-transfer.mjs acquire'),
+    entry.uses?.startsWith('actions/download-artifact@'),
   )
   assert.ok(hostAcquisition)
-  assert.equal(hostAcquisition.run, step.run)
-  assert.equal(hostAcquisition.env.GH_TOKEN, '${{ github.token }}')
+  assert.deepEqual(hostAcquisition.with, {
+    'artifact-ids': '${{ needs.host-artifacts.outputs.artifact_id }}',
+    'merge-multiple': true,
+    path: '${{ runner.temp }}/macos-host-artifacts',
+  })
+  assert.equal(hostAcquisition['timeout-minutes'], 2)
   assert.equal(
     hostAcquisition.if,
     "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",
   )
-  assert.ok(!workers.steps.some((entry) => entry.uses?.startsWith('actions/download-artifact@')))
+  assert.ok(!workers.steps.some((entry) => entry.run?.includes('candidate-transfer.mjs acquire')))
   const acquisitionIndex = workers.steps.indexOf(hostAcquisition)
   for (const name of [
     'Announce this exact host and await its assigned role',

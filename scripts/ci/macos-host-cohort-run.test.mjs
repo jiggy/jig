@@ -49,6 +49,7 @@ import {
   selectMacHostAllocatorJob,
   selectMacHostWorkerJob,
   waitForMacHostAllocator,
+  waitForMacHostAllocatorStart,
 } from './macos-host-cohort-run.mjs'
 import { MAC_HOST_PROFILES } from './macos-host-profiles.mjs'
 import {
@@ -385,7 +386,6 @@ const coordinationJob = (id, name, status = 'in_progress') => ({
 const coordinationJobs = () => [
   coordinationJob(allocatorJobId, MAC_COHORT_ALLOCATOR_NAME),
   coordinationJob(9001, MAC_COHORT_READY_JOB_NAME),
-  coordinationJob(9002, 'Acquire canonical macos host artifacts'),
   ...Array.from({ length: 5 }, (_, worker) =>
     coordinationJob(1000 + worker, macHostCohortWorkerName(worker), 'queued')),
 ]
@@ -448,6 +448,7 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
   await mkdir(published)
   await writeFile(jobsPath, JSON.stringify(coordinationJobs()))
   await writeFile(requestsPath, '')
+  const jobResponses = []
   const entries = async () => Promise.all(
     (await readdir(published)).sort().map(async (id) => ({
       artifact: JSON.parse(await readFile(join(published, id, 'artifact.json'), 'utf8')),
@@ -460,7 +461,9 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
       if (request.method === 'GET' && request.url === '/jobs') {
         await appendFile(requestsPath, '"jobs"\n')
         response.setHeader('content-type', 'application/json')
-        response.end(await readFile(jobsPath))
+        const bytes = await readFile(jobsPath)
+        response.end(bytes)
+        jobResponses.push(JSON.parse(bytes))
       } else if (request.method === 'GET' && request.url === '/artifacts') {
         await appendFile(requestsPath, '"list"\n')
         response.setHeader('content-type', 'application/json')
@@ -530,13 +533,16 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
     artifact: await artifacts.upload(macHostCohortArtifactName(type, coordinationIdentity, worker), record),
     record,
   })
+  const setJobs = async (jobs) => {
+    await writeFile(jobsPath + '.next', JSON.stringify(jobs))
+    await rename(jobsPath + '.next', jobsPath)
+  }
   const setJob = async (id, change) => {
     const jobs = JSON.parse(await readFile(jobsPath, 'utf8'))
     const selected = jobs.find((job) => job.id === id)
     assert.ok(selected)
     Object.assign(selected, change)
-    await writeFile(jobsPath + '.next', JSON.stringify(jobs))
-    await rename(jobsPath + '.next', jobsPath)
+    await setJobs(jobs)
   }
   const reader = () => macHostCohortRecordReader({
     identity: coordinationIdentity,
@@ -550,7 +556,15 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
     },
   })
   return {
-    identity: coordinationIdentity, allocatorJobId, artifacts, publish, setJob, entries,
+    identity: coordinationIdentity, allocatorJobId, artifacts, publish, setJob, setJobs, entries,
+    jobResponses,
+    waitForJobResponse: async (predicate) => {
+      const deadline = Date.now() + 5000
+      while (!jobResponses.some(predicate)) {
+        if (Date.now() >= deadline) throw new Error('Job metadata response was not observed')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    },
     metadataPath: (id) => join(published, String(id), 'artifact.json'),
     readJobs: () => json('/jobs'), readRecords: reader(), reader,
     deadlineMs: Date.now() + 60_000,
@@ -577,8 +591,12 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
 
 test('the singleton allocator publishes arriving roles without waiting for queued Mac predecessors', async (t) => {
   const f = await coordinationProtocol(t)
+  await f.setJob(allocatorJobId, { status: 'queued' })
   await f.announce(4)
   const allocation = allocateMacHostRoles(f)
+  await f.waitForJobResponse((jobs) => jobs.find(({ id }) => id === allocatorJobId)?.status === 'queued')
+  assert.equal((await f.entries()).some(({ artifact }) => artifact.name.startsWith('macos-cohort-ready-')), false)
+  await f.setJob(allocatorJobId, { status: 'in_progress' })
   const first = await f.waitForRecord('assignment', 4)
   assert.equal(first.record.role, 2)
   assert.ok((await f.readJobs()).filter((job) => job.name.startsWith('Native host worker') && job.id !== 1004)
@@ -663,23 +681,76 @@ test('real record polling caches ZIP transfers and refuses changed metadata or d
 
 test('coordination deadlines and polling delays preserve absolute caps without a fake clock', () => {
   const now = 1_000_000
+  assert.equal(macHostCohortCoordinationDeadline('start', now + 1_000_000, now), now + 60_000)
   assert.equal(macHostCohortCoordinationDeadline('ready', now + 1_000_000, now), now + 180_000)
   assert.equal(macHostCohortCoordinationDeadline('claim', now + 1_000_000, now), now + 120_000)
-  for (const mode of ['ready', 'claim', 'allocate']) {
+  for (const mode of ['start', 'ready', 'claim', 'allocate']) {
     assert.equal(macHostCohortCoordinationDeadline(mode, now + 35_000, now), now + 35_000)
     assert.throws(() => macHostCohortCoordinationDeadline(mode, now, now), /coordination deadline/)
   }
   assert.equal(macHostCohortCoordinationDeadline('claim', now + 120_000, now + 30_000), now + 120_000)
   assert.equal(macHostCohortPollDelay(now, now), 5000)
   assert.equal(macHostCohortPollDelay(now, now + 59_999), 5000)
-  assert.equal(macHostCohortPollDelay(now, now + 60_000), 15_000)
+  assert.equal(macHostCohortPollDelay(now, now + 60_000), 60_000)
   assert.equal(macHostCohortPollDelay(now + 60_000, now + 60_000), 5000)
+})
+
+test('allocator startup waits for missing and queued metadata through the real jobs API', async (t) => {
+  const f = await coordinationProtocol(t)
+  await f.setJobs([])
+  const startup = waitForMacHostAllocatorStart({ ...f, pollIntervalMs: 20 })
+  await f.waitForJobResponse((jobs) => jobs.length === 0)
+  const jobs = coordinationJobs()
+  jobs[0].status = 'queued'
+  await f.setJobs(jobs)
+  await f.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
+  await f.setJob(allocatorJobId, { status: 'in_progress' })
+  assert.equal(await startup, allocatorJobId)
+  assert.equal((await f.entries()).length, 0)
+})
+
+test('allocator startup pins its observed job and refuses duplicate, foreign or terminal metadata', async (t) => {
+  const jobs = coordinationJobs()
+  for (const observed of [
+    [jobs[0], { ...jobs[0], id: 9005 }],
+    ...[
+      { run_id: 499 }, { run_attempt: 1 },
+      { status: 'completed', conclusion: 'failure' },
+      { status: 'completed', conclusion: 'success' },
+    ].map((change) => [{ ...jobs[0], ...change }]),
+  ]) {
+    const f = await coordinationProtocol(t)
+    await f.setJobs(observed)
+    await assert.rejects(waitForMacHostAllocatorStart(f), /allocator/)
+    assert.equal(f.jobResponses.length, 1)
+    assert.equal((await f.entries()).length, 0)
+  }
+  const changed = await coordinationProtocol(t)
+  await changed.setJob(allocatorJobId, { status: 'queued' })
+  const startup = waitForMacHostAllocatorStart({ ...changed, pollIntervalMs: 20 })
+  await changed.waitForJobResponse((jobs) => jobs[0]?.status === 'queued')
+  await changed.setJob(allocatorJobId, { id: 9005, status: 'in_progress' })
+  await assert.rejects(startup, /identity changed before startup/)
+})
+
+test('allocator metadata waiting cannot extend its supplied deadline', async (t) => {
+  const f = await coordinationProtocol(t)
+  await f.setJob(allocatorJobId, { status: 'queued' })
+  const started = Date.now()
+  await assert.rejects(waitForMacHostAllocatorStart({
+    ...f, deadlineMs: started + 100, pollIntervalMs: 20,
+  }), /startup deadline expired.*status=queued.*job=900/)
+  assert.ok(Date.now() - started < 2000)
+  assert.equal((await f.entries()).length, 0)
+  const reads = f.jobResponses.length
+  await assert.rejects(waitForMacHostAllocatorStart({ ...f, deadlineMs: Date.now() - 1 }), /coordination deadline/)
+  assert.equal(f.jobResponses.length, reads)
 })
 
 test('observed acquisition, readiness, deadline guard, and native failures stop allocation', () => {
   const identity = coordinationIdentity
   for (const name of [
-    'Acquire canonical macos host artifacts', MAC_COHORT_READY_JOB_NAME,
+    MAC_COHORT_READY_JOB_NAME,
     'Enforce Mac PR deadline', macHostCohortWorkerName(3), 'prerequisites',
     "matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch))",
   ]) {

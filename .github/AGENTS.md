@@ -350,8 +350,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   require current-attempt success. Producer readiness permits 1,800 seconds,
   including runner queues. Failed or invalid producer jobs refuse immediately.
 
-  Mac workers queue after scope and allocator readiness, while canonical production continues.
-  Host setup overlaps producer waiting. Each executing worker acquires the exact canonical bundle before native qualification.
+  One Ubuntu preparation job acquires canonical inputs, retains them, and verifies allocator readiness before requesting Mac runners.
+  Quick checks must pass before preparation succeeds.
+  Each executing worker downloads the preparation artifact by immutable ID and verifies canonical provenance before native qualification.
 
   Acquisition requires the producer's latest `Quick development checks` success.
   Main/manual runs require current-attempt Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.
@@ -359,11 +360,17 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   settlement. Exact profiles, frozen archive identities, complete coverage and
   zero-residue checks stay mandatory.
 
-  PR acquisition and execution share the original workflow's 25-minute deadline.
-  Read that creation time through the Actions API, verified against the PR head,
-  repository, run and attempt. Workflow creation is the available push-time proxy.
-  Queueing and reruns consume the same allowance. Reserve 120 seconds for evidence
-  and final checks. A rerun cannot reset the original deadline.
+  Each assigned PR Mac worker has 25 minutes, including 120 seconds for cleanup and evidence.
+  Anchor execution to its current-attempt job start, verified through Actions metadata against the repository, run, PR head, and job identity.
+  Require an assigned runner and executed steps. Queued placeholder timestamps do not establish execution.
+
+  Queue time does not consume native execution time. Queues have a separate 60-minute infrastructure ceiling.
+  Preparation allows 45 minutes, coordination allows 90 minutes, and each final evidence job allows five minutes.
+  These overlapping ceilings bound phases independently. The earlier applicable limit still wins.
+
+  A fresh full native rerun receives fresh job allowances and must produce all current-attempt execution and cleanup evidence.
+  Partial reruns cannot reuse previous native execution. Earlier failed attempts remain failed.
+  Retain original creation and current-attempt start times for turnaround reporting, without claiming a 25-minute total when queues prevent it.
 
   Bound child process groups and native steps by the remaining allowance.
   Integer-minute step limits round up the remaining work plus bounded termination grace.
@@ -372,11 +379,13 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Late, failed, cancelled or incomplete work cannot produce a passing final gate.
   A read-only Ubuntu deadline guard shares the PR worker matrix.
   Six matrix slots prevent waiting Mac jobs from occupying the guard's slot.
-  The guard requires every current-attempt worker to succeed before the work deadline.
+  The guard requires every current-attempt worker to succeed within its assigned execution allowance.
+  It polls at most once per minute and rejects excessive queues, changed assignments, and copied prior-attempt execution.
   Its failure activates matrix fail-fast cancellation, including workers that have no runner.
 
   Step summaries distinguish the Ubuntu monitor, worker assignments and aggregate proof.
-  The monitor explains its skipped native rows and reports the original work cutoff and final deadline.
+  The monitor explains its unused native steps and distinguishes worker execution limits from queue and coordination limits.
+  Timing summaries report original-run and current-attempt turnaround, explicitly identifying totals above the 25-minute target.
   Worker summaries identify assigned roles or unassigned surplus workers.
   The aggregate links each selected role to its executing job and reports verified file and case counts.
 
@@ -390,10 +399,18 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   PRs use five workers and three logical roles per exact observed profile.
   With two admitted profiles, five workers contain at least three matching hosts.
-  One Ubuntu allocator assigns roles from unique worker announcements. A readiness
+  One Ubuntu allocator assigns roles from unique worker announcements. The preparation
   gate verifies the running allocator before workers can occupy Mac runners.
   Each worker receives its role independently, without waiting for another Mac
   worker to start. Artifact names carry records without providing a lock.
+
+  Allow up to 60 seconds for the allocator's own active job record to become visible before publishing readiness.
+  Missing or queued observations may wait. Duplicate, replaced, terminal, or foreign job identities fail immediately.
+  Idle allocation polls use 60-second intervals, returning to five seconds for one minute after a new worker announcement.
+
+  Retry only immutable coordination reads, within four attempts and 30 seconds, clipped to the caller's remaining phase allowance.
+  Retry transient transport failures and explicitly retryable HTTP statuses, honoring rate-limit waits that fit the allowance.
+  Keep artifact identity, size, digest, ZIP, and record validation mandatory. Never replay ownership writes or whole claims.
 
   The allocator and workers copy the isolated artifact-client manifest and generated Bun lock into runner scratch.
   Install with `--frozen-lockfile --ignore-scripts` to retain exact dependency versions and integrity checks.
@@ -403,7 +420,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Role 0 retains native prerequisites. Role 1 retains its source files.
   Ledger replay verifies that issuance order. Complete qualification still requires all three logical roles.
 
-  Require the allocator, deadline guard and all five current-attempt worker jobs to succeed.
+  Require preparation, the allocator, deadline guard, and all five current-attempt worker jobs to succeed.
   Reconcile announcements, assignments and the final allocator ledger, rejecting
   duplicate or ambiguous records. Verify every executing role,
   including an incomplete minority profile, against the canonical archives and
@@ -411,8 +428,8 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   receipts without execution credit. Select one complete matching three-role set.
   Roles from different builds cannot combine into qualification.
 
-  Main and manual runs keep one complete host. Their allocator and readiness jobs
-  succeed without assigning roles. Aggregate evidence names the
+  Main and manual runs keep one complete host. Their allocator succeeds without assigning roles, and preparation acquires canonical inputs.
+  Aggregate evidence names the
   observed architecture, kernel, build and pinned Bun revision in either plan.
 
   The complete ARM job retains main's 60-minute allocation, or 90 minutes with

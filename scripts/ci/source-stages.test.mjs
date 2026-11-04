@@ -53,7 +53,7 @@ const out=args[args.indexOf('--pack-destination')+1];fs.writeFileSync(path.join(
   for (const stage of ['portable', 'protocol'])
     writeFileSync(
       join(root, 'fixtures', `source-${stage}.node.mjs`),
-      `import{test}from'node:test';import assert from'node:assert/strict';test('actual ${stage} Node fixture',()=>{assert.notEqual(process.env.FIXTURE_FAIL,'${stage}-node')});`,
+      `import{test}from'node:test';import assert from'node:assert/strict';test('actual ${stage} Node fixture',()=>{assert.notEqual(process.env.FIXTURE_FAIL,'${stage}-node','intentional ${stage} Node failure')});`,
     )
   const node = executable(
     'qualified-node',
@@ -201,17 +201,35 @@ test('protocol-only execution builds Jig methods and consumes the external SDK w
   assert.deepEqual(readdirSync(f.temp), [])
 })
 
-test('a failed actual Node source case stops later stages and leaves no successful merged report', (t) => {
-  const f = fixture(t),
-    result = f.run('/bin/sh', { FIXTURE_FAIL: 'portable-node' })
-  assert.notEqual(result.status, 0)
-  const events = f.events()
-  assert.ok(events.includes('portable-node-start'))
-  assert.ok(!events.includes('portable-node-done'))
-  assert.ok(!events.includes('protocol-start'))
-  assert.ok(!existsSync(join(f.reports, 'source-portable.xml')))
-  assert.equal(events.filter((event) => event === 'archive-hash').length, 1)
-})
+for (const shell of ['/bin/sh', '/bin/bash']) {
+  test(`failed Node diagnostics survive without qualification on ${shell}`, (t) => {
+    const f = fixture(t),
+      result = f.run(shell, { FIXTURE_FAIL: 'portable-node' })
+    assert.ifError(result.error)
+    assert.equal(result.status, 1, result.stderr)
+    assert.match(result.stdout, /intentional portable Node failure/)
+    const events = f.events()
+    assert.ok(events.includes('portable-node-start'))
+    assert.ok(!events.includes('portable-node-done'))
+    assert.ok(!events.includes('protocol-start'))
+    assert.ok(!existsSync(join(f.reports, 'source-portable.xml')))
+    assert.equal(events.filter((event) => event === 'archive-hash').length, 1)
+    const reportPath = join(f.reports, 'source-portable', 'node.xml')
+    const report = readFileSync(reportPath, 'utf8')
+    assert.match(report, /file="fixtures\/source-portable.node.mjs"/)
+    assert.match(report, /name="actual portable Node fixture"/)
+    assert.match(report, /<failure\/>/)
+    assert.ok(existsSync(join(f.reports, 'source-portable', 'bun.xml')))
+    assert.deepEqual(readdirSync(f.temp), [])
+
+    const retry = f.run(shell)
+    assert.ifError(retry.error)
+    assert.equal(retry.status, 1, retry.stderr)
+    assert.match(retry.stderr, /Source evidence destination must be fresh/)
+    assert.equal(readFileSync(reportPath, 'utf8'), report)
+    assert.deepEqual(f.events(), events)
+  })
+}
 
 test('the actual root test recipe partitions Node files from both source inventories', (t) => {
   const f = fixture(t)

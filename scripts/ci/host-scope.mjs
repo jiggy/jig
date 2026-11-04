@@ -12,7 +12,6 @@ const roles = {
     'scope',
     'host-artifacts',
     'cohort-allocator',
-    'allocator-ready',
     'prerequisites',
     'qualified-architecture',
   ],

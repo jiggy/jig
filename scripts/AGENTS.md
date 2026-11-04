@@ -99,6 +99,11 @@ operational baselines, and public-site assembly.
   `FLOW_NODE` executable. Other selected files run with Bun. The stages merge
   actual reports and require exact coverage of their complete selected files.
 
+  An explicit report directory retains raw Bun and Node reports under each stage, including failures.
+  Node also prints assertion details to stdout.
+  A failed runtime stops the stage before report merging.
+  Existing stage report directories prevent reuse that would replace evidence.
+
   FLOW SDKs and authoring
   use exact versioned public artifacts from `jiggy/flow`, not local builds.
 
