@@ -324,6 +324,10 @@ Its preparation-count consumer reviews seventeen standalone Flow packages throug
 It checks both override sources, count refusals, actual-preparation accounting, retained approval and execution without the review environment.
 Review starts no root Runs. Authored locks remain unchanged.
 
+Its schema case reviews a workspace Flow through an npm-selected Binding.
+It requires valid review, a located unsupported-keyword refusal, an unchanged portable lock and successful review after repair, without running the Flow.
+Portable compiler and diagnostic projection checks remain separate from this installed consumer evidence.
+
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
 restoration without changing retained source. The opted-in whole

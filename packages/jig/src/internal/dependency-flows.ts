@@ -7,7 +7,11 @@ import {
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
-import type { CapturedFlowMember, CapturedFlowSource } from '../project/flow-source.js'
+import {
+  type CapturedFlowMember,
+  type CapturedFlowSource,
+  scopePackageDiagnostic,
+} from '../project/flow-source.js'
 import { npmPackageName } from '../project/package-selector.js'
 import type { PrivateProjectRoot } from '../project/root.js'
 import { normalizePrivateBunExecutionLayout } from './bun-execution-layout.js'
@@ -84,7 +88,12 @@ export async function captureDependencyFlows(input: {
             'resolved package name does not match the selected dependency',
             selector,
           )
-        const inspected = await inspectCapturedPackage(captured)
+        const sourcePath = workspace?.selected.includes(packageRoot)
+          ? posix.relative(workspace.target, packageRoot) || '.'
+          : selector
+        const inspected = await inspectCapturedPackage(captured).catch((error: unknown) => {
+          throw scopePackageDiagnostic(error, sourcePath)
+        })
         if (inspected.entrypoint?.suffix !== 'md')
           await input.retain(selector, captured, {
             captured: prepared.captured,
