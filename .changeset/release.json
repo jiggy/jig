@@ -1,23 +1,87 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "a6ddb503c207f916d94b75457cdb938ee26fbc87",
-  "sourceDigest": "2e22b09274f9d050064ecb6bd9522b020ddfda515a477b270d3e09977865a1ee",
+  "baseRevision": "4b6547dbebf642c76e4e6d0be62df9e413338938",
+  "sourceDigest": "34d50e6786ebaba25c0408cf72cf76932c264b65f47054d8bef19364e4bbc5d4",
   "changesets": [
     {
-      "id": "align-codex-gateway-startup",
-      "sha256": "4b51f4ca731506e8f8114f7b2e74abe84ffd60859c337b4c12cd96da0aa39e75"
+      "id": "agent-request-store-omission",
+      "sha256": "63eee7477aee25391cf75a00520111d1640de84dd6980385569a723ce46b4370"
     },
     {
-      "id": "tidy-author-evaluator",
-      "sha256": "a5f6b600fa7533843bd710abf270c2fb84860e735d9e6d30ce615051dbce5106"
+      "id": "centralize-cli-recovery-guidance",
+      "sha256": "aef80d1624845a7a4a509377b2527b331435b6057e88828757a751ec91c5274c"
+    },
+    {
+      "id": "explain-operation-and-close-failures",
+      "sha256": "0ac6ba693b9747c619cbdfaaa17d5f81b8489525e79d415f6c079f51d2745567"
+    },
+    {
+      "id": "mounted-workspace-source-roots",
+      "sha256": "9a3e0600af592c024fb8ff9d5ee0a69d9c053ace5b3c1822337cc8f8bd2f3cef"
+    },
+    {
+      "id": "preserve-agent-noncompletion",
+      "sha256": "bc0fdada5069d0c0dff9404609df52279743d60db3d42794ba361a4c44d01e92"
+    },
+    {
+      "id": "recommend-authoring-skills",
+      "sha256": "1914279093738fb56c49995662727498f11db76fcc52822562b6b3a656680ebe"
+    },
+    {
+      "id": "task-focused-jig-docs",
+      "sha256": "258b7810e081a01c8d2019cabd479c370f592e028b5c7258cc1d758dddb0be10"
+    },
+    {
+      "id": "update-linux-bun",
+      "sha256": "f5b60f4c03a0bc87578161bf917c46f75d5c01f7b21195173806af3f000216a7"
+    },
+    {
+      "id": "workbench-design-parity",
+      "sha256": "f675c4d0ab18ca1c742baa91e53f1914167a7cfd766e6321927b943acd9a9f8e"
     }
   ],
   "releases": [
     {
+      "name": "@jigging/agent-acp",
+      "type": "minor",
+      "oldVersion": "0.1.0-alpha.12",
+      "newVersion": "0.1.0-alpha.13"
+    },
+    {
+      "name": "@jigging/agent-method",
+      "type": "minor",
+      "oldVersion": "0.1.0-alpha.10",
+      "newVersion": "0.1.0-alpha.11"
+    },
+    {
+      "name": "@jigging/display-model",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.4",
+      "newVersion": "0.1.0-alpha.5"
+    },
+    {
+      "name": "@jigging/display-tui",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.4",
+      "newVersion": "0.1.0-alpha.5"
+    },
+    {
+      "name": "@jigging/display-web",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.4",
+      "newVersion": "0.1.0-alpha.5"
+    },
+    {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.48",
-      "newVersion": "0.1.0-alpha.49"
+      "oldVersion": "0.1.0-alpha.49",
+      "newVersion": "0.1.0-alpha.50"
+    },
+    {
+      "name": "@jigging/reporting",
+      "type": "patch",
+      "oldVersion": "0.1.0-alpha.3",
+      "newVersion": "0.1.0-alpha.4"
     }
   ]
 }

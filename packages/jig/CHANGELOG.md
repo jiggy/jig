@@ -1,5 +1,37 @@
 # @jigging/jig
 
+## 0.1.0-alpha.50
+
+### Patch Changes
+
+- a58e77f: Direct cleanup recovery diagnostics to the shared Troubleshooting guide.
+- 30490fd: Preserve separate, bounded operation and close failure classifications when project cleanup cannot be confirmed.
+  Keep private exception content hidden and explain recovery without replaying uncertain work.
+- 6e641c2: Allow review to capture explicitly selected mounted workspace roots with repeatable `--source-root` operands. Reuse the selected application root while preserving bounded capture, protected-root checks, immutable snapshots, and mount restrictions inside each package.
+  
+  Preserve closed workspace source failures and project-relative locations so mount boundaries, missing source, links, and access failures receive actionable diagnostics.
+- 9089b55: Preserve refusal and limit outcomes with their original text when structured
+  output cannot be decoded or does not match the requested response schema.
+  Include structured data only when it validates, without promoting a partial
+  answer to completion. Completed answers and independently supplied structured
+  results remain strict.
+- 9373d9b: Recommend the FLOW and Jig authoring skills in generated project READMEs, linking to the shared installation guide.
+- 760d855: Route documentation links to the task-focused Jig guides. Preserve the documentation license coverage after moving explanatory pages.
+  
+  Retain bounded private package-verification causes during qualification. Correct the existing stale-plan exit expectation after successful cleanup.
+  
+  Select Bun 1.3.3 for Linux qualification and execution while retaining the qualified Mac runtime.
+- 3b95d1b: Build Linux candidates with Bun 1.3.13, preserve Jig's authoring exports, and use its pinned runtime. Explain unsupported registry sources in dependency locks with actionable repair steps.
+  
+  Allow standalone Flows to ignore unrelated ancestor workspaces.
+- 7effb0f: Restore the application workbench hierarchy with compact navigation, readable reports, photograph galleries and captured documents.
+  Add portable document covers, chapter locators, verified downloads and readable application instance labels in both reporting SDKs.
+  Resolve forwarded output references through verified publisher and attachment bindings while preserving packet paths.
+  Retain bounded document-sized raster previews while preserving SVG, decoder memory and source limits.
+  Preserve event identity, captured-source access, filter-clear focus and header-only delimited tables across application layouts.
+  Preserve Linux input descriptor custody across subprocess finalization and reuse.
+  Keep exact cross-subject references, accessible cover evidence and separate SVG preview reservations, and render bounded raster-containing SVG documents.
+
 ## 0.1.0-alpha.49
 
 ### Patch Changes
