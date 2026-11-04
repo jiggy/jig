@@ -82,7 +82,7 @@ export default defineJig({flows:discover('flows'),bindings:discover('bindings')}
             ? { attachments: { source: 'read', repaired: 'read-write' } }
             : name === 'producer'
               ? { attachments: { payload: 'read-write' } }
-              : {}),
+              : { outcomes: { 'needs-repair': 'The worker completed without acceptable work.' } }),
     })
     await put(`project/flows/${name}/FLOW.ts`, source)
   }
@@ -299,9 +299,10 @@ import assert from 'node:assert/strict';
 import {readFile,writeFile} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {AttemptClientError,createAttemptClient} from '@jigging/jig/client';
-let stage='inspect';
+let stage='inspect', terminalCode;
 process.on('uncaughtExceptionMonitor',error=>{
   console.error('Foundation client failure: '+JSON.stringify({application:'child-checkpoints',stage,
+    ...(terminalCode===undefined?{}:{terminalCode}),
     ...(error instanceof AttemptClientError?{code:error.code,operation:error.operation,uncertain:error.uncertain}:{})}));
 });
 const client=createAttemptClient({executable:resolve(process.argv[2]),cwd:process.cwd(),timeoutMs:255000});
@@ -317,6 +318,7 @@ try {
   assert.equal(owner.role,'owner');
   stage='completion';
   const observation=await owner.completion;
+  terminalCode=observation.terminal?.code;
   assert.equal(observation.cleanup,'confirmed');
   assert.equal(observation.terminal.status,'succeeded');
   stage='result';

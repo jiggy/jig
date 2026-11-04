@@ -258,6 +258,7 @@ try {
     'project-command',
     'http-request',
     'run-checkpoint',
+    'child-checkpoint',
     'finite-acp',
     'acp-public-updates',
   ]) {

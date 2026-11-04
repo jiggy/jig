@@ -387,7 +387,7 @@ For software consumers, use `--receive updates --json`, parse complete stdout
 lines as JSON, and keep stderr separate. Read `begin`, ordered `data`, `end`, then
 `terminal`. Only `terminal.result` reports the Run outcome. A disconnected stream
 or missing terminal is incomplete delivery. Live reporting has no retention or replay.
-[Run Checkpoint](https://jig.md/spec/run-checkpoint.md) separately retains settled artifacts.
+[Run Checkpoint](../spec/run-checkpoint.md) separately retains settled artifacts.
 
 A simpler string channel with explicit reception remains useful when messages
 alone suffice. Raw authors must own validation, optional error handling and

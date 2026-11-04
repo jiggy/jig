@@ -271,7 +271,7 @@ such as `blocked` can include useful files.
 
 Failed, invalid, or cancelled execution exports no partial scratch files.
 
-A [checkpoint-enabled Flow](https://jig.md/spec/run-checkpoint.md) can retain explicit
+A [checkpoint-enabled Flow](../spec/run-checkpoint.md) can retain explicit
 progress. After cleanup, Jig delivers its latest accepted checkpoint with the
 failed or lost execution status intact. The record identifies that checkpoint or
 keeps `checkpoint: null` when none was accepted. Without confirmed cleanup,
