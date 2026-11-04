@@ -359,6 +359,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   One Ubuntu preparation job acquires canonical inputs, retains them, and verifies allocator readiness before requesting Mac runners.
   Quick checks must pass before preparation succeeds.
   Each executing worker downloads the preparation artifact by immutable ID and verifies canonical provenance before native qualification.
+  That download allows two minutes on PR workers and ten minutes on main/manual complete hosts.
 
   Acquisition requires the producer's latest `Quick development checks` success.
   Main/manual runs require current-attempt Quick success. Transfer permits 300 seconds on Linux or 600 seconds on Mac.

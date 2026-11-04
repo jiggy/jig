@@ -456,6 +456,11 @@ async function matrixMetadataService(t, workMilliseconds = 5000) {
         const contents = await readFile(jobsPath)
         const configuration = JSON.parse(contents)
         if (configuration.hold_body) response.write('{"total_count":')
+        else if (configuration.reset_body) {
+          response.write('{"total_count":')
+          setTimeout(() => response.destroy(), 20)
+        } else if (configuration.oversized_body) response.end(' '.repeat(4 * 1024 * 1024 + 1))
+        else if (Object.hasOwn(configuration, 'raw_body')) response.end(configuration.raw_body)
         else if (configuration.http_status)
           response.writeHead(configuration.http_status, configuration.http_headers ?? {}).end()
         else response.end(contents)
@@ -576,9 +581,9 @@ test('a stalled real metadata body cannot extend the coordination allowance', as
   await replaceMatrixMetadata(f.jobsPath, { hold_body: true })
   await assert.rejects(
     guardMacPrMatrix(f.budget, f.options),
-    /bounded PR metadata body|coordination allowance has elapsed/,
+    /coordination allowance has elapsed; unfinished jobs: unverified/,
   )
-  assert.match(await f.requests(), /jobs\n/)
+  assert.equal((await f.requests()).split('jobs\n').length - 1, 1)
 })
 
 test('real metadata assignment polling waits for runner visibility without using the queued start', async (t) => {
@@ -614,55 +619,105 @@ test('real metadata assignment polling waits for runner visibility without using
   assert.equal(budget.deadlineEpochMs, f.budget.deadlineEpochMs)
 })
 
-test('real rate-limit responses honor Retry-After and refuse a wait outside the metadata bound', async (t) => {
-  const f = await matrixMetadataService(t, 12_000)
-  await replaceMatrixMetadata(f.jobsPath, {
-    http_status: 429,
-    http_headers: { 'retry-after': '60' },
+for (const status of [403, 429]) {
+  test(`real HTTP ${status} rate limits honor Retry-After and refuse waits outside the metadata bound`, async (t) => {
+    const f = await matrixMetadataService(t, 12_000)
+    await replaceMatrixMetadata(f.jobsPath, {
+      http_status: status,
+      http_headers: { 'retry-after': '60' },
+    })
+    await assert.rejects(
+      fetchPrTimeBudget(monitorIdentity, {
+        ...f.options,
+        deadlineEpochMs: Date.now() + 2000,
+      }),
+      new RegExp(`rate limited \\(HTTP ${status};.*required wait does not fit`),
+    )
+    assert.equal(
+      (await f.requests()).split('jobs\n').length - 1,
+      1,
+      'no retry may precede the required server wait',
+    )
+    await replaceMatrixMetadata(f.jobsPath, {
+      http_status: status,
+      http_headers: { 'retry-after': '1' },
+    })
+    const start = Date.now()
+    const pending = fetchPrTimeBudget(monitorIdentity, f.options)
+    while ((await f.requests()).split('jobs\n').length - 1 < 2 && Date.now() < start + 2000)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
+    assert.equal((await pending).jobId, f.budget.jobId)
+    assert.ok(Date.now() - start >= 1000, 'the actual HTTP retry must wait for Retry-After')
+    const resetEpoch = Math.ceil(Date.now() / 1000) + 1
+    await replaceMatrixMetadata(f.jobsPath, {
+      http_status: status,
+      http_headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetEpoch) },
+    })
+    const previousRequests = (await f.requests()).split('jobs\n').length - 1
+    const resetPending = fetchPrTimeBudget(monitorIdentity, f.options)
+    const observationDeadline = Date.now() + 2000
+    while (
+      (await f.requests()).split('jobs\n').length - 1 === previousRequests &&
+      Date.now() < observationDeadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    assert.equal((await f.requests()).split('jobs\n').length - 1, previousRequests + 1)
+    await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
+    assert.equal((await resetPending).jobId, f.budget.jobId)
+    assert.ok(
+      Date.now() >= resetEpoch * 1000,
+      'an exhausted primary limit waits for its reset without Retry-After',
+    )
   })
-  await assert.rejects(
-    fetchPrTimeBudget(monitorIdentity, {
-      ...f.options,
-      deadlineEpochMs: Date.now() + 2000,
-    }),
-    /rate limited.*required wait does not fit/,
-  )
-  assert.equal(
-    (await f.requests()).split('jobs\n').length - 1,
-    1,
-    'no retry may precede the required server wait',
-  )
-  await replaceMatrixMetadata(f.jobsPath, {
-    http_status: 429,
-    http_headers: { 'retry-after': '1' },
-  })
-  const start = Date.now()
+}
+
+test('ordinary HTTP 403 remains terminal and is not mislabeled as an expired guard', async (t) => {
+  const f = await matrixMetadataService(t, 10_000)
+  await replaceMatrixMetadata(f.jobsPath, { http_status: 403 })
+  await assert.rejects(guardMacPrMatrix(f.budget, f.options), /request failed \(HTTP 403\)/)
+  assert.equal((await f.requests()).split('jobs\n').length - 1, 1)
+})
+
+test('an interrupted HTTP 200 body retries only that metadata read and retains job identity', async (t) => {
+  const f = await matrixMetadataService(t, 10_000)
+  await replaceMatrixMetadata(f.jobsPath, { reset_body: true })
   const pending = fetchPrTimeBudget(monitorIdentity, f.options)
-  while ((await f.requests()).split('jobs\n').length - 1 < 2 && Date.now() < start + 2000)
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
-  assert.equal((await pending).jobId, f.budget.jobId)
-  assert.ok(Date.now() - start >= 1000, 'the actual HTTP retry must wait for Retry-After')
-  const resetEpoch = Math.ceil(Date.now() / 1000) + 1
-  await replaceMatrixMetadata(f.jobsPath, {
-    http_status: 429,
-    http_headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(resetEpoch) },
-  })
-  const previousRequests = (await f.requests()).split('jobs\n').length - 1
-  const resetPending = fetchPrTimeBudget(monitorIdentity, f.options)
   const observationDeadline = Date.now() + 2000
-  while (
-    (await f.requests()).split('jobs\n').length - 1 === previousRequests &&
-    Date.now() < observationDeadline
-  )
+  while (!(await f.requests()).includes('jobs\n') && Date.now() < observationDeadline)
     await new Promise((resolve) => setTimeout(resolve, 10))
-  assert.equal((await f.requests()).split('jobs\n').length - 1, previousRequests + 1)
+  assert.match(await f.requests(), /jobs\n/)
   await replaceMatrixMetadata(f.jobsPath, matrixSnapshot(f.jobs()))
-  assert.equal((await resetPending).jobId, f.budget.jobId)
-  assert.ok(
-    Date.now() >= resetEpoch * 1000,
-    'an exhausted primary limit waits for its reset without Retry-After',
+  const observed = await pending
+  assert.equal(observed.jobId, f.budget.jobId)
+  assert.equal(observed.jobStartedEpochMs, f.budget.jobStartedEpochMs)
+  assert.equal(observed.deadlineEpochMs, f.budget.deadlineEpochMs)
+  assert.equal((await f.requests()).split('run\n').length - 1, 1)
+  assert.equal((await f.requests()).split('jobs\n').length - 1, 2)
+})
+
+test('repeated HTTP body resets exhaust three reads without replaying guard startup or claiming expiry', async (t) => {
+  const f = await matrixMetadataService(t, 10_000)
+  await replaceMatrixMetadata(f.jobsPath, { reset_body: true })
+  await assert.rejects(
+    guardMacPrMatrix(f.budget, f.options),
+    /Unable to read bounded PR metadata body/,
   )
+  assert.equal((await f.requests()).split('run\n').length - 1, 1)
+  assert.equal((await f.requests()).split('jobs\n').length - 1, 3)
+})
+
+test('oversized and malformed successful HTTP payloads remain terminal after one read', async (t) => {
+  const f = await matrixMetadataService(t, 10_000)
+  for (const [configuration, expectedError] of [
+    [{ oversized_body: true }, /Oversized PR metadata/],
+    [{ raw_body: '{"total_count":' }, SyntaxError],
+  ]) {
+    const previous = (await f.requests()).split('jobs\n').length - 1
+    await replaceMatrixMetadata(f.jobsPath, configuration)
+    await assert.rejects(fetchPrTimeBudget(monitorIdentity, f.options), expectedError)
+    assert.equal((await f.requests()).split('jobs\n').length - 1, previous + 1)
+  }
 })
 
 function environment(jobStartedEpochMs = Date.now() - 5 * 60_000, kind = 'worker') {

@@ -39,6 +39,7 @@ import {
 import {
   allocateMacHostRoles,
   awaitMacHostRole,
+  listMacHostCohortArtifacts,
   macHostCohortCoordinationDeadline,
   macHostCohortJobTimings,
   macHostCohortPollDelay,
@@ -544,9 +545,9 @@ async function coordinationProtocol(t, { dropAssignmentResponse = false } = {}) 
     Object.assign(selected, change)
     await setJobs(jobs)
   }
-  const reader = () => macHostCohortRecordReader({
+  const reader = (listArtifacts = () => json('/artifacts')) => macHostCohortRecordReader({
     identity: coordinationIdentity,
-    listArtifacts: () => json('/artifacts'),
+    listArtifacts,
     download: async (artifact) => {
       const response = await fetch(origin + '/artifacts/' + artifact.id + '/zip', {
         signal: AbortSignal.timeout(5000),
@@ -677,6 +678,170 @@ test('real record polling caches ZIP transfers and refuses changed metadata or d
   await assert.rejects(f.readRecords(), /duplicate record artifacts/)
   assert.equal((await f.requests()).filter((operation) => operation === 'download').length, 1)
   assert.equal((await f.entries()).length, 2)
+})
+
+// Persisted API pages exercise the production paginator over actual HTTP.
+async function artifactInventoryService(t, initial) {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-mac-inventory-'))
+  const inventoryPath = join(directory, 'inventory.json')
+  const requests = []
+  const replace = async (state) => {
+    await writeFile(inventoryPath + '.next', JSON.stringify(state))
+    await rename(inventoryPath + '.next', inventoryPath)
+  }
+  await replace(initial)
+  const server = createServer(async (request, response) => {
+    try {
+      const url = new URL(request.url, 'http://127.0.0.1')
+      const page = Number(url.searchParams.get('page'))
+      if (request.method !== 'GET' ||
+          url.pathname !== '/repos/jiggy/jig/actions/runs/500/artifacts' ||
+          url.searchParams.get('per_page') !== '100' || !Number.isSafeInteger(page) || page < 1) {
+        response.writeHead(404).end()
+        return
+      }
+      const observed = { page, authorization: request.headers.authorization }
+      requests.push(observed)
+      response.once('finish', () => observed.finished = true)
+      const state = JSON.parse(await readFile(inventoryPath, 'utf8'))
+      response.writeHead(200, { 'content-type': 'application/json' })
+      if (state.stall) {
+        response.write('{"total_count":')
+        return
+      }
+      const payload = Object.hasOwn(state.pages ?? {}, page)
+        ? state.pages[page]
+        : { total_count: state.artifacts.length, artifacts: state.artifacts.slice((page - 1) * 100, page * 100) }
+      response.end(state.raw ?? JSON.stringify(payload))
+    } catch {
+      response.destroy()
+    }
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  t.after(async () => {
+    const closed = once(server, 'close')
+    server.closeAllConnections()
+    server.close()
+    await closed
+    await rm(directory, { recursive: true, force: true })
+  })
+  const environment = { GITHUB_REPOSITORY: 'jiggy/jig', GH_TOKEN: 'inventory-read-token' }
+  const options = { apiOrigin: 'http://127.0.0.1:' + server.address().port }
+  return {
+    requests, replace,
+    list: (deadlineMs = Date.now() + 15_000) =>
+      listMacHostCohortArtifacts(environment, coordinationIdentity, deadlineMs, options),
+    waitForPage: async (page, count = 1) => {
+      const deadline = Date.now() + 5000
+      while (requests.filter((request) => request.page === page && request.finished).length < count) {
+        if (Date.now() >= deadline) throw new Error('Artifact inventory page was not observed')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    },
+  }
+}
+
+const retainedArtifactInventory = (count) => Array.from({ length: count }, (_, index) => ({
+  id: 10_000 + index,
+  name: `prior-evidence-${index}-${coordinationIdentity.sourceRevision}-r500-a1`,
+}))
+
+test('paginated retained artifacts preserve current-attempt records from every page without relying on order', async (t) => {
+  const protocol = await coordinationProtocol(t)
+  const ready = await protocol.publish('ready', createMacHostCohortReady(protocol))
+  const announcement = await protocol.announce(4)
+  const published = new Map((await protocol.entries()).map(({ artifact }) => [artifact.id, artifact]))
+  const prior = retainedArtifactInventory(105)
+  const artifacts = [...prior.slice(0, 55), published.get(ready.artifact.id),
+    ...prior.slice(55), published.get(announcement.artifact.id)]
+  const f = await artifactInventoryService(t, { artifacts })
+  const reader = protocol.reader(() => f.list())
+  const records = await reader()
+  assert.deepEqual(records.map(({ artifact }) => artifact.id), [ready.artifact.id, announcement.artifact.id])
+  assert.deepEqual(f.requests.map(({ page }) => page), [1, 2])
+  assert.ok(f.requests.every(({ authorization }) => authorization === 'Bearer inventory-read-token'))
+  assert.equal((await protocol.requests()).filter((operation) => operation === 'download').length, 2)
+
+  const duplicate = await protocol.publish('ready', ready.record)
+  const duplicateMetadata = (await protocol.entries()).find(({ artifact }) => artifact.id === duplicate.artifact.id).artifact
+  await f.replace({ artifacts: [published.get(ready.artifact.id), ...prior, duplicateMetadata] })
+  await assert.rejects(reader(), /duplicate record artifacts/)
+  assert.equal((await protocol.requests()).filter((operation) => operation === 'download').length, 2)
+})
+
+test('artifact pagination permits its exact bound and refuses malformed, missing or repeated pages', async (t) => {
+  const boundary = await artifactInventoryService(t, { artifacts: retainedArtifactInventory(1000) })
+  assert.equal((await boundary.list()).length, 1000)
+  assert.equal(boundary.requests.length, 10)
+  const empty = await artifactInventoryService(t, { artifacts: [] })
+  assert.deepEqual(await empty.list(), [])
+  assert.equal(empty.requests.length, 1)
+  const artifacts = retainedArtifactInventory(105)
+  for (const [state, reason] of [
+    [{ artifacts: retainedArtifactInventory(1001) }, /1000-artifact bound/],
+    [{ artifacts, pages: { 2: { total_count: 105, artifacts: artifacts.slice(100, 104) } } }, /incomplete artifact/],
+    [{ artifacts, pages: { 2: { total_count: 105, artifacts: [artifacts[0], ...artifacts.slice(101)] } } }, /repeats an artifact/],
+    [{ artifacts, pages: { 1: { total_count: 105, artifacts: [artifacts[1], ...artifacts.slice(1, 100)] } } }, /duplicate identities/],
+    [{ artifacts: [{ id: 0, name: 'invalid' }] }, /malformed/],
+    [{ artifacts: [{ id: 1, name: null }] }, /malformed/],
+    [{ artifacts: [], pages: { 1: { total_count: -1, artifacts: [] } } }, /incomplete metadata/],
+    [{ artifacts: [], pages: { 1: null } }, /incomplete metadata/],
+    [{ artifacts: [], raw: '{not-json' }, /not valid JSON/],
+  ]) {
+    const f = await artifactInventoryService(t, state)
+    await assert.rejects(f.list(), reason)
+    assert.ok(f.requests.length <= 2)
+  }
+})
+
+test('a changing artifact count restarts a complete read and never returns a partial inventory', async (t) => {
+  const previous = retainedArtifactInventory(105)
+  const current = retainedArtifactInventory(106).reverse()
+  const changing = {
+    artifacts: previous,
+    pages: { 2: { total_count: current.length, artifacts: current.slice(100) } },
+  }
+  const recovered = await artifactInventoryService(t, changing)
+  const pending = recovered.list()
+  await recovered.waitForPage(2)
+  await recovered.replace({ artifacts: current })
+  assert.deepEqual(await pending, current)
+  assert.deepEqual(recovered.requests.map(({ page }) => page), [1, 2, 1, 2])
+
+  const unstable = await artifactInventoryService(t, changing)
+  await assert.rejects(unstable.list(), /did not stabilize/)
+  assert.deepEqual(unstable.requests.map(({ page }) => page), [1, 2, 1, 2, 1, 2])
+})
+
+test('artifact inventory reads bound actual response bytes and the caller deadline across retries', async (t) => {
+  const oversized = await artifactInventoryService(t, { artifacts: [], raw: ' '.repeat(4 * 1024 * 1024 + 1) })
+  await assert.rejects(oversized.list(), /byte or time allowance/)
+  assert.equal(oversized.requests.length, 1)
+  const entries = retainedArtifactInventory(105)
+  const sharedBytes = await artifactInventoryService(t, {
+    artifacts: entries,
+    pages: {
+      1: { total_count: 105, artifacts: entries.slice(0, 100), padding: 'x'.repeat(2_200_000) },
+      2: { total_count: 105, artifacts: entries.slice(100), padding: 'x'.repeat(2_200_000) },
+    },
+  })
+  await assert.rejects(sharedBytes.list(), /byte or time allowance/)
+  assert.equal(sharedBytes.requests.length, 2)
+  const changing = await artifactInventoryService(t, {
+    artifacts: entries,
+    pages: { 2: { total_count: 106, artifacts: retainedArtifactInventory(106).slice(100) } },
+  })
+  const started = Date.now()
+  // The same absolute cutoff may land during HTTP or the retry pause.
+  await assert.rejects(changing.list(started + 150), /deadline|timeout|time allowance/)
+  assert.ok(Date.now() - started < 2000)
+  assert.ok(changing.requests.length >= 1 && changing.requests.length <= 2)
+  const stalled = await artifactInventoryService(t, { artifacts: [], stall: true })
+  const bodyStarted = Date.now()
+  await assert.rejects(stalled.list(bodyStarted + 150), /byte or time allowance|network or timeout/)
+  assert.ok(Date.now() - bodyStarted < 2000)
+  assert.equal(stalled.requests.length, 1)
 })
 
 test('coordination deadlines and polling delays preserve absolute caps without a fake clock', () => {

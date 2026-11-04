@@ -720,7 +720,10 @@ test('Mac hosts queue after Quick and exact candidate preparation', async () => 
     'merge-multiple': true,
     path: '${{ runner.temp }}/macos-host-artifacts',
   })
-  assert.equal(hostAcquisition['timeout-minutes'], 2)
+  assert.equal(
+    hostAcquisition['timeout-minutes'],
+    "${{ github.event_name == 'pull_request' && 2 || 10 }}",
+  )
   assert.equal(
     hostAcquisition.if,
     "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}",

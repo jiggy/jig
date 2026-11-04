@@ -661,3 +661,21 @@ test('record transfers honor real deadlines and rate-limit waits without retaini
   assert.equal(api.length, 2)
   assert.ok(api[1].at - api[0].at >= 1000)
 })
+
+test('record downloads honor an HTTP-date Retry-After without changing the artifact or deadline', async (t) => {
+  const f = await recordDownloadService(t)
+  const bytes = recordArchive([{ name: 'record.json', body: '{"ready":true}' }])
+  await f.publish(bytes)
+  const retryAt = Math.ceil(Date.now() / 1000) * 1000 + 2000
+  f.state.status = 429
+  f.state.headers = { 'retry-after': new Date(retryAt).toUTCString() }
+  const pending = downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), f.options)
+  await f.waitForRequest('/repos/jiggy/jig/actions/artifacts/417/zip')
+  f.state.status = 302
+  f.state.headers = {}
+  assert.deepEqual(await pending, { ready: true })
+  const api = f.requests.filter(({ path }) => path.endsWith('/zip'))
+  assert.equal(api.length, 2)
+  assert.ok(api[1].at >= retryAt)
+  assert.equal(api[0].path, api[1].path)
+})

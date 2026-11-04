@@ -366,6 +366,16 @@ They consume frozen package exports with tracked test helpers and installed
   Downloads verify immutable IDs, byte counts and SHA-256 before bounded ZIP
   parsing. Parse one regular JSON member without filesystem extraction.
 
+  Run artifact listings paginate retained earlier-attempt artifacts before selecting current-attempt records.
+  Read at most ten 100-item pages within 30 seconds, clipped to the caller's phase deadline.
+  All pages share a 4 MiB response-body allowance.
+  A changing total count may restart the read twice, for at most three passes with bounded pauses.
+  Never return a partial inventory. Malformed, incomplete and duplicate-ID pages fail.
+
+  Current-attempt name, identity and digest validation remains mandatory.
+  The current-attempt jobs inventory remains a strict single page.
+  One-page artifact listings keep one request per poll.
+
   Immutable coordination downloads allow four attempts within 30 seconds, clipped to the caller's phase deadline.
   Retry transport failures, HTTP 408, 429, 5xx, explicit throttling responses, and recent already-listed artifact 404s.
   Honor rate-limit waits only when they fit. Validate unchanged IDs, sizes, and digests after every successful transfer.
@@ -402,6 +412,12 @@ They consume frozen package exports with tracked test helpers and installed
   Preparation, coordination, and evidence jobs have separate 45-minute, 90-minute, and five-minute allowances.
   Unassigned workers have a 60-minute queue ceiling. The earlier applicable phase limit still wins.
   Record original creation and current-attempt start times for turnaround reporting, never as native execution anchors.
+
+  Metadata reads allow three requests within 60 seconds, clipped to the caller's absolute deadline.
+  Retry transient request or response-body transport failures and server failures within that bound.
+  Rate-limited HTTP 403 and 429 responses honor `Retry-After` and exhausted-limit reset times.
+  Other HTTP 403 responses, oversized bodies, malformed JSON and expired deadlines remain terminal.
+  Retries never restart a workflow phase or replace its assigned-job identity.
 
   Floor work minutes for admission, but round the GitHub step backstop up from raw remaining milliseconds plus bounded termination grace.
   The exact Node deadline remains authoritative. Integer-minute rounding must not interrupt its process-group cleanup early.

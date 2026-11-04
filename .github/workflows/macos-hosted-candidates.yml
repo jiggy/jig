@@ -309,7 +309,7 @@ jobs:
         name: "Download the prepared canonical Mac inputs"
         if: "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
-        timeout-minutes: 2
+        timeout-minutes: "${{ github.event_name == 'pull_request' && 2 || 10 }}"
         with:
           artifact-ids: "${{ needs.host-artifacts.outputs.artifact_id }}"
           merge-multiple: true
