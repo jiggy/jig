@@ -60,7 +60,7 @@ jobs:
     needs: "scope"
     if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: 25
+    timeout-minutes: 90
     permissions:
       contents: "read"
       actions: "read"
@@ -80,7 +80,7 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Read the original 25-minute PR deadline"
+        name: "Bind the current allocator to its 90-minute coordination allowance"
         if: "github.event_name == 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -88,7 +88,8 @@ jobs:
         run: |
           node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+            --head-sha "$PR_HEAD_SHA" --kind coordination \
+            --job-name "Allocate exact-profile Mac roles" --github-env "$GITHUB_ENV"
       -
         uses: "oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6"
         if: "github.event_name == 'pull_request'"
@@ -117,60 +118,17 @@ jobs:
               stdio: 'inherit', env: process.env,
             });
       -
-        name: "Require completion within the original PR deadline"
-        if: "github.event_name == 'pull_request'"
-        run: "node scripts/ci/pr-time-budget.mjs check"
-  allocator-ready:
-    name: "Require an active Mac role allocator"
-    needs: "scope"
-    if: "${{ needs.scope.outputs.required == 'true' }}"
-    runs-on: "ubuntu-24.04"
-    timeout-minutes: 25
-    permissions:
-      contents: "read"
-      actions: "read"
-    steps:
-      -
-        name: "Keep complete-host readiness unchanged"
-        if: "github.event_name != 'pull_request'"
-        run: "echo 'Main and manual runs require no PR allocator.'"
-      -
-        uses: "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
-        if: "github.event_name == 'pull_request'"
-        with:
-          persist-credentials: false
-      -
-        uses: "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020"
-        if: "github.event_name == 'pull_request'"
-        with:
-          node-version: "24"
-      -
-        name: "Read the original 25-minute PR deadline"
-        if: "github.event_name == 'pull_request'"
-        env:
-          GH_TOKEN: "${{ github.token }}"
-          PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
-        run: |
-          node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
-            --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
-      -
-        name: "Verify the allocator is ready and still running"
-        if: "github.event_name == 'pull_request'"
-        timeout-minutes: 4
-        env:
-          GH_TOKEN: "${{ github.token }}"
-        run: "node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready"
-      -
-        name: "Require completion within the original PR deadline"
+        name: "Require completion within the allocator coordination allowance"
         if: "github.event_name == 'pull_request'"
         run: "node scripts/ci/pr-time-budget.mjs check"
   host-artifacts:
-    name: "Acquire canonical macos host artifacts"
+    name: "Prepare Mac inputs and confirm allocator readiness"
     needs: "scope"
     if: "${{ needs.scope.outputs.required == 'true' }}"
     runs-on: "ubuntu-24.04"
-    timeout-minutes: "${{ github.event_name == 'pull_request' && 25 || 45 }}"
+    timeout-minutes: 45
+    outputs:
+      artifact_id: "${{ steps.prepared-artifacts.outputs.artifact-id }}"
     permissions:
       contents: "read"
       actions: "read"
@@ -184,7 +142,7 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Read the original 25-minute PR deadline"
+        name: "Bind the current preparation job to its 45-minute allowance"
         if: "github.event_name == 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -192,7 +150,8 @@ jobs:
         run: |
           node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+            --head-sha "$PR_HEAD_SHA" --kind preparation \
+            --job-name "Prepare Mac inputs and confirm allocator readiness" --github-env "$GITHUB_ENV"
       -
         name: "Reserve time for evidence and final checks"
         id: "acquire-budget"
@@ -208,12 +167,24 @@ jobs:
           node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
       -
         name: "Retain exact macos host artifacts"
+        id: "prepared-artifacts"
         uses: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
         with:
           name: "macos-host-artifacts-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}"
           path: "${{ runner.temp }}/macos-host-artifacts"
           retention-days: 7
           if-no-files-found: "error"
+      -
+        name: "Verify the allocator is ready before requesting Mac runners"
+        if: "github.event_name == 'pull_request'"
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: "node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready"
+      -
+        name: "Require completion within the preparation allowance"
+        if: "github.event_name == 'pull_request'"
+        run: "node scripts/ci/pr-time-budget.mjs check"
   prerequisites:
     name: "${{ matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)) }}"
     runs-on: "${{ matrix.runner }}"
@@ -221,10 +192,11 @@ jobs:
       group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || format('{0}-{1}', github.run_id, matrix.worker) }}"
       queue: "max"
       cancel-in-progress: false
-    # Queue Mac workers while canonical inputs are prepared, then verify them before tests.
-    # The Ubuntu guard shares this matrix so failure cancels queued Mac siblings.
+    # Admit Macs only after canonical inputs and Quick checks are ready on Ubuntu.
+    # Each assigned Mac has 25 minutes of execution; queue time is reported separately.
+    # The Ubuntu monitor bounds queues/coordination and cancels failed matrix siblings.
     # Main and manual runs retain one complete host and their existing allowance.
-    timeout-minutes: "${{ github.event_name == 'pull_request' && 25 || (inputs.include_startup_profile && 90 || 60) }}"
+    timeout-minutes: "${{ github.event_name == 'pull_request' && (matrix.guard && 90 || 25) || (inputs.include_startup_profile && 90 || 60) }}"
     permissions:
       contents: "read"
       actions: "read"
@@ -244,17 +216,20 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Read the original 25-minute PR deadline"
+        name: "Bind the assigned job to its execution or coordination allowance"
         if: "github.event_name == 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
           PR_HEAD_SHA: "${{ github.event.pull_request.head.sha }}"
+          PR_BUDGET_KIND: "${{ matrix.guard && 'coordination' || 'worker' }}"
+          PR_BUDGET_JOB_NAME: "${{ matrix.guard && 'Enforce Mac PR deadline' || format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) }}"
         run: |
           node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+            --head-sha "$PR_HEAD_SHA" --kind "$PR_BUDGET_KIND" \
+            --job-name "$PR_BUDGET_JOB_NAME" --github-env "$GITHUB_ENV"
       -
-        name: "Monitor five Mac workers until the 23-minute work cutoff"
+        name: "Monitor Mac queues and enforce each worker's 25-minute execution limit"
         if: "matrix.guard"
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -331,13 +306,14 @@ jobs:
         timeout-minutes: "${{ github.event_name == 'pull_request' && 3 || 60 }}"
         run: "node scripts/ci/pr-time-budget.mjs run -- bun scripts/ci/install-macos-test-clients.ts \"$RUNNER_TEMP/jig-native-clients\" >> \"$GITHUB_ENV\""
       -
-        name: "Acquire the exact canonical CI candidates on this host"
+        name: "Download the prepared canonical Mac inputs"
         if: "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}"
-        env:
-          GH_TOKEN: "${{ github.token }}"
-        run: |
-          set -eu
-          node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/candidate-transfer.mjs acquire "$RUNNER_TEMP/macos-host-artifacts" --source "$GITHUB_SHA" --after-quick true --producer-timeout-seconds 1800 --timeout-seconds 600
+        uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
+        timeout-minutes: 2
+        with:
+          artifact-ids: "${{ needs.host-artifacts.outputs.artifact_id }}"
+          merge-multiple: true
+          path: "${{ runner.temp }}/macos-host-artifacts"
       -
         name: "Verify exact canonical publication archives"
         if: "${{ !matrix.guard && steps.role.outputs.execute == 'true' }}"
@@ -423,12 +399,12 @@ jobs:
           if-no-files-found: "ignore"
           retention-days: 7
       -
-        name: "Require completion within the original PR deadline"
+        name: "Require completion within this worker's 25-minute execution allowance"
         if: "${{ !matrix.guard && github.event_name == 'pull_request' }}"
-        run: "node scripts/ci/pr-time-budget.mjs check"
+        run: 'node scripts/ci/pr-time-budget.mjs check --github-summary "$GITHUB_STEP_SUMMARY"'
     needs:
       - "scope"
-      - "allocator-ready"
+      - "host-artifacts"
     if: "${{ needs.scope.outputs.required == 'true' }}"
   qualified-architecture:
     name: "Native host qualification — ${{ matrix.arch }}"
@@ -437,7 +413,6 @@ jobs:
       - "scope"
       - "host-artifacts"
       - "cohort-allocator"
-      - "allocator-ready"
       - "prerequisites"
     runs-on: "ubuntu-24.04"
     permissions:
@@ -463,7 +438,7 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Read the original 25-minute PR deadline"
+        name: "Bind this qualification collector to its five-minute evidence allowance"
         if: "github.event_name == 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -471,7 +446,8 @@ jobs:
         run: |
           node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+            --head-sha "$PR_HEAD_SHA" --kind evidence \
+            --job-name "Native host qualification — ${{ matrix.arch }}" --github-env "$GITHUB_ENV"
       -
         name: "Download this architecture's shard evidence"
         uses: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093"
@@ -554,7 +530,7 @@ jobs:
           if-no-files-found: "ignore"
           retention-days: 7
       -
-        name: "Require completion within the original PR deadline"
+        name: "Require completion within the evidence collection allowance"
         if: "github.event_name == 'pull_request'"
         run: "node scripts/ci/pr-time-budget.mjs check"
       -
@@ -582,7 +558,7 @@ jobs:
           retention-days: 7
           if-no-files-found: "error"
       -
-        name: "Require completion within the original PR deadline"
+        name: "Require completion within the evidence collection allowance"
         if: "github.event_name == 'pull_request'"
         run: "node scripts/ci/pr-time-budget.mjs check"
   affected-macos:
@@ -595,7 +571,6 @@ jobs:
       - "scope"
       - "host-artifacts"
       - "cohort-allocator"
-      - "allocator-ready"
       - "prerequisites"
       - "qualified-architecture"
     runs-on: "ubuntu-24.04"
@@ -611,7 +586,7 @@ jobs:
         with:
           node-version: "24"
       -
-        name: "Read the original 25-minute PR deadline"
+        name: "Bind this final gate to its five-minute evidence allowance"
         if: "github.event_name == 'pull_request'"
         env:
           GH_TOKEN: "${{ github.token }}"
@@ -619,7 +594,8 @@ jobs:
         run: |
           node scripts/ci/pr-time-budget.mjs start --repository "$GITHUB_REPOSITORY" \
             --run-id "$GITHUB_RUN_ID" --attempt "$GITHUB_RUN_ATTEMPT" \
-            --head-sha "$PR_HEAD_SHA" --github-env "$GITHUB_ENV"
+            --head-sha "$PR_HEAD_SHA" --kind evidence \
+            --job-name "affected-macos" --github-env "$GITHUB_ENV"
       -
         name: "Revalidate host scope and every required job result"
         env:
@@ -657,6 +633,6 @@ jobs:
           retention-days: 7
           if-no-files-found: "ignore"
       -
-        name: "Require completion within the original PR deadline"
+        name: "Report turnaround and require completion within the final gate allowance"
         if: "github.event_name == 'pull_request'"
-        run: "node scripts/ci/pr-time-budget.mjs check"
+        run: 'node scripts/ci/pr-time-budget.mjs check --github-summary "$GITHUB_STEP_SUMMARY"'

@@ -3,7 +3,9 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const sourceTargets = ['source-portable', 'source-protocol', 'source-applications', 'source-python']
-const conclusions = new Set(['success', 'failure', 'cancelled', 'skipped'])
+// GitHub may report abandoned needs alongside a cancelled API job. Keep both
+// observations intact, and require success regardless of the failure spelling.
+const conclusions = new Set(['success', 'failure', 'cancelled', 'skipped', 'abandoned'])
 
 // These observations explain failures. They are never execution or cleanup proof.
 export function ciJobResults(jobs, observedJobs) {
@@ -47,6 +49,7 @@ export function ciJobResults(jobs, observedJobs) {
           return {
             id: Number.isSafeInteger(job.id) ? job.id : null,
             name: job.name,
+            conclusion: job.conclusion,
             classification,
             runnerAssigned: typeof job.runner_name === 'string' ? job.runner_name !== '' : null,
             failedSteps:
@@ -63,8 +66,8 @@ export function ciJobResults(jobs, observedJobs) {
 
 export async function writeCiJobResults({ jobs, observedJobs, output, diagnostics }) {
   const report = ciJobResults(jobs, observedJobs)
-  // Persist every result before the caller refuses qualification. Failed and
-  // cancelled jobs must still leave an actionable aggregate artifact.
+  // Persist every result before the caller refuses qualification. Unsuccessful
+  // jobs must still leave an actionable aggregate artifact.
   await writeFile(output, `${JSON.stringify(report.results, null, 2)}\n`, { flag: 'wx' })
   await writeFile(diagnostics, `${JSON.stringify(report.diagnostics, null, 2)}\n`, { flag: 'wx' })
   return report

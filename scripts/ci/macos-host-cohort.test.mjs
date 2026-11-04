@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { once } from 'node:events'
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises'
+import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { promisify } from 'node:util'
 import {
   MAC_PR_COHORT,
   MAC_PR_COHORT_ROLE_ORDER,
@@ -394,7 +397,7 @@ test('record ZIP decoding verifies actual transport bytes and reads one bounded 
   }
 })
 
-test('record ZIP transport rejects altered hashes, lengths, expiry and malformed artifact identity', () => {
+test('record ZIP transport rejects altered hashes, lengths, expiry and malformed artifact identity', async () => {
   const bytes = recordArchive([{ name: 'record.json' }])
   const original = archiveMetadata(bytes)
   for (const change of [
@@ -421,9 +424,9 @@ test('record ZIP transport rejects altered hashes, lengths, expiry and malformed
   const oversized = recordArchive([{ name: 'record.json', body: ' '.repeat(16_384), compression: 0 }])
   assert.ok(oversized.length > 16_384)
   assert.throws(() => decodeMacHostCohortRecord(oversized, archiveMetadata(oversized)), /metadata/)
-  assert.throws(() => downloadMacHostCohortRecord('../jig', original), /repository/)
-  assert.throws(() => downloadMacHostCohortRecord('jiggy/jig?query', original), /repository/)
-  assert.throws(() => downloadMacHostCohortRecord('jiggy/jig', { ...original, expired: true }), /metadata/)
+  await assert.rejects(downloadMacHostCohortRecord('../jig', original), /repository/)
+  await assert.rejects(downloadMacHostCohortRecord('jiggy/jig?query', original), /repository/)
+  await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', { ...original, expired: true }), /metadata/)
 })
 
 test('record ZIP decoding rejects extra entries, unsafe names and non-regular or encrypted members', () => {
@@ -474,4 +477,187 @@ test('record ZIP decoding rejects expansion beyond the JSON bound, invalid UTF-8
   assert.ok(content > 0)
   badCrc[content + 8] = '1'.charCodeAt(0)
   assert.throws(() => decodeMacHostCohortRecord(badCrc, archiveMetadata(badCrc)), /malformed or unsafe/)
+})
+
+// The local API redirects to an archive served from real files. Publication,
+// HTTP refusal, a lost connection and a stalled body exercise the actual fetch boundary.
+async function recordDownloadService(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'jig-mac-record-transport-'))
+  const archivePath = join(directory, 'record.zip')
+  const requests = []
+  const state = { status: 302, headers: {}, disconnect: false, stall: false }
+  let origin
+  const server = createServer(async (request, response) => {
+    const path = new URL(request.url, origin).pathname
+    const observation = { path, authorization: request.headers.authorization, at: Date.now() }
+    requests.push(observation)
+    response.once('finish', () => observation.status = response.statusCode)
+    if (state.disconnect) {
+      request.socket.destroy()
+      return
+    }
+    if (path === '/repos/jiggy/jig/actions/artifacts/417/zip') {
+      response.writeHead(state.status, {
+        ...(state.status === 302 ? { location: state.location ?? origin + '/record.zip?signature=private-fixture' } : {}),
+        ...state.headers,
+      })
+      response.end('private-fixture-response-body')
+      return
+    }
+    if (path !== '/record.zip') {
+      response.writeHead(404).end()
+      return
+    }
+    try {
+      const bytes = await readFile(archivePath)
+      response.writeHead(200, { 'content-type': 'application/zip' })
+      if (state.stall) response.write(bytes.subarray(0, 8))
+      else response.end(bytes)
+    } catch (error) {
+      response.writeHead(error.code === 'ENOENT' ? 404 : 500).end()
+    }
+  })
+  server.listen(0, '127.0.0.1')
+  await once(server, 'listening')
+  origin = 'http://127.0.0.1:' + server.address().port
+  t.after(async () => {
+    const stopped = once(server, 'close')
+    server.closeAllConnections()
+    server.close()
+    await stopped
+    await rm(directory, { recursive: true, force: true })
+  })
+  return {
+    state, requests,
+    options: { token: 'fixture-gh-token', apiOrigin: origin, deadlineMs: Date.now() + 15_000 },
+    publish: (bytes) => writeFile(archivePath, bytes),
+    waitForRequest: async (path, count = 1) => {
+      const deadline = Date.now() + 5000
+      while (requests.filter((request) => request.path === path).length < count) {
+        if (Date.now() >= deadline) throw new Error('Record transport request was not observed')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    },
+    waitForResponse: async (path, status) => {
+      const deadline = Date.now() + 5000
+      while (!requests.some((request) => request.path === path && request.status === status)) {
+        if (Date.now() >= deadline) throw new Error('Record transport response was not observed')
+        await new Promise((resolve) => setTimeout(resolve, 10))
+      }
+    },
+  }
+}
+
+test('record downloads tolerate fresh publication races without forwarding API credentials', async (t) => {
+  const f = await recordDownloadService(t)
+  const bytes = recordArchive([{ name: 'record.json', body: '{"role":2}' }])
+  const metadata = { ...archiveMetadata(bytes), created_at: new Date().toISOString() }
+  const download = downloadMacHostCohortRecord('jiggy/jig', metadata, f.options)
+  await f.waitForResponse('/record.zip', 404)
+  await f.publish(bytes)
+  assert.deepEqual(await download, { role: 2 })
+  const api = f.requests.filter(({ path }) => path.endsWith('/zip'))
+  const archive = f.requests.filter(({ path }) => path === '/record.zip')
+  assert.equal(api.length, 2)
+  assert.equal(archive.length, 2)
+  assert.ok(api.every(({ authorization }) => authorization === 'Bearer fixture-gh-token'))
+  assert.ok(archive.every(({ authorization }) => authorization === undefined))
+})
+
+test('immutable downloads recover from service and connection failures with bounded attempts', async (t) => {
+  const bytes = recordArchive([{ name: 'record.json', body: '{"ready":true}' }])
+  for (const failure of ['service', 'connection']) {
+    const f = await recordDownloadService(t)
+    await f.publish(bytes)
+    if (failure === 'service') f.state.status = 503
+    else f.state.disconnect = true
+    const download = downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), f.options)
+    await f.waitForRequest('/repos/jiggy/jig/actions/artifacts/417/zip')
+    f.state.status = 302
+    f.state.disconnect = false
+    assert.deepEqual(await download, { ready: true })
+    assert.ok(f.requests.filter(({ path }) => path.endsWith('/zip')).length >= 2)
+  }
+  const unavailable = await recordDownloadService(t)
+  unavailable.state.status = 503
+  await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), unavailable.options),
+    /"attempt":4.*"status":503.*"retry":false/)
+  assert.equal(unavailable.requests.length, 4)
+})
+
+test('record downloads refuse permanent HTTP failures and stale missing archives without retrying', async (t) => {
+  const bytes = recordArchive([{ name: 'record.json' }])
+  for (const status of [401, 403, 404, 410, 422]) {
+    const f = await recordDownloadService(t)
+    f.state.status = status
+    await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', {
+      ...archiveMetadata(bytes), created_at: new Date(Date.now() - 120_000).toISOString(),
+    }, f.options), new RegExp(`"status":${status}.*"retry":false`))
+    assert.equal(f.requests.length, 1)
+  }
+})
+
+test('record transfer retries cannot mask changed bytes, oversized bodies or unsafe redirects', async (t) => {
+  const bytes = recordArchive([{ name: 'record.json' }])
+  const altered = await recordDownloadService(t)
+  const changed = Buffer.from(bytes)
+  changed[0] ^= 1
+  await altered.publish(changed)
+  await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), altered.options), /digest/)
+  assert.equal(altered.requests.length, 2)
+
+  const oversized = await recordDownloadService(t)
+  await oversized.publish(Buffer.alloc(16_385))
+  await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), oversized.options),
+    /oversized-body.*"retry":false/)
+  assert.equal(oversized.requests.length, 2)
+
+  for (const location of ['http://untrusted.invalid/record.zip', 'https://secret:password@storage.invalid/archive', 'file:///etc/passwd']) {
+    const f = await recordDownloadService(t)
+    f.state.location = location
+    await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), f.options),
+      /invalid-redirect.*"retry":false/)
+    assert.equal(f.requests.length, 1)
+  }
+})
+
+test('record transfers honor real deadlines and rate-limit waits without retaining private responses', async (t) => {
+  const bytes = recordArchive([{ name: 'record.json' }])
+  const stalled = await recordDownloadService(t)
+  await stalled.publish(bytes)
+  stalled.state.stall = true
+  const started = Date.now()
+  await assert.rejects(downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), {
+    ...stalled.options, deadlineMs: started + 150,
+  }), /timeout.*"retry":false/)
+  assert.ok(Date.now() - started < 2000)
+  assert.equal(stalled.requests.length, 2)
+
+  const limited = await recordDownloadService(t)
+  limited.state.status = 403
+  limited.state.headers = { 'retry-after': '60', 'x-ratelimit-remaining': '0' }
+  const script = `import { downloadMacHostCohortRecord } from ${JSON.stringify(new URL('./macos-host-cohort.mjs', import.meta.url).href)};
+    try { await downloadMacHostCohortRecord('jiggy/jig', ${JSON.stringify(archiveMetadata(bytes))}, ${JSON.stringify(limited.options)}); }
+    catch (error) { console.error(error.message); process.exitCode = 1; }`
+  await assert.rejects(promisify(execFile)(process.execPath, ['--input-type=module', '-e', script], {
+    timeout: 5000, maxBuffer: 8192,
+  }), (error) => {
+    assert.match(error.stderr, /"artifact":417.*"status":403.*"remaining":0.*"retryAfterMs":60000.*"retry":false/)
+    assert.doesNotMatch(error.stderr, /fixture-gh-token|private-fixture|signature|Bearer/)
+    return true
+  })
+  assert.equal(limited.requests.length, 1)
+
+  const recovering = await recordDownloadService(t)
+  await recovering.publish(bytes)
+  recovering.state.status = 429
+  recovering.state.headers = { 'retry-after': '1' }
+  const download = downloadMacHostCohortRecord('jiggy/jig', archiveMetadata(bytes), recovering.options)
+  await recovering.waitForRequest('/repos/jiggy/jig/actions/artifacts/417/zip')
+  recovering.state.status = 302
+  recovering.state.headers = {}
+  assert.deepEqual(await download, {})
+  const api = recovering.requests.filter(({ path }) => path.endsWith('/zip'))
+  assert.equal(api.length, 2)
+  assert.ok(api[1].at - api[0].at >= 1000)
 })
