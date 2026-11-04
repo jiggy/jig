@@ -319,7 +319,8 @@ function normalizeProjectAdministrationDiagnostic(
   }
   let preparationLimit: DependencyPreparationLimitDiagnostic | undefined
   if (actual.includes('preparationLimit')) {
-    if (code !== 'PACKAGE_BUN_OUTPUT_LIMIT')
+    const countLimit = code === 'PACKAGE_BUN_PROJECT_COUNT_LIMIT'
+    if (!countLimit && code !== 'PACKAGE_BUN_OUTPUT_LIMIT')
       throw new TypeError('project diagnostic preparation limit is invalid')
     const raw = fields.preparationLimit
     if (raw === null || typeof raw !== 'object' || utilTypes.isProxy(raw))
@@ -338,7 +339,10 @@ function normalizeProjectAdministrationDiagnostic(
       'preparation limit',
     )
     if (
-      (detail.dimension !== 'bytes' && detail.dimension !== 'files') ||
+      (detail.dimension !== 'bytes' &&
+        detail.dimension !== 'files' &&
+        detail.dimension !== 'preparations') ||
+      countLimit !== (detail.dimension === 'preparations') ||
       !Number.isSafeInteger(detail.observed) ||
       !Number.isSafeInteger(detail.maximum) ||
       (detail.maximum as number) < 1 ||
@@ -348,7 +352,7 @@ function normalizeProjectAdministrationDiagnostic(
       throw new TypeError('project diagnostic preparation limit is invalid')
     if (
       withProfile &&
-      (detail.profile !== 'evaluation' || (withOrigin && detail.origin !== 'default'))
+      (countLimit || detail.profile !== 'evaluation' || (withOrigin && detail.origin !== 'default'))
     )
       throw new TypeError('project diagnostic preparation profile is invalid')
     preparationLimit = Object.freeze({

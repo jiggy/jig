@@ -1,7 +1,7 @@
 import { constants, Database } from 'bun:sqlite'
 import { expect, test } from 'bun:test'
 import { execFileSync } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
@@ -18,7 +18,7 @@ if (
 
 const testRoot = join(import.meta.dir, '..')
 
-for (const scenario of ['entrypoint', 'dependencies', 'limits'] as const) {
+for (const scenario of ['entrypoint', 'dependencies', 'limits', 'preparations'] as const) {
   test(`packed project ${scenario} uses fresh reviewed data and immutable execution`, async () => {
     const directory = await realpath(await mkdtemp(join(tmpdir(), `jig-${scenario}-consumer-`)))
     const packageRoot = join(testRoot, '..')
@@ -82,7 +82,11 @@ for (const scenario of ['entrypoint', 'dependencies', 'limits'] as const) {
           stdout: 'pipe',
           stderr: 'pipe',
         })
-        const timer = setTimeout(() => child.kill('SIGTERM'), 120000)
+        // Count-capacity review owns one 180-second preparation deadline.
+        // Observe that deadline and cleanup within the unchanged case budget.
+        const commandTimeoutMs =
+          scenario === 'preparations' && args[0] === 'review' ? 210_000 : 120_000
+        const timer = setTimeout(() => child.kill('SIGTERM'), commandTimeoutMs)
         const [exit, stdout, stderr] = await Promise.all([
           child.exited,
           new Response(child.stdout).text(),
@@ -401,6 +405,157 @@ for await(const line of createInterface({input:process.stdin})) {
         })
         expect(await run()).toMatchObject({ status: 'succeeded', output: admitted.output })
         expect(await readFile(join(project, 'flows/large/bun.lock'))).toEqual(authoredLock)
+        passed = true
+        return
+      }
+
+      if (scenario === 'preparations') {
+        const countVariable = 'JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS'
+        const baseEnvironment = {
+          [countVariable]: undefined,
+          JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_BYTES: undefined,
+          JIG_LIMITS_DEPENDENCIES_MAX_PREPARED_FILES: undefined,
+        }
+        const declareLimits = (maximum?: number) =>
+          `import {defineJig,discover} from '@jigging/jig'; export default defineJig({flows:discover('flows'),${maximum === undefined ? '' : `limits:{dependencies:{maxPreparations:${maximum}}},`}});`
+        const putFlow = async (index: number) => {
+          const path = `flows/item-${String(index).padStart(2, '0')}`
+          await put(`${path}/package.json`, {
+            name: 'small-dependency-consumer',
+            private: true,
+            type: 'module',
+            dependencies: { 'is-number': '7.0.0' },
+          })
+          await put(
+            `${path}/FLOW.ts`,
+            `import isNumber from 'is-number';\n${echo.replace('let output=input;', `let output={index:${index},numeric:isNumber(input)};`)}`,
+          )
+          return path
+        }
+        const count = (result: Awaited<ReturnType<typeof invoke>>, phase: string) =>
+          result.profile.filter(
+            (record) =>
+              record.phase === phase && (record.kind === 'start' || record.kind === 'instant'),
+          ).length
+        const requireNoRuns = async () => {
+          const database = Database.open(
+            join(project, '.jig/jig.sqlite3'),
+            constants.SQLITE_OPEN_READONLY | constants.SQLITE_OPEN_NOFOLLOW,
+          )
+          try {
+            database.exec('PRAGMA query_only = ON')
+            expect(database.query('SELECT count(*) AS n FROM root_runs').get()).toEqual({ n: 0 })
+            expect(database.query('SELECT count(*) AS n FROM root_spawn_intents').get()).toEqual({
+              n: 0,
+            })
+          } finally {
+            database.close()
+          }
+          expect(await readdir(join(project, '.jig/private-preparation-owners'))).toEqual([])
+        }
+        await put('package.json', { private: true, type: 'module' })
+        await put('jig.ts', declareLimits())
+        const firstPath = await putFlow(0)
+        execFileSync(
+          process.execPath,
+          ['install', '--lockfile-only', '--ignore-scripts', '--no-progress'],
+          {
+            cwd: join(project, firstPath),
+            env: {},
+            stdio: 'pipe',
+            timeout: 120000,
+          },
+        )
+        await rm(join(project, firstPath, 'node_modules'), { recursive: true, force: true })
+        const authoredLock = await readFile(join(project, firstPath, 'bun.lock'), 'utf8')
+        // Standalone packages share the same authored manifest and real Bun lock.
+        // Their independently callable methods have distinct captured source.
+        for (let index = 1; index < 17; index += 1)
+          await put(`${await putFlow(index)}/bun.lock`, authoredLock)
+        const refused = await invoke(['review', '--yes'], baseEnvironment)
+        expect(refused.exit, refused.stdout + refused.stderr).toBe(1)
+        expect(refused.stderr).toContain('PACKAGE_BUN_PROJECT_COUNT_LIMIT')
+        expect(refused.stderr).toContain('Observed: at least 17 distinct dependency preparations')
+        expect(refused.stderr).toContain('Effective limit: 16')
+        expect(refused.stderr).toContain('Limit source: built-in default')
+        expect(refused.stderr).toContain('limits.dependencies.maxPreparations')
+        expect(refused.stderr).toContain(countVariable)
+        expect(count(refused, 'dependency-preparation')).toBe(16)
+        await requireNoRuns()
+
+        await put('jig.ts', declareLimits(17))
+        const expanded = await succeed(['review', '--yes'], baseEnvironment)
+        expect(count(expanded, 'dependency-preparation')).toBe(17)
+        await requireNoRuns()
+        const approvedLock = await readFile(join(project, 'jig.lock'))
+
+        // A count allowance applies to actual preparations, not admitted library size.
+        const reused = await succeed(['review', '--yes'], {
+          ...baseEnvironment,
+          [countVariable]: '1',
+        })
+        expect(count(reused, 'dependency-preparation')).toBe(0)
+        expect(count(reused, 'dependency-reuse')).toBe(17)
+        expect(await readFile(join(project, 'jig.lock'))).toEqual(approvedLock)
+
+        for (const index of [17, 18]) await put(`${await putFlow(index)}/bun.lock`, authoredLock)
+        const constrained = await invoke(['review', '--yes'], {
+          ...baseEnvironment,
+          [countVariable]: '1',
+        })
+        expect(constrained.exit, constrained.stdout + constrained.stderr).toBe(1)
+        expect(constrained.stderr).toContain('PACKAGE_BUN_PROJECT_COUNT_LIMIT')
+        expect(constrained.stderr).toContain(
+          'Observed: at least 2 distinct dependency preparations',
+        )
+        expect(constrained.stderr).toContain('Effective limit: 1')
+        expect(constrained.stderr).toContain(`Limit source: ${countVariable}`)
+        expect(count(constrained, 'dependency-preparation')).toBe(1)
+        expect(await readFile(join(project, 'jig.lock'))).toEqual(approvedLock)
+
+        await put('jig.ts', declareLimits(1))
+        const projectConstrained = await invoke(['review', '--yes'], baseEnvironment)
+        expect(projectConstrained.exit, projectConstrained.stdout + projectConstrained.stderr).toBe(
+          1,
+        )
+        expect(projectConstrained.stderr).toContain('PACKAGE_BUN_PROJECT_COUNT_LIMIT')
+        expect(projectConstrained.stderr).toContain('Effective limit: 1')
+        expect(projectConstrained.stderr).toContain('Limit source: jig.ts')
+        expect(await readFile(join(project, 'jig.lock'))).toEqual(approvedLock)
+        await requireNoRuns()
+
+        const approvedRun = JSON.parse(
+          (await succeed(['run', 'flow:flows/item-16', '--input', '7', '--json'], baseEnvironment))
+            .stdout,
+        )
+        expect(approvedRun).toMatchObject({
+          status: 'succeeded',
+          outcome: 'done',
+          output: { index: 16, numeric: true },
+        })
+        const operatorExpanded = await succeed(['review', '--yes'], {
+          ...baseEnvironment,
+          [countVariable]: '2',
+        })
+        expect(count(operatorExpanded, 'dependency-preparation')).toBe(2)
+        expect(count(operatorExpanded, 'dependency-reuse')).toBe(17)
+        const addedRun = JSON.parse(
+          (await succeed(['run', 'flow:flows/item-18', '--input', '7', '--json'], baseEnvironment))
+            .stdout,
+        )
+        expect(addedRun).toMatchObject({
+          status: 'succeeded',
+          outcome: 'done',
+          output: { index: 18, numeric: true },
+        })
+        for (let index = 0; index < 19; index += 1)
+          expect(
+            await readFile(
+              join(project, `flows/item-${String(index).padStart(2, '0')}/bun.lock`),
+              'utf8',
+            ),
+          ).toBe(authoredLock)
+        expect(await readdir(join(project, '.jig/private-preparation-owners'))).toEqual([])
         passed = true
         return
       }

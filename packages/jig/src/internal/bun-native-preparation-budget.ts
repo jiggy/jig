@@ -1,9 +1,12 @@
 import { CheckError } from '../diagnostics.js'
+import {
+  DEFAULT_PROJECT_DEPENDENCY_LIMITS,
+  requireDependencyPreparationLimit,
+} from '../project/limits.js'
 
 const MIB = 1024 * 1024
 
 export const PRIVATE_BUN_PROJECT_PREPARATION_LIMITS = Object.freeze({
-  distinctPackages: 16,
   preparedBytes: 256 * MIB,
   wallClockMs: 180_000,
 })
@@ -11,7 +14,7 @@ export const PRIVATE_BUN_PROJECT_PREPARATION_LIMITS = Object.freeze({
 export interface PrivateBunPreparationBudget {
   readonly deadlineUnixMs: number
   readonly signal: AbortSignal
-  reserve(packageDigest: string, projectPath: string): void
+  reserve(packageDigest: string, projectPath: string, maxPreparations?: number): void
   retain(
     files: readonly { readonly size: number }[],
     projectPath: string,
@@ -20,7 +23,7 @@ export interface PrivateBunPreparationBudget {
   dispose(): void
 }
 
-/** One fixed, invocation-local alpha budget; it is not project configuration. */
+/** One review's count, byte and time accounting, with no renewable deadline. */
 export function createPrivateBunPreparationBudget(
   parentSignal: AbortSignal,
 ): PrivateBunPreparationBudget {
@@ -46,15 +49,26 @@ export function createPrivateBunPreparationBudget(
   return Object.freeze({
     deadlineUnixMs,
     signal,
-    reserve(packageDigest: string, projectPath: string): void {
+    reserve(
+      packageDigest: string,
+      projectPath: string,
+      maxPreparations = DEFAULT_PROJECT_DEPENDENCY_LIMITS.maxPreparations,
+    ): void {
       requireOpen()
       signal.throwIfAborted()
+      const maximum = requireDependencyPreparationLimit(maxPreparations, 'maxPreparations')
       if (packages.has(packageDigest)) return
-      if (packages.size >= PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.distinctPackages) {
-        throw limit(
+      if (packages.size >= maximum) {
+        const observed = packages.size + 1
+        throw new CheckError(
+          'invalid',
           'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
-          `project requires more than ${PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.distinctPackages} distinct dependency preparations`,
+          `project requires at least ${observed} distinct dependency preparations, exceeding the configured limit of ${maximum}`,
           projectPath,
+          undefined,
+          undefined,
+          undefined,
+          { dimension: 'preparations', observed, maximum },
         )
       }
       packages.add(packageDigest)

@@ -70,6 +70,10 @@ All selected domain requirements still apply.
 
 ### Command grammar and review
 
+- Dependency count refusals report distinct preparations per review, the observed lower bound, effective allowance, and policy origin.
+  Show the supported `limits.dependencies.maxPreparations` field, its environment override, and their precedence.
+  Keep byte, time, and Run authority limits separate. Never derive a total Flow count from preparation evidence.
+
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.
   Checkpoint guidance distinguishes settled-child Flow retrieval from application recovery through the original retained ticket.
 

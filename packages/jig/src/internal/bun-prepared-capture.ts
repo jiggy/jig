@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs'
 import { lstat, mkdir, opendir, readFile, realpath, rename } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { packageDigest } from '../package/digest.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import {
   assertPrivateBunExecutionLayoutFiles,
   EMPTY_PRIVATE_BUN_EXECUTION_LAYOUT,
@@ -47,7 +47,7 @@ export async function capturePrivateBunPreparedTree(
   workspace?: Workspace,
   patchPaths: readonly string[] = [],
   mode: PrivateBunPreparationMode = 'production',
-  dependencyLimits?: ProjectDependencyLimits,
+  dependencyLimits?: DependencyPreparationOutputLimits,
 ): Promise<{
   readonly files: readonly { readonly path: string; readonly size: number }[]
   readonly layout: PrivateBunExecutionLayout

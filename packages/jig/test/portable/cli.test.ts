@@ -77,6 +77,11 @@ test('installed help is focused and version matches the installed manifest', asy
       expect(result.stdout).toContain('relative to the invocation directory')
       expect(result.stdout).toContain('no network or Run filesystem access')
       expect(result.stdout).toContain('--yes alone does not approve new resource authority')
+      expect(result.stdout).toContain('16 distinct dependency preparations')
+      expect(result.stdout).toContain('limits.dependencies.maxPreparations in jig.ts')
+      expect(result.stdout).toContain('JIG_LIMITS_DEPENDENCIES_MAX_PREPARATIONS')
+      expect(result.stdout).toContain('supported range is 1-256')
+      expect(result.stdout).toContain('Exported environment values take precedence')
     }
     if (args[0] === 'init') expect(result.stdout).toContain('--bare')
     if (args[0] !== 'init') {

@@ -287,6 +287,10 @@ and operator overrides, bounded failure details, restrictive reuse, unchanged
 approval after refusal, and execution of retained bytes without the review's
 environment override.
 
+Its preparation-count consumer reviews seventeen standalone Flow packages through the installed CLI.
+It checks both override sources, count refusals, actual-preparation accounting, retained approval and execution without the review environment.
+Review starts no root Runs. Authored locks remain unchanged.
+
 `linux/linux-rootless-supervisor.test.ts` additionally checks the bounded
 evaluator copier's regular-file restrictions and authenticated empty-directory
 restoration without changing retained source. The opted-in whole

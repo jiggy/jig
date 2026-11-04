@@ -3,29 +3,93 @@ import {
   createPrivateBunPreparationBudget,
   PRIVATE_BUN_PROJECT_PREPARATION_LIMITS,
 } from '../../src/internal/bun-native-preparation-budget.js'
+import {
+  DEFAULT_PROJECT_DEPENDENCY_LIMITS,
+  DEPENDENCY_PREPARATION_LIMIT_POLICY,
+} from '../../src/project/limits.js'
 
 describe('private aggregate Bun preparation budget', () => {
   test('bounds distinct actual preparations and ignores duplicate reservations', () => {
     const budget = createPrivateBunPreparationBudget(new AbortController().signal)
     try {
-      for (
-        let index = 0;
-        index < PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.distinctPackages;
-        index += 1
-      ) {
+      for (let index = 0; index < DEFAULT_PROJECT_DEPENDENCY_LIMITS.maxPreparations; index += 1) {
         budget.reserve(`sha256:${index.toString(16).padStart(64, '0')}`, `flows/${index}`)
       }
       budget.reserve(`sha256:${'0'.repeat(64)}`, 'flows/reused')
-      expect(() => budget.reserve(`sha256:${'f'.repeat(64)}`, 'flows/overflow')).toThrow(
-        'distinct dependency preparations',
-      )
+      let failure: unknown
+      try {
+        budget.reserve(`sha256:${'f'.repeat(64)}`, 'flows/overflow')
+      } catch (error) {
+        failure = error
+      }
+      expect(failure).toMatchObject({
+        kind: 'invalid',
+        code: 'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
+        path: 'flows/overflow',
+        preparationLimit: { dimension: 'preparations', observed: 17, maximum: 16 },
+      })
     } finally {
       budget.dispose()
     }
   })
+
+  for (const maximum of [1, 32, DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparations]) {
+    test(`enforces an explicit count allowance of ${maximum} with duplicate reuse`, () => {
+      const budget = createPrivateBunPreparationBudget(new AbortController().signal)
+      const deadline = budget.deadlineUnixMs
+      try {
+        for (let index = 0; index < maximum; index += 1)
+          budget.reserve(
+            `sha256:${index.toString(16).padStart(64, '0')}`,
+            `flows/${index}`,
+            maximum,
+          )
+        expect(() =>
+          budget.reserve(`sha256:${'0'.repeat(64)}`, 'flows/reused', maximum),
+        ).not.toThrow()
+        let failure: unknown
+        try {
+          budget.reserve(`sha256:${'f'.repeat(64)}`, 'flows/overflow', maximum)
+        } catch (error) {
+          failure = error
+        }
+        expect(failure).toMatchObject({
+          code: 'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
+          preparationLimit: {
+            dimension: 'preparations',
+            observed: maximum + 1,
+            maximum,
+          },
+        })
+        // Reserving more packages never renews the shared review deadline.
+        expect(budget.deadlineUnixMs).toBe(deadline)
+      } finally {
+        budget.dispose()
+      }
+    })
+  }
+
+  test('rejects invalid count allowances even for a previously reserved package', () => {
+    const budget = createPrivateBunPreparationBudget(new AbortController().signal)
+    const digest = `sha256:${'0'.repeat(64)}`
+    try {
+      budget.reserve(digest, 'flows/value')
+      for (const maximum of [0, -1, 1.5, 257, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1])
+        expect(() => budget.reserve(digest, 'flows/value', maximum)).toThrow('maxPreparations')
+      expect(() => budget.reserve(digest, 'flows/value', 1)).not.toThrow()
+    } finally {
+      budget.dispose()
+    }
+  })
+
   test('accepts the exact aggregate byte ceiling and rejects one byte more', () => {
     const budget = createPrivateBunPreparationBudget(new AbortController().signal)
     try {
+      budget.reserve(
+        `sha256:${'0'.repeat(64)}`,
+        'flows/exact',
+        DEPENDENCY_PREPARATION_LIMIT_POLICY.maximum.maxPreparations,
+      )
       budget.retain([{ size: PRIVATE_BUN_PROJECT_PREPARATION_LIMITS.preparedBytes }], 'flows/exact')
       expect(() => budget.retain([{ size: 1 }], 'flows/overflow')).toThrow(
         'project dependency preparation exceeds',

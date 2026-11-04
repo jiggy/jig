@@ -3,6 +3,7 @@ import { snapshotJsonObject } from '../project/author-value.js'
 import {
   DEFAULT_PROJECT_DEPENDENCY_LIMITS,
   DEPENDENCY_PREPARATION_LIMIT_POLICY,
+  type DependencyPreparationOutputLimits,
   type JigLimits,
   normalizeJigLimits,
   normalizeProjectDependencyLimits,
@@ -12,12 +13,14 @@ import {
 
 type LimitOrigin = 'environment' | 'project' | 'default'
 export interface PrivateDependencyPreparationLimitEnvironment {
+  readonly maxPreparations?: number
   readonly maxPreparedBytes?: number
   readonly maxPreparedFiles?: number
 }
 
 export interface PrivateResolvedDependencyPreparationLimits {
   readonly limits: ProjectDependencyLimits
+  readonly outputLimits: DependencyPreparationOutputLimits
   readonly origins: Readonly<Record<keyof ProjectDependencyLimits, LimitOrigin>>
 }
 
@@ -28,7 +31,7 @@ export function capturePrivateDependencyPreparationLimitEnvironment(
   if (utilTypes.isProxy(environment))
     throw new TypeError('dependency preparation environment must contain ordinary data')
   const output: Partial<ProjectDependencyLimits> = {}
-  for (const field of ['maxPreparedBytes', 'maxPreparedFiles'] as const) {
+  for (const field of ['maxPreparations', 'maxPreparedBytes', 'maxPreparedFiles'] as const) {
     const name = DEPENDENCY_PREPARATION_LIMIT_POLICY.environment[field]
     const descriptor = Object.getOwnPropertyDescriptor(environment, name)
     if (descriptor === undefined) continue
@@ -55,7 +58,7 @@ export function resolvePrivateDependencyPreparationLimits(
     throw new TypeError('dependency preparation environment must contain ordinary data')
   const overrides = snapshotJsonObject(environment, 'dependency preparation environment')
   for (const key of Object.keys(overrides))
-    if (key !== 'maxPreparedBytes' && key !== 'maxPreparedFiles')
+    if (key !== 'maxPreparations' && key !== 'maxPreparedBytes' && key !== 'maxPreparedFiles')
       throw new TypeError('dependency preparation environment contains an unsupported field')
   if (projectLimits !== undefined) {
     if (utilTypes.isProxy(projectLimits))
@@ -68,10 +71,11 @@ export function resolvePrivateDependencyPreparationLimits(
     projectLimits === undefined ? {} : (normalizeJigLimits(projectLimits).dependencies ?? {})
   const values = { ...DEFAULT_PROJECT_DEPENDENCY_LIMITS }
   const origins: Record<keyof ProjectDependencyLimits, LimitOrigin> = {
+    maxPreparations: 'default',
     maxPreparedBytes: 'default',
     maxPreparedFiles: 'default',
   }
-  for (const field of ['maxPreparedBytes', 'maxPreparedFiles'] as const) {
+  for (const field of ['maxPreparations', 'maxPreparedBytes', 'maxPreparedFiles'] as const) {
     if (project[field] !== undefined) {
       values[field] = project[field]
       origins[field] = 'project'
@@ -85,8 +89,13 @@ export function resolvePrivateDependencyPreparationLimits(
       origins[field] = 'environment'
     }
   }
+  const limits = normalizeProjectDependencyLimits(values)
   return Object.freeze({
-    limits: normalizeProjectDependencyLimits(values),
+    limits,
+    outputLimits: Object.freeze({
+      maxPreparedBytes: limits.maxPreparedBytes,
+      maxPreparedFiles: limits.maxPreparedFiles,
+    }),
     origins: Object.freeze(origins),
   })
 }

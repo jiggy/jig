@@ -2,8 +2,8 @@ import { types as utilTypes } from 'node:util'
 import { PACKAGE_1_MAX_PATH_BYTES } from '../package/paths.js'
 import {
   DEFAULT_PROJECT_DEPENDENCY_LIMITS,
-  normalizeProjectDependencyLimits,
-  type ProjectDependencyLimits,
+  type DependencyPreparationOutputLimits,
+  normalizeDependencyPreparationOutputLimits,
 } from '../project/limits.js'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from './bun-execution-layout.js'
 import { snapshotPrivateOrdinaryJson } from './private-ordinary-json.js'
@@ -28,14 +28,14 @@ export const PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS = Object.freeze({
 export type PrivateBunPreparationMode = 'production' | 'evaluation'
 export function privateBunPreparationLimits(
   mode: PrivateBunPreparationMode,
-  dependencyLimits?: ProjectDependencyLimits,
+  dependencyLimits?: DependencyPreparationOutputLimits,
 ) {
   if (dependencyLimits === undefined)
     return mode === 'evaluation'
       ? PRIVATE_BUN_EVALUATION_PREPARATION_LIMITS
       : PRIVATE_BUN_PREPARATION_LIMITS
   if (mode !== 'production') throw new TypeError('evaluation preparation limits are fixed')
-  const selected = normalizeProjectDependencyLimits(
+  const selected = normalizeDependencyPreparationOutputLimits(
     snapshotPrivateOrdinaryJson(
       dependencyLimits,
       'dependency preparation limits',

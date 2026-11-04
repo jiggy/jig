@@ -277,6 +277,9 @@ dependency versions or its declared workspace.
 
 ## Limits and other package files
 
+Review defaults to sixteen distinct dependency preparations.
+For a larger Flow library, set `limits.dependencies.maxPreparations` or its operator environment override.
+
 Prepared production trees default to 32 MiB and 4,096 file/alias records per
 package. Set `limits.dependencies.maxPreparedBytes` and `maxPreparedFiles` in
 `jig.ts`, or use their environment overrides. The [limits reference](../reference/limits.md)

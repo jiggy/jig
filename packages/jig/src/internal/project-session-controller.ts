@@ -464,7 +464,11 @@ function createSession(
             },
             ...(host.agentOverride === undefined ? {} : { agentOverride: host.agentOverride }),
             reviewEvaluation: async (grant, captured) => {
-              budget.reserve(captured.digest, `${grant.recipe}/package.json`)
+              budget.reserve(
+                captured.digest,
+                `${grant.recipe}/package.json`,
+                dependencyPolicy!.limits.maxPreparations,
+              )
               const reviewed = await reviewPrivateProjectEvaluation({
                 grant,
                 captured,
@@ -500,7 +504,11 @@ function createSession(
                 signal: budget.signal,
                 ...(sourceRoots === undefined ? {} : { sourceRoots }),
                 prepare: async (captured, workspace) => {
-                  budget.reserve(captured.digest, 'package.json')
+                  budget.reserve(
+                    captured.digest,
+                    'package.json',
+                    dependencyPolicy!.limits.maxPreparations,
+                  )
                   const unlocked = !captured.files.some((file) => file.path === 'bun.lock')
                   if (unlocked && host.allowResolutionNetwork === true)
                     host.onResolution?.('package.json')
@@ -508,7 +516,7 @@ function createSession(
                     return await privateProfileSpan('dependency-preparation', () =>
                       preparePrivateBunPackage({
                         captured,
-                        dependencyLimits: dependencyPolicy!.limits,
+                        dependencyLimits: dependencyPolicy!.outputLimits,
                         ...(workspace === undefined ? {} : { workspace }),
                         installedSupport: host.installedBunSupport,
                         backend: host.backend,
@@ -684,7 +692,7 @@ function createSession(
                     try {
                       const assembled = await assemblePrivateBunExecution({
                         source: captured,
-                        dependencyLimits: dependencyPolicy!.limits,
+                        dependencyLimits: dependencyPolicy!.outputLimits,
                         sourcePaths: inputs.sourcePaths,
                         dependencies,
                         layout: admitted.execution.layout,
@@ -713,13 +721,17 @@ function createSession(
                       : { state: 'locked', manifestPath: 'package.json', lockPath: 'bun.lock' },
                     host.allowResolutionNetwork,
                   )
-                  budget.reserve(captured.digest, request.packagePath)
+                  budget.reserve(
+                    captured.digest,
+                    request.packagePath,
+                    dependencyPolicy!.limits.maxPreparations,
+                  )
                   if (unlocked) host.onResolution?.(request.packagePath)
                   host.onStage?.(`Preparing dependencies for ${packageLabel}`)
                   const prepared = await privateProfileSpan('dependency-preparation', () =>
                     preparePrivateBunPackage({
                       captured,
-                      dependencyLimits: dependencyPolicy!.limits,
+                      dependencyLimits: dependencyPolicy!.outputLimits,
                       ...(workspace === undefined ? {} : { workspace }),
                       installedSupport: host.installedBunSupport,
                       backend: host.backend,
@@ -866,7 +878,11 @@ function createSession(
           dependencyPolicy !== undefined
         ) {
           const field =
-            error.preparationLimit.dimension === 'bytes' ? 'maxPreparedBytes' : 'maxPreparedFiles'
+            error.preparationLimit.dimension === 'preparations'
+              ? 'maxPreparations'
+              : error.preparationLimit.dimension === 'bytes'
+                ? 'maxPreparedBytes'
+                : 'maxPreparedFiles'
           throw handleOperationError(
             new CheckError(
               error.kind,

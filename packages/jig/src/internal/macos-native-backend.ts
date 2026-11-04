@@ -5,7 +5,7 @@ import { constants as osConstants } from 'node:os'
 import { join, posix } from 'node:path'
 import { canonicalJson, type JsonObject, type JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import {
   requirePrivateBunPreparationLimits,
   requirePrivateBunPreparationOutput,
@@ -111,7 +111,7 @@ export interface PrivateMacosLaunchPlan {
   readonly files: PrivateMacosSandboxFiles
   readonly maxOutputBytes: number
   readonly preparationOutput?: 'production' | 'evaluation'
-  readonly preparationLimits?: ProjectDependencyLimits
+  readonly preparationLimits?: DependencyPreparationOutputLimits
   readonly storage?: PrivateMacosGuardianStorage
   readonly capturedInputs?: readonly PrivateMacosCapturedInput[]
   readonly inputDirectories?: readonly string[]

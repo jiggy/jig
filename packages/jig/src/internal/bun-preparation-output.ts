@@ -4,7 +4,7 @@ import {
   type CapturedPackage,
   capturePrivateFencedPreparationDirectory,
 } from '../package/capture.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import {
   type PrivateBunPreparationMode,
   privateBunPreparationLimits,
@@ -24,10 +24,10 @@ export function requirePrivateBunPreparationOutput(
 export function requirePrivateBunPreparationLimits(
   value: unknown,
   mode: PrivateBunPreparationMode | undefined,
-): ProjectDependencyLimits | undefined {
+): DependencyPreparationOutputLimits | undefined {
   if (value === undefined) return undefined
   if (mode !== 'production') throw new TypeError('only production preparation accepts limits')
-  const selected = privateBunPreparationLimits(mode, value as ProjectDependencyLimits)
+  const selected = privateBunPreparationLimits(mode, value as DependencyPreparationOutputLimits)
   return Object.freeze({
     maxPreparedFiles: selected.preparedFiles,
     maxPreparedBytes: selected.preparedBytes,
@@ -38,7 +38,7 @@ export function requirePrivateBunPreparationLimits(
 export async function capturePrivateBunPreparationOutput(
   work: FileHandle,
   mode: PrivateBunPreparationMode,
-  dependencyLimits?: ProjectDependencyLimits,
+  dependencyLimits?: DependencyPreparationOutputLimits,
 ): Promise<CapturedPackage> {
   const selected = requirePrivateBunPreparationOutput(mode)
   if (selected === undefined) throw new TypeError('Bun preparation collection profile is missing')

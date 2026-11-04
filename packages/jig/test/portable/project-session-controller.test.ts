@@ -356,9 +356,13 @@ describe('private finite project session', () => {
     )
   })
   test('dependency preparation limit facts survive scoping without worker text', () => {
-    for (const dimension of ['bytes', 'files'] as const) {
+    for (const dimension of ['bytes', 'files', 'preparations'] as const) {
       for (const origin of [undefined, 'default', 'project', 'environment'] as const) {
-        const maximum = dimension === 'bytes' ? 32 * 1024 * 1024 : 4096
+        const maximum = dimension === 'bytes' ? 32 * 1024 * 1024 : dimension === 'files' ? 4096 : 16
+        const code =
+          dimension === 'preparations'
+            ? 'PACKAGE_BUN_PROJECT_COUNT_LIMIT'
+            : 'PACKAGE_BUN_OUTPUT_LIMIT'
         const preparationLimit = {
           dimension,
           observed: maximum + 1,
@@ -367,7 +371,7 @@ describe('private finite project session', () => {
         }
         const original = new CheckError(
           'invalid',
-          'PACKAGE_BUN_OUTPUT_LIMIT',
+          code,
           'private worker token /private/preparation',
           'package.json',
           undefined,
@@ -381,7 +385,7 @@ describe('private finite project session', () => {
           code: 'INVALID_CANDIDATE',
           message: 'project candidate is invalid',
           diagnostic: {
-            code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+            code,
             path: 'flows/demo/package.json',
             preparationLimit,
           },
@@ -457,6 +461,55 @@ describe('private finite project session', () => {
           preparationLimit,
         }),
     ).toThrow('project diagnostic preparation limit is invalid')
+  })
+  test('preparation count diagnostics reject mismatched codes, dimensions and evaluation profiles', () => {
+    const preparationLimit = { dimension: 'preparations' as const, observed: 17, maximum: 16 }
+    for (const code of ['PACKAGE_BUN_OUTPUT_LIMIT', 'PACKAGE_BUN_PROTOCOL']) {
+      expect(
+        () =>
+          new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+            code,
+            path: 'flows/overflow',
+            preparationLimit,
+          }),
+      ).toThrow('project diagnostic preparation limit is invalid')
+    }
+    for (const detail of [
+      { ...preparationLimit, dimension: 'bytes' },
+      { ...preparationLimit, dimension: 'files' },
+      { ...preparationLimit, profile: 'evaluation' },
+      { ...preparationLimit, profile: 'evaluation', origin: 'default' },
+      { ...preparationLimit, observed: Number.POSITIVE_INFINITY },
+      { ...preparationLimit, observed: 16 },
+      { ...preparationLimit, maximum: 0 },
+      { ...preparationLimit, origin: '/private/operator-token' },
+      { ...preparationLimit, workerMessage: 'synthetic bearer secret' },
+    ]) {
+      expect(
+        () =>
+          new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', {
+            code: 'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
+            path: 'flows/overflow',
+            preparationLimit: detail as never,
+          }),
+      ).toThrow()
+    }
+    for (const dimension of ['files', 'bytes'] as const) {
+      const diagnostic = {
+        code: 'PACKAGE_BUN_OUTPUT_LIMIT',
+        path: 'recipes/evaluate',
+        preparationLimit: {
+          dimension,
+          observed: 129,
+          maximum: 128,
+          origin: 'default' as const,
+          profile: 'evaluation' as const,
+        },
+      }
+      expect(
+        new ProjectAdministrationError('INVALID_CANDIDATE', 'invalid', diagnostic).diagnostic,
+      ).toEqual(diagnostic)
+    }
   })
   test('preserves missing default diagnostics without exposing source error text', () => {
     const failure = projectError(
@@ -888,7 +941,12 @@ describe('private finite project session', () => {
     ).toEqual({ code: 'INTERNAL', message: 'plan failed' })
     expect(
       projectError(
-        new CheckError('invalid', 'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID', 'private detail', '.jig/private'),
+        new CheckError(
+          'invalid',
+          'PROJECT_CHILD_ATTACHMENT_MAPPING_INVALID',
+          'private detail',
+          '.jig/private',
+        ),
         'plan',
       ).toJSON(),
     ).toEqual({ code: 'INVALID_CANDIDATE', message: 'project candidate is invalid' })

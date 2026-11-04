@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { types as utilTypes } from 'node:util'
 import type { JsonValue } from '../json.js'
 import type { CapturedPackage } from '../package/capture.js'
-import type { ProjectDependencyLimits } from '../project/limits.js'
+import type { DependencyPreparationOutputLimits } from '../project/limits.js'
 import {
   capturePrivateBunPreparationOutput,
   requirePrivateBunPreparationLimits,
@@ -130,7 +130,7 @@ export interface PrivateLinuxLaunchPlan {
   /** One bounded anonymous output mount; its retained descriptor is host-only. */
   readonly output?: boolean
   readonly preparationOutput?: 'production' | 'evaluation'
-  readonly preparationLimits?: ProjectDependencyLimits
+  readonly preparationLimits?: DependencyPreparationOutputLimits
   readonly capturedInputs?: readonly PrivateLinuxCapturedInput[]
   readonly inputDirectories?: readonly string[]
   readonly inputEmptyDirectories?: readonly string[]
