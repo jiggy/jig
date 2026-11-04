@@ -17,12 +17,10 @@ into the Flow package and declare its local slot in `FLOW.meta.json`
 {"uses":{"progress":{"contract":"./contracts/run-checkpoint/contract.json"}}}
 ```
 
-The operator reviews this exact package and invokes it. This profile is root-only.
-A child invocation cannot acquire the native invocation, and a reviewed child
-route cannot select a target requiring it. A writable attachment or
-output destination is not required to save evidence, text, or already-held artifact
-views. `--out` chooses a packet destination independently of retained checkpoint
-ownership. The Flow selects neither a host path nor another Run.
+The operator reviews this exact package and invokes it as a root Run.
+Checkpointing requires no writable attachment or output destination to save evidence, text, or already-held artifact views.
+`--out` chooses a packet destination independently of retained checkpoint ownership.
+The Flow selects neither a host path nor another Run.
 
 ```ts
 const receipt = await run.call({
@@ -43,6 +41,28 @@ immutable copy. The contract ID is `https://jig.md/contracts/run-checkpoint`,
 version `0.1.0`, with canonical descriptor digest
 `sha256:5e9304b91930242a6c09d3ea96376dfa64950abb39a083ec26eb39cff799b0b2`.
 It uses ordinary Run/0 `flow/call`. FLOW does not require this Jig policy.
+
+## Compose from an application
+
+This profile is root-only. A child `run.call()` route cannot select a target that declares Run Checkpoint.
+Review reports `PROJECT_CHILD_ROOT_ONLY` and identifies the unsupported dependency.
+This restriction applies even when the child never calls its checkpoint slot.
+
+An application can wrap the unchanged method through [`@jigging/jig/client`](execution-client.md#wrap-a-checkpoint-enabled-method).
+The client runs in the application process, outside contained Flows.
+The method remains a root target with its own accepted checkpoint, sequence, and artifact associations.
+Another Flow does not inherit that checkpoint authority.
+
+1. Move the wrapper's control logic into the application process.
+   Remove the former child call, parent slot declaration, and route from the reviewed project.
+   Review the method's Flow or Binding as a root target.
+2. Persist the complete `Prepared` value before submission, using separate prepare/submit calls or `client.run(request, { persist })`.
+3. After interruption, read `result` using the original ticket.
+4. After confirmed cleanup, export an available checkpoint with `source: 'checkpoint'` to a new destination.
+
+The [complete application call](execution-client.md#a-complete-application-call) and [checkpoint export example](execution-client.md#export-an-accepted-checkpoint) show these operations.
+Retrieval and export preserve the original execution status without restarting the method.
+They do not resume program execution or authorize automatic retry.
 
 ## Bounds and identity
 

@@ -65,6 +65,9 @@ All selected domain requirements still apply.
 
 ### Command grammar and review
 
+- Child composition refusals identify the caller slot and preserve a closed diagnostic.
+  Checkpoint guidance directs applications to root submission and recovery through the retained ticket.
+
 - Command help and syntax errors do not acquire execution authority. Review
   leads with complete changed policy. `--details` includes unchanged policy. Run
   stdout is readable on terminals. Redirection or `--json` selects exact

@@ -90,6 +90,8 @@ These links locate module rules. All selected domain requirements still apply.
 - Exact native checkpoint requirements make a target root-only.
   Derive this fact from selected interfaces during linking, lock decoding and admitted graph analysis.
   Cached root analysis cannot authorize a child route or create a persisted caller-controlled authority flag.
+  Child refusal identifies the caller's selected slot and preserves `PROJECT_CHILD_ROOT_ONLY` through review diagnostics.
+  Recovery wrappers invoke the unchanged method as a root through the application client.
 
 - `src/invocation-contract.ts` validates optional `artifactResults`: at most
   256 unique LocalNames without writable-port collisions.

@@ -100,6 +100,10 @@ Portable checkpoint cases validate shape and ordinary recorded-packet inputs.
 Protected acceptance, replacement and save limits require actual SQLite ownership.
 Native command loss, independent fencing and installed recovery remain host gates.
 
+Child checkpoint review cases preserve root eligibility while refusing direct, Binding and mapped child routes at the caller's slot.
+Diagnostic projection and presentation retain the specific code without exposing private exception messages.
+These cases establish review behavior, not native checkpoint retention or nested invocation support.
+
 Checkpoint loss barriers must match the authoritative commit boundary.
 Delivery callbacks run after the protected save commits.
 Use a real selected-channel send followed by a hold before the next save.

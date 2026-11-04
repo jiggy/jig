@@ -375,6 +375,8 @@ Version metadata is checked before evaluation and reverified before capture comp
   Known preparation failures without worker locations refer to the application's canonical `package.json`.
   Run Checkpoint must follow its exact declared native interface and protected attempt association.
   Do not infer checkpoint authority from a writable attachment or optional FLOW port.
+  Preserve known child checkpoint and attachment refusals through candidate projection with their caller locations.
+  Unknown child codes and private exception messages remain closed.
 
   Unsupported Volta selections retain the existing wrapper diagnostic, including
   Claude/Pi and Codex installations outside the supported static npm profile.
