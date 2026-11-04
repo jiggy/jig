@@ -4,6 +4,8 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/pr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { runInNewContext } from 'node:vm'
+import { parse } from 'yaml'
 import {
   digest,
   githubContext,
@@ -678,6 +680,39 @@ function readinessFixture() {
       releaseReadiness({ client, repository, sourceRevision: source, ...options }),
   }
 }
+
+test('readiness snapshots satisfy the protected publisher before registry access', async () => {
+  const { hostSnapshot } = await readinessFixture().check()
+  const workflow = parse(
+    await readFile(new URL('../../.github/workflows/npm-publish.yml', import.meta.url), 'utf8'),
+  )
+  const script = workflow.jobs.publish_host.steps.find((step) => step.id === 'release').run
+  // Execute the publisher's unchanged admission guard with the real collector's
+  // output. Registry emulators must not invent the boundary's snapshot shape.
+  const guard = script.slice(script.indexOf('const snapshot ='), script.indexOf('const api ='))
+  assert.match(guard, /Invalid authorized qualification snapshot/)
+  const verify = (snapshot) =>
+    runInNewContext(guard, {
+      process: {
+        env: {
+          QUALIFICATION_SNAPSHOT: JSON.stringify(snapshot),
+          GITHUB_REPOSITORY: repository,
+          RELEASE_GROUP: 'host',
+          SOURCE_REVISION: source,
+          EXPECTED_RECEIPT_SHA256: hostSnapshot.candidate.receiptSha256,
+        },
+      },
+    })
+  verify(hostSnapshot)
+  for (let index = 0; index < hostSnapshot.artifacts.length; index++) {
+    const incomplete = structuredClone(hostSnapshot)
+    incomplete.artifacts.splice(index, 1)
+    assert.throws(() => verify(incomplete), /Invalid authorized qualification snapshot/)
+  }
+  const extra = structuredClone(hostSnapshot)
+  extra.artifacts.push(extra.artifacts[0])
+  assert.throws(() => verify(extra), /Invalid authorized qualification snapshot/)
+})
 
 test('readiness accepts complete canonical qualification even when native descendant SHA has advanced', async () => {
   const fixture = readinessFixture()

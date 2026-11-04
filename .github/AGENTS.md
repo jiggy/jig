@@ -470,6 +470,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   mutations. FLOW and host mutation queues are independent. Waiting for host
   qualification holds no runner or registry mutation lock.
 
+  Host snapshots contain six artifacts: the canonical candidates, Linux receipt,
+  Apple Silicon receipt, and three native-client receipts. All four workflow runs remain required.
+  Test the collector's actual snapshot against the protected publisher's admission guard before registry access.
+
   The protected publisher searches native supersession from the live authorized
   native run's validated creation time inclusively. Newer IDs created in the
   same second remain visible. Keep current-attempt checks and bounded

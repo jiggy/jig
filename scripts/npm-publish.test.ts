@@ -236,7 +236,7 @@ async function run(root: string, state: Record<string, any>, group = 'host') {
       artifactDigest: `sha256:${'c'.repeat(64)}`,
     },
     runs,
-    artifacts: Array.from({ length: group === 'host' ? 7 : 1 }, (_, index) => ({
+    artifacts: Array.from({ length: group === 'host' ? 6 : 1 }, (_, index) => ({
       artifactId: index + 1,
       name: `proof-artifact-${index}`,
       digest: `sha256:${'c'.repeat(64)}`,

@@ -299,6 +299,7 @@ operational baselines, and public-site assembly.
   host-group preflight refusal. Controlled
   registry/API emulators use the test runner's Bun to avoid repeated mock
   interpreter startup. The real publisher still performs its Node checks.
+  Its six-artifact fixture matches the collector-to-publisher contract tested in `ci/candidate-provenance.test.mjs`.
 - `node --test scripts/ci/*.test.mjs` checks complete suite execution, verified
   native PR scope, artifact and run/attempt lineage, fresh qualification, and
   fail-closed release readiness. It uses disposable Git repositories, archives

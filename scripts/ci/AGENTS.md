@@ -242,6 +242,8 @@ They consume frozen package exports with tracked test helpers and installed
 
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
+  Exercise the actual readiness snapshot against the workflow's admission guard.
+  Reject missing and extra artifacts before registry access.
 
   Native descendant discovery bounds creation history at the earliest verified
   main-push CI run for the exact source, preserving older reruns that acquire a
