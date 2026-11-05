@@ -336,6 +336,7 @@ function selectCall(id: string, origin?: CompositionOrigin): void {
     call = client?.body?.calls.find((item) => item.id === call!.parentId)
   }
   redraw()
+  if (origin) focusSelectedEntry()
   focusDetailReturn()
 }
 

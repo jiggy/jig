@@ -32,11 +32,11 @@ const resourceLabels: Record<DisplayCompositionResourceKind, string> = {
   'child-checkpoint': 'Read child checkpoint',
 }
 const kindLabel = (node: DisplayCompositionNode): string =>
-  node.kind === 'binding'
-    ? 'Binding'
-    : node.kind === 'flow'
-      ? 'Flow'
-      : resourceLabels[node.resourceKind]
+  node.kind === 'resource'
+    ? resourceLabels[node.resourceKind]
+    : node.kind === 'binding'
+      ? 'Binding'
+      : 'Flow'
 const button = (label: ComponentChildren, action: () => void, props: Record<string, unknown> = {}) =>
   h('button', { type: 'button', onClick: action, ...props }, label)
 const unmatchedReason = (reason: string): string =>
