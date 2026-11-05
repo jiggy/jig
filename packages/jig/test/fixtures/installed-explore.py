@@ -31,6 +31,7 @@ CHECKS = [
     "refresh-after-review", "ordinary-live-inspector", "duplicate-request-no-replay",
     "closed-inspector-run-again", "sequential-run-owners", "busy-request-lookup",
     "active-close-cancellation", "joined-explorer-exit",
+    "settled-terminal-interruption", "active-terminal-interruption",
 ]
 
 
@@ -194,6 +195,45 @@ def main():
         require(stdout.count(b"Hello, Grace!") == 1)
         require(b"Hello, Changed!" not in stdout and b"Hello, Hold!" not in stdout)
         require(b"CANCELLED" in stdout + bytes(owner.output["stderr"]))
+        owner.close()
+        owner = None
+
+        # A controlling PTY sends VINTR to the whole foreground process group.
+        # The explorer must own that signal and join its ordinary Run explicitly.
+        for check, value, settled in [
+            ("settled-terminal-interruption", "Terminal", True),
+            ("active-terminal-interruption", "Hold", False),
+        ]:
+            phase = check
+            owner = TerminalOwner(
+                [sys.argv[1], "explore", "flow:flows/hello", "--timeout", "1m"],
+                controlling_terminal=True,
+            )
+            link = None
+            while link is None:
+                require(time.monotonic() < deadline and owner.process.poll() is None)
+                owner.pump()
+                link = LINK.search(owner.output["stderr"])
+            port = int(link.group(1))
+            capability = link.group(2).decode("ascii")
+            terminal_project = request("/api/project")
+            started = request("/api/run", "POST", intent(check, value, terminal_project))
+            require(started["state"] in ("starting", "running", "settled"))
+            observed = state_until({"settled"} if settled else {"running"})
+            inspect_viewer(observed["viewerUrl"], settled)
+            owner.ctrl_c()
+            require(owner.wait(deadline) == 2)
+            stdout = bytes(owner.output["stdout"])
+            transcript = stdout + bytes(owner.output["stderr"])
+            require(b"JIG_EXPLORE_CLOSE_FAILED" not in transcript)
+            require(b"JIG_COMMAND_UNAVAILABLE" not in transcript)
+            if settled:
+                require(stdout.count(b"Hello, Terminal!") == 1)
+                require(b"CANCELLED" not in transcript)
+            else:
+                require(b"Hello, Hold!" not in stdout and b"CANCELLED" in transcript)
+            owner.close()
+            owner = None
         passed = True
     except BaseException:
         # Request exceptions can contain the private capability; expose only a fixed phase.

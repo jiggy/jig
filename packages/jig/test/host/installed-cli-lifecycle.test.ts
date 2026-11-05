@@ -147,6 +147,8 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
         'busy-request-lookup',
         'active-close-cancellation',
         'joined-explorer-exit',
+        'settled-terminal-interruption',
+        'active-terminal-interruption',
       ],
     })
     expect(explored.stderr).toBe('')

@@ -28,6 +28,11 @@ inspectors and explicit close during held execution. The host suite joins the
 installed command and retains its existing native residue assertions. Python
 emits only closed scenario labels. Capabilities and raw transcripts stay private.
 
+The PTY helper additionally supports a controlling terminal for actual VINTR
+Ctrl-C checks during active execution and after settlement. Its default piped
+input behavior remains unchanged. A terminal interruption must join ordinary
+cleanup without turning a settled Run into an unconfirmed cleanup diagnostic.
+
 `portable/cli-session-failure.test.ts` checks phase-specific failure diagnostics through the private CLI seam.
 Its synthetic errors establish no native cleanup, artifact retention or installed-host evidence.
 Successful closure preserves ordinary operation exit codes, including exit 1 for `STALE_PLAN`.
