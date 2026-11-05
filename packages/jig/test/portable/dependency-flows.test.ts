@@ -330,3 +330,41 @@ test('registry schema inspection reports the npm selector, never a prepared inst
     await rm(directory, { recursive: true, force: true })
   }
 })
+
+
+test('ancestor workspace non-schema inspection failures keep their existing diagnostics', async () => {
+  for (const { path, value, code } of [
+    {
+      path: 'FLOW.meta.json',
+      value: { license: { private: 'rejected metadata value' } },
+      code: 'METADATA_FIELD',
+    },
+    {
+      path: 'FLOW.ts',
+      value: '#!/bin/sh\nprivate rejected selector text',
+      code: 'PACKAGE_SELECTOR',
+    },
+  ]) {
+    const f = await fixture()
+    try {
+      await f.put(`packages/echo/${path}`, value)
+      const failure = await f.capture().then(
+        async (source) => {
+          await source.dispose()
+          return undefined
+        },
+        (error: unknown) => projectError(error, 'plan'),
+      )
+      expect(failure?.toJSON()).toEqual({
+        code: 'INVALID_CANDIDATE',
+        message: 'project candidate is invalid',
+        diagnostic: { code, path },
+      })
+      expect(JSON.stringify(failure)).not.toContain('rejected')
+      expect(f.preparations()).toBe(1)
+      expect(f.retained).toHaveLength(0)
+    } finally {
+      await f.dispose()
+    }
+  }
+})
