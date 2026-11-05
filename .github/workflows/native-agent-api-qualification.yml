@@ -58,7 +58,8 @@ jobs:
           await appendFile(process.env.GITHUB_OUTPUT, `qualify=${qualify}\n`)
           await appendFile(process.env.GITHUB_STEP_SUMMARY,
             `## Native qualification source\n\nSource: ${process.env.SOURCE_REVISION}\n\n` +
-            `${qualify ? 'Selected' : 'Omitted'}: ${reason}.\n\n` +
+            `${qualify ? 'Selected' : '**Native qualification omitted**'}: ${reason}.\n\n` +
+            (qualify ? '' : '**No native clients were tested. No qualification receipt was created.**\n\n') +
             'Source selection creates no qualification evidence. Publication still requires all three native clients.\n')
           NODE
 

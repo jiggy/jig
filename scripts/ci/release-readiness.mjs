@@ -668,8 +668,9 @@ export function releaseSummary(result, repository) {
       'Qualification permits publication. The publication jobs must still verify registry convergence.',
       '',
     )
-  } else if (result.state === 'not-release') {
-    lines.push('Merge the generated release PR before publication can qualify.', '')
+  } else if (['not-release', 'ignored'].includes(result.state)) {
+    lines.push('**Nothing published. This source does not select a release.**',
+      'No release action is required for ordinary development commits.', '')
   } else {
     lines.push(
       '**No packages were published by this readiness check.**',
