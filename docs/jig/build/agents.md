@@ -274,6 +274,11 @@ defaulting to `~/.codex/auth.json`. Configure Codex with
 `cli_auth_credentials_store = "file"` before signing in. Jig does not currently
 read Codex's OS-keyring credentials.
 
+Codex token metadata named `oauth_provenance` and `login_owner_id` may be present or absent.
+Jig discards these fields when preparing its short-lived credential and leaves your authentication file unchanged.
+The existing ownership, permission, expiry and account checks still apply.
+Successful projection alone does not prove that subscription inference will succeed.
+
 An overridden `OPENAI_BASE_URL` must use HTTPS, without a username, password,
 query or fragment. The selected endpoint must pass normal certificate
 verification. A local HTTP server is not an accepted native Codex endpoint.

@@ -158,6 +158,15 @@ These links locate module rules. All selected domain requirements still apply.
   adapter. Its app-server login uses `chatgptAuthTokens` and ephemeral
   credential storage. Never write `auth.json` inside the execution volume.
 
+  The canonical source permits optional `oauth_provenance` and `login_owner_id` token metadata.
+  Discard their opaque values without interpreting issuer or login ownership.
+  Preserve the four required token fields and reject all other source fields.
+  The private bearer projection retains its exact four-field token schema.
+
+  File ownership, permissions, link count, size, bearer expiry and account checks remain required.
+  Unsupported fields produce the closed `login-layout` setup diagnostic without revealing field names or values.
+  Credential refusals remain immediate checks, outside retained executable/model readiness evidence.
+
   Qualify this unstable native operation against the genuine selected client.
   Never substitute fabricated authentication or protocol success for native evidence.
   Startup evidence does not qualify online subscription routing or model execution.

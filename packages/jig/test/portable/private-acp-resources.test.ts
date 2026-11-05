@@ -60,6 +60,7 @@ describe('target-selected private ACP resources', () => {
         'location',
         'wrapper',
         'login',
+        'login-layout',
         'api',
         'model',
         'preferences',
