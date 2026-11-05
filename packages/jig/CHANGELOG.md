@@ -1,5 +1,21 @@
 # @jigging/jig
 
+## 0.1.0-alpha.52
+
+### Patch Changes
+
+- 929372d: Accept Codex subscription token metadata while preserving the private bearer projection and credential checks.
+  Report unsupported authentication fields with specific recovery guidance that preserves the operator's login file.
+- 1a0c21d: Report unsupported schema keywords in dependency-backed Flow contracts as invalid authored candidates.
+  Preserve workspace contract paths and JSON pointers, name the unsupported keyword, and keep preparation paths private.
+  Retain malformed-contract field diagnostics for ancestor workspace packages without relaxing location validation.
+- 995ad54: Show observed connections and mixed request states on the Run map, with local focus for active and uncertain or failed requests.
+  Link invocation details to exact child-authored views while preserving selection, map position and observation limits.
+- 8c3449c: Retain closed Run-status failure phases and codes in opt-in private profiles before public diagnostics discard internal details.
+  Keep error observation bounded and preserve the original command outcome without recording messages, paths, or payloads.
+- e80b0ea: Apply material presentation across root and child views, make host inspectors optional, and preserve readable scope and responsive navigation.
+  Improve application evidence layouts, stopped progress, output access and correspondence, with mounted browser acceptance coverage.
+
 ## 0.1.0-alpha.51
 
 ### Patch Changes
