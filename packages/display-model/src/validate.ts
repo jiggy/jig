@@ -528,7 +528,7 @@ function json(value: unknown): void {
     if (!Number.isFinite(value)) fail()
     return
   }
-  if (!value || typeof value !== 'object') fail()
+  if (!value || typeof value !== 'object') return fail()
   for (const child of Object.values(value)) json(child)
 }
 
@@ -558,7 +558,9 @@ function projectInput(value: unknown): void {
 /** Own bounded approved-project data independently of any Run or execution host. */
 export function validateDisplayProjectSnapshot(value: unknown): DisplayProjectSnapshot {
   try {
-    const owned = copy(value, DISPLAY_PROJECT_BYTE_LIMIT)
+    // Invocation schemas retain the ordinary JSON depth allowance; presentation
+    // wrappers do not consume their authored nesting budget.
+    const owned = copy(value, DISPLAY_PROJECT_BYTE_LIMIT, 132)
     const data = record(owned.value, ['kind', 'revision', 'state', 'targets', 'selected'])
     choice(data.kind, ['project'])
     identity(data.revision)

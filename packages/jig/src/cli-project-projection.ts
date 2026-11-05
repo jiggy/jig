@@ -19,6 +19,8 @@ import type { JsonValue } from './json.js'
 import { entrypointWords } from './project/entrypoint.js'
 import type { RunTargetIdentity } from './project/package-project.js'
 import { flowSelector } from './project/package-selector.js'
+import { compileEmbeddedSchema, SchemaDiagnostic } from './schema/index.js'
+import { schemaTypeMismatchText } from './schema/types.js'
 
 type RecordValue = Record<string, JsonValue>
 function record(value: JsonValue | undefined): RecordValue {
@@ -42,7 +44,7 @@ const labelFor = (target: RunTargetIdentity): string =>
 export class PrivateProjectProjectionError extends Error {
   constructor(
     readonly code:
-      'PROJECT_CHANGED' | 'TARGET_UNAVAILABLE' | 'TARGET_MISSING' | 'PROJECT_UNREVIEWED',
+      'PROJECT_CHANGED' | 'TARGET_UNAVAILABLE' | 'TARGET_MISSING' | 'PROJECT_UNREVIEWED' | 'INPUT_INVALID',
     message: string,
   ) {
     super(message)
@@ -238,7 +240,11 @@ export class PrivateProjectProjection {
     return (await this.#read(undefined, selector)).snapshot
   }
 
-  async selection(revision: string, targetId: string): Promise<PrivateProjectSelection> {
+  async selection(
+    revision: string,
+    targetId: string,
+    input: JsonValue,
+  ): Promise<PrivateProjectSelection> {
     const result = await this.#read(targetId, undefined, revision)
     if (result.snapshot.state !== 'approved' || !result.selection)
       throw new PrivateProjectProjectionError(
@@ -248,6 +254,27 @@ export class PrivateProjectProjection {
     const launch = result.snapshot.selected!.launch
     if (launch.state !== 'available')
       throw new PrivateProjectProjectionError('TARGET_UNAVAILABLE', launch.reason)
+    const contract = result.snapshot.selected!.input
+    const schema = compileEmbeddedSchema(contract.state === 'schema' ? contract.schema : true, {
+      path: 'FLOW.contract.json',
+      pointer: '/input',
+      ...(contract.state === 'schema' && contract.definitions !== undefined
+        ? { rootDefs: contract.definitions }
+        : {}),
+    })
+    try {
+      schema.validate(input, 'INVALID_INPUT')
+    } catch (error) {
+      if (!(error instanceof SchemaDiagnostic)) throw error
+      const mismatch = schemaTypeMismatchText(error.typeMismatch)
+      const location = JSON.stringify(clipped(error.schemaPointer || '/input', 256))
+      throw new PrivateProjectProjectionError(
+        'INPUT_INVALID',
+        mismatch === undefined
+          ? `Input does not match the reviewed schema at ${location}. Correct the input and try again.`
+          : `Input does not match the reviewed schema. ${mismatch} Correct the input and try again.`,
+      )
+    }
     return result.selection
   }
 

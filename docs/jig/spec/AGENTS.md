@@ -15,7 +15,7 @@ sections.
 | --- | --- |
 | `cli-experience.md` | All public CLI presentation, progress, review, diagnostics, display navigation, interruption, and acceptance requirements |
 | `project-policy.md`, `project-sdk.md` | Source capture, preparation, planning, admission, targets, entrypoints, provider selection, root files, and execution policy |
-| `web-display.md` | Browser access, bounded transport, navigation, immutable text/image previews, and finite presentation authority |
+| `web-display.md` | Browser access, project exploration, separate launch intent, bounded observation transport, navigation, and immutable text/image previews |
 | `reporting.md` | Optional-port selection, separate CLI allocation, semantic application views, stderr presentation, and qualification |
 | `display-archive.md` | Explicit final bundles, atomic presentation retention, original receipts, evidence binding, scoped inspection, and generation checks |
 | `agent-run.md` | Explicit Agent values, package claims, feature contracts, channels, conversations, and session receipts |
@@ -55,6 +55,9 @@ execution evidence.
 - Browser composition maps project the exact admitted Run generation without source evaluation or new execution authority.
   Available connections remain distinct from observed invocations and application decisions.
   Missing or conflicting correspondence stays explicit.
+- Project exploration reads approved configuration before execution, with separate project and Run observation capabilities.
+  Explicit launch rechecks approval and input through the ordinary installed Run path.
+  Reconnection never resubmits work, and unknown execution blocks further launch.
 - Execution client examples preserve selected receipt approval, exact tickets,
   conservative dispatch evidence, and original final/checkpoint status.
   Retained allowances, shared attempt quota, live artifact limits, and review

@@ -124,9 +124,52 @@ The map has [fixed display limits](../reference/limits.md#inspect-application-co
 An oversized composition becomes explicitly unavailable without changing execution.
 Saved packets and retained application views do not contain this live composition or its call history.
 
-The browser remains read-only.
+The Run inspector remains read-only.
 Use the map and invocation evidence to identify changes for your codebase.
-New test inputs still use ordinary authorized invocations outside the inspector.
+Use project exploration to choose another workflow or supply new input.
+
+## Explore before starting a Run
+
+Open your approved project without starting its workflow:
+
+```sh
+jig explore
+# Start with one selected workflow:
+jig explore binding:review
+```
+
+Open the private browser link printed in your terminal.
+Choose a workflow to see its configured calls and declared input schema.
+The map shows approved configuration, with no observed calls until a Run starts.
+Use this view to inspect dependencies and decide which component or workflow to exercise.
+
+Enter JSON input, then select **Run workflow**.
+Jig validates the input and rechecks the approved revision before starting the ordinary Run.
+Runs use the workflow's approved powers and can produce its normal effects.
+Select **Open run** to inspect live behavior, application views, calls, and delivered evidence in another tab.
+The explorer keeps your draft for the next explicit invocation.
+
+This tab retains up to 16 input drafts within 16 MiB.
+Larger drafts stay visible but may be cleared when you choose another workflow.
+
+If input is invalid, correct the displayed problem and submit again.
+If approval changes, refresh the explorer before choosing the workflow again.
+The explorer never repeats a submission automatically after a lost connection.
+An uncertain Run requires inspecting its terminal result and effects before further work.
+
+Review an unreviewed project with `jig review` first.
+The browser does not approve source or change grants.
+Workflows needing unbound local input files or required channels explain their requirements beside the input editor.
+Use ordinary `jig run --attach` or channel invocation for those inputs.
+Reviewed file bindings and automatic output packets remain available during browser launches.
+
+One Run belongs to an explorer at a time.
+Starting the next Run releases the previous settled inspector.
+**Close explorer** stops active owned work and waits for ordinary cleanup in the terminal.
+Closing a browser tab alone does not stop that work.
+The separate Run inspector's **Close inspection** action still closes only its presentation.
+
+The [web display contract](../spec/web-display.md#project-exploration-before-execution) records fixed bounds and the distinction between project control and Run observation.
 
 ## Read an interrupted result
 

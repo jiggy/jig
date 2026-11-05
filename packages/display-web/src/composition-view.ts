@@ -1,4 +1,5 @@
 import type {
+  DisplayComposition,
   DisplayCompositionNode,
   DisplayCompositionResourceKind,
   DisplaySnapshot,
@@ -8,17 +9,16 @@ import { type ComponentChildren, h } from 'preact'
 import { privateCompositionLayout } from './composition.js'
 import { privateBrowserLiteral } from './navigation.js'
 
-type Props = {
-  snapshot: DisplaySnapshot
+type Props = ({ snapshot: DisplaySnapshot; composition?: never } | { snapshot?: never; composition: DisplayComposition }) & {
   selectedNodeId?: string | undefined
   detailOpen: boolean
-  referencesEnabled: boolean
+  referencesEnabled?: boolean
   scale: number
   onScale: (action: 'in' | 'out' | 'fit' | 'actual') => void
   onSelect: (id: string) => void
   onClose: () => void
-  onCall: (id: string) => void
-  onObservedCalls: () => void
+  onCall?: (id: string) => void
+  onObservedCalls?: () => void
   onNodeKeyDown: (event: KeyboardEvent) => void
   onScroll: (left: number, top: number) => void
 }
@@ -63,10 +63,10 @@ const unmatchedReason = (reason: string): string =>
         ? 'Conflicting invocation identities'
         : 'Composition unavailable'
 
-/** An admitted component map, with observed requests kept separate from available connections. */
+/** Configuration is readable before a Run. Supplied Run observations remain a separate layer. */
 export function CompositionPage(props: Props): ComponentChildren {
   const { snapshot } = props
-  const composition = snapshot.composition
+  const composition = snapshot?.composition ?? props.composition
   if (composition?.state !== 'available')
     return h(
       'section',
@@ -79,16 +79,16 @@ export function CompositionPage(props: Props): ComponentChildren {
           ? 'This admitted composition exceeds the display limit. No partial map is shown.'
           : 'The host did not supply a readable admitted composition for this map.',
       ),
-      h('p', { class: 'secondary' }, 'Retained invocation observations remain available.'),
-      button('Inspect observed calls', props.onObservedCalls),
+      snapshot ? h('p', { class: 'secondary' }, 'Retained invocation observations remain available.') : null,
+      snapshot ? button('Inspect observed calls', () => props.onObservedCalls?.()) : null,
     )
 
   const nodes = new Map(composition.nodes.map((node) => [node.id, node]))
-  const attribution = compositionObservations(snapshot)
-  const calls = new Map(snapshot.calls.map((call) => [call.id, call]))
+  const attribution = snapshot ? compositionObservations(snapshot) : undefined
+  const calls = new Map(snapshot?.calls.map((call) => [call.id, call]) ?? [])
   const requests = new Map<string, DisplaySnapshot['calls'][number][]>()
   const edgeCounts = new Map<string, number>()
-  for (const match of attribution.matches) {
+  for (const match of attribution?.matches ?? []) {
     const call = calls.get(match.callId)
     if (!call) continue
     if (!requests.has(match.targetNodeId)) requests.set(match.targetNodeId, [])
@@ -103,7 +103,7 @@ export function CompositionPage(props: Props): ComponentChildren {
   const labelCounts = new Map<string, number>()
   for (const node of composition.nodes) labelCounts.set(node.label, (labelCounts.get(node.label) ?? 0) + 1)
   const chooserLabel = (node: DisplayCompositionNode): string => {
-    if (node.id === composition.rootId) return node.label + ' · Run root'
+    if (node.id === composition.rootId) return node.label + (snapshot ? ' · Run root' : ' · Selected root')
     if (labelCounts.get(node.label) === 1) return node.label + ' · ' + kindLabel(node)
     const incoming = composition.edges.filter((edge) => edge.target === node.id)
     const connection = incoming[0]
@@ -120,7 +120,7 @@ export function CompositionPage(props: Props): ComponentChildren {
     edges: composition.edges.map((edge) => ({ ...edge, slot: privateBrowserLiteral(edge.slot) })),
   })
   const reasonCounts = new Map<string, number>()
-  for (const item of attribution.unmatched)
+  for (const item of attribution?.unmatched ?? [])
     reasonCounts.set(item.reason, (reasonCounts.get(item.reason) ?? 0) + 1)
 
   const canvas = h('div', { class: 'composition-canvas', style: {
@@ -151,7 +151,7 @@ export function CompositionPage(props: Props): ComponentChildren {
           { key: route.id, class: 'composition-connection' + (related ? ' related' : '') },
           h('title', {}, route.edgeIds.map((id) => {
             const edge = composition.edges.find((item) => item.id === id)!
-            return privateBrowserLiteral(edge.slot) + ': ' + edgeCountLabel(id)
+            return privateBrowserLiteral(edge.slot) + (snapshot ? ': ' + edgeCountLabel(id) : '')
           }).join('\n')),
           h('path', {
             d: route.path,
@@ -165,7 +165,7 @@ export function CompositionPage(props: Props): ComponentChildren {
             const y = route.labelY + index * 15
             return h('g', { key: index },
               h('text', { x: labelLeft + 10, y, class: 'composition-slot' }, line),
-              edgeId ? h('text', {
+              edgeId && snapshot ? h('text', {
                 x: labelLeft + route.labelWidth - 10, y, class: 'composition-slot-count',
                 'text-anchor': 'end', 'data-composition-edge': edgeId,
               }, edgeCounts.get(edgeId) ?? 0) : null,
@@ -185,7 +185,7 @@ export function CompositionPage(props: Props): ComponentChildren {
           h('span', { class: 'composition-card-heading' },
             h('span', { class: 'composition-card-icon' }, icon(node.kind)),
             h('small', { class: 'composition-kind' }, kindLabel(node)),
-            node.id === composition.rootId ? h('span', { class: 'composition-root-badge' }, 'Run root') : null,
+            node.id === composition.rootId ? h('span', { class: 'composition-root-badge' }, snapshot ? 'Run root' : 'Selected root') : null,
           ),
           h(
             'strong',
@@ -195,7 +195,7 @@ export function CompositionPage(props: Props): ComponentChildren {
           h(
             'span',
             { class: 'composition-count' },
-            node.id === composition.rootId
+            !snapshot || node.id === composition.rootId
               ? childCount + (childCount === 1 ? ' configured call' : ' configured calls')
               : h('span', {}, h('strong', {}, count), count === 1 ? ' request' : ' requests'),
           ),
@@ -212,7 +212,8 @@ export function CompositionPage(props: Props): ComponentChildren {
           },
           'data-component': node.id,
           'aria-pressed': node.id === selected?.id,
-          'aria-label': privateBrowserLiteral(node.label) + ', ' + kindLabel(node) + (node.id === composition.rootId ? ', Run root' : ', ' + count + ' matching retained requests'),
+          'aria-label': privateBrowserLiteral(node.label) + ', ' + kindLabel(node) +
+            (node.id === composition.rootId ? (snapshot ? ', Run root' : ', Selected root') : snapshot ? ', ' + count + ' matching retained requests' : ''),
           onKeyDown: props.onNodeKeyDown,
         },
       )
@@ -252,7 +253,7 @@ export function CompositionPage(props: Props): ComponentChildren {
             ),
           ),
         ),
-        button('Observed calls', props.onObservedCalls),
+        snapshot ? button('Observed calls', () => props.onObservedCalls?.()) : null,
       ),
       h(
         'div',
@@ -289,20 +290,20 @@ export function CompositionPage(props: Props): ComponentChildren {
         'div',
         { class: 'composition-map-note', id: 'composition-explanation' },
         h('span', {}, h('i', { class: 'composition-line-key', 'aria-hidden': true }), 'Configured calls'),
-        h('span', {}, 'Counts show retained requests'),
+        snapshot ? h('span', {}, 'Counts show retained requests') : h('span', {}, 'Approved configuration'),
         h('span', { class: 'composition-map-hint' }, 'Select a component to inspect'),
       ),
-      snapshot.omissions.calls
+      snapshot?.omissions.calls
         ? h('p', { class: 'unavailable-note' }, snapshot.omissions.calls + ' call observations are omitted. Counts describe retained observations only.')
         : null,
-      attribution.unmatched.length
+      attribution?.unmatched.length
         ? h(
             'details',
             { class: 'composition-attribution' },
             h('summary', {}, attribution.unmatched.length + (attribution.unmatched.length === 1 ? ' retained observation cannot' : ' retained observations cannot') + ' be placed on this map'),
             h('ul', {}, [...reasonCounts].map(([reason, count]) => h('li', { key: reason }, unmatchedReason(reason) + ': ' + count))),
             h('p', {}, 'Their known lifecycle remains visible in the observed-call view.'),
-            button('Inspect observed calls', props.onObservedCalls),
+            button('Inspect observed calls', () => props.onObservedCalls?.()),
           )
         : null,
       h(
@@ -313,7 +314,7 @@ export function CompositionPage(props: Props): ComponentChildren {
           ? h(
               'table',
               {},
-              h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Caller'), h('th', { scope: 'col' }, 'Slot'), h('th', { scope: 'col' }, 'Target'), h('th', { scope: 'col' }, 'Retained requests'))),
+              h('thead', {}, h('tr', {}, h('th', { scope: 'col' }, 'Caller'), h('th', { scope: 'col' }, 'Slot'), h('th', { scope: 'col' }, 'Target'), snapshot ? h('th', { scope: 'col' }, 'Retained requests') : null)),
               h(
                 'tbody',
                 {},
@@ -324,7 +325,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                     h('td', {}, button(literal(nodes.get(edge.source)!.label), () => props.onSelect(edge.source))),
                     h('td', {}, h('code', {}, literal(edge.slot))),
                     h('td', {}, button(literal(nodes.get(edge.target)!.label), () => props.onSelect(edge.target))),
-                    h('td', {}, edgeCountLabel(edge.id)),
+                    snapshot ? h('td', {}, edgeCountLabel(edge.id)) : null,
                   ),
                 ),
               ),
@@ -336,9 +337,12 @@ export function CompositionPage(props: Props): ComponentChildren {
         { class: 'composition-about' },
         h('summary', {}, 'About this map'),
         h('p', {}, 'Connections show which component a configured slot can call. They do not show execution order or internal decisions.'),
-        h('p', {}, 'The host supplies this Run’s admitted composition. Internal steps, branch conditions, and data transformations are not included.'),
-        h('p', {}, 'A matched request retains its observed state. It does not by itself establish that the target started or completed.'),
-        h('p', {}, 'An absence of matching retained requests does not establish that a configured call was skipped.'),
+        h('p', {}, snapshot
+          ? 'The host supplies this Run’s admitted composition. Internal steps, branch conditions, and data transformations are not included.'
+          : 'The host supplies the locally approved configuration. Internal steps, branch conditions, and data transformations are not included.'),
+        snapshot ? h('p', {}, 'A matched request retains its observed state. It does not by itself establish that the target started or completed.')
+          : h('p', {}, 'Run validates the selected approval again before work begins. This map does not establish source freshness or launch readiness.'),
+        snapshot ? h('p', {}, 'An absence of matching retained requests does not establish that a configured call was skipped.') : null,
         h('p', {}, 'Use arrow keys to move between components. Zoom or Fit changes only the view. Component positions are not editable.'),
       ),
     ),
@@ -353,10 +357,10 @@ export function CompositionPage(props: Props): ComponentChildren {
             button(icon('close'), props.onClose, { class: 'composition-detail-close', title: 'Close component details', 'aria-label': 'Close component details' }),
           ),
           h('h2', { id: 'composition-detail-title', class: 'composition-detail-title', tabIndex: -1 }, literal(selected.label)),
-          snapshot.omissions.calls
+          snapshot?.omissions.calls
             ? h('p', { class: 'unavailable-note' }, snapshot.omissions.calls + ' call observations are omitted from this run.')
             : null,
-          selected.id === composition.rootId
+          snapshot && selected.id === composition.rootId
             ? h(
                 'section',
                 { class: 'composition-root-observation' },
@@ -375,7 +379,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                 h('p', { class: 'secondary' }, 'Run root. Child requests appear on their target components.'),
               )
             : null,
-          selected.id !== composition.rootId ? h('section', { class: 'composition-detail-section' },
+          snapshot && selected.id !== composition.rootId ? h('section', { class: 'composition-detail-section' },
             h('h3', {}, 'Requests in this run', h('span', { class: 'composition-section-count' }, selectedRequests.length)),
             h('p', { class: 'composition-retained-note secondary' }, 'Counts show retained requests.'),
             selectedRequests.length ? h(
@@ -393,7 +397,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                         h('span', { class: 'composition-request-state call-' + call.state }, 'Observed state: ' + call.state),
                         h('small', { class: 'secondary' }, 'Operation: ', literal(call.operationId)),
                       ),
-                      () => props.onCall(call.id),
+                      () => props.onCall?.(call.id),
                       {
                         'data-composition-call': call.id,
                         disabled: !props.referencesEnabled,
@@ -415,7 +419,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                 button(h('span', {}, literal(nodes.get(edge.source)!.label), icon('arrow')), () => props.onSelect(edge.source)),
                 h('div', { class: 'composition-connection-meta' },
                   h('code', {}, literal(edge.slot)),
-                  h('small', { class: 'secondary' }, edgeCountLabel(edge.id)),
+                  snapshot ? h('small', { class: 'secondary' }, edgeCountLabel(edge.id)) : null,
                 ),
               )),
             ),
@@ -426,7 +430,7 @@ export function CompositionPage(props: Props): ComponentChildren {
               outgoing.map((edge) => h('li', { key: edge.id },
                 h('code', {}, literal(edge.slot)),
                 button(h('span', {}, literal(nodes.get(edge.target)!.label), icon('arrow')), () => props.onSelect(edge.target)),
-                h('small', { class: 'secondary' }, edgeCountLabel(edge.id)),
+                snapshot ? h('small', { class: 'secondary' }, edgeCountLabel(edge.id)) : null,
               )),
             ) : h('p', { class: 'secondary' }, 'No configured child calls.'),
           ),

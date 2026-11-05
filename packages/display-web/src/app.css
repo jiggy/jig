@@ -19,6 +19,461 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Project exploration keeps configuration and explicit Run input in separate regions. */
+.explorer-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--pane);
+}
+.explorer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 208px;
+  flex-shrink: 0;
+}
+.explorer-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 5px;
+  background: var(--text);
+  color: var(--pane);
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+}
+.explorer-topbar-title {
+  margin-right: auto;
+  font-weight: 650;
+}
+.explorer-topbar > button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.explorer-body {
+  display: grid;
+  grid-template-columns: 240px minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+.explorer-library {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  padding: 22px 12px 16px;
+  background: var(--pane);
+  border-right: 1px solid var(--line);
+}
+.explorer-library-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 8px 12px;
+}
+.explorer-library > .explorer-filter {
+  width: 100%;
+  margin-bottom: 14px;
+  background: var(--page);
+}
+.explorer-targets {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.explorer-targets button {
+  padding: 11px 12px;
+  border-radius: 8px;
+  color: var(--text);
+}
+.explorer-targets strong {
+  display: block;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+  font-weight: 550;
+}
+.explorer-targets small {
+  margin-top: 3px;
+  font-size: 11px;
+}
+.explorer-targets [aria-current="page"] {
+  background: var(--selected);
+  color: var(--accent);
+}
+.explorer-targets [aria-current="page"] strong {
+  font-weight: 650;
+}
+.explorer-mobile-target,
+.explorer-mobile-appearance {
+  display: none;
+}
+.screen-reader-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.explorer-library-footer {
+  margin-top: auto;
+  padding: 24px 8px 0;
+}
+.explorer-library-footer p {
+  line-height: 1.6;
+}
+.explorer-empty-filter {
+  padding: 12px;
+}
+.explorer-empty-filter button {
+  margin-top: 8px;
+}
+.explorer-main {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px;
+}
+.explorer-workflow-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 2px 4px 24px;
+}
+.explorer-workflow-heading > div {
+  min-width: 0;
+}
+.explorer-eyebrow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.explorer-eyebrow > span {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 2px 8px;
+  margin-left: 4px;
+  font-size: 10px;
+}
+.explorer-workflow-heading h1 {
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.025em;
+  margin-bottom: 7px;
+}
+.explorer-workflow-description {
+  max-width: 70ch;
+  color: var(--secondary);
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0;
+  white-space: pre-wrap;
+}
+.explorer-primary,
+.explorer-primary > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.explorer-primary {
+  background: var(--accent);
+  color: var(--page);
+  border: 1px solid var(--accent);
+  font-weight: 650;
+  min-height: 38px;
+  padding: 8px 14px;
+  flex-shrink: 0;
+}
+.explorer-workflow-heading > .explorer-primary {
+  margin-top: 30px;
+}
+.explorer-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+.explorer-workspace.input-open {
+  grid-template-columns: minmax(0, 1fr) 352px;
+}
+.explorer-map {
+  min-width: 0;
+}
+.explorer-input-panel {
+  min-width: 0;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--pane);
+}
+.explorer-panel-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.explorer-panel-heading h2 {
+  margin-bottom: 5px;
+}
+.explorer-panel-heading p {
+  margin-bottom: 0;
+}
+.explorer-panel-heading button {
+  display: flex;
+  padding: 5px;
+  border-color: transparent;
+}
+.explorer-input-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.explorer-input-panel textarea {
+  display: block;
+  width: 100%;
+  min-height: 230px;
+  resize: vertical;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--page);
+  color: var(--text);
+  font: 12px / 1.65 ui-monospace, SFMono-Regular, Consolas, monospace;
+  tab-size: 2;
+}
+.explorer-input-panel textarea[aria-invalid="true"] {
+  border-color: var(--failure);
+}
+.explorer-input-help {
+  color: var(--secondary);
+  font-size: 11px;
+  margin: 9px 0 16px;
+  line-height: 1.55;
+}
+.explorer-input-help.invalid {
+  color: var(--failure);
+}
+.explorer-schema {
+  margin: 16px 0;
+  font-size: 12px;
+}
+.explorer-schema pre {
+  max-height: 320px;
+  overflow: auto;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--page);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 11px / 1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.explorer-input-requirements ul {
+  list-style: none;
+  padding: 0;
+}
+.explorer-input-requirements li {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 0;
+}
+.explorer-input-panel form > .explorer-primary {
+  width: 100%;
+  margin-top: 10px;
+}
+.explorer-run-note {
+  margin-top: 12px;
+  margin-bottom: 0;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.explorer-blocker,
+.explorer-notice {
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--warning-bg);
+  color: var(--warning);
+  line-height: 1.6;
+}
+.explorer-notice {
+  margin-bottom: 20px;
+}
+.explorer-notice p {
+  margin: 4px 0 8px;
+}
+.explorer-run-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 18px;
+  margin: 0 4px 22px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--pane);
+}
+.explorer-run-status.needs-attention {
+  background: var(--warning-bg);
+}
+.explorer-run-description {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.explorer-run-description p {
+  margin: 0;
+  font-size: 12px;
+}
+.explorer-open-run {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.explorer-empty {
+  max-width: 500px;
+  margin: 12vh auto;
+  padding: 28px;
+  text-align: center;
+}
+.explorer-empty > svg {
+  width: 32px;
+  height: 32px;
+  color: var(--secondary);
+  margin-bottom: 18px;
+}
+.explorer-empty p {
+  color: var(--secondary);
+  margin: 12px 0 20px;
+}
+.explorer-footer {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 20px;
+  border-top: 1px solid var(--line);
+  color: var(--secondary);
+  font-size: 11px;
+  background: var(--pane);
+}
+@media (max-width: 1120px) {
+  .explorer-workspace.input-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .explorer-workspace.input-open > .explorer-map {
+    display: none;
+  }
+  .explorer-input-panel {
+    max-width: 680px;
+  }
+}
+@media (max-width: 760px) {
+  .explorer-topbar {
+    min-height: 52px;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+  .explorer-brand {
+    width: auto;
+  }
+  .explorer-brand > .secondary {
+    display: none;
+  }
+  .explorer-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .explorer-library {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-right: none;
+    border-bottom: 1px solid var(--line);
+  }
+  .explorer-library-heading {
+    padding: 0;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .explorer-library-heading > span,
+  .explorer-library > .explorer-filter,
+  .explorer-targets,
+  .explorer-library-footer {
+    display: none;
+  }
+  .explorer-mobile-target {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+  .explorer-mobile-appearance {
+    display: block;
+    font-size: 11px;
+    margin-left: auto;
+  }
+  .explorer-main {
+    padding: 16px 12px;
+  }
+  .explorer-workflow-heading {
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .explorer-workflow-heading h1 {
+    font-size: 22px;
+  }
+  .explorer-workflow-heading > .explorer-primary {
+    margin: 0;
+  }
+  .explorer-input-panel {
+    padding: 18px;
+  }
+  .explorer-footer {
+    padding: 8px 14px;
+    font-size: 10px;
+  }
+}
+@media (pointer: coarse) {
+  .explorer button,
+  .explorer select,
+  .explorer-open-run {
+    min-height: 44px;
+  }
+  .explorer .appearance-option {
+    min-width: 44px;
+  }
+}
+
 /* Configured composition and retained requests share one readable coordinate space. */
 .composition-page {
   display: grid;

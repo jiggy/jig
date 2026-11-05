@@ -197,8 +197,8 @@ Version metadata is checked before evaluation and reverified before capture comp
   The command-private exploration callback receives that same decoded approved
   candidate for bounded configuration projection. It is inert retained meaning,
   never an authenticated execution recipe or a public response. Catalogue and
-  selected interface reads must carry the same admission digest; changed
-  approval refuses the combined projection. Browser DTOs omit settings, grants,
+  selected interface reads must carry the same admission digest.
+  Changed approval refuses the combined projection. Browser DTOs omit settings, grants,
   private paths and admission records. Browsing neither retains a coordinator
   nor creates a Run, prepared attempt or authority.
 

@@ -70,10 +70,6 @@ All selected domain requirements still apply.
 
 ### Command grammar and review
 
-- Dependency count refusals report distinct preparations per review, the observed lower bound, effective allowance, and policy origin.
-  Show the supported `limits.dependencies.maxPreparations` field, its environment override, and their precedence.
-  Keep byte, time, and Run authority limits separate. Never derive a total Flow count from preparation evidence.
-
 - Child composition refusals identify the caller slot and preserve a closed diagnostic.
   Checkpoint guidance distinguishes settled-child Flow retrieval from application recovery through the original retained ticket.
 
@@ -133,6 +129,47 @@ All selected domain requirements still apply.
   Recommend explicit dependency-root selection only for mount refusals. Other causes keep their own correction.
 
   Each additional root must contain an actual declared workspace member. Mounted files and mounts inside package source remain unsupported.
+
+### Project exploration
+
+- `src/cli-explore.ts` owns `jig explore [target]`, the finite explorer command
+  and its bounded launch-intent session. `cli-project-projection.ts` reads the
+  exact approved catalogue, selected input contract and configured composition.
+  Browsing acquires no coordinator, evaluates no source and writes no project
+  state. A reviewed entrypoint selects its target only. Browser JSON replaces
+  input defaults and never interprets authored file paths.
+
+- `src/cli-explorer-web.ts` owns the authenticated local project-control
+  transport. Its capability is separate from every Run inspector capability.
+  The browser submits only request identity, opaque approval revision, opaque
+  target identity and bounded JSON input. The host resolves and rechecks the
+  exact approved selector. Missing local input files and required channels are
+  explicit launch blockers. Browser text never supplies argv, local paths,
+  grants, review consent or process identities.
+
+- `src/cli-explore-launch.ts` launches a fresh ordinary installed `jig run`
+  command for each accepted intent, with a private captured input file and the
+  existing approval pin. It preserves native admission, schema validation,
+  deadlines, file delivery and independent recovery. No delivery owner is
+  reused after retirement. The ordinary Run receives no explorer control
+  capability. Its private handoff reports only its viewer URL and confirmed
+  settlement. Never parse human stderr to establish either fact.
+
+- Keep one child command at a time. A later explicit Run first closes and
+  joins the previous settled inspector. Request identities remain bound to
+  their exact canonical bytes for the session. Repeated submissions cannot
+  create another Run, including after settlement.
+
+  Retain at most 128 request
+  identities without evicting them. Unknown command settlement stops new
+  launches. Browser disconnection never starts or retries work.
+
+- Close explorer and terminal interruption stop the owned active command
+  through its ordinary interruption path and join bounded cleanup. The Run
+  viewer's existing Close inspection remains presentation-only. Closing an
+  already settled viewer does not cancel work. An inherited presentation
+  deadline remains authoritative. The explorer supplies no idle timeout.
+  Capabilities bypass model journals, diagnostics and persisted input.
 
 ### Retained application views
 

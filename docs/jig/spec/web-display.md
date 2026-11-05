@@ -1,12 +1,12 @@
 # Local web display
 
-This contract governs `jig run --display web` and
+This contract governs `jig explore`, `jig run --display web`,
 `jig inspect --result DIRECTORY --display web`, and `jig views --display web`. The
 [CLI experience](cli-experience.md) owns command grammar, exact output and
 information hierarchy.
 [Reporting](reporting.md) owns portable authored meaning. Browser transport is a private host adapter, not a Flow API.
 
-## Scope and admission
+## Run inspection and admission
 
 One invoking CLI owns one read-only browser inspector for its finite Run or
 selected saved packet or retained application views. The inspector renders the same validated semantic
@@ -44,13 +44,15 @@ Show an explicit empty state without synthetic destinations.
 Keep Diagnostics, Help and Close available.
 Only an existing selected tab labels a tabpanel.
 
-The display requires terminal stderr; stdin need not be a terminal. JSON and
+The display requires terminal stderr. Stdin need not be a terminal. JSON and
 explicit channel reception win before server preparation. Run stdout may be
 redirected and still receives its unchanged exact final result. Saved inspection
 with redirected stdout or `--json` emits exact decoded JSON without a listener.
-`--updates off` suppresses automatic optional-port reception; it does not hide
-host facts, calls, diagnostics or delivered files. A web request cannot enable
-channels or change the Run's input, deadline or policy.
+
+`--updates off` suppresses automatic optional-port reception. It does not hide
+host facts, calls, diagnostics or delivered files.
+
+A Run inspector request cannot enable channels or change the Run's input, deadline or policy.
 
 Prepare bundled assets and an unadvertised loopback listener before execution.
 Publish the private browser link only after trusted root dispatch, synchronous
@@ -66,12 +68,69 @@ Dark (moon), or Monochrome. System is initially selected and follows the browser
 color preference. Each button has an accessible name, tooltip, visible focus and
 pressed state; selection requires no Flow declarations, storage or new endpoint.
 
+## Project exploration before execution
+
+`jig explore [target]` opens an operator-owned project session before any Run.
+It presents approved workflows, their configured composition, and each selected workflow's declared input contract.
+Opening, selecting, refreshing, and editing an input draft do not start work.
+An unreviewed project has an explicit empty state with `jig review` guidance.
+The browser cannot review, apply, edit source, or change grants.
+
+Exploration reads a consistent protected approval snapshot without evaluating source, preparing dependencies, acquiring a coordinator, or recovering state.
+It retains no protected read transaction while idle.
+The selected schema preserves its contract definitions.
+Private settings, grant values, selectors, paths, and approval records stay outside browser data.
+Opaque revision and target identifiers bind selection without granting authority themselves.
+
+Configured maps contain no synthetic Run, request count, duration, success, or skipped-step claim.
+Connections retain their meaning as available calls.
+The interface labels configuration separately from observations after execution.
+Flow and Binding targets remain independently selectable.
+
+The complete project projection allows 4,096 targets and 16 MiB of encoded JSON.
+A selected input schema and its definitions share 256 KiB.
+Composition retains its existing component, connection, and byte allowances.
+Oversized composition is unavailable as a whole.
+Other projection overflow refuses that projection without dropping workflow or input requirements.
+
+The operator supplies explicit JSON input, including valid scalar values.
+The editor must not invent required values or silently remove duplicate object members.
+One launch envelope, including its selection and request identity, allows 16 MiB.
+Ordinary JSON and invocation-schema validation still apply before execution.
+Required unbound input files and required channels make browser launch unavailable, with an explanation and the ordinary invocation path.
+Reviewed file bindings and ordinary automatic output delivery retain their existing behavior.
+
+Run is an explicit action under a separate project control capability.
+The host rechecks the selected approval and target immediately before the ordinary Run path.
+Changed approval requires refresh and renewed selection.
+Each launch has a fresh ordinary command, containment, output owner, and cleanup lifecycle.
+The explorer permits one owned invocation at a time, including its preparation.
+It never resets spent delivery authority or transfers a previous Run's grants.
+
+The client submits a launch once, then reads status to resolve an ambiguous response.
+Duplicate request identities cannot launch another invocation.
+Reconnection and refresh never submit work.
+Uncertain execution prevents another launch within that session.
+Settled execution remains distinct from application success.
+
+The explorer preserves the input draft and exposes an explicit link to the ordinary Run inspector.
+That inspector receives its own observation capability on its own loopback listener.
+It receives no project control capability.
+Closing a settled inspector before the next launch releases its command owner.
+Earlier run history is not an explorer archive.
+
+Close explorer prevents new launches and cancels active owned work through ordinary cancellation and cleanup.
+It waits for owned command settlement before releasing its listener.
+The terminal reports unconfirmed cleanup separately from any known result.
+Tab closure or a lost browser connection alone does not request cancellation.
+Closing a Run inspector retains its existing presentation-only meaning.
+
 ## Local access boundary
 
-Bind explicitly to numeric IPv4 loopback on an ephemeral port. No LAN interface,
-remote host, resident daemon, multiple Runs, browser approval, apply, retry or
-Run cancellation control is provided. The browser may explicitly close
-presentation, but cannot alter execution.
+Bind explicitly to numeric IPv4 loopback on an ephemeral port.
+No LAN interface, remote host, resident daemon, browser approval, or apply action is provided.
+An ordinary Run inspector controls presentation only.
+The explicit explorer owns the separate launch and cancellation actions described above.
 
 A cryptographically unpredictable, session-specific capability authorizes every
 snapshot, stream, artifact and close request. The launch fragment bootstraps
@@ -79,19 +138,35 @@ memory-only browser authorization and is removed from visible history before
 requests. Never put it in a query, cookie, local/session storage, result packet,
 model journal, diagnostics or access logs. Reload requires reopening the
 original terminal link in a new tab and does not submit work again. Possession of that link
-permits reading this session and closing its inspector; sharing it delegates
-that presentation access.
+permits reading this session and closing its inspector.
+
+An explorer link additionally delegates its bounded project launch and close actions.
+Ordinary inspector links never delegate those actions.
 
 Validate the parser-visible Host and canonical request origin against the exact
 numeric listener authority, without hostname aliases or forwarded-header
-substitution. Present Origin must match exactly; close requires explicit exact
+substitution. For authenticated endpoints, present Origin must match exactly. Close requires explicit exact
 Origin. Present fetch-site metadata must be same-origin. No permissive CORS,
 preflight exception or authentication fallback exists. Duplicate Host values,
-malformed routes, queries, uploaded bodies and unknown artifacts fail closed.
-Native parsing can normalize request targets before the handler sees them;
-these checks do not claim to inspect the original request line.
+malformed routes, unsupported queries, uploaded observer bodies and unknown artifacts fail closed.
 
-Serve only fixed bundled host assets and authenticated observation endpoints.
+Native parsing can normalize request targets before the handler sees them.
+These checks do not claim to inspect the original request line.
+
+Fixed bundled assets are public and carry no authority.
+Terminal-link navigation accepts `Sec-Fetch-Site: none`.
+
+Explorer project reads accept only one opaque target selector.
+Launch and Close require an explicit exact Origin and the project control capability.
+Launch accepts one bounded JSON body with a ten-second read allowance and one active submission.
+Compressed bodies and malformed JSON are refused before dispatch.
+The explorer retains at most eight ordinary requests and two project responses, without a waiting queue.
+
+It owns one separately authenticated child handoff, limited to 2 KiB per event.
+Browser capabilities cannot authenticate that handoff, and child capabilities cannot authenticate browser control requests.
+The handoff accepts only the ordinary numeric-loopback viewer URL or a confirmed settlement event.
+
+Serve only fixed bundled host assets and the authenticated endpoints belonging to the selected mode.
 Use a restrictive same-origin content-security policy without inline/evaluated
 scripts, external fonts, CDN resources or analytics. Render authored titles,
 reports, diagnostics, filenames and bytes as inert literal text, including HTML,
@@ -210,7 +285,8 @@ Absent observations do not prove a component was skipped or cannot execute.
 Observation loss and unmatched calls remain visible beside the map.
 Selection persists through snapshot replacement while its component identity remains available.
 
-The map supplies no editing, test submission, replay, or execution controls.
+The Run map supplies no editing, test submission, replay, or execution controls.
+Project exploration places explicit input and launch controls beside its configuration-only map.
 Saved result packets and retained application views contain no admitted composition.
 They never reconstruct a map from recorded prose or familiar field names.
 

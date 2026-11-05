@@ -2,16 +2,18 @@
 
 ## Purpose
 
-Make supplied observations understandable through an independent readonly
-browser inspector. Producers own evidence and authority. Viewers own navigation.
+Make approved configuration and supplied observations understandable through an independent browser workbench.
+Producers own evidence and authority. Viewers own navigation and explicit exploration intent.
 
 ## Ownership
 
 - `src/client.ts` owns bounded synchronization, memory capability and preview
   requests. `src/navigation.ts` owns viewer-local semantic selection/references.
+- `src/explorer-client.ts` owns bounded project reads, Run status and explicit submission through a separately authorized explorer session.
+  `src/explorer-app.ts` and `src/explorer-view.ts` own workflow selection, input drafts and the explorer shell.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
 - `src/composition.ts` owns pure map layout and exact Run/component selection.
-  `src/composition-view.ts` renders admitted calls and matching request observations.
+  `src/composition-view.ts` renders approved calls, with matching observations only when a Run snapshot is supplied.
   Shared model helpers own attribution. The browser never joins component labels.
 - `src/application.ts` composes authored reading, media, gallery, document and comparison surfaces.
   Gallery metadata uses a disclosure without dropping supplied columns.
@@ -30,8 +32,19 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   rectangular CSV/TSV excerpts offer Table/Raw views (500 rows, 64 columns).
   Clipped or malformed excerpts stay raw, and search always uses raw text.
 - Import only model/reporting and this package's modules. No Jig/TUI import.
-- Keep capability in memory and remove its fragment before requests. No storage,
-  CDN, router, server framework, automatic Run replay or execution callbacks.
+- Keep capability in memory and remove its fragment before requests. No storage, CDN, router or server framework.
+  The Run observer never submits or retries execution.
+  `/explore` uses a distinct host capability for explicit requests and project reads.
+  Never transfer that capability to the separate Run observer.
+- Explorer submission sends exact input JSON and pins the selected project revision and target identity.
+  Never retry submission after a lost response. Read status until the host resolves that request.
+  Starting, running, uncertain or stale states disable another launch.
+  Close explorer stops its owned Run through host cleanup. Close inspection remains presentation-only.
+- Project maps carry no synthetic Run snapshot, elapsed time or zero request counts.
+  Approval labels do not establish current source freshness or launch readiness.
+  Keep schema and unavailable launch reasons beside the input editor.
+  Retain at most sixteen drafts within sixteen MiB, evicting older drafts with visible feedback.
+  Preserve an oversized current edit until selection changes, without clipping it.
 - Retain one snapshot task, bounded SSE reader/retry owner and active preview.
   Equal revisions acknowledge freshness without replacing semantic data.
 - Validate incoming snapshot shape before atomic replacement. Incomplete/stale
@@ -103,13 +116,14 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 
 ## Verification
 
-- `just check` builds and runs client, navigation, observations, composition, fixed-assets
+- `just check` builds and runs client, explorer, navigation, observations, composition, fixed-assets
   and public semantic fixture tests.
 - `just test-package` uses exact model/web/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or native dependency.
   The harness matches the installed version to this package's source manifest.
 - Installed host browser checks separately qualify actual asset embedding,
   authenticated transport, captured files, keyboard use and explicit Close.
+  Explorer protocol tests use real HTTP and inert data. They do not qualify admission, native execution or visual usability.
 
 ## Child DOX Index
 

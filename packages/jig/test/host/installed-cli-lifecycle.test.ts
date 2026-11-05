@@ -103,6 +103,53 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
       run: (args, cwd, _environment, timeout) => command(args, cwd, timeout),
     })
     expect(await foundationResidue(qualification, command, root)).toEqual(before)
+    // The explorer consumes an ordinary reviewed project through the installed
+    // launcher. The held input makes cancellation an actual contained Run.
+    await writeFile(
+      join(project, 'flows/hello/FLOW.contract.json'),
+      JSON.stringify({
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        input: { type: 'string' },
+      }),
+    )
+    await writeFile(
+      join(project, 'flows/hello/FLOW.ts'),
+      [
+        'import { handle } from "@jigging/flow";',
+        'await handle(async (run) => {',
+        '  if (run.input === "Hold") await new Promise((resolve) => setTimeout(resolve, 30_000));',
+        '  return { outcome: "done", output: { message: `Hello, ${run.input}!` } };',
+        '});',
+        '',
+      ].join('\n'),
+    )
+    await command([cli, 'review', '--yes', '--allow-resolution-network'], project)
+    const explored = await command(
+      [
+        process.env.PYTHON ?? 'python3',
+        join(import.meta.dir, '../fixtures/installed-explore.py'),
+        cli,
+      ],
+      project,
+      240_000,
+    )
+    expect(JSON.parse(explored.stdout)).toEqual({
+      passed: true,
+      checks: [
+        'approved-map-before-run',
+        'invalid-input-without-launch',
+        'stale-approval-refusal',
+        'refresh-after-review',
+        'ordinary-live-inspector',
+        'duplicate-request-no-replay',
+        'closed-inspector-run-again',
+        'sequential-run-owners',
+        'active-close-cancellation',
+        'joined-explorer-exit',
+      ],
+    })
+    expect(explored.stderr).toBe('')
+    expect(await foundationResidue(qualification, command, root)).toEqual(before)
     // A new ordinary reviewed revision requires an explicitly connected output.
     // Keep the greeting and saved-display proofs above on their original approval.
     const requiredContract = {

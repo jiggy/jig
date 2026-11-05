@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import {
   DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
   DISPLAY_PROJECT_TARGET_LIMIT,
+  type DisplayJsonValue,
   type DisplayProjectSnapshot,
   validateDisplayProjectRun,
   validateDisplayProjectRunRequest,
@@ -120,6 +121,12 @@ test('project replacement rejects private fields, inconsistent identity and inve
 
 test('project schemas and catalogue are complete bounded inert data', () => {
   const fixture = project()
+  let nested: DisplayJsonValue = { type: 'string' }
+  for (let index = 0; index < 40; index++)
+    nested = { type: 'object', properties: { child: nested } }
+  expect(validateDisplayProjectSnapshot({
+    ...fixture, selected: { ...fixture.selected, input: { state: 'schema', schema: nested } },
+  }).selected!.input.state).toBe('schema')
   expect(() =>
     validateDisplayProjectSnapshot({
       ...fixture,

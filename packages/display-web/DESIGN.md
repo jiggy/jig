@@ -51,6 +51,33 @@ Opening a particular invocation reveals its ancestry without an unrelated filter
 Unavailable composition, omitted observations and unplaced requests remain explicit.
 Absence of a retained request does not establish a skipped call.
 
+## Project exploration
+
+`jig explore` opens approved application structure before execution.
+A persistent workflow list chooses an exact Flow or Binding. The selected map occupies the main workspace.
+The approved entrypoint selects the initial root, without inventing a Run or applying hidden input defaults.
+
+Configuration maps use a Selected root badge and configured-call counts.
+They show no request totals, execution state or elapsed time.
+Approval describes retained meaning, not fresh environment verification.
+Refresh rereads approved configuration. A stale response keeps its readable map while disabling launch.
+
+Run with input opens a focused panel beside the map.
+Component details and Run input take turns using the available inspection space.
+Narrow layouts give the requested panel the full workspace and preserve a clear return.
+The input begins blank. Show the declared schema and file or channel requirements without inventing example data.
+
+Explicit Run submits the exact input and selected approval once.
+Lost acknowledgment triggers status reads, never resubmission.
+The explorer shows preparation, active, settled, refused and uncertain states separately.
+An Open run link opens the ordinary read-only observer in another tab.
+The explorer retains input and map context for the next run.
+
+Only one Run can be active in this exploration session.
+Closing the explorer stops owned active work through ordinary cleanup.
+This consequence stays visible beside the Close action and in the footer.
+Closing a separate inspection remains presentation-only.
+
 ## Acceptance checks
 
 Review the same material in light, dark and monochrome themes at desktop and narrow widths.
@@ -69,6 +96,11 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
   Zoom preserves a shared coordinate space and keeps the selected component reachable.
   Duplicate labels stay distinct, repeated requests stay separate, and stale invocation links remain disabled.
   Keyboard selection, narrow-layout Back and return from invocation details preserve orientation.
+- Project exploration starts without execution and preserves exact workflow identity through selection and refresh.
+  Invalid input, missing prerequisites, stale configuration and unconfirmed submissions cannot silently launch another Run.
+  Configuration-only maps show no invented observations. Run handoff preserves the explorer's draft and context.
 
 `test/material.node.mjs` checks semantic rendering, captured content, large galleries and actual HTTP behavior.
+`test/explorer.node.mjs` checks configuration-only rendering.
+`test/explorer-client.node.mjs` checks real HTTP submission reconciliation.
 Source checks do not establish rendered visual parity. Record browser comparison separately when preview infrastructure is available.

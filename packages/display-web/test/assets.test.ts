@@ -75,8 +75,11 @@ test('browser build emits only fixed self-contained assets and erases server typ
   expect(browser).not.toMatch(/node:|@opentui\/|sourceMappingURL|\beval\(/)
   expect(browser).toContain('/api/snapshot')
   expect(browser).toContain('/api/events')
+  expect(browser).toContain('/api/project')
+  expect(browser).toContain('/api/run')
+  expect(browser).toContain('/explore')
   // Preact contains a generic raw-HTML branch; the host never supplies that prop.
-  for (const source of ['app.ts', 'composition-view.ts']) {
+  for (const source of ['app.ts', 'composition-view.ts', 'explorer-view.ts']) {
     const authored = await readFile(new URL('../src/' + source, import.meta.url), 'utf8')
     expect(authored).not.toMatch(/innerHTML|dangerouslySetInnerHTML/)
   }
