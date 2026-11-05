@@ -176,6 +176,11 @@ assert.deepEqual(colliding.views.map(view=>view.id),opaqueIds);
 
 import { browserRecords, browserLocal, browserPeek, browserResolve, browserCallSpans, browserTabs, browserView, BrowserClient } from '@jigging/display-web';
 import { webAssets } from '@jigging/display-web/assets';
+// Parse the installed public asset in the Bun consumer; Node reads the same bytes.
+// Visible words such as "from" are data, not module requests.
+if (process.versions.bun) assert.deepEqual(
+  new Bun.Transpiler({loader:'js'}).scan(webAssets['/assets/app.js'].body).imports,
+  [], 'The installed browser asset must contain no module requests');
 const collisionTabs = browserTabs(colliding);
 assert.equal(new Set(collisionTabs.map(tab=>tab.id)).size,collisionTabs.length);
 for(const key of ['files','overview','activity']) assert.equal(browserView(colliding,key),undefined);
@@ -194,7 +199,7 @@ assert.deepEqual(browserResolve(snapshot, snapshot.rootSourceId, reference), { k
 assert.equal(browserResolve(snapshot, 'other-source', reference).kind, 'unavailable');
 assert.equal(browserCallSpans(snapshot.calls).spans.get('call-root').milliseconds, 9);
 assert.deepEqual(Object.keys(webAssets), ['/', '/assets/app.js', '/assets/app.css']);
-assert(!/node:|@opentui\\/|\\bfrom\\s*["']|\\bimport\\s*["']|\\beval\\(/.test(webAssets['/assets/app.js'].body));
+assert(!/node:|@opentui\\/|\\beval\\(/.test(webAssets['/assets/app.js'].body));
 assert(!/@import|url\\(/.test(webAssets['/assets/app.css'].body));
 assert(!/localStorage|sessionStorage|EventSource/.test(webAssets['/assets/app.js'].body));
 let current = snapshot, text = 'Captured text', reads = 0;
