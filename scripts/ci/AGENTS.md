@@ -114,6 +114,7 @@ preparation never becomes a consumer requirement.
   Trusted main-workflow code repeats selection after protected approval and verifies exact artifact transport and source.
   Require a current-head approval from an independent reviewer with repository write permission.
   Reject dismissed or stale approvals and outstanding change requests. Read every review page within the bounded API budget.
+
   Recheck approval immediately before the key-bearing step. Only trusted workflow-revision scripts and harnesses execute there.
   Forks, stale merge revisions, foreign workflows and producer attempt changes refuse diagnosis.
   This diagnostic creates no native qualification receipt and cannot authorize publication.

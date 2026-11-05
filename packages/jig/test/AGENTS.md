@@ -51,6 +51,7 @@ Delivery inspection verifies that raster reservations cannot consume the separat
 The example shard supplies its genuine Codex binary and ordinarily trusted local HTTPS peer.
 The installed conversation compares installed identities against the selected archive manifests, independent of the trusted harness revision.
 It preserves immediate interruption, settlement and cleanup assertions.
+
 Controlled 429 responses, malformed streams, connection loss and genuine process loss must fail visibly and leave no native owner.
 The process-loss case observes one app-server executable matching the selected binary digest before sending SIGKILL.
 These cases establish native protocol behavior, not live provider availability or model quality.
