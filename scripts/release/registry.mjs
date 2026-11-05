@@ -1,5 +1,6 @@
 // A genuine disposable npm registry. The proxy changes transport outcomes only.
 import assert from 'node:assert/strict'
+import { randomBytes } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -14,6 +15,7 @@ export async function startRegistry(root, { externalDependencies = false } = {})
     configuration,
     JSON.stringify({
       storage: join(root, 'storage'),
+      max_body_size: '64mb',
       auth: { htpasswd: { file: join(root, 'htpasswd') } },
       uplinks: externalDependencies ? { npmjs: { url: 'https://registry.npmjs.org/' } } : {},
       packages: {
@@ -144,27 +146,32 @@ export async function startRegistry(root, { externalDependencies = false } = {})
       if (Date.now() >= deadline) throw Error(`Verdaccio startup deadline: ${diagnostic}`)
       await delay(50)
     }
+    const password = randomBytes(32).toString('hex')
     const response = await fetch(`${upstream}/-/user/org.couchdb.user:rehearsal`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         name: 'rehearsal',
-        password: 'local-disposable-passphrase',
+        password,
         email: 'rehearsal@localhost',
         type: 'user',
         roles: [],
       }),
       signal: AbortSignal.timeout(5000),
     })
-    const user = await response.json()
-    assert.ok(response.ok && typeof user.token === 'string', 'Local registry user creation failed')
+    await response.body?.cancel()
+    assert.ok(response.ok, 'Local registry user creation failed')
     proxy.listen(0, '127.0.0.1')
     await once(proxy, 'listening')
     const registry = `http://127.0.0.1:${proxy.address().port}`
     const userconfig = join(root, 'npmrc')
-    await writeFile(userconfig, `//127.0.0.1:${proxy.address().port}/:_authToken=${user.token}\n`, {
-      mode: 0o600,
-    })
+    await writeFile(
+      userconfig,
+      `//127.0.0.1:${proxy.address().port}/:_auth=${Buffer.from(`rehearsal:${password}`).toString('base64')}\n`,
+      {
+        mode: 0o600,
+      },
+    )
     return {
       registry,
       userconfig,
