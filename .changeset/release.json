@@ -1,87 +1,57 @@
 {
   "schemaVersion": 1,
-  "baseRevision": "4b6547dbebf642c76e4e6d0be62df9e413338938",
-  "sourceDigest": "34d50e6786ebaba25c0408cf72cf76932c264b65f47054d8bef19364e4bbc5d4",
+  "baseRevision": "4601c25daa901e517ce5bcf2e5ff219c1ff8ba0a",
+  "sourceDigest": "7c8eadbd93f620734d6d0b6296183e0c185df889e66020e4ac45d2605e07e2e2",
   "changesets": [
     {
-      "id": "agent-request-store-omission",
-      "sha256": "63eee7477aee25391cf75a00520111d1640de84dd6980385569a723ce46b4370"
+      "id": "allow-larger-flow-libraries",
+      "sha256": "b7d5a364efdc4c1bca9eabdef973ad1b08da177261e1e1a0e56b994c0a600b4d"
     },
     {
-      "id": "centralize-cli-recovery-guidance",
-      "sha256": "aef80d1624845a7a4a509377b2527b331435b6057e88828757a751ec91c5274c"
+      "id": "clear-child-checkpoint-diagnostics",
+      "sha256": "bb675d9e707b5f46d87f386961ce85b4b9dcb4e23ee4fc05f0f914309c3ad71f"
     },
     {
-      "id": "explain-operation-and-close-failures",
-      "sha256": "0ac6ba693b9747c619cbdfaaa17d5f81b8489525e79d415f6c079f51d2745567"
+      "id": "compose-native-child-checkpoints",
+      "sha256": "fe91d0ae445082703a10fa8ddbdf6dd0e1d0a5af95a57a4596a07dacf6a4e211"
     },
     {
-      "id": "mounted-workspace-source-roots",
-      "sha256": "9a3e0600af592c024fb8ff9d5ee0a69d9c053ace5b3c1822337cc8f8bd2f3cef"
+      "id": "explore-approved-workflows",
+      "sha256": "140257f7638025e95c1ef6d1fa0ec4024c87df097ad2b84cc322e4910373dd90"
     },
     {
-      "id": "preserve-agent-noncompletion",
-      "sha256": "bc0fdada5069d0c0dff9404609df52279743d60db3d42794ba361a4c44d01e92"
+      "id": "inspect-admitted-application-maps",
+      "sha256": "99dbf2ecd8fd97737639ed6ac26960eaaaf2d8eb89f6c3da11d72346da2b26f7"
     },
     {
-      "id": "recommend-authoring-skills",
-      "sha256": "1914279093738fb56c49995662727498f11db76fcc52822562b6b3a656680ebe"
-    },
-    {
-      "id": "task-focused-jig-docs",
-      "sha256": "258b7810e081a01c8d2019cabd479c370f592e028b5c7258cc1d758dddb0be10"
-    },
-    {
-      "id": "update-linux-bun",
-      "sha256": "f5b60f4c03a0bc87578161bf917c46f75d5c01f7b21195173806af3f000216a7"
-    },
-    {
-      "id": "workbench-design-parity",
-      "sha256": "f675c4d0ab18ca1c742baa91e53f1914167a7cfd766e6321927b943acd9a9f8e"
+      "id": "settle-macos-preparation-tools",
+      "sha256": "f28a54fe9e0c6f8d36ea499fe02040ce223de8e8681d3b93d9b860d7d4bab157"
     }
   ],
   "releases": [
     {
-      "name": "@jigging/agent-acp",
-      "type": "minor",
-      "oldVersion": "0.1.0-alpha.12",
-      "newVersion": "0.1.0-alpha.13"
-    },
-    {
-      "name": "@jigging/agent-method",
-      "type": "minor",
-      "oldVersion": "0.1.0-alpha.10",
-      "newVersion": "0.1.0-alpha.11"
-    },
-    {
       "name": "@jigging/display-model",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.4",
-      "newVersion": "0.1.0-alpha.5"
+      "oldVersion": "0.1.0-alpha.5",
+      "newVersion": "0.1.0-alpha.6"
     },
     {
       "name": "@jigging/display-tui",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.4",
-      "newVersion": "0.1.0-alpha.5"
+      "oldVersion": "0.1.0-alpha.5",
+      "newVersion": "0.1.0-alpha.6"
     },
     {
       "name": "@jigging/display-web",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.4",
-      "newVersion": "0.1.0-alpha.5"
+      "oldVersion": "0.1.0-alpha.5",
+      "newVersion": "0.1.0-alpha.6"
     },
     {
       "name": "@jigging/jig",
       "type": "patch",
-      "oldVersion": "0.1.0-alpha.49",
-      "newVersion": "0.1.0-alpha.50"
-    },
-    {
-      "name": "@jigging/reporting",
-      "type": "patch",
-      "oldVersion": "0.1.0-alpha.3",
-      "newVersion": "0.1.0-alpha.4"
+      "oldVersion": "0.1.0-alpha.50",
+      "newVersion": "0.1.0-alpha.51"
     }
   ]
 }
