@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { test } from 'node:test'
 import { parse } from 'yaml'
-import { reviewedCandidate } from './native-preflight.mjs'
+import { approvedReviews, reviewedCandidate } from './native-preflight.mjs'
 
 const source = 'a'.repeat(40),
   head = 'b'.repeat(40),
   repository = 'jiggy/jig'
 const pr = {
   number: 90,
+  user: { login: 'author' },
   state: 'open',
   draft: false,
   merge_commit_sha: source,
@@ -26,8 +27,52 @@ const run = {
   head_repository: { full_name: repository },
 }
 
+const approval = {
+  id: 7,
+  state: 'APPROVED',
+  commit_id: head,
+  user: { login: 'maintainer', type: 'User' },
+}
+const reviews = [approval],
+  permissions = { maintainer: 'write' }
+
+test('native approval requires an independent authorized review of the exact current head', () => {
+  assert.equal(approvedReviews(pr, reviews, permissions)[0].commit, head)
+  for (const invalid of [
+    [],
+    [{ ...approval, commit_id: source }],
+    [{ ...approval, state: 'COMMENTED' }],
+    [{ ...approval, state: 'PENDING' }],
+    [{ ...approval, state: 'DISMISSED' }],
+    [{ ...approval, user: { login: 'author', type: 'User' } }],
+    [{ ...approval, user: { login: 'maintainer', type: 'Bot' } }],
+    [approval, { ...approval, id: 8, state: 'DISMISSED' }],
+    [approval, { ...approval, id: 8, state: 'CHANGES_REQUESTED' }],
+    [approval, { ...approval, id: 8, user: { login: 'other' }, state: 'CHANGES_REQUESTED' }],
+  ])
+    assert.throws(() => approvedReviews(pr, invalid, permissions))
+  for (const permission of [undefined, 'read', 'triage', 'none'])
+    assert.throws(() => approvedReviews(pr, reviews, { maintainer: permission }))
+  // API order and later comments cannot conceal or invalidate the latest substantive review.
+  assert.equal(
+    approvedReviews(
+      pr,
+      [
+        { ...approval, id: 8, state: 'COMMENTED' },
+        approval,
+        { ...approval, id: 6, state: 'CHANGES_REQUESTED' },
+      ],
+      permissions,
+    ).length,
+    1,
+  )
+  assert.throws(() =>
+    approvedReviews({ ...pr, head: { ...pr.head, sha: source } }, reviews, permissions),
+  )
+})
+
 test('reviewed native diagnostics require an exact open same-repository PR and canonical producer', () => {
-  const options = { source, repository, number: 90, pr, run }
+  const options = { source, repository, number: 90, pr, run, reviews, permissions }
   assert.equal(reviewedCandidate(options).runAttempt, 2)
   for (const changed of [
     { ...pr, merge_commit_sha: head },
@@ -62,11 +107,22 @@ test('live PR workflow is manual, guarded, protected and creates no qualificatio
   )
   const steps = workflow.jobs.diagnostic.steps
   const acquire = steps.findIndex(({ run }) => run?.includes('native-preflight.mjs acquire'))
-  const candidate = steps.findIndex(
-    ({ with: options }) => options?.ref === '${{ needs.select.outputs.source_revision }}',
-  )
+  const recheck = steps.findIndex(({ run }) => run?.includes('native-preflight.mjs verify'))
   const secret = steps.findIndex(({ env }) => env?.OPENROUTER_API_KEY)
-  assert.ok(acquire >= 0 && acquire < candidate && candidate < secret)
+  assert.ok(acquire >= 0 && acquire < recheck && recheck < secret)
+  assert.equal(workflow.jobs.diagnostic.defaults.run['working-directory'], 'trusted')
+  for (const job of Object.values(workflow.jobs)) {
+    for (const step of job.steps) {
+      if (step.uses?.startsWith('actions/checkout')) {
+        assert.equal(step.with.ref, '${{ github.workflow_sha }}')
+        assert.equal(step.with['persist-credentials'], false)
+      }
+      if (step['working-directory']) assert.equal(step['working-directory'], 'trusted')
+    }
+  }
+  assert.match(steps[secret].run, /scripts\/ci\/provision-github-rootless-host.sh run-delegated/)
+  assert.match(steps[secret].run, /"OPENROUTER_API_KEY=\$OPENROUTER_API_KEY"/)
+  assert.doesNotMatch(steps[secret].run, /GH_TOKEN|github.token/)
   assert.equal(steps[0].with.ref, '${{ github.workflow_sha }}')
   assert.equal(steps[secret].env.OPENROUTER_API_KEY, '${{ secrets.OPENROUTER_API_KEY }}')
   for (const job of Object.values(workflow.jobs)) {

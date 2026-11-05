@@ -92,7 +92,10 @@ Controlled provider errors and process loss must fail visibly and leave no nativ
 
 For live provider diagnostics, dispatch **Native Agent PR preflight** from `main`.
 Supply an open same-repository PR number, its exact reviewed merge SHA, and that source's canonical CI run ID.
-The protected `native-agent-api` job rechecks those identities after approval before running all three existing client suites.
+An independent maintainer with repository write permission must approve the current PR head. Resolve outstanding change requests first.
+The protected `native-agent-api` job rechecks approval after archive acquisition and immediately before exposing the key.
+It runs provisioning, builds and client harnesses only from the trusted workflow revision, without checking out PR source.
+The installed conversation consumes the reviewed archives through the existing bounded Agent credential channel.
 Updated PR sources or producer attempts require a fresh dispatch.
 These diagnostics create no release qualification receipts.
 

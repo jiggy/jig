@@ -1,5 +1,6 @@
 import { expect } from 'bun:test'
-import { mkdir, mkdtemp, readdir, readFile, realpath, rm } from 'node:fs/promises'
+import { execFileSync } from 'node:child_process'
+import { mkdir, mkdtemp, readdir, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
@@ -117,21 +118,27 @@ export async function qualifyCodexInstalledConversation(options: CodexQualificat
   let clean = false
   try {
     const installed = await writeInstalledConversationHelperProject(root, cliRoot)
-    const candidate = JSON.parse(
-      await readFile(new URL('../../package.json', import.meta.url), 'utf8'),
-    )
-    const acp = JSON.parse(
-      await readFile(new URL('../../../agent-acp/package.json', import.meta.url), 'utf8'),
-    )
-    const method = JSON.parse(
-      await readFile(new URL('../../../agent-method/package.json', import.meta.url), 'utf8'),
-    )
-    expect(installed.versions).toEqual({
-      jig: candidate.version,
-      acp: acp.version,
-      flow: candidate.devDependencies['@jigging/flow'],
-      method: method.version,
-    })
+    // A trusted harness can test reviewed archives from a different source revision.
+    const expectedVersions: Record<string, string> = {}
+    for (const [kind, variable, name] of [
+      ['jig', 'JIG_PACKAGE_ARCHIVE', '@jigging/jig'],
+      ['acp', 'AGENT_ACP_PACKAGE_ARCHIVE', '@jigging/agent-acp'],
+      ['flow', 'FLOW_SDK_PACKAGE_ARCHIVE', '@jigging/flow'],
+      ['method', 'AGENT_METHOD_PACKAGE_ARCHIVE', '@jigging/agent-method'],
+    ] as const) {
+      const manifest = JSON.parse(
+        execFileSync('tar', ['-xOzf', process.env[variable]!, 'package/package.json'], {
+          encoding: 'utf8',
+          timeout: 30_000,
+          maxBuffer: 1024 * 1024,
+          env: { PATH: process.env.PATH },
+        }),
+      )
+      expect(manifest.name).toBe(name)
+      expect(typeof manifest.version).toBe('string')
+      expectedVersions[kind] = manifest.version
+    }
+    expect(installed.versions).toEqual(expectedVersions)
     console.info(`Installed native-conversation packages: ${JSON.stringify(installed.versions)}`)
     const commandEnvironment = nativePublicCommandEnvironment({
       codexPath: await realpath(codexPath),

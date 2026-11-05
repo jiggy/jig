@@ -4,7 +4,61 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireCandidate, githubClient, validateWorkflowRun } from './candidate-transfer.mjs'
 
-export function reviewedCandidate({ pr, run, source, repository, number }) {
+export function approvedReviews(pr, reviews, permissions) {
+  if (!pr.user?.login || !Array.isArray(reviews)) throw Error('Missing complete PR review evidence')
+  const latest = new Map()
+  for (const review of reviews) {
+    if (!Number.isSafeInteger(review.id) || review.id <= 0 || !review.user?.login)
+      throw Error('Malformed PR review evidence')
+    if (['COMMENTED', 'PENDING'].includes(review.state)) continue
+    if (!['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state))
+      throw Error('Unknown PR review state')
+    const prior = latest.get(review.user.login)
+    if (!prior || prior.id < review.id) latest.set(review.user.login, review)
+  }
+  if ([...latest.values()].some((review) => review.state === 'CHANGES_REQUESTED'))
+    throw Error('Resolve requested changes before native diagnostics')
+  const approvals = [...latest.values()]
+    .filter(
+      (review) =>
+        review.state === 'APPROVED' &&
+        review.commit_id === pr.head.sha &&
+        review.user.type === 'User' &&
+        review.user.login !== pr.user?.login &&
+        ['admin', 'maintain', 'write'].includes(permissions?.[review.user.login]),
+    )
+    .map((review) => ({ id: review.id, login: review.user.login, commit: review.commit_id }))
+    .sort((a, b) => a.id - b.id)
+  if (!approvals.length)
+    throw Error(
+      'Native diagnostics require a maintainer approval for the exact current PR head SHA',
+    )
+  return approvals
+}
+
+export async function reviewEvidence(client, repository, number) {
+  const reviews = []
+  for (let page = 1; ; page++) {
+    const rows = await client.api(
+      `repos/${repository}/pulls/${number}/reviews?per_page=100&page=${page}`,
+    )
+    if (!Array.isArray(rows)) throw Error('Missing PR review page')
+    reviews.push(...rows)
+    if (rows.length < 100) break
+    if (page >= 10) throw Error('PR review pagination exceeded its bound')
+  }
+  const permissions = Object.create(null)
+  for (const login of new Set(
+    reviews.filter((review) => review.state === 'APPROVED').map((review) => review.user?.login),
+  )) {
+    if (!/^[A-Za-z0-9-]+$/.test(login ?? '')) throw Error('Invalid reviewer login')
+    const result = await client.api(`repos/${repository}/collaborators/${login}/permission`)
+    permissions[login] = result.permission
+  }
+  return { reviews, permissions }
+}
+
+export function reviewedCandidate({ pr, run, source, repository, number, reviews, permissions }) {
   if (
     !/^[0-9a-f]{40}$/.test(source ?? '') ||
     !Number.isSafeInteger(number) ||
@@ -29,6 +83,7 @@ export function reviewedCandidate({ pr, run, source, repository, number }) {
   }
   validateWorkflowRun(run, expected)
   return {
+    approvals: approvedReviews(pr, reviews, permissions),
     source,
     head: pr.head.sha,
     base: pr.base.sha,
@@ -46,11 +101,11 @@ async function main() {
     throw Error('Native preflight requires an explicit main-workflow dispatch')
   const [mode, destination] = process.argv.slice(2)
   if (
-    !['select', 'acquire'].includes(mode) ||
+    !['select', 'acquire', 'verify'].includes(mode) ||
     (mode === 'acquire' && !destination) ||
-    (mode === 'select' && destination)
+    (mode !== 'acquire' && destination)
   )
-    throw Error('Use native-preflight.mjs select or acquire OUTPUT')
+    throw Error('Use native-preflight.mjs select, verify or acquire OUTPUT')
   const repository = process.env.GITHUB_REPOSITORY
   const number = Number(process.env.PREFLIGHT_PULL_REQUEST)
   const runId = Number(process.env.PREFLIGHT_PRODUCER_RUN)
@@ -59,6 +114,7 @@ async function main() {
   const client = githubClient(repository)
   const select = async () =>
     reviewedCandidate({
+      ...(await reviewEvidence(client, repository, number)),
       repository,
       number,
       source: process.env.PREFLIGHT_SOURCE,
@@ -66,9 +122,11 @@ async function main() {
       run: await client.api(`repos/${repository}/actions/runs/${runId}`),
     })
   const target = await select()
-  if (mode === 'acquire') {
+  if (mode !== 'select') {
     if (String(target.runAttempt) !== process.env.PREFLIGHT_PRODUCER_ATTEMPT)
       throw Error('The reviewed producer attempt changed during protected approval')
+  }
+  if (mode === 'acquire') {
     await acquireCandidate({
       destination: resolve(destination),
       sourceRevision: target.source,

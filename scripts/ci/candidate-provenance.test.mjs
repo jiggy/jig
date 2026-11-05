@@ -682,14 +682,21 @@ function readinessFixture() {
 
 test('the actual readiness snapshot satisfies the shared publisher guard', async () => {
   const { hostSnapshot } = await readinessFixture().check()
-  const context = { repository, group: 'host', source,
-    receipt: hostSnapshot.candidate.receiptSha256 }
+  const context = {
+    repository,
+    group: 'host',
+    source,
+    receipt: hostSnapshot.candidate.receiptSha256,
+  }
   validateSnapshot(hostSnapshot, context)
   assert.equal(hostSnapshot.artifacts.length, 6)
   for (let index = 0; index < hostSnapshot.artifacts.length; index++) {
     const incomplete = structuredClone(hostSnapshot)
     incomplete.artifacts.splice(index, 1)
-    assert.throws(() => validateSnapshot(incomplete, context), /Invalid authorized qualification snapshot/)
+    assert.throws(
+      () => validateSnapshot(incomplete, context),
+      /Invalid authorized qualification snapshot/,
+    )
   }
   const extra = structuredClone(hostSnapshot)
   extra.artifacts.push(extra.artifacts[0])
@@ -801,7 +808,10 @@ test('complete qualification cannot publish feature, pending or stale versioned 
 test('Intel health is separate from publication and cannot replace required ARM qualification', async () => {
   const fixture = readinessFixture()
   fixture.receipts.delete(3000)
-  fixture.artifacts.set(300, fixture.artifacts.get(300).filter((entry) => entry.id !== 3000))
+  fixture.artifacts.set(
+    300,
+    fixture.artifacts.get(300).filter((entry) => entry.id !== 3000),
+  )
   assert.equal((await fixture.check()).readyHost, true)
   fixture.receipts.get(3001).consumer.workflowPath = '.github/workflows/macos-intel-nightly.yml'
   const changed = await fixture.check()
