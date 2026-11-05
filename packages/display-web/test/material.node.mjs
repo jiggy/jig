@@ -150,6 +150,28 @@ test('root facts and exact per-slot counts remain separate from child request to
   assert(text(table).includes('<fetch>'))
 })
 
+test('all native resource kinds have human labels and retain exact kind in their identity', () => {
+  for (const [resourceKind, label] of [
+    ['http-request', 'HTTP request'],
+    ['project-command', 'Project command'],
+    ['project-evaluation', 'Project evaluation'],
+    ['finite-acp', 'Agent conversation'],
+    ['run-checkpoint', 'Save checkpoint'],
+    ['child-checkpoint', 'Read child checkpoint'],
+  ]) {
+    const data = compositionSnapshot()
+    data.composition.nodes = data.composition.nodes.map((node) =>
+      node.id === 'http' ? { ...node, resourceKind } : node,
+    )
+    const page = CompositionPage(compositionProps(data, 'http'))
+    const card = walk(page).find((node) => node.props['data-component'] === 'http')
+    assert.equal(card.props['aria-pressed'], true)
+    assert(text(card).includes(label))
+    const detail = walk(page).find((node) => node.type === 'aside')
+    assert(text(detail).includes('Native resource kind: ' + resourceKind))
+  }
+})
+
 test('missing and stale observations remain explicit without replacing exact component selection', () => {
   const data = compositionSnapshot()
   const empty = CompositionPage(compositionProps(data, 'approval'))
