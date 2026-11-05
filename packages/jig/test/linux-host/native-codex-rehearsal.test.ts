@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import { createHash } from 'node:crypto'
-import { readdir, readFile, readlink } from 'node:fs/promises'
+import { readdir, readFile } from 'node:fs/promises'
 import {
   qualifyCodexFirstTurn,
   qualifyCodexInstalledConversation,
@@ -80,7 +80,6 @@ describe.serial('genuine Codex release sequence without provider credentials', (
           if (!/^[1-9][0-9]*$/.test(entry)) continue
           const base = `/proc/${entry}`
           try {
-            if (!(await readlink(`${base}/exe`)).includes('codex')) continue
             if (!(await readFile(`${base}/cmdline`, 'utf8')).split('\0').includes('app-server'))
               continue
             if (digest(await readFile(`${base}/exe`)) === expected) matching.push(Number(entry))

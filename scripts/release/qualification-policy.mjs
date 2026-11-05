@@ -11,7 +11,7 @@ export function validateSnapshot(snapshot, context) {
     !Array.isArray(snapshot.runs) ||
     snapshot.runs.length !== 4 ||
     !Array.isArray(snapshot.artifacts) ||
-    snapshot.artifacts.length !== 7
+    snapshot.artifacts.length !== 6
   )
     throw Error('Invalid authorized qualification snapshot')
 }

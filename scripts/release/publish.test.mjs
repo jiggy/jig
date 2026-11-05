@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join, relative, resolve } from 'node:path'
@@ -22,7 +22,7 @@ async function success(result) {
   assert.equal(result.status, 0, result.stdout + result.stderr)
   return result
 }
-async function fixture(_t, scenario) {
+async function fixture(_t, scenario, { largeArchive = false } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'jig-publish-real-'))
   let registry
   try {
@@ -80,6 +80,8 @@ async function fixture(_t, scenario) {
     const receipt = { schemaVersion: 2, sourceRevision: revision, release, packages: [] }
     const candidates = join(root, 'candidates')
     const archives = {}
+    if (largeArchive)
+      await writeFile(join(source, 'packages/jig/payload.bin'), randomBytes(9 * 1024 * 1024))
     for (const kind of kinds) {
       const directory = join(candidates, kind)
       await mkdir(directory, { recursive: true })
@@ -412,4 +414,19 @@ test(
         assert.equal(registry.traffic.length, 0)
       }
     }),
+)
+
+test(
+  'real publication accepts an archive whose encoded request exceeds Verdaccio defaults',
+  { timeout: 120_000 },
+  (t) =>
+    fixture(
+      t,
+      async ({ archives, run }) => {
+        assert.ok((await readFile(archives.jig)).length > 9 * 1024 * 1024)
+        const result = await success(await run())
+        assert.equal(result.output.match(/_state=published/g)?.length, 3)
+      },
+      { largeArchive: true },
+    ),
 )

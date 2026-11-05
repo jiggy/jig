@@ -40,7 +40,7 @@ export async function checkNpmIdentity({ requestUrl, requestToken, registry, nam
   const results = []
   for (const name of names) {
     // npm-package-arg uses an unescaped scope marker and an escaped slash.
-    const escaped = name.replace('/', '%2f')
+    const escaped = name.replaceAll('/', '%2f')
     const response = await fetch(
       new URL(`/-/npm/v1/oidc/token/exchange/package/${escaped}`, registry),
       {

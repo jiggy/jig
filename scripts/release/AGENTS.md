@@ -40,7 +40,10 @@ Exercise the same publication path before merging release changes.
   Never load executable tooling from the candidate revision or rebuild during publication.
 - Production fixes the registry to `https://registry.npmjs.org` and always requests provenance.
   Rehearsal accepts only an explicit IPv4 loopback registry and refuses ambient credential variables.
-  Its local authentication uses a disposable registry account. It creates no qualification receipts.
+  Its local authentication uses a disposable registry account with a random test-only password.
+  The registry permits publication requests up to 64 MiB, including archive encoding overhead. It creates no qualification receipts.
+- Host snapshots contain four workflow runs and six artifacts.
+  Test the actual readiness collector output against the shared publisher guard.
 - Every group preflights all existing bytes and channels before ordered publication.
   Revalidate authorization before mutations. Preserve exact-byte retry and prohibit channel downgrades.
 - Rehearsal uses real Changesets, npm packing, Verdaccio publication, registry downloads and installation.

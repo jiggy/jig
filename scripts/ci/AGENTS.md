@@ -250,6 +250,8 @@ They consume frozen package exports with tracked test helpers and installed
   Required CI job names match the current workflow, including Python reporting.
   Candidate acquisition imports readiness validators statically so the CLI cannot deadlock on a circular dynamic import.
 
+  The collector-to-publisher regression requires four runs and six artifacts from the actual readiness output.
+  Missing or extra artifacts refuse publication.
   Snapshots bind successful runs/jobs/attempts and artifact identities so the
   isolated trusted publisher can revalidate after queueing and before mutation.
   Exercise the actual readiness snapshot against the workflow's admission guard.
