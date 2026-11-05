@@ -76,6 +76,32 @@ just release-plan
 just release-check "$(git merge-base origin/main HEAD)"
 ```
 
+## Test release changes before merge
+
+Run `just test-tooling` for registry fault cases and qualification policy checks.
+These checks use genuine npm commands and a disposable Verdaccio registry without production credentials.
+
+Run `just test-release-rehearsal` from a clean committed checkout with the normal development tools installed.
+It creates a disposable checkout, generates versions, builds canonical archives, publishes locally, retries and installs the CLI.
+The **Release rehearsal** PR workflow runs this complete path automatically for release and package changes.
+Rehearsal results establish neither production authentication nor native host qualification.
+
+Linux's example shard also tests genuine Codex against an ordinarily trusted local HTTPS endpoint.
+It reuses the live first-turn and installed-conversation harness, including immediate interruption and settlement.
+Controlled provider errors and process loss must fail visibly and leave no native work.
+
+For live provider diagnostics, dispatch **Native Agent PR preflight** from `main`.
+Supply an open same-repository PR number, its exact reviewed merge SHA, and that source's canonical CI run ID.
+The protected `native-agent-api` job rechecks those identities after approval before running all three existing client suites.
+Updated PR sources or producer attempts require a fresh dispatch.
+These diagnostics create no release qualification receipts.
+
+To check production npm authentication independently, dispatch **Publish npm prereleases** with mode `authentication`.
+Leave `source_revision` empty in this mode.
+The existing npm workflow and environment perform package-specific OIDC exchange for all three production packages.
+Results contain only acceptance and HTTP status. Returned tokens are never written or displayed.
+This check publishes nothing and does not establish provenance or release readiness.
+
 ## Intel Mac compatibility
 
 **Intel Mac compatibility** runs daily at 02:23 UTC from `main`. It selects the

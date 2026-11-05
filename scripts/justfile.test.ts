@@ -171,6 +171,8 @@ test(
         for (const file of experiments)
           await writeFile(join(directory, 'scripts/experiments/visual-flows', file), '')
         for (const file of files) await writeFile(join(directory, 'scripts/ci', file), '')
+        await mkdir(join(directory, 'scripts/release'), { recursive: true })
+        await writeFile(join(directory, 'scripts/release/publish.test.mjs'), '')
         await writeFile(
           join(directory, 'tools/node'),
           `#!${process.execPath}
@@ -200,6 +202,7 @@ process.exit(process.env.JUST_TEST_FAIL_PHASE === 'policy' ? 23 : 0);
           args: [
             '--test',
             ...files.map((file) => `scripts/ci/${file}`),
+            'scripts/release/publish.test.mjs',
             ...experiments.map((file) => `scripts/experiments/visual-flows/${file}`),
           ],
         })

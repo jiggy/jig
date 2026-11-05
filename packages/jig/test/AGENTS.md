@@ -71,6 +71,13 @@ Delivery inspection verifies that raster reservations cannot consume the separat
   cleanup. The private `fixtures/incident-brief/test/` application owns
   separately registered deterministic method cases in the applications profile.
 
+`linux-host/native-codex-rehearsal.test.ts` shares both Codex qualification scenarios through the registration-free `fixtures/codex-responses-qualification.ts`.
+The example shard supplies its genuine Codex binary and ordinarily trusted local HTTPS peer.
+The installed conversation preserves its exact candidate identities, immediate interruption, settlement and cleanup assertions.
+Controlled 429 responses, malformed streams, connection loss and genuine process loss must fail visibly and leave no native owner.
+The process-loss case observes one app-server executable matching the selected binary digest before sending SIGKILL.
+These cases establish native protocol behavior, not live provider availability or model quality.
+
 `portable/codex-session-state.test.ts` checks the bounded native startup configuration and rejects credential-bearing gateway fields.
 The Linux example shard exercises the selected gateway through genuine Codex 0.166.0 and the installed public packages.
 Live API qualification independently requires all selected native clients against the exact candidate.

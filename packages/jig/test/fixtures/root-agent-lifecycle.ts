@@ -946,6 +946,7 @@ export function nativePublicCommandEnvironment(options: {
   readonly codexPath: string
   readonly apiKey: string
   readonly model: string
+  readonly baseURL?: string
 }): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {
     PATH: requiredProcessEnvironment('PATH'),
@@ -953,7 +954,7 @@ export function nativePublicCommandEnvironment(options: {
     CODEX_PATH: options.codexPath,
     OPENAI_API: 'responses',
     OPENAI_API_KEY: options.apiKey,
-    OPENAI_BASE_URL: OPENROUTER_RESPONSES_TEST_BASE_URL,
+    OPENAI_BASE_URL: options.baseURL ?? OPENROUTER_RESPONSES_TEST_BASE_URL,
     OPENAI_MODEL: options.model,
   }
   for (const key of ['TMPDIR', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS']) {

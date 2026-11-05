@@ -70,7 +70,7 @@ async function runWriterStep(step, env) {
       {
         cwd: directory,
         env: {
-          PATH: '/usr/bin:/bin',
+          PATH: process.env.PATH,
           GITHUB_SERVER_URL: 'https://github.com',
           GITHUB_REPOSITORY: 'jiggy/release-fixture',
           GITHUB_STEP_SUMMARY: summary,
@@ -964,7 +964,8 @@ test('release App access is repository-scoped and automatic merge preserves norm
 test('npm readiness ignores PRs and skipped descendants while retaining failed main qualification', async () => {
   const workflow = parse(await readFile(new URL('npm-publish.yml', workflows), 'utf8'))
   assert.deepEqual(workflow.on.workflow_run.branches, ['main'])
-  const qualifies = (github) => Function('github', 'return (' + workflow.jobs.authorize.if + ')')(github)
+  const qualifies = (github, inputs = { mode: 'release' }) =>
+    Function('github', 'inputs', `return (${workflow.jobs.authorize.if})`)(github, inputs)
   const event = (changes = {}) => ({
     event_name: 'workflow_run',
     ref: 'refs/heads/main',
@@ -992,6 +993,7 @@ test('npm readiness ignores PRs and skipped descendants while retaining failed m
     assert.equal(qualifies(event({ ...native, conclusion: 'success' })), true)
   }
   assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }), true)
+  assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/main' }, { mode: 'authentication' }), false)
   assert.equal(qualifies({ event_name: 'workflow_dispatch', ref: 'refs/heads/feature' }), false)
 })
 
@@ -1147,6 +1149,7 @@ test('version planning explains pending and consumed changesets without claiming
       const output = join(temporary, 'output-' + pendingChangesets.length)
       const child = spawnSync(process.execPath, ['--input-type=module', '-e', program], {
         env: {
+          PATH: process.env.PATH,
           RUNNER_TEMP: temporary,
           GITHUB_REPOSITORY: 'jiggy/jig',
           GITHUB_STEP_SUMMARY: summary,

@@ -12,7 +12,8 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.12",
     "@changesets/cli": "3.0.3",
-    "yaml": "2.9.0"
+    "yaml": "2.9.0",
+    "verdaccio": "6.2.4"
   },
   "patchedDependencies": {
     "@agentclientprotocol/codex-acp@1.8.0": "packages/jig/patches/codex-acp@1.8.0.patch",

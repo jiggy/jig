@@ -14,6 +14,16 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 - `workflows/` owns automation triggers, permissions, jobs, and retained
   artifacts.
 - Checked-in justfiles and scripts own reusable build and test logic.
+- `workflows/release-rehearsal.yml` tests source versioning, canonical builds, npm publication, retries and installation against a disposable Verdaccio registry.
+  PR execution has repository read permission and no production credentials.
+- `workflows/native-agent-preflight.yml` diagnoses an explicitly reviewed same-repository PR merge through protected native tests.
+  Main-workflow tooling verifies the open PR, exact merge, canonical CI producer and current attempt before candidate checkout.
+  The protected job repeats selection after approval and verifies acquisition before exposing the API key.
+  All three clients reuse the qualification test files. No diagnostic result creates a release qualification receipt.
+  Branch updates, changed merge revisions and producer retries require a new selection.
+- `npm-publish.yml` also accepts manual authentication diagnostics through its existing protected npm environment.
+  Package-specific OIDC exchange retains only acceptance and HTTP status. It publishes nothing and establishes no provenance.
+
 - `workflows/release-version.yml` maintains one generated release PR from
   pending Changesets. `scripts/release/` owns package coverage and version
   generation. `RELEASING.md` owns contributor and repository setup instructions.
@@ -22,7 +32,7 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 - Pin third-party actions by full commit.
 - Install Just 1.43.1 in jobs that build packages or sites. The protected npm
-  publisher consumes existing archives and requires neither Just nor source.
+  publisher consumes existing archives and requires neither Just nor candidate source.
 - Install CI's pinned npm in a fresh runner-temporary prefix and add its binaries
   to `GITHUB_PATH`. Verify the version before exposing that path.
   Do not replace the npm installation performing the install.
@@ -129,6 +139,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   ordinary local and global npm checks, without provisioning a containment host.
   Actual native Runs, operational and hostile baselines execute once in Linux's
   installed-evidence shard and remain required for host publication.
+- Protected publication loads only `scripts/release/` from `github.workflow_sha`, with persisted checkout credentials disabled.
+  Candidate archives remain inert data from their authorized immutable artifact.
+  The production command selects no rehearsal mode and fixes npm's public registry and provenance.
 - Before any npm mutation, inspect every archive, exact registry version and
   channel tag in the selected release group. Existing versions require byte
   identity even if a newer tag exists. Absent older versions are superseded
@@ -259,6 +272,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   packages, a digest-pinned genuine Codex client and a local HTTPS model peer.
   Provision the peer CA through the disposable host's ordinary certificate trust
   before review. Keep TLS keys and consumer trees outside retained artifacts.
+
+  The shard also runs the genuine Codex rehearsal through initial response, installed follow-up, interruption and settlement.
+  Controlled 429 responses, malformed streams, connection loss and genuine process loss retain native cleanup assertions.
+  These cases use no provider credentials.
 
   The shard's 90-minute ceiling covers all authored Run budgets plus bounded
   setup, review and settlement. Ordinary source coverage and limits remain
@@ -512,8 +529,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   possible. Inspect the complete workflow permission and artifact flow.
 - `just test-tooling` runs the host coverage checks to catch omitted host-only
   cases and incomplete Mac shard assignment before host qualification.
-- `bun test scripts/npm-publish.test.ts` exercises the publisher's actual shell
-  with controlled registry responses, including reverse completion and retries.
+- `node --test scripts/release/*.test.mjs` exercises the shared publisher through genuine npm commands and Verdaccio.
+  Cover exact retries, partial publication, conflicting bytes, transport loss, delayed visibility and refused authentication.
+  Pure metadata tests cover live qualification comparisons without claiming GitHub execution evidence.
 
 ## Child DOX Index
 

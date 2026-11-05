@@ -32,7 +32,9 @@ env:
     const commands = Object.fromEntries([...suites, 'examples', 'installed-evidence'].map(suite => [suite, []]));
     const exampleSmoke = 'packages/jig/test/linux-host/example-smoke.test.ts';
     if (!files.includes(exampleSmoke)) throw Error('Missing full example e2e suite');
-    const ordinaryFiles = files.filter(file => file !== exampleSmoke);
+    const nativeRehearsal = 'packages/jig/test/linux-host/native-codex-rehearsal.test.ts';
+    if (!files.includes(nativeRehearsal)) throw Error('Missing native Codex rehearsal suite');
+    const ordinaryFiles = files.filter(file => ![exampleSmoke, nativeRehearsal].includes(file));
     const assignment = new Map(balanceWholeFiles(ordinaryFiles, suites.length, file => hostTestSeconds(file, 'linux'))
       .flatMap(shard => shard.groups.map(({ file }) => [file, suites[shard.index]])));
     const timeouts = new Map([
@@ -59,6 +61,9 @@ env:
     commands.examples = [{
       transcript: 'example-smoke.txt', files: [exampleSmoke],
       hostMode: 'run-acquisition-host', timeoutMs: 1200000,
+    }, {
+      transcript: 'native-codex-rehearsal.txt', files: [nativeRehearsal],
+      hostMode: 'run-acquisition-host', timeoutMs: 540000,
     }];
     const installed = [
       [12, 'packages/jig/test/package-smoke.ts'],

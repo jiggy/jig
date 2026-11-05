@@ -55,6 +55,9 @@ export async function startExampleSmokeApi(options: {
   readonly model: string
   readonly token: string
   readonly expectedRequests: number
+  readonly minimumRequests?: number
+  readonly allowInterruptedResponse?: boolean
+  readonly transportFailure?: 'http429' | 'malformed' | 'disconnect'
   readonly reply: (prompt: string) => string | Promise<string>
 }) {
   assert.ok(
@@ -72,6 +75,13 @@ export async function startExampleSmokeApi(options: {
       options.expectedRequests <= 32,
     'A bounded exact model-request count is required',
   )
+  if (options.minimumRequests !== undefined)
+    assert.ok(
+      Number.isSafeInteger(options.minimumRequests) &&
+        options.minimumRequests >= 0 &&
+        options.minimumRequests <= options.expectedRequests,
+      'Invalid request-count interval',
+    )
   const [cert, key] = await Promise.all([readFile(options.certFile), readFile(options.keyFile)])
   const failures = new Map<string, number>()
   let requests = 0
@@ -112,6 +122,26 @@ export async function startExampleSmokeApi(options: {
         return refuse(response, 'unexpected-model-request', 400)
       if (++requests > options.expectedRequests) return refuse(response, 'extra-model-request', 409)
       const ordinal = requests
+      if (options.transportFailure) {
+        completed++
+        if (options.transportFailure === 'disconnect') response.destroy()
+        else if (options.transportFailure === 'http429') {
+          response.writeHead(429, { 'content-type': 'application/json', 'retry-after': '0' })
+          response.end(
+            JSON.stringify({
+              error: {
+                type: 'rate_limit_error',
+                code: 'rate_limit',
+                message: 'Controlled capacity refusal',
+              },
+            }),
+          )
+        } else {
+          response.writeHead(200, { 'content-type': 'text/event-stream' })
+          response.end('event: response.completed\ndata: malformed-json\n\n')
+        }
+        return
+      }
       let prompt: string
       try {
         prompt = promptText(body)
@@ -174,7 +204,8 @@ export async function startExampleSmokeApi(options: {
       ]
       response.once('finish', () => completed++)
       response.once('close', () => {
-        if (!response.writableFinished) fail('response-aborted')
+        if (!response.writableFinished && !options.allowInterruptedResponse)
+          fail('response-aborted')
       })
       response.writeHead(200, {
         'content-type': 'text/event-stream; charset=utf-8',
@@ -218,8 +249,16 @@ export async function startExampleSmokeApi(options: {
         0,
         `Example smoke API refused requests: ${JSON.stringify([...failures])}`,
       )
-      assert.equal(requests, options.expectedRequests, 'Unexpected model-request count')
-      assert.equal(completed, options.expectedRequests, 'Not every model reply completed')
+      if (options.minimumRequests !== undefined) {
+        assert.ok(
+          requests >= options.minimumRequests && requests <= options.expectedRequests,
+          'Unexpected model-request count',
+        )
+        assert.ok(completed >= options.minimumRequests, 'No complete initial reply')
+      } else {
+        assert.equal(requests, options.expectedRequests, 'Unexpected model-request count')
+        assert.equal(completed, options.expectedRequests, 'Not every model reply completed')
+      }
     },
     async close() {
       await new Promise<void>((resolve, reject) => {
