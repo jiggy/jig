@@ -161,7 +161,7 @@ export function CompositionPage(props: Props): ComponentChildren {
         },
         h(
           'div',
-          { class: 'composition-canvas', style: { width: layout.width, height: layout.height } },
+          { class: 'composition-canvas', style: { width: layout.width + 'px', height: layout.height + 'px' } },
           h(
             'svg',
             {
@@ -231,7 +231,10 @@ export function CompositionPage(props: Props): ComponentChildren {
                 class: 'composition-card' + (node.kind === 'resource' ? ' resource' : '') +
                   (node.kind === 'resource' && (node.resourceKind === 'run-checkpoint' || node.resourceKind === 'child-checkpoint') ? ' checkpoint' : '') +
                   (node.id === selected?.id ? ' selected' : ''),
-                style: { left: box.x, top: box.y, width: box.width, height: box.height },
+                style: {
+                  left: box.x + 'px', top: box.y + 'px',
+                  width: box.width + 'px', height: box.height + 'px',
+                },
                 'data-component': node.id,
                 'aria-pressed': node.id === selected?.id,
                 'aria-label': privateBrowserLiteral(node.label) + ', ' + kindLabel(node) + (node.id === composition.rootId ? ', Run root' : ', ' + count + ' matching retained requests'),

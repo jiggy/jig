@@ -109,6 +109,42 @@ const compositionProps = (data, selectedNodeId, referencesEnabled = true) => ({
   onScroll() {},
 })
 
+test('map cards publish CSS lengths in the SVG coordinate space', () => {
+  const data = compositionSnapshot()
+  const page = CompositionPage(compositionProps(data, 'draft'))
+  const canvas = walk(page).find((node) => node.props.class === 'composition-canvas')
+  const svg = walk(canvas).find((node) => node.type === 'svg')
+  const pixels = (value) => {
+    assert.equal(typeof value, 'string', 'Preact core requires explicit CSS length units')
+    assert.match(value, /^\d+(?:\.\d+)?px$/)
+    return Number(value.slice(0, -2))
+  }
+  const width = pixels(canvas.props.style.width)
+  const height = pixels(canvas.props.style.height)
+  assert.equal(width, svg.props.width)
+  assert.equal(height, svg.props.height)
+  const cards = walk(canvas).filter((node) => node.props['data-component'])
+  assert.equal(cards.length, data.composition.nodes.length)
+  const boxes = cards.map((card) => {
+    const style = card.props.style
+    return {
+      x: pixels(style.left), y: pixels(style.top),
+      width: pixels(style.width), height: pixels(style.height),
+    }
+  })
+  for (const box of boxes) {
+    assert(box.width > 0 && box.height > 0)
+    assert(box.x + box.width <= width && box.y + box.height <= height)
+  }
+  for (const [index, box] of boxes.entries())
+    for (const other of boxes.slice(index + 1))
+      assert(
+        box.x + box.width <= other.x || other.x + other.width <= box.x ||
+        box.y + box.height <= other.y || other.y + other.height <= box.y,
+        'Component cards must occupy distinct rectangles',
+      )
+})
+
 test('application maps retain repeated exact requests and distinguish duplicate display labels', () => {
   const data = compositionSnapshot()
   data.omissions.calls = 3
