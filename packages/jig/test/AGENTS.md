@@ -33,6 +33,11 @@ Ctrl-C checks during active execution and after settlement. Its default piped
 input behavior remains unchanged. A terminal interruption must join ordinary
 cleanup without turning a settled Run into an unconfirmed cleanup diagnostic.
 
+After settlement and a later input refusal, the helper observes and revalidates
+the exact owned child before sending its positive PID SIGTERM. The resulting
+uncertainty must remain global, preserve request history, block further launches,
+and produce a failed Close result. Ordinary interruption still owns child cleanup.
+
 `portable/cli-session-failure.test.ts` checks phase-specific failure diagnostics through the private CLI seam.
 Its synthetic errors establish no native cleanup, artifact retention or installed-host evidence.
 Successful closure preserves ordinary operation exit codes, including exit 1 for `STALE_PLAN`.

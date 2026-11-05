@@ -82,6 +82,7 @@ export class PrivateExploreSession {
   readonly #projection: PrivateProjectProjection
   readonly #entries = new Map<string, Entry>()
   #current: DisplayProjectRun = { state: 'idle' }
+  #uncertainty: (DisplayProjectRun & { readonly state: 'uncertain' }) | undefined
   #child: Child | undefined
   #registerBridge: RegisterBridge | undefined
   #pending: Promise<DisplayProjectRun> | undefined
@@ -113,7 +114,7 @@ export class PrivateExploreSession {
   }
 
   snapshot(): DisplayProjectRun {
-    return this.#current
+    return this.#uncertainty ?? this.#current
   }
 
   requestSnapshot(requestId: string): DisplayProjectRun | undefined {
@@ -147,7 +148,7 @@ export class PrivateExploreSession {
         'This explorer has reached its Run request limit. Close it and open jig explore again.',
       )
     const previous = this.#child
-    const uncertain = this.#current.state === 'uncertain'
+    const uncertain = this.#uncertainty !== undefined
     const busy =
       uncertain ||
       this.#pending !== undefined ||
@@ -176,6 +177,10 @@ export class PrivateExploreSession {
 
   #set(entry: Entry, status: Entry['status']): void {
     entry.status = Object.freeze(status)
+    // A later refused request cannot erase an owned command's unconfirmed exit.
+    // Keep the first uncertainty independent of the latest request's history.
+    if (status.state === 'uncertain')
+      this.#uncertainty ??= Object.freeze({ ...status, state: 'uncertain' })
     if (this.#current.state !== 'idle' && this.#current.requestId === status.requestId)
       this.#current = entry.status
   }
@@ -276,7 +281,11 @@ export class PrivateExploreSession {
         requestId,
         targetId,
         reason:
-          'The Run command ended without a confirmed settlement handoff. Inspect its terminal result and effects before starting new work.',
+          child.entry.status.state === 'settled'
+            ? 'Execution settled, but the Run command did not confirm normal closure. Inspect its terminal result and effects before starting new work.'
+            : child.entry.status.state === 'uncertain'
+              ? child.entry.status.reason
+              : 'The Run command ended without a confirmed settlement handoff. Inspect its terminal result and effects before starting new work.',
       })
   }
 
@@ -286,7 +295,7 @@ export class PrivateExploreSession {
       await this.#pending
       const child = this.#child
       if (child === undefined) {
-        if (this.#current.state === 'uncertain')
+        if (this.#uncertainty !== undefined)
           throw new Error('The Run command ended without confirmed settlement')
         return
       }
@@ -313,7 +322,7 @@ export class PrivateExploreSession {
           child.interrupted = true
           await child.process.interrupt()
         }
-        if (child.entry.status.state !== 'settled')
+        if (this.#uncertainty !== undefined || child.entry.status.state !== 'settled')
           throw new Error('The Run command did not confirm execution and resource settlement')
       } finally {
         child.bridge.close()

@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import subprocess
 import sys
 import time
 
@@ -32,6 +33,7 @@ CHECKS = [
     "closed-inspector-run-again", "sequential-run-owners", "busy-request-lookup",
     "active-close-cancellation", "joined-explorer-exit",
     "settled-terminal-interruption", "active-terminal-interruption",
+    "uncertainty-after-refusal",
 ]
 
 
@@ -102,6 +104,36 @@ def main():
                 owner.pump()
             if settled:
                 require(snapshot["workspace"]["facts"]["execution"]["value"] == "succeeded")
+
+        def command_identity(pid):
+            require(time.monotonic() < deadline and owner.process.poll() is None)
+            data = subprocess.check_output(
+                ["ps", "-p", str(pid), "-o", "pid=,ppid=,lstart=,comm="],
+                stderr=subprocess.PIPE, timeout=min(5, deadline - time.monotonic()),
+            )
+            require(0 < len(data) <= 4096 and len(data.splitlines()) == 1)
+            fields = data.split()
+            require(len(fields) >= 8 and int(fields[0]) == pid)
+            require(int(fields[1]) == owner.process.pid)
+            require(os.getpgid(pid) == pid and os.getsid(pid) == pid)
+            return data.strip()
+
+        def owned_command():
+            require(time.monotonic() < deadline and owner.process.poll() is None)
+            data = subprocess.check_output(
+                ["ps", "-axo", "pid=,ppid="], stderr=subprocess.PIPE,
+                timeout=min(5, deadline - time.monotonic()),
+            )
+            require(len(data) <= 65536)
+            children = []
+            for line in data.splitlines():
+                fields = line.split()
+                require(len(fields) == 2 and all(field.isdigit() for field in fields))
+                if int(fields[1]) == owner.process.pid:
+                    children.append(int(fields[0]))
+            require(len(children) == 1 and children[0] > 1)
+            pid = children[0]
+            return pid, command_identity(pid)
 
         phase = "approved-map-before-run"
         project = request("/api/project")
@@ -234,6 +266,47 @@ def main():
                 require(b"Hello, Hold!" not in stdout and b"CANCELLED" in transcript)
             owner.close()
             owner = None
+
+        phase = "uncertainty-after-refusal"
+        owner = TerminalOwner([sys.argv[1], "explore", "flow:flows/hello", "--timeout", "1m"])
+        link = None
+        while link is None:
+            require(time.monotonic() < deadline and owner.process.poll() is None)
+            owner.pump()
+            link = LINK.search(owner.output["stderr"])
+        port = int(link.group(1))
+        capability = link.group(2).decode("ascii")
+        fence_project = request("/api/project")
+        started = request("/api/run", "POST", intent("settled-owner", "Fence", fence_project))
+        require(started["state"] in ("starting", "running", "settled"))
+        settled = state_until({"settled"})
+        inspect_viewer(settled["viewerUrl"], True)
+        refused = request("/api/run", "POST", intent("refused-after-owner", {}, fence_project))
+        require(refused["state"] == "refused")
+        pid, identity = owned_command()
+        # Revalidate the live explorer's exact child immediately before signaling
+        # that positive PID. Normal installed interruption still owns cleanup.
+        require(command_identity(pid) == identity)
+        os.kill(pid, signal.SIGTERM)
+        while True:
+            require(time.monotonic() < deadline and owner.process.poll() is None)
+            owner.pump()
+            uncertain = request("/api/run")
+            if uncertain["state"] == "uncertain":
+                break
+        require(uncertain["requestId"] == "settled-owner")
+        require("Execution settled" in uncertain["reason"])
+        require(request("/api/run?requestId=refused-after-owner") == refused)
+        blocked = request("/api/run", "POST", intent("blocked-after-owner", "Changed", fence_project))
+        require(blocked["state"] == "refused")
+        require(request("/api/run") == uncertain)
+        require(request("/api/close", "POST") == {"closed": True})
+        require(owner.wait(deadline) == 2)
+        stdout = bytes(owner.output["stdout"])
+        require(stdout.count(b"Hello, Fence!") == 1 and b"Hello, Changed!" not in stdout)
+        require(b"JIG_EXPLORE_CLOSE_FAILED" in owner.output["stderr"])
+        owner.close()
+        owner = None
         passed = True
     except BaseException:
         # Request exceptions can contain the private capability; expose only a fixed phase.

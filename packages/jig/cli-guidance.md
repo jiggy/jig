@@ -135,6 +135,8 @@ All selected domain requirements still apply.
 - Keep global Run state separate from retained request acknowledgments.
   A request lookup never dispatches work. Missing request history remains unknown.
   An unconfirmed Close keeps new browser launches fenced until the session is closed.
+  Retain command uncertainty independently of later refused requests. It must remain
+  visible globally, block new launches, and prevent a successful Close result.
 
 - `src/cli-explore.ts` owns `jig explore [target]`, the finite explorer command
   and its bounded launch-intent session. `cli-project-projection.ts` reads the
