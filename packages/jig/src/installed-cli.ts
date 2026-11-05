@@ -13,6 +13,7 @@ import {
   publicTerminal,
 } from './cli.js'
 import { executePrivateCliAttempt } from './cli-attempt-execution.js'
+import { privateExploreHandoff, privateInstalledExploreLaunch } from './cli-explore-launch.js'
 import { privateCliStderrDiagnostic } from './cli-presentation.js'
 import { PrivateCliOutput } from './internal/cli-output.js'
 import {
@@ -236,6 +237,12 @@ async function runWithEnvironment(
       await main(arguments_, {
         standardContractDirectory: join(releaseRoot, 'libexec/contracts'),
         ...(signal === undefined ? {} : { signal }),
+        ...(arguments_[0] !== 'explore'
+          ? {}
+          : {
+              exploreLaunch: privateInstalledExploreLaunch({ releaseRoot }),
+              presentationDeadline: privatePresentationDeadline(process.env),
+            }),
         ...(arguments_[0] !== 'inspect'
           ? {}
           : {
@@ -369,6 +376,7 @@ async function runWithEnvironment(
           await main(arguments_, {
             host,
             executeAttempt: executePrivateCliAttempt,
+            ...(arguments_[0] === 'run' ? privateExploreHandoff() : {}),
             runArgumentsPrepared: process.env.JIG_PRIVATE_RUN_PREPARED === '1',
             presentationDeadline: privatePresentationDeadline(process.env),
             ...(process.env.JIG_PRIVATE_RUN_ADMISSION === undefined
@@ -448,3 +456,4 @@ if (import.meta.main) {
   }
   applyOutcome(outcome)
 }
+

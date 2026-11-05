@@ -10,7 +10,7 @@ with their producer. This package owns readonly display data and pure meaning.
 - `src/types.ts` owns snapshots, attribution, captured preview replies and fixed
   asset value types. It also owns the independent approved-project catalogue,
   selected input contract and local launch intent/status values. `src/validate.ts`
-  owns bounded inert-data validation; no value grants execution authority.
+  owns bounded inert-data validation. No value grants execution authority.
 - `src/image.ts` validates bounded PNG/JPEG payloads and matching encoded
   dimensions. It owns no decoder, IO or authenticity claim.
 - `src/semantics.ts` owns destination vocabulary, observation intervals and

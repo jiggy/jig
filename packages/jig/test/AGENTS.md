@@ -14,6 +14,20 @@ Explicit protected file or patch requests and protected bytes in supplied target
 It rejects changed checker source without executing that source.
 These checks grant no native execution or cleanup evidence.
 
+`portable/cli-explore.test.ts` checks the real explorer grammar, public help,
+terminal refusal, target completion and closed installed handoff destination.
+It verifies that help and unavailable presentation leave an ordinary project
+directory untouched. It does not substitute a launcher or claim native
+execution, cancellation or file-owner cleanup evidence.
+
+`host/installed-cli-lifecycle.test.ts` additionally runs the public explorer in
+`fixtures/installed-explore.py` through real PTYs and HTTP. The ordinary reviewed
+greeting proves pre-run maps, retained-schema refusal, and stale approval refusal.
+It also covers refresh after review, duplicate intent handling, successive independent Run
+inspectors and explicit close during held execution. The host suite joins the
+installed command and retains its existing native residue assertions. Python
+emits only closed scenario labels. Capabilities and raw transcripts stay private.
+
 `portable/cli-session-failure.test.ts` checks phase-specific failure diagnostics through the private CLI seam.
 Its synthetic errors establish no native cleanup, artifact retention or installed-host evidence.
 Successful closure preserves ordinary operation exit codes, including exit 1 for `STALE_PLAN`.
@@ -608,6 +622,12 @@ records through the existing text artifact pattern. Raw command transcripts stay
 private. Missing or unsafe profile selection cannot change execution outcomes.
 
 ## HTTP readonly qualification
+
+`portable/cli-explorer-web.test.ts` uses real loopback transport, bundled assets, and an actual unreviewed project session.
+It checks capability separation, strict input decoding, refused selection, duplicate identities, and idle-owner closure without synthetic execution.
+`portable/cli-project-projection.test.ts` checks inert catalogue/schema projection, opaque identities, complete-map bounds, and explicit launch requirements.
+The admission-store suite checks exploration through genuine retained state, active coordinator ownership, and changed approval.
+These checks establish projection and transport behavior, not native launch or cleanup.
 
 The packed HTTP composition suite reports plan and apply failures through the
 existing session observer. Emit only the fixed scenario, operation and bounded

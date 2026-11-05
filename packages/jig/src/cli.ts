@@ -27,6 +27,8 @@ import {
 import { preparePrivateCliRun, privateAttemptFailureMessage } from './cli-attempt-execution.js'
 import { PrivateAttemptInput } from './cli-attempt-io.js'
 import { approvedTargets, completionScript, invocationGuide } from './cli-discovery.js'
+import { parsePrivateExploreArguments, privateExecuteExplore } from './cli-explore.js'
+import type { PrivateExploreLaunch } from './cli-explore-launch.js'
 import { privateExecuteViews, privateRetainDisplayBundle } from './cli-display-archive.js'
 import {
   privateCliHumanText,
@@ -113,6 +115,7 @@ Usage:
   jig new <name>             Add an editable Flow to the current project
   jig review [project]       Review changes and approve an exact revision
   jig run [target]           Choose or run a reviewed Flow or Binding
+  jig explore [target]       Explore reviewed workflows and run with new input
   jig inspect [target]       Show the approved targets or a target's interface
   jig views [operation]      Inspect or manage retained application views
   jig attempt <operation>    Use the installed application execution boundary
@@ -133,6 +136,34 @@ Command options and examples:
 Guide: https://jig.md/start/`
 
 const COMMAND_HELP = {
+  explore: `Usage: jig explore [target] [--timeout DURATION] [--verification MODE]
+
+Open the reviewed application map before starting a Run. Select a workflow,
+enter JSON input, and start its ordinary contained Run from the browser.
+The Run opens in its own read-only inspector; the explorer keeps your draft.
+
+An explicit target accepts flow:<path>, npm:<package>, or binding:<id>.
+Without a target, the reviewed entrypoint's workflow is selected when present.
+Entrypoint input and file defaults are not applied: browser input is explicit.
+Review source changes with jig review before running them.
+
+Workflows needing unbound local input files or required channels remain
+inspectable and show their existing jig run or composed-Flow requirements.
+Writable outputs use Jig's ordinary fresh temporary result packet.
+
+  --timeout DURATION  Execution deadline for each Run (default: 30s; maximum: 24h)
+  --verification MODE Startup verification for each Run: cached, strict, or fast
+
+One Run is owned at a time. Starting another closes the previous settled
+inspector. Close explorer or Ctrl-C stops active work and waits for cleanup.
+Closing an individual Run inspector affects presentation only.
+Requires terminal stderr. No workflow starts merely by opening the explorer.
+
+Examples:
+  jig explore
+  jig explore binding:repair --timeout 2m
+
+${VERIFICATION_HELP}`,
   views: `Usage: jig views [list|context|receipt|remove|reset] [options]
 
   list [--definition ID [--instance KEY]] [--display plain|web] [--json]
@@ -381,6 +412,10 @@ export interface PrivateCliCommandHost {
 }
 
 export interface PrivateCliOptions {
+  /** The installed launcher supplies a fresh ordinary command for each explorer Run. */
+  readonly exploreLaunch?: PrivateExploreLaunch
+  readonly onWebDisplay?: (url: string) => Promise<void>
+  readonly onRunSettled?: () => Promise<void>
   readonly webAssets?: WebAssets
   readonly presentationDeadline?: number | undefined
   readonly dashboardInputStream?: typeof process.stdin
@@ -496,6 +531,22 @@ async function executeCommand(
     if (arguments_[0] === 'completion') return await executeCompletion(arguments_, runtime)
     if (arguments_[0] === 'attempt') return await executeAttempt(arguments_, options, runtime)
     if (arguments_[0] === 'review') return await executeReview(arguments_, runtime)
+    if (arguments_[0] === 'explore')
+      return await privateExecuteExplore(arguments_, {
+        currentDirectory: runtime.currentDirectory,
+        terminalError: runtime.terminalError,
+        assets: options.webAssets ?? webAssets,
+        ...(options.exploreLaunch === undefined ? {} : { launch: options.exploreLaunch }),
+        ...(runtime.signal === undefined ? {} : { signal: runtime.signal }),
+        ...(options.presentationDeadline === undefined
+          ? {}
+          : { presentationDeadline: options.presentationDeadline }),
+        writeError: options.writeStderr ?? ((text) => {
+          // A launch capability must bypass progress journals and diagnostics.
+          if (options.writeError) options.writeError(text)
+          else process.stderr.write(text)
+        }),
+      })
     if (arguments_[0] === 'run') return await executeRun(arguments_, runtime)
     if (arguments_[0] === 'inspect') return await executeInspect(arguments_, runtime)
     if (arguments_[0] === 'views') {
@@ -778,6 +829,7 @@ export function privateCliVerification(arguments_: readonly string[]): string | 
   if (arguments_[0] === 'review') return parseReview(arguments_, '.').verification
   if (arguments_[0] === 'run') return parseRun(arguments_).verification
   if (arguments_[0] === 'inspect') return parseInspect(arguments_).verification
+  if (arguments_[0] === 'explore') return parsePrivateExploreArguments(arguments_).verification
   return undefined
 }
 
@@ -2497,6 +2549,8 @@ function cliRuntime(options: PrivateCliOptions): CliRuntime {
     {
       presentationDeadline: options.presentationDeadline,
       ...(options.webAssets === undefined ? {} : { webAssets: options.webAssets }),
+      ...(options.onWebDisplay === undefined ? {} : { onWebDisplay: options.onWebDisplay }),
+      ...(options.onRunSettled === undefined ? {} : { onRunSettled: options.onRunSettled }),
     },
   )
   return {
@@ -3265,3 +3319,4 @@ if (import.meta.main) {
     process.removeListener('SIGTERM', interrupt)
   }
 }
+

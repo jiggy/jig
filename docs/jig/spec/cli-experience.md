@@ -14,6 +14,7 @@ makes usable control an observable requirement;
 | --- | --- |
 | Import an agreement | [Contract import](#contract-import) |
 | Select a display | [Display selection](#display-selection), [browser activation](#browser-activation) |
+| Explore before execution | [Project exploration](#project-exploration) |
 | Present live work | [Progress and observation](#progress-and-observation), [workspace navigation](#workspace-navigation), [automatic output](#automatic-output) |
 | Present a result | [Experience acceptance](#experience-acceptance), [diagnostics and interruption](#diagnostic-evidence-and-interruption) |
 | Change review output | [Implementation and review ownership](#implementation-and-review-ownership), [review client selection](#review-client-selection) |
@@ -119,6 +120,39 @@ effective reception take precedence before preparing a listener. Redirected
 Run stdout retains exact final JSON while terminal stderr can provide web
 inspection. The [web display contract](web-display.md) owns local access,
 transport bounds, browser navigation and presentation lifetime.
+
+### Project exploration
+
+`jig explore [target]` opens the approved application's configuration before execution.
+An optional exact target selects the initial workflow.
+`--timeout DURATION` and `--verification cached|strict|fast` retain their ordinary Run meanings.
+The command requires terminal stderr for its private link and never opens a browser automatically.
+It acquires no execution owner merely to display the project.
+
+The browser presents a workflow chooser, configured map, declared input contract, and explicit Run action.
+It distinguishes approved configuration from live observations, without synthetic calls or elapsed time.
+An unreviewed project explains how to use `jig review`.
+Selecting a workflow or changing its JSON draft does not start a Run.
+
+Launch validates the supplied input and rechecks the exact approved selection.
+Each invocation uses the ordinary installed Run command and its existing authority and cleanup boundaries.
+One owned Run may prepare or execute at a time.
+The ordinary read-only inspector opens through an explicit link while the explorer retains the draft.
+Browser launch cannot supply arbitrary command arguments, filesystem paths, grants, or review decisions.
+
+Input or selection refusal explains the required correction without implying execution.
+A lost response leaves submission unresolved until status establishes its disposition.
+Refresh and reconnection never resubmit work.
+Unknown execution prevents another launch in that session.
+Run settlement does not establish application success.
+
+Close explorer and terminal interruption stop active owned work through ordinary cancellation and wait for cleanup.
+The browser's close acknowledgment means closure was requested, not that cleanup succeeded.
+The terminal retains actionable failure and cleanup evidence.
+Tab unload alone does not cancel work.
+Ordinary Run inspector Close remains presentation-only.
+
+The [web display contract](web-display.md#project-exploration-before-execution) owns transport, capabilities, supported inputs, and fixed exploration allowances.
 
 ### Host and application observations
 

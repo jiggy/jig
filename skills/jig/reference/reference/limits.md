@@ -244,6 +244,23 @@ Each live snapshot carries one complete admitted composition or an explicit unav
 
 Policy owners: [`packages/display-model/src/types.ts`](https://github.com/jiggy/jig/blob/main/packages/display-model/src/types.ts).
 
+## Explore before execution
+
+Fixed exploration bounds retain complete approved configuration and bounded launch intent. Ordinary Run input, authority, and execution limits still apply.
+
+| Setting or bound | Value | Control |
+| --- | --- | --- |
+| Approved workflows | 4,096 | Fixed |
+| Complete project projection | 16 MiB (16,777,216 bytes) | Fixed |
+| Selected input schema and definitions | 256 KiB (262,144 bytes) | Fixed |
+| Run request envelope | 16 MiB (16,777,216 bytes) | Fixed |
+| Remembered request identities per session | 128 | Fixed |
+| Concurrent HTTP requests / project responses | 8 / 2 | Fixed |
+| Request body read allowance | 10 seconds | Fixed |
+| Private child handoff event | 2 KiB (2,048 bytes) | Fixed |
+
+Policy owners: [`packages/display-model/src/types.ts`](https://github.com/jiggy/jig/blob/main/packages/display-model/src/types.ts), [`cli-explore-policy.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/cli-explore-policy.ts).
+
 ## Represent JSON values
 
 JSON/0 is an interoperable value contract. Its representation bounds remain fixed, including when another configurable allowance is larger.

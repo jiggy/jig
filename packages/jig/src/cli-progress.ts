@@ -48,6 +48,9 @@ export interface PrivateProgressLifetime {
   readonly rows?: () => number
   readonly webAssets?: WebAssets
   readonly createTui?: typeof createTui
+  /** Trusted installed explorer handoff, separate from all observer snapshots. */
+  readonly onWebDisplay?: (url: string) => Promise<void>
+  readonly onRunSettled?: () => Promise<void>
 }
 
 const SCREEN_ENTER = '\u001b[?1049h\u001b[?25l\u001b[H\u001b[2J'
@@ -302,6 +305,8 @@ export class PrivateCliProgress {
           },
         })
         await this.#drainWrites()
+        if (web.active && this.#webAdvertised)
+          await this.lifetime.onWebDisplay?.(web.launchUrl)
         this.#armDeadline()
       } catch (error) {
         await this.#closeWeb().catch(() => undefined)
@@ -771,6 +776,11 @@ export class PrivateCliProgress {
       }
     })
     this.#web?.refreshNow()
+    if (r.cleanup === undefined && r.status !== 'lost') {
+      // This method is entered only after the ordinary Run has joined project
+      // closure and retired file authority. A lost handoff cannot alter it.
+      await this.lifetime.onRunSettled?.().catch(() => {})
+    }
     if (!this.#cancelled && this.#web?.active) {
       this.#armDeadline()
       await this.flush()

@@ -146,7 +146,7 @@ export function invocationGuide(snapshot: JsonValue): string {
 
 /** Small native shell adapters; dynamic lookup reads approval, never project code. */
 export function completionScript(shell: string): string | undefined {
-  const commands = 'init new review run inspect views completion import-contract'
+  const commands = 'init new review run explore inspect views completion import-contract'
   const contracts = JIG_STANDARD_CONTRACTS.map((entry) => `jig:${entry.name}`).join(' ')
   const runOptions =
     '--help --input --attach --select --out --receive --updates --timeout --verification --json --display --display-bundle'
@@ -178,6 +178,7 @@ export function completionScript(shell: string): string | undefined {
     local opts='--help'
     case "$command" in
       run) opts='${runOptions}';;
+      explore) opts='--help --timeout --verification';;
       review) opts='--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent';;
       inspect) opts='--help --json --verification --result --display';;
       views) opts='list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision';;
@@ -190,7 +191,7 @@ export function completionScript(shell: string): string | undefined {
     if [[ "$cur" == *:* && "$COMP_WORDBREAKS" == *:* ]]; then
       COMPREPLY=("\${COMPREPLY[@]#*:}")
     fi
-  elif (( word == 2 )) && [[ "$command" == run || "$command" == inspect ]]; then
+  elif (( word == 2 )) && [[ "$command" == run || "$command" == inspect || "$command" == explore ]]; then
     while IFS= read -r reply; do COMPREPLY+=("$reply"); done < <(jig completion targets "$cur" 2>/dev/null)
     # Bash treats ':' as a word break; keep only the suffix it will replace.
     if [[ "$cur" == *:* && "$COMP_WORDBREAKS" == *:* ]]; then
@@ -221,6 +222,7 @@ _jig() {
   elif [[ "$PREFIX" == -* ]]; then
     case "$words[2]" in
       run) choices=(${runOptions});;
+      explore) choices=(--help --timeout --verification);;
       review) choices=(--help --allow-resolution-network --source-root --allow-authority-changes --generate-contracts --yes --details --verification --agent);;
       inspect) choices=(--help --json --verification --result --display);;
       views) choices=(list context receipt remove reset --help --json --definition --instance --display --request --generation --expected-revision);;
@@ -230,7 +232,7 @@ _jig() {
     esac
   elif (( CURRENT == 3 )) && [[ "$words[2]" == import-contract ]]; then
     choices=(${contracts})
-  elif (( CURRENT == 3 )) && [[ "$words[2]" == run || "$words[2]" == inspect ]]; then
+  elif (( CURRENT == 3 )) && [[ "$words[2]" == run || "$words[2]" == inspect || "$words[2]" == explore ]]; then
     choices=("\${(@f)$(jig completion targets "$PREFIX" 2>/dev/null)}")
   else
     _files; return
@@ -245,8 +247,9 @@ complete -c jig -l help
 complete -c jig -l version -n '__fish_use_subcommand'
 complete -c jig -n '__fish_seen_subcommand_from import-contract' -l list
 complete -c jig -n '__fish_seen_subcommand_from import-contract' -a '${contracts}'
-complete -c jig -n '__fish_seen_subcommand_from run inspect' -a '(jig completion targets (commandline -ct) 2>/dev/null)'
-complete -c jig -n '__fish_seen_subcommand_from run review inspect' -l verification -r -a 'cached strict fast'
+complete -c jig -n '__fish_seen_subcommand_from run inspect explore' -a '(jig completion targets (commandline -ct) 2>/dev/null)'
+complete -c jig -n '__fish_seen_subcommand_from run review inspect explore' -l verification -r -a 'cached strict fast'
+complete -c jig -n '__fish_seen_subcommand_from explore' -l timeout -r
 complete -c jig -n '__fish_seen_subcommand_from run inspect' -l json
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l result -r
 complete -c jig -n '__fish_seen_subcommand_from inspect' -l display -r -a 'plain tui web'
@@ -261,3 +264,4 @@ ${['yes', 'details', 'allow-resolution-network', 'allow-authority-changes', 'gen
 `
   return undefined
 }
+

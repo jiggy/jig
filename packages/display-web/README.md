@@ -1,9 +1,8 @@
 # @jigging/display-web
 
-A browser renderer for readonly semantic snapshots, packaged independently of
-Jig and the native terminal renderer. The browser presents supplied facts,
-reports, collections, actual call relationships and bounded captured content.
-It does not own execution or authorize file reads.
+A browser renderer for semantic snapshots and approved project configuration, packaged independently of Jig and the native terminal renderer.
+The browser presents supplied facts, reports, collections, actual call relationships and bounded captured content.
+The explorer sends explicit Run intent to its trusted host. The renderer never owns execution or authorizes file reads.
 
 ```ts
 import { webAssets } from '@jigging/display-web/assets'
@@ -19,13 +18,13 @@ it reads no source files, resolves no checkout paths and initializes no native
 support. Preact 11.0.1 is bundled at build time and is not an installed runtime
 dependency. The browser bundle contains no external module or CDN imports.
 
-The rendered browser uses the existing authenticated local inspector transport:
+The read-only Run browser uses the existing authenticated local inspector transport:
 `#cap=...` bootstraps a memory-only capability, which is immediately removed from
 history. Its same-origin routes are `/api/snapshot`, `/api/events`,
 `/api/artifacts/<opaque-id>/preview`, and `/api/close`. This is the current local
 adapter contract, not a general server or execution API. The trusted host owns
 loopback authentication, CSP, safe projection, immutable capture and finite
-retirement. Close releases presentation; it never cancels execution.
+retirement. Close releases presentation. It never cancels execution.
 
 For the fixed assets, generate 32 unpredictable bytes encoded as unpadded
 base64url: exactly 43 characters from `A-Z`, `a-z`, `0-9`, `_` and `-`. Launch
@@ -87,6 +86,27 @@ A request keeps its observed state and does not itself prove its target started 
 Missing retained requests do not establish skipped calls.
 The browser retains component selection by exact Run and component identity across refresh and inspection return.
 The map adds no execution or editing controls, and recorded snapshots retain their existing destinations.
+
+## Explore before running
+
+The same fixed assets also serve `/explore#cap=<value>` for a separately authorized local explorer.
+It reads `DisplayProjectSnapshot` from `GET /api/project`, with an optional opaque `target` query.
+The workflow list selects approved Flows and Bindings before any Run exists.
+Configuration-only maps show no synthetic workspace facts or zero request counts.
+The input panel starts blank and exposes the retained schema and launch prerequisites.
+
+`POST /api/run` sends one explicit request containing `requestId`, `revision`, `targetId` and `input`.
+The exact JSON text reaches the host, preserving duplicate members for strict refusal.
+The complete request fits the shared sixteen MiB allowance.
+`GET /api/run` reads the host's `DisplayProjectRun` state.
+Lost acknowledgments trigger status reads, never another submission.
+Stale project reads, unresolved requests and active Runs disable launch.
+
+Open run follows a separately scoped numeric-loopback observer link in another tab.
+The explorer retains workflow input and map position without transferring its control capability.
+It retains up to sixteen drafts within sixteen MiB and explains eviction of older drafts.
+Closing the explorer requests host cleanup of active work. Closing the ordinary observer remains presentation-only.
+These routes belong to the local trusted adapter, not a portable execution API.
 
 This provisional package is part of Jig under the retained Bread terms. Personal
 use, qualifying organizational use and evaluation follow `LICENSE.md`; company

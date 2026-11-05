@@ -1635,7 +1635,7 @@ describe.serial('direct alpha activation store', () => {
               )
               expect(inventory).toEqual(['flow:flows/run'])
               expect(Object.isFrozen(inventory)).toBe(true)
-              const defauts = await privateCliPrepareArguments(['run'], {
+              const defaults = await privateCliPrepareArguments(['run'], {
                 currentDirectory: fixture.root,
               })
               // Explicit output lookup uses retained request modes, without package recapture.
@@ -1829,7 +1829,7 @@ describe.serial('direct alpha activation store', () => {
       ).rejects.toMatchObject({ code: 'RUN_APPROVAL_CHANGED' })
       expect(next.admissionDigest).not.toBe(approved)
       await expect(
-        explorer.selection(explored.revision, explored.selected!.targetId),
+        explorer.selection(explored.revision, explored.selected!.targetId, { value: 'test' }),
       ).rejects.toMatchObject({ code: 'PROJECT_CHANGED' })
       expect(
         await listPrivateRootExecutionWork({
@@ -1890,9 +1890,19 @@ describe.serial('direct alpha activation store', () => {
       expect(project.selected?.input).toMatchObject({
         state: 'schema', schema: { type: 'object', required: ['value'] },
       })
-      expect(await explorer.selection(project.revision, project.selected!.targetId)).toEqual({
+      expect(await explorer.selection(project.revision, project.selected!.targetId, { value: 'test' })).toEqual({
         target: { kind: 'flow', path: 'flows/run' }, approval: approved,
       })
+      await expect(
+        explorer.selection(project.revision, project.selected!.targetId, 'private-rejected-value'),
+      ).rejects.toMatchObject({ code: 'INPUT_INVALID' })
+      try {
+        await explorer.selection(project.revision, project.selected!.targetId, 'private-rejected-value')
+        throw new Error('Expected reviewed input rejection')
+      } catch (error) {
+        expect(String(error)).toContain('Expected object; received string')
+        expect(String(error)).not.toContain('private-rejected-value')
+      }
       expect(JSON.stringify(project)).not.toContain('flows/run')
       expect(JSON.stringify(project)).not.toContain(approved)
       expect(JSON.stringify(project)).not.toContain('binding:router')
@@ -2209,7 +2219,7 @@ describe.serial('direct alpha activation store', () => {
       expect(await readdir(root)).toEqual([])
       const explorer = new PrivateProjectProjection(root)
       expect(await explorer.project()).toMatchObject({ state: 'unreviewed', targets: [] })
-      await expect(explorer.selection('none', 'none')).rejects.toMatchObject({ code: 'PROJECT_UNREVIEWED' })
+      await expect(explorer.selection('none', 'none', null)).rejects.toMatchObject({ code: 'PROJECT_UNREVIEWED' })
       expect(await readdir(root)).toEqual([])
       await writeFile(join(root, 'jig.lock'), '{}\n')
       expect(await inspectPrivateApprovedProject(root)).toEqual({

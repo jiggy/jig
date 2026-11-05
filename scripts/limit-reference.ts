@@ -4,7 +4,12 @@ import {
   DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
+  DISPLAY_PROJECT_BYTE_LIMIT,
+  DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
+  DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
+  DISPLAY_PROJECT_TARGET_LIMIT,
 } from '../packages/display-model/src/types.js'
+import { PRIVATE_EXPLORER_LIMITS } from '../packages/jig/src/cli-explore-policy.js'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../packages/jig/src/internal/bun-execution-layout.js'
 import { PRIVATE_BUN_PROJECT_PREPARATION_LIMITS } from '../packages/jig/src/internal/bun-native-preparation-budget.js'
 import {
@@ -356,6 +361,28 @@ export const LIMIT_REFERENCE: readonly Group[] = [
       fixed('Components per composition', integer(DISPLAY_COMPOSITION_NODE_LIMIT)),
       fixed('Connections per composition', integer(DISPLAY_COMPOSITION_EDGE_LIMIT)),
       fixed('Encoded composition', bytes(DISPLAY_COMPOSITION_BYTE_LIMIT)),
+    ],
+  },
+  {
+    title: 'Explore before execution',
+    explanation:
+      'Fixed exploration bounds retain complete approved configuration and bounded launch intent. Ordinary Run input, authority, and execution limits still apply.',
+    sources: ['packages/display-model/src/types.ts', 'cli-explore-policy.ts'],
+    limits: [
+      fixed('Approved workflows', integer(DISPLAY_PROJECT_TARGET_LIMIT)),
+      fixed('Complete project projection', bytes(DISPLAY_PROJECT_BYTE_LIMIT)),
+      fixed('Selected input schema and definitions', bytes(DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT)),
+      fixed('Run request envelope', bytes(DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT)),
+      fixed(
+        'Remembered request identities per session',
+        integer(PRIVATE_EXPLORER_LIMITS.requestIdentities),
+      ),
+      fixed(
+        'Concurrent HTTP requests / project responses',
+        `${PRIVATE_EXPLORER_LIMITS.httpRequests} / ${PRIVATE_EXPLORER_LIMITS.projectResponses}`,
+      ),
+      fixed('Request body read allowance', duration(PRIVATE_EXPLORER_LIMITS.bodyReadMs)),
+      fixed('Private child handoff event', bytes(PRIVATE_EXPLORER_LIMITS.handoffBytes)),
     ],
   },
   {

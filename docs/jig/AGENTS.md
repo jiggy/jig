@@ -101,6 +101,7 @@ use-case and orchestration hypotheses.
 
 - `build/results.md` owns execution status, application outcomes, delivery,
   cleanup evidence, and result inspection.
+  It explains project exploration before execution and explicit input-driven launches through the ordinary Run path.
   It distinguishes saved packets from explicitly retained application views.
   Neither inspection starts execution.
   Settings and appearance belong in `reference/configuration.md`.

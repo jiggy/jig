@@ -18,6 +18,7 @@ import { ApplicationPage, CapturedContent, FormattedReport } from './application
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
 import { type PrivateCompositionSelection, privateCompositionSelection } from './composition.js'
 import { CompositionPage } from './composition-view.js'
+import { startPrivateExplorer } from './explorer-app.js'
 import {
   PrivateBrowserClock,
   type PrivateBrowserLocal,
@@ -2747,6 +2748,10 @@ function App(): ComponentChildren {
   )
 }
 
+if (location.pathname === '/explore') {
+  startPrivateExplorer(root, capability)
+  capability = undefined
+} else {
 document.addEventListener('keydown', (event) => {
   if (event.key !== 'Escape' || event.defaultPrevented) return
   if (
@@ -2826,3 +2831,4 @@ addEventListener('pageshow', (event) => {
     redraw()
   }
 })
+}
