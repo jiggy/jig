@@ -1,5 +1,16 @@
 # @jigging/display-model
 
+## 0.1.0-alpha.6
+
+### Patch Changes
+
+- c25d356: Explore approved workflows before execution, inspect their configured connections and input contracts, and launch ordinary Runs with explicit JSON input.
+  Keep project control separate from Run observation, with exact approval checks, bounded requests, and ordinary cancellation and cleanup.
+- f1425ce: Add a read-only application map to live browser inspection.
+  Show the exact admitted components and available child calls beside observed invocations.
+  Component selection opens matched call evidence without changing application-owned landing pages.
+  Preserve distinct Bindings, missing observations, and bounded composition limits.
+
 ## 0.1.0-alpha.5
 
 ### Patch Changes

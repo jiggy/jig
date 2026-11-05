@@ -1,5 +1,24 @@
 # @jigging/jig
 
+## 0.1.0-alpha.51
+
+### Patch Changes
+
+- ddd8247: Allow larger reviewed Flow libraries through bounded dependency preparation counts in jig.ts or the operator environment. Preserve aggregate byte and time budgets. Report the exhausted count, effective limit, source, and supported remedy.
+- 611749f: Report unsupported child checkpoint composition at the caller's slot instead of an internal review failure.
+  Explain root execution through the application client and preserve actionable child attachment diagnostics.
+- f1ea467: Compose checkpoint-enabled methods through reviewed child Flow routes.
+  Retain a separate latest checkpoint for each invocation under its original root attempt, with shared bounds and authenticated ancestry.
+  Add the native Child Checkpoint contract so an active parent can retrieve a settled direct child's saved work and associated artifacts.
+  Expose bounded checkpoint scope inventory and selection through application result and export operations without replaying execution.
+- c25d356: Explore approved workflows before execution, inspect their configured connections and input contracts, and launch ordinary Runs with explicit JSON input.
+  Keep project control separate from Run observation, with exact approval checks, bounded requests, and ordinary cancellation and cleanup.
+- f1425ce: Add a read-only application map to live browser inspection.
+  Show the exact admitted components and available child calls beside observed invocations.
+  Component selection opens matched call evidence without changing application-owned landing pages.
+  Preserve distinct Bindings, missing observations, and bounded composition limits.
+- 3863ad6: Wait for storage preparation tasks to leave the Mac guardian coalition before preparing a payload, within existing deadlines.
+
 ## 0.1.0-alpha.50
 
 ### Patch Changes
