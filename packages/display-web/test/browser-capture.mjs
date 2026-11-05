@@ -3,6 +3,7 @@
 import { execFileSync } from 'node:child_process'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { chromium } from 'playwright'
 import {
   childFixture,
@@ -17,14 +18,27 @@ import {
 } from './browser-fixtures.mjs'
 import { startBrowserFixture } from './browser-server.mjs'
 
-const [pr, destination] = process.argv.slice(2)
+const [pr, destination, assetCheckout] = process.argv.slice(2)
 if (!/^https:\/\/github\.com\/jiggy\/jig\/pull\/[1-9][0-9]*$/.test(pr ?? '') || !destination)
   throw new Error(
     'After pushing the implementation PR, run: node test/browser-capture.mjs PR_URL OUTPUT_DIRECTORY',
   )
 
-const sourceRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
-const sourceTree = execFileSync('git', ['rev-parse', 'HEAD^{tree}'], { encoding: 'utf8' }).trim()
+const sourceDirectory = assetCheckout ? resolve(assetCheckout) : process.cwd()
+const assets = assetCheckout
+  ? (
+      await import(
+        pathToFileURL(resolve(sourceDirectory, 'packages/display-web/dist/assets.js')).href
+      )
+    ).webAssets
+  : undefined
+const fixtureRevision = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+const sourceRevision = execFileSync('git', ['-C', sourceDirectory, 'rev-parse', 'HEAD'], {
+  encoding: 'utf8',
+}).trim()
+const sourceTree = execFileSync('git', ['-C', sourceDirectory, 'rev-parse', 'HEAD^{tree}'], {
+  encoding: 'utf8',
+}).trim()
 const output = resolve(destination)
 await mkdir(output, { recursive: true })
 const entries = []
@@ -32,7 +46,7 @@ let completed = false
 const writeManifest = () =>
   writeFile(
     resolve(output, 'manifest.json'),
-    `${JSON.stringify({ pr, sourceRevision, sourceTree, completed, entries, evidence: 'Production browser assets with authenticated inert observations and ordinary example projectors. No native execution or approved-design similarity is asserted.' }, null, 2)}\n`,
+    `${JSON.stringify({ pr, sourceRevision, sourceTree, fixtureRevision, completed, entries, evidence: 'Production browser assets with authenticated inert observations and ordinary example projectors. No native execution or approved-design similarity is asserted.' }, null, 2)}\n`,
   )
 await writeManifest()
 const browser = await chromium.launch({
@@ -61,22 +75,47 @@ try {
       ['desktop', { width: 1440, height: 1000 }],
       ['narrow', { width: 390, height: 900 }],
     ]) {
-      const host = await startBrowserFixture(make())
+      const host = await startBrowserFixture(make(), assets)
       const context = await browser.newContext({ viewport })
       const page = await context.newPage()
       page.setDefaultTimeout(10000)
+      const waitForCapture = async (predicate) => {
+        if (!assetCheckout) {
+          await page.waitForFunction(predicate)
+          return true
+        }
+        // Keep historical loading defects visible without weakening current acceptance.
+        return page
+          .waitForFunction(predicate, undefined, { timeout: 1500 })
+          .then(() => true)
+          .catch((error) => {
+            if (error.name !== 'TimeoutError') throw error
+            return false
+          })
+      }
       try {
         await page.goto(host.url)
         await page.getByText('Connected', { exact: true }).waitFor()
         if (tab === 'Diagnostics')
           await page.getByRole('button', { name: 'Diagnostics', exact: true }).click()
         else if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}(?:\\s|$)`) }).click()
-        if (focus) await page.locator(`[data-request-focus="${focus}"]`).click()
+        const focusSupported =
+          !focus || (await page.locator(`[data-request-focus="${focus}"]`).count()) > 0
+        if (focus && (focusSupported || !assetCheckout))
+          await page.locator(`[data-request-focus="${focus}"]`).click()
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
-          await page.getByRole('button', { name: `${theme} appearance`, exact: true }).click()
+          const appearance = page.getByRole('button', { name: `${theme} appearance`, exact: true })
+          if (assetCheckout && !(await appearance.isVisible()))
+            await page.evaluate(
+              (value) => {
+                document.documentElement.dataset.theme = value
+              },
+              theme === 'Monochrome' ? 'color-free' : theme.toLowerCase(),
+            )
+          else await appearance.click()
           await page.evaluate(() => document.fonts.ready)
           // Only visible material belongs to this viewport. Below-fold previews remain lazy.
-          await page.waitForFunction(() =>
+          const visiblePreviewsLoaded = () =>
             [...document.querySelectorAll('.media-placeholder')].every((node) => {
               const bounds = node.getBoundingClientRect()
               return (
@@ -86,9 +125,11 @@ try {
                 bounds.top > window.innerHeight ||
                 !node.textContent.includes('not loaded')
               )
-            }),
+            })
+          const previewsReady = await waitForCapture(visiblePreviewsLoaded)
+          const imagesReady = await waitForCapture(() =>
+            [...document.images].every((image) => image.complete),
           )
-          await page.waitForFunction(() => [...document.images].every((image) => image.complete))
           const unresolved = await page.locator('.media-placeholder').evaluateAll((nodes) =>
             nodes
               .filter((node) => {
@@ -102,7 +143,23 @@ try {
               })
               .map((node) => node.textContent),
           )
-          if (unresolved.length)
+          unresolved.push(
+            ...(await page.locator('img').evaluateAll((images) =>
+              images
+                .filter((image) => {
+                  const bounds = image.getBoundingClientRect()
+                  return (
+                    bounds.width > 0 &&
+                    bounds.height > 0 &&
+                    bounds.bottom >= 0 &&
+                    bounds.top <= window.innerHeight &&
+                    (!image.complete || image.naturalWidth === 0)
+                  )
+                })
+                .map((image) => `Image not loaded: ${image.alt || 'untitled image'}`),
+            )),
+          )
+          if (unresolved.length && !assetCheckout)
             throw new Error(`Visible captured material is unavailable: ${unresolved.join('; ')}`)
           const file = `${name}-${viewportName}-${theme.toLowerCase()}.png`
           await page.screenshot({
@@ -110,7 +167,15 @@ try {
             fullPage: true,
             animations: 'disabled',
           })
-          entries.push({ material: name, viewport, theme: theme.toLowerCase(), file })
+          entries.push({
+            material: name,
+            viewport,
+            theme: theme.toLowerCase(),
+            file,
+            unsupportedFocus: !focusSupported,
+            unavailableMedia: unresolved,
+            loadingIncomplete: !previewsReady || !imagesReady,
+          })
           await writeManifest()
         }
       } finally {
