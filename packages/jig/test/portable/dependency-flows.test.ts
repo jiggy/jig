@@ -218,11 +218,11 @@ test('ancestor workspace contract-field errors retain their authored location', 
     const failure = await f.capture().then(
       async (source) => {
         await source.dispose()
-        return undefined
+        throw new Error('Expected dependency inspection to reject the invalid package')
       },
       (error: unknown) => projectError(error, 'plan'),
     )
-    expect(failure?.toJSON()).toEqual({
+    expect(failure.toJSON()).toEqual({
       code: 'INVALID_CANDIDATE',
       message: 'project candidate is invalid',
       diagnostic: {
@@ -230,7 +230,7 @@ test('ancestor workspace contract-field errors retain their authored location', 
         path: '../../packages/echo/FLOW.contract.json',
       },
     })
-    expect(JSON.stringify(failure)).not.toContain('private rejected contract value')
+    expect(JSON.stringify(failure).includes('private rejected contract value')).toBeFalse()
     expect(f.preparations()).toBe(1)
     expect(f.retained).toHaveLength(0)
   } finally {
@@ -293,7 +293,7 @@ test('registry schema inspection reports the npm selector, never a prepared inst
         signal: new AbortController().signal,
         // Unit seam: real captured bytes and topology, without an installer or native Run.
         prepare: async (_source, workspace) => {
-          expect(workspace?.selected ?? []).not.toContain(packageRoot)
+          expect(workspace?.selected.includes(packageRoot) ?? false).toBeFalse()
           return {
             captured: await capturePackageDirectory(preparedDirectory),
             layout: normalizePrivateBunExecutionLayout({ flowRoot: '', members: [], aliases: [] }),
@@ -305,11 +305,11 @@ test('registry schema inspection reports the npm selector, never a prepared inst
       }).then(
         async (source) => {
           await source.dispose()
-          return undefined
+          throw new Error('Expected dependency inspection to reject the invalid package')
         },
         (error: unknown) => projectError(error, 'plan'),
       )
-      expect(failure?.toJSON()).toEqual({
+      expect(failure.toJSON()).toEqual({
         code: 'INVALID_CANDIDATE',
         message: 'project candidate is invalid',
         diagnostic: {
@@ -319,9 +319,9 @@ test('registry schema inspection reports the npm selector, never a prepared inst
         },
       })
       const diagnostic = JSON.stringify(failure)
-      expect(diagnostic).not.toContain('node_modules')
-      expect(diagnostic).not.toContain(preparedDirectory)
-      expect(diagnostic).not.toContain('private rejected pattern value')
+      expect(diagnostic.includes('node_modules')).toBeFalse()
+      expect(diagnostic.includes(preparedDirectory)).toBeFalse()
+      expect(diagnostic.includes('private rejected pattern value')).toBeFalse()
       expect(retained).toBeFalse()
     } finally {
       await root.dispose()
@@ -330,7 +330,6 @@ test('registry schema inspection reports the npm selector, never a prepared inst
     await rm(directory, { recursive: true, force: true })
   }
 })
-
 
 test('ancestor workspace non-schema inspection failures keep their existing diagnostics', async () => {
   for (const { path, value, code } of [
@@ -351,16 +350,16 @@ test('ancestor workspace non-schema inspection failures keep their existing diag
       const failure = await f.capture().then(
         async (source) => {
           await source.dispose()
-          return undefined
+          throw new Error('Expected dependency inspection to reject the invalid package')
         },
         (error: unknown) => projectError(error, 'plan'),
       )
-      expect(failure?.toJSON()).toEqual({
+      expect(failure.toJSON()).toEqual({
         code: 'INVALID_CANDIDATE',
         message: 'project candidate is invalid',
         diagnostic: { code, path },
       })
-      expect(JSON.stringify(failure)).not.toContain('rejected')
+      expect(JSON.stringify(failure).includes('rejected')).toBeFalse()
       expect(f.preparations()).toBe(1)
       expect(f.retained).toHaveLength(0)
     } finally {
