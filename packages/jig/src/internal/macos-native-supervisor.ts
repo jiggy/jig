@@ -417,6 +417,15 @@ async function supervise(
     storageRoot = undefined
     cancellation.signal.throwIfAborted()
     failureStep = 'scope-preparation'
+    // A completed storage tool does not establish kernel coalition emptiness.
+    // Keep the payload gate closed while its remaining tasks retire, within
+    // both the existing cleanup allowance and the original operation deadline.
+    const toolsRetiredBy = performance.now() + configuration.limits.cleanupTimeoutMs
+    while (!owner.empty() && performance.now() < toolsRetiredBy) {
+      cancellation.signal.throwIfAborted()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+    }
+    cancellation.signal.throwIfAborted()
     execution = await preparePrivateMacosScope({
       ...configuration,
       owner,

@@ -187,6 +187,10 @@ These links locate module rules. All selected domain requirements still apply.
 
   Storage and input preparation then use the original operation deadline,
   without extending it. Native readiness and image-tool bounds remain separate.
+  After storage tools return, await kernel coalition emptiness before payload preparation.
+  Keep the wait within the existing cleanup allowance and original operation deadline.
+  A nonempty coalition still refuses payload preparation. No operation is retried.
+
   Recovery removes the authenticated job and socket allocation only after kernel
   fencing. `macos-control-channel.ts` bounds private frames and queued messages.
   None of these modules is a public backend extension point or an

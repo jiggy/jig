@@ -279,7 +279,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Provision the peer CA through the disposable host's ordinary certificate trust
   before review. Keep TLS keys and consumer trees outside retained artifacts.
 
-  The shard also runs the genuine Codex rehearsal through initial response, installed follow-up, interruption and settlement.
+  The shard runs the genuine Codex rehearsal inside delegated cgroup authority for its source lifecycle checks.
+  Its installed CLI retains ordinary acquisition through the sanitized public-command environment.
+  It checks initial response, installed follow-up, interruption and settlement.
   Controlled 429 responses, malformed streams, connection loss and genuine process loss retain native cleanup assertions.
   These cases use no provider credentials.
 
