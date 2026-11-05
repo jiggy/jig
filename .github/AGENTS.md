@@ -20,9 +20,11 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Main-workflow tooling verifies the open PR, exact merge, canonical CI producer and current attempt before acquiring candidate archives.
   The protected job repeats selection after approval and verifies acquisition before exposing the API key.
   Require an independent maintainer approval for the current PR head and no outstanding change requests.
+
   Provisioning, dependencies, builds, probes and test harnesses execute only from `github.workflow_sha`.
   Never check out PR source in the protected job. Recheck approval immediately before the credential-bearing step.
   Candidate archives enter only through the existing bounded Agent credential channel.
+
   All three clients reuse the qualification test files. No diagnostic result creates a release qualification receipt.
   Branch updates, changed merge revisions and producer retries require a new selection.
 - `npm-publish.yml` also accepts manual authentication diagnostics through its existing protected npm environment.
