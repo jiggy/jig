@@ -803,3 +803,25 @@ test('captured downloads preserve complete bytes and closing fences the live bro
     await page.getByRole('heading', { name: /Inspection (closed|ended)/ }).waitFor()
   })
 })
+
+test('narrow generic tables preserve readable identifiers and local scrolling', async () => {
+  const fixture = childFixture()
+  const material = fixture.snapshot.views.find((item) => item.id === 'child-review')
+  const token = 'record_0000000000'
+  material.value.sections[0].blocks[0].rows[0].cells.extra = token
+  await withPage(fixture, { viewport: { width: 390, height: 900 } }, async (page) => {
+    await openTab(page, 'Specialist material')
+    const value = page.getByText(token, { exact: true })
+    await value.scrollIntoViewIfNeeded()
+    assert.equal(
+      await value.evaluate((element) => {
+        const range = document.createRange()
+        range.selectNodeContents(element)
+        return range.getClientRects().length
+      }),
+      1,
+      'an ordinary opaque identifier fits one readable table cell line',
+    )
+    await noPageOverflow(page)
+  })
+})

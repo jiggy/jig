@@ -102,6 +102,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Document content preserves image proportions. Content and covers retain accessible captured-source disclosures.
 - All authored publishers share material rendering, including attributed child views.
   Publisher placement never reduces reports or collections to inspection teasers.
+- Table columns retain reading room for ordinary identifiers and use local horizontal scrolling on narrow screens.
 - Small collections disclose search and sorting. Active filters remain visible.
   Complete counts stay compact. Retained and reported differences remain explicit.
 - Content and formatted reports share responsive comparison regions with their supplied context.

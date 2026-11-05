@@ -2450,7 +2450,7 @@ footer {
   border-bottom: 1px solid var(--line);
   vertical-align: top;
   white-space: pre-wrap;
-  min-width: 100px;
+  min-width: 160px;
 }
 .application-table th {
   color: var(--secondary);
