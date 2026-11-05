@@ -101,7 +101,7 @@ try {
           else await appearance.click()
           await page.evaluate(() => document.fonts.ready)
           // Only visible material belongs to this viewport. Below-fold previews remain lazy.
-          await page.waitForFunction(() =>
+          const visiblePreviewsLoaded = () =>
             [...document.querySelectorAll('.media-placeholder')].every((node) => {
               const bounds = node.getBoundingClientRect()
               return (
@@ -111,8 +111,15 @@ try {
                 bounds.top > window.innerHeight ||
                 !node.textContent.includes('not loaded')
               )
-            }),
-          )
+            })
+          if (assetCheckout) {
+            // Historical defects belong in the comparison, not in current acceptance.
+            await page
+              .waitForFunction(visiblePreviewsLoaded, undefined, { timeout: 1500 })
+              .catch((error) => {
+                if (error.name !== 'TimeoutError') throw error
+              })
+          } else await page.waitForFunction(visiblePreviewsLoaded)
           await page.waitForFunction(() => [...document.images].every((image) => image.complete))
           const unresolved = await page.locator('.media-placeholder').evaluateAll((nodes) =>
             nodes
@@ -127,7 +134,7 @@ try {
               })
               .map((node) => node.textContent),
           )
-          if (unresolved.length)
+          if (unresolved.length && !assetCheckout)
             throw new Error(`Visible captured material is unavailable: ${unresolved.join('; ')}`)
           const file = `${name}-${viewportName}-${theme.toLowerCase()}.png`
           await page.screenshot({
@@ -141,6 +148,7 @@ try {
             theme: theme.toLowerCase(),
             file,
             unsupportedFocus: !focusSupported,
+            unavailableMedia: unresolved,
           })
           await writeManifest()
         }
