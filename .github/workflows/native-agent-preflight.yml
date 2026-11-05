@@ -88,12 +88,6 @@ jobs:
         shell: bash
         run: node scripts/ci/native-preflight.mjs acquire "$RUNNER_TEMP/linux-host-artifacts"
         working-directory: trusted
-      - name: Check out the tested source revision
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: ${{ needs.select.outputs.source_revision }}
-          persist-credentials: false
-          path: source
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
@@ -255,6 +249,10 @@ jobs:
           fi
           printf 'NATIVE_AGENT_PATH=%s\nNATIVE_AGENT_VERSION=%s\n' "$agent_path" "$identity" >> "$GITHUB_ENV"
           printf 'Installed supported Pi profile: `%s`\n' "$identity" >> "$GITHUB_STEP_SUMMARY"
+      - name: Recheck current PR approval before the credential-bearing step
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/ci/native-preflight.mjs verify
       - name: Qualify native ${{ matrix.client }} API-key ACP through OpenRouter
         id: native-api
         shell: bash
@@ -355,4 +353,4 @@ jobs:
       PREFLIGHT_PRODUCER_ATTEMPT: ${{ needs.select.outputs.producer_run_attempt }}
     defaults:
       run:
-        working-directory: source
+        working-directory: trusted
