@@ -1,5 +1,17 @@
 # @jigging/display-web
 
+## 0.1.0-alpha.7
+
+### Minor Changes
+
+- 995ad54: Show observed connections and mixed request states on the Run map, with local focus for active and uncertain or failed requests.
+  Link invocation details to exact child-authored views while preserving selection, map position and observation limits.
+
+### Patch Changes
+
+- e80b0ea: Apply material presentation across root and child views, make host inspectors optional, and preserve readable scope and responsive navigation.
+  Improve application evidence layouts, stopped progress, output access and correspondence, with mounted browser acceptance coverage.
+
 ## 0.1.0-alpha.6
 
 ### Patch Changes
