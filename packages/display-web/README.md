@@ -102,6 +102,11 @@ The complete request fits the shared sixteen MiB allowance.
 Lost acknowledgments trigger status reads, never another submission.
 Stale project reads, unresolved requests and active Runs disable launch.
 
+After reading global state, an unresolved request uses `GET /api/run?requestId=<id>`.
+A retained status resolves that request while global state still governs launch.
+An unknown request remains unresolved. Missing history does not establish that execution never started.
+An unconfirmed Close also keeps launch disabled. Only an explicit action retries Close.
+
 Open run follows a separately scoped numeric-loopback observer link in another tab.
 The explorer retains workflow input and map position without transferring its control capability.
 It retains up to sixteen drafts within sixteen MiB and explains eviction of older drafts.

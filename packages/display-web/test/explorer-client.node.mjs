@@ -119,6 +119,7 @@ test('a stale status reply cannot replace a newly accepted launch', async () => 
     await client.launch('{}', 'new-run')
     release()
     await oldRead
+    await until(() => client.runCurrent)
     assert.equal(client.run.state, 'starting')
     assert.equal(client.run.requestId, 'new-run')
     assert.equal(client.canLaunch, false)
@@ -234,6 +235,118 @@ test('a changed approval reloads the catalogue once without reusing or submittin
     assert.match(client.projectNotice, /workflow changed/)
     assert.equal(client.canLaunch, false, 'Run status has not been read')
     assert.deepEqual(paths, ['GET /api/project', 'GET /api/project?target=review', 'GET /api/project'])
+  } finally {
+    client.stop()
+    await server.close()
+  }
+})
+
+test('an unconfirmed Close stays fenced across late and fresh Run status replies until explicit Close retry', async () => {
+  let statusReads = 0
+  let closePosts = 0
+  let runPosts = 0
+  let release
+  const server = await serverFor((request, response) => {
+    if (request.url === '/api/project') return send(response, project())
+    if (request.url === '/api/run' && request.method === 'GET') {
+      statusReads++
+      if (statusReads === 2) { release = () => send(response, { state: 'idle' }); return }
+      return send(response, { state: 'idle' })
+    }
+    if (request.url === '/api/close' && request.method === 'POST') {
+      closePosts++
+      if (closePosts === 1) { response.destroy(); return }
+      return send(response, {})
+    }
+    if (request.url === '/api/run' && request.method === 'POST') runPosts++
+    send(response, {}, 404)
+  })
+  const client = new PrivateExplorerClient('a'.repeat(43), () => {}, server.origin)
+  try {
+    await client.refreshProject()
+    await client.refreshRun()
+    assert.equal(client.canLaunch, true)
+    const oldRead = client.refreshRun()
+    await until(() => !!release)
+    assert.equal(await client.close(), false)
+    release()
+    await oldRead
+    await until(() => client.runCurrent)
+    assert.equal(client.run.state, 'idle')
+    assert(statusReads >= 3, 'read-only status reconciliation resumes after the failed Close')
+    assert.equal(client.canLaunch, false)
+    assert.match(client.runError, /Closing the explorer was not confirmed/)
+    await client.refreshRun()
+    assert.equal(client.canLaunch, false, 'fresh idle status cannot undo the Close fence')
+    assert.match(client.runError, /try Close explorer again/)
+    assert.equal(await client.launch('{}', 'after-close'), false)
+    assert.equal(runPosts, 0)
+    assert.equal(closePosts, 1, 'reconciliation never retries Close automatically')
+    assert.equal(await client.close(), true)
+    assert.equal(closePosts, 2)
+    assert.equal(client.connection, 'closed')
+    assert.equal(client.canLaunch, false)
+  } finally {
+    client.stop()
+    await server.close()
+  }
+})
+
+test('a lost busy refusal resolves by request identity while only global state permits the next launch', async () => {
+  let status = { state: 'idle' }
+  let retained
+  let reveal = false
+  let posts = 0
+  const reads = []
+  const server = await serverFor(async (request, response) => {
+    if (request.url.startsWith('/api/project')) return send(response, project())
+    if (request.url === '/api/run' && request.method === 'GET') {
+      reads.push('global')
+      return send(response, status)
+    }
+    if (request.url.startsWith('/api/run?requestId=') && request.method === 'GET') {
+      reads.push('request')
+      if (!reveal) return send(response, { code: 'REQUEST_UNKNOWN', reason: 'No retained result is available for this request. This does not confirm that it did not start.' }, 404)
+      return send(response, retained)
+    }
+    if (request.url === '/api/run' && request.method === 'POST') {
+      const value = JSON.parse(await read(request))
+      posts++
+      status = { state: 'running', requestId: 'another-tab-' + posts, targetId: 'draft' }
+      retained = { state: 'refused', requestId: value.requestId, targetId: value.targetId, reason: 'Another run belongs to this explorer.' }
+      if (posts === 1) response.destroy()
+      else send(response, retained)
+      return
+    }
+    send(response, {}, 404)
+  })
+  const client = new PrivateExplorerClient('a'.repeat(43), () => {}, server.origin)
+  try {
+    await client.refreshProject()
+    await client.refreshRun()
+    await client.launch('{}', 'busy-request')
+    await until(() => client.runCurrent && client.runError.includes('No retained result'))
+    assert.equal(client.unresolvedRequest, 'busy-request')
+    assert.equal(client.canLaunch, false, 'an unknown lookup never establishes that work did not start')
+    assert.equal(posts, 1)
+    reveal = true
+    await client.refreshRun()
+    assert.equal(client.unresolvedRequest, undefined)
+    assert.match(client.requestError, /Another run/)
+    assert.equal(client.run.state, 'running')
+    assert.equal(client.run.requestId, 'another-tab-1')
+    assert.equal(client.canLaunch, false, 'the resolved refusal does not replace the actual active run')
+    assert.deepEqual(reads.slice(-2), ['global', 'request'])
+    status = { state: 'settled', requestId: 'another-tab-1', targetId: 'draft' }
+    await client.refreshRun()
+    assert.equal(client.canLaunch, true)
+    assert.equal(await client.launch('{}', 'acknowledged-busy-request'), false)
+    assert.equal(client.canLaunch, false, 'even an acknowledged refusal waits for global reconciliation')
+    await until(() => client.runCurrent)
+    assert.equal(client.run.requestId, 'another-tab-2')
+    assert.equal(client.run.state, 'running')
+    assert.equal(client.canLaunch, false)
+    assert.equal(posts, 2, 'only the two explicit launch calls submit work')
   } finally {
     client.stop()
     await server.close()

@@ -1756,7 +1756,7 @@ describe.serial('direct alpha activation store', () => {
     )
   }
   test('entrypoint selection uses approval, survives explicit overrides, and refuses a newer admission', async () => {
-    const original = await createFixture('ready', 'flow:flows/run --input @job.json --timeout 8m')
+    const original = await createFixture('ready', 'flow:./flows/run --input @job.json --timeout 8m')
     let coordinator: PrivateProjectCoordinator | undefined
     const fixture = { ...original, store: join(original.root, '.jig/private-package-store') }
     try {
@@ -1774,7 +1774,7 @@ describe.serial('direct alpha activation store', () => {
       expect(prepared).toEqual({
         arguments: [
           'run',
-          'flow:flows/run',
+          'flow:./flows/run',
           '--input',
           '@' + join(fixture.root, 'job.json'),
           '--timeout',
@@ -1794,6 +1794,12 @@ describe.serial('direct alpha activation store', () => {
       const explored = await explorer.projectForTarget()
       expect(explored.selected?.input.state).toBe('schema')
       expect(explored.selected?.launch.state).toBe('available')
+      expect((await explorer.projectForTarget('flow:./flows/run')).selected?.targetId).toBe(
+        explored.selected?.targetId,
+      )
+      expect(
+        await explorer.selection(explored.revision, explored.selected!.targetId, { value: 'test' }),
+      ).toEqual({ target: { kind: 'flow', path: 'flows/run' }, approval: approved })
       // Browsing an entrypoint never reads its job file or executes its defaults.
       expect(JSON.stringify(explored)).not.toContain('job.json')
       const newer = insertCandidate(fixture, 'entrypoint-race', false)

@@ -132,6 +132,10 @@ All selected domain requirements still apply.
 
 ### Project exploration
 
+- Keep global Run state separate from retained request acknowledgments.
+  A request lookup never dispatches work. Missing request history remains unknown.
+  An unconfirmed Close keeps new browser launches fenced until the session is closed.
+
 - `src/cli-explore.ts` owns `jig explore [target]`, the finite explorer command
   and its bounded launch-intent session. `cli-project-projection.ts` reads the
   exact approved catalogue, selected input contract and configured composition.

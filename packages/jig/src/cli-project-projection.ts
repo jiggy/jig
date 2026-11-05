@@ -16,9 +16,10 @@ import { CheckError } from './diagnostics.js'
 import type { PrivateActivationCandidateArtifactV5 } from './internal/activation-admission.js'
 import { inspectPrivateApprovedProject } from './internal/activation-admission-store.js'
 import type { JsonValue } from './json.js'
-import { entrypointWords } from './project/entrypoint.js'
+import { parseProjectEntrypoint } from './project/entrypoint.js'
 import type { RunTargetIdentity } from './project/package-project.js'
 import { flowSelector } from './project/package-selector.js'
+import { parseTarget } from './run-arguments.js'
 import { compileEmbeddedSchema, SchemaDiagnostic } from './schema/index.js'
 import { schemaTypeMismatchText } from './schema/types.js'
 
@@ -335,10 +336,11 @@ export class PrivateProjectProjection {
       }
     }
     const defaultSelector =
-      initialSelector ??
-      (typeof catalogue.entrypoint === 'string'
-        ? entrypointWords(catalogue.entrypoint)[0]
-        : undefined)
+      initialSelector !== undefined
+        ? selectorFor(parseTarget(initialSelector))
+        : typeof catalogue.entrypoint === 'string'
+          ? selectorFor(parseProjectEntrypoint(catalogue.entrypoint).target)
+          : undefined
     const chosen =
       targetId !== undefined
         ? targets.find(

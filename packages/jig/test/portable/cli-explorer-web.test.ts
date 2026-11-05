@@ -21,7 +21,8 @@ async function explorer() {
   const server = PrivateWebExplorer.prepare({
     assets: webAssets,
     project: (targetId) => session.project(targetId),
-    session: () => session.snapshot(),
+    session: (requestId) =>
+      requestId === undefined ? session.snapshot() : session.requestSnapshot(requestId),
     run: (request) => session.run(request),
     onClose: () => session.close(),
   })
@@ -106,6 +107,8 @@ test('strict JSON and route validation refuse ambiguous input before real select
     '/api/project?target=a&target=b',
     '/api/project?path=private',
     '/api/run?retry=1',
+    '/api/run?requestId=',
+    '/api/run?requestId=one&requestId=two',
   ]) {
     const response = await owner.get(path)
     expect(response.status).toBe(400)
@@ -128,6 +131,17 @@ test('actual unreviewed selection refuses launch and repeated request identities
   const conflict = await owner.post('/api/run', JSON.stringify({ ...request, input: 'changed' }))
   expect((await conflict.json()).reason).toContain('different input')
   expect(owner.session.snapshot()).toEqual(refusal)
+  const later = await owner.post('/api/run', JSON.stringify({ ...request, requestId: 'two' }))
+  const current = await later.json()
+  expect(current.requestId).toBe('two')
+  const retained = await owner.get('/api/run?requestId=one')
+  expect(retained.status).toBe(200)
+  expect(await retained.json()).toEqual(refusal)
+  const global = await owner.get('/api/run')
+  expect(await global.json()).toEqual(current)
+  const unknown = await owner.get('/api/run?requestId=missing')
+  expect(unknown.status).toBe(404)
+  expect((await unknown.json()).code).toBe('REQUEST_UNKNOWN')
   expect(await readdir(owner.root)).toEqual([])
 })
 

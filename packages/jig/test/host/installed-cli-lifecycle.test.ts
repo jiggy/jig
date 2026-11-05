@@ -144,6 +144,7 @@ test('installed CLI: pristine initialized greeting, exact output, real saved ins
         'duplicate-request-no-replay',
         'closed-inspector-run-again',
         'sequential-run-owners',
+        'busy-request-lookup',
         'active-close-cancellation',
         'joined-explorer-exit',
       ],

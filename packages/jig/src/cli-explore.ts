@@ -23,6 +23,7 @@ import {
 import { CliDiagnostic, usage } from './cli-usage.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 import { canonicalJson, type JsonValue } from './json.js'
+import { flowSelector } from './project/package-selector.js'
 import { parseRun, parseTarget } from './run-arguments.js'
 
 type Entry = {
@@ -49,8 +50,8 @@ export function parsePrivateExploreArguments(arguments_: readonly string[]): Rea
   let index = 1
   let target: string | undefined
   if (arguments_[index] !== undefined && !arguments_[index]!.startsWith('-')) {
-    target = arguments_[index++]!
-    parseTarget(target)
+    const selected = parseTarget(arguments_[index++]!)
+    target = selected.kind === 'flow' ? flowSelector(selected.path) : `binding:${selected.id}`
   }
   const options: string[] = []
   const seen = new Set<string>()
@@ -113,6 +114,10 @@ export class PrivateExploreSession {
 
   snapshot(): DisplayProjectRun {
     return this.#current
+  }
+
+  requestSnapshot(requestId: string): DisplayProjectRun | undefined {
+    return this.#entries.get(requestId)?.status
   }
 
   async run(request: DisplayProjectRunRequest): Promise<DisplayProjectRun> {
@@ -210,9 +215,7 @@ export class PrivateExploreSession {
       if (this.#closing) throw new Error('The explorer is closing')
       if (previous !== undefined) {
         previousClosure = true
-        if (previous.entry.viewerUrl !== undefined)
-          await previous.process.closeViewer(previous.entry.viewerUrl)
-        else await previous.process.finished
+        await previous.process.closeViewer(previous.entry.viewerUrl)
         previous.bridge.close()
         if (this.#child === previous) this.#child = undefined
         previousClosure = false
@@ -288,9 +291,25 @@ export class PrivateExploreSession {
         return
       }
       try {
-        if (child.entry.status.state === 'settled' && child.entry.viewerUrl !== undefined)
-          await child.process.closeViewer(child.entry.viewerUrl)
-        else {
+        if (child.entry.status.state === 'settled') {
+          try {
+            await child.process.closeViewer(child.entry.viewerUrl)
+          } catch (error) {
+            // Close still owns a command whose observer or exit did not settle.
+            // Stop and join it, preserving the original unconfirmed closure.
+            child.interrupted = true
+            await child.process.interrupt().catch(() => {})
+            const { requestId, targetId } = child.entry.status
+            this.#set(child.entry, {
+              state: 'uncertain',
+              requestId,
+              targetId,
+              reason:
+                'The Run command did not confirm normal closure. Inspect its terminal result and effects before starting new work.',
+            })
+            throw error
+          }
+        } else {
           child.interrupted = true
           await child.process.interrupt()
         }
@@ -351,7 +370,8 @@ export async function privateExecuteExplore(
         throw error
       }
     },
-    session: () => session.snapshot(),
+    session: (requestId) =>
+      requestId === undefined ? session.snapshot() : session.requestSnapshot(requestId),
     run: (request) => session.run(request),
     onClose: () => session.close(),
   })
@@ -381,6 +401,8 @@ export async function privateExecuteExplore(
   } finally {
     clearTimeout(timer)
     options.signal?.removeEventListener('abort', close)
-    await server.close()
+    // The primary diagnostic already preserves failed cleanup. Join the same
+    // closure without replacing that guidance with an unstructured rejection.
+    await server.close().catch(() => {})
   }
 }
