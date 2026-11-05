@@ -350,6 +350,11 @@ They consume frozen package exports with tracked test helpers and installed
   Dispatch each profile's roles in the source-owned order 2, 0, 1 and replay that order when validating assignments.
   The installed role starts on the earliest matching worker. Native prerequisites remain on role zero, and whole-file ownership is unchanged.
 
+  Readiness waits for queued allocator execution within the existing preparation work deadline.
+  Once the exact allocator is observed active, its readiness record has a three-minute visibility allowance.
+  That allowance is clipped to preparation time and never restarts after a changed or missing observation.
+  Replaced, foreign, failed, or completed allocators cannot release Mac workers.
+
   Workers queue after preparation succeeds.
   Each executing worker downloads the immutable prepared artifact and verifies canonical provenance before native qualification.
 

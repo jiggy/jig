@@ -119,7 +119,7 @@ function requireDeadline(deadlineMs, now) {
 }
 
 export function macHostCohortCoordinationDeadline(mode, workDeadlineMs, now = Date.now()) {
-  const limits = { start: 60_000, ready: 180_000, claim: 120_000, allocate: Infinity }
+  const limits = { start: 60_000, ready: Infinity, 'ready-active': 180_000, claim: 120_000, allocate: Infinity }
   if (!Object.hasOwn(limits, mode) || !Number.isSafeInteger(now) || now < 0 ||
       !Number.isSafeInteger(workDeadlineMs))
     throw new Error('Invalid Mac cohort coordination mode or time')
@@ -167,11 +167,11 @@ async function pollPause(deadlineMs, now, sleep, milliseconds = 5000) {
   requireDeadline(deadlineMs, now)
 }
 
-function jobReader(readJobs, now) {
+function jobReader(readJobs, now, refreshMs = 60_000) {
   let checked = -Infinity
   let cached
   return async (force = false, deadlineMs) => {
-    if (force || now() - checked >= 60_000) {
+    if (force || now() - checked >= refreshMs) {
       cached = await readJobs(deadlineMs)
       checked = now()
     }
@@ -259,17 +259,30 @@ export function macHostCohortRecordReader({ identity, listArtifacts, download })
 
 /** A short Linux gate releases Mac workers only after their allocator is active. */
 export async function waitForMacHostAllocator({
-  identity, readJobs, readRecords, deadlineMs,
+  identity, readJobs, readRecords, deadlineMs, pollIntervalMs = 5000, metadataRefreshMs = 60_000,
 }) {
   const now = Date.now
   const deadline = macHostCohortCoordinationDeadline('ready', deadlineMs, now())
-  const jobs = jobReader(readJobs, now)
+  if (!Number.isSafeInteger(pollIntervalMs) || pollIntervalMs <= 0 || pollIntervalMs > 60_000)
+    throw new Error('Invalid Mac readiness polling interval')
+  if (!Number.isSafeInteger(metadataRefreshMs) || metadataRefreshMs <= 0 || metadataRefreshMs > 60_000)
+    throw new Error('Invalid Mac readiness metadata refresh interval')
+  const jobs = jobReader(readJobs, now, metadataRefreshMs)
+  let allocatorJobId
+  let activeDeadline
   for (;;) {
-    requireDeadline(deadline, now)
-    const allocator = observeAllocatorJob(await jobs(), identity)
+    const currentDeadline = activeDeadline ?? deadline
+    requireDeadline(currentDeadline, now)
+    const allocator = observeAllocatorJob(await jobs(false, currentDeadline), identity)
+    if (allocator) {
+      if (allocatorJobId !== undefined && allocatorJobId !== allocator.id)
+        throw new Error('Mac cohort allocator changed during readiness')
+      allocatorJobId = allocator.id
+    }
     if (allocator?.status === 'completed')
       throw new Error('Mac cohort allocator completed before worker readiness')
     if (allocator?.status === 'in_progress') {
+      activeDeadline ??= macHostCohortCoordinationDeadline('ready-active', deadline, now())
       const records = validateMacHostCohortRecords({
         identity, allocatorJobId: allocator.id, records: await readRecords(),
       })
@@ -277,13 +290,13 @@ export async function waitForMacHostAllocator({
       if (ready) {
         // Recheck immediately before granting readiness; cached liveness alone
         // cannot release the workers after the allocator has stopped.
-        if (selectMacHostAllocatorJob(await jobs(true), identity) !== allocator.id)
+        if (selectMacHostAllocatorJob(await jobs(true, activeDeadline), identity) !== allocator.id)
           throw new Error('Mac cohort allocator changed during readiness')
-        requireDeadline(deadline, now)
+        requireDeadline(activeDeadline, now)
         return ready
       }
     }
-    await pollPause(deadline, now, pause)
+    await pollPause(activeDeadline ?? deadline, now, pause, pollIntervalMs)
   }
 }
 
