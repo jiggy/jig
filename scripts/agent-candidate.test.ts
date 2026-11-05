@@ -516,17 +516,20 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   const { publish_host: publish, authorize, tag_host: tag } = workflow.jobs
   expect(candidate.strategy.matrix).toEqual({ package: ['flow', 'agent', 'acp', 'jig'] })
   expect(ci.permissions).toEqual({ contents: 'read' })
-  expect(publish.permissions).toEqual({ actions: 'read', 'id-token': 'write' })
+  expect(publish.permissions).toEqual({ actions: 'read', contents: 'read', 'id-token': 'write' })
   expect(publish.needs).toContain('authorize')
   expect(authorize.name).toContain('same-revision')
-  expect(publish.steps.some((step: any) => step.uses?.startsWith('actions/checkout'))).toBeFalse()
+  expect(publish.steps.find((step: any) => step.uses?.startsWith('actions/checkout')).with.ref)
+    .toBe('${{ github.workflow_sha }}')
   const download = publish.steps.find(
     (step: any) => step.name === 'Download exact persisted candidates',
   )
   expect(download.with['artifact-ids']).toContain('needs.authorize.outputs.')
   expect(download.with['run-id']).toContain('needs.authorize.outputs.')
   expect(download.with['github-token']).toBe('${{ github.token }}')
-  const script = publish.steps.find((step: any) => step.id === 'release').run
+  expect(publish.steps.find((step: any) => step.id === 'release').run)
+    .toContain('sh publisher/scripts/release/publish.sh')
+  const script = await Bun.file(join(root, 'scripts/release/publish.sh')).text()
   expect(publish.env.RELEASE_GROUP).toBe('host')
   expect(script).toContain('host) package_kinds="agent acp jig"')
   expect(script).toContain('for PREFLIGHT in true false; do')

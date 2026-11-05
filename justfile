@@ -106,8 +106,8 @@ build: jig::build
 
 # Run quick development, host-coverage, and release-automation checks
 @test-tooling:
-    node --test scripts/ci/*.test.mjs scripts/experiments/visual-flows/*.test.mjs
-    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/preflight.test.ts scripts/example-dependency-versions.test.ts scripts/check-example-project.test.ts scripts/agent-candidate.test.ts scripts/npm-publish.test.ts scripts/operational-baseline-checks.test.ts scripts/test-release-applications.test.ts
+    node --test scripts/ci/*.test.mjs scripts/release/*.test.mjs scripts/experiments/visual-flows/*.test.mjs
+    bun test scripts/development-shell.test.ts scripts/new-worktree.test.ts scripts/justfile.test.ts scripts/preflight.test.ts scripts/example-dependency-versions.test.ts scripts/check-example-project.test.ts scripts/agent-candidate.test.ts scripts/operational-baseline-checks.test.ts scripts/test-release-applications.test.ts
 
 # Build and check locally, including native regression tests on supported Macs
 @preflight:
@@ -121,6 +121,10 @@ build: jig::build
 # Run the unprivileged release gate; requires FLOW_NODE and Python
 @test-release:
     sh scripts/test-release.sh
+
+# Exercise real npm publication and retries against an isolated disposable registry
+@test-release-rehearsal:
+    node scripts/release/rehearse.mjs
 
 # Freeze and qualify an ordinary Agent package from clean Git source
 [positional-arguments]

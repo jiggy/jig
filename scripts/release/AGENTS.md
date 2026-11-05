@@ -1,8 +1,9 @@
-# Release planning
+# Release automation
 
 ## Purpose
 
-Turn reviewed package changesets into independent alpha versions before canonical candidate construction.
+Turn reviewed changes into independent alpha versions and publish exact qualified archives.
+Exercise the same publication path before merging release changes.
 
 ## Ownership
 
@@ -11,6 +12,11 @@ Turn reviewed package changesets into independent alpha versions before canonica
 - `state.mjs` owns source digests, dependency notes, and release eligibility. It uses only Node standard libraries and Git.
 - `prepared.mjs` transfers generated release data from the read-only generator to the fresh release writer.
   It validates exact source, run identity, permitted mutations, and the complete resulting source digest before writing files.
+- `publish.sh` owns group preflight, ordered npm publication, byte convergence and channel protection.
+  `qualification.mjs` revalidates live GitHub evidence through `qualification-policy.mjs` before mutations.
+- `registry.mjs` owns a genuine disposable Verdaccio registry and transport fault proxy.
+  `rehearse.mjs` generates versions, builds canonical archives, publishes, retries and installs outside the source checkout.
+- `npm-auth.mjs` checks package-specific OIDC exchange without retaining credentials or publishing versions.
 - `.changeset/` stores pending intent, consumed alpha notes, configuration, and generated release metadata.
 
 ## Local Contracts
@@ -30,7 +36,16 @@ Turn reviewed package changesets into independent alpha versions before canonica
 - Keep automatic Git maintenance in the foreground of each release invocation.
   Wait for its child processes before removing temporary repositories. Cleanup errors remain failures.
 - Pending intent, stale source, or malformed metadata cannot authorize publication.
-- Keep privileged publication and host qualification with their existing owners.
+- Production loads publisher tooling from the workflow revision and reads candidate archives only as inert data.
+  Never load executable tooling from the candidate revision or rebuild during publication.
+- Production fixes the registry to `https://registry.npmjs.org` and always requests provenance.
+  Rehearsal accepts only an explicit IPv4 loopback registry and refuses ambient credential variables.
+  Its local authentication uses a disposable registry account. It creates no qualification receipts.
+- Every group preflights all existing bytes and channels before ordered publication.
+  Revalidate authorization before mutations. Preserve exact-byte retry and prohibit channel downgrades.
+- Rehearsal uses real Changesets, npm packing, Verdaccio publication, registry downloads and installation.
+  Change transport responses to exercise faults. Never replace npm or GitHub executables.
+- Keep native host qualification with its existing owners.
 - Install and execute Changesets only in the read-only generation job.
   The release writer uses standard libraries, Git, and the pinned action's bundled dependencies.
   Transfer no executable code, installed dependencies, or Git configuration between these jobs.
@@ -54,6 +69,11 @@ Turn reviewed package changesets into independent alpha versions before canonica
 - `node --test scripts/ci/prepared-release.test.mjs` verifies transfer through real Git checkouts without installed writer dependencies.
   Reject unrelated source edits, malformed artifacts, stale identity, and unsafe destinations before mutation.
   Required notice updates must be present and preserve all unrelated source bytes.
+
+- `node --test scripts/release/*.test.mjs` verifies real registry convergence, qualification metadata and OIDC protocol responses.
+  These cases run in ordinary tooling checks without production credentials.
+- `just test-release-rehearsal` also generates and builds the complete reviewed source in a disposable checkout.
+  It proves local publication and installation, not production authentication, provenance or host qualification.
 
 ## Child DOX Index
 

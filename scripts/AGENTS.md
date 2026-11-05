@@ -25,7 +25,7 @@ operational baselines, and public-site assembly.
   and bundles every TypeScript Flow against the frozen public package closure.
   These source checks do not establish native admission or live Agent quality.
 - `release/` owns package changeset coverage, independent prerelease planning,
-  dependency propagation, generated pins, and source-bound release metadata.
+  dependency propagation, generated pins, source-bound release metadata, trusted publication and disposable registry rehearsals.
   The required quick CI job validates every change against its Git baseline.
   Feature PRs declare intent without editing generated version outputs.
 - `check-docs.ts` owns documentation metadata, local links, source anchors,
@@ -312,12 +312,9 @@ operational baselines, and public-site assembly.
 - `profile-installed-startup.ts` refuses hosts outside the exact Linux and Mac
   qualification profiles. Validate that refusal and obtain timing evidence from
   the opt-in host workflow steps.
-- `bun test scripts/npm-publish.test.ts` exercises the protected workflow's
-  shell against controlled registry responses without credentials, including
-  host-group preflight refusal. Controlled
-  registry/API emulators use the test runner's Bun to avoid repeated mock
-  interpreter startup. The real publisher still performs its Node checks.
-  Its six-artifact fixture matches the collector-to-publisher contract tested in `ci/candidate-provenance.test.mjs`.
+- `node --test scripts/release/*.test.mjs` exercises real npm publication through Verdaccio and shared qualification policy.
+  `just test-release-rehearsal` also generates versions, builds complete candidate archives and installs the ordinary CLI.
+  Neither path uses production credentials or creates release qualification.
 - `node --test scripts/ci/*.test.mjs` checks complete suite execution, verified
   native PR scope, artifact and run/attempt lineage, fresh qualification, and
   fail-closed release readiness. It uses disposable Git repositories, archives
@@ -338,11 +335,11 @@ operational baselines, and public-site assembly.
   files present in the working tree. Deleted files and ignored generated state
   are excluded.
 
-  It includes all quick CI checks and the protected npm publisher's controlled
+  It includes all quick CI checks and the protected npm publisher's real
   registry tests. The publisher uses Node hashing so these checks also run on
   Mac. The frozen application closure regression runs actual builds, archive
   installs and complete source-checked application tests with an isolated Bun cache.
-  Every discovered Node CI and visual-flow experiment test file runs once in the ordinary pool.
+  Every discovered Node CI, release and visual-flow experiment test file runs once in the ordinary pool.
   Bun tooling checks follow only after successful policy execution.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
@@ -356,7 +353,7 @@ operational baselines, and public-site assembly.
 
 - [experiments/visual-flows/AGENTS.md](experiments/visual-flows/AGENTS.md) — Read-only graph experiments and their evidence limits.
 
-- [release/AGENTS.md](release/AGENTS.md) — Changeset coverage, version generation,
+- [release/AGENTS.md](release/AGENTS.md) — Changeset coverage, version generation, trusted publication, rehearsals,
   derived dependency pins, and release eligibility.
 - [ci/AGENTS.md](ci/AGENTS.md) — Whole-suite inventories, native PR scope,
   canonical candidates, release readiness, observed proof, disposable Linux

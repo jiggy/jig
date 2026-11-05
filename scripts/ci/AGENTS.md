@@ -110,6 +110,10 @@ preparation never becomes a consumer requirement.
 
   Observations cannot qualify execution, bypass evidence validation or change
   required job outcomes. API unavailability leaves them absent.
+- `native-preflight.mjs` validates an explicitly reviewed open PR merge and its canonical CI producer.
+  Trusted main-workflow code repeats selection after protected approval and verifies exact artifact transport and source.
+  Forks, stale merge revisions, foreign workflows and producer attempt changes refuse diagnosis.
+  This diagnostic creates no native qualification receipt and cannot authorize publication.
 - `native-responses-probe.mjs` observes the existing free Responses endpoint
   once after a Codex qualification test command fails. It sends one fixed
   prompt with a 32-token output cap and `store:false`, without retry or

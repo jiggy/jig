@@ -13,14 +13,39 @@ on:
   workflow_dispatch:
     inputs:
       source_revision:
-        description: Exact main-push source revision to reconcile
-        required: true
+        description: Exact main-push source revision to reconcile (release mode)
+        required: false
         type: string
+      mode:
+        description: Reconcile a release or check package-specific npm authentication
+        required: true
+        default: release
+        type: choice
+        options: [release, authentication]
 jobs:
+  npm_authentication:
+    name: Check npm trusted publisher identity without publication
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode == 'authentication'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          sparse-checkout: scripts/release
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24'
+      - run: node scripts/release/npm-auth.mjs
   authorize:
     name: Require same-revision release qualification
     if: >-
-      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.mode != 'authentication') ||
       (github.event_name == 'workflow_run' &&
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository &&
@@ -58,6 +83,7 @@ jobs:
         run: |
           set -eu
           if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            [ -n "$REQUESTED_SOURCE" ] || { echo 'Release mode requires source_revision' >&2; exit 2; }
             node scripts/ci/release-readiness.mjs --source "$REQUESTED_SOURCE" --github-output "$GITHUB_OUTPUT"
           else
             node scripts/ci/release-readiness.mjs --github-output "$GITHUB_OUTPUT"
@@ -76,6 +102,7 @@ jobs:
     timeout-minutes: 40
     permissions:
       actions: read
+      contents: read
       id-token: write
     env:
       RELEASE_GROUP: host
@@ -110,6 +137,13 @@ jobs:
           }
           NODE
           printf 'npm %s\n' "$npm_version"
+      - name: Load trusted publisher tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+          path: publisher
+          sparse-checkout: scripts/release
       - name: Download exact persisted candidates
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -123,351 +157,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -eu
+          sh publisher/scripts/release/publish.sh
 
-          # The protected workflow owns this verifier. Queued jobs cannot rely
-          # on a readiness snapshot taken before approval or the mutation lock.
-          revalidate_qualification() {
-            node --input-type=module <<'NODE'
-          import { execFileSync } from 'node:child_process';
-          const snapshot = JSON.parse(process.env.QUALIFICATION_SNAPSHOT ?? 'null');
-          const repository = process.env.GITHUB_REPOSITORY;
-          if (snapshot?.schemaVersion !== 1 || snapshot.repository !== repository ||
-              snapshot.group !== 'host' || process.env.RELEASE_GROUP !== 'host' || snapshot.sourceRevision !== process.env.SOURCE_REVISION ||
-              snapshot.candidate?.receiptSha256 !== process.env.EXPECTED_RECEIPT_SHA256 ||
-              !Array.isArray(snapshot.runs) || snapshot.runs.length !== 4 ||
-              !Array.isArray(snapshot.artifacts) || snapshot.artifacts.length !== 6)
-            throw new Error('Invalid authorized qualification snapshot');
-          const api = (path) => JSON.parse(execFileSync('gh', ['api', path], {
-            encoding: 'utf8', timeout: 60_000, maxBuffer: 16 * 1024 * 1024,
-          }));
-          const list = (path, key) => {
-            const values = [];
-            for (let page = 1; page <= 10; page++) {
-              const result = api(`${path}${path.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
-              if (!Array.isArray(result[key])) throw new Error('Malformed GitHub evidence response');
-              values.push(...result[key]);
-              if (result[key].length < 100) return values;
-            }
-            throw new Error('GitHub evidence pagination exceeded its bound');
-          };
-          for (const expected of snapshot.runs) {
-            const current = api(`repos/${repository}/actions/runs/${expected.runId}`);
-            if (current.id !== expected.runId || current.run_attempt !== expected.runAttempt ||
-                current.status !== 'completed' || current.conclusion !== 'success' ||
-                current.repository?.full_name !== repository || current.path !== expected.workflowPath ||
-                current.event !== expected.event || current.head_sha !== expected.headSha ||
-                current.head_branch !== expected.headBranch || current.head_repository?.full_name !== expected.headRepository)
-              throw new Error('Qualification run changed after authorization');
-            const jobs = list(`repos/${repository}/actions/runs/${expected.runId}/attempts/${expected.runAttempt}/jobs`, 'jobs');
-            if (!Array.isArray(expected.jobs) || expected.jobs.length === 0) throw new Error('Missing qualification job obligations');
-            for (const proof of expected.jobs) {
-              const matching = jobs.filter((job) => job.name === proof.name);
-              if (proof.runId !== expected.runId || proof.runAttempt !== expected.runAttempt || matching.length !== 1 ||
-                  matching[0].id !== proof.jobId || matching[0].status !== 'completed' || matching[0].conclusion !== 'success' ||
-                  (matching[0].run_attempt !== undefined && matching[0].run_attempt !== expected.runAttempt))
-                throw new Error('Qualification job changed after authorization');
-            }
-            if (expected.event === 'push') {
-              const query = new URLSearchParams({ branch: 'main', event: 'push', head_sha: snapshot.sourceRevision });
-              const runs = list(`repos/${repository}/actions/workflows/${expected.workflowPath.split('/').at(-1)}/runs?${query}`, 'workflow_runs');
-              const latest = runs.filter((run) => run.path === expected.workflowPath && run.event === 'push' &&
-                run.head_sha === snapshot.sourceRevision && run.head_branch === 'main' &&
-                run.repository?.full_name === repository && run.head_repository?.full_name === repository)
-                .sort((a, b) => b.id - a.id)[0];
-              if (latest?.id !== expected.runId || latest.run_attempt !== expected.runAttempt)
-                throw new Error('A newer source qualification superseded authorization');
-            } else {
-              const created = Date.parse(current.created_at);
-              if (typeof current.created_at !== 'string' || !Number.isFinite(created) || created > Date.now() ||
-                  new Date(created).toISOString().replace('.000Z', 'Z') !== current.created_at.replace('.000Z', 'Z'))
-                throw new Error('Missing valid native qualification creation time');
-              const query = new URLSearchParams({ created: `>=${current.created_at}` });
-              const runs = list(`repos/${repository}/actions/workflows/native-agent-api-qualification.yml/runs?${query}`, 'workflow_runs');
-              for (const run of runs) {
-                if (run.id <= expected.runId || run.path !== expected.workflowPath || run.head_branch !== 'main' ||
-                    run.repository?.full_name !== repository || run.head_repository?.full_name !== repository ||
-                    !['workflow_run', 'workflow_dispatch'].includes(run.event)) continue;
-                if (run.event === 'workflow_dispatch' && run.head_sha === snapshot.sourceRevision)
-                  throw new Error('A newer manual native qualification superseded authorization');
-                const artifacts = list(`repos/${repository}/actions/runs/${run.id}/artifacts`, 'artifacts');
-                const name = new RegExp(`^native-(inputs|qualification)-(codex|claude|pi)-${snapshot.sourceRevision}-r${run.id}-a[1-9][0-9]*$`);
-                if (artifacts.some((artifact) => name.test(artifact.name ?? '')))
-                  throw new Error('A newer native qualification superseded authorization');
-              }
-            }
-          }
-          for (const expected of snapshot.artifacts) {
-            const current = api(`repos/${repository}/actions/artifacts/${expected.artifactId}`);
-            if (current.id !== expected.artifactId || current.name !== expected.name || current.digest !== expected.digest ||
-                current.expired !== false || !Number.isFinite(Date.parse(current.expires_at)) || Date.parse(current.expires_at) <= Date.now() ||
-                current.workflow_run?.id !== expected.runId || current.workflow_run?.head_sha !== expected.headSha)
-              throw new Error('Qualification artifact changed or expired after authorization');
-          }
-          NODE
-          }
-
-          # Inspect data only; this protected job never checks out or runs source.
-          node --input-type=module <<'NODE'
-          import { createHash } from 'node:crypto';
-          import { readFile } from 'node:fs/promises';
-          const bytes = await readFile(`${process.env.RUNNER_TEMP}/candidates/CANDIDATE.json`);
-          if (createHash('sha256').update(bytes).digest('hex') !== process.env.EXPECTED_RECEIPT_SHA256)
-            throw new Error('candidate receipt differs from authorized artifact');
-          const receipt = JSON.parse(bytes);
-          if (receipt.schemaVersion !== 2 || receipt.sourceRevision !== process.env.SOURCE_REVISION)
-            throw new Error('candidate receipt source mismatch');
-          const release = receipt.release;
-          if (release?.schemaVersion !== 1 || release.eligible !== true ||
-              release.reason !== 'versioned-release' || release.sourceRevision !== receipt.sourceRevision ||
-              !/^[0-9a-f]{64}$/.test(release.releasePlanSha256 ?? '') ||
-              !Array.isArray(release.pendingPackages) || release.pendingPackages.length !== 0 ||
-              !Array.isArray(release.packages) || release.packages.length !== 3)
-            throw new Error('candidate does not carry an applied release plan');
-          for (const [kind, name] of [
-            ['agent-method', '@jigging/agent-method'],
-            ['agent-acp', '@jigging/agent-acp'],
-            ['jig', '@jigging/jig'],
-          ]) {
-            const planned = release.packages.filter((item) => item.kind === kind);
-            const candidates = receipt.packages.filter((item) => item.kind === kind);
-            if (planned.length !== 1 || candidates.length !== 1 || planned[0].name !== name ||
-                candidates[0].name !== name || planned[0].version !== candidates[0].version)
-              throw new Error('candidate package differs from its release plan');
-          }
-          NODE
-
-          archive_digest() {
-            node --input-type=module -e '
-              import { createHash } from "node:crypto";
-              import { readFile } from "node:fs/promises";
-              console.log(createHash("sha256").update(await readFile(process.argv[1])).digest("hex"));
-            ' "$1"
-          }
-
-          compare_versions() {
-            CANDIDATE_VERSION=$1 CHANNEL_VERSION=$2 node --input-type=module -e '
-              const parse = (value) => {
-                const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(value);
-                if (!match) throw new Error(`invalid registry version: ${value}`);
-                const pre = match[4]?.split(".") ?? [];
-                if (pre.some((part) => /^\d+$/.test(part) && part.length > 1 && part[0] === "0"))
-                  throw new Error(`invalid numeric prerelease identifier: ${value}`);
-                return { core: match.slice(1, 4).map(BigInt), pre };
-              };
-              const candidate = parse(process.env.CANDIDATE_VERSION);
-              const channel = process.env.CHANNEL_VERSION ? parse(process.env.CHANNEL_VERSION) : null;
-              if (channel === null) { console.log("newer"); process.exit(0); }
-              const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
-              let order = 0;
-              for (let index = 0; index < 3 && order === 0; index++)
-                order = compare(candidate.core[index], channel.core[index]);
-              if (order === 0) {
-                if (candidate.pre.length === 0 || channel.pre.length === 0)
-                  order = compare(candidate.pre.length === 0, channel.pre.length === 0);
-                else for (let index = 0; index < Math.max(candidate.pre.length, channel.pre.length) && order === 0; index++) {
-                  const a = candidate.pre[index], b = channel.pre[index];
-                  if (a === undefined || b === undefined) order = compare(a !== undefined, b !== undefined);
-                  else {
-                    const an = /^\d+$/.test(a), bn = /^\d+$/.test(b);
-                    order = an !== bn ? (an ? -1 : 1) : an ? compare(BigInt(a), BigInt(b)) : compare(a, b);
-                  }
-                }
-              }
-              console.log(order < 0 ? "older" : order > 0 ? "newer" : "equal");
-            '
-          }
-
-          publish_candidate() {
-            package_kind=$1
-            package_name=$2
-            visibility_attempts=100
-            visibility_delay_seconds=10
-            case "$package_kind" in
-              agent) archive_kind=agent-method ;;
-              acp) archive_kind=agent-acp ;;
-              jig) archive_kind=jig ;;
-              *) echo 'unknown package kind' >&2; exit 1 ;;
-            esac
-            set -- "$RUNNER_TEMP"/candidates/"$archive_kind"/*.tgz
-            if [ "$#" -ne 1 ] || [ ! -f "$1" ]; then
-              echo "$package_name did not persist exactly one candidate archive" >&2
-              exit 1
-            fi
-            archive=$1
-            candidate_directory=$(dirname -- "$archive")
-            manifest="$RUNNER_TEMP/$package_kind-package.json"
-            tar -xOzf "$archive" package/package.json > "$manifest"
-
-            metadata=$(\
-              CANDIDATE_ARCHIVE=$archive \
-              CANDIDATE_MANIFEST=$manifest \
-              CANDIDATE_SUCCESS="$candidate_directory/SUCCESS.json" \
-              CANDIDATE_KIND=$archive_kind \
-              EXPECTED_NAME=$package_name \
-              node --input-type=module -e '
-                import { createHash } from "node:crypto";
-                import { readFile } from "node:fs/promises";
-                import { basename, relative } from "node:path";
-                const archive = process.env.CANDIDATE_ARCHIVE;
-                const manifest = JSON.parse(await readFile(process.env.CANDIDATE_MANIFEST, "utf8"));
-                const success = JSON.parse(await readFile(process.env.CANDIDATE_SUCCESS, "utf8"));
-                const digest = createHash("sha256").update(await readFile(archive)).digest("hex");
-                const receipt = JSON.parse(await readFile(`${process.env.RUNNER_TEMP}/candidates/CANDIDATE.json`, "utf8"));
-                const entries = receipt.packages.filter((item) => item.kind === process.env.CANDIDATE_KIND);
-                if (entries.length !== 1 || entries[0].name !== manifest.name || entries[0].version !== manifest.version ||
-                    entries[0].archive !== relative(`${process.env.RUNNER_TEMP}/candidates`, archive) || entries[0].sha256 !== digest)
-                  throw new Error("candidate archive differs from authorized receipt");
-                const sidecar = await readFile(`${archive}.sha256`, "utf8");
-                if (sidecar !== `${digest}  ${basename(archive)}\n`) throw new Error("candidate digest sidecar does not match its archive");
-                const match = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-(alpha|next)(?:\.[0-9A-Za-z-]+)*$/.exec(manifest.version);
-                if (manifest.name !== process.env.EXPECTED_NAME || match === null) throw new Error(`candidate manifest mismatch for ${process.env.EXPECTED_NAME}`);
-                if (manifest.private === true || manifest.publishConfig?.access !== "public") throw new Error(`${manifest.name} candidate is not public`);
-                if (success.archive !== basename(archive) || success.sha256 !== digest) throw new Error(`${manifest.name} candidate evidence does not match its archive`);
-                if (success.commit !== process.env.SOURCE_REVISION) throw new Error(`${manifest.name} candidate was not built from the successful CI revision`);
-                process.stdout.write(`${manifest.version}\n${match[4]}\n`);
-              '
-            )
-            version=$(printf '%s\n' "$metadata" | sed -n '1p')
-            release_tag=$(printf '%s\n' "$metadata" | sed -n '2p')
-
-            presence_error="$RUNNER_TEMP/$package_kind-presence-error"
-            new_release=false
-            if npm view "$package_name@$version" version --json > /dev/null 2> "$presence_error"; then
-              present=true
-            elif grep -F 'E404' "$presence_error" > /dev/null; then
-              present=false
-            else
-              echo "npm could not determine whether $package_name@$version exists" >&2
-              sed -n '1,20p' "$presence_error" >&2
-              exit 1
-            fi
-
-            tag_error="$RUNNER_TEMP/$package_kind-tag-error"
-            if tagged_json=$(npm view "$package_name" "dist-tags.$release_tag" --json 2> "$tag_error"); then
-              :
-            elif grep -F 'E404' "$tag_error" > /dev/null; then
-              tagged_json=
-            else
-              echo "npm could not read the $release_tag channel for $package_name" >&2
-              sed -n '1,20p' "$tag_error" >&2
-              exit 1
-            fi
-            tagged=$(TAGGED_JSON="$tagged_json" node --input-type=module -e '
-              const value = process.env.TAGGED_JSON;
-              if (!value || value === "null") process.exit(0);
-              const parsed = JSON.parse(value);
-              if (typeof parsed !== "string") throw new Error("invalid npm dist-tag response");
-              process.stdout.write(parsed);
-            ')
-            relation=$(compare_versions "$version" "$tagged")
-            if [ "$present" = true ]; then
-              state=verified
-            elif [ "$relation" = older ]; then
-              state=superseded
-            elif [ "$relation" = equal ]; then
-              echo "$package_name@$version is tagged but its exact version is unavailable" >&2
-              exit 1
-            else
-              state=published
-            fi
-
-            if [ "$state" = superseded ]; then
-              echo "$package_name@$version is superseded by $release_tag@$tagged; no archive was published"
-            elif [ "$state" = verified ] || [ "${PREFLIGHT:-false}" = false ]; then
-              if [ "$state" = published ]; then
-                new_release=true
-                revalidate_qualification
-                set +e
-                npm publish "$archive" --access public --tag "$release_tag" --provenance --ignore-scripts
-                publish_status=$?
-                set -e
-              else
-                publish_status=0
-              fi
-
-              refetched_directory="$RUNNER_TEMP/refetched-$package_kind"
-              mkdir -p "$refetched_directory"
-              refetched=
-              attempt=1
-              while [ "$attempt" -le "$visibility_attempts" ]; do
-                rm -f "$refetched_directory"/*.tgz
-                if npm pack "$package_name@$version" \
-                    --pack-destination "$refetched_directory" --ignore-scripts > /dev/null 2>&1; then
-                  set -- "$refetched_directory"/*.tgz
-                  if [ "$#" -eq 1 ] && [ -f "$1" ]; then
-                    refetched=$1
-                    break
-                  fi
-                fi
-                if [ "$attempt" -lt "$visibility_attempts" ]; then
-                  sleep "$visibility_delay_seconds"
-                fi
-                attempt=$((attempt + 1))
-              done
-              if [ -z "$refetched" ]; then
-                echo "npm did not expose $package_name@$version before the visibility deadline (publish exit $publish_status)" >&2
-                exit 1
-              fi
-
-              candidate_digest=$(archive_digest "$archive")
-              registry_digest=$(archive_digest "$refetched")
-              if [ "$candidate_digest" != "$registry_digest" ]; then
-                echo "registry bytes differ from the persisted $package_name candidate; bump its version" >&2
-                exit 1
-              fi
-            fi
-
-            if [ "${PREFLIGHT:-false}" = true ]; then
-              echo "$package_name@$version preflight: $state"
-              return
-            fi
-            if [ "$state" = verified ] && [ -z "$tagged" ]; then
-              echo "$package_name@$version matches registry bytes; the missing $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
-            elif [ "$state" = verified ] && [ "$relation" = older ]; then
-              echo "$package_name@$version matches registry bytes; a newer $release_tag tag remains unchanged"
-            elif [ "$state" = verified ] && [ "$relation" = newer ]; then
-              echo "$package_name@$version matches registry bytes; the older $release_tag tag cannot be changed through trusted-publisher OIDC" >&2
-            fi
-            if [ "$state" = published ]; then
-              attempt=1
-              while [ "$attempt" -le "$visibility_attempts" ]; do
-                observed=$(npm view "$package_name" "dist-tags.$release_tag" --json 2> /dev/null || true)
-                observed=$(TAGGED_JSON="$observed" node --input-type=module -e '
-                  const value = process.env.TAGGED_JSON;
-                  if (value && value !== "null") process.stdout.write(JSON.parse(value));
-                ')
-                relation=$(compare_versions "$version" "$observed")
-                if [ "$relation" != newer ]; then break; fi
-                if [ "$attempt" -lt "$visibility_attempts" ]; then sleep "$visibility_delay_seconds"; fi
-                attempt=$((attempt + 1))
-              done
-              if [ "$relation" = newer ]; then
-                echo "$package_name@$version did not converge on the $release_tag dist-tag (publish exit $publish_status)" >&2
-                exit 1
-              fi
-            fi
-            printf '%s_new=%s\n' "$package_kind" "$new_release" >> "$GITHUB_OUTPUT"
-            printf '%s_state=%s\n' "$package_kind" "$state" >> "$GITHUB_OUTPUT"
-            printf '%s_version=%s\n' "$package_kind" "$version" >> "$GITHUB_OUTPUT"
-          }
-
-          # Keep the independent SDK outside Jig's host qualification path.
-          # Each group preflights its complete set before any registry mutation.
-          case "$RELEASE_GROUP" in
-            host) package_kinds="agent acp jig" ;;
-            *) echo "unknown release group" >&2; exit 1 ;;
-          esac
-          revalidate_qualification
-          for PREFLIGHT in true false; do
-            for kind in $package_kinds; do
-              case "$kind" in
-                agent) publish_candidate agent @jigging/agent-method ;;
-                acp) publish_candidate acp @jigging/agent-acp ;;
-                jig) publish_candidate jig @jigging/jig ;;
-              esac
-            done
-          done
   tag_host:
     name: Tag host-qualified packages and create releases
     needs:
