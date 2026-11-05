@@ -151,6 +151,101 @@ export function hostFixture() {
   })
 }
 
+export function compositionFixture() {
+  const body = snapshot([
+    view(
+      'root',
+      { title: 'Application', application: 'Run-map acceptance', landing: true },
+      {
+        summary: 'Configured calls and retained observations remain distinct.',
+        sections: [
+          { blocks: [{ kind: 'report', text: 'Inspect the retained requests in Application map.' }] },
+        ],
+      },
+    ),
+    view(
+      'worker-one-notes',
+      { title: 'Worker notes', application: 'Run-map acceptance' },
+      {
+        sections: [
+          { blocks: [{ kind: 'report', text: 'These notes belong to the first worker request.' }] },
+        ],
+      },
+      'worker-one',
+    ),
+    view(
+      'worker-two-notes',
+      { title: 'Worker notes', application: 'Run-map acceptance' },
+      {
+        sections: [
+          { blocks: [{ kind: 'report', text: 'These notes belong to the second worker request.' }] },
+        ],
+      },
+      'worker-two',
+    ),
+  ])
+  body.workspace = {
+    target: 'binding:review',
+    phase: 'live',
+    hostStage: 'Observing',
+    elapsedMs: 12000,
+  }
+  body.composition = {
+    state: 'available',
+    provenance: 'admitted',
+    rootId: 'application',
+    nodes: [
+      { id: 'application', label: 'Review', kind: 'binding' },
+      { id: 'worker', label: 'Worker', kind: 'binding' },
+      { id: 'reviewer', label: 'Worker', kind: 'binding' },
+      { id: 'http', label: 'Fetch evidence', kind: 'resource', resourceKind: 'http-request' },
+      { id: 'checkpoint', label: 'Save progress', kind: 'resource', resourceKind: 'run-checkpoint' },
+    ],
+    edges: [
+      { id: 'prepare-route', source: 'application', target: 'worker', slot: 'prepare' },
+      { id: 'retry-route', source: 'application', target: 'worker', slot: 'retry' },
+      { id: 'approve-route', source: 'application', target: 'reviewer', slot: 'approve' },
+      { id: 'fetch-route', source: 'worker', target: 'http', slot: 'fetch' },
+      { id: 'checkpoint-route', source: 'application', target: 'checkpoint', slot: 'checkpoint' },
+    ],
+  }
+  const call = (id, slot, state, extra = {}) => ({
+    id,
+    sourceId: 'root',
+    sourceLabel: 'Review',
+    operationId: id,
+    slot,
+    state,
+    firstObservedAt: observedAt,
+    observedAt: observedAt + 1000,
+    ...extra,
+  })
+  body.calls = [
+    call('prepare-one', 'prepare', 'active', {
+      childSourceId: 'worker-one', intent: 'Prepare the first candidate',
+    }),
+    call('prepare-two', 'prepare', 'returned', {
+      childSourceId: 'worker-two', intent: 'Prepare a separate candidate',
+    }),
+    call('prepare-three', 'prepare', 'failed', { intent: 'Check a rejected candidate' }),
+    call('prepare-four', 'prepare', 'returned', { intent: 'Prepare another candidate' }),
+    call('retry-one', 'retry', 'requested', { intent: 'Request another candidate' }),
+    call('retry-two', 'retry', 'cancel-requested', { intent: 'Cancel an unwanted retry' }),
+    call('retry-three', 'retry', 'uncertain', { intent: 'Inspect an unconfirmed retry' }),
+    call('approve-one', 'approve', 'returned', { intent: 'Review the selected candidate' }),
+    call('fetch-one', 'fetch', 'active', {
+      sourceId: 'worker-one', sourceLabel: 'Worker', parentId: 'prepare-one',
+      intent: 'Fetch evidence for the first candidate',
+    }),
+    call('unplaced-caller', 'fetch', 'uncertain', {
+      sourceId: 'missing', sourceLabel: 'Worker', intent: 'Inspect an unobserved caller',
+    }),
+    call('unplaced-slot', 'missing', 'failed', { intent: 'Inspect an unavailable slot' }),
+  ]
+  body.omissions.calls = 4
+  return checked({ snapshot: body, captures: {} })
+}
+
 export function contactFixture() {
   const headers = ['Customer', 'Email address', 'Company']
   const rows = [
