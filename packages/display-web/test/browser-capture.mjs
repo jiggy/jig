@@ -79,6 +79,13 @@ try {
       const context = await browser.newContext({ viewport })
       const page = await context.newPage()
       page.setDefaultTimeout(10000)
+      const waitForCapture = async (predicate) => {
+        if (!assetCheckout) return page.waitForFunction(predicate)
+        // Keep historical loading defects visible without weakening current acceptance.
+        await page.waitForFunction(predicate, undefined, { timeout: 1500 }).catch((error) => {
+          if (error.name !== 'TimeoutError') throw error
+        })
+      }
       try {
         await page.goto(host.url)
         await page.getByText('Connected', { exact: true }).waitFor()
@@ -112,15 +119,8 @@ try {
                 !node.textContent.includes('not loaded')
               )
             })
-          if (assetCheckout) {
-            // Historical defects belong in the comparison, not in current acceptance.
-            await page
-              .waitForFunction(visiblePreviewsLoaded, undefined, { timeout: 1500 })
-              .catch((error) => {
-                if (error.name !== 'TimeoutError') throw error
-              })
-          } else await page.waitForFunction(visiblePreviewsLoaded)
-          await page.waitForFunction(() => [...document.images].every((image) => image.complete))
+          await waitForCapture(visiblePreviewsLoaded)
+          await waitForCapture(() => [...document.images].every((image) => image.complete))
           const unresolved = await page.locator('.media-placeholder').evaluateAll((nodes) =>
             nodes
               .filter((node) => {
@@ -133,6 +133,22 @@ try {
                 )
               })
               .map((node) => node.textContent),
+          )
+          unresolved.push(
+            ...(await page.locator('img').evaluateAll((images) =>
+              images
+                .filter((image) => {
+                  const bounds = image.getBoundingClientRect()
+                  return (
+                    bounds.width > 0 &&
+                    bounds.height > 0 &&
+                    bounds.bottom >= 0 &&
+                    bounds.top <= window.innerHeight &&
+                    (!image.complete || image.naturalWidth === 0)
+                  )
+                })
+                .map((image) => `Image not loaded: ${image.alt || 'untitled image'}`),
+            )),
           )
           if (unresolved.length && !assetCheckout)
             throw new Error(`Visible captured material is unavailable: ${unresolved.join('; ')}`)
