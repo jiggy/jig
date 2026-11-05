@@ -28,7 +28,9 @@ const sections = current.entries
     for (const file of [before.file, entry.file]) assert(/^[a-z0-9-]+\.png$/.test(file))
     const missingMedia = before.unavailableMedia?.length
       ? ` · unavailable baseline preview: ${escape(before.unavailableMedia.join('; '))}`
-      : ''
+      : before.loadingIncomplete
+        ? ' · baseline media did not finish loading'
+        : ''
     return `<section><h2>${escape(entry.material)} · ${entry.viewport.width}px · ${escape(entry.theme)}</h2><div class="pair"><figure><figcaption>Before #97 · ${escape(baseline.sourceRevision.slice(0, 8))}${before.unsupportedFocus ? ' · this focus control did not exist' : ''}${missingMedia}</figcaption><a href="baseline/${before.file}"><img loading="lazy" src="baseline/${before.file}" alt="Baseline ${escape(entry.material)}"></a></figure><figure><figcaption>Current · ${escape(current.sourceRevision.slice(0, 8))}</figcaption><a href="current/${entry.file}"><img loading="lazy" src="current/${entry.file}" alt="Current ${escape(entry.material)}"></a></figure></div></section>`
   })
   .join('\n')
