@@ -172,12 +172,12 @@ test('automatic native scope selects exact generated releases and preserves manu
   const feature = commit(root, 'Native scope source')
   assert.deepEqual(await select(feature), {
     output: 'qualify=false\n',
-    summary: `## Native qualification source\n\nSource: ${feature}\n\nOmitted: feature-source.\n\nSource selection creates no qualification evidence. Publication still requires all three native clients.\n`,
+    summary: `## Native qualification source\n\nSource: ${feature}\n\n**Native qualification omitted**: feature-source.\n\n**No native clients were tested. No qualification receipt was created.**\n\nSource selection creates no qualification evidence. Publication still requires all three native clients.\n`,
   })
   await note(root, 'native-scope-change', ['@jigging/jig'])
   const pending = commit(root, 'Pending release')
   assert.equal((await select(pending)).output, 'qualify=false\n')
-  assert.match((await select(pending)).summary, /Omitted: pending-changesets/)
+  assert.match((await select(pending)).summary, /Native qualification omitted\*\*: pending-changesets/)
   await put(
     root,
     'scripts/release/state.mjs',
@@ -196,7 +196,7 @@ test('automatic native scope selects exact generated releases and preserves manu
   await put(root, 'README.md', 'Unrelated documentation changes.\n')
   const stale = commit(root, 'Advance complete source')
   assert.equal((await select(stale)).output, 'qualify=false\n')
-  assert.match((await select(stale)).summary, /Omitted: stale-release-plan/)
+  assert.match((await select(stale)).summary, /Native qualification omitted\*\*: stale-release-plan/)
   assert.equal(
     (await select(release)).output,
     'qualify=true\n',
