@@ -1,5 +1,6 @@
 ---
 "@jigging/display-web": minor
+"@jigging/jig": patch
 ---
 
 Show observed connections and mixed request states on the Run map, with local focus for active and uncertain or failed requests.
