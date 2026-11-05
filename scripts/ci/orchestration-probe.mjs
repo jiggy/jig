@@ -62,9 +62,10 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
     const matches = runs.workflow_runs.filter(run => run.display_title === `CI probe child ${marker}`)
     assert.ok(matches.length <= 1, 'Ambiguous diagnostic child')
     for (const run of matches) {
+      assert.ok(Number.isSafeInteger(run.id) && run.id > 0, 'Invalid diagnostic run ID')
       assert.equal(run.path, `.github/workflows/${workflow}`)
       assert.equal(run.repository.full_name, env.GITHUB_REPOSITORY)
-      if (run.status !== 'completed') await request(`runs/${run.id}/cancel`, {})
+      if (run.status !== 'completed') await request(`runs/${Number(run.id)}/cancel`, {})
     }
     return
   }
@@ -80,6 +81,7 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
         assert.ok(matches.length <= 1, 'Ambiguous diagnostic child')
         child = matches[0]
         if (child) {
+          assert.ok(Number.isSafeInteger(child.id) && child.id > 0, 'Invalid diagnostic run ID')
           assert.equal(child.head_sha, env.GITHUB_SHA, 'Main changed before dispatch; rerun the probe')
           assert.equal(child.head_branch, 'main')
           assert.equal(child.path, `.github/workflows/${workflow}`)
@@ -87,8 +89,8 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
         }
       }
       if (child) {
-        const run = await request(`runs/${child.id}`)
-        const snapshot = await request(`runs/${child.id}/attempts/1/jobs?per_page=100`)
+        const run = await request(`runs/${Number(child.id)}`)
+        const snapshot = await request(`runs/${Number(child.id)}/attempts/1/jobs?per_page=100`)
         assert.equal(run.run_attempt, 1)
         assert.equal(snapshot.total_count, snapshot.jobs.length)
         observedQueued ||= snapshot.jobs.some(job => job.name === 'Probe unallocated' &&
@@ -98,8 +100,8 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
           assert.equal(run.conclusion, 'failure', 'Diagnostic child must fail deliberately')
           const result = verifyProbeJobs(snapshot.jobs, observedQueued)
           const summary = `## Orchestration probe passed\n\n` +
-            `Child: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${child.id}\n\n` +
-            `Queued cancellation settled in ${result.cancellationMs} ms relative to monitor failure.\n\n` +
+            `Child: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${Number(child.id)}\n\n` +
+            `Queued cancellation settled in ${Number(result.cancellationMs)} ms relative to monitor failure.\n\n` +
             'The child failure is intentional. No native tests ran and no qualification evidence was created.\n'
           if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, summary)
           console.log(summary)
@@ -112,7 +114,7 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
   } finally {
     if (child && !settled) {
       // Cancellation is a bounded cleanup request, not a claim that GitHub has settled it.
-      await fetch(prefix + `runs/${child.id}/cancel`, {
+      await fetch(prefix + `runs/${Number(child.id)}/cancel`, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
         headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
       }).catch(() => undefined)
