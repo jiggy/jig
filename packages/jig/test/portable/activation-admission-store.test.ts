@@ -18,6 +18,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { stripVTControlCharacters } from 'node:util'
 import { main, privateCliPrepareArguments } from '../../src/cli.js'
+import { PrivateProjectProjection } from '../../src/cli-project-projection.js'
 import {
   createPrivateActivationPlanV2,
   decodePrivateActivationCandidateV5,
@@ -1634,7 +1635,7 @@ describe.serial('direct alpha activation store', () => {
               )
               expect(inventory).toEqual(['flow:flows/run'])
               expect(Object.isFrozen(inventory)).toBe(true)
-              const defaults = await privateCliPrepareArguments(['run'], {
+              const defauts = await privateCliPrepareArguments(['run'], {
                 currentDirectory: fixture.root,
               })
               // Explicit output lookup uses retained request modes, without package recapture.
@@ -1789,6 +1790,12 @@ describe.serial('direct alpha activation store', () => {
         arguments: direct,
         admissionDigest: approved,
       })
+      const explorer = new PrivateProjectProjection(fixture.root)
+      const explored = await explorer.projectForTarget()
+      expect(explored.selected?.input.state).toBe('schema')
+      expect(explored.selected?.launch.state).toBe('available')
+      // Browsing an entrypoint never reads its job file or executes its defaults.
+      expect(JSON.stringify(explored)).not.toContain('job.json')
       const newer = insertCandidate(fixture, 'entrypoint-race', false)
       const next = requireAdmission(
         await applyPlan(
@@ -1821,6 +1828,9 @@ describe.serial('direct alpha activation store', () => {
         }),
       ).rejects.toMatchObject({ code: 'RUN_APPROVAL_CHANGED' })
       expect(next.admissionDigest).not.toBe(approved)
+      await expect(
+        explorer.selection(explored.revision, explored.selected!.targetId),
+      ).rejects.toMatchObject({ code: 'PROJECT_CHANGED' })
       expect(
         await listPrivateRootExecutionWork({
           coordinator,
@@ -1869,6 +1879,24 @@ describe.serial('direct alpha activation store', () => {
         slots: {},
         settings: {},
       })
+      const explorer = new PrivateProjectProjection(fixture.root)
+      const project = await explorer.projectForTarget('flow:flows/run')
+      expect(project.state).toBe('approved')
+      expect(project.targets).toHaveLength(1)
+      expect(project.targets[0]).toMatchObject({
+        label: 'run', kind: 'flow', description: 'Direct alpha store fixture.',
+      })
+      expect(project.selected?.composition.state).toBe('available')
+      expect(project.selected?.input).toMatchObject({
+        state: 'schema', schema: { type: 'object', required: ['value'] },
+      })
+      expect(await explorer.selection(project.revision, project.selected!.targetId)).toEqual({
+        target: { kind: 'flow', path: 'flows/run' }, approval: approved,
+      })
+      expect(JSON.stringify(project)).not.toContain('flows/run')
+      expect(JSON.stringify(project)).not.toContain(approved)
+      expect(JSON.stringify(project)).not.toContain('binding:router')
+      await expect(explorer.project('missing-target')).rejects.toMatchObject({ code: 'TARGET_MISSING' })
       let menu = ''
       const selection = await privateCliPrepareArguments(['run', '--input', '{"value":1}'], {
         currentDirectory: fixture.root,
@@ -2178,6 +2206,10 @@ describe.serial('direct alpha activation store', () => {
         state: 'unreviewed',
         targets: [],
       })
+      expect(await readdir(root)).toEqual([])
+      const explorer = new PrivateProjectProjection(root)
+      expect(await explorer.project()).toMatchObject({ state: 'unreviewed', targets: [] })
+      await expect(explorer.selection('none', 'none')).rejects.toMatchObject({ code: 'PROJECT_UNREVIEWED' })
       expect(await readdir(root)).toEqual([])
       await writeFile(join(root, 'jig.lock'), '{}\n')
       expect(await inspectPrivateApprovedProject(root)).toEqual({
@@ -4213,3 +4245,4 @@ describe.serial('direct alpha activation store', () => {
     }
   })
 })
+

@@ -28,7 +28,14 @@ export type {
   DisplayImagePreview,
   DisplayIncompleteSnapshot,
   DisplayInputCapture,
+  DisplayJsonValue,
   DisplayPreviewReply,
+  DisplayProjectInput,
+  DisplayProjectRun,
+  DisplayProjectRunRequest,
+  DisplayProjectSelection,
+  DisplayProjectSnapshot,
+  DisplayProjectTarget,
   DisplayReferenceRecord,
   DisplaySnapshot,
   DisplaySnapshotEnvelope,
@@ -40,6 +47,15 @@ export {
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
   DISPLAY_INCOMPLETE_LIMIT,
+  DISPLAY_PROJECT_BYTE_LIMIT,
+  DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
+  DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
+  DISPLAY_PROJECT_TARGET_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
 } from './types.js'
-export { validateDisplaySnapshot } from './validate.js'
+export {
+  validateDisplayProjectRun,
+  validateDisplayProjectRunRequest,
+  validateDisplayProjectSnapshot,
+  validateDisplaySnapshot,
+} from './validate.js'

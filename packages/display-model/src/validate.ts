@@ -4,7 +4,14 @@ import {
   DISPLAY_COMPOSITION_EDGE_LIMIT,
   DISPLAY_COMPOSITION_NODE_LIMIT,
   DISPLAY_INCOMPLETE_LIMIT,
+  DISPLAY_PROJECT_BYTE_LIMIT,
+  DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT,
+  DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT,
+  DISPLAY_PROJECT_TARGET_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
+  type DisplayProjectRun,
+  type DisplayProjectRunRequest,
+  type DisplayProjectSnapshot,
   type DisplaySnapshotEnvelope,
 } from './types.js'
 
@@ -43,13 +50,17 @@ const list = (value: unknown, maximum: number): unknown[] =>
   Array.isArray(value) && value.length <= maximum ? value : fail()
 
 /** Copy inert data before inspecting it; getters, cycles and ambient objects are refused. */
-function copy(value: unknown): { value: unknown; bytes: number } {
+function copy(
+  value: unknown,
+  maximumBytes = DISPLAY_SNAPSHOT_LIMIT,
+  maximumDepth = 64,
+): { value: unknown; bytes: number } {
   let nodes = 0
   let bytes = 0
   const ancestors = new Set<object>()
   const charge = (size: number) => {
     bytes += size
-    if (bytes > DISPLAY_SNAPSHOT_LIMIT) fail()
+    if (bytes > maximumBytes) fail()
   }
   const string = (value: string) => {
     charge(2)
@@ -70,7 +81,7 @@ function copy(value: unknown): { value: unknown; bytes: number } {
     return value
   }
   const visit = (value: unknown, depth: number): unknown => {
-    if (++nodes > 1000000 || depth > 64) return fail()
+    if (++nodes > 1000000 || depth > maximumDepth) return fail()
     if (value === null) {
       charge(4)
       return value
@@ -508,5 +519,174 @@ export function validateDisplaySnapshot(value: unknown): DisplaySnapshotEnvelope
     return validate(value)
   } catch {
     return fail()
+  }
+}
+
+function json(value: unknown): void {
+  if (value === null || typeof value === 'boolean' || typeof value === 'string') return
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) fail()
+    return
+  }
+  if (!value || typeof value !== 'object') fail()
+  for (const child of Object.values(value)) json(child)
+}
+
+function projectInput(value: unknown): void {
+  const data = record(value, ['state', 'schema', 'definitions'])
+  const state = choice(data.state, ['unconstrained', 'schema'])
+  if (state === 'unconstrained') {
+    if (data.schema !== undefined || data.definitions !== undefined) fail()
+    return
+  }
+  if (
+    typeof data.schema !== 'boolean' &&
+    (!data.schema || typeof data.schema !== 'object' || Array.isArray(data.schema))
+  )
+    fail()
+  if (
+    data.definitions !== undefined &&
+    (!data.definitions || typeof data.definitions !== 'object' || Array.isArray(data.definitions))
+  )
+    fail()
+  json(data.schema)
+  if (data.definitions !== undefined) json(data.definitions)
+  if (new TextEncoder().encode(JSON.stringify(data)).byteLength > DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT)
+    fail()
+}
+
+/** Own bounded approved-project data independently of any Run or execution host. */
+export function validateDisplayProjectSnapshot(value: unknown): DisplayProjectSnapshot {
+  try {
+    const owned = copy(value, DISPLAY_PROJECT_BYTE_LIMIT)
+    const data = record(owned.value, ['kind', 'revision', 'state', 'targets', 'selected'])
+    choice(data.kind, ['project'])
+    identity(data.revision)
+    const state = choice(data.state, ['unreviewed', 'approved'])
+    const targets = list(data.targets, DISPLAY_PROJECT_TARGET_LIMIT)
+    const byId = new Map<string, Data>()
+    unique(targets, (value) => {
+      const target = record(value, ['id', 'label', 'kind', 'description', 'availability', 'reason'])
+      const id = identity(target.id)
+      text(target.label, 256, 1)
+      choice(target.kind, ['flow', 'binding'])
+      optional(target.description, (value) => text(value, 2048))
+      const availability = choice(target.availability, ['ready', 'unavailable'])
+      optional(target.reason, (value) => text(value, 1024, 1))
+      if (availability === 'ready' && target.reason !== undefined) fail()
+      byId.set(id, target)
+    })
+    if (state === 'unreviewed' || targets.length === 0) {
+      if (targets.length !== 0 || data.selected !== undefined) fail()
+    } else {
+      const selected = record(data.selected, [
+        'targetId',
+        'composition',
+        'input',
+        'attachments',
+        'receives',
+        'launch',
+      ])
+      const target = byId.get(identity(selected.targetId))
+      if (!target) fail()
+      composition(selected.composition)
+      const map = selected.composition as Data
+      if (map.state === 'available') {
+        if (map.rootId !== selected.targetId) fail()
+        for (const value of map.nodes as Data[]) {
+          if (value.kind === 'resource') continue
+          const configured = byId.get(value.id as string)
+          if (!configured || configured.kind !== value.kind) fail()
+        }
+      }
+      projectInput(selected.input)
+      const attachments = list(selected.attachments, 256)
+      unique(
+        attachments,
+        (value) => {
+          const attachment = record(value, ['name', 'mode', 'bound'])
+          text(attachment.name, 64, 1)
+          choice(attachment.mode, ['read', 'read-write'])
+          flag(attachment.bound)
+          if (attachment.mode === 'read-write' && attachment.bound) fail()
+        },
+        'name',
+      )
+      const receives = list(selected.receives, 256)
+      unique(
+        receives,
+        (value) => {
+          const channel = record(value, ['name', 'required'])
+          text(channel.name, 64, 1)
+          flag(channel.required)
+        },
+        'name',
+      )
+      const launch = record(selected.launch, ['state', 'reason'])
+      const launchState = choice(launch.state, ['available', 'unavailable'])
+      if (launchState === 'unavailable') text(launch.reason, 1024, 1)
+      else {
+        if (launch.reason !== undefined || target!.availability !== 'ready') fail()
+        if ((selected.input as Data).schema === false) fail()
+        if (attachments.some((value) => (value as Data).mode === 'read' && !(value as Data).bound))
+          fail()
+        if (receives.some((value) => (value as Data).required)) fail()
+      }
+    }
+    return owned.value as DisplayProjectSnapshot
+  } catch {
+    throw new TypeError('Project display is malformed or exceeds its allowance')
+  }
+}
+
+function requestId(value: unknown): string {
+  const id = text(value, 128, 1)
+  if (!/^[A-Za-z0-9_-]+$/.test(id)) fail()
+  return id
+}
+
+/** Shape validation carries intent only; the trusted host still validates and admits it. */
+export function validateDisplayProjectRunRequest(value: unknown): DisplayProjectRunRequest {
+  try {
+    const owned = copy(value, DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT, 130)
+    const data = record(owned.value, ['requestId', 'revision', 'targetId', 'input'])
+    requestId(data.requestId)
+    identity(data.revision)
+    identity(data.targetId)
+    if (!Object.hasOwn(data, 'input')) fail()
+    json(data.input)
+    return owned.value as DisplayProjectRunRequest
+  } catch {
+    throw new TypeError('Project Run request is malformed or exceeds its allowance')
+  }
+}
+
+/** The only navigable launch handoff is another capability-bound numeric loopback viewer. */
+export function validateDisplayProjectRun(value: unknown): DisplayProjectRun {
+  try {
+    const owned = copy(value, 16 * 1024)
+    const data = record(owned.value, ['state', 'requestId', 'targetId', 'viewerUrl', 'reason'])
+    const state = choice(data.state, ['idle', 'starting', 'running', 'settled', 'refused', 'uncertain'])
+    if (state === 'idle') {
+      if (Object.keys(data).length !== 1) fail()
+      return owned.value as DisplayProjectRun
+    }
+    requestId(data.requestId)
+    identity(data.targetId)
+    if (state === 'refused' || state === 'uncertain') {
+      text(data.reason, 1024, 1)
+      if (data.viewerUrl !== undefined) fail()
+    } else {
+      if (data.reason !== undefined) fail()
+      if (data.viewerUrl !== undefined) {
+        if (state === 'starting') fail()
+        const url = text(data.viewerUrl, 128, 1)
+        const match = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})\/#cap=[A-Za-z0-9_-]{43}$/.exec(url)
+        if (!match || Number(match[1]) > 65535) fail()
+      }
+    }
+    return owned.value as DisplayProjectRun
+  } catch {
+    throw new TypeError('Project Run state is malformed or exceeds its allowance')
   }
 }

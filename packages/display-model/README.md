@@ -103,6 +103,28 @@ These observer allowances have no override and remain inside the complete snapsh
 When a complete map exceeds them, the producer supplies `{ state: 'unavailable', reason: 'limit' }`.
 It must not publish partial routes.
 
+## Explore an approved project before running
+
+`DisplayProjectSnapshot` is independent of `DisplaySnapshot`. It contains a
+bounded catalogue of reviewed targets and the selected target's configured map,
+declared input schema, attachment requirements and browser launch availability.
+It has no Run identity, execution clock or observed requests. Input definitions
+remain beside their schema so references retain their invocation-contract scope.
+
+`validateDisplayProjectSnapshot` owns an immutable copy and verifies catalogue,
+selection and map identity. The allowances are 4,096 targets, 256 KiB for a
+selected input schema with definitions, and 16 MiB for the complete projection.
+The existing map allowances still apply. Projection data contains no settings,
+grants, private selectors, tickets or file authority.
+
+`DisplayProjectRunRequest` and `DisplayProjectRun` describe an explicit launch
+intent and the local host's reported status. Their validators check inert data,
+finite JSON values and the exact numeric-loopback viewer URL profile. They do
+not execute work, authorize a target, compile its schema or retry an uncertain
+request. The separate host must bind the selected opaque revision and target to
+the same approved generation, perform ordinary validation and own the Run.
+Requests have a 16 MiB encoded envelope allowance.
+
 ## Captured evidence and shared helpers
 
 `DisplayPreviewReply` binds captured content to `artifactId` and

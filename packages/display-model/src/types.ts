@@ -39,7 +39,7 @@ export type DisplayCompositionEdge = Readonly<{
   target: string
   slot: string
 }>
-/** Complete admitted configuration for this finite Run, without execution guarantees. */
+/** Complete admitted configuration for a selected target, without execution guarantees. */
 export type DisplayComposition = Immutable<
   | {
       state: 'available'
@@ -50,6 +50,76 @@ export type DisplayComposition = Immutable<
     }
   | { state: 'unavailable'; reason: 'limit' | 'unavailable' }
 >
+/** Inert JSON supplied for contract assistance or an explicit Run request. */
+export type DisplayJsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly DisplayJsonValue[]
+  | { readonly [key: string]: DisplayJsonValue }
+
+export type DisplayProjectInput =
+  | Readonly<{ state: 'unconstrained' }>
+  | Readonly<{
+      state: 'schema'
+      schema: boolean | { readonly [key: string]: DisplayJsonValue }
+      /** Root invocation-contract definitions retain their original $ref scope. */
+      definitions?: { readonly [key: string]: DisplayJsonValue }
+    }>
+export type DisplayProjectTarget = Readonly<{
+  id: string
+  label: string
+  kind: 'flow' | 'binding'
+  description?: string
+  availability: 'ready' | 'unavailable'
+  reason?: string
+}>
+export type DisplayProjectSelection = Readonly<{
+  targetId: string
+  composition: DisplayComposition
+  input: DisplayProjectInput
+  attachments: readonly Readonly<{
+    name: string
+    mode: 'read' | 'read-write'
+    bound: boolean
+  }>[]
+  /** Outgoing channels the local host can receive for the selected root. */
+  receives: readonly Readonly<{ name: string; required: boolean }>[]
+  launch:
+    | Readonly<{ state: 'available' }>
+    | Readonly<{ state: 'unavailable'; reason: string }>
+}>
+/** Approved project meaning before execution, never a fabricated Run snapshot. */
+export type DisplayProjectSnapshot = Readonly<{
+  kind: 'project'
+  revision: string
+  state: 'unreviewed' | 'approved'
+  targets: readonly DisplayProjectTarget[]
+  selected?: DisplayProjectSelection
+}>
+/** Intent sent to a separately authorized local host; these values grant no powers. */
+export type DisplayProjectRunRequest = Readonly<{
+  requestId: string
+  revision: string
+  targetId: string
+  input: DisplayJsonValue
+}>
+export type DisplayProjectRun =
+  | Readonly<{ state: 'idle' }>
+  | Readonly<{ state: 'starting'; requestId: string; targetId: string }>
+  | Readonly<{
+      state: 'running' | 'settled'
+      requestId: string
+      targetId: string
+      viewerUrl?: string
+    }>
+  | Readonly<{
+      state: 'refused' | 'uncertain'
+      requestId: string
+      targetId: string
+      reason: string
+    }>
 export type RecordedViewRole = 'recorded-report' | 'recorded-files' | 'recorded-diagnostics'
 export type DisplayFact = Readonly<{
   value: string
@@ -211,6 +281,10 @@ export const DISPLAY_INCOMPLETE_LIMIT = 2 * 1024 * 1024
 export const DISPLAY_COMPOSITION_NODE_LIMIT = 256
 export const DISPLAY_COMPOSITION_EDGE_LIMIT = 1024
 export const DISPLAY_COMPOSITION_BYTE_LIMIT = 256 * 1024
+export const DISPLAY_PROJECT_BYTE_LIMIT = DISPLAY_SNAPSHOT_LIMIT
+export const DISPLAY_PROJECT_TARGET_LIMIT = 4096
+export const DISPLAY_PROJECT_SCHEMA_BYTE_LIMIT = 256 * 1024
+export const DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT = 16 * 1024 * 1024
 
 /** Portable selected content accepted by reference inspection, without viewer state. */
 export type DisplayReferenceRecord = Immutable<{

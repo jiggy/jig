@@ -8,7 +8,9 @@ with their producer. This package owns readonly display data and pure meaning.
 ## Ownership
 
 - `src/types.ts` owns snapshots, attribution, captured preview replies and fixed
-  asset value types. `src/validate.ts` owns bounded inert-data validation.
+  asset value types. It also owns the independent approved-project catalogue,
+  selected input contract and local launch intent/status values. `src/validate.ts`
+  owns bounded inert-data validation; no value grants execution authority.
 - `src/image.ts` validates bounded PNG/JPEG payloads and matching encoded
   dimensions. It owns no decoder, IO or authenticity claim.
 - `src/semantics.ts` owns destination vocabulary, observation intervals and
@@ -41,6 +43,15 @@ with their producer. This package owns readonly display data and pure meaning.
   Composition is complete or explicitly unavailable. Nodes expose opaque
   identities, labels, target kinds and native resource kinds only.
   They omit settings, policies, selectors and private paths.
+- `DisplayProjectSnapshot` supplies approved configuration before a Run exists.
+  It has no workspace, elapsed clock, invocation observations or synthetic Run.
+  Root and ordinary component IDs join the bounded catalogue exactly. Selected
+  input schemas preserve their root definitions. No fabricated input is inferred.
+  Required file/channel limitations remain explicit launch reasons.
+- Local Run intents and status are inert data for a separately authorized host.
+  Their validators do not submit, retry, admit, cancel or verify input schemas.
+  Viewer handoffs accept only the exact numeric-loopback capability URL profile.
+  Keep catalogue, schema, complete payload and request bounds explicit.
 - Composition bounds have one canonical owner in `src/types.ts`.
   Validation enforces node, edge and encoded UTF-8 byte capacities.
   Valid configuration does not guarantee executability or observed execution.
@@ -71,6 +82,8 @@ with their producer. This package owns readonly display data and pure meaning.
 - `just check` builds and runs public model tests for immutable replacement,
   malformed data, identity, omissions, composition bounds and observation intervals.
   Composition tests cover exact joins, conflicting ancestry and repeated requests.
+  Project tests cover immutable catalogue/schema data, exact map identities,
+  launch limitations, bounded requests and strict local viewer handoffs.
 - `just test-package` uses supplied exact model/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or renderer dependency.
   The harness matches the installed version to this package's source manifest.
