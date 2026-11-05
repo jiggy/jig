@@ -39,6 +39,17 @@ test('explore selects an exact optional target and ordinary per-Run policy witho
     expect(() => parsePrivateExploreArguments(arguments_)).toThrow()
 })
 
+test('explore uses the ordinary target parser to normalize Flow selectors', () => {
+  expect(parsePrivateExploreArguments(['explore', 'flow:./flows/hello'])).toEqual({
+    target: 'flow:flows/hello',
+    timeoutMs: 30_000,
+  })
+  expect(parsePrivateExploreArguments(['explore', 'npm:@example/hello'])).toEqual({
+    target: 'npm:@example/hello',
+    timeoutMs: 30_000,
+  })
+})
+
 test('explore help and redirected refusal preserve an untouched ordinary project directory', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'jig-explore-help-'))
   try {

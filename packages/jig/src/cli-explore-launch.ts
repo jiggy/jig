@@ -20,8 +20,8 @@ export interface PrivateExploreRunProcess {
   readonly finished: Promise<PrivateExploreProcessResult>
   /** Interrupts this exact ordinary command; its installed owners settle execution. */
   interrupt(): Promise<void>
-  /** Closes an already settled read-only inspector without cancelling its Run. */
-  closeViewer(url: string): Promise<void>
+  /** Joins a settled command, closing its read-only inspector when one was handed off. */
+  closeViewer(url?: string): Promise<void>
 }
 export type PrivateExploreLaunch = (
   input: Readonly<{
@@ -198,29 +198,32 @@ export function privateInstalledExploreLaunch(
       return Object.freeze({
         finished,
         interrupt,
-        async closeViewer(value: string) {
-          const url = viewerUrl(value)
-          const capability = url.hash.slice('#cap='.length)
+        async closeViewer(value?: string) {
           const deadline = performance.now() + VIEWER_EXIT_MS
           let closeFailure: unknown
-          try {
-            const response = await fetch(`${url.origin}/api/close`, {
-              method: 'POST',
-              headers: { Authorization: `Bearer ${capability}`, Origin: url.origin },
-              redirect: 'error',
-              signal: AbortSignal.timeout(2_000),
-            })
+          if (value !== undefined) {
+            const url = viewerUrl(value)
+            const capability = url.hash.slice('#cap='.length)
             try {
-              if (!response.ok && response.status !== 410)
-                throw new Error('The previous inspector could not be closed')
-            } finally {
-              await response.body?.cancel()
+              const response = await fetch(`${url.origin}/api/close`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${capability}`, Origin: url.origin },
+                redirect: 'error',
+                signal: AbortSignal.timeout(2_000),
+              })
+              try {
+                if (!response.ok && response.status !== 410)
+                  throw new Error('The previous inspector could not be closed')
+              } finally {
+                await response.body?.cancel()
+              }
+            } catch (error) {
+              closeFailure = error
             }
-          } catch (error) {
-            closeFailure = error
           }
           // The user may have just closed this inspector directly. Only the
-          // exact command's normal exit resolves that race; never retry a POST.
+          // exact command's normal exit resolves that race or a missing viewer
+          // handoff. Never retry a POST or accept an unchecked bare join.
           const result = await wait(finished, Math.max(1, deadline - performance.now())).catch(
             (error) => {
               throw closeFailure ?? error

@@ -38,8 +38,11 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Never transfer that capability to the separate Run observer.
 - Explorer submission sends exact input JSON and pins the selected project revision and target identity.
   Never retry submission after a lost response. Read status until the host resolves that request.
-  Starting, running, uncertain or stale states disable another launch.
+  Read global Run state before any request-specific lookup under the same bounded poll owner.
+  Request acknowledgments never replace global state for launch gating. Unknown lookup does not prove that execution never started.
+- Starting, running, uncertain or stale states disable another launch.
   Close explorer stops its owned Run through host cleanup. Close inspection remains presentation-only.
+  An unconfirmed Close keeps launch fenced. Fresh idle status cannot undo that fence, and Close retries require an explicit action.
 - Project maps carry no synthetic Run snapshot, elapsed time or zero request counts.
   Approval labels do not establish current source freshness or launch readiness.
   Keep schema and unavailable launch reasons beside the input editor.

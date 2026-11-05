@@ -113,6 +113,11 @@ Reconnection and refresh never submit work.
 Uncertain execution prevents another launch within that session.
 Settled execution remains distinct from application success.
 
+The global Run status controls launch availability.
+A separate request lookup reads the retained result for one submitted identity, including a busy refusal.
+An absent identity remains unknown and cannot establish that execution did not start.
+The explorer retains at most 128 request identities, without evicting earlier identities to permit replay.
+
 The explorer preserves the input draft and exposes an explicit link to the ordinary Run inspector.
 That inspector receives its own observation capability on its own loopback listener.
 It receives no project control capability.
@@ -124,6 +129,7 @@ It waits for owned command settlement before releasing its listener.
 The terminal reports unconfirmed cleanup separately from any known result.
 Tab closure or a lost browser connection alone does not request cancellation.
 Closing a Run inspector retains its existing presentation-only meaning.
+An unconfirmed Close fences further browser launches, even if later reads show settled execution.
 
 ## Local access boundary
 
@@ -157,6 +163,7 @@ Fixed bundled assets are public and carry no authority.
 Terminal-link navigation accepts `Sec-Fetch-Site: none`.
 
 Explorer project reads accept only one opaque target selector.
+Run status reads accept only one optional request identity, distinct from the global current state.
 Launch and Close require an explicit exact Origin and the project control capability.
 Launch accepts one bounded JSON body with a ten-second read allowance and one active submission.
 Compressed bodies and malformed JSON are refused before dispatch.

@@ -13,6 +13,7 @@ import {
 export type PrivateExplorerConnection = 'connecting' | 'current' | 'stale' | 'unavailable' | 'unauthorized' | 'closed'
 
 const STATUS_BYTES = 16 * 1024
+const CLOSE_UNCONFIRMED = 'Closing the explorer was not confirmed. New runs remain paused. Check the terminal or try Close explorer again.'
 export const PRIVATE_EXPLORER_INPUT_BYTES = DISPLAY_PROJECT_RUN_REQUEST_BYTE_LIMIT
 
 export function privateExplorerInput(text: string):
@@ -90,7 +91,9 @@ export class PrivateExplorerClient {
   #changed: () => void
   #base: string
   #selected: string | undefined
+  #submitted: { requestId: string; targetId: string } | undefined
   #stopped = false
+  #closeRequested = false
   #projectRequest: AbortController | undefined
   #runRequest: AbortController | undefined
   #submission: AbortController | undefined
@@ -106,7 +109,7 @@ export class PrivateExplorerClient {
   }
 
   get canLaunch(): boolean {
-    return !this.#stopped && !this.closing && !this.sending && !this.unresolvedRequest &&
+    return !this.#stopped && !this.#closeRequested && !this.closing && !this.sending && !this.unresolvedRequest &&
       this.connection === 'current' && this.runCurrent &&
       this.project?.selected?.launch.state === 'available' &&
       (this.run?.state === 'idle' || this.run?.state === 'settled' || this.run?.state === 'refused')
@@ -184,14 +187,25 @@ export class PrivateExplorerClient {
     }
   }
 
-  #acceptRun(value: unknown): void {
+  #acceptGlobalRun(value: unknown): void {
     const run = validateDisplayProjectRun(value)
     if (!run) throw new Error('Run response is invalid')
     this.run = run
     this.runCurrent = true
-    this.runError = ''
-    if (run.state !== 'idle' && run.requestId === this.unresolvedRequest)
-      this.unresolvedRequest = undefined
+    this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED : ''
+    if (run.state !== 'idle' && run.requestId === this.#submitted?.requestId && run.targetId === this.#submitted.targetId) {
+      if (run.requestId === this.unresolvedRequest) this.unresolvedRequest = undefined
+      if (run.state === 'refused') this.requestError = ''
+    }
+  }
+
+  #acceptRequestRun(value: unknown, requestId: string, targetId: string): Exclude<DisplayProjectRun, { state: 'idle' }> {
+    const run = validateDisplayProjectRun(value)
+    if (run.state === 'idle' || run.requestId !== requestId || run.targetId !== targetId)
+      throw new Error('Request status does not match its identity')
+    if (this.unresolvedRequest === requestId) this.unresolvedRequest = undefined
+    if (run.state === 'refused') this.requestError = run.reason
+    return run
   }
 
   async refreshRun(): Promise<void> {
@@ -210,11 +224,30 @@ export class PrivateExplorerClient {
       const value = await boundedJson(response, STATUS_BYTES, controller.signal)
       if (this.#stopped || generation !== this.#runGeneration) return
       if (!response.ok) throw new Error('Run status unavailable')
-      this.#acceptRun(value)
+      this.#acceptGlobalRun(value)
+      const pending = this.unresolvedRequest
+      const submitted = this.#submitted
+      if (pending && submitted?.requestId === pending) {
+        const lookup = await fetch(this.#base + '/api/run?requestId=' + encodeURIComponent(pending), {
+          headers: this.#headers(), credentials: 'omit', cache: 'no-store', signal: controller.signal,
+        })
+        if (this.#stopped || generation !== this.#runGeneration || this.#terminal(lookup)) return
+        const result = await boundedJson(lookup, STATUS_BYTES, controller.signal)
+        if (this.#stopped || generation !== this.#runGeneration) return
+        if (lookup.status === 404 && result && typeof result === 'object' &&
+          'code' in result && result.code === 'REQUEST_UNKNOWN') {
+          this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED : responseReason(result,
+            'No retained result is available for this request. This does not confirm that it did not start.')
+        } else {
+          if (!lookup.ok) throw new Error('Request status unavailable')
+          this.#acceptRequestRun(result, pending, submitted.targetId)
+        }
+      }
     } catch {
       if (this.#stopped || generation !== this.#runGeneration) return
       this.runCurrent = false
-      this.runError = 'Run status is unavailable. New runs stay paused until Jig confirms the current state.'
+      this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED
+        : 'Run status is unavailable. New runs stay paused until Jig confirms the current state.'
     } finally {
       clearTimeout(timeout)
       if (this.#runRequest === controller) this.#runRequest = undefined
@@ -244,6 +277,8 @@ export class PrivateExplorerClient {
     this.#runRequest = undefined
     this.#submission = controller
     this.sending = true
+    this.runCurrent = false
+    this.#submitted = { requestId, targetId: selected.targetId }
     this.unresolvedRequest = requestId
     this.runError = ''
     this.requestError = ''
@@ -263,14 +298,14 @@ export class PrivateExplorerClient {
         this.requestError = responseReason(value, 'Jig refused this request before starting work. Check the input and try again.')
         return false
       }
-      const run = validateDisplayProjectRun(value)
-      if (!run || run.state === 'idle' || run.requestId !== requestId) throw new Error('Submission is unconfirmed')
-      this.#acceptRun(run)
+      if (!response.ok) throw new Error('Submission is unconfirmed')
+      const run = this.#acceptRequestRun(value, requestId, selected.targetId)
       return run.state !== 'refused'
     } catch {
       if (!this.#stopped) {
         this.runCurrent = false
-        this.runError = 'Jig has not confirmed whether this request started. Checking its status without submitting it again.'
+        this.runError = this.#closeRequested ? CLOSE_UNCONFIRMED
+          : 'Jig has not confirmed whether this request started. Checking its status without submitting it again.'
       }
       return false
     } finally {
@@ -286,7 +321,15 @@ export class PrivateExplorerClient {
 
   async close(): Promise<boolean> {
     if (this.#stopped || this.closing) return this.connection === 'closed'
+    // A lost Close reply cannot be resolved by an ordinary idle/settled Run status.
+    this.#closeRequested = true
     this.closing = true
+    this.runCurrent = false
+    this.#runGeneration++
+    this.#runRequest?.abort()
+    this.#runRequest = undefined
+    if (this.#timer !== undefined) clearTimeout(this.#timer)
+    this.#timer = undefined
     this.#changed()
     const controller = new AbortController()
     this.#closeRequest = controller
@@ -300,13 +343,14 @@ export class PrivateExplorerClient {
       this.stop()
       return true
     } catch {
-      this.runError = 'Closing the explorer was not confirmed. Check the terminal before starting more work.'
+      this.runError = CLOSE_UNCONFIRMED
       return false
     } finally {
       clearTimeout(timeout)
       if (this.#closeRequest === controller) this.#closeRequest = undefined
       this.closing = false
       this.#changed()
+      if (!this.#stopped) void this.refreshRun()
     }
   }
 
@@ -323,6 +367,7 @@ export class PrivateExplorerClient {
     this.#capability = undefined
     this.project = undefined
     this.run = undefined
+    this.#submitted = undefined
     this.runCurrent = false
   }
 }

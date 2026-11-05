@@ -58,7 +58,7 @@ export type PrivateExplorerRunBridge = Readonly<{
 export type PrivateWebExplorerOptions = Readonly<{
   assets: WebAssets
   project(targetId?: string): Promise<DisplayProjectSnapshot>
-  session(): DisplayProjectRun
+  session(requestId?: string): DisplayProjectRun | undefined
   run(request: DisplayProjectRunRequest): Promise<DisplayProjectRun>
   onClose(): void | Promise<void>
 }>
@@ -267,11 +267,29 @@ export class PrivateWebExplorer {
             if (owned) this.#projects--
           }
         }
-        if (url.search) return failure('Invalid explorer request.', 400)
         if (url.pathname === '/api/run' && request.method === 'GET') {
-          if (!empty(request)) return failure('Invalid explorer request.', 400)
-          return reply(JSON.stringify(validateDisplayProjectRun(this.options.session())))
+          const fields = [...url.searchParams.keys()]
+          const requestId = url.searchParams.get('requestId')
+          if (
+            !empty(request) ||
+            fields.length > 1 ||
+            fields.some((field) => field !== 'requestId') ||
+            (requestId !== null && !/^[A-Za-z0-9_-]{1,128}$/.test(requestId))
+          )
+            return failure('Invalid explorer request.', 400)
+          const state = this.options.session(requestId ?? undefined)
+          if (requestId !== null && state === undefined)
+            return failure(
+              'No retained result is available for this request. This does not confirm that it did not start.',
+              404,
+              'REQUEST_UNKNOWN',
+            )
+          const run = validateDisplayProjectRun(state)
+          if (requestId !== null && (run.state === 'idle' || run.requestId !== requestId))
+            return failure('The retained request result is unavailable.', 503)
+          return reply(JSON.stringify(run))
         }
+        if (url.search) return failure('Invalid explorer request.', 400)
         if (url.pathname === '/api/run' && request.method === 'POST') {
           if (origin !== this.origin) return failure('Explorer access was refused.', 403)
           if (this.#submitting) return failure('A launch request is already being processed.', 409)

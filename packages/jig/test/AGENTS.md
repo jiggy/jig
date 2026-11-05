@@ -625,6 +625,8 @@ private. Missing or unsafe profile selection cannot change execution outcomes.
 
 `portable/cli-explorer-web.test.ts` uses real loopback transport, bundled assets, and an actual unreviewed project session.
 It checks capability separation, strict input decoding, refused selection, duplicate identities, and idle-owner closure without synthetic execution.
+Retained request lookup stays separate from global Run state. Unknown request identities cannot establish a launch refusal.
+
 `portable/cli-project-projection.test.ts` checks inert catalogue/schema projection, opaque identities, complete-map bounds, and explicit launch requirements.
 The admission-store suite checks exploration through genuine retained state, active coordinator ownership, and changed approval.
 These checks establish projection and transport behavior, not native launch or cleanup.

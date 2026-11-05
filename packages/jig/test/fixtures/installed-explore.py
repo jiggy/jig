@@ -29,8 +29,8 @@ HTTP_LIMIT = 16 * 1024 * 1024
 CHECKS = [
     "approved-map-before-run", "invalid-input-without-launch", "stale-approval-refusal",
     "refresh-after-review", "ordinary-live-inspector", "duplicate-request-no-replay",
-    "closed-inspector-run-again", "sequential-run-owners", "active-close-cancellation",
-    "joined-explorer-exit",
+    "closed-inspector-run-again", "sequential-run-owners", "busy-request-lookup",
+    "active-close-cancellation", "joined-explorer-exit",
 ]
 
 
@@ -178,6 +178,13 @@ def main():
         require(held["state"] in ("starting", "running"))
         held = state_until({"running"})
         inspect_viewer(held["viewerUrl"], False)
+        phase = "busy-request-lookup"
+        busy = request("/api/run", "POST", intent("busy-run", "Changed", current))
+        require(busy["state"] == "refused" and busy["requestId"] == "busy-run")
+        require(request("/api/run?requestId=busy-run") == busy)
+        active = request("/api/run")
+        require(active["state"] == "running" and active["requestId"] == "held-run")
+        phase = "active-close-cancellation"
         require(request("/api/close", "POST") == {"closed": True})
         phase = "joined-explorer-exit"
         code = owner.wait(deadline)

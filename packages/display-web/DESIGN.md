@@ -69,6 +69,10 @@ The input begins blank. Show the declared schema and file or channel requirement
 
 Explicit Run submits the exact input and selected approval once.
 Lost acknowledgment triggers status reads, never resubmission.
+Read the active Run before looking up the unresolved request.
+A retained refusal resolves that request without replacing another active Run.
+A missing request record remains unknown and cannot enable launch.
+
 The explorer shows preparation, active, settled, refused and uncertain states separately.
 An Open run link opens the ordinary read-only observer in another tab.
 The explorer retains input and map context for the next run.
@@ -77,6 +81,7 @@ Only one Run can be active in this exploration session.
 Closing the explorer stops owned active work through ordinary cleanup.
 This consequence stays visible beside the Close action and in the footer.
 Closing a separate inspection remains presentation-only.
+An unconfirmed Close keeps new Runs disabled, even when later status reads report idle.
 
 ## Acceptance checks
 
