@@ -271,3 +271,7 @@ These links locate module rules. All selected domain requirements still apply.
   Preserve the same error even if observation fails.
   Capture, delivery and cleanup limits and outcomes stay unchanged. Successful
   diagnostic reruns do not explain an earlier failure.
+
+  Run-status failures may record a closed phase and error code before public projection removes private detail.
+  Read only bounded own data fields, and never messages, stacks or accessor values.
+  Optional profiling must preserve the original error and cancellation behavior.

@@ -7,9 +7,12 @@ import {
   writeMappedFilesProject,
 } from './fixtures/mapped-files-project.js'
 
+const profiles = ['leaf', 'composed', 'composed-repeat-2', 'composed-repeat-3'] as const
+type MappedFilesProfile = (typeof profiles)[number]
+
 /** Optional profiles share the existing private evidence directory, never Flow inputs. */
 export async function mappedFilesCommandEnvironment(
-  profile?: 'leaf' | 'composed',
+  profile?: MappedFilesProfile,
   operatorEnvironment: Readonly<NodeJS.ProcessEnv> = process.env,
 ): Promise<NodeJS.ProcessEnv> {
   const environment: NodeJS.ProcessEnv = {}
@@ -24,7 +27,7 @@ export async function mappedFilesCommandEnvironment(
   ])
     if (operatorEnvironment[key] !== undefined) environment[key] = operatorEnvironment[key]
   const directory = operatorEnvironment.JIG_PACKAGE_SMOKE_DIAGNOSTIC_DIRECTORY
-  if (!directory || (profile !== 'leaf' && profile !== 'composed')) return environment
+  if (!directory || profile === undefined || !profiles.includes(profile)) return environment
   try {
     if (!isAbsolute(directory) || (await realpath(directory)) !== directory) return environment
     const owner = await lstat(directory)
@@ -58,7 +61,7 @@ export async function checkInstalledMappedFiles(options: {
   const command = async (
     args: string[],
     cwd = options.directory,
-    profile?: 'leaf' | 'composed',
+    profile?: MappedFilesProfile,
   ) => {
     const environment = await mappedFilesCommandEnvironment(profile, operatorEnvironment)
     const child = Bun.spawn(args, { cwd, env: environment, stdout: 'pipe', stderr: 'pipe' })
@@ -96,9 +99,11 @@ export async function checkInstalledMappedFiles(options: {
   const source = join(directory, 'source')
   const independent = join(directory, 'leaf-packet')
   const composed = join(directory, 'composed-packet')
-  for (const [target, packet, composition] of [
-    ['flow:flows/copy', independent, false],
-    ['binding:root', composed, true],
+  for (const [target, packet, profile] of [
+    ['flow:flows/copy', independent, 'leaf'],
+    ['binding:root', composed, 'composed'],
+    ['binding:root', join(directory, 'composed-repeat-2-packet'), 'composed-repeat-2'],
+    ['binding:root', join(directory, 'composed-repeat-3-packet'), 'composed-repeat-3'],
   ] as const) {
     const result = await command(
       [
@@ -115,9 +120,9 @@ export async function checkInstalledMappedFiles(options: {
         '90s',
       ],
       options.directory,
-      composition ? 'composed' : 'leaf',
+      profile,
     )
     assert.equal(JSON.parse(result.stdout).status, 'succeeded')
-    await assertMappedFilesPacket(packet, source, composition)
+    await assertMappedFilesPacket(packet, source, profile !== 'leaf')
   }
 }

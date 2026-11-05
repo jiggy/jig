@@ -7,6 +7,7 @@ const PROFILE_ENVIRONMENT_KEY = 'JIG_PRIVATE_PROFILE_FILE'
 const MAX_SPANS = 512
 const MAX_RECORD_BYTES = 192
 const MAX_FAILURES = 8
+const MAX_ERROR_OBJECTS = 32
 
 const failurePhases = {
   planning: true,
@@ -54,11 +55,21 @@ const failurePhases = {
   'project-plan': true,
   'project-apply': true,
   'package-materialization-verification': true,
+  'root-status-request': true,
+  'root-status-work': true,
+  'root-status-load': true,
+  'root-status-project': true,
+  'root-status-health': true,
 } as const satisfies Record<
   | PrivateRootExecutionFailurePhase
   | 'project-plan'
   | 'project-apply'
-  | 'package-materialization-verification',
+  | 'package-materialization-verification'
+  | 'root-status-request'
+  | 'root-status-work'
+  | 'root-status-load'
+  | 'root-status-project'
+  | 'root-status-health',
   true
 >
 
@@ -97,6 +108,49 @@ const failureCauses = new Set([
   'PROJECT_BUSY',
   'PROJECT_CLOSED',
   'PROJECT_UNSAFE',
+  'ADMISSION_ARTIFACT_MISMATCH',
+  'ADMISSION_DATABASE_PERMISSIONS',
+  'ADMISSION_LOCK_STAGE_CHANGED',
+  'ADMISSION_LOCK_STAGE_UNSAFE',
+  'ADMISSION_MISSING',
+  'ADMISSION_PLAN_MISSING',
+  'ADMISSION_PROJECT_CHANGED',
+  'ADMISSION_RECORD_SIZE',
+  'ADMISSION_REVISION_EXHAUSTED',
+  'ADMISSION_SCHEMA_VERSION',
+  'ADMISSION_SQLITE_DURABILITY',
+  'ADMISSION_SQLITE_SIDECAR',
+  'ADMISSION_SQLITE_UNAVAILABLE',
+  'ADMISSION_STATE_BUSY',
+  'ADMISSION_STATE_CHANGED',
+  'ADMISSION_STATE_CLOSED',
+  'ADMISSION_STATE_CORRUPT',
+  'ADMISSION_STATE_FILESYSTEM',
+  'ADMISSION_STATE_KIND',
+  'ADMISSION_STATE_MISSING',
+  'ADMISSION_STATE_PERMISSIONS',
+  'ADMISSION_STATE_UNAVAILABLE',
+  'COORDINATOR_BUSY',
+  'COORDINATOR_CLOSED',
+  'COORDINATOR_EPOCH_EXHAUSTED',
+  'COORDINATOR_LOST',
+  'COORDINATOR_PROJECT_MISMATCH',
+  'RUN_ALREADY_TERMINAL',
+  'RUN_APPROVAL_CHANGED',
+  'RUN_CHILD_CAPACITY',
+  'RUN_CHILD_OWNER_CONFLICT',
+  'RUN_CHILD_OWNER_MISSING',
+  'RUN_CHILD_PARENT_INACTIVE',
+  'RUN_COORDINATOR_STALE',
+  'RUN_EXECUTION_CHECKPOINT_CONFLICT',
+  'RUN_EXECUTION_INCOMPLETE',
+  'RUN_EXECUTION_ORDER',
+  'RUN_EXECUTION_UNALLOCATED',
+  'RUN_MISSING',
+  'RUN_OWNER_CHANGED',
+  'RUN_TARGET_NOT_FOUND',
+  'RUN_TARGET_UNAVAILABLE',
+  'RUN_TERMINAL_CONFLICT',
   'PACKAGE_MATERIALIZATION_MODE',
   'PACKAGE_MATERIALIZATION_ALIAS',
   'PACKAGE_MATERIALIZATION_DIGEST',
@@ -255,6 +309,50 @@ function ownData(value: object, key: string): unknown {
   return descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined
 }
 
+function errorCauses(error: unknown): { causes: string[]; truncated: boolean } {
+  const pending = [error]
+  const seen = new Set<object>()
+  const causes: string[] = []
+  let truncated = false
+  const append = (value: unknown) => {
+    if (pending.length < MAX_ERROR_OBJECTS) pending.push(value)
+    else truncated = true
+  }
+  for (let index = 0; index < pending.length; index++) {
+    const value = pending[index]
+    if (value === null || (typeof value !== 'object' && typeof value !== 'function')) {
+      causes.push('OTHER')
+    } else if (!seen.has(value)) {
+      seen.add(value)
+      try {
+        const code = ownData(value, 'code')
+        const before = pending.length
+        const errors = ownData(value, 'errors')
+        if (Array.isArray(errors)) {
+          const length = ownData(errors, 'length')
+          if (typeof length === 'number' && Number.isSafeInteger(length) && length > 0) {
+            const count = Math.min(length, MAX_ERROR_OBJECTS - pending.length)
+            for (let item = 0; item < count; item++) append(ownData(errors, String(item)))
+            if (count < length) truncated = true
+          }
+        }
+        const cause = ownData(value, 'cause')
+        if (cause !== undefined) append(cause)
+        if (code !== undefined || pending.length === before)
+          causes.push(failureCause(code) ?? 'OTHER')
+      } catch {
+        causes.push('OTHER')
+      }
+    }
+    if (causes.length > MAX_FAILURES) {
+      truncated = true
+      break
+    }
+  }
+  if (causes.length === 0) causes.push('OTHER')
+  return { causes, truncated }
+}
+
 export type PrivateProfilePhase =
   | 'author-configuration-evaluation'
   | 'author-support-verification'
@@ -410,6 +508,13 @@ export class PrivateProfileCapture {
     }
   }
 
+  error(phase: unknown, error: unknown): void {
+    if (this.#closed || !failurePhase(phase)) return
+    const observation = errorCauses(error)
+    if (observation.truncated) this.#truncated = true
+    this.failure(phase, observation.causes)
+  }
+
   finish(): void {
     if (this.#closed) return
     this.#closed = true
@@ -556,6 +661,17 @@ export function privateProfileFailure(phase: unknown, causes: unknown): void {
   if (capture === undefined) return
   try {
     capture.failure(phase, causes)
+  } catch {
+    discardProfileCapture(capture)
+  }
+}
+
+/** Preserve only closed codes before public diagnostics discard private failure detail. */
+export function privateProfileError(phase: unknown, error: unknown): void {
+  const capture = activeCapture
+  if (capture === undefined) return
+  try {
+    capture.error(phase, error)
   } catch {
     discardProfileCapture(capture)
   }

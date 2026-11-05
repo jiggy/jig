@@ -24,7 +24,7 @@ import {
 } from './activation-admission-store.js'
 import type { PrivateFileLocation } from './descriptor-files.js'
 import { PrivateAttemptError } from './prepared-attempt-store.js'
-import { privateProfileSpan } from './private-profile.js'
+import { privateProfileError, privateProfileSpan } from './private-profile.js'
 import type { PrivateRootExecutionDisposition } from './root-run-controller.js'
 import {
   PrivateRootFileInputLimitError,
@@ -264,22 +264,33 @@ function createController(input: {
         markSettled = resolve
       })
       operations.add(unsettled)
+      let phase:
+        | 'root-status-request'
+        | 'root-status-work'
+        | 'root-status-load'
+        | 'root-status-project'
+        | 'root-status-health' = 'root-status-request'
       try {
         const request = normalizeRootRunStatusRequest(value)
+        phase = 'root-status-work'
         await pumpCurrent()
+        phase = 'root-status-health'
         requireRunHealthy(request.runId)
-        const status = projectStatus(
-          await retryPrivateBusy(() =>
-            loadPrivateRootRunForCoordinator({
-              coordinator: input.coordinator,
-              projectRoot: input.projectRoot,
-              runId: request.runId,
-            }),
-          ),
+        phase = 'root-status-load'
+        const snapshot = await retryPrivateBusy(() =>
+          loadPrivateRootRunForCoordinator({
+            coordinator: input.coordinator,
+            projectRoot: input.projectRoot,
+            runId: request.runId,
+          }),
         )
+        phase = 'root-status-project'
+        const status = projectStatus(snapshot)
+        phase = 'root-status-health'
         requireRunHealthy(request.runId)
         return status
       } catch (error) {
+        privateProfileError(phase, error)
         observeFailure(error)
         throw administrationError(error, 'read root Run status')
       } finally {

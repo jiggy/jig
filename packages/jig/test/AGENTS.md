@@ -574,6 +574,10 @@ Materialization timing separates byte and alias copying, directory freezing, and
 Portable profile tests observe actual lease creation and disposal in fresh subprocesses, with profiling enabled and disabled.
 These timings establish neither native admission nor payload execution.
 
+`portable/private-profile.test.ts` checks bounded Run-status error observation from real Error objects.
+Unknown values and accessors must not expose private payloads or change the original failure.
+Disabled capture must leave error objects uninspected.
+
 Root Agent live suites select one exact client/input contract per file. Codex
 subscription requires its native executable and CODEX_HOME. Codex Responses
 requires the executable, model and OpenRouter key. Claude and Pi require their
@@ -645,6 +649,10 @@ Retain only these facts in exclusive mode-0600 JSON:
 `installed-mapped-files.ts` uses that same directory opt-in for distinct leaf
 and composed CLI Run profiles. Validate the existing directory's canonical path,
 ownership and permissions before selecting the fixed profile names.
+
+The installed gate verifies three distinct composed packets after the independent leaf Run.
+Each composed Run retains the original concurrent children, nested calls, duplicate operation, immutable delegation and byte assertions.
+Each Run uses a distinct fixed profile name and still fails the gate immediately on any unsuccessful command.
 
 Only those Runs receive the private profile destination. Other commands retain
 the existing environment whitelist. Retain bounded phase and closed failure

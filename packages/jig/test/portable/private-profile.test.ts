@@ -19,10 +19,12 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { AttemptClientError, createAttemptClient } from '@jigging/jig/client'
+import { CheckError } from '../../src/diagnostics.js'
 import { privateBunPreparationFailureCauses } from '../../src/internal/bun-native-preparation.js'
 import {
   normalizePrivateProfileFailure,
   PrivateProfileCapture,
+  privateProfileError,
   privateProfileFailure,
   privateProfileFailureSink,
   privateProfileInstant,
@@ -124,6 +126,7 @@ test('private failure records accept only fixed own data and return fresh bounde
   expect(normalizePrivateProfileFailure(Object.assign(Object.create(null), record))).toEqual(record)
   for (const cause of [
     'ENOENT',
+    'EBADF',
     'EAGAIN',
     'EMFILE',
     'ENFILE',
@@ -180,6 +183,9 @@ test('private failure records accept only fixed own data and return fresh bounde
     'PACKAGE_BUN_PROJECT_COUNT_LIMIT',
     'PACKAGE_BUN_PROJECT_OUTPUT_LIMIT',
     'PACKAGE_BUN_RESOLUTION_PERMISSION_REQUIRED',
+    'ADMISSION_STATE_CORRUPT',
+    'COORDINATOR_LOST',
+    'RUN_MISSING',
     'MACOS_GUARDIAN_STORAGE_VOLUME_ATTACH',
     'MACOS_GUARDIAN_STORAGE_RECOVERY_FILESYSTEM_BUSY',
     'OTHER',
@@ -188,6 +194,16 @@ test('private failure records accept only fixed own data and return fresh bounde
     expect(value?.cause).toBe(cause)
     expect(Buffer.byteLength(JSON.stringify(value))).toBeLessThanOrEqual(192)
   }
+  for (const phase of [
+    'root-status-request',
+    'root-status-work',
+    'root-status-load',
+    'root-status-project',
+    'root-status-health',
+  ])
+    expect(
+      normalizePrivateProfileFailure({ ...record, phase, cause: 'ADMISSION_STATE_CORRUPT' }),
+    ).toEqual({ ...record, phase, cause: 'ADMISSION_STATE_CORRUPT' })
   for (const invalid of [
     null,
     [],
@@ -195,6 +211,7 @@ test('private failure records accept only fixed own data and return fresh bounde
     { ...record, kind: 'start' },
     { ...record, phase: 'private-phase' },
     { ...record, phase: 'child-flow-admission/private' },
+    { ...record, phase: 'root-status-load/private' },
     { ...record, cause: 'SECRET_CANARY' },
     { ...record, cause: 'Error:EAGAIN' },
     { ...record, cause: 'MACOS_GUARDIAN_STORAGE_PRIVATE_TOKEN' },
@@ -208,6 +225,8 @@ test('private failure records accept only fixed own data and return fresh bounde
     { ...record, cause: 'PACKAGE_BUN_NATIVE_CLEANUP_PRIVATE_CANARY' },
     { ...record, cause: 'PACKAGE_BUN_PREPARATION_FAILED_PRIVATE_CANARY' },
     { ...record, cause: 'PACKAGE_BUN_PREPARATION_FAILED/private' },
+    { ...record, cause: 'ADMISSION_STATE_PRIVATE_CANARY' },
+    { ...record, cause: 'ADMISSION_STATE_CORRUPT/private' },
     { ...record, cause: 'package_bun_preparation_failed' },
     { ...record, cause: 'eagain' },
     { ...record, timeMs: -1 },
@@ -361,6 +380,315 @@ test('the active sink retains a real filesystem cause without replacing the orig
   }
 })
 
+test('private error observations reduce aggregates and cyclic causes without retaining private payloads', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-error-causes-')))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const capture = new PrivateProfileCapture(destination)
+    const original = Object.freeze(
+      new CheckError('unavailable', 'ADMISSION_STATE_CORRUPT', 'PRIVATE_CANARY admission message'),
+    )
+    const wrapper = new Error('PRIVATE_CANARY wrapper', { cause: original })
+    const unknown = Object.assign(new Error('PRIVATE_CANARY message'), {
+      code: 'PRIVATE_CANARY:EBADF',
+      name: 'PRIVATE_CANARY name',
+      path: '/private/PRIVATE_CANARY',
+      payload: { credential: 'PRIVATE_CANARY credential' },
+    })
+    const cyclic = new Error('PRIVATE_CANARY cycle')
+    Object.defineProperty(cyclic, 'cause', { value: cyclic })
+    const aggregate = new AggregateError(
+      [wrapper, unknown, cyclic, original],
+      'PRIVATE_CANARY aggregate',
+    )
+    const errors = aggregate.errors
+    capture.error('root-status-work', aggregate)
+    capture.finish()
+
+    expect(aggregate.errors).toBe(errors)
+    expect(wrapper.cause).toBe(original)
+    expect(cyclic.cause).toBe(cyclic)
+    const text = await readFile(destination, 'utf8')
+    const records = text
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    const failures = records.filter((record) => record.kind === 'failure')
+    expect(failures.map((record) => record.cause).sort()).toEqual([
+      'ADMISSION_STATE_CORRUPT',
+      'OTHER',
+    ])
+    expect(failures.every((record) => record.phase === 'root-status-work')).toBe(true)
+    expect(failures.every((record) => normalizePrivateProfileFailure(record) !== undefined)).toBe(
+      true,
+    )
+    expect(records.some((record) => record.kind === 'truncated')).toBe(false)
+    expect(text).not.toMatch(/PRIVATE_CANARY|"name"|"message"|"stack"|"path"|"payload"/)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('private error observations do not invoke accessors or coerce unknown evidence', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-error-accessors-')))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const capture = new PrivateProfileCapture(destination)
+    let reads = 0
+    const hostile = new Error('PRIVATE_CANARY')
+    for (const key of ['code', 'errors', 'cause', 'name', 'message', 'stack'])
+      Object.defineProperty(hostile, key, {
+        configurable: true,
+        get() {
+          reads++
+          throw new Error('PRIVATE_CANARY getter')
+        },
+      })
+    const errors = Object.defineProperty([], '0', {
+      get() {
+        reads++
+        throw new Error('PRIVATE_CANARY aggregate getter')
+      },
+    })
+    const aggregate = new AggregateError([], 'PRIVATE_CANARY')
+    Object.defineProperty(aggregate, 'errors', { value: errors })
+    const revoked = Proxy.revocable(new Error('PRIVATE_CANARY'), {})
+    revoked.revoke()
+    capture.error('root-status-health', hostile)
+    capture.error('root-status-health', aggregate)
+    capture.error('root-status-health', 'PRIVATE_CANARY non-error')
+    capture.error('root-status-health', revoked.proxy)
+    capture.error('root-status-health/PRIVATE_CANARY', hostile)
+    capture.finish()
+
+    const text = await readFile(destination, 'utf8')
+    capture.error('root-status-health', hostile)
+    expect(reads).toBe(0)
+    expect(await readFile(destination, 'utf8')).toBe(text)
+    const records = text
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records.filter((record) => record.kind === 'failure')).toEqual(
+      Array.from({ length: 4 }, () => ({
+        kind: 'failure',
+        phase: 'root-status-health',
+        cause: 'OTHER',
+        timeMs: expect.any(Number),
+      })),
+    )
+    expect(text).not.toContain('PRIVATE_CANARY')
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('private error traversal shares the failure budget and bounds deep cause chains', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-error-bounds-')))
+  try {
+    const wide = new AggregateError(
+      Array.from(
+        { length: 64 },
+        () => new CheckError('unavailable', 'ADMISSION_STATE_CORRUPT', 'PRIVATE_CANARY'),
+      ),
+      'PRIVATE_CANARY',
+    )
+    let deep: Error = new CheckError('unavailable', 'ADMISSION_STATE_CORRUPT', 'PRIVATE_CANARY')
+    for (let index = 0; index < 40; index++) deep = new Error('PRIVATE_CANARY', { cause: deep })
+    for (const [name, error, expectedCauses] of [
+      ['wide', wide, ['ENOENT', ...Array<string>(7).fill('ADMISSION_STATE_CORRUPT')]],
+      ['deep', deep, ['ENOENT', 'OTHER']],
+    ] as const) {
+      const destination = join(directory, `${name}.jsonl`)
+      const capture = new PrivateProfileCapture(destination)
+      capture.failure('project-plan', ['ENOENT'])
+      capture.error('root-status-work', error)
+      capture.finish()
+      const text = await readFile(destination, 'utf8')
+      const records = text
+        .trimEnd()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      const failures = records.filter((record) => record.kind === 'failure')
+      expect(failures.map((record) => record.cause)).toEqual(expectedCauses)
+      expect(failures.length).toBeLessThanOrEqual(8)
+      expect(records.at(-1)).toEqual({ kind: 'truncated', phaseLimit: 512 })
+      expect(
+        text
+          .trimEnd()
+          .split('\n')
+          .every((line) => Buffer.byteLength(line) <= 192),
+      ).toBe(true)
+      expect((await stat(destination)).mode & 0o777).toBe(0o600)
+      expect(text).not.toContain('PRIVATE_CANARY')
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('active error profiling preserves CheckError and real EBADF failure identity', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-error-identity-')))
+  try {
+    const destination = join(directory, 'trace.jsonl')
+    const profiler = join(suiteTestRoot, '../src/internal/private-profile.ts')
+    const diagnostics = join(suiteTestRoot, '../src/diagnostics.ts')
+    const child = Bun.spawn(
+      [
+        process.execPath,
+        '-e',
+        `import assert from 'node:assert/strict';
+        import { closeSync, fstatSync, openSync } from 'node:fs';
+        import { CheckError } from ${JSON.stringify(diagnostics)};
+        import { privateProfileActivate, privateProfileError, privateProfileFinish }
+          from ${JSON.stringify(profiler)};
+        privateProfileActivate();
+        try {
+          const corrupt = Object.freeze(new CheckError(
+            'unavailable', 'ADMISSION_STATE_CORRUPT', 'PRIVATE_CANARY admission message'
+          ));
+          const fd = openSync('PRIVATE_CANARY descriptor', 'wx', 0o600);
+          closeSync(fd);
+          let badDescriptor;
+          try { fstatSync(fd) } catch (error) { badDescriptor = error }
+          assert.equal(badDescriptor.code, 'EBADF');
+          Object.freeze(badDescriptor);
+          for (const [phase, original] of [
+            ['root-status-load', corrupt], ['root-status-project', badDescriptor]
+          ]) {
+            let observed;
+            try {
+              try { throw original } catch (error) {
+                assert.equal(privateProfileError(phase, error), undefined);
+                throw error;
+              }
+            } catch (error) { observed = error }
+            assert.equal(observed, original);
+          }
+        } finally { privateProfileFinish() }`,
+      ],
+      {
+        cwd: directory,
+        env: { ...process.env, JIG_PRIVATE_PROFILE_FILE: destination },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
+    const [exit, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ])
+    expect(exit, `${stdout}\n${stderr}`).toBe(0)
+    const text = await readFile(destination, 'utf8')
+    const records = text
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+    expect(records.filter((record) => record.kind !== 'header')).toEqual([
+      {
+        kind: 'failure',
+        phase: 'root-status-load',
+        cause: 'ADMISSION_STATE_CORRUPT',
+        timeMs: expect.any(Number),
+      },
+      {
+        kind: 'failure',
+        phase: 'root-status-project',
+        cause: 'EBADF',
+        timeMs: expect.any(Number),
+      },
+    ])
+    expect(text).not.toContain('PRIVATE_CANARY')
+    expect((await stat(destination)).mode & 0o777).toBe(0o600)
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
+})
+
+test('real missing Run observation retains its status failure only when profiling is enabled', async () => {
+  for (const enabled of [false, true]) {
+    const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-profile-missing-run-')))
+    try {
+      const destination = join(directory, 'trace.jsonl')
+      const projectRoot = join(directory, 'project')
+      const packageStoreRoot = join(directory, 'packages')
+      await mkdir(projectRoot, { mode: 0o700 })
+      await mkdir(packageStoreRoot, { mode: 0o700 })
+      const profiler = join(suiteTestRoot, '../src/internal/private-profile.ts')
+      const controller = join(suiteTestRoot, '../src/internal/root-administration-controller.ts')
+      const store = join(suiteTestRoot, '../src/internal/activation-admission-store.ts')
+      const administration = join(suiteTestRoot, '../src/administration/root.ts')
+      const missingRunId = `sha256:${'1'.repeat(64)}`
+      const child = Bun.spawn(
+        [
+          process.execPath,
+          '-e',
+          `import assert from 'node:assert/strict';
+          import { RootAdministrationError } from ${JSON.stringify(administration)};
+          import { initializePrivateActivationState } from ${JSON.stringify(store)};
+          import { openPrivateRootAdministrationController } from ${JSON.stringify(controller)};
+          import { privateProfileActivate, privateProfileFinish } from ${JSON.stringify(profiler)};
+          const projectRoot = ${JSON.stringify(projectRoot)};
+          await initializePrivateActivationState({ projectRoot });
+          privateProfileActivate();
+          const controller = await openPrivateRootAdministrationController({
+            projectRoot,
+            packageStoreRoot: ${JSON.stringify(packageStoreRoot)},
+            runTimeoutMs: 30_000,
+            execute: async () => { throw new Error('An absent Run cannot execute') }
+          });
+          try {
+            await assert.rejects(
+              controller.administration.runStatus({ runId: ${JSON.stringify(missingRunId)} }),
+              error => error instanceof RootAdministrationError && error.code === 'RUN_NOT_FOUND'
+            );
+          } finally {
+            try { await controller.dispose() } finally { privateProfileFinish() }
+          }`,
+        ],
+        {
+          cwd: directory,
+          env: {
+            ...process.env,
+            JIG_PRIVATE_PROFILE_FILE: enabled ? destination : undefined,
+          },
+          stdout: 'pipe',
+          stderr: 'pipe',
+        },
+      )
+      const [exit, stdout, stderr] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      expect(exit, `${stdout}\n${stderr}`).toBe(0)
+      if (!enabled) {
+        expect((await readdir(directory)).sort()).toEqual(['packages', 'project'])
+        continue
+      }
+      const text = await readFile(destination, 'utf8')
+      const records = text
+        .trimEnd()
+        .split('\n')
+        .map((line) => JSON.parse(line))
+      expect(records.filter((record) => record.kind !== 'header')).toEqual([
+        {
+          kind: 'failure',
+          phase: 'root-status-load',
+          cause: 'RUN_MISSING',
+          timeMs: expect.any(Number),
+        },
+      ])
+      expect(text).not.toContain(directory)
+      expect(text).not.toContain(missingRunId)
+      expect((await stat(destination)).mode & 0o777).toBe(0o600)
+    } finally {
+      await rm(directory, { recursive: true, force: true })
+    }
+  }
+})
+
 test('mapped Run profile selection uses real owned destinations and the existing exclusive writer', async () => {
   const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-mapped-profile-')))
   try {
@@ -385,6 +713,13 @@ test('mapped Run profile selection uses real owned destinations and the existing
     )
     expect(composed.JIG_PRIVATE_PROFILE_FILE).toBe(
       join(destination, 'installed-mapped-files-composed-run-profile.txt'),
+    )
+    for (const phase of ['composed-repeat-2', 'composed-repeat-3'] as const)
+      expect((await mappedFilesCommandEnvironment(phase, operator)).JIG_PRIVATE_PROFILE_FILE).toBe(
+        join(destination, `installed-mapped-files-${phase}-run-profile.txt`),
+      )
+    expect(await mappedFilesCommandEnvironment('PRIVATE_CANARY' as never, operator)).toEqual(
+      ordinary,
     )
     expect(leaf.OPENROUTER_API_KEY).toBeUndefined()
     expect(await readdir(destination)).toEqual([])
@@ -576,6 +911,16 @@ test('inactive profiling preserves the operation result and failure behavior', a
   const revoked = Proxy.revocable([], {})
   revoked.revoke()
   expect(() => privateProfileFailure('child-flow-admission', revoked.proxy)).not.toThrow()
+  expect(() => privateProfileError('root-status-work', revoked.proxy)).not.toThrow()
+  let inspections = 0
+  const uninspected = new Proxy(new Error('PRIVATE_CANARY'), {
+    getOwnPropertyDescriptor() {
+      inspections++
+      throw new Error('PRIVATE_CANARY descriptor')
+    },
+  })
+  expect(() => privateProfileError('root-status-load', uninspected)).not.toThrow()
+  expect(inspections).toBe(0)
   let calls = 0
   const value = await privateProfileSpan('flow-execution', async () => {
     calls++
@@ -595,7 +940,12 @@ test('inactive profiling preserves the operation result and failure behavior', a
   expect(privateProfileSyncSpan('result-authenticate', () => synchronous)).toBe(synchronous)
   try {
     privateProfileSyncSpan('result-observe', () => {
-      throw failure
+      try {
+        throw failure
+      } catch (error) {
+        privateProfileError('root-status-health', error)
+        throw error
+      }
     })
     throw new Error('Synchronous failure disappeared')
   } catch (error) {
