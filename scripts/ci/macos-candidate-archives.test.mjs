@@ -89,7 +89,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, isAbsolute } from 'node:path'
 const copies = []
-for (const [kind, variable] of Object.entries(${JSON.stringify({ 'flow-sdk': 'FLOW_SDK_PACKAGE_ARCHIVE', reporting: 'REPORTING_PACKAGE_ARCHIVE', 'agent-method': 'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp': 'AGENT_ACP_PACKAGE_ARCHIVE', 'display-model': 'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web': 'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui': 'DISPLAY_TUI_PACKAGE_ARCHIVE', jig: 'JIG_PACKAGE_ARCHIVE' })})) {
+for (const [kind, variable] of Object.entries(${JSON.stringify({ 'flow-sdk': 'FLOW_SDK_PACKAGE_ARCHIVE', reporting: 'REPORTING_PACKAGE_ARCHIVE', 'agent-method': 'AGENT_METHOD_PACKAGE_ARCHIVE', 'agent-acp': 'AGENT_ACP_PACKAGE_ARCHIVE', 'semantic-router': 'SEMANTIC_ROUTER_PACKAGE_ARCHIVE', 'display-model': 'DISPLAY_MODEL_PACKAGE_ARCHIVE', 'display-web': 'DISPLAY_WEB_PACKAGE_ARCHIVE', 'display-tui': 'DISPLAY_TUI_PACKAGE_ARCHIVE', jig: 'JIG_PACKAGE_ARCHIVE' })})) {
   const copied = process.env[variable]
   const original = join(process.env.JIG_CI_CANDIDATE_DIRECTORY, kind, kind + '.tgz')
   assert.ok(copied && isAbsolute(copied))

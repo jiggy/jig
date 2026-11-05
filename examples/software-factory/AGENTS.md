@@ -35,7 +35,8 @@ stays with a person.
 
   No host-domain adapter, terminal callback, invented graph edge or execution
   control belongs here.
-- `flows/router/` owns the portable decision Flow, separately governed below.
+- `@jigging/semantic-router` supplies ordinary semantic selection through a declared public package dependency.
+  The factory retains its candidate meanings, exact slot map, and independent result validation.
 - `flows/repair/` owns the factory's independently editable repair specialist.
 - The factory declares `factory-repair-flow` as a workspace dependency and
   imports its policy types and progress decoder through manifest exports.
@@ -180,5 +181,3 @@ optional observation delivery.
 
 - [flows/repair/AGENTS.md](flows/repair/AGENTS.md) — Factory-owned repair
   proposals and execution checks behind both reviewed configurations.
-- [flows/router/AGENTS.md](flows/router/AGENTS.md) — Reusable finite semantic
-  choice and public boundary validation, independent of factory policy.

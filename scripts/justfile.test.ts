@@ -13,6 +13,7 @@ const justfiles = [
   'justfile',
   'packages/agent-method/justfile',
   'packages/agent-acp/justfile',
+  'packages/semantic-router/justfile',
   'packages/reporting/justfile',
   'packages/jiggy-reporting/justfile',
   'packages/display-model/justfile',
@@ -115,20 +116,27 @@ test('the local source task forwards explicit CI targets from outside the checko
   expect(result.stderr).not.toContain('Native preflight requires')
 })
 
-test('root build delegates the complete package graph to Jig exactly once', async () => {
+test('root build composes Jig and the selector through their owning package recipes', async () => {
   const root = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'build'])
   const jig = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'jig::build'])
   expect(root.code).toBe(0)
   expect(jig.code).toBe(0)
-  expect(root.stderr).toBe(jig.stderr)
+  const router = await run(['--justfile', join(repository, 'justfile'), '--dry-run', 'router::build'])
+  expect(router.code).toBe(0)
+  expect(root.stderr).toBe(jig.stderr + router.stderr)
+  for (const dependency of ['agent-method', 'reporting']) {
+    const index = router.stderr.indexOf(`just --justfile ../${dependency}/justfile build`)
+    expect(index).toBeGreaterThanOrEqual(0)
+    expect(index).toBeLessThan(router.stderr.indexOf('tsc -p tsconfig.json'))
+  }
   for (const dependency of ['flow-sdk', 'reporting', 'display-model'])
     expect(jig.stderr).not.toContain(`just --justfile ../${dependency}/justfile build`)
   let previous = -1
   for (const packageName of ['display-web', 'display-tui', 'agent-method', 'agent-acp']) {
     const command = `just --justfile ../${packageName}/justfile build`
-    const index = root.stderr.indexOf(command)
+    const index = jig.stderr.indexOf(command)
     expect(index).toBeGreaterThan(previous)
-    expect(root.stderr.indexOf(command, index + command.length)).toBe(-1)
+    expect(jig.stderr.indexOf(command, index + command.length)).toBe(-1)
     previous = index
   }
   expect(previous).toBeLessThan(root.stderr.indexOf('bun scripts/build-cli.ts'))

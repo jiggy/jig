@@ -64,6 +64,7 @@ semantic display model and renderers, and their qualification inputs.
 
 - [agent-method/AGENTS.md](agent-method/AGENTS.md) — Shared Agent procedure,
   bounded Skill reader, and complete ordinary Flow artifact.
+- [semantic-router/AGENTS.md](semantic-router/AGENTS.md) — Ordinary semantic selection, independent caller validation, and packaged recovery examples.
 - [agent-acp/AGENTS.md](agent-acp/AGENTS.md) — Ordinary finite native Agent
   dialogue and public ACP resource framing, without credentials or launch
   authority.

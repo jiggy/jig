@@ -79,7 +79,7 @@ if (args[0] === 'view') {
     const calls = async () => JSON.parse(await readFile(state, 'utf8')).calls
     const canonical = async ({
       eligible = false,
-      pendingPackages = ['@jigging/agent-method', '@jigging/agent-acp', '@jigging/jig'],
+      pendingPackages = ['@jigging/agent-method', '@jigging/agent-acp', '@jigging/jig', '@jigging/semantic-router'],
     } = {}) => {
       for (const [kind, name] of Object.entries(PACKAGE_LAYOUT)) {
         const directory = join(bundle, kind)
@@ -204,7 +204,7 @@ test('pending intent skips old-version collisions only for its exact immutable s
 })
 
 test('final release candidates and unrelated pending packages retain strict registry equality', async () => {
-  for (const state of [{ eligible: true }, { pendingPackages: ['@jigging/jig'] }]) {
+  for (const state of [{ eligible: true }, { pendingPackages: ['@jigging/jig', '@jigging/semantic-router'] }]) {
     await fixture(async ({ canonical, run, calls, registryArchive }) => {
       const bundle = await canonical(state)
       await writeFile(registryArchive, 'different immutable published bytes')

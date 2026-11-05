@@ -279,7 +279,7 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(ci.jobs['candidate-build'].needs).toBeUndefined()
   expect(ci.jobs['npm-candidate'].needs).toEqual(['candidate-build'])
   expect(ci.jobs['npm-candidate'].strategy.matrix).toEqual({
-    package: ['flow', 'agent', 'acp', 'jig'],
+    package: ['flow', 'agent', 'acp', 'router', 'jig'],
   })
   expect(
     ci.jobs['quick-checks'].steps.some((step: any) => step.run?.includes('just test-tooling')),
@@ -488,7 +488,7 @@ test('installed npm qualification uses tooling and frozen packages without a sou
       await writeFile(executable, `#!/bin/sh\nprintf '%s\\n' "${name} $*" >> "$SETUP_CALLS"\n`)
       await chmod(executable, 0o755)
     }
-    for (const kind of ['flow', 'agent', 'acp', 'jig']) {
+    for (const kind of ['flow', 'agent', 'acp', 'router', 'jig']) {
       const calls = join(directory, `${kind}.txt`)
       const result = spawnSync(
         '/bin/bash',
@@ -515,7 +515,7 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
   ) as any
   const candidate = ci.jobs['npm-candidate']
   const { publish_host: publish, authorize, tag_host: tag } = workflow.jobs
-  expect(candidate.strategy.matrix).toEqual({ package: ['flow', 'agent', 'acp', 'jig'] })
+  expect(candidate.strategy.matrix).toEqual({ package: ['flow', 'agent', 'acp', 'router', 'jig'] })
   expect(ci.permissions).toEqual({ contents: 'read' })
   expect(publish.permissions).toEqual({ actions: 'read', contents: 'read', 'id-token': 'write' })
   expect(publish.needs).toContain('authorize')
@@ -532,7 +532,7 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
     .toContain('sh publisher/scripts/release/publish.sh')
   const script = await Bun.file(join(root, 'scripts/release/publish.sh')).text()
   expect(publish.env.RELEASE_GROUP).toBe('host')
-  expect(script).toContain('host) package_kinds="agent acp jig"')
+  expect(script).toContain('host) package_kinds="agent acp router jig"')
   expect(script).toContain('for PREFLIGHT in true false; do')
   expect(script).toContain('registry bytes differ')
   expect(script).toContain('success.commit !== process.env.SOURCE_REVISION')
@@ -547,7 +547,7 @@ test('ordinary Agent publishing uses exact candidates and retains separate autho
     'Native Agent API qualification',
   )
   expect(tag.permissions).toEqual({ contents: 'write' })
-  for (const kind of ['agent', 'acp']) {
+  for (const kind of ['agent', 'acp', 'router']) {
     expect(publish.outputs[`${kind}_version`]).toBeDefined()
     expect(publish.outputs[`${kind}_new`]).toBeDefined()
   }

@@ -40,7 +40,7 @@ export const MERGE_JOBS = Object.freeze([
     profile: os + '/python-' + python,
     os: os.startsWith('windows') ? 'Windows' : os.startsWith('macos') ? 'macOS' : 'Linux',
   })),
-  ...['flow', 'agent', 'acp', 'jig'].map((profile) => ({
+  ...['flow', 'agent', 'acp', 'router', 'jig'].map((profile) => ({
     name: 'Build ' + profile + ' release candidate', stem: 'npm-' + profile,
     targets: ['npm-candidate'], inputs: ['canonical'], profile, os: 'Linux',
   })),

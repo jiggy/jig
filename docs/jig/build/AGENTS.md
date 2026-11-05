@@ -8,6 +8,7 @@ Teach practical applications built from code and Agent methods.
 
 Task guides own composition, Agent setup, dependencies, effects, files,
 conversations, progress, project design, collaboration, and result interpretation.
+`semantic-routing.md` owns reusable semantic selection and application-owned checkpoint recovery composition.
 `results.md` explains live application maps alongside observed calls, without implying sequence, branch evaluation, or saved invocation history.
 It also owns the pre-run explorer guide, explicit input and launch steps, supported interfaces, and separate Close meanings.
 `../reference/troubleshooting.md` owns operational diagnosis and recovery procedures.

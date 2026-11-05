@@ -13,6 +13,14 @@
           123117157565,
           123117157639
         ]
+      },
+      {
+        "run": 41994879888,
+        "attempt": 1,
+        "source": "a6e1c96dee258584554b6d7824a75331763c794f",
+        "jobs": [
+          127136101227
+        ]
       }
     ],
     "macos": [
@@ -47,6 +55,16 @@
           "arm64": [
             123117917586,
             123117917737
+          ]
+        }
+      },
+      {
+        "run": 41994879906,
+        "attempt": 1,
+        "source": "a6e1c96dee258584554b6d7824a75331763c794f",
+        "jobs": {
+          "arm64": [
+            127137163077
           ]
         }
       }
@@ -96,6 +114,7 @@
       "packages/jig/test/host/installed-kitchen-roster.test.ts": 28,
       "packages/jig/test/host/installed-package-provider.test.ts": 63,
       "packages/jig/test/host/installed-photo-organiser.test.ts": 22,
+      "packages/jig/test/host/installed-semantic-recovery.test.ts": 150,
       "packages/jig/test/host/installed-software-factory-blocked.test.ts": 31,
       "packages/jig/test/host/installed-software-factory.test.ts": 62,
       "packages/jig/test/host/installed-support-case.test.ts": 34,
@@ -387,6 +406,7 @@
       "packages/jig/test/host/installed-kitchen-roster.test.ts": 30,
       "packages/jig/test/host/installed-package-provider.test.ts": 70,
       "packages/jig/test/host/installed-photo-organiser.test.ts": 32,
+      "packages/jig/test/host/installed-semantic-recovery.test.ts": 178,
       "packages/jig/test/host/installed-software-factory-blocked.test.ts": 36,
       "packages/jig/test/host/installed-software-factory.test.ts": 88,
       "packages/jig/test/host/installed-support-case.test.ts": 37,

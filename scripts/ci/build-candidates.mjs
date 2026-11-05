@@ -112,6 +112,17 @@ export async function inspectArchive(archive, expectedName, run = execute) {
     for (const member of ['FLOW.ts', 'FLOW.contract.json', 'src/flow.ts', 'dist/flow.js'])
       if (!inventory.includes(`package/${member}`)) throw new Error(`Candidate omits ${member}`)
   }
+  if (expectedName === '@jigging/semantic-router') {
+    for (const member of [
+      'FLOW.ts', 'FLOW.meta.json', 'FLOW.contract.json', 'dist/flow.js', 'dist/index.js',
+      'dist/index.d.ts', 'contracts/agent-run/contract.json',
+      'contracts/agent-run/contracts/acp-public-updates.json',
+      'contracts/agent-run/contracts/agent-commands.json',
+      'contracts/agent-run/contracts/agent-replies.json',
+      'contracts/reporting/reporting.json',
+    ])
+      if (!inventory.includes(`package/${member}`)) throw new Error(`Candidate omits ${member}`)
+  }
   return { manifest, inventory }
 }
 
@@ -173,6 +184,7 @@ export async function buildCandidates(
       options,
     )
     run(tools.just, ['--justfile', join(source, 'packages/jig/justfile'), 'build'], options)
+    run(tools.just, ['--justfile', join(source, 'packages/semantic-router/justfile'), 'build'], options)
     await mkdir(join(staging, 'resolution'))
     await copyFile(join(source, 'bun.lock'), join(staging, 'resolution/bun.lock'))
     const checksums = []

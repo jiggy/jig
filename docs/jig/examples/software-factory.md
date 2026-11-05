@@ -218,7 +218,7 @@ Selection on `progress`, showing task, eligible candidates and a validated
 choice or abstention. Both use the same portable profile as the factory’s views.
 
 The
-[Semantic Router source package](https://github.com/jiggy/jig/tree/main/examples/software-factory/flows/router)
+[Semantic Router source package](https://github.com/jiggy/jig/tree/main/packages/semantic-router)
 is independently reusable. It accepts only task text and a bounded candidate
 list, and uses the ordinary Agent contract. It returns a supplied ID with a
 reason, or null for abstention. Candidate IDs and descriptions are data, not

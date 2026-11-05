@@ -4,6 +4,7 @@
 
 mod agent "packages/agent-method/justfile"
 mod acp "packages/agent-acp/justfile"
+mod router "packages/semantic-router/justfile"
 mod reporting "packages/reporting/justfile"
 mod python_reporting "packages/jiggy-reporting/justfile"
 mod display_model "packages/display-model/justfile"
@@ -21,7 +22,7 @@ mod site "site/justfile"
     just --list --list-submodules
 
 # Build the TypeScript packages
-build: jig::build
+build: jig::build router::build
 
 # Format only the requested paths, or the repository when omitted
 [positional-arguments]

@@ -265,36 +265,8 @@ test('a passing worker report stays provisional after independent evidence valid
   expect(JSON.stringify(row.details)).not.toContain('Passed; independently verified')
 })
 
-test('standalone repair and generic router publish ordinary bounded views without dispatch claims', async () => {
+test('standalone repair publishes ordinary bounded views', async () => {
   const { repairView, checksView: repairChecks } = await import('../flows/repair/dashboard.ts')
-  const { selectionView, selectionViewOptions } = await import('../flows/router/dashboard.ts')
-  const { routingInput } = await import('../flows/router/decision.ts')
   for (const view of [repairView(input), repairChecks()])
     validateReportingMessage({ kind: 'view', id: 'standalone', title: 'Standalone', ...view })
-  const request = routingInput({
-    task: 'Choose a suitable prose method. ' + '\u0001'.repeat(1024),
-    candidates: Array.from({ length: 16 }, (_, index) => ({
-      id: `method-${index}`,
-      description: '\u0001'.repeat(192),
-    })),
-  })
-  const item = validateReportingMessage({
-    kind: 'view',
-    id: 'selection',
-    ...selectionViewOptions(request),
-    ...selectionView(request, {
-      outcome: 'done',
-      output: { candidateId: null, reason: 'No suitable method.' },
-    }),
-  }) as any
-  expect(item.sections[0].blocks[1].rows).toHaveLength(8)
-  expect(item.sections[0].blocks[1].total).toBe(16)
-  expect(item.summary).toContain('No fallback or dispatch')
-  expect(item.sections[0].blocks[1].rows[0].details[0].text).toBe(
-    request.candidates[0]!.description,
-  )
-  expect(item.sections[0].blocks[1].rows[0].cells.description).toBe(
-    request.candidates[0]!.description,
-  )
-  expect(item.target.definitionId).toBe('candidate-selection')
 })

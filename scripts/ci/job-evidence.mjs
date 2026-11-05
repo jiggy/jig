@@ -225,6 +225,7 @@ export async function observedCount({
       flow: '@jigging/flow',
       agent: '@jigging/agent-method',
       acp: '@jigging/agent-acp',
+      router: '@jigging/semantic-router',
       jig: '@jigging/jig',
     }
     if (
@@ -243,6 +244,7 @@ export async function observedCount({
       flow: ['package-smoke', 'npm-install-import'],
       agent: ['npm-install-import', 'installed-flow-invalid-input'],
       acp: ['npm-install-import', 'installed-flow-invalid-input'],
+      router: ['npm-install-import', 'installed-flow-invalid-input'],
       jig: [
         'display-model-package-smoke',
         'display-web-package-smoke',

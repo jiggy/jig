@@ -27,7 +27,7 @@ try {
   // Ensure even a source without pending intent exercises actual version generation.
   await writeFile(
     join(source, '.changeset/registry-rehearsal.md'),
-    '---\n"@jigging/agent-method": patch\n"@jigging/agent-acp": patch\n"@jigging/jig": patch\n---\n\nExercise the release path in a disposable registry.\n',
+    '---\n"@jigging/agent-method": patch\n"@jigging/agent-acp": patch\n"@jigging/semantic-router": patch\n"@jigging/jig": patch\n---\n\nExercise the release path in a disposable registry.\n',
     { flag: 'wx' },
   )
   git(source, ['add', '.changeset/registry-rehearsal.md'])
@@ -53,7 +53,7 @@ try {
   }
   // Seed qualification dependencies into this registry only. No production selector changes.
   for (const pkg of receipt.packages.filter(
-    ({ kind }) => !['agent-method', 'agent-acp', 'jig'].includes(kind),
+    ({ kind }) => !['agent-method', 'agent-acp', 'semantic-router', 'jig'].includes(kind),
   ))
     await npm(
       'publish',

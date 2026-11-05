@@ -1,0 +1,14 @@
+{
+  "name": "recover-draft-recovery",
+  "description": "Evaluate, recover, repair and select one permitted fallback.",
+  "uses": {
+    "primary": {},
+    "evaluate": {},
+    "repair": {},
+    "selector": {},
+    "finish": {},
+    "checkpoint": {
+      "contract": "./contracts/child-checkpoint/contract.json"
+    }
+  }
+}

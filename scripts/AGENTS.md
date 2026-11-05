@@ -120,15 +120,16 @@ operational baselines, and public-site assembly.
   Refuse missing Python build/test tools before builds and long tests.
 
   CI supplies the
-  verified canonical eight-package bundle through `CI_CANDIDATE_BUNDLE`. Local
+  verified canonical nine-package bundle through `CI_CANDIDATE_BUNDLE`. Local
   runs freeze the exact public SDK archive alongside reporting, HTTP Agent, ACP
-  Agent, semantic model, web/TUI renderer and Jig archives.
+  Agent, semantic selector, semantic model, web/TUI renderer and Jig archives.
 
   Local packers and the public SDK fetch place archives under a canonical
   temporary root.
   Source workspace builds remain separate from installed archive proof. It
   passes `FLOW_SDK_PACKAGE_ARCHIVE`, `REPORTING_PACKAGE_ARCHIVE`,
   `AGENT_METHOD_PACKAGE_ARCHIVE`, `AGENT_ACP_PACKAGE_ARCHIVE`,
+  `SEMANTIC_ROUTER_PACKAGE_ARCHIVE`,
   `JIG_PACKAGE_ARCHIVE`, `DISPLAY_MODEL_PACKAGE_ARCHIVE`,
   `DISPLAY_WEB_PACKAGE_ARCHIVE` and `DISPLAY_TUI_PACKAGE_ARCHIVE` to the
   relevant tests, and verifies those bytes afterward. With the canonical CI
