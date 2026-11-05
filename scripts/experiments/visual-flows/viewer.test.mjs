@@ -12,28 +12,33 @@ const example = graph => ({ title: 'Example', graph })
 const small = () => ({ nodes: [{ id: 'a', kind: 'node', label: 'A' }], edges: [], warnings: [] })
 
 function embeddedData(html) {
-  const match = html.match(/<script id="graph-data" type="application\/json">([\s\S]*?)<\/script>/u)
+  const match = html.match(/<script id="graph-data" type="application\/json">([\s\S]*?)<\/script>/iu)
   assert.ok(match, 'one inert graph-data block is present')
   return { encoded: match[1], decoded: JSON.parse(match[1]) }
 }
 
 test('hostile labels and titles remain inert JSON and escaped title text', () => {
-  const hostile = '</script><script>globalThis.injection = true</script><img src=x onerror=alert(1)> & " \u2028 \u2029'
-  const graph = small()
-  graph.nodes[0].label = hostile
-  const items = [{ title: hostile, summary: hostile, graph }]
-  const html = renderExplorer({ title: hostile, graphs: items })
-  const data = embeddedData(html)
-  assert.deepEqual(data.decoded, items)
-  assert.equal(/[<>&\u2028\u2029]/u.test(data.encoded), false)
-  assert.equal(html.includes('<script>globalThis.injection'), false)
-  assert.ok(html.includes('<title>&lt;/script&gt;&lt;script&gt;'))
-  assert.equal([...html.matchAll(/<script(?:\s[^>]*)?>/gu)].length, 2)
+  const payloads = [
+    '</script><script>globalThis.injection = true</script><img src=x onerror=alert(1)> & " \u2028 \u2029',
+    '</ScRiPt><SCRIPT>globalThis.injection = true</SCRIPT><IMG src=x onerror=alert(1)> & " \u2028 \u2029',
+  ]
+  for (const hostile of payloads) {
+    const graph = small()
+    graph.nodes[0].label = hostile
+    const items = [{ title: hostile, summary: hostile, graph }]
+    const html = renderExplorer({ title: hostile, graphs: items })
+    const data = embeddedData(html)
+    assert.deepEqual(data.decoded, items)
+    assert.equal(/[<>&\u2028\u2029]/u.test(data.encoded), false)
+    assert.equal(html.toLowerCase().includes('<script>globalthis.injection'), false)
+    assert.ok(html.toLowerCase().includes('<title>&lt;/script&gt;&lt;script&gt;'))
+    assert.equal([...html.matchAll(/<script(?:\s[^>]*)?>/giu)].length, 2)
+  }
 })
 
 test('generated executable script parses, including the exact shared helpers', () => {
   const html = renderExplorer({ graphs: [example(sley), example(small())] })
-  const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/gu)]
+  const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/giu)]
   const executable = scripts.filter(match => !match[1].includes('application/json'))
   assert.equal(executable.length, 1)
   assert.doesNotThrow(() => new Script(executable[0][2], { filename: 'generated-explorer.js' }))

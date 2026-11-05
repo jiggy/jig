@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Standalone research command. This is not a Jig CLI command or runtime API. */
-import { readFile, mkdir, writeFile, stat } from 'node:fs/promises'
+import { constants } from 'node:fs'
+import { mkdir, open, writeFile } from 'node:fs/promises'
 import { basename, dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { projectGraph } from './lock-graph.mjs'
@@ -51,9 +52,22 @@ export function parseArguments(argv) {
 }
 
 async function readJson(path) {
-  const metadata = await stat(path)
-  if (!metadata.isFile() || metadata.size > 8 * 1024 * 1024) throw new Error('JSON input must be a regular file under 8 MiB.')
-  return JSON.parse(await readFile(path, 'utf8'))
+  const maximum = 8 * 1024 * 1024
+  // Nonblocking open lets POSIX reject a FIFO without waiting for a writer.
+  const handle = await open(path, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0))
+  try {
+    const metadata = await handle.stat()
+    if (!metadata.isFile() || metadata.size > maximum) throw new Error('JSON input must be a regular file at most 8 MiB.')
+    const buffer = Buffer.alloc(maximum + 1)
+    let size = 0
+    while (size < buffer.length) {
+      const { bytesRead } = await handle.read(buffer, size, buffer.length - size, size)
+      if (bytesRead === 0) break
+      size += bytesRead
+    }
+    if (size > maximum) throw new Error('JSON input must be a regular file at most 8 MiB.')
+    return JSON.parse(buffer.toString('utf8', 0, size))
+  } finally { await handle.close() }
 }
 
 export async function buildExamples(directory, { sley, revision } = {}) {
