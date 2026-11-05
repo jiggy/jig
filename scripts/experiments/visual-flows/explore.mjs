@@ -79,9 +79,9 @@ export async function buildExamples(directory, { sley, revision } = {}) {
   if (sley) {
     const graph = await readJson(sley)
     graphs.push({
-      id: 'sley-review-loop', title: 'A loop you can inspect',
-      subtitle: 'Runtime topology + 3 actual runs',
-      summary: 'Sley reports a declared graph with a revision loop and scope exits. Select a recorded probe run to see actual handler entries.',
+      id: 'sley-review-loop', title: 'Review pipeline',
+      subtitle: 'Runtime topology + ' + (Array.isArray(graph.runs) ? graph.runs.length : 0) + ' recorded cases',
+      summary: 'Explore a review process that can revise a draft, accept it, or request review. Recorded cases show the evaluated conditions and changing state.',
       graph,
     })
   }

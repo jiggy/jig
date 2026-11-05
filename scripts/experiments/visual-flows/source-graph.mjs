@@ -3,7 +3,7 @@ import { lstat, open, readdir, realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const LIMITS = Object.freeze({ bytes: 512 * 1024, totalBytes: 8 * 1024 * 1024, files: 512, entries: 4096, tokens: 100000, depth: 64, nodes: 4096, edges: 8192 })
+const LIMITS = Object.freeze({ bytes: 512 * 1024, totalBytes: 8 * 1024 * 1024, files: 512, entries: 4096, tokens: 100000, depth: 64, nodes: 4096, edges: 8192, descriptionBytes: 4096 })
 const LOCAL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const FLOW_ENTRYPOINT = /^FLOW\.[a-z0-9]{1,16}(?![\s\S])/
 const GRANT_KINDS = new Set(['acp', 'http', 'command', 'evaluation'])
@@ -273,6 +273,14 @@ export async function extractSourceGraph(directory, { root: selectedRoot, invent
   const project = parseAuthoredModule(await reader.read('jig.ts'), { file: 'jig.ts', helper: 'defineJig' })
   const nodes = new Map(), edges = [], warnings = [], bindings = new Map(), metadata = new Map(), grants = new Map()
   const warn = (code, message, node, slot) => warnings.push({ code, ...(node ? { node } : {}), ...(slot ? { slot } : {}), message })
+  function descriptionFields(info, node) {
+    if (!info || !Object.hasOwn(info, 'description')) return {}
+    if (typeof info.description !== 'string' || Buffer.byteLength(info.description) > LIMITS.descriptionBytes) {
+      warn('INVALID_PACKAGE_DESCRIPTION', `Authored package description omitted: expected a string of at most ${LIMITS.descriptionBytes} UTF-8 bytes`, node)
+      return {}
+    }
+    return { description: info.description, descriptionSource: 'package-metadata' }
+  }
   function addNode(node) {
     if (!nodes.has(node.id)) nodes.set(node.id, node)
     if (nodes.size > LIMITS.nodes) throw new Error('Graph node limit exceeded')
@@ -319,7 +327,7 @@ export async function extractSourceGraph(directory, { root: selectedRoot, invent
   for (const packageName of flowMembers) {
     const info = await meta(packageName)
     const id = `flow:${packageName}`
-    addNode({ id, kind: 'flow', label: typeof info?.name === 'string' ? info.name : packageName, packagePath: packageName, ...(info ? { location: { path: `${packageName}/FLOW.meta.json`, line: 1 } } : { reason: 'Package metadata is unavailable; implementation is opaque' }) })
+    addNode({ id, kind: 'flow', label: typeof info?.name === 'string' ? info.name : packageName, packagePath: packageName, ...descriptionFields(info, id), ...(info ? { location: { path: `${packageName}/FLOW.meta.json`, line: 1 } } : { reason: 'Package metadata is unavailable; implementation is opaque' }) })
     if (!info) warn('OPAQUE_PACKAGE', 'Package metadata is unavailable; no internal requirements are inferred', id)
   }
   for (const member of await members('bindings')) {
@@ -331,7 +339,7 @@ export async function extractSourceGraph(directory, { root: selectedRoot, invent
       if (parsed.value.slots !== undefined && (!object(parsed.value.slots) || Object.keys(parsed.value.slots).length > 256)) throw new Error('Unsupported slots')
       bindings.set(id, { ...parsed, packageName })
       const info = await meta(packageName)
-      addNode({ id, kind: 'binding', label: name, packagePath: packageName, location: parsed.locations.get(''), ...(!info ? { reason: 'Package metadata is unavailable; implementation is opaque' } : {}) })
+      addNode({ id, kind: 'binding', label: name, packagePath: packageName, ...descriptionFields(info, id), location: parsed.locations.get(''), ...(!info ? { reason: 'Package metadata is unavailable; implementation is opaque' } : {}) })
       if (!info) warn('OPAQUE_PACKAGE', 'Package metadata is unavailable; authored slots are shown without checking the implementation', id)
     } catch (error) {
       bindings.set(id, undefined)

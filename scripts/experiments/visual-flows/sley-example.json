@@ -7,6 +7,12 @@
       "id": "sley:element:1",
       "label": "Review pipeline",
       "kind": "flow",
+      "description": "Runs the local decision example and returns a done or needs-review value.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "compiled"
+      },
       "scopeId": null,
       "ownedScopeId": "sley:scope:1",
       "declaredExits": [],
@@ -17,6 +23,12 @@
       "id": "sley:element:2",
       "label": "Choose route",
       "kind": "node",
+      "description": "Reads the reject flag and emits reject or draft without changing the probe state.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "choose"
+      },
       "scopeId": "sley:scope:1",
       "maxAttempts": 1
     },
@@ -24,6 +36,12 @@
       "id": "sley:element:3",
       "label": "Draft / check loop",
       "kind": "flow",
+      "description": "Groups Draft and Check with declared accepted and exhausted scope exits.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "improvement"
+      },
       "scopeId": "sley:scope:1",
       "ownedScopeId": "sley:scope:2",
       "declaredExits": [
@@ -37,6 +55,12 @@
       "id": "sley:element:4",
       "label": "Request review",
       "kind": "node",
+      "description": "Returns the needs-review value and attempt count from this local example.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "refuse"
+      },
       "scopeId": "sley:scope:1",
       "maxAttempts": 1
     },
@@ -44,6 +68,12 @@
       "id": "sley:element:5",
       "label": "Publish result",
       "kind": "node",
+      "description": "Returns the done value and attempt count locally. It performs no external publication.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "publish"
+      },
       "scopeId": "sley:scope:1",
       "maxAttempts": 1
     },
@@ -51,6 +81,12 @@
       "id": "sley:element:6",
       "label": "Draft",
       "kind": "node",
+      "description": "Increments the attempt count and emits check.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "draft"
+      },
       "scopeId": "sley:scope:2",
       "maxAttempts": 1
     },
@@ -58,6 +94,12 @@
       "id": "sley:element:7",
       "label": "Check",
       "kind": "node",
+      "description": "Checks the acceptance threshold first. If acceptance is false, checks the attempt limit before emitting exhausted or revise.",
+      "descriptionSource": "probe-authored",
+      "source": {
+        "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+        "symbol": "check"
+      },
       "scopeId": "sley:scope:2",
       "maxAttempts": 1
     }
@@ -165,6 +207,12 @@
       },
       "status": "completed",
       "outcome": "done",
+      "hasOutput": true,
+      "output": {
+        "outcome": "done",
+        "attempts": 2
+      },
+      "summary": "Returned done after 2 draft attempts. Acceptance passed at attempt 2 (limit 3); no limit evaluation was recorded for that check.",
       "nodeCounts": {
         "sley:element:2": 1,
         "sley:element:4": 0,
@@ -175,39 +223,198 @@
       "observations": [
         {
           "index": 1,
+          "occurrenceId": "occurrence:1",
           "nodeId": "sley:element:2",
           "kind": "handler-enter",
-          "label": "Choose route"
+          "label": "Choose route",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 2,
+            "limit": 3
+          },
+          "conditions": [
+            {
+              "id": "route.reject",
+              "label": "Input rejects drafting",
+              "expression": "state.reject",
+              "values": {
+                "reject": false
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "choose"
+          },
+          "action": "draft",
+          "after": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 2,
+            "limit": 3
+          }
         },
         {
           "index": 2,
+          "occurrenceId": "occurrence:2",
           "nodeId": "sley:element:6",
           "kind": "handler-enter",
-          "label": "Draft"
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 2,
+            "limit": 3
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 3
+          }
         },
         {
           "index": 3,
+          "occurrenceId": "occurrence:3",
           "nodeId": "sley:element:7",
           "kind": "handler-enter",
-          "label": "Check"
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 3
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 1,
+                "acceptAfter": 2
+              },
+              "result": false
+            },
+            {
+              "id": "check.limit",
+              "label": "Attempt limit reached",
+              "expression": "state.attempts >= state.limit",
+              "values": {
+                "attempts": 1,
+                "limit": 3
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "revise",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 3
+          }
         },
         {
           "index": 4,
+          "occurrenceId": "occurrence:4",
           "nodeId": "sley:element:6",
           "kind": "handler-enter",
-          "label": "Draft"
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 3
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 3
+          }
         },
         {
           "index": 5,
+          "occurrenceId": "occurrence:5",
           "nodeId": "sley:element:7",
           "kind": "handler-enter",
-          "label": "Check"
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 3
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 2,
+                "acceptAfter": 2
+              },
+              "result": true
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "accepted",
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 3
+          }
         },
         {
           "index": 6,
+          "occurrenceId": "occurrence:6",
           "nodeId": "sley:element:5",
           "kind": "handler-enter",
-          "label": "Publish result"
+          "label": "Publish result",
+          "before": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 3
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "publish"
+          },
+          "terminal": {
+            "outcome": "done",
+            "attempts": 2
+          },
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 3
+          }
         }
       ],
       "transitionEvidence": "unavailable",
@@ -244,6 +451,12 @@
       },
       "status": "completed",
       "outcome": "needs-review",
+      "hasOutput": true,
+      "output": {
+        "outcome": "needs-review",
+        "attempts": 2
+      },
+      "summary": "Returned needs-review after 2 draft attempts. At attempt 2, acceptance was false and the limit condition was true.",
       "nodeCounts": {
         "sley:element:2": 1,
         "sley:element:4": 1,
@@ -254,39 +467,208 @@
       "observations": [
         {
           "index": 1,
+          "occurrenceId": "occurrence:1",
           "nodeId": "sley:element:2",
           "kind": "handler-enter",
-          "label": "Choose route"
+          "label": "Choose route",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 5,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "route.reject",
+              "label": "Input rejects drafting",
+              "expression": "state.reject",
+              "values": {
+                "reject": false
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "choose"
+          },
+          "action": "draft",
+          "after": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 5,
+            "limit": 2
+          }
         },
         {
           "index": 2,
+          "occurrenceId": "occurrence:2",
           "nodeId": "sley:element:6",
           "kind": "handler-enter",
-          "label": "Draft"
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 5,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 5,
+            "limit": 2
+          }
         },
         {
           "index": 3,
+          "occurrenceId": "occurrence:3",
           "nodeId": "sley:element:7",
           "kind": "handler-enter",
-          "label": "Check"
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 5,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 1,
+                "acceptAfter": 5
+              },
+              "result": false
+            },
+            {
+              "id": "check.limit",
+              "label": "Attempt limit reached",
+              "expression": "state.attempts >= state.limit",
+              "values": {
+                "attempts": 1,
+                "limit": 2
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "revise",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 5,
+            "limit": 2
+          }
         },
         {
           "index": 4,
+          "occurrenceId": "occurrence:4",
           "nodeId": "sley:element:6",
           "kind": "handler-enter",
-          "label": "Draft"
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 5,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 5,
+            "limit": 2
+          }
         },
         {
           "index": 5,
+          "occurrenceId": "occurrence:5",
           "nodeId": "sley:element:7",
           "kind": "handler-enter",
-          "label": "Check"
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 5,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 2,
+                "acceptAfter": 5
+              },
+              "result": false
+            },
+            {
+              "id": "check.limit",
+              "label": "Attempt limit reached",
+              "expression": "state.attempts >= state.limit",
+              "values": {
+                "attempts": 2,
+                "limit": 2
+              },
+              "result": true
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "exhausted",
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 5,
+            "limit": 2
+          }
         },
         {
           "index": 6,
+          "occurrenceId": "occurrence:6",
           "nodeId": "sley:element:4",
           "kind": "handler-enter",
-          "label": "Request review"
+          "label": "Request review",
+          "before": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 5,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "refuse"
+          },
+          "terminal": {
+            "outcome": "needs-review",
+            "attempts": 2
+          },
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 5,
+            "limit": 2
+          }
         }
       ],
       "transitionEvidence": "unavailable",
@@ -323,6 +705,12 @@
       },
       "status": "completed",
       "outcome": "needs-review",
+      "hasOutput": true,
+      "output": {
+        "outcome": "needs-review",
+        "attempts": 0
+      },
+      "summary": "Returned needs-review after 0 draft attempts. The reject condition was true.",
       "nodeCounts": {
         "sley:element:2": 1,
         "sley:element:4": 1,
@@ -333,15 +721,66 @@
       "observations": [
         {
           "index": 1,
+          "occurrenceId": "occurrence:1",
           "nodeId": "sley:element:2",
           "kind": "handler-enter",
-          "label": "Choose route"
+          "label": "Choose route",
+          "before": {
+            "reject": true,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "route.reject",
+              "label": "Input rejects drafting",
+              "expression": "state.reject",
+              "values": {
+                "reject": true
+              },
+              "result": true
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "choose"
+          },
+          "action": "reject",
+          "after": {
+            "reject": true,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 2
+          }
         },
         {
           "index": 2,
+          "occurrenceId": "occurrence:2",
           "nodeId": "sley:element:4",
           "kind": "handler-enter",
-          "label": "Request review"
+          "label": "Request review",
+          "before": {
+            "reject": true,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "refuse"
+          },
+          "terminal": {
+            "outcome": "needs-review",
+            "attempts": 0
+          },
+          "after": {
+            "reject": true,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 2
+          }
         }
       ],
       "transitionEvidence": "unavailable",
@@ -366,6 +805,423 @@
           }
         ]
       }
+    },
+    {
+      "id": "accepted-first-attempt",
+      "label": "Accepted on first attempt",
+      "input": {
+        "reject": false,
+        "attempts": 0,
+        "acceptAfter": 1,
+        "limit": 3
+      },
+      "status": "completed",
+      "outcome": "done",
+      "hasOutput": true,
+      "output": {
+        "outcome": "done",
+        "attempts": 1
+      },
+      "summary": "Returned done after 1 draft attempt. Acceptance passed at attempt 1 (limit 3); no limit evaluation was recorded for that check.",
+      "nodeCounts": {
+        "sley:element:2": 1,
+        "sley:element:4": 0,
+        "sley:element:5": 1,
+        "sley:element:6": 1,
+        "sley:element:7": 1
+      },
+      "observations": [
+        {
+          "index": 1,
+          "occurrenceId": "occurrence:1",
+          "nodeId": "sley:element:2",
+          "kind": "handler-enter",
+          "label": "Choose route",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 3
+          },
+          "conditions": [
+            {
+              "id": "route.reject",
+              "label": "Input rejects drafting",
+              "expression": "state.reject",
+              "values": {
+                "reject": false
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "choose"
+          },
+          "action": "draft",
+          "after": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 3
+          }
+        },
+        {
+          "index": 2,
+          "occurrenceId": "occurrence:2",
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 1,
+            "limit": 3
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 1,
+            "limit": 3
+          }
+        },
+        {
+          "index": 3,
+          "occurrenceId": "occurrence:3",
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 1,
+            "limit": 3
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 1,
+                "acceptAfter": 1
+              },
+              "result": true
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "accepted",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 1,
+            "limit": 3
+          }
+        },
+        {
+          "index": 4,
+          "occurrenceId": "occurrence:4",
+          "nodeId": "sley:element:5",
+          "kind": "handler-enter",
+          "label": "Publish result",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 1,
+            "limit": 3
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "publish"
+          },
+          "terminal": {
+            "outcome": "done",
+            "attempts": 1
+          },
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 1,
+            "limit": 3
+          }
+        }
+      ],
+      "transitionEvidence": "unavailable",
+      "result": {
+        "status": "completed",
+        "state": {
+          "reject": false,
+          "attempts": 1,
+          "acceptAfter": 1,
+          "limit": 3
+        },
+        "terminals": [
+          {
+            "type": "end",
+            "sequence": 2,
+            "sourceActivationId": 6,
+            "hasOutput": true,
+            "output": {
+              "outcome": "done",
+              "attempts": 1
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "accepted-at-limit",
+      "label": "Accepted at the attempt limit",
+      "input": {
+        "reject": false,
+        "attempts": 0,
+        "acceptAfter": 2,
+        "limit": 2
+      },
+      "status": "completed",
+      "outcome": "done",
+      "hasOutput": true,
+      "output": {
+        "outcome": "done",
+        "attempts": 2
+      },
+      "summary": "Returned done after 2 draft attempts. Acceptance passed at attempt 2 (limit 2); no limit evaluation was recorded for that check.",
+      "nodeCounts": {
+        "sley:element:2": 1,
+        "sley:element:4": 0,
+        "sley:element:5": 1,
+        "sley:element:6": 2,
+        "sley:element:7": 2
+      },
+      "observations": [
+        {
+          "index": 1,
+          "occurrenceId": "occurrence:1",
+          "nodeId": "sley:element:2",
+          "kind": "handler-enter",
+          "label": "Choose route",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 2,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "route.reject",
+              "label": "Input rejects drafting",
+              "expression": "state.reject",
+              "values": {
+                "reject": false
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "choose"
+          },
+          "action": "draft",
+          "after": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 2,
+            "limit": 2
+          }
+        },
+        {
+          "index": 2,
+          "occurrenceId": "occurrence:2",
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 0,
+            "acceptAfter": 2,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 2
+          }
+        },
+        {
+          "index": 3,
+          "occurrenceId": "occurrence:3",
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 1,
+                "acceptAfter": 2
+              },
+              "result": false
+            },
+            {
+              "id": "check.limit",
+              "label": "Attempt limit reached",
+              "expression": "state.attempts >= state.limit",
+              "values": {
+                "attempts": 1,
+                "limit": 2
+              },
+              "result": false
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "revise",
+          "after": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 2
+          }
+        },
+        {
+          "index": 4,
+          "occurrenceId": "occurrence:4",
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft",
+          "before": {
+            "reject": false,
+            "attempts": 1,
+            "acceptAfter": 2,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "draft"
+          },
+          "action": "check",
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 2
+          }
+        },
+        {
+          "index": 5,
+          "occurrenceId": "occurrence:5",
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check",
+          "before": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 2
+          },
+          "conditions": [
+            {
+              "id": "check.acceptance",
+              "label": "Acceptance threshold reached",
+              "expression": "state.attempts >= state.acceptAfter",
+              "values": {
+                "attempts": 2,
+                "acceptAfter": 2
+              },
+              "result": true
+            }
+          ],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "check"
+          },
+          "action": "accepted",
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 2
+          }
+        },
+        {
+          "index": 6,
+          "occurrenceId": "occurrence:6",
+          "nodeId": "sley:element:5",
+          "kind": "handler-enter",
+          "label": "Publish result",
+          "before": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 2
+          },
+          "conditions": [],
+          "source": {
+            "path": "scripts/experiments/visual-flows/sley-probe.mjs",
+            "symbol": "publish"
+          },
+          "terminal": {
+            "outcome": "done",
+            "attempts": 2
+          },
+          "after": {
+            "reject": false,
+            "attempts": 2,
+            "acceptAfter": 2,
+            "limit": 2
+          }
+        }
+      ],
+      "transitionEvidence": "unavailable",
+      "result": {
+        "status": "completed",
+        "state": {
+          "reject": false,
+          "attempts": 2,
+          "acceptAfter": 2,
+          "limit": 2
+        },
+        "terminals": [
+          {
+            "type": "end",
+            "sequence": 2,
+            "sourceActivationId": 8,
+            "hasOutput": true,
+            "output": {
+              "outcome": "done",
+              "attempts": 2
+            }
+          }
+        ]
+      }
     }
   ],
   "warnings": [
@@ -379,7 +1235,7 @@
     },
     {
       "code": "NO_TRANSITION_TRACE",
-      "message": "Sley has no public transition event API. Counts and ordered handler entries come from this probe. No edge traversal was inferred from adjacent observations."
+      "message": "Sley has no public transition event API. Handler entries, state snapshots, evaluated conditions, emitted actions and terminal requests come from this probe instrumentation. No edge traversal was inferred."
     },
     {
       "code": "NOT_FLOW_HOST_EVIDENCE",
@@ -390,7 +1246,7 @@
     "producer": "sley-probe.mjs",
     "api": "@jigging/sley: Flow.compile().describe(), CompiledFlow.start().result()",
     "descriptionSchemaVersion": 1,
-    "observationMethod": "All five probe handlers record their own entry. Unique names map those handlers to one compiled snapshot. Observation indices are not runtime activation IDs.",
+    "observationMethod": "All five probe handlers record their own entry, detached before/after state, evaluated conditions and successful emit/end calls. Only conditions actually evaluated are recorded. Unique names map handlers to one compiled snapshot. Indices and occurrence IDs are local to each run, not runtime activation IDs. These records do not establish runtime transitions or external effects.",
     "originalVerification": {
       "repository": "https://github.com/jiggy/sley",
       "commit": "dc3600ae6c0c0bcab9ceb11b761026f8b1b28c4a",
@@ -403,9 +1259,13 @@
     },
     "checks": {
       "handlersDuringInspection": 0,
-      "scenariosPassed": 3,
+      "scenariosPassed": 5,
       "descriptionDetached": true,
-      "descriptionStableAcrossRuns": true
+      "descriptionStableAcrossRuns": true,
+      "inputUnchanged": true,
+      "snapshotsDetachedAndFrozen": true,
+      "acceptanceAtLimitVerified": true,
+      "shortCircuitedConditionsAbsent": true
     }
   }
 }

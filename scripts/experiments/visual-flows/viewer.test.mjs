@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 import { Script } from 'node:vm'
 import { projectGraph } from './lock-graph.mjs'
-import { displayNodeKind, edgeLabel, evidenceText, graphRoots, isRuntimeGraph, layoutGraph, nodeSource, renderExplorer, scopeExits } from './viewer.mjs'
+import { componentSelection, defaultGraphIndex, displayNodeKind, edgeLabel, evidenceText, graphRoots, isRuntimeGraph, layoutGraph, nodeSource, preserveCaseSelection, renderExplorer, scopeExits, selectedCaseObservation, selectedInvestigationContext } from './viewer.mjs'
 
 const sley = JSON.parse(await readFile(new URL('./sley-example.json', import.meta.url), 'utf8'))
 const digest = `sha256:${'a'.repeat(64)}`
@@ -53,6 +53,9 @@ test('generated executable script parses, including the exact shared helpers', (
     assert.equal(executable.length, 1)
     assert.doesNotThrow(() => new Script(executable[0][2], { filename: 'generated-explorer.js' }))
     assert.ok(executable[0][2].includes(layoutGraph.toString()))
+    assert.ok(executable[0][2].includes(componentSelection.toString()))
+    assert.ok(executable[0][2].includes(selectedCaseObservation.toString()))
+    assert.ok(executable[0][2].includes(selectedInvestigationContext.toString()))
   }
   // Syntax and pure geometry checks are not browser execution or visual QA.
 })
@@ -197,4 +200,134 @@ test('empty inventories render an empty bounded graph rather than crashing layou
   assert.equal(layoutGraph(graph).positions.size, 0)
   assert.ok(layoutGraph(graph).dimensions.width > 0)
   assert.doesNotThrow(() => renderExplorer({ graphs: [example(graph)] }))
+})
+
+test('the initial application is selected by retained runtime cases, independently of labels', () => {
+  const source = { title: 'Sley', graph: small() }
+  assert.equal(defaultGraphIndex([source, { title: 'A captured application', graph: sley }]), 1)
+  assert.equal(defaultGraphIndex([source, example(small())]), 0)
+  assert.equal(defaultGraphIndex([source, example({ ...small(), runs: sley.runs })]), 1)
+})
+
+test('case changes preserve the selected component and repeated visit through a missing-case gap', () => {
+  const check = sley.nodes.find(node => node.label === 'Check')
+  const accepted = sley.runs.find(run => run.id === 'accepted-after-revision')
+  const rejected = sley.runs.find(run => run.id === 'rejected-before-drafting')
+  const exhausted = sley.runs.find(run => run.id === 'exhausted')
+  const original = { nodeId: check.id, runId: accepted.id, observationIndex: 5, visitOrdinal: 2 }
+  const gap = preserveCaseSelection(sley, original, rejected.id)
+  assert.deepEqual(gap, { nodeId: check.id, runId: rejected.id, observationIndex: null, visitOrdinal: 2 })
+  assert.equal(selectedCaseObservation(sley, rejected, gap), undefined)
+  const restored = preserveCaseSelection(sley, gap, accepted.id)
+  assert.deepEqual(restored, original)
+  const changedCase = preserveCaseSelection(sley, original, exhausted.id)
+  assert.equal(changedCase.observationIndex, 5)
+  assert.equal(selectedCaseObservation(sley, exhausted, changedCase).action, 'exhausted')
+  assert.equal(selectedCaseObservation(sley, accepted, original).action, 'accepted')
+})
+
+test('changing the component in Overview cannot show the prior component observation in Recorded cases', () => {
+  const run = sley.runs.find(value => value.id === 'accepted-after-revision')
+  const check = sley.nodes.find(node => node.label === 'Check')
+  const draft = sley.nodes.find(node => node.label === 'Draft')
+  const selectedCheck = { nodeId: check.id, runId: run.id, observationIndex: 5, visitOrdinal: 2 }
+  // The browser calls this same transition in both modes. Overview does not erase the remembered case.
+  const selectedDraft = componentSelection(sley, selectedCheck, draft.id)
+  assert.deepEqual(selectedDraft, { nodeId: draft.id, runId: run.id, observationIndex: 2, visitOrdinal: 1 })
+  assert.equal(selectedCaseObservation(sley, run, selectedDraft).nodeId, draft.id)
+  assert.equal(selectedCaseObservation(sley, run, { ...selectedDraft, observationIndex: 5 }), undefined)
+  assert.deepEqual(componentSelection(sley, selectedCheck, check.id), selectedCheck)
+  assert.deepEqual(componentSelection(sley, selectedCheck, 'missing'), { nodeId: null, runId: run.id, observationIndex: null, visitOrdinal: null })
+})
+
+test('retained observation indexes remain identities instead of array positions', () => {
+  const graph = structuredClone(sley)
+  const run = graph.runs.find(value => value.id === 'accepted-after-revision')
+  run.observations.forEach((entry, index) => { entry.index = 100 + index * 10 })
+  const check = graph.nodes.find(node => node.label === 'Check')
+  const selection = { nodeId: check.id, runId: run.id, observationIndex: 140, visitOrdinal: 2 }
+  assert.equal(selectedCaseObservation(graph, run, selection).action, 'accepted')
+  assert.deepEqual(componentSelection(graph, selection, check.id), selection)
+  assert.equal(selectedCaseObservation(graph, run, { ...selection, observationIndex: 5 }), undefined)
+})
+
+test('copied investigation context states when the selected repeated visit is absent', () => {
+  const check = sley.nodes.find(node => node.label === 'Check')
+  const accepted = sley.runs.find(run => run.id === 'accepted-after-revision')
+  const once = sley.runs.find(run => run.id === 'accepted-first-attempt')
+  const selection = preserveCaseSelection(sley, {
+    nodeId: check.id, runId: accepted.id, observationIndex: 5, visitOrdinal: 2,
+  }, once.id)
+  const text = selectedInvestigationContext(example(sley), selection)
+  assert.match(text, /^Selection gap: requested visit 2/u)
+  assert.match(text, /not retained in this case/u)
+  assert.match(text, /Any included observations are other available visits/u)
+  assert.match(text, /Case identity: accepted-first-attempt/u)
+  const restored = preserveCaseSelection(sley, selection, accepted.id)
+  const captured = selectedInvestigationContext(example(sley), restored)
+  assert.doesNotMatch(captured, /^Selection gap:/u)
+  assert.match(captured, /"index": 5/u)
+})
+
+test('recorded conditions and nested hostile input values survive only inside inert snapshot JSON', () => {
+  const graph = structuredClone(sley), run = graph.runs[0]
+  const hostile = '</sCrIpT x><ScRiPt>globalThis.injection=true</ScRiPt><img src=x onerror=alert(1)>'
+  graph.nodes[0].description = hostile
+  run.input.note = hostile
+  const observed = run.observations.find(entry => entry.conditions.some(condition => condition.result === false))
+  observed.source = { path: hostile, symbol: hostile }
+  observed.conditions[0].label = hostile
+  observed.conditions[0].expression = hostile
+  observed.conditions[0].values.hostile = hostile
+  observed.before.note = hostile
+  const html = renderExplorer({ graphs: [example(graph)] }), data = embeddedData(html)
+  assert.deepEqual(data.decoded[0].graph, graph)
+  assert.equal(/[<>&\u2028\u2029]/u.test(data.encoded), false)
+  assert.equal(html.toLowerCase().includes('<script>globalthis.injection'), false)
+  assert.equal(data.decoded[0].graph.runs[0].observations.find(entry => entry.index === observed.index).conditions[0].result, observed.conditions[0].result)
+})
+
+test('ambiguous case identities, unknown components, and malformed condition evidence are refused', () => {
+  const mutations = [
+    graph => { graph.runs[1].id = graph.runs[0].id },
+    graph => { graph.runs[0].id = '' },
+    graph => { graph.runs[0].observations[1].index = graph.runs[0].observations[0].index },
+    graph => { delete graph.runs[0].observations[0].index },
+    graph => { graph.runs[0].observations[0].index = Number.MAX_SAFE_INTEGER + 1 },
+    graph => { graph.runs[0].observations[0].nodeId = 'uncaptured-component' },
+    graph => { graph.runs[0].observations[1].occurrenceId = graph.runs[0].observations[0].occurrenceId },
+    graph => { graph.runs[0].observations[0].conditions[0].result = 'false' },
+    graph => { graph.runs[0].observations[0].conditions[0].result = null },
+    graph => { graph.runs[0].observations[0].conditions = {} },
+  ]
+  for (const mutate of mutations) {
+    const graph = structuredClone(sley)
+    mutate(graph)
+    assert.throws(() => renderExplorer({ graphs: [example(graph)] }), TypeError)
+  }
+  const missing = structuredClone(sley)
+  delete missing.runs[0].observations[0].conditions
+  delete missing.runs[0].observations[0].before
+  assert.doesNotThrow(() => renderExplorer({ graphs: [example(missing)] }))
+  const unattributed = { ...small(), runs: [{ id: 'capture', observations: ['Handler reported a note'] }] }
+  assert.doesNotThrow(() => renderExplorer({ graphs: [example(unattributed)] }))
+  assert.equal(selectedCaseObservation(unattributed, unattributed.runs[0], { nodeId: 'a', observationIndex: 1 }), undefined)
+})
+
+test('snapshot bounds reject oversized, cyclic, and executable data before HTML serialization', () => {
+  const tooManyRuns = { ...small(), runs: Array.from({ length: 65 }, (_, index) => ({ id: 'run-' + index })) }
+  const tooManyObservations = { ...small(), runs: [{ id: 'run', observations: Array.from({ length: 4097 }, (_, index) => ({ index: index + 1, nodeId: 'a' })) }] }
+  assert.throws(() => renderExplorer({ graphs: [example(tooManyRuns)] }), /64 recorded cases/u)
+  assert.throws(() => renderExplorer({ graphs: [example(tooManyObservations)] }), /4096 observations/u)
+  const deep = small()
+  let parent = deep
+  for (let depth = 0; depth < 70; depth++) { parent.next = {}; parent = parent.next }
+  assert.throws(() => renderExplorer({ graphs: [example(deep)] }), /data limits/u)
+  const cyclic = small(); cyclic.self = cyclic
+  assert.throws(() => renderExplorer({ graphs: [example(cyclic)] }), /cycles/u)
+  const executable = small()
+  Object.defineProperty(executable, 'data', { enumerable: true, get() { throw new Error('Data accessors must never execute.') } })
+  assert.throws(() => renderExplorer({ graphs: [example(executable)] }), /accessors/u)
+  const oversized = small(); oversized.nodes[0].description = 'x'.repeat(16 * 1024 * 1024 + 1)
+  assert.throws(() => renderExplorer({ graphs: [example(oversized)] }), /text limit/u)
 })

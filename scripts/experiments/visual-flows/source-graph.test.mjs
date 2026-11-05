@@ -94,6 +94,98 @@ test('root scope keeps configured bindings distinct and redacts settings and gra
   })
 })
 
+test('package descriptions retain authored text and provenance without merging Binding identities', async () => {
+  const description = 'Check a proposed route.\nKeep “review” and <details> as authored text.'
+  await fixture({
+    'jig.ts': project("{ flows: ['flows/worker'], bindings: ['bindings/first.ts', 'bindings/second.ts'] }"),
+    'bindings/first.ts': binding("{ package: 'flows/worker', settings: { token: 'PRIVATE_SETTING' }, slots: { native: { kind: 'acp', client: 'PRIVATE_CLIENT' } } }"),
+    'bindings/second.ts': binding("{ package: 'flows/worker', settings: { token: 'PRIVATE_SECOND' } }"),
+    'flows/worker/FLOW.meta.json': JSON.stringify({ name: 'Shared worker', description, uses: {} }),
+  }, async directory => {
+    const graph = await extractSourceGraph(directory, { inventory: true })
+    const methods = graph.nodes.filter(node => node.kind === 'flow' || node.kind === 'binding')
+    assert.deepEqual(methods.map(node => [node.id, node.label]), [
+      ['binding:first', 'first'], ['binding:second', 'second'], ['flow:flows/worker', 'Shared worker'],
+    ])
+    for (const node of methods) {
+      assert.equal(node.description, description)
+      assert.equal(node.descriptionSource, 'package-metadata')
+      assert.equal(node.packagePath, 'flows/worker')
+    }
+    assert.equal(methods[0].location.path, 'bindings/first.ts')
+    assert.equal(methods[2].location.path, 'flows/worker/FLOW.meta.json')
+    assert.deepEqual(graph.edges.map(edge => [edge.source, edge.slot]), [['binding:first', 'native']])
+    assert(!JSON.stringify(graph).includes('PRIVATE_'))
+    assert.equal(graph.warnings.length, 0)
+  })
+})
+
+test('description bounds count UTF-8 bytes and retain complete text at the limit', async () => {
+  const description = '🧭'.repeat(1024)
+  assert.equal(Buffer.byteLength(description), 4096)
+  await fixture({
+    'jig.ts': project("{ flows: ['flows/worker'] }"),
+    'flows/worker/FLOW.meta.json': JSON.stringify({ name: 'Worker', description }),
+  }, async directory => {
+    const graph = await extractSourceGraph(directory)
+    assert.equal(graph.nodes[0].description, description)
+    assert.equal(graph.nodes[0].descriptionSource, 'package-metadata')
+    assert.equal(graph.warnings.length, 0)
+  })
+})
+
+test('malformed and oversized descriptions are omitted without discarding routes or requirements', async () => {
+  const descriptions = [null, false, 42, [], { value: 'PRIVATE_DESCRIPTION' }, 'x'.repeat(4097), '🧭'.repeat(1024) + 'x']
+  for (const description of descriptions) {
+    await fixture({
+      'jig.ts': project("{ entrypoint: 'binding:root', flows: ['flows/root', 'flows/leaf'], bindings: ['bindings/root.ts'] }"),
+      'bindings/root.ts': binding("{ package: 'flows/root', slots: { configured: 'flow:flows/leaf' } }"),
+      'flows/root/FLOW.meta.json': JSON.stringify({ name: 'Root', description, uses: { declared: {} } }),
+      'flows/leaf/FLOW.meta.json': metadata({}),
+    }, async directory => {
+      const graph = await extractSourceGraph(directory)
+      const root = graph.nodes.find(node => node.id === 'binding:root')
+      assert.equal(root.kind, 'binding')
+      assert(!Object.hasOwn(root, 'description'))
+      assert(!Object.hasOwn(root, 'descriptionSource'))
+      assert.equal(graph.nodes.length, 3)
+      assert.deepEqual(graph.edges.map(edge => [edge.slot, edge.evidence]), [
+        ['configured', 'source-slot'], ['declared', 'unmapped-use'],
+      ])
+      assert.deepEqual(graph.warnings.filter(warning => warning.code === 'INVALID_PACKAGE_DESCRIPTION'), [{
+        code: 'INVALID_PACKAGE_DESCRIPTION', node: 'binding:root',
+        message: 'Authored package description omitted: expected a string of at most 4096 UTF-8 bytes',
+      }])
+      assert(!graph.warnings.some(warning => warning.code === 'OPAQUE_PACKAGE' || warning.code === 'UNSUPPORTED_BINDING'))
+      assert(!JSON.stringify(graph).includes('PRIVATE_DESCRIPTION'))
+      const leaf = graph.nodes.find(node => node.id === 'flow:flows/leaf')
+      assert(!Object.hasOwn(leaf, 'description'))
+      assert(!Object.hasOwn(leaf, 'descriptionSource'))
+    })
+  }
+})
+
+test('unavailable metadata stays opaque and never supplies a description', async () => {
+  const sources = [undefined, '{ invalid JSON', JSON.stringify({ description: 'Not supported', uses: [] }), JSON.stringify({ description: 'x'.repeat(512 * 1024) })]
+  for (const source of sources) {
+    await fixture({
+      'jig.ts': project("{ flows: ['flows/worker'], bindings: ['bindings/worker.ts'] }"),
+      'bindings/worker.ts': binding("{ package: 'flows/worker' }"),
+      ...(source === undefined ? {} : { 'flows/worker/FLOW.meta.json': source }),
+    }, async directory => {
+      const graph = await extractSourceGraph(directory, { inventory: true })
+      assert.deepEqual(graph.nodes.map(node => node.kind), ['binding', 'flow'])
+      assert.equal(graph.edges.length, 0)
+      for (const node of graph.nodes) {
+        assert.match(node.reason, /metadata is unavailable/)
+        assert(!Object.hasOwn(node, 'description'))
+        assert(!Object.hasOwn(node, 'descriptionSource'))
+      }
+      assert.deepEqual(graph.warnings.map(warning => warning.code), ['OPAQUE_PACKAGE', 'OPAQUE_PACKAGE'])
+    })
+  }
+})
+
 test('explicit membership excludes unselected declarations and direct Flows do not borrow Binding routes', async () => {
   await fixture({
     'jig.ts': project("{ flows: ['flows/root', 'flows/child'], bindings: ['bindings/root.ts'] }"),
@@ -166,11 +258,13 @@ test('a dynamic selected Binding becomes an unknown node without partial extract
   await fixture({
     'jig.ts': project("{ entrypoint: 'binding:root', flows: ['flows/root'], bindings: ['bindings/root.ts'] }"),
     'bindings/root.ts': binding("{ package: 'flows/root', slots: makeRoutes() }"),
-    'flows/root/FLOW.meta.json': metadata({}),
+    'flows/root/FLOW.meta.json': JSON.stringify({ name: 'Root', description: 'Do not attach this to an unsupported declaration', uses: {} }),
   }, async directory => {
     const graph = await extractSourceGraph(directory)
     assert.equal(graph.nodes.length, 1)
     assert.equal(graph.nodes[0].kind, 'unknown')
+    assert(!Object.hasOwn(graph.nodes[0], 'description'))
+    assert(!Object.hasOwn(graph.nodes[0], 'descriptionSource'))
     assert.equal(graph.edges.length, 0)
     assert(graph.warnings.some(warning => warning.code === 'UNSUPPORTED_BINDING'))
   })

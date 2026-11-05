@@ -1,4 +1,4 @@
-# Visual Flow experiments
+# Jig application behavior explorer
 
 Can existing Jig and FLOW source support useful workflow diagrams without another authored workflow definition?
 
@@ -7,6 +7,34 @@ They do not recover every feasible execution path through arbitrary code.
 
 This directory contains research tools, not supported Jig commands or a new FLOW interface.
 The prototype does not change admission, execution, the Run protocol, or the existing web display.
+
+## Understanding application behavior
+
+The explorer helps users inspect application behavior and describe changes to their coding agents.
+It keeps the codebase as the workflow definition.
+Visual editing and agent execution remain outside this experiment.
+
+The interface starts with an application overview.
+The diagram gives stable spatial context while users inspect components and recorded cases.
+Technical provenance stays available through disclosure instead of occupying the main workspace.
+Selecting a component opens its description, available relationships, and relevant observations.
+Different Bindings remain separate even when they use the same package.
+
+Recorded cases add concrete input and terminal output.
+Repeated handler entries remain separate visits.
+Each captured visit can show evaluated conditions, operand values, emitted actions, and before-and-after state.
+The comparison view identifies changed inputs, changed outputs, and differences in recorded decision evidence or handler entries.
+It does not claim that an input difference caused a behavioral difference.
+
+The copy action produces bounded investigation context for the user's coding agent.
+It includes the selected component identity, source reference, case evidence, and relevant limits.
+It sends no message and starts no agent.
+
+Source-only examples retain useful composition views without inventing execution evidence.
+They show when conditions or case observations are unavailable.
+The prototype contains no execution controls.
+Inspecting captured state for a component is not an independent component test.
+New test inputs require a separately authorized execution path and real observations.
 
 ## What the experiment establishes
 
@@ -20,7 +48,7 @@ Three evidence sources answer different questions.
 
 The source probe generated entrypoint graphs for all six current examples without evaluating their modules.
 The Sley probe extracted a revision cycle without executing any handler during inspection.
-Three actual local Sley runs then exercised different behavior over the same compiled description.
+Five actual local Sley runs then exercised different behavior over the same compiled description.
 
 ## Reproduce the explorer
 
@@ -37,7 +65,12 @@ node scripts/experiments/visual-flows/explore.mjs \
 ```
 
 Open the generated file in a browser.
-Select an example, inspect a component, or select one of the recorded Sley runs.
+The review pipeline opens first when its recorded evidence is included.
+Choose **Recorded cases** and compare **Accepted after revision** with **Attempts exhausted**.
+Inspect the second **Check** visit to see the evaluated conditions.
+Then inspect **Accepted at the limit** to see acceptance take precedence.
+Switch to a Jig example to inspect its configured composition.
+
 The viewer exports its current graph as JSON.
 It contains no network dependencies or requests.
 
@@ -84,6 +117,10 @@ Default selections match the declared contract ID against the authored `defaultP
 They carry a diagnostic because this match does not validate exact interfaces, required features, dependency preparation, or eligibility.
 External npm implementations remain opaque.
 The source reader supports code metadata only and leaves Markdown metadata unresolved.
+
+It retains authored descriptions up to 4096 UTF-8 bytes, with their package-metadata provenance.
+Malformed or oversized descriptions are omitted with `INVALID_PACKAGE_DESCRIPTION`, while route analysis continues.
+Descriptions explain authored intent and do not prove behavior.
 
 This parser tests the usefulness of source-derived diagrams.
 Production integration should project the existing resolved or admitted graph instead of maintaining another project evaluator.
@@ -155,7 +192,9 @@ Neither probe invokes Jig, a provider, or another Flow.
 | Handler executions during inspection | 0 |
 | Declared revision cycle | Check to Draft, action `revise` |
 | Nested scope exits | `accepted`, `exhausted` |
-| Description after three different runs | Unchanged |
+| Description after five different runs | Unchanged |
+| Recorded handler entries across the five runs | 24 |
+| Recorded condition evaluations | 16 |
 | Mutation of a detached description | Did not change the executable graph |
 
 | Executed scenario | Actual handler entries | Terminal output |
@@ -163,14 +202,24 @@ Neither probe invokes Jig, a provider, or another Flow.
 | Accepted after revision | Choose, Draft, Check, Draft, Check, Publish result | `done` |
 | Attempts exhausted | Choose, Draft, Check, Draft, Check, Request review | `needs-review` |
 | Rejected before drafting | Choose, Request review | `needs-review` |
+| Accepted on first attempt | Choose, Draft, Check, Publish result | `done` |
+| Accepted at the limit | Choose, Draft, Check, Draft, Check, Publish result | `done` |
 
 “Publish result” is a local handler that returns a value.
 It performs no external publication.
-The three scenarios demonstrate this authored probe, not exhaustive input coverage.
+The five scenarios demonstrate this authored probe, not exhaustive input coverage.
 
 Each probe handler records its own entry.
+It captures detached before-and-after state, actual condition evaluations, and emitted actions or terminal requests.
+The original input remains unchanged after execution.
+Occurrence identities belong to the probe and do not impersonate runtime activation identities.
 The viewer highlights those actual entries and their counts.
 It does not infer edge traversals from adjacent observations.
+
+The equality case sets `acceptAfter` and `limit` to two.
+On the second attempt, acceptance succeeds before the limit condition is evaluated.
+The record contains no fabricated false result for that unevaluated condition.
+This exposes decision priority through actual evidence rather than an inferred branch diagram.
 Sley currently exposes no public transition-event stream.
 
 ### A limitation exposed by the successful probe
@@ -189,9 +238,13 @@ Jig should not import third-party workflow code merely to draw a diagram.
 
 ## How a Jig integration could work
 
-The first product step needs no FLOW protocol change.
+The first native integration step needs no FLOW protocol change.
 Jig already resolves effective routes and validates its component graph.
 Its display model already records caller identities, child identities, slots, and individual call identities.
+
+The current native display does not carry this experiment's configured graph, condition evaluations, or per-component state snapshots.
+Those require explicit bounded projections and matching evidence owners.
+The standalone explorer tests the investigation experience before that integration.
 
 An existing projection owner could expose a bounded graph from the exact admitted generation.
 The current display could join observed calls to that graph through the known root identity and caller-local slot.
@@ -231,19 +284,20 @@ The current prototype analyzes declarations, not TypeScript method bodies.
 It does not claim to recover helper calls, concurrency, exception handling, cancellation, dynamic imports, or Agent decisions.
 It never labels a limited scan as workflow coverage.
 
-A later visual editor would require another product decision.
-Code generation for a constrained authoring model could preserve source ownership.
-Arbitrary bidirectional editing of ordinary programs is a substantially larger task than this read-only experiment.
+The product direction is visibility over code-owned workflows.
+It does not require bidirectional canvas editing or generated workflow definitions.
 
 ## Verification and limits
 
 The focused tests exercise inert parsing, projection semantics, malformed input, cycles, scope selection, redaction, output refusal, and renderer data embedding.
+They also check case comparisons, repeated component identities, retained observation selection, and missing values.
 They use Node built-ins, ordinary data, and temporary files.
 The optional Sley probe executes the real pinned runtime.
 No mocks substitute for Jig admission, storage, providers, execution, or cleanup.
 
 This environment lacked Bun, Just, and a Chromium executable.
 The complete Jig preflight, public documentation checker, and browser layout checks could not run locally.
+The available cloud browser also refused local preview URLs under its URL security policy.
 Generated JavaScript syntax and data embedding were checked separately.
 These checks do not establish browser interaction or production display integration.
 
