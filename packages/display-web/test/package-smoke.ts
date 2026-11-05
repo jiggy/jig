@@ -176,11 +176,11 @@ assert.deepEqual(colliding.views.map(view=>view.id),opaqueIds);
 
 import { browserRecords, browserLocal, browserPeek, browserResolve, browserCallSpans, browserTabs, browserView, BrowserClient } from '@jigging/display-web';
 import { webAssets } from '@jigging/display-web/assets';
-// Parse the installed public asset in the Bun consumer; Node reads the same bytes.
-// Visible words such as "from" are data, not module requests.
+// Check ESM imports in the installed public asset; Node reads the same bytes.
+// Visible words such as "from" are data, not ESM imports.
 if (process.versions.bun) assert.deepEqual(
   new Bun.Transpiler({loader:'js'}).scan(webAssets['/assets/app.js'].body).imports,
-  [], 'The installed browser asset must contain no module requests');
+  [], 'The installed ESM browser asset must contain no imports');
 const collisionTabs = browserTabs(colliding);
 assert.equal(new Set(collisionTabs.map(tab=>tab.id)).size,collisionTabs.length);
 for(const key of ['files','overview','activity']) assert.equal(browserView(colliding,key),undefined);
