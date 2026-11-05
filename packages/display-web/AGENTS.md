@@ -133,6 +133,9 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - Exact public behavior remains in owning CLI/web/reporting specifications.
   Fixture rendering does not qualify a host transport or newcomer usability.
 
+The visual review matrix serves identical observations to current and pre-97 production assets.
+Its HTML pairs and manifests identify both revisions; they do not replace an original approved mockup.
+
 ## Verification
 
 - `just check` builds and runs client, explorer, navigation, observations, composition, fixed-assets

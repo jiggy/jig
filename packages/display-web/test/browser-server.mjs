@@ -4,13 +4,13 @@ import { validateDisplaySnapshot } from '@jigging/display-model'
 import { webAssets } from '../dist/assets.js'
 
 /** A bounded real HTTP producer for the production browser assets. No request executes work. */
-export async function startBrowserFixture(fixture) {
+export async function startBrowserFixture(fixture, assets = webAssets) {
   const capability = 'browser-acceptance-fixture-capability-token-00'.slice(0, 43)
   const streams = new Set()
   const requests = []
   let closed = false
   const server = createServer((request, response) => {
-    const asset = webAssets[request.url]
+    const asset = assets[request.url]
     if (request.method === 'GET' && asset) {
       response
         .writeHead(200, {
