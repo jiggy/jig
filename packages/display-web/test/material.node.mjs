@@ -101,6 +101,8 @@ const compositionProps = (data, selectedNodeId, referencesEnabled = true) => ({
   selectedNodeId,
   detailOpen: true,
   referencesEnabled,
+  scale: 1,
+  onScale() {},
   onSelect() {},
   onClose() {},
   onCall() {},
@@ -153,6 +155,8 @@ test('application maps retain repeated exact requests and distinguish duplicate 
   assert.deepEqual(entries.map((node) => node.props['data-composition-call']), ['first', 'second'])
   assert(text(entries[0]).includes('Observed state: returned'))
   assert(text(entries[1]).includes('Observed state: requested'))
+  assert(entries[0].props['aria-label'].includes('Observed state: returned'))
+  assert(entries[1].props['aria-label'].includes('Observed state: requested'))
   assert(text(page).includes('3 call observations are omitted'))
   assert(text(page).includes('1 retained observation cannot be placed on this map'))
   assert(text(page).includes('Caller relationship unavailable: 1'))
@@ -165,6 +169,58 @@ test('application maps retain repeated exact requests and distinguish duplicate 
   assert(text(page).includes('HTTP request'))
   assert(walk(page).every((node) => !Object.hasOwn(node.props, 'dangerouslySetInnerHTML')))
   assert(text(page).includes('do not show execution order or internal decisions'))
+  const detail = walk(page).find((node) => node.type === 'aside')
+  assert(text(detail).includes('3 call observations are omitted from this run'))
+  assert(text(detail).includes('Counts show retained requests'))
+})
+
+test('map zoom scales the shared canvas without changing card or connection coordinates', () => {
+  const data = compositionSnapshot()
+  const natural = CompositionPage(compositionProps(data, 'draft'))
+  const zoomed = CompositionPage({ ...compositionProps(data, 'draft'), scale: 0.75 })
+  const canvas = walk(zoomed).find((node) => node.props.class === 'composition-canvas')
+  const scaled = walk(zoomed).find((node) => node.props.class === 'composition-scaled')
+  const viewport = walk(zoomed).find((node) => node.props.id === 'composition-scroll')
+  assert.equal(canvas.props.style.transform, 'scale(0.75)')
+  assert.equal(canvas.props.style.transformOrigin, '0 0')
+  assert.equal(parseFloat(scaled.props.style.width), viewport.props['data-composition-width'] * 0.75)
+  assert.equal(parseFloat(scaled.props.style.height), viewport.props['data-composition-height'] * 0.75)
+  assert.equal(viewport.props['data-composition-scale'], 0.75)
+  const coordinates = (page) => walk(page)
+    .filter((node) => node.props['data-component'])
+    .map((node) => node.props.style)
+  assert.deepEqual(coordinates(zoomed), coordinates(natural))
+  const routes = (page) => walk(page)
+    .filter((node) => node.props.class === 'composition-route')
+    .map((node) => node.props.d)
+  assert.deepEqual(routes(zoomed), routes(natural))
+  const controls = walk(zoomed).find((node) => node.props['aria-label'] === 'Map zoom')
+  assert.equal(walk(controls).filter((node) => node.type === 'button').length, 4)
+  assert(walk(controls).filter((node) => node.type === 'button').every((node) => node.props['aria-label']))
+})
+
+test('shared targets retain separate visible slot counts and incoming caller context', () => {
+  const data = compositionSnapshot()
+  const page = CompositionPage(compositionProps(data, 'draft'))
+  const counts = walk(page).filter((node) => node.props['data-composition-edge'])
+  assert.deepEqual(Object.fromEntries(counts.map((node) => [node.props['data-composition-edge'], text(node)])), {
+    'draft-route': '2',
+    'retry-route': '0',
+    'approval-route': '0',
+    'http-route': '0',
+  })
+  assert.equal(counts.length, data.composition.edges.length)
+  const detail = walk(page).find((node) => node.type === 'aside')
+  const callers = walk(detail).find((node) => node.props.class === 'composition-route-list composition-incoming')
+  const rows = walk(callers).filter((node) => node.type === 'li')
+  assert.equal(rows.length, 2)
+  assert(text(rows[0]).includes('Reviewprepare2 retained requests'))
+  assert(text(rows[1]).includes('ReviewretryNo matching retained requests'))
+  const leaf = walk(CompositionPage(compositionProps(data, 'http'))).find((node) => node.type === 'aside')
+  assert(text(leaf).includes('Configured callers'))
+  assert(text(leaf).includes('Worker'))
+  assert(text(leaf).includes('<fetch>'))
+  assert(text(leaf).includes('No configured child calls.'))
 })
 
 test('root facts and exact per-slot counts remain separate from child request totals', () => {

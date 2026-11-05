@@ -73,6 +73,10 @@ Authored application pages keep their navigation priority and landing behavior.
 The map shows available component calls, with complete slot labels and a selected component inspector.
 It keeps Flow, Binding and resource identities distinct even when their labels match.
 
+Callers appear left of configured targets, with request counts beside each slot.
+Zoom and Fit explore larger compositions without changing the application.
+Selecting a component shows incoming callers, configured child calls and its retained requests.
+
 Per-component and per-slot counts describe exact retained invocation requests.
 Repeated requests remain separately inspectable through the existing observed-call view.
 Unplaced requests, omitted observations and unavailable maps remain explicit.

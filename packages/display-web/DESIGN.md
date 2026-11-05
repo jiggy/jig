@@ -34,14 +34,19 @@ An optional live Run map follows authored application pages in navigation.
 It shows the admitted components and slots available to call, separately from the observed-call tree.
 Connections do not establish order, internal conditions or data transformations.
 
-Component cards remain readable at their native size in a scrollable canvas.
+The map leads immediately below a compact toolbar, without repeating its page title.
+Callers sit left of their configured targets, with complete slot labels and request counts beside each connection.
+Cards and connections share one coordinate space, including during zoom.
+Fit shows the whole map, while 100% restores natural text size.
+Automatic fitting never reduces text below 75%.
+
 The chooser includes incoming caller and slot context when labels repeat.
-Selecting a component opens its connections and separate retained invocation requests.
+Selecting a component reveals its requests, incoming callers and configured child calls.
 Each available slot has its own retained request count, even when slots share one target.
 The Run root shows workspace facts without inventing a child request.
 Native resource kinds have human names, and checkpoints stay reachable with quieter styling.
 
-Preserve selection and canvas position across refresh and inspection return by exact Run and component identities.
+Preserve selection, zoom and canvas position across refresh and inspection return by exact Run and component identities.
 Opening a particular invocation reveals its ancestry without an unrelated filter hiding it.
 Unavailable composition, omitted observations and unplaced requests remain explicit.
 Absence of a retained request does not establish a skipped call.
@@ -60,6 +65,8 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
 - Filtering never silently changes the inspected record. Clearing filters returns focus to its visible control, or the detail Back button on narrow layouts. Typing in search retains focus.
 - Unavailable evidence remains a readable state, without a broken image or fabricated successful result.
 - Application maps preserve every supplied component and slot, including long labels and shared targets.
+  Cards occupy distinct positions, connections meet their boundaries, and small compositions avoid oversized empty canvases.
+  Zoom preserves a shared coordinate space and keeps the selected component reachable.
   Duplicate labels stay distinct, repeated requests stay separate, and stale invocation links remain disabled.
   Keyboard selection, narrow-layout Back and return from invocation details preserve orientation.
 
