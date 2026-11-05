@@ -336,7 +336,11 @@ function selectCall(id: string, origin?: CompositionOrigin): void {
     call = client?.body?.calls.find((item) => item.id === call!.parentId)
   }
   redraw()
-  if (origin) focusSelectedEntry()
+  if (origin) {
+    const selectedButton = document.querySelector<HTMLButtonElement>('[data-call][aria-pressed=true]')
+    if (selectedButton) selectedButton.focus()
+    else document.getElementById('selected-call-heading')?.focus()
+  }
   focusDetailReturn()
 }
 
@@ -1740,7 +1744,7 @@ function Overview(): ComponentChildren {
         ? h(
             'div',
             {},
-            h('h2', {}, literal(selected.intent ?? selected.slot)),
+            h('h2', { id: 'selected-call-heading', tabIndex: -1 }, literal(selected.intent ?? selected.slot)),
             h('p', { class: `call-${selected.state}` }, `Observed state: ${selected.state}`),
             h(
               'dl',

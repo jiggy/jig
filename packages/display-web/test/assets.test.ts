@@ -71,9 +71,8 @@ test('browser build emits only fixed self-contained assets and erases server typ
   expect(html).toContain('href="/assets/app.css"')
   expect(html).not.toMatch(/<style|\son[a-z]+=|<script(?![^>]*\bsrc=)[^>]*>/i)
   const browser = assets['/assets/app.js']!.body
-  expect(browser).not.toMatch(
-    /node:|@opentui\/|sourceMappingURL|\bfrom\s*["']|\bimport\s*["']|\beval\(/,
-  )
+  expect(new Bun.Transpiler({ loader: 'js' }).scan(browser).imports).toEqual([])
+  expect(browser).not.toMatch(/node:|@opentui\/|sourceMappingURL|\beval\(/)
   expect(browser).toContain('/api/snapshot')
   expect(browser).toContain('/api/events')
   // Preact contains a generic raw-HTML branch; the host never supplies that prop.
@@ -92,4 +91,22 @@ test('browser build emits only fixed self-contained assets and erases server typ
   expect(manifest.dependencies.preact).toBeUndefined()
   expect(Object.keys(manifest.exports)).toEqual(['.', './assets'])
   expect(manifest.files.some((path: string) => path.includes('web/'))).toBeFalse()
+})
+
+test('bundle import scanning distinguishes literal words from module requests', () => {
+  const parser = new Bun.Transpiler({ loader: 'js' })
+  for (const source of [
+    'const label = " · from ";',
+    'const example = "import external";',
+    '// import "external";\nconst value = 1;',
+    'const data = { from: "external", import: "external" };',
+  ]) expect(parser.scan(source).imports).toEqual([])
+  for (const source of [
+    'import value from "external";',
+    'import "external";',
+    'export { value } from "external";',
+    'void import("external");',
+    'require("external");',
+    'require.resolve("external");',
+  ]) expect(parser.scan(source).imports.map((item) => item.path)).toContain('external')
 })
