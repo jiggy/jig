@@ -16,6 +16,7 @@ async function linuxCommandFixture(workflow: any) {
   const directory = await mkdtemp(join(tmpdir(), 'linux-command-plan-'))
   const files = [
     'packages/jig/test/linux-host/example-smoke.test.ts',
+    'packages/jig/test/linux-host/native-codex-rehearsal.test.ts',
     'packages/jig/test/linux-host/linux-rootless-delegation-hostile.test.ts',
     'packages/jig/test/linux/linux-rootless-run.test.ts',
     'packages/jig/test/host/root-agent-composition.test.ts',
@@ -733,6 +734,12 @@ test('Linux host scope preserves complete qualification and always reports its f
         files: ['packages/jig/test/linux-host/example-smoke.test.ts'],
         hostMode: 'run-acquisition-host',
         timeoutMs: 1200000,
+      },
+      {
+        transcript: 'native-codex-rehearsal.txt',
+        files: ['packages/jig/test/linux-host/native-codex-rehearsal.test.ts'],
+        hostMode: 'run-acquisition-host',
+        timeoutMs: 540000,
       },
     ])
     // Cost-based placement retains complete membership without freezing shard allocation.
