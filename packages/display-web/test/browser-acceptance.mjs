@@ -419,7 +419,73 @@ for (const width of [1440, 390]) {
       await noPageOverflow(page)
     })
   })
+
+  test(`Run-map summaries and focus controls remain readable in every appearance at ${width}px`, async () => {
+    await withPage(compositionFixture(), { viewport: { width, height: 1000 }, hasTouch: true }, async (page) => {
+      await openTab(page, 'Application map')
+      for (const theme of ['Light', 'Dark', 'Monochrome']) {
+        await page.getByRole('button', { name: `${theme} appearance`, exact: true }).click()
+        const attention = page.locator('[data-request-focus="attention"]')
+        await attention.focus()
+        await page.keyboard.press('Enter')
+        assert.equal(await attention.getAttribute('aria-pressed'), 'true')
+        assert(await attention.evaluate((node) => node === document.activeElement))
+        const outline = await attention.evaluate((node) => {
+          const style = getComputedStyle(node)
+          return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) }
+        })
+        assert(outline.style !== 'none' && outline.width >= 2, 'keyboard focus stays visibly outlined')
+        for (const control of await page.locator('[data-request-focus]').all()) {
+          const box = await control.boundingBox()
+          assert(box.width >= 44 && box.height >= 44, 'coarse-pointer request-focus controls remain at least 44px')
+        }
+        await requestStates(page, '[data-composition-node-states="worker"]', {
+          requested: 1, active: 1, 'cancel-requested': 1, returned: 2, failed: 1, uncertain: 1,
+        })
+        await mapGeometry(page)
+        await readableTextContrast(page, false)
+        await noPageOverflow(page)
+      }
+    })
+  })
 }
+
+test('child-view return is fenced by incomplete observations and by loss of its exact origin', async () => {
+  const fixture = compositionFixture()
+  const original = structuredClone(fixture.snapshot)
+  await withPage(fixture, {}, async (page, host) => {
+    await openTab(page, 'Application map')
+    await page.locator('[data-component="worker"]').click()
+    await page.locator('[data-composition-call="prepare-one"]').click()
+    await page.locator('[data-call-view="worker-one-notes"]').click()
+    const back = page.locator('#invocation-return')
+    await back.waitFor()
+    host.update({
+      kind: 'incomplete', revision: 2, lastCompleteRevision: 1,
+      mode: original.mode, rootSourceId: original.rootSourceId,
+      reason: 'The originating invocation cannot be refreshed.', workspace: original.workspace,
+      context: '', omissions: original.omissions, attention: [], diagnostics: [],
+    })
+    await page.getByText('Incomplete observation', { exact: true }).waitFor()
+    assert(!(await back.isEnabled()))
+    await page.getByText('Invocation links are unavailable while this observation is stale or incomplete.', { exact: true }).waitFor()
+    await page.getByText('These notes belong to the first worker request.', { exact: true }).waitFor()
+    host.update({ ...original, revision: 3 })
+    await page.getByText('Connected', { exact: true }).waitFor()
+    assert(await back.isEnabled())
+    host.update({ ...original, revision: 4, calls: original.calls.filter((call) => call.id !== 'prepare-one') })
+    await page.getByText('The originating invocation is no longer available in this observation.', { exact: true }).waitFor()
+    assert(!(await back.isEnabled()))
+    await page.getByText('These notes belong to the first worker request.', { exact: true }).waitFor()
+    host.update({
+      ...original, revision: 5, rootSourceId: 'another-run', calls: [],
+      views: original.views.map((item) => item.sourceId === 'root' ? { ...item, sourceId: 'another-run' } : item),
+      artifacts: { ...original.artifacts, sourceId: 'another-run' },
+    })
+    await back.waitFor({ state: 'detached' })
+    assert(host.requests.every((request) => request.method === 'GET'), 'view navigation and reconciliation never submit execution')
+  })
+})
 
 test('Execution and delivered files reveal and dismiss details only on request', async () => {
   await withPage(hostFixture(), {}, async (page, host) => {

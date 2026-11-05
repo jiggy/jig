@@ -167,6 +167,7 @@ export function compositionFixture() {
       'worker-one-notes',
       { title: 'Worker notes', application: 'Run-map acceptance' },
       {
+        summary: 'Material reported by the first worker request.',
         sections: [
           { blocks: [{ kind: 'report', text: 'These notes belong to the first worker request.' }] },
         ],
@@ -177,6 +178,7 @@ export function compositionFixture() {
       'worker-two-notes',
       { title: 'Worker notes', application: 'Run-map acceptance' },
       {
+        summary: 'Material reported by the second worker request.',
         sections: [
           { blocks: [{ kind: 'report', text: 'These notes belong to the second worker request.' }] },
         ],
