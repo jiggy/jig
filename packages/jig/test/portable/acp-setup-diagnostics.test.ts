@@ -6,6 +6,16 @@ import {
 } from '../../src/internal/acp-setup-diagnostics.js'
 
 describe('native-client setup recovery', () => {
+  test('unsupported subscription layouts preserve authentication instead of requesting login renewal', () => {
+    expect(ACP_SETUP_CAUSES.PROJECT_ACP_CODEX_LOGIN_LAYOUT).toContain('unsupported field layout')
+    for (const platform of ['linux', 'darwin'] as const) {
+      const hint = acpSetupHints(platform).PROJECT_ACP_CODEX_LOGIN_LAYOUT
+      expect(hint).toContain('a Jig version that supports')
+      expect(hint).toContain('Keep the authentication file intact')
+      expect(hint).not.toContain('Run codex login')
+      expect(hint).not.toContain('expired credential')
+    }
+  })
   for (const [suiteCaseIndex, suiteCaseValue] of (['linux', 'darwin'] as const).entries()) {
     test('%s installation advice matches that host' + ` (case ${suiteCaseIndex + 1})`, () =>
       Reflect.apply(

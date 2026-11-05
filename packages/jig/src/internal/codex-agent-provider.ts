@@ -34,6 +34,8 @@ const SUBSCRIPTION_EXPIRY_MARGIN_MS = 5 * 60_000
 const MAX_CREDENTIAL_BYTES = 64 * 1024 - 4
 const MAX_SECRET_BYTES = 16 * 1024
 const MAX_BASE_URL_CHARACTERS = 4_096
+const SUBSCRIPTION_CREDENTIAL_KEYS = ['OPENAI_API_KEY', 'auth_mode', 'last_refresh', 'tokens']
+const SUBSCRIPTION_TOKEN_KEYS = ['access_token', 'account_id', 'id_token', 'refresh_token']
 const encoder = new TextEncoder()
 
 export class PrivateCodexLoginUnavailableError extends Error {}
@@ -217,7 +219,8 @@ export async function openPrivateCodexAgentProvider(
   let credential: Uint8Array
   try {
     credential = await projectPrivateCodexSubscriptionCredential(join(sourceHome, 'auth.json'))
-  } catch {
+  } catch (error) {
+    if (error instanceof PrivateAcpSetupError) throw error
     throw new PrivateCodexLoginUnavailableError('Codex file-backed login is unavailable')
   }
   const model = configuredAcpModel(selectedModel ?? environment.CODEX_MODEL)
@@ -256,14 +259,28 @@ export async function projectPrivateCodexSubscriptionCredential(path: string): P
   }
   if (
     !isRecord(parsed) ||
-    !exactKeys(parsed, ['OPENAI_API_KEY', 'auth_mode', 'last_refresh', 'tokens']) ||
     parsed.auth_mode !== 'chatgpt' ||
     parsed.OPENAI_API_KEY !== null ||
-    !isRecord(parsed.tokens) ||
-    !exactKeys(parsed.tokens, ['access_token', 'account_id', 'id_token', 'refresh_token'])
+    !isRecord(parsed.tokens)
   ) {
     throw new Error('Codex subscription credential is invalid')
   }
+  const source = parsed
+  const tokens = parsed.tokens
+  if (
+    !SUBSCRIPTION_CREDENTIAL_KEYS.every((key) => Object.hasOwn(source, key)) ||
+    !SUBSCRIPTION_TOKEN_KEYS.every((key) => Object.hasOwn(tokens, key))
+  ) {
+    throw new Error('Codex subscription credential is invalid')
+  }
+  if (
+    !exactKeys(parsed, SUBSCRIPTION_CREDENTIAL_KEYS) ||
+    !exactKeys(parsed.tokens, SUBSCRIPTION_TOKEN_KEYS, ['oauth_provenance', 'login_owner_id'])
+  ) {
+    throw new PrivateAcpSetupError('login-layout')
+  }
+  // Known native metadata stays opaque and never supplies Run authority or identity.
+  // Build the same non-refreshable projection from the bearer and account alone.
   const accessToken = parsed.tokens.access_token
   const accountId = parsed.tokens.account_id
   if (
@@ -555,13 +572,13 @@ function requireSubscriptionCredential(value: Uint8Array): {
   }
   if (
     !isRecord(parsed) ||
-    !exactKeys(parsed, ['OPENAI_API_KEY', 'auth_mode', 'last_refresh', 'tokens']) ||
+    !exactKeys(parsed, SUBSCRIPTION_CREDENTIAL_KEYS) ||
     parsed.auth_mode !== 'chatgptAuthTokens' ||
     parsed.OPENAI_API_KEY !== null ||
     typeof parsed.last_refresh !== 'string' ||
     !Number.isFinite(Date.parse(parsed.last_refresh)) ||
     !isRecord(parsed.tokens) ||
-    !exactKeys(parsed.tokens, ['access_token', 'account_id', 'id_token', 'refresh_token'])
+    !exactKeys(parsed.tokens, SUBSCRIPTION_TOKEN_KEYS)
   ) {
     throw new Error('Codex subscription credential is invalid')
   }
@@ -632,12 +649,15 @@ function jwtClaims(value: string): Record<string, unknown> {
   }
 }
 
-function exactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const keys = Object.keys(value).sort()
-  const sortedExpected = [...expected].sort()
+function exactKeys(
+  value: Record<string, unknown>,
+  expected: readonly string[],
+  optional: readonly string[] = [],
+): boolean {
+  const keys = Object.keys(value)
   return (
-    keys.length === sortedExpected.length &&
-    keys.every((key, index) => key === sortedExpected[index])
+    expected.every((key) => Object.hasOwn(value, key)) &&
+    keys.every((key) => expected.includes(key) || optional.includes(key))
   )
 }
 

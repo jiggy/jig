@@ -195,20 +195,58 @@ describe('private native Codex Agent provider', () => {
         ),
     )
   }
+  test('preserves unsupported subscription layout diagnostics through native resource selection', async () => {
+    const fixture = await files('/var/tmp')
+    const codexHome = join(fixture.root, 'private-auth-home')
+    await mkdir(codexHome)
+    const source = credentialValue('private-account-canary', 'private-access-canary', {
+      authMode: 'chatgpt',
+      refreshToken: 'private-refresh-canary',
+    })
+    Object.assign(source.tokens, {
+      oauth_provenance: { issuer: 'https://issuer.example', client_id: 'private-client-canary' },
+      login_owner_id: 'private-owner-canary',
+      'private-field-canary': 'private-value-canary',
+    })
+    const path = join(codexHome, 'auth.json')
+    await writeFile(path, JSON.stringify(source), { mode: 0o600 })
+    const host = await openPrivateInstalledBunHost(installedBunLocation, {
+      CODEX_HOME: codexHome,
+      CODEX_PATH: fixture.executablePath,
+    })
+    try {
+      await selectCodex(host)
+      throw new Error('Unsupported subscription layout unexpectedly qualified')
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'PROJECT_ACP_CODEX_LOGIN_LAYOUT', expected: false })
+      for (const privateValue of [
+        path,
+        source.tokens.access_token,
+        'private-account-canary',
+        'private-access-canary',
+        'private-refresh-canary',
+        'private-client-canary',
+        'private-owner-canary',
+        'private-field-canary',
+        'private-value-canary',
+      ]) {
+        expect(String(error)).not.toContain(privateValue)
+      }
+    }
+  })
   test('selects the Codex subscription by default and an explicit Responses API', async () => {
     const fixture = await files()
     const codexHome = join(fixture.root, 'canonical-home')
     await mkdir(codexHome)
-    await writeFile(
-      join(codexHome, 'auth.json'),
-      JSON.stringify(
-        credentialValue('account-one', 'subscription-secret', {
-          authMode: 'chatgpt',
-          refreshToken: 'canonical-refresh-secret',
-        }),
-      ),
-      { mode: 0o600 },
-    )
+    const source = credentialValue('account-one', 'subscription-secret', {
+      authMode: 'chatgpt',
+      refreshToken: 'canonical-refresh-secret',
+    })
+    Object.assign(source.tokens, {
+      oauth_provenance: { issuer: 'https://issuer.example', client_id: 'synthetic-client' },
+      login_owner_id: 'synthetic-owner',
+    })
+    await writeFile(join(codexHome, 'auth.json'), JSON.stringify(source), { mode: 0o600 })
 
     const subscription = await openPrivateCodexAgentProvider(installedBunLocation.releaseRoot, {
       CODEX_HOME: codexHome,

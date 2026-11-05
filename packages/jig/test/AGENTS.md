@@ -84,6 +84,11 @@ These cases establish native protocol behavior, not live provider availability o
 The Linux example shard exercises the selected gateway through genuine Codex 0.166.0 and the installed public packages.
 Live API qualification independently requires all selected native clients against the exact candidate.
 
+`portable/codex-agent-provider.test.ts` checks canonical credential projection with optional native token metadata and unchanged source bytes.
+It retains required-field, unknown-field, file, expiry, account and strict private-projection refusals using synthetic credentials.
+The Linux provider suite checks that unsupported layouts preserve their closed diagnostic through ordinary resource selection.
+These source checks establish neither real authentication nor native subscription inference.
+
 Reviewed child-attachment authority maps and artifact lifetimes retain portable, Linux
 and native Mac whole suites under these owners. Mac native input-alias
 cases require the native opt-in. The ordinary installed mapped-files consumer

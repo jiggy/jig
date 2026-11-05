@@ -17,6 +17,7 @@ export type AcpSetupStage =
   | 'wrapper'
   | 'sandbox'
   | 'login'
+  | 'login-layout'
   | 'api'
   | 'model'
   | 'preferences'
@@ -110,6 +111,8 @@ export const ACP_SETUP_CAUSES: Readonly<Record<string, string>> = Object.freeze(
         wrapper: 'its launcher is an unsupported wrapper',
         sandbox: 'its required sandbox helper is unavailable',
         login: 'its subscription authentication is missing, expired, or unsupported',
+        'login-layout':
+          'its file-backed subscription authentication uses an unsupported field layout',
         api: 'its API authentication or configuration is missing or invalid',
         model: 'its model configuration is missing or invalid',
         preferences: 'its macOS preference state could not be synchronized and verified',
@@ -139,6 +142,8 @@ export function acpSetupHints(platform: 'linux' | 'darwin'): Readonly<Record<str
               ? 'Use a qualified Jig macOS host with its system /usr/bin/sandbox-exec helper intact; do not replace system helpers or bypass containment. See https://jig.md/build/agents for supported native installations.'
               : 'Install an unprivileged Bubblewrap helper supported by the selected Codex installation; do not bypass containment.',
           login: profile.login,
+          'login-layout':
+            "Use a Jig version that supports the selected client's authentication layout. Keep the authentication file intact. Do not remove metadata or reset login to change its layout.",
           api: profile.api,
           model: profile.model,
           preferences:

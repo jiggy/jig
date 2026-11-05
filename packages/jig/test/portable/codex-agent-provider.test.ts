@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, test } from 'bun:test'
-import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, link, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { privateAcpAgentRuntime } from '../../src/internal/acp-agent-provider.js'
+import {
+  isExpectedAcpRefusal,
+  PrivateAcpSetupError,
+} from '../../src/internal/acp-setup-diagnostics.js'
 import {
   createPrivateCodexOpenAIApiAgentProvider,
   createPrivateCodexSubscriptionAgentProvider,
@@ -20,6 +24,28 @@ import {
   temporary,
 } from '.././codex-agent-provider.fixture.js'
 import { rejectsCredentialOutput } from '../finite-acp-resource.fixture.js'
+
+const subscriptionMetadata = {
+  oauth_provenance: {
+    issuer: 'https://metadata-issuer-canary.example',
+    client_id: 'metadata-client-canary',
+  },
+  login_owner_id: 'metadata-owner-canary',
+}
+const sourceMetadataCases = [
+  ['without metadata', {}],
+  ['with OAuth provenance only', { oauth_provenance: subscriptionMetadata.oauth_provenance }],
+  ['with login-owner metadata only', { login_owner_id: subscriptionMetadata.login_owner_id }],
+  ['with Codex metadata', subscriptionMetadata],
+  ['with null metadata', { oauth_provenance: null, login_owner_id: null }],
+  [
+    'with synthetic string metadata',
+    {
+      oauth_provenance: 'synthetic-provenance-canary',
+      login_owner_id: 'synthetic-owner-canary',
+    },
+  ],
+] as const
 
 afterEach(async () => {
   await Promise.all([...temporary].map((path) => rm(path, { recursive: true, force: true })))
@@ -60,6 +86,189 @@ describe('private native Codex Agent provider', () => {
     expect(JSON.stringify(projected)).not.toContain('canonical-refresh-secret')
     expect(JSON.stringify(projected)).not.toContain('canonical-id-secret')
   })
+  for (const [description, metadata] of sourceMetadataCases) {
+    test(`projects subscription state ${description} into the same bounded bearer`, async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-metadata-')))
+      temporary.add(root)
+      const path = join(root, 'auth.json')
+      const canonical = credentialValue('account-one', 'access-token-canary', {
+        authMode: 'chatgpt',
+        refreshToken: 'canonical-refresh-secret',
+      })
+      const source = {
+        ...canonical,
+        tokens: { ...canonical.tokens, id_token: 'canonical-id-secret', ...metadata },
+      }
+      const sourceText = JSON.stringify(source)
+      await writeFile(path, sourceText, { mode: 0o600 })
+
+      const projectedText = new TextDecoder().decode(
+        await projectPrivateCodexSubscriptionCredential(path),
+      )
+      const projected = JSON.parse(projectedText)
+      expect(projected).toEqual({
+        OPENAI_API_KEY: null,
+        auth_mode: 'chatgptAuthTokens',
+        last_refresh: expect.any(String),
+        tokens: {
+          access_token: canonical.tokens.access_token,
+          account_id: canonical.tokens.account_id,
+          id_token: canonical.tokens.access_token,
+          refresh_token: '',
+        },
+      })
+      expect(Number.isFinite(Date.parse(projected.last_refresh))).toBe(true)
+      for (const privateValue of [
+        'canonical-refresh-secret',
+        'canonical-id-secret',
+        'metadata-issuer-canary',
+        'metadata-client-canary',
+        'metadata-owner-canary',
+        'synthetic-provenance-canary',
+        'synthetic-owner-canary',
+      ]) {
+        expect(projectedText).not.toContain(privateValue)
+      }
+      expect(await readFile(path, 'utf8')).toBe(sourceText)
+    })
+  }
+  for (const location of ['source', 'tokens'] as const) {
+    test(`rejects an unknown ${location} field with a private layout diagnostic`, async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-layout-')))
+      temporary.add(root)
+      const path = join(root, 'auth.json')
+      const canonical = credentialValue('account-one', 'access-token-canary', {
+        authMode: 'chatgpt',
+        refreshToken: 'canonical-refresh-secret',
+      })
+      const source = {
+        ...canonical,
+        tokens: { ...canonical.tokens, ...subscriptionMetadata },
+      }
+      const unsupported = { 'private-field-canary': 'private-value-canary' }
+      const sourceText = JSON.stringify(
+        location === 'source'
+          ? { ...source, ...unsupported }
+          : { ...source, tokens: { ...source.tokens, ...unsupported } },
+      )
+      await writeFile(path, sourceText, { mode: 0o600 })
+
+      const failure = await projectPrivateCodexSubscriptionCredential(path).then(
+        () => {
+          throw new Error('An unsupported credential layout was accepted')
+        },
+        (error: unknown) => error,
+      )
+      expect(failure).toBeInstanceOf(PrivateAcpSetupError)
+      expect(failure).toMatchObject({ stage: 'login-layout' })
+      expect(isExpectedAcpRefusal(failure)).toBe(false)
+      for (const privateValue of [
+        path,
+        canonical.tokens.access_token,
+        'canonical-refresh-secret',
+        'private-field-canary',
+        'private-value-canary',
+      ]) {
+        expect(String(failure)).not.toContain(privateValue)
+        expect(JSON.stringify(failure)).not.toContain(privateValue)
+      }
+      expect(await readFile(path, 'utf8')).toBe(sourceText)
+    })
+  }
+  for (const invalid of ['expired', 'near-expiry', 'account-mismatch'] as const) {
+    test(`rejects ${invalid} subscription state despite recognized metadata`, async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-invalid-')))
+      temporary.add(root)
+      const path = join(root, 'auth.json')
+      const canonical = credentialValue('account-one', 'access-token-canary', {
+        authMode: 'chatgpt',
+        refreshToken: 'canonical-refresh-secret',
+        ...(invalid === 'expired' ? { expiresAt: Date.now() - 60_000 } : {}),
+        ...(invalid === 'near-expiry' ? { expiresAt: Date.now() + 60_000 } : {}),
+        ...(invalid === 'account-mismatch' ? { claimAccountId: 'other-account' } : {}),
+      })
+      await writeFile(
+        path,
+        JSON.stringify({
+          ...canonical,
+          tokens: { ...canonical.tokens, ...subscriptionMetadata },
+        }),
+        { mode: 0o600 },
+      )
+
+      await expect(projectPrivateCodexSubscriptionCredential(path)).rejects.toThrow(
+        'Codex subscription credential is invalid',
+      )
+    })
+  }
+  for (const field of ['access_token', 'account_id', 'id_token', 'refresh_token'] as const) {
+    test(`requires ${field} even when subscription metadata is present`, async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-required-')))
+      temporary.add(root)
+      const path = join(root, 'auth.json')
+      const source = credentialValue('account-one', 'access-token-canary', {
+        authMode: 'chatgpt',
+      })
+      const tokens: Record<string, unknown> = { ...source.tokens, ...subscriptionMetadata }
+      delete tokens[field]
+      await writeFile(path, JSON.stringify({ ...source, tokens }), { mode: 0o600 })
+
+      await expect(projectPrivateCodexSubscriptionCredential(path)).rejects.toThrow(
+        'Codex subscription credential is invalid',
+      )
+    })
+  }
+  for (const invalid of [
+    'group-readable',
+    'world-readable',
+    'symbolic-link',
+    'hard-link',
+    'oversized',
+  ] as const) {
+    test(`rejects a ${invalid} subscription file with recognized metadata`, async () => {
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'jig-codex-private-')))
+      temporary.add(root)
+      const path = join(root, 'auth.json')
+      const source = credentialValue('account-one', 'access-token-canary', {
+        authMode: 'chatgpt',
+      })
+      const sourceText = JSON.stringify({
+        ...source,
+        tokens: { ...source.tokens, ...subscriptionMetadata },
+      })
+      await writeFile(path, sourceText, { mode: 0o600 })
+      let selectedPath = path
+      if (invalid === 'group-readable') await chmod(path, 0o640)
+      if (invalid === 'world-readable') await chmod(path, 0o604)
+      if (invalid === 'symbolic-link') {
+        selectedPath = join(root, 'linked-auth.json')
+        await symlink(path, selectedPath)
+      }
+      if (invalid === 'hard-link') await link(path, join(root, 'hardlinked-auth.json'))
+      if (invalid === 'oversized') await writeFile(path, sourceText.padEnd(64 * 1024))
+
+      await expect(projectPrivateCodexSubscriptionCredential(selectedPath)).rejects.toThrow(
+        'Codex subscription credential is invalid',
+      )
+    })
+  }
+  for (const [description, metadata] of sourceMetadataCases.slice(1)) {
+    test(`rejects an in-memory subscription projection ${description}`, async () => {
+      const support = await files()
+      const credential = credentialValue('account-one', 'access-token-canary')
+      await expect(
+        createPrivateCodexSubscriptionAgentProvider({
+          ...support,
+          credential: encoder.encode(
+            JSON.stringify({
+              ...credential,
+              tokens: { ...credential.tokens, ...metadata },
+            }),
+          ),
+        }),
+      ).rejects.toThrow('Codex subscription credential is invalid')
+    })
+  }
   test('preserves the client subscription default without exposing canonical credentials', async () => {
     const support = await files()
     const credential = credentialBytes('account-one', 'secret-one')

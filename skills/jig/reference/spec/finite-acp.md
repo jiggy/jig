@@ -499,6 +499,12 @@ short-lived non-refreshable bearer. It never embeds a development credential
 or mounts the operator's `CODEX_HOME`. A keyring-backed login is unavailable
 because the Agent process receives no host credential-store authority.
 
+The source token record permits optional `oauth_provenance` and `login_owner_id` metadata beside its four required token fields.
+Jig discards these opaque values without interpreting issuer or login ownership.
+Neither field enters the private bearer projection or supplies account authority.
+Existing file, ownership, permission, size, expiry and account checks still apply.
+Unknown source fields are refused without disclosing their names or values.
+
 Native Codex's API-key path is Responses-compatible only; selecting
 `chat-completions` fails closed. Claude Code uses its Anthropic-compatible API
 path. `ANTHROPIC_API_KEY` selects API-key authentication;
@@ -582,6 +588,9 @@ A failed review preserves the earlier approved code and client together.
 A target without native requirements in that already admitted generation remains
 subject to normal Run admission/environment checks; its recipe does not depend
 on the Agent implementation.
+
+Codex `PROJECT_ACP_CODEX_LOGIN_LAYOUT` identifies unsupported subscription fields.
+Its recovery guidance keeps the authentication file intact and does not request login renewal.
 
 `jig review` authenticates and admits the selected local configuration. It does
 not send a remote health-check request, so `ready` does not assert that a model
