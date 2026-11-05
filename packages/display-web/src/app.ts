@@ -59,7 +59,15 @@ const elapsedClock = new PrivateBrowserClock()
 let selectedCall: string | undefined
 let compositionSelection: PrivateCompositionSelection = {}
 let compositionViewport: { left: number; top: number } | undefined
+let compositionCenterNodeId: string | undefined
 let lastCompositionViewport: HTMLElement | undefined
+let compositionViewportVisible = false
+let compositionFocusScope: HTMLElement | undefined
+let compositionMapFocused = false
+let compositionScale = 1
+let compositionScaleMode: 'automatic' | 'fit' | 'manual' = 'automatic'
+let compositionResizeObserver: ResizeObserver | undefined
+let compositionResizeFrame: number | undefined
 type CompositionOrigin = { rootSourceId: string; rootId: string; nodeId: string }
 let compositionOrigin: CompositionOrigin | undefined
 let callFilter = ''
@@ -126,6 +134,10 @@ const provenance = (value: DisplayAttribution): string =>
 
 function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
+  // Native scrolling can precede its queued scroll event.
+  if (compositionViewportVisible && lastCompositionViewport?.isConnected &&
+    lastCompositionViewport.clientWidth && lastCompositionViewport.clientHeight)
+    rememberCompositionViewport(lastCompositionViewport)
   if (client?.body && client.body.revision !== lastBodyRevision) {
     const snapshot = client.body
     const nextCompositionSelection = privateCompositionSelection(snapshot, compositionSelection)
@@ -134,7 +146,11 @@ function redraw(): void {
       nextCompositionSelection.rootId !== compositionSelection.rootId
     ) {
       compositionViewport = undefined
+      compositionCenterNodeId = undefined
       compositionOrigin = undefined
+      compositionScale = 1
+      compositionScaleMode = 'automatic'
+      releaseCompositionViewport()
     }
     if (compositionSelection.nodeId && !nextCompositionSelection.nodeId)
       feedback = 'The selected component is no longer available in this application map.'
@@ -301,17 +317,16 @@ function navigate(id: string, preserveSubject = true): void {
   if (nextBody) nextBody.scrollTop = scrollPositions.get(id) ?? 0
 }
 function focusSelectedEntry(): void {
-  document
-    .querySelector<HTMLButtonElement>(
-      '[data-record][aria-pressed=true], [data-call][aria-pressed=true], [data-component][aria-pressed=true]',
-    )
-    ?.focus()
+  const selected = document.querySelector<HTMLButtonElement>(
+    '[data-record][aria-pressed=true], [data-call][aria-pressed=true], [data-component][aria-pressed=true]',
+  )
+  selected?.focus(selected.dataset.component !== undefined ? { preventScroll: true } : undefined)
   if (!document.querySelector('[data-record][aria-pressed=true], [data-call][aria-pressed=true], [data-component][aria-pressed=true]'))
     document.querySelector<HTMLButtonElement>('.selection-notice button')?.focus()
 }
 function focusDetailReturn(): void {
   const breakpoint = destinationKey === 'composition'
-    ? '(max-width: 900px)'
+    ? '(max-width: 1120px)'
     : isApplicationPage() ? '(max-width: 1000px)' : '(max-width: 599px)'
   if (matchMedia(breakpoint).matches)
     document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
@@ -350,20 +365,173 @@ function compositionMatches(rootSourceId: string, rootId: string): boolean {
     client.body.composition.rootId === rootId
 }
 
+function releaseCompositionViewport(): void {
+  compositionResizeObserver?.disconnect()
+  compositionResizeObserver = undefined
+  if (compositionResizeFrame !== undefined) cancelAnimationFrame(compositionResizeFrame)
+  compositionResizeFrame = undefined
+  lastCompositionViewport = undefined
+  compositionViewportVisible = false
+  compositionFocusScope?.removeEventListener('focusin', enterCompositionMap)
+  compositionFocusScope?.removeEventListener('focusout', leaveCompositionMap)
+  compositionFocusScope = undefined
+  compositionMapFocused = false
+}
+
+function enterCompositionMap(): void {
+  compositionMapFocused = true
+}
+
+function leaveCompositionMap(event: FocusEvent): void {
+  // A responsive hide can blur before the resize observer runs.
+  if (!compositionFocusScope?.clientWidth) return
+  if (event.relatedTarget instanceof Node && compositionFocusScope.contains(event.relatedTarget)) return
+  compositionMapFocused = false
+}
+
+function compositionFitScale(viewport: HTMLElement): number | undefined {
+  const width = Number(viewport.dataset.compositionWidth)
+  const height = Number(viewport.dataset.compositionHeight)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 ||
+    !viewport.clientWidth || !viewport.clientHeight) return
+  return Math.min(1, Math.max(1, viewport.clientWidth - 2) / width, Math.max(1, viewport.clientHeight - 2) / height)
+}
+
+function rememberCompositionViewport(viewport: HTMLElement): void {
+  compositionViewport = { left: viewport.scrollLeft, top: viewport.scrollTop }
+}
+
+function compositionViewportCenter(viewport: HTMLElement): { x: number; y: number } | undefined {
+  const canvas = viewport.querySelector<HTMLElement>('.composition-canvas')
+  const scale = Number(viewport.dataset.compositionScale)
+  if (!canvas || !Number.isFinite(scale) || scale <= 0 || !viewport.clientWidth || !viewport.clientHeight) return
+  const bounds = viewport.getBoundingClientRect()
+  const map = canvas.getBoundingClientRect()
+  return {
+    x: (bounds.left + viewport.clientLeft + viewport.clientWidth / 2 - map.left) / scale,
+    y: (bounds.top + viewport.clientTop + viewport.clientHeight / 2 - map.top) / scale,
+  }
+}
+
+function centerCompositionPoint(viewport: HTMLElement, point: { x: number; y: number }): void {
+  const canvas = viewport.querySelector<HTMLElement>('.composition-canvas')
+  const scale = Number(viewport.dataset.compositionScale)
+  if (!canvas || !Number.isFinite(scale) || scale <= 0 || !viewport.clientWidth || !viewport.clientHeight) return
+  const bounds = viewport.getBoundingClientRect()
+  const map = canvas.getBoundingClientRect()
+  viewport.scrollLeft = Math.max(0, viewport.scrollLeft + map.left + point.x * scale -
+    bounds.left - viewport.clientLeft - viewport.clientWidth / 2)
+  viewport.scrollTop = Math.max(0, viewport.scrollTop + map.top + point.y * scale -
+    bounds.top - viewport.clientTop - viewport.clientHeight / 2)
+  rememberCompositionViewport(viewport)
+}
+
+function centerCompositionNode(viewport: HTMLElement, node: HTMLElement): void {
+  if (!viewport.clientWidth || !viewport.clientHeight) return
+  const bounds = viewport.getBoundingClientRect()
+  const card = node.getBoundingClientRect()
+  viewport.scrollLeft = Math.max(0, viewport.scrollLeft + card.left + card.width / 2 -
+    bounds.left - viewport.clientLeft - viewport.clientWidth / 2)
+  viewport.scrollTop = Math.max(0, viewport.scrollTop + card.top + card.height / 2 -
+    bounds.top - viewport.clientTop - viewport.clientHeight / 2)
+  rememberCompositionViewport(viewport)
+}
+
 function restoreCompositionViewport(): void {
-  if (destinationKey !== 'composition' || panel) return
-  const viewport = document.getElementById('composition-scroll')
-  if (!viewport || !viewport.clientWidth) return
-  if (viewport === lastCompositionViewport && compositionViewport) return
+  let viewport = destinationKey === 'composition' && !panel
+    ? document.getElementById('composition-scroll')
+    : null
+  if (!viewport) {
+    releaseCompositionViewport()
+    return
+  }
+  const restoreSavedPosition = viewport !== lastCompositionViewport || !compositionViewportVisible
+  if (viewport !== lastCompositionViewport) {
+    releaseCompositionViewport()
+    lastCompositionViewport = viewport
+    compositionFocusScope = viewport.closest<HTMLElement>('.composition-main') ?? undefined
+    compositionMapFocused = compositionFocusScope?.contains(document.activeElement) ?? false
+    compositionFocusScope?.addEventListener('focusin', enterCompositionMap)
+    compositionFocusScope?.addEventListener('focusout', leaveCompositionMap)
+    compositionResizeObserver = new ResizeObserver(() => {
+      if (compositionResizeFrame !== undefined) return
+      compositionResizeFrame = requestAnimationFrame(() => {
+        compositionResizeFrame = undefined
+        if (lastCompositionViewport?.isConnected) redraw()
+      })
+    })
+    compositionResizeObserver.observe(viewport)
+  }
+  const fit = compositionFitScale(viewport)
+  if (fit === undefined) {
+    const active = document.activeElement
+    const moveFocus = compositionViewportVisible && compositionMapFocused &&
+      (compositionFocusScope?.contains(active) || active === document.body || active === document.documentElement)
+    compositionViewportVisible = false
+    compositionMapFocused = false
+    if (moveFocus && currentLocal().detailOpen) {
+      focusDetailReturn()
+    }
+    return
+  }
+  compositionViewportVisible = true
   const composition = client?.body?.composition
   if (composition?.state !== 'available') return
+  const scale = compositionScaleMode === 'fit' ? fit :
+    compositionScaleMode === 'automatic' ? (fit >= 0.75 ? fit : 1) : compositionScale
+  const center = compositionViewport && !restoreSavedPosition && scale !== compositionScale
+    ? compositionViewportCenter(viewport)
+    : undefined
+  if (scale !== compositionScale) {
+    compositionScale = scale
+    render(h(App, {}), root)
+    viewport = document.getElementById('composition-scroll')
+    if (!viewport?.clientWidth || !viewport.clientHeight) return
+  }
+  if (compositionCenterNodeId) {
+    const selected = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')]
+      .find((element) => element.dataset.component === compositionCenterNodeId)
+    compositionCenterNodeId = undefined
+    if (selected) {
+      centerCompositionNode(viewport, selected)
+      return
+    }
+  }
+  if (center) {
+    centerCompositionPoint(viewport, center)
+    return
+  }
+  if (compositionViewport) {
+    if (restoreSavedPosition) {
+      viewport.scrollLeft = compositionViewport.left
+      viewport.scrollTop = compositionViewport.top
+    }
+    rememberCompositionViewport(viewport)
+    return
+  }
   const entry = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')]
     .find((element) => element.dataset.component === composition.rootId)
-  viewport.scrollLeft = compositionViewport?.left ??
-    Math.max(0, (entry?.offsetLeft ?? 0) + (entry?.offsetWidth ?? 0) / 2 - viewport.clientWidth / 2)
-  viewport.scrollTop = compositionViewport?.top ?? 0
-  compositionViewport = { left: viewport.scrollLeft, top: viewport.scrollTop }
-  lastCompositionViewport = viewport
+  if (entry) centerCompositionNode(viewport, entry)
+  else rememberCompositionViewport(viewport)
+}
+
+function scaleComposition(action: 'in' | 'out' | 'fit' | 'actual'): void {
+  const viewport = document.getElementById('composition-scroll')
+  if (!viewport) return
+  const fit = compositionFitScale(viewport)
+  if (fit === undefined) return
+  const center = compositionViewportCenter(viewport)
+  compositionScaleMode = action === 'fit' ? 'fit' : 'manual'
+  compositionScale = action === 'fit' ? fit : action === 'actual' ? 1 :
+    Math.max(Math.min(0.25, fit), Math.min(2, compositionScale * (action === 'in' ? 1.2 : 1 / 1.2)))
+  redraw()
+  const next = document.getElementById('composition-scroll')
+  if (!next?.clientWidth || !next.clientHeight) return
+  if (action === 'fit') {
+    next.scrollLeft = 0
+    next.scrollTop = 0
+    rememberCompositionViewport(next)
+  } else if (center) centerCompositionPoint(next, center)
 }
 
 function Composition(): ComponentChildren {
@@ -377,24 +545,25 @@ function Composition(): ComponentChildren {
     selectedNodeId: compositionSelection.nodeId,
     detailOpen: currentLocal().detailOpen,
     referencesEnabled: client?.referencesEnabled ?? false,
+    scale: compositionScale,
+    onScale: (action: 'in' | 'out' | 'fit' | 'actual') => {
+      if (rootId && compositionMatches(sourceId, rootId)) scaleComposition(action)
+    },
     onSelect: (id: string) => {
       const current = client?.body?.composition
       if (!rootId || !compositionMatches(sourceId, rootId) ||
         current?.state !== 'available' || !current.nodes.some((node) => node.id === id)) return
+      const fromDetails = document.activeElement instanceof HTMLElement &&
+        !!document.activeElement.closest('.composition-detail')
       humanNavigation = true
       compositionSelection = { rootSourceId: sourceId, rootId, nodeId: id }
+      compositionCenterNodeId = id
       currentLocal().detailOpen = true
       feedback = ''
       redraw()
-      const viewport = document.getElementById('composition-scroll')
-      const selected = [...document.querySelectorAll<HTMLButtonElement>('[data-component]')]
-        .find((element) => element.dataset.component === id)
-      if (viewport?.clientWidth && selected) {
-        viewport.scrollLeft = Math.max(0, selected.offsetLeft + selected.offsetWidth / 2 - viewport.clientWidth / 2)
-        viewport.scrollTop = Math.max(0, selected.offsetTop + selected.offsetHeight / 2 - viewport.clientHeight / 2)
-        compositionViewport = { left: viewport.scrollLeft, top: viewport.scrollTop }
-      }
-      focusDetailReturn()
+      if (fromDetails && !matchMedia('(max-width: 1120px)').matches)
+        document.getElementById('composition-detail-title')?.focus()
+      else focusDetailReturn()
     },
     onClose: () => {
       currentLocal().detailOpen = false
@@ -428,7 +597,9 @@ function Composition(): ComponentChildren {
       nodes[next]?.focus()
     },
     onScroll: (left: number, top: number) => {
-      if (rootId && compositionMatches(sourceId, rootId)) compositionViewport = { left, top }
+      const viewport = document.getElementById('composition-scroll')
+      if (viewport?.clientWidth && viewport.clientHeight && rootId && compositionMatches(sourceId, rootId))
+        compositionViewport = { left, top }
     },
   })
 }
@@ -2641,7 +2812,10 @@ addEventListener(
     treeChoices.clear()
     compositionSelection = {}
     compositionViewport = undefined
-    lastCompositionViewport = undefined
+    compositionCenterNodeId = undefined
+    compositionScale = 1
+    compositionScaleMode = 'automatic'
+    releaseCompositionViewport()
     compositionOrigin = undefined
   },
   { once: true },

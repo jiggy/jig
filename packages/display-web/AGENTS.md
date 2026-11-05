@@ -80,6 +80,10 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
   inspection destinations.
+- Keep the map compact, with callers left, targets right and counts beside their slots.
+  Use explicit CSS lengths for HTML cards and their shared SVG coordinate space.
+  Keep zoom, Fit and component selection local to the viewer.
+  Place request observations and incoming caller context in the selected component's inspector.
 - Map resources use human names and retain native kind in the identity disclosure.
   Checkpoints stay available with secondary styling. Complete slots and labels
   remain readable in the map, component details and connection table.

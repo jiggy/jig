@@ -19,54 +19,89 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Host-supplied available calls stay separate from observed invocation ancestry. */
+/* Configured composition and retained requests share one readable coordinate space. */
 .composition-page {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 24px;
-  padding: 24px;
+  gap: 16px;
+  padding: 4px;
 }
 .composition-page.inspecting {
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) 304px;
 }
 .composition-main {
   min-width: 0;
 }
-.composition-explanation {
-  max-width: 820px;
-  color: var(--secondary);
-}
 .composition-controls {
   display: flex;
-  align-items: end;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 12px 18px;
-  margin: 20px 0 14px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
-.composition-controls label {
+.composition-summary {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-right: auto;
   font-size: 12px;
 }
-.composition-controls select {
-  width: 260px;
+.composition-summary > svg {
+  color: var(--secondary);
 }
-.composition-controls > .secondary {
-  flex: 1;
-  padding-bottom: 7px;
+.composition-summary strong {
+  font-weight: 600;
+}
+.composition-chooser {
+  min-width: 0;
+}
+.composition-chooser select {
+  width: 224px;
+  max-width: 100%;
+  font-size: 12px;
+}
+.composition-controls > button {
+  font-size: 12px;
+}
+.composition-map-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: clamp(300px, calc(var(--composition-height) + 52px), 68vh);
+  min-height: 300px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background-color: var(--page);
+  background-image: radial-gradient(var(--line) 0.8px, transparent 0.8px);
+  background-size: 20px 20px;
 }
 .composition-scroll {
   position: relative;
+  flex: 1;
+  min-height: 0;
   width: 100%;
-  height: min(64vh, 650px);
-  min-height: 380px;
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--page);
+  scrollbar-width: thin;
+}
+.composition-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+.composition-world {
+  display: grid;
+  place-items: center;
+  width: max-content;
+  height: max-content;
+  min-width: 100%;
+  min-height: 100%;
+}
+.composition-scaled {
+  position: relative;
+  overflow: hidden;
 }
 .composition-canvas {
   position: relative;
@@ -81,51 +116,104 @@
   fill: none;
   stroke: var(--secondary);
   stroke-width: 1.5;
-  opacity: 0.6;
+  stroke-opacity: 0.45;
 }
-.composition-route.related {
+.composition-connection.related .composition-route {
   stroke: var(--accent);
   stroke-width: 2;
-  opacity: 1;
+  stroke-opacity: 1;
 }
-.composition-slot {
+.composition-port {
+  fill: var(--pane);
+  stroke: var(--secondary);
+  stroke-width: 1.5;
+}
+.composition-connection.related .composition-port {
+  stroke: var(--accent);
+}
+.composition-slot-background {
+  fill: var(--page);
+  stroke: var(--line);
+  stroke-width: 1;
+}
+.composition-connection.related .composition-slot-background {
+  fill: var(--selected);
+  stroke: var(--accent);
+}
+.composition-slot,
+.composition-slot-count {
   font-size: 11px;
   fill: var(--secondary);
-  paint-order: stroke;
-  stroke: var(--page);
-  stroke-width: 6px;
-  stroke-linejoin: round;
+}
+.composition-slot-count {
+  font-weight: 650;
+  fill: var(--text);
 }
 .composition-card {
   position: absolute;
-  padding: 12px 14px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 10px;
   text-align: left;
+  background: var(--pane);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.04);
+}
+.composition-card:hover {
+  border-color: var(--secondary);
   background: var(--pane);
 }
 .composition-card.selected {
   border: 2px solid var(--accent);
   background: var(--selected);
-  padding: 11px 13px;
+  padding: 13px;
+}
+.composition-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 .composition-card.resource {
   border-style: dashed;
 }
 .composition-card.checkpoint:not(.selected) {
-  background: var(--page);
+  box-shadow: none;
 }
 .composition-card-content {
   display: flex;
   flex-direction: column;
-  align-items: start;
+  align-items: stretch;
   height: 100%;
-  gap: 5px;
+  gap: 6px;
+}
+.composition-card-heading,
+.composition-detail-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 22px;
+}
+.composition-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--secondary);
 }
 .composition-kind {
-  font-size: 10px;
-  line-height: 15px;
+  font-size: 11px;
+  line-height: 16px;
   color: var(--secondary);
+}
+.composition-root-badge {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--secondary);
+  font-size: 9px;
+  line-height: 15px;
+  white-space: nowrap;
 }
 .composition-label {
   display: block;
@@ -143,18 +231,87 @@
 .composition-count {
   display: block;
   margin-top: auto;
-  font-size: 10px;
+  font-size: 11px;
   line-height: 16px;
   color: var(--secondary);
 }
+.composition-count strong {
+  font-weight: 600;
+  color: var(--text);
+}
+.composition-zoom {
+  align-self: flex-end;
+  flex-shrink: 0;
+  margin: 4px 10px 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--pane);
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.06);
+}
+.composition-zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 5px;
+  border: 0;
+  border-radius: 5px;
+  font-size: 11px;
+  background: transparent;
+}
+.composition-zoom button:hover {
+  background: var(--selected);
+}
+.composition-zoom .composition-zoom-value {
+  min-width: 44px;
+}
+.composition-zoom .composition-fit {
+  padding: 5px 8px;
+  border-left: 1px solid var(--line);
+  border-radius: 0 5px 5px 0;
+}
+.composition-fit > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
 .composition-map-note {
-  margin: 11px 0 17px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 10px 0 16px;
+  font-size: 11px;
+  color: var(--secondary);
+}
+.composition-map-note > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.composition-line-key {
+  width: 18px;
+  border-top: 1px solid var(--secondary);
+}
+.composition-map-hint {
+  margin-left: auto;
 }
 .composition-attribution,
 .composition-connections,
 .composition-about {
-  padding: 12px 0;
+  padding: 11px 0;
   border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.composition-about p,
+.composition-attribution p {
+  max-width: 760px;
+  color: var(--secondary);
 }
 .composition-connections table {
   width: 100%;
@@ -180,19 +337,68 @@
   top: 0;
   max-height: calc(100vh - 170px);
   overflow: auto;
-  padding: 20px;
+  padding: 18px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--pane);
   overflow-wrap: anywhere;
 }
 .composition-detail .back-to-components {
-  display: inline-flex;
-  margin-bottom: 20px;
+  display: none;
 }
-.composition-detail > .composition-kind {
-  display: block;
-  margin-bottom: 5px;
+.composition-detail-heading .composition-card-icon {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.composition-detail-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 5px;
+  margin-left: auto;
+  border: 0;
+  color: var(--secondary);
+}
+.composition-detail .composition-detail-title {
+  margin: 9px 0 18px;
+  font-size: 18px;
+  line-height: 1.4;
+}
+.composition-detail-section,
+.composition-root-observation {
+  padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.composition-detail-section h3,
+.composition-root-observation h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 650;
+}
+.composition-section-count {
+  min-width: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 10px;
+  text-align: center;
+  color: var(--secondary);
+}
+.composition-detail-section p,
+.composition-root-observation p {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+.composition-detail-section .composition-retained-note {
+  margin: -3px 0 12px;
+  font-size: 11px;
 }
 .composition-route-list,
 .composition-requests {
@@ -202,19 +408,46 @@
 }
 .composition-route-list li {
   display: grid;
-  gap: 7px;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--line);
+  gap: 5px;
+  padding: 9px 0;
+}
+.composition-route-list li + li {
+  border-top: 1px solid var(--line);
+}
+.composition-route-list code {
+  font-size: 11px;
 }
 .composition-route-list button {
+  width: 100%;
+  padding: 0;
+  border: 0;
   text-align: left;
+  color: var(--accent);
+  background: transparent;
 }
-.composition-requests li {
-  margin: 9px 0;
+.composition-route-list button > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.composition-route-list button svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.composition-connection-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.composition-requests li + li {
+  margin-top: 8px;
 }
 .composition-requests button {
   width: 100%;
-  padding: 12px;
+  padding: 11px 12px;
   text-align: left;
 }
 .composition-requests strong,
@@ -231,14 +464,23 @@
   margin: 6px 0;
   font-size: 11px;
 }
+.composition-identity {
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+.composition-identity > code {
+  display: block;
+  margin-top: 10px;
+}
 .composition-return {
   margin-left: auto;
 }
-@media (max-width: 900px) {
+@media (max-width: 1120px) {
   .composition-page,
   .composition-page.inspecting {
     display: block;
-    padding: 18px;
+    padding: 4px;
   }
   .composition-page.inspecting .composition-main {
     display: none;
@@ -247,29 +489,30 @@
     position: static;
     max-height: none;
   }
-  .composition-scroll {
-    height: 520px;
-    min-height: 340px;
+  .composition-detail .back-to-components {
+    display: inline-flex;
+    margin-bottom: 18px;
   }
-  .composition-controls select {
-    width: 240px;
+  .composition-detail-close {
+    display: none;
   }
 }
 @media (max-width: 599px) {
-  .composition-controls {
-    align-items: start;
+  .composition-summary {
+    width: 100%;
+    margin-bottom: 3px;
   }
-  .composition-controls > .secondary {
-    min-width: 100%;
-    order: 3;
-    padding-bottom: 0;
+  .composition-chooser {
+    flex: 1;
   }
-  .composition-controls label,
-  .composition-controls select {
+  .composition-chooser select {
     width: 100%;
   }
-  .composition-scroll {
-    height: 440px;
+  .composition-map-hint {
+    display: none;
+  }
+  .composition-map-shell {
+    height: clamp(300px, calc(var(--composition-height) + 52px), 60vh);
   }
   .composition-connections th,
   .composition-connections td {
@@ -277,6 +520,14 @@
     font-size: 11px;
   }
 }
+@media (pointer: coarse) {
+  .composition-zoom button,
+  .composition-detail-close {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 * {
   box-sizing: border-box;
 }

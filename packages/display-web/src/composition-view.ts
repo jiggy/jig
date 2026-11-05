@@ -13,6 +13,8 @@ type Props = {
   selectedNodeId?: string | undefined
   detailOpen: boolean
   referencesEnabled: boolean
+  scale: number
+  onScale: (action: 'in' | 'out' | 'fit' | 'actual') => void
   onSelect: (id: string) => void
   onClose: () => void
   onCall: (id: string) => void
@@ -39,6 +41,19 @@ const kindLabel = (node: DisplayCompositionNode): string =>
       : 'Flow'
 const button = (label: ComponentChildren, action: () => void, props: Record<string, unknown> = {}) =>
   h('button', { type: 'button', onClick: action, ...props }, label)
+const iconPaths = {
+  flow: 'M 4 4 H 10 V 10 H 4 Z M 14 14 H 20 V 20 H 14 Z M 14 4 H 20 V 10 H 14 Z M 10 7 H 14 M 7 10 V 17 H 14',
+  binding: 'M 8 4 H 16 L 21 12 L 16 20 H 8 L 3 12 Z M 8 12 H 16 M 13 9 L 16 12 L 13 15',
+  resource: 'M 4 7 L 12 3 L 20 7 V 17 L 12 21 L 4 17 Z M 4 7 L 12 11 L 20 7 M 12 11 V 21',
+  close: 'M 6 6 L 18 18 M 18 6 L 6 18',
+  minus: 'M 5 12 H 19',
+  plus: 'M 5 12 H 19 M 12 5 V 19',
+  fit: 'M 9 4 H 4 V 9 M 15 4 H 20 V 9 M 20 15 V 20 H 15 M 9 20 H 4 V 15',
+  arrow: 'M 5 12 H 19 M 14 7 L 19 12 L 14 17',
+}
+const icon = (name: keyof typeof iconPaths): ComponentChildren =>
+  h('svg', { viewBox: '0 0 24 24', width: 18, height: 18, fill: 'none', stroke: 'currentColor', 'stroke-width': 1.5, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'aria-hidden': true },
+    h('path', { d: iconPaths[name] }))
 const unmatchedReason = (reason: string): string =>
   reason === 'caller-unobserved'
     ? 'Caller relationship unavailable'
@@ -85,8 +100,11 @@ export function CompositionPage(props: Props): ComponentChildren {
     return count ? count + (count === 1 ? ' retained request' : ' retained requests') : 'No matching retained requests'
   }
   const selected = nodes.get(props.selectedNodeId ?? '')
+  const labelCounts = new Map<string, number>()
+  for (const node of composition.nodes) labelCounts.set(node.label, (labelCounts.get(node.label) ?? 0) + 1)
   const chooserLabel = (node: DisplayCompositionNode): string => {
     if (node.id === composition.rootId) return node.label + ' · Run root'
+    if (labelCounts.get(node.label) === 1) return node.label + ' · ' + kindLabel(node)
     const incoming = composition.edges.filter((edge) => edge.target === node.id)
     const connection = incoming[0]
     return node.label + ' · ' + kindLabel(node) +
@@ -94,6 +112,8 @@ export function CompositionPage(props: Props): ComponentChildren {
       (incoming.length > 1 ? ' (+' + (incoming.length - 1) + ' connections)' : '')
   }
   const selectedRequests = selected ? (requests.get(selected.id) ?? []) : []
+  const incoming = selected ? composition.edges.filter((edge) => edge.target === selected.id) : []
+  const outgoing = selected ? composition.edges.filter((edge) => edge.source === selected.id) : []
   const layout = privateCompositionLayout({
     ...composition,
     nodes: composition.nodes.map((node) => ({ ...node, label: privateBrowserLiteral(node.label) })),
@@ -103,6 +123,102 @@ export function CompositionPage(props: Props): ComponentChildren {
   for (const item of attribution.unmatched)
     reasonCounts.set(item.reason, (reasonCounts.get(item.reason) ?? 0) + 1)
 
+  const canvas = h('div', { class: 'composition-canvas', style: {
+    width: layout.width + 'px', height: layout.height + 'px',
+    transform: 'scale(' + props.scale + ')', transformOrigin: '0 0',
+  } },
+    h(
+      'svg',
+      {
+        class: 'composition-lines',
+        width: layout.width,
+        height: layout.height,
+        viewBox: '0 0 ' + layout.width + ' ' + layout.height,
+        'aria-hidden': true,
+      },
+      h('defs', {},
+        [false, true].map((related) => h('marker', {
+          key: String(related), id: related ? 'composition-arrow-selected' : 'composition-arrow',
+          markerWidth: 7, markerHeight: 7, refX: 9, refY: 3.5,
+          orient: 'auto', markerUnits: 'userSpaceOnUse',
+        }, h('path', { d: 'M 0 0 L 7 3.5 L 0 7 Z', fill: related ? 'var(--accent)' : 'var(--secondary)' }))),
+      ),
+      layout.routes.map((route) => {
+        const related = route.source === selected?.id || route.target === selected?.id
+        const labelLeft = route.labelX - route.labelWidth / 2
+        return h(
+          'g',
+          { key: route.id, class: 'composition-connection' + (related ? ' related' : '') },
+          h('title', {}, route.edgeIds.map((id) => {
+            const edge = composition.edges.find((item) => item.id === id)!
+            return privateBrowserLiteral(edge.slot) + ': ' + edgeCountLabel(id)
+          }).join('\n')),
+          h('path', {
+            d: route.path,
+            class: 'composition-route',
+            'marker-end': related ? 'url(#composition-arrow-selected)' : 'url(#composition-arrow)',
+          }),
+          h('circle', { class: 'composition-port', cx: route.sourceX, cy: route.sourceY, r: 3 }),
+          h('rect', { class: 'composition-slot-background', x: labelLeft, y: route.labelTop, width: route.labelWidth, height: route.labelHeight, rx: 6 }),
+          route.lines.map((line, index) => {
+            const edgeId = route.lineEdgeIds[index]
+            const y = route.labelY + index * 15
+            return h('g', { key: index },
+              h('text', { x: labelLeft + 10, y, class: 'composition-slot' }, line),
+              edgeId ? h('text', {
+                x: labelLeft + route.labelWidth - 10, y, class: 'composition-slot-count',
+                'text-anchor': 'end', 'data-composition-edge': edgeId,
+              }, edgeCounts.get(edgeId) ?? 0) : null,
+            )
+          }),
+        )
+      }),
+    ),
+    layout.nodes.map((box) => {
+      const node = nodes.get(box.id)!
+      const count = requests.get(node.id)?.length ?? 0
+      const childCount = composition.edges.filter((edge) => edge.source === node.id).length
+      return button(
+        h(
+          'span',
+          { class: 'composition-card-content' },
+          h('span', { class: 'composition-card-heading' },
+            h('span', { class: 'composition-card-icon' }, icon(node.kind)),
+            h('small', { class: 'composition-kind' }, kindLabel(node)),
+            node.id === composition.rootId ? h('span', { class: 'composition-root-badge' }, 'Run root') : null,
+          ),
+          h(
+            'strong',
+            { class: 'composition-label' },
+            box.labelLines.map((line, index) => h('span', { key: index }, literal(line))),
+          ),
+          h(
+            'span',
+            { class: 'composition-count' },
+            node.id === composition.rootId
+              ? childCount + (childCount === 1 ? ' configured call' : ' configured calls')
+              : h('span', {}, h('strong', {}, count), count === 1 ? ' request' : ' requests'),
+          ),
+        ),
+        () => props.onSelect(node.id),
+        {
+          key: node.id,
+          class: 'composition-card' + (node.kind === 'resource' ? ' resource' : '') +
+            (node.kind === 'resource' && (node.resourceKind === 'run-checkpoint' || node.resourceKind === 'child-checkpoint') ? ' checkpoint' : '') +
+            (node.id === selected?.id ? ' selected' : ''),
+          style: {
+            left: box.x + 'px', top: box.y + 'px',
+            width: box.width + 'px', height: box.height + 'px',
+          },
+          'data-component': node.id,
+          'aria-pressed': node.id === selected?.id,
+          'aria-label': privateBrowserLiteral(node.label) + ', ' + kindLabel(node) + (node.id === composition.rootId ? ', Run root' : ', ' + count + ' matching retained requests'),
+          onKeyDown: props.onNodeKeyDown,
+        },
+      )
+    }),
+  )
+
   return h(
     'div',
     { class: 'composition-page' + (selected && props.detailOpen ? ' inspecting' : '') },
@@ -111,143 +227,70 @@ export function CompositionPage(props: Props): ComponentChildren {
       { class: 'composition-main' },
       h(
         'div',
-        { class: 'view-heading' },
-        h('h2', {}, 'Available calls'),
-        h('span', { class: 'secondary' }, composition.nodes.length + ' components'),
-      ),
-      h(
-        'p',
-        { class: 'composition-explanation', id: 'composition-explanation' },
-        'Connections show which component a configured slot can call. They do not show execution order or internal decisions.',
-      ),
-      h(
-        'div',
         { class: 'composition-controls' },
+        h('div', { class: 'composition-summary' },
+          icon('flow'),
+          h('strong', {}, composition.nodes.length + (composition.nodes.length === 1 ? ' component' : ' components')),
+          h('span', { class: 'secondary' }, '· ' + composition.edges.length + (composition.edges.length === 1 ? ' connection' : ' connections')),
+        ),
         h(
-          'label',
-          {},
-          'Inspect a component',
+          'div',
+          { class: 'composition-chooser' },
           h(
             'select',
             {
+              'aria-label': 'Find a component',
               value: selected?.id ?? '',
               onChange: (event: Event) => {
                 const id = (event.target as HTMLSelectElement).value
                 if (id) props.onSelect(id)
               },
             },
-            h('option', { value: '' }, 'Choose a component…'),
+            h('option', { value: '' }, 'Find a component…'),
             composition.nodes.map((node) =>
               h('option', { key: node.id, value: node.id }, privateBrowserLiteral(chooserLabel(node))),
             ),
           ),
         ),
-        h('span', { class: 'secondary' }, 'Badges count retained invocation requests.'),
         button('Observed calls', props.onObservedCalls),
       ),
       h(
         'div',
-        {
+        { class: 'composition-map-shell', style: { '--composition-height': layout.height + 'px' } },
+        h('div', {
           id: 'composition-scroll',
           class: 'composition-scroll',
           role: 'region',
-          'aria-label': 'Available component calls. Scroll to explore the map.',
+          'aria-label': 'Application components and configured calls. Scroll to explore the map.',
           'aria-describedby': 'composition-explanation',
+          'data-composition-width': layout.width,
+          'data-composition-height': layout.height,
+          'data-composition-scale': props.scale,
           tabIndex: 0,
           onScroll: (event: Event) => {
             const viewport = event.currentTarget as HTMLElement
             props.onScroll(viewport.scrollLeft, viewport.scrollTop)
           },
         },
-        h(
-          'div',
-          { class: 'composition-canvas', style: { width: layout.width + 'px', height: layout.height + 'px' } },
-          h(
-            'svg',
-            {
-              class: 'composition-lines',
-              width: layout.width,
-              height: layout.height,
-              viewBox: '0 0 ' + layout.width + ' ' + layout.height,
-              'aria-hidden': true,
-            },
-            h(
-              'defs',
-              {},
-              h(
-                'marker',
-                {
-                  id: 'composition-arrow', markerWidth: 8, markerHeight: 8,
-                  refX: 7, refY: 4, orient: 'auto', markerUnits: 'userSpaceOnUse',
-                },
-                h('path', { d: 'M 0 0 L 8 4 L 0 8 Z', fill: 'var(--secondary)' }),
-              ),
-            ),
-            layout.routes.map((route) =>
-              h(
-                'g',
-                { key: route.id },
-                h('path', {
-                  d: route.path,
-                  class: 'composition-route' + (route.source === selected?.id || route.target === selected?.id ? ' related' : ''),
-                  'marker-end': 'url(#composition-arrow)',
-                }),
-                h(
-                  'text',
-                  { x: route.labelX, y: route.labelY, class: 'composition-slot', 'text-anchor': 'middle' },
-                  route.lines.map((line, index) =>
-                    h('tspan', { key: index, x: route.labelX, dy: index ? 15 : 0 }, line),
-                  ),
-                ),
-              ),
-            ),
+          h('div', { class: 'composition-world' },
+            h('div', { class: 'composition-scaled', style: {
+              width: layout.width * props.scale + 'px', height: layout.height * props.scale + 'px',
+            } }, canvas),
           ),
-          layout.nodes.map((box) => {
-            const node = nodes.get(box.id)!
-            const count = requests.get(node.id)?.length ?? 0
-            return button(
-              h(
-                'span',
-                { class: 'composition-card-content' },
-                h('small', { class: 'composition-kind' }, kindLabel(node)),
-                h(
-                  'strong',
-                  { class: 'composition-label' },
-                  box.labelLines.map((line, index) => h('span', { key: index }, literal(line))),
-                ),
-                h(
-                  'span',
-                  { class: 'composition-count' },
-                  node.id === composition.rootId
-                    ? 'Run root'
-                    : count
-                      ? count + (count === 1 ? ' retained request' : ' retained requests')
-                      : 'No matching retained requests',
-                ),
-              ),
-              () => props.onSelect(node.id),
-              {
-                key: node.id,
-                class: 'composition-card' + (node.kind === 'resource' ? ' resource' : '') +
-                  (node.kind === 'resource' && (node.resourceKind === 'run-checkpoint' || node.resourceKind === 'child-checkpoint') ? ' checkpoint' : '') +
-                  (node.id === selected?.id ? ' selected' : ''),
-                style: {
-                  left: box.x + 'px', top: box.y + 'px',
-                  width: box.width + 'px', height: box.height + 'px',
-                },
-                'data-component': node.id,
-                'aria-pressed': node.id === selected?.id,
-                'aria-label': privateBrowserLiteral(node.label) + ', ' + kindLabel(node) + (node.id === composition.rootId ? ', Run root' : ', ' + count + ' matching retained requests'),
-                onKeyDown: props.onNodeKeyDown,
-              },
-            )
-          }),
+        ),
+        h('div', { class: 'composition-zoom', role: 'group', 'aria-label': 'Map zoom' },
+          button(icon('minus'), () => props.onScale('out'), { title: 'Zoom out', 'aria-label': 'Zoom out' }),
+          button(Math.round(props.scale * 100) + '%', () => props.onScale('actual'), { class: 'composition-zoom-value', title: 'Show at 100%', 'aria-label': 'Zoom ' + Math.round(props.scale * 100) + ' percent. Reset to 100 percent.' }),
+          button(icon('plus'), () => props.onScale('in'), { title: 'Zoom in', 'aria-label': 'Zoom in' }),
+          button(h('span', {}, icon('fit'), 'Fit'), () => props.onScale('fit'), { class: 'composition-fit', title: 'Fit the whole map', 'aria-label': 'Fit the whole map' }),
         ),
       ),
       h(
-        'p',
-        { class: 'secondary composition-map-note' },
-        'Select a component for its configured connections and matching invocation observations. Arrow keys move between components.',
+        'div',
+        { class: 'composition-map-note', id: 'composition-explanation' },
+        h('span', {}, h('i', { class: 'composition-line-key', 'aria-hidden': true }), 'Configured calls'),
+        h('span', {}, 'Counts show retained requests'),
+        h('span', { class: 'composition-map-hint' }, 'Select a component to inspect'),
       ),
       snapshot.omissions.calls
         ? h('p', { class: 'unavailable-note' }, snapshot.omissions.calls + ' call observations are omitted. Counts describe retained observations only.')
@@ -292,9 +335,11 @@ export function CompositionPage(props: Props): ComponentChildren {
         'details',
         { class: 'composition-about' },
         h('summary', {}, 'About this map'),
+        h('p', {}, 'Connections show which component a configured slot can call. They do not show execution order or internal decisions.'),
         h('p', {}, 'The host supplies this Run’s admitted composition. Internal steps, branch conditions, and data transformations are not included.'),
         h('p', {}, 'A matched request retains its observed state. It does not by itself establish that the target started or completed.'),
         h('p', {}, 'An absence of matching retained requests does not establish that a configured call was skipped.'),
+        h('p', {}, 'Use arrow keys to move between components. Zoom or Fit changes only the view. Component positions are not editable.'),
       ),
     ),
     selected && props.detailOpen
@@ -302,8 +347,15 @@ export function CompositionPage(props: Props): ComponentChildren {
           'aside',
           { class: 'composition-detail', 'aria-label': 'Selected component' },
           button('← Back to map', props.onClose, { class: 'back-to-records back-to-components' }),
-          h('small', { class: 'composition-kind' }, kindLabel(selected)),
-          h('h2', {}, literal(selected.label)),
+          h('header', { class: 'composition-detail-heading' },
+            h('span', { class: 'composition-card-icon' }, icon(selected.kind)),
+            h('small', { class: 'composition-kind' }, kindLabel(selected)),
+            button(icon('close'), props.onClose, { class: 'composition-detail-close', title: 'Close component details', 'aria-label': 'Close component details' }),
+          ),
+          h('h2', { id: 'composition-detail-title', class: 'composition-detail-title', tabIndex: -1 }, literal(selected.label)),
+          snapshot.omissions.calls
+            ? h('p', { class: 'unavailable-note' }, snapshot.omissions.calls + ' call observations are omitted from this run.')
+            : null,
           selected.id === composition.rootId
             ? h(
                 'section',
@@ -320,28 +372,13 @@ export function CompositionPage(props: Props): ComponentChildren {
                       snapshot.workspace.facts.execution.clipped ? ' · retained fact clipped' : null,
                     )
                   : null,
-                h('p', { class: 'secondary' }, 'This component is the Run root. Child invocation requests appear on their target components.'),
+                h('p', { class: 'secondary' }, 'Run root. Child requests appear on their target components.'),
               )
             : null,
-          h('h3', {}, 'Available calls'),
-          composition.edges.some((edge) => edge.source === selected.id)
-            ? h(
-                'ul',
-                { class: 'composition-route-list' },
-                composition.edges.filter((edge) => edge.source === selected.id).map((edge) =>
-                  h(
-                    'li',
-                    { key: edge.id },
-                    h('code', {}, literal(edge.slot)),
-                    button(literal(nodes.get(edge.target)!.label), () => props.onSelect(edge.target)),
-                    h('small', { class: 'secondary' }, edgeCountLabel(edge.id)),
-                  ),
-                ),
-              )
-            : h('p', { class: 'secondary' }, 'No outgoing connections are supplied for this component.'),
-          selected.id !== composition.rootId ? h('h3', {}, 'Observed invocation requests') : null,
-          selected.id === composition.rootId ? null : selectedRequests.length
-            ? h(
+          selected.id !== composition.rootId ? h('section', { class: 'composition-detail-section' },
+            h('h3', {}, 'Requests in this run', h('span', { class: 'composition-section-count' }, selectedRequests.length)),
+            h('p', { class: 'composition-retained-note secondary' }, 'Counts show retained requests.'),
+            selectedRequests.length ? h(
                 'ol',
                 { class: 'composition-requests' },
                 selectedRequests.map((call) =>
@@ -351,16 +388,16 @@ export function CompositionPage(props: Props): ComponentChildren {
                     button(
                       h(
                         'span',
-                        {},
+                        { class: 'composition-request-content' },
                         h('strong', {}, literal(call.intent ?? call.slot)),
                         h('span', { class: 'composition-request-state call-' + call.state }, 'Observed state: ' + call.state),
-                        h('small', {}, 'Operation: ', literal(call.operationId)),
+                        h('small', { class: 'secondary' }, 'Operation: ', literal(call.operationId)),
                       ),
                       () => props.onCall(call.id),
                       {
                         'data-composition-call': call.id,
                         disabled: !props.referencesEnabled,
-                        'aria-label': 'Inspect invocation ' + privateBrowserLiteral(call.operationId) + ': ' + privateBrowserLiteral(call.intent ?? call.slot),
+                        'aria-label': 'Inspect invocation ' + privateBrowserLiteral(call.operationId) + ': ' + privateBrowserLiteral(call.intent ?? call.slot) + '. Observed state: ' + call.state,
                       },
                     ),
                   ),
@@ -370,9 +407,32 @@ export function CompositionPage(props: Props): ComponentChildren {
           selectedRequests.length && !props.referencesEnabled
             ? h('p', { class: 'unavailable-note' }, 'Invocation links are unavailable while this observation is stale or incomplete.')
             : null,
+          ) : null,
+          incoming.length ? h('section', { class: 'composition-detail-section' },
+            h('h3', {}, 'Configured callers'),
+            h('ul', { class: 'composition-route-list composition-incoming' },
+              incoming.map((edge) => h('li', { key: edge.id },
+                button(h('span', {}, literal(nodes.get(edge.source)!.label), icon('arrow')), () => props.onSelect(edge.source)),
+                h('div', { class: 'composition-connection-meta' },
+                  h('code', {}, literal(edge.slot)),
+                  h('small', { class: 'secondary' }, edgeCountLabel(edge.id)),
+                ),
+              )),
+            ),
+          ) : null,
+          h('section', { class: 'composition-detail-section' },
+            h('h3', {}, 'Configured calls', h('span', { class: 'composition-section-count' }, outgoing.length)),
+            outgoing.length ? h('ul', { class: 'composition-route-list' },
+              outgoing.map((edge) => h('li', { key: edge.id },
+                h('code', {}, literal(edge.slot)),
+                button(h('span', {}, literal(nodes.get(edge.target)!.label), icon('arrow')), () => props.onSelect(edge.target)),
+                h('small', { class: 'secondary' }, edgeCountLabel(edge.id)),
+              )),
+            ) : h('p', { class: 'secondary' }, 'No configured child calls.'),
+          ),
           h(
             'details',
-            {},
+            { class: 'composition-identity' },
             h('summary', {}, 'Component identity'),
             h('code', {}, literal(selected.id)),
             selected.kind === 'resource'

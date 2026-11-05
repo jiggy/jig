@@ -70,7 +70,7 @@ export function privateBrowserTabs(
     tabs.splice(firstExecution < 0 ? tabs.length : firstExecution, 0, {
       id: 'composition',
       title: 'Application map',
-      source: 'Available calls',
+      source: 'Configured calls',
       icon: 'map',
     })
   }
