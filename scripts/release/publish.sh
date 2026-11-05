@@ -48,11 +48,12 @@ if (release?.schemaVersion !== 1 || release.eligible !== true ||
     release.reason !== 'versioned-release' || release.sourceRevision !== receipt.sourceRevision ||
     !/^[0-9a-f]{64}$/.test(release.releasePlanSha256 ?? '') ||
     !Array.isArray(release.pendingPackages) || release.pendingPackages.length !== 0 ||
-    !Array.isArray(release.packages) || release.packages.length !== 3)
+    !Array.isArray(release.packages) || release.packages.length !== 4)
   throw new Error('candidate does not carry an applied release plan');
 for (const [kind, name] of [
   ['agent-method', '@jigging/agent-method'],
   ['agent-acp', '@jigging/agent-acp'],
+  ['semantic-router', '@jigging/semantic-router'],
   ['jig', '@jigging/jig'],
 ]) {
   const planned = release.packages.filter((item) => item.kind === kind);
@@ -110,6 +111,7 @@ publish_candidate() {
   case "$package_kind" in
     agent) archive_kind=agent-method ;;
     acp) archive_kind=agent-acp ;;
+    router) archive_kind=semantic-router ;;
     jig) archive_kind=jig ;;
     *) echo 'unknown package kind' >&2; exit 1 ;;
   esac
@@ -283,7 +285,7 @@ publish_candidate() {
 # Keep the independent SDK outside Jig's host qualification path.
 # Each group preflights its complete set before any registry mutation.
 case "$RELEASE_GROUP" in
-  host) package_kinds="agent acp jig" ;;
+  host) package_kinds="agent acp router jig" ;;
   *) echo "unknown release group" >&2; exit 1 ;;
 esac
 revalidate_qualification
@@ -292,6 +294,7 @@ for PREFLIGHT in true false; do
     case "$kind" in
       agent) publish_candidate agent @jigging/agent-method ;;
       acp) publish_candidate acp @jigging/agent-acp ;;
+      router) publish_candidate router @jigging/semantic-router ;;
       jig) publish_candidate jig @jigging/jig ;;
     esac
   done

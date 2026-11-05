@@ -1,0 +1,8 @@
+Bundled dependencies
+
+@jigging/flow is bundled under Apache-2.0. See licenses/flow.LICENSE.
+@jigging/agent-method and @jigging/reporting are bundled under MPL-2.0.
+Their source remains available in the Jig repository.
+
+The copied Jig checkpoint descriptors in examples/recover-draft retain the
+Bread License. See licenses/jig.LICENSE and the canonical docs/jig/spec source.

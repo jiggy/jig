@@ -263,7 +263,7 @@ async function main() {
   const environment =
     mac || mode === 'all' ? compilerEnvironment(process.env) : testEnvironment(process.env)
   if (mode === 'all') {
-    for (const recipe of ['jig::build', 'test-tooling', 'test']) {
+    for (const recipe of ['build', 'test-tooling', 'test']) {
       console.log(`Preflight: ${recipe}`)
       const status = execute(
         'just',

@@ -25,6 +25,7 @@ export async function startRegistry(root, { externalDependencies = false } = {})
             'reporting',
             'agent-method',
             'agent-acp',
+            'semantic-router',
             'jig',
             'display-model',
             'display-web',

@@ -195,7 +195,7 @@ test('partial PR retry combines immutable successful jobs and the freshly retrie
   assert.equal(combined.results.length, Object.keys(statuses).length)
   const summary = await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')
   assert.ok(summary.includes(`Tested merge source: \`${source}\``))
-  assert.ok(summary.includes('**1 current-attempt** and **13 retained from earlier attempts**'))
+  assert.ok(summary.includes('**1 current-attempt** and **14 retained from earlier attempts**'))
   for (const accepted of receipt.jobs) {
     assert.ok(summary.includes(`| ${accepted.name} | ${accepted.attempt} |`))
     assert.ok(summary.includes(`/actions/runs/100/job/${accepted.jobId})`))
@@ -213,7 +213,7 @@ test('first-attempt summaries identify fresh jobs and unavailable summaries pres
     for (const report of reports) report.mergeRetry.attempt = 1
   await f.pack()
   await acquireMergeEvidence({ directory: join(f.root, 'fresh'), output: join(f.root, 'fresh.json'), env: f.env, client: f.client })
-  assert.ok((await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')).includes('**14 current-attempt** and **0 retained from earlier attempts**'))
+  assert.ok((await readFile(f.env.GITHUB_STEP_SUMMARY, 'utf8')).includes('**15 current-attempt** and **0 retained from earlier attempts**'))
   f.env.GITHUB_STEP_SUMMARY = f.root
   const output = join(f.root, 'unavailable-summary.json')
   const receipt = await acquireMergeEvidence({ directory: join(f.root, 'unavailable-summary'), output, env: f.env, client: f.client })

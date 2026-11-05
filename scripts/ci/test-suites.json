@@ -177,6 +177,16 @@
       ]
     },
     {
+      "id": "semantic-router",
+      "roots": [
+        "packages/semantic-router/"
+      ],
+      "profiles": [
+        "portable",
+        "portable-linux"
+      ]
+    },
+    {
       "id": "applications",
       "roots": [
         "examples/",
@@ -277,7 +287,8 @@
       "suiteIds": [
         "agent",
         "acp",
-        "reporting"
+        "reporting",
+        "semantic-router"
       ],
       "inventoryProfile": "portable-linux",
       "requiresArtifacts": false,
@@ -346,6 +357,7 @@
         "flow",
         "agent",
         "acp",
+        "router",
         "jig"
       ],
       "suiteIds": [],

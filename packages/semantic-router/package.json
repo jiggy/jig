@@ -1,0 +1,47 @@
+{
+  "name": "@jigging/semantic-router",
+  "version": "0.1.0-alpha.0",
+  "description": "An ordinary Flow that selects an eligible method or abstains",
+  "license": "MPL-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jiggy/jig.git",
+    "directory": "packages/semantic-router"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "FLOW.ts",
+    "FLOW.contract.json",
+    "FLOW.meta.json",
+    "contracts",
+    "README.md",
+    "AGENTS.md",
+    "LICENSE",
+    "THIRD_PARTY_NOTICES",
+    "licenses",
+    "justfile",
+    "tsconfig.json",
+    "test",
+    "examples"
+  ],
+  "devDependencies": {
+    "@jigging/agent-method": "workspace:*",
+    "@jigging/flow": "0.1.0-alpha.15",
+    "@jigging/reporting": "workspace:*",
+    "@types/node": "24.13.3",
+    "typescript": "7.0.2"
+  }
+}

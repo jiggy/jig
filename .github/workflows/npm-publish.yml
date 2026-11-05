@@ -119,6 +119,9 @@ jobs:
       acp_new: ${{ steps.release.outputs.acp_new }}
       acp_state: ${{ steps.release.outputs.acp_state }}
       acp_version: ${{ steps.release.outputs.acp_version }}
+      router_new: ${{ steps.release.outputs.router_new }}
+      router_state: ${{ steps.release.outputs.router_state }}
+      router_version: ${{ steps.release.outputs.router_version }}
     steps:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
@@ -180,6 +183,9 @@ jobs:
       ACP_NEW: ${{ needs.publish_host.outputs.acp_new }}
       ACP_STATE: ${{ needs.publish_host.outputs.acp_state }}
       ACP_VERSION: ${{ needs.publish_host.outputs.acp_version }}
+      ROUTER_NEW: ${{ needs.publish_host.outputs.router_new }}
+      ROUTER_STATE: ${{ needs.publish_host.outputs.router_state }}
+      ROUTER_VERSION: ${{ needs.publish_host.outputs.router_version }}
     steps:
       - name: Create or verify annotated package tags
         run: |
@@ -226,6 +232,7 @@ jobs:
             host)
               converge_tag "agent-method-v$AGENT_VERSION" "@jigging/agent-method $AGENT_VERSION" "$AGENT_NEW" "$AGENT_STATE"
               converge_tag "agent-acp-v$ACP_VERSION" "@jigging/agent-acp $ACP_VERSION" "$ACP_NEW" "$ACP_STATE"
+              converge_tag "semantic-router-v$ROUTER_VERSION" "@jigging/semantic-router $ROUTER_VERSION" "$ROUTER_NEW" "$ROUTER_STATE"
               converge_tag "jig-v$JIG_VERSION" "@jigging/jig $JIG_VERSION" "$JIG_NEW" "$JIG_STATE"
               ;;
             *) exit 1 ;;
@@ -285,6 +292,8 @@ jobs:
                 "npm install @jigging/agent-method@$AGENT_VERSION" 'https://jig.md/build/agent-method' "$AGENT_STATE"
               create_release agent-acp "$ACP_VERSION" 'Replaceable Agent Flow over a host-authorized finite ACP resource.' \
                 "npm install @jigging/agent-acp@$ACP_VERSION" 'https://jig.md/build/agents' "$ACP_STATE"
+              create_release semantic-router "$ROUTER_VERSION" 'Bounded semantic selection through a replaceable Agent Flow.' \
+                "npm install @jigging/semantic-router@$ROUTER_VERSION" 'https://jig.md/build/semantic-routing' "$ROUTER_STATE"
               create_release jig "$JIG_VERSION" 'Jig runs admitted FLOW packages under operator control.' \
                 "npm install --global @jigging/jig@$JIG_VERSION" 'https://jig.md/start/' "$JIG_STATE"
               ;;
@@ -296,6 +305,7 @@ jobs:
             '| Package | Version | Registry result |' '| --- | --- | --- |' >> "$GITHUB_STEP_SUMMARY"
           printf '| @jigging/agent-method | %s | %s |\n' "$AGENT_VERSION" "$AGENT_STATE" >> "$GITHUB_STEP_SUMMARY"
           printf '| @jigging/agent-acp | %s | %s |\n' "$ACP_VERSION" "$ACP_STATE" >> "$GITHUB_STEP_SUMMARY"
+          printf '| @jigging/semantic-router | %s | %s |\n' "$ROUTER_VERSION" "$ROUTER_STATE" >> "$GITHUB_STEP_SUMMARY"
           printf '| @jigging/jig | %s | %s |\n' "$JIG_VERSION" "$JIG_STATE" >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' '' \
             '**published** means a new version passed registry verification.' \

@@ -157,7 +157,7 @@ preparation never becomes a consumer requirement.
   It checks the window's minimum request cost
   before collecting individual run histories. Insufficient budget refuses the
   complete report without sampling. Use a narrower manual window after refusal.
-- `build-candidates.mjs` archives clean tracked source and freezes seven Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
+- `build-candidates.mjs` archives clean tracked source and freezes eight Jig-owned npm archives and the published FLOW dependency. It uses qualified native Linux x64 Bun 1.3.3/Just 1.43.1, normal
   workspace resolution and package-owned packing. Preserve generated resolution,
   actual tool identities, inventories and hashes. Build-only receipts carry
   pending qualification. Expensive consumer tests run after artifact retention.
@@ -175,7 +175,7 @@ preparation never becomes a consumer requirement.
   profiles and descriptor inputs use these same component identities.
   `qualify-candidate.mjs` verifies the immutable bundle before and after fresh
   FLOW/Agent/standalone-display/Jig installed obligations, without rebuilding
-  release archives. Display packages qualify through Jig's gate. The protected publication selectors are HTTP Agent, ACP Agent, and Jig.
+  release archives. Display packages qualify through Jig's gate. The protected publication selectors are HTTP Agent, ACP Agent, semantic router, and Jig.
 
   FLOW SDK archives are published dependencies frozen as qualification inputs.
   Workspace installation selects only Jig-owned packages, never external FLOW packages.
@@ -190,7 +190,7 @@ They consume frozen package exports with tracked test helpers and installed
   that full Linux receipt.
 - `candidate-provenance.mjs` validates exact source, producer, build profile,
   archive contents, resolution and hashes, and writes qualification receipts.
-  Its closed release record requires the three protected package versions to
+  Its closed release record requires the four protected package versions to
   match their frozen archives. Unknown release fields, foreign source, pending
   external FLOW coverage and malformed eligibility refuse qualification.
 

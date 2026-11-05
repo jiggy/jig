@@ -10,7 +10,7 @@ import { command, npmEnvironment, startRegistry } from './registry.mjs'
 import { git, releaseState } from './state.mjs'
 
 const repository = resolve(import.meta.dirname, '../..')
-const kinds = ['agent-method', 'agent-acp', 'jig']
+const kinds = ['agent-method', 'agent-acp', 'semantic-router', 'jig']
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex')
 const json = (value) => JSON.stringify(value, null, 2) + '\n'
 async function put(root, path, value) {
@@ -160,9 +160,9 @@ test(
   (t) =>
     fixture(t, async ({ root, receipt, npm, run }) => {
       const first = await success(await run())
-      assert.equal(first.output.match(/_state=published/g)?.length, 3)
+      assert.equal(first.output.match(/_state=published/g)?.length, 4)
       const retry = await success(await run())
-      assert.equal(retry.output.match(/_state=verified/g)?.length, 3)
+      assert.equal(retry.output.match(/_state=verified/g)?.length, 4)
       await put(root, 'consumer/package.json', { private: true, type: 'module' })
       await success(
         await npm(
@@ -198,12 +198,12 @@ test(
       registry.traffic.length = 0
       const result = await success(await run())
       assert.match(result.output, /agent_state=verified/)
-      assert.equal(result.output.match(/_state=published/g)?.length, 2)
+      assert.equal(result.output.match(/_state=published/g)?.length, 3)
       assert.deepEqual(
         registry.traffic
           .filter(({ method }) => method === 'PUT')
           .map(({ path }) => decodeURIComponent(path)),
-        ['/@jigging/agent-acp', '/@jigging/jig'],
+        ['/@jigging/agent-acp', '/@jigging/semantic-router', '/@jigging/jig'],
       )
     }),
 )
@@ -250,8 +250,8 @@ test(
         if (committed && request.method === 'GET' && hidden++ < 2) return { status: 404 }
       })
       const result = await success(await run())
-      assert.equal(result.output.match(/_state=published/g)?.length, 3)
-      assert.equal(registry.traffic.filter(({ method }) => method === 'PUT').length, 3)
+      assert.equal(result.output.match(/_state=published/g)?.length, 4)
+      assert.equal(registry.traffic.filter(({ method }) => method === 'PUT').length, 4)
     }),
 )
 
@@ -311,13 +311,13 @@ test(
       }
       registry.traffic.length = 0
       const older = await success(await run())
-      assert.equal(older.output.match(/_state=superseded/g)?.length, 3)
+      assert.equal(older.output.match(/_state=superseded/g)?.length, 4)
       assert.equal(registry.traffic.filter(({ method }) => method === 'PUT').length, 0)
       // Existing older bytes remain verifiable even with missing or older tags.
       for (const kind of kinds) await publish(kind, 'next')
       registry.traffic.length = 0
       const retry = await success(await run())
-      assert.equal(retry.output.match(/_state=verified/g)?.length, 3)
+      assert.equal(retry.output.match(/_state=verified/g)?.length, 4)
       assert.equal(registry.traffic.filter(({ method }) => method === 'PUT').length, 0)
       for (const { name } of PACKAGES.filter(({ kind }) => kinds.includes(kind))) {
         const tag = await success(await npm('view', name, 'dist-tags.alpha', '--json'))
@@ -386,7 +386,7 @@ test(
       )
       registry.traffic.length = 0
       const result = await success(await run())
-      assert.equal(result.output.match(/_state=verified/g)?.length, 3)
+      assert.equal(result.output.match(/_state=verified/g)?.length, 4)
       assert.match(result.stderr, /the missing alpha tag cannot be changed/)
       assert.match(result.stderr, /the older alpha tag cannot be changed/)
       assert.equal(registry.traffic.filter(({ method }) => method === 'PUT').length, 0)
@@ -402,6 +402,7 @@ test(
         { eligible: false },
         { pendingPackages: ['@jigging/jig'] },
         { releasePlanSha256: 'invalid' },
+        { packages: receipt.release.packages.filter(({ kind }) => kind !== 'semantic-router') },
       ]) {
         const altered = structuredClone(receipt)
         Object.assign(altered.release, change)
@@ -425,7 +426,7 @@ test(
       async ({ archives, run }) => {
         assert.ok((await readFile(archives.jig)).length > 9 * 1024 * 1024)
         const result = await success(await run())
-        assert.equal(result.output.match(/_state=published/g)?.length, 3)
+        assert.equal(result.output.match(/_state=published/g)?.length, 4)
       },
       { largeArchive: true },
     ),

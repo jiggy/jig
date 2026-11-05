@@ -45,7 +45,7 @@ export const CI_QUALIFICATION_JOBS = Object.freeze([
   'Build Python reporting artifacts',
   'test',
   ...PYTHON_INSTALLED_JOBS,
-  ...['flow', 'agent', 'acp', 'jig'].map((kind) => `Build ${kind} release candidate`),
+  ...['flow', 'agent', 'acp', 'router', 'jig'].map((kind) => `Build ${kind} release candidate`),
 ])
 export const LINUX_QUALIFICATION_JOBS = Object.freeze([
   'rootless-linux',

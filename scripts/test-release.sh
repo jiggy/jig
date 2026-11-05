@@ -62,12 +62,14 @@ done
 archive_packages=
 if has_stage source-portable || has_stage source-applications; then
   just jig::build
-  archive_packages="flow-sdk reporting agent-method agent-acp display-model display-web display-tui jig"
+  just router::build
+  archive_packages="flow-sdk reporting agent-method agent-acp semantic-router display-model display-web display-tui jig"
 elif has_stage source-protocol; then
   just reporting::build
   just agent::build
   just acp::build
-  archive_packages="flow-sdk reporting agent-method agent-acp"
+  just router::build
+  archive_packages="flow-sdk reporting agent-method agent-acp semantic-router"
 fi
 if [ -n "${CI_CANDIDATE_BUNDLE:-}" ]; then
   "$FLOW_NODE" scripts/ci/candidate-provenance.mjs verify "$CI_CANDIDATE_BUNDLE" --source "$(git rev-parse HEAD)" >/dev/null
@@ -94,6 +96,7 @@ for package in $archive_packages; do
     reporting) REPORTING_PACKAGE_ARCHIVE=$1; export REPORTING_PACKAGE_ARCHIVE ;;
     agent-method) AGENT_METHOD_PACKAGE_ARCHIVE=$1; export AGENT_METHOD_PACKAGE_ARCHIVE ;;
     agent-acp) AGENT_ACP_PACKAGE_ARCHIVE=$1; export AGENT_ACP_PACKAGE_ARCHIVE ;;
+    semantic-router) SEMANTIC_ROUTER_PACKAGE_ARCHIVE=$1; export SEMANTIC_ROUTER_PACKAGE_ARCHIVE ;;
     display-model) DISPLAY_MODEL_PACKAGE_ARCHIVE=$1; export DISPLAY_MODEL_PACKAGE_ARCHIVE ;;
     display-web) DISPLAY_WEB_PACKAGE_ARCHIVE=$1; export DISPLAY_WEB_PACKAGE_ARCHIVE ;;
     display-tui) DISPLAY_TUI_PACKAGE_ARCHIVE=$1; export DISPLAY_TUI_PACKAGE_ARCHIVE ;;
@@ -195,6 +198,7 @@ while IFS= read -r application; do
       "@jigging/agent-acp": Bun.argv[4],
       "@jigging/reporting": Bun.argv[5],
       "@jigging/jig": Bun.argv[6],
+      "@jigging/semantic-router": Bun.argv[7],
     };
     const manifests = [path];
     for (const directory of ["flows", "methods"]) {
@@ -239,7 +243,7 @@ while IFS= read -r application; do
       }
       await Bun.write(current, JSON.stringify(manifest));
     }
-  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE"
+  ' "$application_copy/package.json" "$sdk_archive" "$AGENT_METHOD_PACKAGE_ARCHIVE" "$AGENT_ACP_PACKAGE_ARCHIVE" "$REPORTING_PACKAGE_ARCHIVE" "$JIG_PACKAGE_ARCHIVE" "$SEMANTIC_ROUTER_PACKAGE_ARCHIVE"
   (cd "$application_copy" && bun --no-env-file install --ignore-scripts --config=/dev/null)
   if [ "$application" != incident-brief ]; then
     bun --no-env-file scripts/check-example-project.ts "$application_copy"

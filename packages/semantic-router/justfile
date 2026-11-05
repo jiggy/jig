@@ -1,0 +1,24 @@
+@default:
+    just --list
+
+# Compile the public validator and bundle the complete ordinary Flow
+@build: clean
+    just --justfile ../agent-method/justfile build
+    just --justfile ../reporting/justfile build
+    bun node_modules/typescript/bin/tsc -p tsconfig.json
+    bun build src/flow.ts --target=node --format=esm --outfile=dist/flow.js
+
+clean:
+    #!/usr/bin/env bun
+    import { rm } from 'node:fs/promises';
+    await rm('dist', { recursive: true, force: true });
+
+[positional-arguments]
+@pack *args: build
+    bun pm pack --ignore-scripts "$@"
+
+@test:
+    bun test test
+    "${FLOW_NODE:-node}" --test test/*.node.mjs
+
+check: build test

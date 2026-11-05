@@ -22,8 +22,8 @@ Exercise the same publication path before merging release changes.
 ## Local Contracts
 
 - Require new changesets for every directly affected package. Existing notes cannot cover another PR.
-- Shared candidate-builder changes require notes for all seven owned npm packages.
-  The standalone Agent builder requires notes for the three protected packages.
+- Shared candidate-builder changes require notes for all eight owned npm packages.
+  The standalone Agent builder requires notes for HTTP Agent, ACP Agent, and Jig.
 - Infer dependent releases from declared artifact edges. Preserve independent versions and external FLOW adoption pins.
 - Qualification packages remain outside the protected publication set.
 - Let the installed Changesets CLI calculate versions. Do not duplicate prerelease arithmetic.
@@ -44,7 +44,8 @@ Exercise the same publication path before merging release changes.
   The registry permits publication requests up to 64 MiB, including archive encoding overhead. It creates no qualification receipts.
 - Host snapshots contain four workflow runs and six artifacts.
   Test the actual readiness collector output against the shared publisher guard.
-- Every group preflights all existing bytes and channels before ordered publication.
+- The host group publishes HTTP Agent, ACP Agent, semantic router and Jig, in that order.
+  Every group preflights all existing bytes and channels before ordered publication.
   Revalidate authorization before mutations. Preserve exact-byte retry and prohibit channel downgrades.
 - Rehearsal uses real Changesets, npm packing, Verdaccio publication, registry downloads and installation.
   Change transport responses to exercise faults. Never replace npm or GitHub executables.
