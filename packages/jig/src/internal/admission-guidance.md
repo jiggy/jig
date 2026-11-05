@@ -121,16 +121,11 @@ Version metadata is checked before evaluation and reverified before capture comp
 ### dependency-flows
 
 - `dependency-preparation-limits.ts` snapshots supported operator environment
-  settings before project evaluation, then resolves each dependency-preparation budget
+  settings before project evaluation, then resolves each prepared-output budget
   from environment, project choice or default. Keep value origins available for
   actionable diagnostics. These review operational budgets do not grant Run
   authority or alter admitted grants. Workers receive validated numeric values,
   never ambient environment configuration.
-
-  `bun-native-preparation-budget.ts` counts distinct captured digests needing new preparation within one review.
-  Each reservation receives the same resolved `maxPreparations` allowance, including evaluation recipes and npm Flow adoption.
-  Already admitted dependency reuse consumes no count. The aggregate bytes and original deadline remain fixed.
-  Count refusals retain the first rejected count, effective maximum and setting origin.
 
 - `dependency-flows.ts` selects declared `npm:` dependencies after ordinary
   contained Bun preparation. It inspects a regular-file package view and retains
@@ -198,6 +193,14 @@ Version metadata is checked before evaluation and reverified before capture comp
   fields leave the store. Private recipes and authority records remain private.
   Optional target descriptions come from verified retained package metadata, not
   visible source.
+
+  The command-private exploration callback receives that same decoded approved
+  candidate for bounded configuration projection. It is inert retained meaning,
+  never an authenticated execution recipe or a public response. Catalogue and
+  selected interface reads must carry the same admission digest; changed
+  approval refuses the combined projection. Browser DTOs omit settings, grants,
+  private paths and admission records. Browsing neither retains a coordinator
+  nor creates a Run, prepared attempt or authority.
 
   Completion omits description capture and environment probes. The interactive
   chooser requests descriptions without acquiring authority. Environment
@@ -289,7 +292,7 @@ Version metadata is checked before evaluation and reverified before capture comp
   Host-created immutable package bytes must match metadata, source and layout.
 
   Production defaults to 4,096 records/32 MiB. Resolve its operator-selected
-  bounds once through `../project/limits.ts`. Pass only the frozen output pair to
+  bounds once through `../project/limits.ts`. Pass the frozen complete pair to
   worker input, native collection, result decoding and retained-byte reassembly.
 
   Never reread environment selectors in workers or collectors. Evaluation retains
