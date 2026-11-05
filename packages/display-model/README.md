@@ -29,9 +29,10 @@ import { validateDisplaySnapshot, displayDestinations } from '@jigging/display-m
 
 const snapshot = validateDisplaySnapshot(receivedData)
 if (snapshot.kind === 'snapshot') {
-  const destinations = displayDestinations(snapshot.mode === 'recorded-packet',
+  const destinations = displayDestinations(snapshot.mode,
     snapshot.views.map(view => ({ key: view.id, title: view.value.title,
-      source: view.sourceLabel, role: view.hostRole })))
+      source: view.sourceLabel, sourceId: view.sourceId, role: view.hostRole })),
+    snapshot.rootSourceId)
 }
 ```
 
@@ -52,6 +53,58 @@ publisher independently of captured files. `hostRole` comes from a trusted
 recorded adapter; authored titles and IDs must never assign a role. Attention
 `transcriptCommitted` records successful output delivery, not application success.
 
+## Configured components and observed requests
+
+A live producer may supply `composition` from the finite Run's admitted configuration.
+The map contains configured Flows, Bindings, native resources and caller-local slots.
+It does not certify launch readiness, execution order or behavior for an input.
+
+Composition is complete or explicitly unavailable.
+Other producers may lack admission evidence.
+Recorded packets and retained application views cannot acquire composition from their claims.
+IDs remain opaque and carry no authority.
+
+Use `compositionObservations` with a validated complete snapshot:
+
+```ts
+import { compositionObservations, type DisplaySnapshot } from '@jigging/display-model'
+
+export function componentRequests(snapshot: DisplaySnapshot, nodeId: string) {
+  const observed = compositionObservations(snapshot)
+  const calls = new Map(snapshot.calls.map(call => [call.id, call]))
+  return {
+    requests: observed.matches
+      .filter(match => match.targetNodeId === nodeId)
+      .map(match => calls.get(match.callId)!),
+    unmatched: observed.unmatched,
+  }
+}
+```
+
+Each match identifies a retained invocation request and its configured route.
+Keep the supplied call state.
+A match does not prove execution or success.
+The helper uses exact root, caller, slot and child publisher identities.
+Labels and array order cannot establish those relationships.
+
+Missing ancestry, unavailable slots and conflicting identities remain unmatched.
+The helper invents no root invocation or skipped work.
+Observation omissions remain separate from the supplied configuration.
+
+The model owns these fixed per-composition allowances:
+
+| Export | Allowance |
+| --- | --- |
+| `DISPLAY_COMPOSITION_NODE_LIMIT` | 256 nodes |
+| `DISPLAY_COMPOSITION_EDGE_LIMIT` | 1,024 edges |
+| `DISPLAY_COMPOSITION_BYTE_LIMIT` | 256 KiB of encoded UTF-8 JSON |
+
+These observer allowances have no override and remain inside the complete snapshot allowance.
+When a complete map exceeds them, the producer supplies `{ state: 'unavailable', reason: 'limit' }`.
+It must not publish partial routes.
+
+## Captured evidence and shared helpers
+
 `DisplayPreviewReply` binds captured content to `artifactId` and
 `captureGeneration`. A renderer asks a separately supplied bounded service for
 that identity; this package performs no IO. `WebAssets` describes fixed browser
@@ -69,14 +122,16 @@ Captured text helpers are `detectDisplayTextFormat`, `displayTextTokens` and
 lexical colour roles and bounded strict CSV/TSV parsing across renderers. They
 perform no IO; formatting hints do not validate syntax or grant file access.
 
-Pure helpers are `displayDestinations`, `displayViewKey`, `callObservationSpans`, `displayDuration`,
+Pure helpers are `compositionObservations`, `displayDestinations`, `displayViewKey`, `callObservationSpans`, `displayDuration`,
 `referenceKey`, `recordReferences` and `attentionImportance`. Observation spans
-end at the latest supplied observation and omit invalid/reversed clocks; they
-never infer execution duration or a domain verdict. `displayDestinations` accepts
+end at the latest supplied observation and omit invalid/reversed clocks.
+They never infer execution duration or a domain verdict.
+
+`displayDestinations` accepts
 original semantic view IDs in its input `key` fields and returns tagged view
 destination keys from `displayViewKey(id)`. Built-in `overview`, `activity` and
 `files` keys remain disjoint even when a supplied view has one of those IDs.
-Destination keys are only for viewer selection; snapshots and source-scoped
+Destination keys are only for viewer selection. Snapshots and source-scoped
 reference joins retain their original semantic IDs. `recordReferences` includes
 hidden collection cells and details and deduplicates exact typed identities.
 

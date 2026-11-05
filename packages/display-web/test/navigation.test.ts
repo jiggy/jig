@@ -157,6 +157,31 @@ test('retained navigation permits empty selections without inventing execution d
   expect(privateBrowserView(data, selected)).toBeUndefined()
 })
 
+test('optional admitted maps follow application views and cannot collide with authored view IDs', () => {
+  const data = snapshot()
+  data.views = [{ ...view, id: 'composition' }]
+  data.composition = {
+    state: 'available',
+    provenance: 'admitted',
+    rootId: 'root-component',
+    nodes: [{ id: 'root-component', label: 'Task', kind: 'flow' }],
+    edges: [],
+  }
+  const keys = privateBrowserTabs(data).map((tab) => tab.id)
+  expect(keys).toEqual([displayViewKey('composition'), 'composition', 'overview', 'activity', 'files'])
+  expect(privateBrowserTabs(data)[0]?.application).toBe(true)
+  expect(privateBrowserTabs(data)[1]?.application).toBeUndefined()
+  expect(privateBrowserView(data, 'composition')).toBeUndefined()
+  expect(privateBrowserView(data, displayViewKey('composition'))?.id).toBe('composition')
+
+  data.composition = { state: 'unavailable', reason: 'limit' }
+  expect(privateBrowserTabs(data).map((tab) => tab.id)).toEqual(keys)
+  expect(privateBrowserTabs(data, 'recorded-packet').some((tab) => tab.id === 'composition')).toBeFalse()
+  expect(privateBrowserTabs(data, 'retained-views').some((tab) => tab.id === 'composition')).toBeFalse()
+  delete data.composition
+  expect(privateBrowserTabs(data).some((tab) => tab.id === 'composition')).toBeFalse()
+})
+
 test('peek counts hidden cells and detail references and deduplicates complete typed identities', () => {
   const record = privateBrowserRecords(view, privateBrowserLocal())[4]!
   expect(privateBrowserReferences(record)).toEqual([ref])

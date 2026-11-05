@@ -9,6 +9,7 @@ import {
   DocumentPage,
   FormattedReport,
 } from '../dist/application.js'
+import { CompositionPage } from '../dist/composition-view.js'
 import {
   BrowserClient,
   browserLocal,
@@ -68,6 +69,102 @@ const props = (view) => ({
   renderBlock: (block) => block.text ?? 'Content',
   renderValue: (value) => (typeof value === 'object' ? JSON.stringify(value) : String(value)),
   renderMedia: (_ref, _record, alt) => alt,
+})
+
+const compositionSnapshot = () => ({
+  ...snapshot(),
+  composition: {
+    state: 'available',
+    provenance: 'admitted',
+    rootId: 'application',
+    nodes: [
+      { id: 'application', label: 'Review', kind: 'flow' },
+      { id: 'draft', label: 'Worker', kind: 'binding' },
+      { id: 'approval', label: 'Worker', kind: 'binding' },
+      { id: 'http', label: '<SCRIPT>literal text</SCRIPT>', kind: 'resource', resourceKind: 'http-request' },
+    ],
+    edges: [
+      { id: 'draft-route', source: 'application', target: 'draft', slot: 'prepare' },
+      { id: 'retry-route', source: 'application', target: 'draft', slot: 'retry' },
+      { id: 'approval-route', source: 'application', target: 'approval', slot: 'approve' },
+      { id: 'http-route', source: 'draft', target: 'http', slot: '<fetch>' },
+    ],
+  },
+  calls: [
+    { id: 'first', sourceId: 'root', childSourceId: 'worker-one', sourceLabel: 'Review', operationId: 'attempt-one', slot: 'prepare', state: 'returned', firstObservedAt: 0, observedAt: 2 },
+    { id: 'second', sourceId: 'root', sourceLabel: 'Review', operationId: 'attempt-two', slot: 'prepare', state: 'requested', firstObservedAt: 3, observedAt: 3 },
+    { id: 'unknown', sourceId: 'missing', sourceLabel: 'Worker', operationId: 'unplaced', slot: '<fetch>', state: 'uncertain', firstObservedAt: 4, observedAt: 4 },
+  ],
+})
+const compositionProps = (data, selectedNodeId, referencesEnabled = true) => ({
+  snapshot: data,
+  selectedNodeId,
+  detailOpen: true,
+  referencesEnabled,
+  onSelect() {},
+  onClose() {},
+  onCall() {},
+  onObservedCalls() {},
+  onNodeKeyDown() {},
+  onScroll() {},
+})
+
+test('application maps retain repeated exact requests and distinguish duplicate display labels', () => {
+  const data = compositionSnapshot()
+  data.omissions.calls = 3
+  const page = CompositionPage(compositionProps(data, 'draft'))
+  const entries = walk(page).filter((node) => node.props['data-composition-call'])
+  assert.deepEqual(entries.map((node) => node.props['data-composition-call']), ['first', 'second'])
+  assert(text(entries[0]).includes('Observed state: returned'))
+  assert(text(entries[1]).includes('Observed state: requested'))
+  assert(text(page).includes('3 call observations are omitted'))
+  assert(text(page).includes('1 retained observation cannot be placed on this map'))
+  assert(text(page).includes('Caller relationship unavailable: 1'))
+  const options = walk(page).filter((node) => node.type === 'option')
+  assert(text(options.find((node) => node.props.value === 'draft')).includes('Worker · Binding · from Review / prepare'))
+  assert(text(options.find((node) => node.props.value === 'approval')).includes('Worker · Binding · from Review / approve'))
+  assert.equal(walk(page).filter((node) => node.props['data-component']).length, 4)
+  assert.equal(walk(page).filter((node) => node.type === 'script' || node.type === '<SCRIPT>literal text</SCRIPT>').length, 0)
+  assert(text(page).includes('<SCRIPT>literal text</SCRIPT>'))
+  assert(text(page).includes('HTTP request'))
+  assert(walk(page).every((node) => !Object.hasOwn(node.props, 'dangerouslySetInnerHTML')))
+  assert(text(page).includes('do not show execution order or internal decisions'))
+})
+
+test('root facts and exact per-slot counts remain separate from child request totals', () => {
+  const data = compositionSnapshot()
+  const page = CompositionPage(compositionProps(data, 'application'))
+  const root = walk(page).find((node) => node.props['data-component'] === 'application')
+  assert(text(root).includes('Run root'))
+  assert(!text(root).includes('No matching retained requests'))
+  const detail = walk(page).find((node) => node.type === 'aside')
+  assert(text(detail).includes('Run phase: live'))
+  assert(text(detail).includes('Observing'))
+  assert(!text(detail).includes('No matching invocation observations'))
+  const routeList = walk(detail).find((node) => node.props.class === 'composition-route-list')
+  const routes = walk(routeList).filter((node) => node.type === 'li')
+  assert(text(routes[0]).includes('prepareWorker2 retained requests'))
+  assert(text(routes[1]).includes('retryWorkerNo matching retained requests'))
+  const table = walk(page).find((node) => node.type === 'tbody')
+  assert.equal(walk(table).filter((node) => node.type === 'tr').length, 4)
+  assert(text(table).includes('<fetch>'))
+})
+
+test('missing and stale observations remain explicit without replacing exact component selection', () => {
+  const data = compositionSnapshot()
+  const empty = CompositionPage(compositionProps(data, 'approval'))
+  const detail = walk(empty).find((node) => node.type === 'aside')
+  assert(text(detail).includes('No matching invocation observations are retained'))
+  assert.equal(walk(detail).filter((node) => node.props['data-composition-call']).length, 0)
+  const stale = CompositionPage(compositionProps(data, 'draft', false))
+  assert(walk(stale).filter((node) => node.props['data-composition-call']).every((node) => node.props.disabled))
+  assert(text(stale).includes('stale or incomplete'))
+  assert.equal(walk(CompositionPage(compositionProps(data, 'removed'))).filter((node) => node.type === 'aside').length, 0)
+  data.composition = { state: 'unavailable', reason: 'limit' }
+  const unavailable = CompositionPage(compositionProps(data, 'draft'))
+  assert(text(unavailable).includes('No partial map is shown'))
+  assert.equal(walk(unavailable).filter((node) => node.props['data-component']).length, 0)
+  assert(text(unavailable).includes('Inspect observed calls'))
 })
 
 test('display-only material renders no generic inspection or trivial collection controls', () => {

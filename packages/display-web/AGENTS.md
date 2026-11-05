@@ -10,6 +10,9 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 - `src/client.ts` owns bounded synchronization, memory capability and preview
   requests. `src/navigation.ts` owns viewer-local semantic selection/references.
 - `src/observations.ts` owns quiet synchronization and actual observation spans.
+- `src/composition.ts` owns pure map layout and exact Run/component selection.
+  `src/composition-view.ts` renders admitted calls and matching request observations.
+  Shared model helpers own attribution. The browser never joins component labels.
 - `src/application.ts` composes authored reading, media, gallery, document and comparison surfaces.
   Gallery metadata uses a disclosure without dropping supplied columns.
   `src/app.ts`, `src/app.css` and `src/index.html` own inert browser
@@ -38,6 +41,12 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   trusted roles select recorded destinations. Authored names never do. Local
   destination/map keys tag view IDs through model `displayViewKey`. Semantic
   reference targets retain raw IDs. Use `browserView` to resolve selected views.
+- Optional live composition appears in Application map after authored root pages.
+  Retain component selection by root publisher, admitted root and opaque node ID.
+  Available connections never establish order, branch outcomes or target execution.
+  Request counts describe retained matches, including separate repeated requests.
+  Keep exact per-edge counts, unmatched observations and omissions visible.
+  Root facts use the workspace observation without a synthetic child request.
 - Empty retained snapshots show an explicit empty state without synthetic destinations.
   Diagnostics, Help and Close remain available. Only an existing selected tab labels a tabpanel.
 - Render author/file/diagnostic data as inert text. Only typed scoped references
@@ -71,6 +80,11 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
   inspection destinations.
+- Map resources use human names and retain native kind in the identity disclosure.
+  Checkpoints stay available with secondary styling. Complete slots and labels
+  remain readable in the map, component details and connection table.
+  Opening an exact request clears unrelated call filters and retains a return to
+  its selected component. General observed-call navigation preserves its filter.
 - Follow [DESIGN.md](DESIGN.md) for the approved workbench hierarchy and material-specific acceptance criteria.
 - Preserve application selection through local filtering. Explain hidden selections and allow clearing filters without selecting another record.
   Clear filters restores focus to the selected control, or the visible detail Back button at narrow widths.
@@ -85,7 +99,7 @@ browser inspector. Producers own evidence and authority. Viewers own navigation.
 
 ## Verification
 
-- `just check` builds and runs client, navigation, observations, fixed-assets
+- `just check` builds and runs client, navigation, observations, composition, fixed-assets
   and public semantic fixture tests.
 - `just test-package` uses exact model/web/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or native dependency.

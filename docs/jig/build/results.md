@@ -99,6 +99,35 @@ colors and plain output. The
 [CLI experience contract](../spec/cli-experience.md) defines exact presentation
 requirements.
 
+## Follow available and observed calls
+
+Run your approved target with `--display web`, then open the private link printed on terminal stderr.
+Application pages remain first when the application supplies them.
+Open **Application map** to inspect the selected root and its admitted components.
+
+Connections show which child calls are available to each component.
+They do not define execution order or reveal conditions inside a Flow.
+Separate Bindings remain separate components, even when they use the same Flow.
+Resources appear at the caller's slot, without exposing their settings or grant policies.
+
+Choose a component to inspect its available calls and matched observations.
+Open an observed invocation to read its existing call evidence.
+Repeated invocations remain separate, with their literal host states.
+A returned call does not establish an acceptable application result or a confirmed external consequence.
+
+Counts cover retained observations only.
+A component without observed calls may still have executed when observations are incomplete.
+Missing ancestry and conflicting identities remain unmatched rather than being assigned by name.
+The invocation view retains those calls for inspection.
+
+The map has [fixed display limits](../reference/limits.md#inspect-application-composition).
+An oversized composition becomes explicitly unavailable without changing execution.
+Saved packets and retained application views do not contain this live composition or its call history.
+
+The browser remains read-only.
+Use the map and invocation evidence to identify changes for your codebase.
+New test inputs still use ordinary authorized invocations outside the inspector.
+
 ## Read an interrupted result
 
 After interruption, Jig preserves an available authoritative terminal's execution status.

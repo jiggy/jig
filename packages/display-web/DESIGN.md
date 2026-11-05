@@ -28,6 +28,24 @@ Applications choose content and priorities. Jig owns layout, navigation and evid
 - Open an inspector only when requested. Highlight its owning record and preserve the return path.
 - Keep incomplete results, stopped publishers, clipped content and stale observations explicit.
 
+## Application map
+
+An optional live Run map follows authored application pages in navigation.
+It shows the admitted components and slots available to call, separately from the observed-call tree.
+Connections do not establish order, internal conditions or data transformations.
+
+Component cards remain readable at their native size in a scrollable canvas.
+The chooser includes incoming caller and slot context when labels repeat.
+Selecting a component opens its connections and separate retained invocation requests.
+Each available slot has its own retained request count, even when slots share one target.
+The Run root shows workspace facts without inventing a child request.
+Native resource kinds have human names, and checkpoints stay reachable with quieter styling.
+
+Preserve selection and canvas position across refresh and inspection return by exact Run and component identities.
+Opening a particular invocation reveals its ancestry without an unrelated filter hiding it.
+Unavailable composition, omitted observations and unplaced requests remain explicit.
+Absence of a retained request does not establish a skipped call.
+
 ## Acceptance checks
 
 Review the same material in light, dark and monochrome themes at desktop and narrow widths.
@@ -41,6 +59,9 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
 - Plain reports remain useful without selection, search or commands.
 - Filtering never silently changes the inspected record. Clearing filters returns focus to its visible control, or the detail Back button on narrow layouts. Typing in search retains focus.
 - Unavailable evidence remains a readable state, without a broken image or fabricated successful result.
+- Application maps preserve every supplied component and slot, including long labels and shared targets.
+  Duplicate labels stay distinct, repeated requests stay separate, and stale invocation links remain disabled.
+  Keyboard selection, narrow-layout Back and return from invocation details preserve orientation.
 
 `test/material.node.mjs` checks semantic rendering, captured content, large galleries and actual HTTP behavior.
 Source checks do not establish rendered visual parity. Record browser comparison separately when preview infrastructure is available.

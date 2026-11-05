@@ -48,7 +48,7 @@ export function privateBrowserTabs(
   icon: string
   application?: boolean
 }[] {
-  return displayDestinations(
+  const tabs = displayDestinations(
     mode,
     (snapshot?.views ?? []).map((view) => ({
       key: view.id,
@@ -65,6 +65,16 @@ export function privateBrowserTabs(
     icon,
     ...(group === 'application' ? { application: true } : {}),
   }))
+  if (mode === 'live-run' && snapshot?.composition) {
+    const firstExecution = tabs.findIndex((tab) => !tab.application)
+    tabs.splice(firstExecution < 0 ? tabs.length : firstExecution, 0, {
+      id: 'composition',
+      title: 'Application map',
+      source: 'Available calls',
+      icon: 'map',
+    })
+  }
+  return tabs
 }
 
 /** Resolve a local destination without treating its key as a semantic view identity. */

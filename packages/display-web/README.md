@@ -51,17 +51,38 @@ explicit presentation close. Neither operation starts or cancels a Run.
 The main export supplies `BrowserClient`, `RevisionReader`, `BrowserClock`, the
 browser-local record/navigation helpers, and observation helpers for consumers
 of the same semantic values. Each browser owns its selection, filters, sorting,
-disclosure, scroll and preview intent. Full snapshots replace semantic data;
-equal revisions acknowledge freshness without replacing it. Incomplete bodies
-retain visibly stale prior content with references disabled. Preview replies
-must match artifact and capture identity plus the current inventory provenance;
-late completion cannot revive a
-closed or superseded intent. Content stays inert literal text. `browserTabs` returns destination keys;
+disclosure, scroll and preview intent.
+
+Full snapshots replace semantic data. Equal revisions acknowledge freshness
+without replacing it. Incomplete bodies retain visibly stale prior content with
+references disabled.
+
+Preview replies must match artifact and capture identity plus the current inventory
+provenance. Late completion cannot revive a closed or superseded intent.
+Content stays inert literal text.
+
+`browserTabs` returns destination keys.
 `browserView(snapshot, destinationKey)` resolves only tagged view destinations.
 Built-in keys remain separate from opaque semantic view IDs, including supplied
-IDs named `files`, `overview` or `activity`. Convert a resolved record target's
-original `viewId` through model `displayViewKey` before selecting its destination;
-reference resolution continues to use original source-scoped semantic IDs.
+IDs named `files`, `overview`, `activity` or `composition`. Convert a resolved record target's
+original `viewId` through model `displayViewKey` before selecting its destination.
+Reference resolution continues to use original source-scoped semantic IDs.
+
+Live snapshots can supply an admitted composition for the optional Application map.
+Authored application pages keep their navigation priority and landing behavior.
+The map shows available component calls, with complete slot labels and a selected component inspector.
+It keeps Flow, Binding and resource identities distinct even when their labels match.
+
+Per-component and per-slot counts describe exact retained invocation requests.
+Repeated requests remain separately inspectable through the existing observed-call view.
+Unplaced requests, omitted observations and unavailable maps remain explicit.
+The Run root uses the supplied workspace facts rather than a synthetic request count.
+
+Connections do not establish execution order, internal conditions or data transformations.
+A request keeps its observed state and does not itself prove its target started or completed.
+Missing retained requests do not establish skipped calls.
+The browser retains component selection by exact Run and component identity across refresh and inspection return.
+The map adds no execution or editing controls, and recorded snapshots retain their existing destinations.
 
 This provisional package is part of Jig under the retained Bread terms. Personal
 use, qualifying organizational use and evaluation follow `LICENSE.md`; company
