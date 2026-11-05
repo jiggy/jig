@@ -29,7 +29,7 @@ export async function runMethod(
     run.signal.throwIfAborted()
     if (captured.outcome !== 'done') throw new TypeError('The CSV reader did not complete.')
     const { headers, rows } = captured.output as { headers: string[]; rows: string[][] }
-    state = { ...state, headers, records: rows.length }
+    state = { ...state, headers, records: rows.length, completedStages: 1 }
     view?.retire()
     view = reporter?.view('contacts', contactPreviewOptions(headers, rows))
 
@@ -52,6 +52,7 @@ export async function runMethod(
     }
     if (proposal.outcome !== 'done') throw new TypeError('Unexpected mapping outcome.')
     const { mapping } = proposal.output as { mapping: ContactPreview['mapping'] }
+    state = { ...state, completedStages: 2 }
 
     show('checking')
     const converted = await run.call({
@@ -63,7 +64,7 @@ export async function runMethod(
     run.signal.throwIfAborted()
     if (converted.outcome !== 'done') throw new TypeError('The row converter did not complete.')
     const preview = converted.output as ContactPreview
-    state = { ...state, preview }
+    state = { ...state, preview, completedStages: 3 }
 
     show('exporting')
     const exported = await run.call({
@@ -91,7 +92,7 @@ export async function runMethod(
     }
     const artifact = exported.artifacts?.files
     if (!artifact) throw new TypeError('The preview exporter returned no immutable files artifact.')
-    state = { ...state, file: 'preview.json' }
+    state = { ...state, file: 'preview.json', completedStages: 4 }
     show('ready')
     if (preview.status === 'needs_mapping')
       reporter?.notice(
@@ -100,7 +101,7 @@ export async function runMethod(
       )
     else if (preview.rejected.length)
       reporter?.notice(
-        `${preview.rejected.length} records need correction. Review their reasons in the contact preview.`,
+        `${preview.rejected.length} ${preview.rejected.length === 1 ? 'record needs' : 'records need'} correction. Review the reasons in the contact preview.`,
         'warning',
       )
     return {

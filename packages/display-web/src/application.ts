@@ -36,6 +36,7 @@ type ApplicationPageProps = {
   renderBlock: (block: DetailBlock, record: PrivateBrowserRecord) => ComponentChildren
   renderValue: (value: Value, record: PrivateBrowserRecord) => ComponentChildren
   scope?: ComponentChildren
+  identity?: ComponentChildren
   renderDownload?: (
     reference: MediaReference,
     record: PrivateBrowserRecord,
@@ -48,17 +49,19 @@ type ApplicationPageProps = {
   ) => ComponentChildren
 }
 
+function isMaterial(block: Section['blocks'][number]): boolean {
+  return (
+    block.kind === 'content' ||
+    (block.kind === 'report' && Boolean(block.format && block.format !== 'plain'))
+  )
+}
+
 function sectionPresentation(section: Section): string {
+  if (section.blocks.some(isMaterial) && section.blocks.some((block) => !isMaterial(block)))
+    return 'application-section-comparison'
   if (section.blocks.some((block) => block.kind === 'collection'))
     return 'application-section-collection'
-  if (
-    section.blocks.some(
-      (block) =>
-        block.kind === 'content' ||
-        (block.kind === 'report' && block.format && block.format !== 'plain'),
-    )
-  )
-    return 'application-section-material'
+  if (section.blocks.some(isMaterial)) return 'application-section-material'
   if (section.blocks.every((block) => block.kind === 'report')) return 'application-section-reading'
   return 'application-section-context'
 }
@@ -69,7 +72,7 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
   const text = privateBrowserLiteral
   const recordByKey = new Map(records.map((record) => [record.key, record]))
   const hiddenSelection =
-    local.detailOpen && local.selected && !recordByKey.has(local.selected)
+    local.selected && !recordByKey.has(local.selected)
       ? privateBrowserRecords(view, { ...local, filters: new Map() }).find(
           (record) => record.key === local.selected,
         )
@@ -94,7 +97,12 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
   const collection = (block: Collection) => {
     const rows = privateBrowserRows(block, local)
     const sort = local.sorts.get(block.id)
+    const filtered = Boolean(local.filters.get(block.id))
     const gallery = block.presentation?.kind === 'gallery' ? block.presentation : undefined
+    const count =
+      block.total !== undefined && block.total !== block.rows.length
+        ? `${rows.length}${filtered ? ` of ${block.rows.length}` : ''} retained · ${block.total} reported`
+        : `${filtered ? `${rows.length} of ` : ''}${block.rows.length} ${block.rows.length === 1 ? 'record' : 'records'}`
     return h(
       'div',
       { key: block.id, class: 'application-collection' },
@@ -102,56 +110,71 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
         'header',
         { class: 'collection-heading' },
         h('h4', {}, text(block.title)),
-        h(
-          'span',
-          { class: 'secondary' },
-          `${rows.length} of ${block.rows.length} retained records${block.total === undefined ? '' : ` / ${block.total} reported`}`,
-        ),
-      ),
-      block.rows.length > 1
-        ? h(
-            'div',
-            { class: 'collection-controls' },
-            h(
-              'label',
-              { class: 'collection-search' },
-              h('span', { class: 'visually-hidden' }, `Search ${text(block.title)}`),
-              h('input', {
-                value: local.filters.get(block.id) ?? '',
-                placeholder: `Search ${text(block.title)}…`,
-                onInput: (event: Event) =>
-                  props.onFilter(block.id, (event.target as HTMLInputElement).value),
-              }),
-            ),
-            h(
-              'label',
-              {},
-              'Sort',
+        h('span', { class: 'secondary' }, count),
+        block.rows.length > 1
+          ? h(
+              'details',
+              {
+                class: 'collection-tools',
+                open:
+                  local.collectionTools.get(block.id) ??
+                  (block.rows.length > 12 || filtered || Boolean(sort)),
+                onToggle: (event: Event) =>
+                  local.collectionTools.set(
+                    block.id,
+                    (event.currentTarget as HTMLDetailsElement).open,
+                  ),
+              },
+              h('summary', {}, 'Search and sort'),
               h(
-                'select',
-                {
-                  value: sort?.key ?? '',
-                  onChange: (event: Event) =>
-                    props.onSort(block.id, (event.target as HTMLSelectElement).value, false),
-                },
-                h('option', { value: '' }, 'Supplied order'),
-                block.columns.map((column) =>
-                  h('option', { key: column.key, value: column.key }, text(column.label)),
+                'div',
+                { class: 'collection-controls' },
+                h(
+                  'label',
+                  { class: 'collection-search' },
+                  h('span', { class: 'visually-hidden' }, `Search ${text(block.title)}`),
+                  h('input', {
+                    value: local.filters.get(block.id) ?? '',
+                    placeholder: `Search ${text(block.title)}…`,
+                    onInput: (event: Event) => {
+                      local.collectionTools.set(block.id, true)
+                      props.onFilter(block.id, (event.target as HTMLInputElement).value)
+                    },
+                  }),
                 ),
+                h(
+                  'label',
+                  {},
+                  'Sort',
+                  h(
+                    'select',
+                    {
+                      value: sort?.key ?? '',
+                      onChange: (event: Event) => {
+                        local.collectionTools.set(block.id, true)
+                        props.onSort(block.id, (event.target as HTMLSelectElement).value, false)
+                      },
+                    },
+                    h('option', { value: '' }, 'Supplied order'),
+                    block.columns.map((column) =>
+                      h('option', { key: column.key, value: column.key }, text(column.label)),
+                    ),
+                  ),
+                ),
+                sort
+                  ? h(
+                      'button',
+                      {
+                        type: 'button',
+                        onClick: () => props.onSort(block.id, sort.key, !sort.descending),
+                      },
+                      sort.descending ? 'Descending' : 'Ascending',
+                    )
+                  : null,
               ),
-            ),
-            sort
-              ? h(
-                  'button',
-                  {
-                    type: 'button',
-                    onClick: () => props.onSort(block.id, sort.key, !sort.descending),
-                  },
-                  sort.descending ? 'Descending' : 'Ascending',
-                )
-              : null,
-          )
-        : null,
+            )
+          : null,
+      ),
       gallery
         ? h(
             'div',
@@ -257,6 +280,17 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
         : null,
     )
   }
+  const renderSectionBlocks = (section: Section, sectionIndex: number, material?: boolean) =>
+    section.blocks.flatMap((block, blockIndex) => {
+      if (material !== undefined && isMaterial(block) !== material) return []
+      if (block.kind === 'collection') return [collection(block)]
+      const record = records.find(
+        (item) => item.key === JSON.stringify(['block', sectionIndex, blockIndex]),
+      )!
+      return [
+        h('div', { key: blockIndex, class: 'application-block' }, props.renderBlock(block, record)),
+      ]
+    })
   return h(
     'article',
     { class: 'application-page', 'aria-label': view.value.title },
@@ -270,6 +304,7 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
         h('summary', {}, 'About this view'),
         h('p', {}, text(view.value.summary)),
         h('small', { class: 'secondary' }, text(view.sourceLabel)),
+        props.identity,
         view.ended ? h('p', { class: 'secondary' }, text(view.ended)) : null,
       ),
     ),
@@ -284,7 +319,9 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
             'span',
             {},
             text(hiddenSelection.title),
-            ' is outside the current filters. Its details remain open.',
+            local.detailOpen
+              ? ' is outside the current filters. Its details remain open.'
+              : ' is outside the current filters. Its selection is preserved.',
           ),
           h(
             'button',
@@ -317,17 +354,20 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
                 )
                 ? h('h3', {}, text(section.title))
                 : null,
-              section.blocks.map((block, blockIndex) => {
-                if (block.kind === 'collection') return collection(block)
-                const record = records.find(
-                  (item) => item.key === JSON.stringify(['block', sectionIndex, blockIndex]),
-                )!
-                return h(
-                  'div',
-                  { key: blockIndex, class: 'application-block' },
-                  props.renderBlock(block, record),
-                )
-              }),
+              sectionPresentation(section) === 'application-section-comparison'
+                ? [
+                    h(
+                      'div',
+                      { class: 'comparison-context' },
+                      renderSectionBlocks(section, sectionIndex, false),
+                    ),
+                    h(
+                      'div',
+                      { class: 'comparison-material' },
+                      renderSectionBlocks(section, sectionIndex, true),
+                    ),
+                  ]
+                : renderSectionBlocks(section, sectionIndex),
             ),
           ),
         ),

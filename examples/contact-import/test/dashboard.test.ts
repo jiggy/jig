@@ -66,7 +66,8 @@ test('the complete contact page previews whole records and discloses omitted rec
   expect(accepted.rows[0].cells.name).toBe(preview.accepted[0]!.contact.name)
   expect(accepted.rows[0].cells.organization).toBe(preview.accepted[0]!.contact.organization)
   expect(rejected.rows[0].cells.reason).toBe(preview.rejected[0]!.reason)
-  expect(item.sections[4].blocks[0].references).toEqual([
+  expect(item.sections[2].title).toBe('Your complete preview')
+  expect(item.sections[2].blocks[0].references).toEqual([
     { kind: 'artifact', attachment: 'preview', path: 'preview.json' },
   ])
   expect(preview.accepted[0]!.contact.name.length).toBe(2048)
@@ -104,6 +105,8 @@ test('captured CSV values identify a fixed application target independently of R
   expect(options.landing).toBe(true)
   expect(options.target?.definitionId).toBe('contact-preview')
   expect(options.target?.instanceKey).toMatch(/^[0-9a-f]{64}$/)
+  expect(options.target?.label).toBe('1 source record')
+  expect(options.target?.scopeLabel).toBe('CSV')
   expect(options).toEqual(
     contactPreviewOptions(
       [...headers],
@@ -119,4 +122,25 @@ test('captured CSV values identify a fixed application target independently of R
     ...options,
     ...contactPreviewView({ phase: 'mapping', headers, records: 1 }),
   })
+})
+
+test('an interrupted export retains the checked preview and its completed stages', () => {
+  const preview: ContactPreview = {
+    status: 'ready',
+    reason: 'Check the preview before importing.',
+    mapping: { name: 0, email: 1, organization: 2 },
+    accepted: [
+      { record: 2, contact: { name: 'Ada', email: 'ada@example.test', organization: 'Example' } },
+    ],
+    rejected: [],
+  }
+  for (const phase of ['failed', 'cancelled'] as const) {
+    const item = checked(contactPreviewView({ phase, preview, completedStages: 3 }))
+    const progress = item.sections
+      .flatMap((section: any) => section.blocks)
+      .find((block: any) => block.kind === 'progress')
+    expect(progress.completed).toBe(3)
+    expect(item.sections[0].blocks[0].rows[0].cells.name).toBe('Ada')
+    expect(JSON.stringify(item)).not.toContain('"kind":"artifact"')
+  }
 })

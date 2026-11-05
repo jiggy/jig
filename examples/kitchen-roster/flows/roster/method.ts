@@ -75,7 +75,7 @@ export async function runMethod(
     const capturedScenario = scenario as unknown as RosterScenario
     view?.retire()
     view = updates?.view('roster', rosterViewOptions(capturedScenario))
-    present({ phase: 'proposing', scenario: capturedScenario })
+    present({ phase: 'proposing', scenario: capturedScenario, completedStages: 1 })
     updates?.activity('roster', 'Asking for a complete roster proposal')
     const proposed = await run.call({
       operationId: 'propose-assignments',
@@ -88,7 +88,7 @@ export async function runMethod(
     if (proposalStop) return finishStopped(proposalStop)
     const proposal = outputObject(proposed)
 
-    present({ phase: 'checking' })
+    present({ phase: 'checking', completedStages: 2 })
     updates?.activity('roster', 'Checking the whole proposal before exporting')
     const checked = await run.call({
       operationId: 'check-assignments',
@@ -104,7 +104,11 @@ export async function runMethod(
       throw new TypeError('The checking Flow omitted its eight accepted rows.')
     }
 
-    present({ phase: 'exporting', assignments: rows as unknown as AcceptedAssignment[] })
+    present({
+      phase: 'exporting',
+      assignments: rows as unknown as AcceptedAssignment[],
+      completedStages: 3,
+    })
     updates?.activity('roster', 'Exporting the accepted roster')
     const exported = await run.call({
       operationId: 'export-assignments',
@@ -126,7 +130,7 @@ export async function runMethod(
     if (!schedule) {
       throw new TypeError('The exporting Flow returned no immutable files artifact.')
     }
-    present({ phase: 'ready' })
+    present({ phase: 'ready', completedStages: 4 })
     return {
       outcome: 'done',
       output: { status: 'ready', count: 8, roster: 'schedule/roster.csv', rows },

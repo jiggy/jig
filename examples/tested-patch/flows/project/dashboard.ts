@@ -26,6 +26,7 @@ export type PatchState = {
   checked?: CheckedRepair
   files?: string[]
   reason?: string
+  completedStages?: number
 }
 
 export function patchReviewOptions(request: CapturedProject): ViewOptions {
@@ -44,7 +45,13 @@ export function patchReviewOptions(request: CapturedProject): ViewOptions {
     title: 'Patch review',
     application: 'Patch review',
     landing: true,
-    target: { definitionId: 'patch-review', instanceKey, subjectKey: instanceKey },
+    target: {
+      definitionId: 'patch-review',
+      instanceKey,
+      subjectKey: instanceKey,
+      label: `${request.editPaths.length} editable ${request.editPaths.length === 1 ? 'file' : 'files'}`,
+      scopeLabel: 'Repair',
+    },
   }
 }
 const stages = {
@@ -120,19 +127,19 @@ function filesSection(files: string[]): Section {
         })),
         total: files.length,
       },
-      ...files
-        .filter((path) => path.endsWith('.patch'))
-        .map((path) => ({
-          kind: 'content' as const,
-          title: path,
-          reference: { kind: 'artifact' as const, attachment: 'deliverables', path },
-        })),
     ],
   }
 }
 
 export function patchReviewView(state: PatchState): ViewSnapshot {
-  const [label, completed] = stages[state.phase]
+  const [label, phaseCompleted] = stages[state.phase]
+  let retainedCompleted = state.completedStages ?? 0
+  if (state.completedStages === undefined && ['failed', 'cancelled'].includes(state.phase)) {
+    if (state.files) retainedCompleted = 4
+    else if (state.checked) retainedCompleted = 3
+    else if (state.captured) retainedCompleted = 1
+  }
+  const completed = Math.max(phaseCompleted, retainedCompleted)
   const checked = state.checked
   let verdict = 'No proposal has been accepted.'
   if (checked)
@@ -177,13 +184,21 @@ export function patchReviewView(state: PatchState): ViewSnapshot {
       ],
     },
   ]
-  if (checked) {
-    sections.push(comparisonSection(checked))
-    sections.push({
-      title: 'Acceptance explanation',
-      blocks: [{ kind: 'report', text: excerpt(checked.reason) }],
+  if (checked)
+    sections.unshift({
+      title: 'Patch and independent checks',
+      blocks: [
+        ...comparisonSection(checked).blocks,
+        { kind: 'report', text: excerpt(state.reason ?? checked.reason) },
+        ...(state.files ?? [])
+          .filter((path) => path.endsWith('.patch'))
+          .map((path) => ({
+            kind: 'content' as const,
+            title: path,
+            reference: { kind: 'artifact' as const, attachment: 'deliverables', path },
+          })),
+      ],
     })
-  }
   if (state.files) sections.push(filesSection(state.files))
   return {
     summary:

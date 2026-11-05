@@ -74,6 +74,10 @@ authored examples, not independent consumer evidence or promoted Starters.
   Reading views leave the publisher’s one lifetime landing hint for the targeted application page.
   Use gallery roles for images, content blocks for captured files, and literal formats for code and diffs.
 
+  Supply readable scope labels separately from stable identity keys.
+  Preserve confirmed completed stages when later work stops.
+  Present captured patches with their independent checks in the same section.
+
   Preserve full results. Reports remain provisional until application checks
   accept them, and blocking failures must be noticed while healthy work
   continues. TUI and web consume the same declarations.

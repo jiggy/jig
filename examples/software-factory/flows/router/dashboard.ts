@@ -8,7 +8,12 @@ export function selectionViewOptions(input: RoutingInput): ViewOptions {
   return {
     title: 'Selection',
     landing: true,
-    target: { definitionId: 'candidate-selection', instanceKey },
+    target: {
+      definitionId: 'candidate-selection',
+      instanceKey,
+      label: `${input.candidates.length} eligible methods`,
+      scopeLabel: 'Candidates',
+    },
   }
 }
 

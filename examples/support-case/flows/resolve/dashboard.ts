@@ -53,7 +53,7 @@ function excerpt(text: string, maximum = 1000): string {
   )
 }
 
-function visibleCharges(state: SupportState) {
+function visibleCharges(state: SupportState, maximum = 12) {
   const charges = state.input.account.charges
   const selected = charges.findIndex((charge) => charge.id === state.proposal?.chargeId)
   const included = new Set<number>()
@@ -69,7 +69,8 @@ function visibleCharges(state: SupportState) {
     )
     if (earlier >= 0) included.add(earlier)
   }
-  for (let index = 0; index < charges.length && included.size < 12; index++) included.add(index)
+  for (let index = 0; index < charges.length && included.size < maximum; index++)
+    included.add(index)
   return [...included]
     .sort((left, right) => left - right)
     .map((index) => ({ index, charge: charges[index]! }))
@@ -85,13 +86,20 @@ export function supportCaseOptions(input: SupportState['input']): ViewOptions {
     title: 'Support case',
     application: 'Support',
     landing: true,
-    target: { definitionId: 'support-case', instanceKey: caseKey, subjectKey: accountKey },
+    target: {
+      definitionId: 'support-case',
+      instanceKey: caseKey,
+      subjectKey: accountKey,
+      label: input.account.id.replace(/[\r\n\u2028\u2029]/g, ' '),
+      scopeLabel: 'Account',
+    },
   }
 }
 
-export function supportCaseView(state: SupportState): ViewSnapshot {
+function supportCaseSnapshot(state: SupportState, chargeLimit: number): ViewSnapshot {
   const { input, proposal, decision } = state
-  const [label, completed] = stages[state.phase]
+  const [label, phaseCompleted] = stages[state.phase]
+  const completed = Math.max(phaseCompleted, decision ? 2 : proposal ? 1 : 0)
   let conclusion = 'No credit decision has been made.'
   if (decision) conclusion = decisions[decision.disposition] ?? 'No recognized decision reported.'
   if (state.reason) conclusion = excerpt(state.reason, 512)
@@ -104,7 +112,7 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
     sections: [
       {
         title: 'Customer request',
-        blocks: [{ kind: 'report', text: excerpt(input.message, 1500) }],
+        blocks: [{ kind: 'report', text: excerpt(input.message, 4000) }],
       },
       {
         title: 'Draft reply',
@@ -148,7 +156,7 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
                 { key: 'state', label: 'Recorded state', type: 'text' },
                 { key: 'proposed', label: 'Proposed charge', type: 'boolean' },
               ],
-              rows: visibleCharges(state).map(({ charge, index }) => ({
+              rows: visibleCharges(state, chargeLimit).map(({ charge, index }) => ({
                 id: `charge-${index}`,
                 cells: {
                   charge: charge.id,
@@ -160,7 +168,7 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
               })),
               total: input.account.charges.length,
             },
-            { limit: 12 },
+            { limit: chargeLimit },
           ).collection,
         ],
       },
@@ -183,4 +191,15 @@ export function supportCaseView(state: SupportState): ViewSnapshot {
       },
     ],
   }
+}
+
+export function supportCaseView(state: SupportState): ViewSnapshot {
+  // Keep complete valid correspondence before retaining extra charge context.
+  // Two records always retain the proposed charge and its earlier matching payment.
+  let limit = 12
+  let snapshot = supportCaseSnapshot(state, limit)
+  while (limit > 2 && Buffer.byteLength(JSON.stringify(snapshot)) > 32 * 1024 - 2048) {
+    snapshot = supportCaseSnapshot(state, --limit)
+  }
+  return snapshot
 }

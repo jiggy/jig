@@ -12,6 +12,7 @@ import {
   assertFactoryPrefix,
   assertRequestedJob,
   assertTypedObservation,
+  factoryPatchReferences,
 } from './factory-observation.js'
 import { flowSdkDirectory } from './flow-dependency'
 import { type FixtureTimingPhase, timeFixturePhase } from './phase-timing.js'
@@ -374,7 +375,7 @@ await handle(async run => {
         .filter((update) => update.kind === 'view' && update.id === 'patches')
         .at(-1)
       expect(patches.summary).toContain('2 independently checked candidates')
-      expect(patches.sections[0].blocks[0].rows.map((row) => row.cells.patch)).toEqual([
+      expect(factoryPatchReferences(patches)).toEqual([
         { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
         { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
       ])

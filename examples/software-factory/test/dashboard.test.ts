@@ -22,6 +22,10 @@ test('Jobs is the landing projection and the three batch views share one stable 
     ]),
   )
   expect(options.jobs.landing).toBe(true)
+  expect(Object.values(options).every((option) => option.application === 'Software factory')).toBe(
+    true,
+  )
+  expect(options.jobs.target?.label).toBe('1 repair request')
   expect(options.checks.landing).toBeUndefined()
   expect(options.patches.landing).toBeUndefined()
   const targets = Object.values(options).map((option) => option.target!)
@@ -199,10 +203,18 @@ test('settled views expose verified work and review actions only for the accepte
     title: 'Patches',
     ...patchesView(prepared, outcomes),
   }) as any
-  expect(patches.sections[0].blocks[0].rows.map((row: any) => row.id)).toEqual(['logs'])
-  expect(patches.sections[0].blocks[0].rows[0].details[0].text).toBe(
-    `Requested goal: ${input.issue}`,
-  )
+  const inventory = patches.sections
+    .flatMap((section: any) => section.blocks)
+    .find((block: any) => block.kind === 'collection' && block.id === 'patches')
+  expect(inventory.rows.map((row: any) => row.id)).toEqual(['logs'])
+  expect(inventory.rows[0].details[0].text).toBe(`Requested goal: ${input.issue}`)
+  expect(patches.sections[0].title).toBe('HTTP log report')
+  expect(patches.sections[0].blocks[0].kind).toBe('facts')
+  expect(patches.sections[0].blocks.at(-1)).toEqual({
+    kind: 'content',
+    title: 'Review patch',
+    reference: { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
+  })
 })
 
 test('long captured safe path lists disclose excerpts without violating a fact or item bound', () => {

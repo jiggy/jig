@@ -29,6 +29,7 @@ export type ImportState = {
   preview?: ContactPreview
   file?: string
   reason?: string
+  completedStages?: number
 }
 const stages = {
   reading: ['Reading the contact CSV', 0],
@@ -95,7 +96,7 @@ function acceptedSection(preview: ContactPreview): Section {
     },
     { limit: 12 },
   )
-  return { title: 'Accepted contact preview', blocks: [collection] }
+  return { blocks: [collection] }
 }
 
 function rejectedSection(preview: ContactPreview): Section {
@@ -115,7 +116,7 @@ function rejectedSection(preview: ContactPreview): Section {
     },
     { limit: 12 },
   )
-  return { title: 'Records needing correction', blocks: [collection] }
+  return { blocks: [collection] }
 }
 
 /** The captured CSV identifies this preview independently of the current Run. */
@@ -130,12 +131,27 @@ export function contactPreviewOptions(
     title: 'Contact preview',
     application: 'Contact import',
     landing: true,
-    target: { definitionId: 'contact-preview', instanceKey: sourceKey, subjectKey: sourceKey },
+    target: {
+      definitionId: 'contact-preview',
+      instanceKey: sourceKey,
+      subjectKey: sourceKey,
+      label: `${rows.length} source ${rows.length === 1 ? 'record' : 'records'}`,
+      scopeLabel: 'CSV',
+    },
   }
 }
 
 export function contactPreviewView(state: ImportState): ViewSnapshot {
-  const [label, completed] = stages[state.phase]
+  const [label, phaseCompleted] = stages[state.phase]
+  let retainedCompleted = state.completedStages ?? 0
+  if (
+    state.completedStages === undefined &&
+    ['blocked', 'limit', 'failed', 'cancelled'].includes(state.phase)
+  ) {
+    if (state.preview) retainedCompleted = 3
+    else if (state.headers) retainedCompleted = 1
+  }
+  const completed = Math.max(phaseCompleted, retainedCompleted)
   const preview = state.preview
   const sections: Section[] = [
     {
@@ -175,7 +191,7 @@ export function contactPreviewView(state: ImportState): ViewSnapshot {
   if (preview?.status === 'ready')
     sections.unshift(acceptedSection(preview), rejectedSection(preview))
   if (state.file)
-    sections.push({
+    sections.splice(preview?.status === 'ready' ? 2 : 0, 0, {
       title: 'Your complete preview',
       blocks: [
         {

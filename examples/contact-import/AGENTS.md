@@ -61,6 +61,8 @@ or both, then using ordinary code to produce a contact preview.
   Contact preview page with mapping, accepted records, correction reasons and
   export access. Its target identifies the captured headings and rows.
   Completed contact records lead the page.
+  The complete preview reference follows the records before mapping and process context.
+  Confirmed stage counts survive export failure and cancellation without implying file delivery.
   `previewCollection` bounds lists by whole rows, preserves values and reports totals.
 
   All child Flows have independent optional domain views

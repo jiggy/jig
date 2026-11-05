@@ -54,6 +54,10 @@ eligibility and customer-facing claims.
   interpretation, checked decision and draft reply.
 
   The request and draft lead the page, with policy and process facts below.
+
+  Valid customer requests remain complete in root and assessor reports.
+  Reduce extra whole-charge context to preserve the correspondence within the application snapshot budget.
+
   Its bounded charge excerpt
   always includes the proposed charge and a matching earlier payment.
   Its fixed target identifies the account and request independently of Run identity.

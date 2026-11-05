@@ -28,7 +28,7 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
     run.signal.throwIfAborted()
     if (captured.outcome !== 'done') throw new TypeError('The project reader did not complete.')
     const input = captured.output as CapturedProject
-    state = { ...state, captured: input }
+    state = { ...state, captured: input, completedStages: 1 }
     if (reporter) {
       view?.retire()
       view = reporter.view('repair', patchReviewOptions(input))
@@ -45,6 +45,7 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
     })
     run.signal.throwIfAborted()
 
+    state = { ...state, completedStages: 2 }
     show('checking')
     const acceptance = await run.call({
       operationId: 'check-repair',
@@ -61,7 +62,7 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
     const checked = acceptance.output as CheckedRepair
     if (checked.ready !== (result.outcome === 'done'))
       throw new TypeError('Repair acceptance contradicts the reported outcome.')
-    state = { ...state, checked }
+    state = { ...state, checked, completedStages: 3 }
 
     show('exporting')
     const exported = await run.call({
@@ -90,7 +91,11 @@ export async function repairFiles(run: RunContext, reporter?: Reporter): Promise
     ) {
       throw new TypeError('The patch export does not match the accepted review data.')
     }
-    state = { ...state, files: output.files.map((name) => `review/${name}`) }
+    state = {
+      ...state,
+      files: output.files.map((name) => `review/${name}`),
+      completedStages: 4,
+    }
     show('ready')
     if (!checked.ready)
       reporter?.notice(

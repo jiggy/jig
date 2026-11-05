@@ -101,7 +101,9 @@ test('the complete review page bounds escaped input and compares all fixed check
   )
   expect(JSON.stringify(item)).toContain('[Excerpt; complete value')
   expect(JSON.stringify(item)).not.toContain(input.files['src/cli.ts']!)
-  const comparison = item.sections[2].blocks[0]
+  const comparison = item.sections
+    .flatMap((section: any) => section.blocks)
+    .find((block: any) => block.kind === 'collection' && block.id === 'checks')
   expect(comparison.rows).toHaveLength(9)
   expect(comparison.columns.map((column: any) => column.label)).toEqual([
     'Check',
@@ -147,9 +149,61 @@ test('the accepted page links the patch and original requested goal after export
     }),
   )
   expect(JSON.stringify(ready)).toContain('independently validated')
+  expect(ready.sections[0].title).toBe('Patch and independent checks')
+  expect(
+    ready.sections[0].blocks.some(
+      (block: any) => block.kind === 'content' && block.reference.path === 'review/review.patch',
+    ),
+  ).toBe(true)
   expect(ready.sections.at(-1).blocks[0].rows.at(-1).cells.content).toEqual({
     kind: 'artifact',
     attachment: 'deliverables',
     path: 'review/review.patch',
   })
+})
+
+test('a failed patch export retains completed validation and standalone proposals remain literal material', () => {
+  const accepted = {
+    ready: true,
+    reason: 'Checks passed.',
+    baseline: check,
+    attempts: [{ evaluation: check }],
+    proposals: [],
+  }
+  const interrupted = checked(
+    patchReviewView({
+      phase: 'cancelled',
+      request: input,
+      captured: input,
+      checked: accepted,
+      completedStages: 3,
+    }),
+  )
+  expect(
+    interrupted.sections
+      .flatMap((section: any) => section.blocks)
+      .find((block: any) => block.kind === 'progress').completed,
+  ).toBe(3)
+  expect(JSON.stringify(interrupted)).not.toContain('"kind":"artifact"')
+  const path = input.editPaths[0]!
+  const standalone = checked(
+    workerRequest(input, {
+      outcome: 'done',
+      output: {
+        attempts: [
+          {
+            proposal: {
+              replacements: [{ path, content: '<script>literal replacement</script>\n' }],
+            },
+            evaluation: check,
+          },
+        ],
+      },
+    }),
+  )
+  const section = standalone.sections.find((section: any) => section.title === 'Proposal 1')
+  expect(section.blocks[0].kind).toBe('facts')
+  expect(section.blocks[1].format).toBe('diff')
+  expect(section.blocks[1].text).toContain('+<script>literal replacement</script>')
+  expect(JSON.stringify(standalone)).not.toContain('"kind":"artifact"')
 })

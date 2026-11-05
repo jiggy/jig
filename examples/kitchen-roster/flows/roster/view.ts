@@ -36,6 +36,7 @@ export type RosterState = {
   scenario?: RosterScenario
   assignments?: AcceptedAssignment[]
   reason?: string
+  completedStages?: number
 }
 
 function clockTime(minute: number): string {
@@ -61,14 +62,29 @@ export function rosterViewOptions(scenario: RosterScenario): ViewOptions {
     title: 'Saturday kitchen',
     application: 'Saturday kitchen',
     landing: true,
-    target: { definitionId: 'kitchen-roster', instanceKey: scenarioKey, subjectKey: scenarioKey },
+    target: {
+      definitionId: 'kitchen-roster',
+      instanceKey: scenarioKey,
+      subjectKey: scenarioKey,
+      label: `${scenario.shifts.length} shifts · ${scenario.volunteers.length} volunteers`,
+      scopeLabel: 'Saturday',
+    },
   }
 }
 
 export function rosterView(state: RosterState): ViewSnapshot {
   const assignments = state.assignments ?? []
   const accepted = assignments.length === 8
-  const [label, completed] = phases[state.phase]
+  const [label, phaseCompleted] = phases[state.phase]
+  let retainedCompleted = state.completedStages ?? 0
+  if (
+    state.completedStages === undefined &&
+    ['blocked', 'limit', 'failed', 'cancelled'].includes(state.phase)
+  ) {
+    if (accepted) retainedCompleted = 3
+    else if (state.scenario) retainedCompleted = 1
+  }
+  const completed = Math.max(phaseCompleted, retainedCompleted)
   let csvStatus = 'Not prepared'
   if (state.phase === 'exporting') csvStatus = 'Preparing the CSV'
   if (state.phase === 'ready') csvStatus = 'Prepared; Jig confirms delivery separately'

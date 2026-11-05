@@ -517,14 +517,18 @@ export async function listMacHostCohortArtifacts(environment, identity, deadline
       if (result.total_count > 1000)
         throw new Error('Mac cohort artifact inventory exceeds its 1000-artifact bound')
       const expected = Math.min(100, Math.max(0, result.total_count - (page - 1) * 100))
-      if (result.artifacts.length !== expected)
-        throw new Error('Mac cohort refuses an incomplete artifact inventory page')
       const pageIds = new Set()
       for (const artifact of result.artifacts) {
         if (!Number.isSafeInteger(artifact?.id) || artifact.id <= 0 ||
             typeof artifact.name !== 'string' || !artifact.name || pageIds.has(artifact.id))
           throw new Error('Mac cohort artifact inventory has malformed or duplicate identities')
         pageIds.add(artifact.id)
+      }
+      if (result.artifacts.length !== expected) {
+        if (pass === 2)
+          throw new Error('Mac cohort refuses an incomplete artifact inventory page')
+        changed = true
+        break
       }
       if (total !== undefined && result.total_count !== total) {
         changed = true

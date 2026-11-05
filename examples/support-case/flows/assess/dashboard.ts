@@ -95,7 +95,7 @@ export function caseView(
       {
         title: 'Customer request',
         blocks: [
-          { kind: 'report', text: excerpt(input.message, 2000) },
+          { kind: 'report', text: excerpt(input.message, 4000) },
           {
             kind: 'facts',
             items: [

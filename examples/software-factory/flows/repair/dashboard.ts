@@ -11,6 +11,7 @@ type Request = {
 export function repairViewOptions(
   input: Request & { files: Record<string, string> },
 ): Readonly<Record<'repair' | 'checks', ViewOptions>> {
+  const label = `${input.editPaths.length} editable ${input.editPaths.length === 1 ? 'file' : 'files'}`
   const instanceKey = createHash('sha256')
     .update(
       JSON.stringify({
@@ -26,11 +27,23 @@ export function repairViewOptions(
     repair: {
       title: 'Repair',
       landing: true,
-      target: { definitionId: 'repair', instanceKey, subjectKey: instanceKey },
+      target: {
+        definitionId: 'repair',
+        instanceKey,
+        subjectKey: instanceKey,
+        label,
+        scopeLabel: 'Repair',
+      },
     },
     checks: {
       title: 'Checks',
-      target: { definitionId: 'repair-checks', instanceKey, subjectKey: instanceKey },
+      target: {
+        definitionId: 'repair-checks',
+        instanceKey,
+        subjectKey: instanceKey,
+        label,
+        scopeLabel: 'Repair',
+      },
     },
   }
 }
@@ -43,7 +56,11 @@ type Check = {
 type Evidence = {
   reason?: string
   baseline?: Check
-  attempts?: { invalidProposal?: string; evaluation?: Check }[]
+  attempts?: {
+    invalidProposal?: string
+    evaluation?: Check
+    proposal?: { replacements: { path: string; content: string }[] }
+  }[]
 }
 function excerpt(text: string, maximum = 512): string {
   const chars = [...text]
@@ -54,6 +71,42 @@ function excerpt(text: string, maximum = 512): string {
       : '')
   )
 }
+/** Display complete-file hunks from this method's captured originals and proposals. */
+function proposalDiff(input: Request, replacements: { path: string; content: string }[]): string {
+  const chunks = replacements
+    .map(({ path, content }) => {
+      const original = input.files?.[path]
+      if (original === undefined || original === content) return ''
+      const lines = (value: string) =>
+        value === '' ? [] : value.split('\n').slice(0, value.endsWith('\n') ? -1 : undefined)
+      const before = lines(original)
+      const after = lines(content)
+      const body = (value: string, rows: string[], prefix: string) =>
+        rows.map((line) => prefix + line + '\n').join('') +
+        (rows.length && !value.endsWith('\n') ? '\\ No newline at end of file\n' : '')
+      return (
+        `--- a/${path}\n+++ b/${path}\n@@ -${before.length ? 1 : 0},${before.length} +${after.length ? 1 : 0},${after.length} @@\n` +
+        body(original, before, '-') +
+        body(content, after, '+')
+      )
+    })
+    .join('\n')
+  const marker =
+    '\n[Excerpt; complete original files and proposal replacements remain in the returned evidence.]'
+  if ([...chunks].length <= 2048 && Buffer.byteLength(JSON.stringify(chunks)) <= 4096) return chunks
+  let prefix = ''
+  let scalars = 0
+  let bytes = Buffer.byteLength(JSON.stringify(marker))
+  for (const character of chunks) {
+    const addedBytes = Buffer.byteLength(JSON.stringify(character)) - 2
+    if (scalars >= 2048 - [...marker].length || bytes + addedBytes > 4096) break
+    prefix += character
+    scalars++
+    bytes += addedBytes
+  }
+  return prefix + marker
+}
+
 export function repairView(
   input: Request,
   result?: RunResult,
@@ -113,6 +166,43 @@ export function repairView(
           },
         ],
       },
+      ...(output?.attempts ?? []).flatMap((attempt, index) =>
+        attempt.proposal && input.files
+          ? [
+              {
+                title: `Proposal ${index + 1}`,
+                blocks: [
+                  {
+                    kind: 'facts' as const,
+                    items: [
+                      {
+                        label: 'Repository tests',
+                        value: attempt.evaluation?.repositoryTestsPassed ?? null,
+                      },
+                      {
+                        label: 'Acceptance cases',
+                        value: attempt.evaluation
+                          ? `${attempt.evaluation.acceptance.filter((item) => item.passed).length} / ${attempt.evaluation.acceptance.length} passed`
+                          : 'Not checked',
+                      },
+                      {
+                        label: 'Caller acceptance',
+                        value: verified
+                          ? 'Independently validated'
+                          : 'Worker report; caller validation required',
+                      },
+                    ],
+                  },
+                  {
+                    kind: 'report' as const,
+                    format: 'diff' as const,
+                    text: proposalDiff(input, attempt.proposal.replacements),
+                  },
+                ],
+              },
+            ]
+          : [],
+      ),
       {
         title: 'Proposal outcome',
         blocks: [
@@ -213,45 +303,6 @@ export function checksView(result?: RunResult, verified = false, ownCalls = fals
               (stages.length
                 ? 'Full command identities, output and individual assertions remain in the returned evidence.'
                 : 'No completed check evidence has been returned yet.'),
-          },
-        ],
-      },
-    ],
-  }
-}
-export function evidenceView(names: string[] = []): ViewSnapshot {
-  return {
-    summary: names.length
-      ? 'Evidence has been authored; file references become available after verified packet delivery. Review patches before applying them.'
-      : 'No final evidence packet has been authored yet. Source files remain unchanged.',
-    sections: [
-      {
-        blocks: [
-          {
-            kind: 'collection',
-            id: 'evidence',
-            title: 'Review evidence',
-            columns: [
-              { key: 'file', label: 'File', type: 'text' },
-              { key: 'purpose', label: 'Purpose', type: 'text' },
-              { key: 'content', label: 'Content', type: 'reference' },
-            ],
-            rows: names.map((name, index) => ({
-              id: `evidence-${index}`,
-              cells: {
-                file: name,
-                purpose:
-                  name === 'review.patch'
-                    ? 'Independently checked patch; human review required'
-                    : name === 'goal.txt'
-                      ? 'Complete requested goal'
-                      : name === 'summary.txt'
-                        ? 'Repair outcome and evidence directions'
-                        : 'Retained proposal; acceptance is described in Checks',
-                content: { kind: 'artifact' as const, attachment: 'deliverables', path: name },
-              },
-            })),
-            total: names.length,
           },
         ],
       },

@@ -78,11 +78,15 @@ after executed checks and independent acceptance.
 - The coordinator’s `dashboard.ts` projects a small typed state into one Patch
   review page with issue, scope, independently validated comparison and files
   through `updates`. Delivered patch references also render inline content.
+  Captured patches and independently validated checks share the leading review section.
+  A stopped export preserves completed validation without claiming a delivered patch.
 
   Extracted methods offer independent views through
   `progress`. The repair specialist keeps provisional Repair and Checks views
   through `updates`. FLOW entrypoints own scoped publishers, activity and
   failure notices.
+  The standalone repair view shows bounded literal proposal diffs beside worker check facts.
+  Full originals and replacements remain in its returned evidence, without invented file artifacts.
 
   Request-derived target options relate Patch review, Repair and Checks through
   one application subject. Actual publisher and Run provenance remain host facts.

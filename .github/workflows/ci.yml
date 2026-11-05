@@ -73,8 +73,13 @@ jobs:
           node scripts/release/cli.mjs check --base "$release_base"
       - name: Check development and release automation
         run: |
-          set -o pipefail
-          just test-tooling 2>&1 | tee "$RUNNER_TEMP/tooling.txt"
+          set -euo pipefail
+          {
+            just test-tooling
+            just display_web::build
+            node packages/display-web/node_modules/playwright/cli.js install --with-deps chromium
+            just display_web::test-browser
+          } 2>&1 | tee "$RUNNER_TEMP/tooling.txt"
       - name: Record observed execution
         run: node scripts/ci/job-evidence.mjs --id quick-checks --output "$RUNNER_TEMP/evidence.json" --transcript "$RUNNER_TEMP/tooling.txt"
       - name: Bind observed execution to its merge job and immutable inputs

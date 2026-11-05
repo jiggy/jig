@@ -28,6 +28,11 @@ sorting, stable selection, full record details and typed evidence navigation
 remain available. Details open on request rather than occupying the initial
 application screen.
 
+Attributed child views preserve the same material presentation and full selected values.
+Execution and file inspectors also open only after selection and close through explicit return controls or Escape.
+Narrow layouts preserve appearance selection and the return path to the owning record.
+Technical instance identities remain available without dominating application content.
+
 A compact top bar shows application and page names, with routine host facts available through Run details.
 Attention and observation loss remain visible across pages, alongside an explicit Close action.
 
