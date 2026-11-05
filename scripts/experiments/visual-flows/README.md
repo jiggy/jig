@@ -76,6 +76,8 @@ node scripts/experiments/visual-flows/explore.mjs \
 The source reader recognizes literal `defineJig`, `defineBinding`, and `discover` declarations.
 Discovery follows the documented shallow membership rule.
 The reader never imports the declaration modules.
+Source scanning assumes a stable project tree.
+It does not provide isolation against concurrent filesystem changes.
 Computed expressions, additional statements, unsupported declarations, and missing source remain explicit errors or unknown nodes.
 
 Default selections match the declared contract ID against the authored `defaultProviders` map.

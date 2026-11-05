@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -58,4 +58,49 @@ test('the command rejects ambiguous modes and unusable flags', () => {
     const result = spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' })
     assert.equal(result.status, 1)
   }
+})
+
+test('the command rejects oversized regular JSON input before creating output', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'visual-flows-'))
+  try {
+    const input = join(directory, 'large.json'), output = join(directory, 'out.json')
+    const handle = await open(input, 'w')
+    try { await handle.truncate(8 * 1024 * 1024 + 1) }
+    finally { await handle.close() }
+    const result = spawnSync(process.execPath, [cli, '--lock', input, '--output', output], { encoding: 'utf8', timeout: 5_000 })
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /regular file at most 8 MiB/)
+    await assert.rejects(readFile(output), { code: 'ENOENT' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('the command rejects a directory as JSON input', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'visual-flows-'))
+  try {
+    const input = join(directory, 'input'), output = join(directory, 'out.json')
+    await mkdir(input)
+    const result = spawnSync(process.execPath, [cli, '--lock', input, '--output', output], { encoding: 'utf8', timeout: 5_000 })
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 1)
+    await assert.rejects(readFile(output), { code: 'ENOENT' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('the command rejects a FIFO without waiting for a writer', {
+  skip: process.platform === 'win32' ? 'Named FIFO fixtures require POSIX.' : false,
+}, async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), 'visual-flows-'))
+  try {
+    const input = join(directory, 'input.fifo'), output = join(directory, 'out.json')
+    const created = spawnSync('mkfifo', [input], { encoding: 'utf8' })
+    if (created.error?.code === 'ENOENT') { context.skip('mkfifo is unavailable.'); return }
+    assert.equal(created.error, undefined)
+    assert.equal(created.status, 0, created.stderr)
+    const result = spawnSync(process.execPath, [cli, '--lock', input, '--output', output], { encoding: 'utf8', timeout: 5_000 })
+    assert.equal(result.error, undefined)
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /regular file at most 8 MiB/)
+    await assert.rejects(readFile(output), { code: 'ENOENT' })
+  } finally { await rm(directory, { recursive: true, force: true }) }
 })
