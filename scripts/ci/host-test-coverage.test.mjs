@@ -757,6 +757,28 @@ test('Linux whole-file roles own all hostile and display work while startup rema
       assert.match(commands, proof)
   }
   const parsed = parse(workflow)
+  const plan = spawnSync(
+    process.execPath,
+    ['--input-type=module', '-e', parsed.env.LINUX_COMMAND_PLANNER],
+    {
+      cwd: resolve(import.meta.dirname, '../..'),
+      env: {
+        ...process.env,
+        GITHUB_SHA: spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim(),
+      },
+      encoding: 'utf8',
+    },
+  )
+  assert.equal(plan.status, 0, plan.stderr)
+  const examples = JSON.parse(plan.stdout).examples
+  assert.equal(
+    examples.find(({ files }) => files[0].endsWith('/native-codex-rehearsal.test.ts')).hostMode,
+    'run-delegated',
+  )
+  assert.equal(
+    examples.find(({ files }) => files[0].endsWith('/example-smoke.test.ts')).hostMode,
+    'run-acquisition-host',
+  )
   check(parsed)
   // JSON is YAML too: indentation, scalar quoting and step labels carry no role.
   for (const step of parsed.jobs['host-suite'].steps) step.name = 'Renamed step'

@@ -738,7 +738,7 @@ test('Linux host scope preserves complete qualification and always reports its f
       {
         transcript: 'native-codex-rehearsal.txt',
         files: ['packages/jig/test/linux-host/native-codex-rehearsal.test.ts'],
-        hostMode: 'run-acquisition-host',
+        hostMode: 'run-delegated',
         timeoutMs: 540000,
       },
     ])

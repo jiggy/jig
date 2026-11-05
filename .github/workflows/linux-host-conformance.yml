@@ -63,7 +63,7 @@ env:
       hostMode: 'run-acquisition-host', timeoutMs: 1200000,
     }, {
       transcript: 'native-codex-rehearsal.txt', files: [nativeRehearsal],
-      hostMode: 'run-acquisition-host', timeoutMs: 540000,
+      hostMode: 'run-delegated', timeoutMs: 540000,
     }];
     const installed = [
       [12, 'packages/jig/test/package-smoke.ts'],
