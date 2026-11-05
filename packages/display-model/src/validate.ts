@@ -1,5 +1,8 @@
 import { validateReportingMessage } from '@jigging/reporting/validation'
 import {
+  DISPLAY_COMPOSITION_BYTE_LIMIT,
+  DISPLAY_COMPOSITION_EDGE_LIMIT,
+  DISPLAY_COMPOSITION_NODE_LIMIT,
   DISPLAY_INCOMPLETE_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
   type DisplaySnapshotEnvelope,
@@ -177,6 +180,69 @@ function unique(values: unknown[], check: (value: unknown) => void, field = 'id'
   }
 }
 
+function composition(value: unknown): void {
+  const data = record(value, ['state', 'provenance', 'rootId', 'nodes', 'edges', 'reason'])
+  const state = choice(data.state, ['available', 'unavailable'])
+  if (state === 'unavailable') {
+    choice(data.reason, ['limit', 'unavailable'])
+    for (const name of ['provenance', 'rootId', 'nodes', 'edges'])
+      if (data[name] !== undefined) fail()
+    return
+  }
+  if (data.reason !== undefined) fail()
+  choice(data.provenance, ['admitted'])
+  identity(data.rootId)
+  const nodes = list(data.nodes, DISPLAY_COMPOSITION_NODE_LIMIT)
+  const byId = new Map<string, Data>()
+  unique(nodes, (value) => {
+    const node = record(value, ['id', 'label', 'kind', 'resourceKind'])
+    const id = identity(node.id)
+    text(node.label, 256, 1)
+    const kind = choice(node.kind, ['flow', 'binding', 'resource'])
+    if (kind === 'resource')
+      choice(node.resourceKind, [
+        'http-request',
+        'project-command',
+        'project-evaluation',
+        'finite-acp',
+        'run-checkpoint',
+        'child-checkpoint',
+      ])
+    else if (node.resourceKind !== undefined) fail()
+    byId.set(id, node)
+  })
+  const root = byId.get(data.rootId as string)
+  if (!root || root.kind === 'resource') fail()
+  const outgoing = new Map<string, string[]>()
+  const slots = new Set<string>()
+  unique(list(data.edges, DISPLAY_COMPOSITION_EDGE_LIMIT), (value) => {
+    const edge = record(value, ['id', 'source', 'target', 'slot'])
+    identity(edge.id)
+    const source = identity(edge.source)
+    const target = identity(edge.target)
+    text(edge.slot, 128, 1)
+    if (!byId.has(source) || !byId.has(target) || byId.get(source)!.kind === 'resource') fail()
+    const slot = JSON.stringify([source, edge.slot])
+    if (slots.has(slot)) fail()
+    slots.add(slot)
+    let children = outgoing.get(source)
+    if (!children) outgoing.set(source, (children = []))
+    children.push(target)
+  })
+  const reachable = new Set<string>()
+  const pending = [data.rootId as string]
+  while (pending.length) {
+    const id = pending.pop()!
+    if (reachable.has(id)) continue
+    reachable.add(id)
+    pending.push(...(outgoing.get(id) ?? []))
+  }
+  if (reachable.size !== nodes.length) fail()
+  // The outer inert-data copy has already refused accessors and custom prototypes.
+  if (new TextEncoder().encode(JSON.stringify(data)).byteLength > DISPLAY_COMPOSITION_BYTE_LIMIT)
+    fail()
+}
+
 function capture(value: unknown, input: boolean): void {
   const data = record(value, [
     'generation',
@@ -258,6 +324,7 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
     'context',
     'incomplete',
     'omissions',
+    'composition',
     'views',
     'calls',
     'activities',
@@ -319,12 +386,17 @@ function validate(value: unknown): DisplaySnapshotEnvelope {
       'artifacts',
       'inputs',
       'incomplete',
+      'composition',
     ])
       if (data[name] !== undefined) fail()
   } else {
     for (const name of ['lastCompleteRevision', 'reason', 'diagnostics'])
       if (data[name] !== undefined) fail()
     optional(data.incomplete, (value) => text(value, 1024))
+    if (data.composition !== undefined) {
+      if (data.mode !== 'live-run') fail()
+      composition(data.composition)
+    }
     const viewJoins = new Set<string>()
     unique(list(data.views, 32), (value) => {
       const view = record(value, [

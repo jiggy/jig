@@ -1477,6 +1477,8 @@ async function executeRun(arguments_: readonly string[], runtime: CliRuntime): P
     },
     ...(!parsed.json && parsed.receive.length === 0
       ? {
+          composition: (value: import('./cli-composition.js').PrivateRunComposition) =>
+            runtime.progress.observeComposition(value),
           call: (event: import('./cli-run-model.js').PrivateCallEvent) =>
             runtime.progress.observeCall(event),
         }

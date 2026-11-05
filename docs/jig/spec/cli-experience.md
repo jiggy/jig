@@ -141,6 +141,10 @@ child views. Publisher identity, rather than an authored title, determines the
 group. A Flow invoked directly owns the root page even if it is also used as a
 child elsewhere.
 
+For live browser inspection, an Application map may show the Run's admitted composition beside the actual Execution tree.
+Available connections and exactly matched observations remain distinct under the [web display contract](web-display.md#application-map).
+Application pages remain primary.
+
 Saved inspection has exactly one Recorded result, Captured files and
 Diagnostics destination, supplied by the recorded host adapter.
 Author-supplied names never select host navigation. A navigation rail is

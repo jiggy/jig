@@ -10,6 +10,7 @@ import {
   type ViewItem,
 } from '@jigging/reporting'
 import { privateCliHeading } from './cli-presentation.js'
+import type { PrivateRunComposition } from './cli-composition.js'
 import { privatePresentationNow } from './internal/root-run-timeout-policy.js'
 
 export type PrivateCallState =
@@ -161,6 +162,7 @@ export function privateAttentionReceipt(
 
 /** Host-owned admission, observation budgets and immutable capture correspondence. */
 export class PrivateRunModel {
+  #composition: PrivateRunComposition | undefined
   readonly calls = new Map<string, PrivateCallNode>()
   readonly views = new Map<string, PrivateView>()
   readonly activities = new Map<
@@ -269,6 +271,15 @@ export class PrivateRunModel {
   }
   get inputCapture(): PrivateInputCapture {
     return this.#inputCapture
+  }
+  get composition(): PrivateRunComposition | undefined {
+    return this.#composition
+  }
+  observeComposition(value: PrivateRunComposition): void {
+    if (this.#closed || this.workspace.recorded || this.#composition !== undefined) return
+    this.#composition = value
+    this.#semantic()
+    this.onChange()
   }
   sourceParent(publisher: string): string | undefined {
     return this.#parents.get(publisher)

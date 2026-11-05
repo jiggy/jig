@@ -13,6 +13,8 @@ with their producer. This package owns readonly display data and pure meaning.
   dimensions. It owns no decoder, IO or authenticity claim.
 - `src/semantics.ts` owns destination vocabulary, observation intervals and
   typed reference helpers. `src/index.ts` declares the public surface.
+- `src/composition.ts` matches retained invocation requests to supplied admitted
+  composition. It owns no graph discovery, admission, execution, or layout.
 - Package metadata, README, notices, justfile and tests own this release unit.
   Root licensing/pricing text is canonical and copied only during the build.
 
@@ -33,6 +35,20 @@ with their producer. This package owns readonly display data and pure meaning.
   rejects malformed/oversized data and does not claim to authenticate evidence.
 - IDs are bounded opaque values. Display labels and authored paths do not join
   publishers, grant file access or certify results. Recorded roles are explicit.
+- A complete live snapshot may include the finite Run's admitted composition.
+  Other producers may lack that evidence. Saved projections do not acquire it
+  through labels or retained reports.
+  Composition is complete or explicitly unavailable. Nodes expose opaque
+  identities, labels, target kinds and native resource kinds only.
+  They omit settings, policies, selectors and private paths.
+- Composition bounds have one canonical owner in `src/types.ts`.
+  Validation enforces node, edge and encoded UTF-8 byte capacities.
+  Valid configuration does not guarantee executability or observed execution.
+- Match configured routes through the root publisher, exact caller identities,
+  slot names and supplied child publisher relationships. Preserve repeated
+  requests and separate Binding identities. Missing or conflicting relationships
+  stay unmatched. Match results do not infer order, skipped work, duration,
+  condition values, outputs or external effects.
 - `displayDestinations` consumes original semantic IDs and tags view
   destination keys with `displayViewKey`. Supplied root/publisher identities
   place root views before host and child inspection destinations. Labels never
@@ -53,7 +69,8 @@ with their producer. This package owns readonly display data and pure meaning.
 ## Verification
 
 - `just check` builds and runs public model tests for immutable replacement,
-  malformed data, identity, omissions and observation intervals.
+  malformed data, identity, omissions, composition bounds and observation intervals.
+  Composition tests cover exact joins, conflicting ancestry and repeated requests.
 - `just test-package` uses supplied exact model/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or renderer dependency.
   The harness matches the installed version to this package's source manifest.

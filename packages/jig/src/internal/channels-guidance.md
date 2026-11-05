@@ -43,6 +43,11 @@ Read the [shared host contracts](AGENTS.md) before changing its implementation.
 
 ## Local Contracts
 
+- The optional composition observer receives a bounded inert selected-root projection after exact Run candidate reacquisition.
+  It grants no execution authority and never reopens mutable source.
+  Projection or observer failure leaves execution and recovery unchanged.
+  Only command presentation translates private correspondence into opaque display IDs.
+
 - Channel operations have separate finite transport capacity, not worker slots.
   Unsupported delivery or invocation wiring rejects before dispatch. Observation
   grants no session control. FLOW endpoint rights and source-owner lifetime

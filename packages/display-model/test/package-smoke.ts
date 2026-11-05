@@ -127,7 +127,7 @@ try {
     join(temporary, 'consumer.mjs'),
     `
 import assert from 'node:assert/strict';
-import { validateDisplaySnapshot, callObservationSpans, displayDestinations, displayViewKey, recordReferences } from '@jigging/display-model';
+import { validateDisplaySnapshot, callObservationSpans, compositionObservations, displayDestinations, displayViewKey, recordReferences } from '@jigging/display-model';
 const supplied = {
     kind: 'snapshot', revision: 1, mode: 'live-run', rootSourceId: 'source-root',
     workspace: { target: 'Review supplied evidence', phase: 'settled', hostStage: 'Done', elapsedMs: 10,
@@ -164,6 +164,20 @@ assert(Object.isFrozen(snapshot.views[0].value.sections));
 assert.equal(callObservationSpans(snapshot.calls).spans.get('call-root').milliseconds,9);
 assert.throws(() => validateDisplaySnapshot({...supplied,rootSourceId:undefined}),TypeError);
 assert.equal(recordReferences({row:snapshot.views[0].value.sections[0].blocks[0].rows[0]}).length,1);
+assert.deepEqual(compositionObservations(snapshot), {matches:[], unmatched:[{callId:'call-root',reason:'composition-unavailable'}]});
+const composition = {
+  state:'available', provenance:'admitted', rootId:'application',
+  nodes:[{id:'application',label:'Review',kind:'flow'},{id:'check',label:'Check',kind:'binding'}],
+  edges:[{id:'check-route',source:'application',target:'check',slot:'check'}],
+};
+const composed = validateDisplaySnapshot({...supplied,composition});
+assert(Object.isFrozen(composed.composition.nodes));
+assert.deepEqual(compositionObservations(composed), {
+  matches:[{callId:'call-root',edgeId:'check-route',sourceNodeId:'application',targetNodeId:'check'}],
+  unmatched:[],
+});
+assert.equal(composed.calls[0].state,'uncertain');
+assert.throws(() => validateDisplaySnapshot({...supplied,composition:{...composition,policy:{secret:'private'}}}),TypeError);
 
 const opaqueIds = ['files', 'overview', 'activity', displayViewKey('files')];
 const colliding = validateDisplaySnapshot({...supplied,views:opaqueIds.map((id,index) => ({...supplied.views[0],id,value:{...supplied.views[0].value,id:'semantic-'+index}}))});
@@ -184,9 +198,13 @@ assert.deepEqual(colliding.views.map(view=>view.id),opaqueIds);
   await writeFile(
     join(temporary, 'consumer.ts'),
     `
-import { validateDisplaySnapshot, displayViewKey, recordReferences, type DisplaySnapshot, type DisplaySnapshotEnvelope } from '@jigging/display-model';
+import { validateDisplaySnapshot, compositionObservations, displayViewKey, recordReferences, type DisplayComposition, type DisplayCompositionObservations, type DisplaySnapshot, type DisplaySnapshotEnvelope } from '@jigging/display-model';
 export const data: DisplaySnapshotEnvelope = validateDisplaySnapshot({});
 export const destination: string = displayViewKey('files');
+export const unavailable: DisplayComposition = {state:'unavailable',reason:'limit'};
+export function composition(snapshot: DisplaySnapshot): DisplayCompositionObservations {
+  return compositionObservations(snapshot);
+}
 export function references(snapshot: DisplaySnapshot) {
   for (const view of snapshot.views) for (const section of view.value.sections)
     for (const block of section.blocks) if (block.kind === 'collection')

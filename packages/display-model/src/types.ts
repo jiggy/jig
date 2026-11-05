@@ -19,6 +19,37 @@ export type DisplayCallState =
   | 'returned'
   | 'failed'
   | 'uncertain'
+export type DisplayCompositionResourceKind =
+  | 'http-request'
+  | 'project-command'
+  | 'project-evaluation'
+  | 'finite-acp'
+  | 'run-checkpoint'
+  | 'child-checkpoint'
+export type DisplayCompositionNode = Readonly<
+  { id: string; label: string } &
+    (
+      | { kind: 'flow' | 'binding' }
+      | { kind: 'resource'; resourceKind: DisplayCompositionResourceKind }
+    )
+>
+export type DisplayCompositionEdge = Readonly<{
+  id: string
+  source: string
+  target: string
+  slot: string
+}>
+/** Complete admitted configuration for this finite Run, without execution guarantees. */
+export type DisplayComposition = Immutable<
+  | {
+      state: 'available'
+      provenance: 'admitted'
+      rootId: string
+      nodes: DisplayCompositionNode[]
+      edges: DisplayCompositionEdge[]
+    }
+  | { state: 'unavailable'; reason: 'limit' | 'unavailable' }
+>
 export type RecordedViewRole = 'recorded-report' | 'recorded-files' | 'recorded-diagnostics'
 export type DisplayFact = Readonly<{
   value: string
@@ -82,6 +113,7 @@ export type DisplaySnapshot = Immutable<{
   context: string
   incomplete?: string
   omissions: { calls: number; journal: { flow: number; host: number; diagnostic: number } }
+  composition?: DisplayComposition
   views: {
     id: string
     hostRole?: RecordedViewRole
@@ -176,6 +208,9 @@ export type WebAssets = Readonly<Record<string, Readonly<{ body: string; content
 
 export const DISPLAY_SNAPSHOT_LIMIT = 16 * 1024 * 1024
 export const DISPLAY_INCOMPLETE_LIMIT = 2 * 1024 * 1024
+export const DISPLAY_COMPOSITION_NODE_LIMIT = 256
+export const DISPLAY_COMPOSITION_EDGE_LIMIT = 1024
+export const DISPLAY_COMPOSITION_BYTE_LIMIT = 256 * 1024
 
 /** Portable selected content accepted by reference inspection, without viewer state. */
 export type DisplayReferenceRecord = Immutable<{

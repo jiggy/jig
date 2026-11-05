@@ -3,6 +3,9 @@ import { cp, mkdir, mkdtemp, readdir, realpath, rm, writeFile } from 'node:fs/pr
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { compositionObservations, validateDisplaySnapshot } from '@jigging/display-model'
+import { PrivateDisplayProjection } from '../../src/cli-display-projection.js'
+import { PrivateRunModel } from '../../src/cli-run-model.js'
 import { withPrivateInstallationVerification } from '../../src/internal/installation-verification.js'
 import { openPrivateInstalledBunHost } from '../../src/internal/installed-bun-host.js'
 import { openPrivateProjectSession } from '../../src/internal/project-session-controller.js'
@@ -87,9 +90,21 @@ describe.serial('private contained Agent Run lifecycle', () => {
             package: 'flows/${name}', slots: ${JSON.stringify(level < 5 ? { next: `binding:level-${level + 1}` } : {})}});`,
             )
           }
+          const observations = new PrivateRunModel()
           const host = Object.freeze({
             ...(await openPrivateInstalledBunHost(installedBunLocation, {}, root)),
             runTimeoutMs: 120_000,
+            channelOutput: {
+              receive: [],
+              composition(value: import('../../src/cli-composition.js').PrivateRunComposition) {
+                observations.observeComposition(value)
+                throw new Error('An optional display observer failed')
+              },
+              call: (event: import('../../src/cli-run-model.js').PrivateCallEvent) =>
+                observations.observeCall(event),
+              async record() {},
+              diagnostic() {},
+            },
           })
           session = await openPrivateProjectSession({ directory: root, host })
           const plan = await session.plan({ lockMode: 'update' })
@@ -108,6 +123,23 @@ describe.serial('private contained Agent Run lifecycle', () => {
             state: 'terminal',
             terminal: { status: 'succeeded', output: { depth: 5 } },
           })
+          const snapshot = new PrivateDisplayProjection(observations).capture(1)
+          expect(validateDisplaySnapshot(snapshot)).toEqual(snapshot)
+          expect(snapshot.composition?.state).toBe('available')
+          if (snapshot.composition?.state !== 'available')
+            throw new Error('The admitted branch composition was not observed')
+          expect(
+            snapshot.composition.nodes
+              .filter((node) => node.kind === 'binding')
+              .map((node) => node.label)
+              .sort(),
+          ).toEqual(['level-1', 'level-2', 'level-3', 'level-4', 'level-5', 'parent'])
+          expect(snapshot.composition.nodes.some((node) => node.kind === 'flow')).toBe(false)
+          expect(snapshot.composition.edges).toHaveLength(5)
+          const matched = compositionObservations(snapshot)
+          expect(matched.unmatched).toEqual([])
+          expect(matched.matches).toHaveLength(5)
+          expect(new Set(matched.matches.map((match) => match.edgeId)).size).toBe(5)
           await expectNoAgentOwner(root)
           expect(
             await runToTerminal(

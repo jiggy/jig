@@ -17,6 +17,7 @@ import {
   privateUpdateText as privateUpdateTextForProgress,
 } from './cli-reporting.js'
 import type { PrivateArtifactCapture } from './cli-run-model.js'
+import type { PrivateRunComposition } from './cli-composition.js'
 import {
   type PrivateAttention,
   type PrivateCallEvent,
@@ -404,6 +405,10 @@ export class PrivateCliProgress {
         }
       }
     }
+  }
+  observeComposition(value: PrivateRunComposition): void {
+    if (this.model.stopped) return
+    this.model.observeComposition(value)
   }
   observeCall(event: PrivateCallEvent): void {
     if (this.model.stopped) return

@@ -27,6 +27,8 @@
   "files": [
     "dist/index.js",
     "dist/index.d.ts",
+    "dist/composition.js",
+    "dist/composition.d.ts",
     "dist/image.js",
     "dist/image.d.ts",
     "dist/types.js",

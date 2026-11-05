@@ -1,5 +1,10 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import {
+  DISPLAY_COMPOSITION_BYTE_LIMIT,
+  DISPLAY_COMPOSITION_EDGE_LIMIT,
+  DISPLAY_COMPOSITION_NODE_LIMIT,
+} from '../packages/display-model/src/types.js'
 import { PRIVATE_BUN_EXECUTION_LAYOUT_LIMITS } from '../packages/jig/src/internal/bun-execution-layout.js'
 import { PRIVATE_BUN_PROJECT_PREPARATION_LIMITS } from '../packages/jig/src/internal/bun-native-preparation-budget.js'
 import {
@@ -58,8 +63,10 @@ const bytes = (value: number) =>
       : `${integer(value)} bytes`
 const duration = (value: number) => `${integer(value / 1000)} seconds`
 const fixed = (name: string, value: string): Limit => ({ name, value, control: 'Fixed' })
-const source = (path: string) =>
-  `[\`${path}\`](https://github.com/jiggy/jig/blob/main/packages/jig/src/${path})`
+const source = (path: string) => {
+  const repositoryPath = path.startsWith('packages/') ? path : `packages/jig/src/${path}`
+  return `[\`${path}\`](https://github.com/jiggy/jig/blob/main/${repositoryPath})`
+}
 
 /** Documentation metadata refers to policy owners. It never authorizes execution. */
 export const LIMIT_REFERENCE: readonly Group[] = [
@@ -338,6 +345,17 @@ export const LIMIT_REFERENCE: readonly Group[] = [
         'Retained checkpoint scopes per attempt, including root',
         integer(RUN_CHECKPOINT_LIMITS.scopes),
       ),
+    ],
+  },
+  {
+    title: 'Inspect application composition',
+    explanation:
+      'Each live snapshot carries one complete admitted composition or an explicit unavailable state. Fixed display bounds protect observation without changing execution authority.',
+    sources: ['packages/display-model/src/types.ts'],
+    limits: [
+      fixed('Components per composition', integer(DISPLAY_COMPOSITION_NODE_LIMIT)),
+      fixed('Connections per composition', integer(DISPLAY_COMPOSITION_EDGE_LIMIT)),
+      fixed('Encoded composition', bytes(DISPLAY_COMPOSITION_BYTE_LIMIT)),
     ],
   },
   {

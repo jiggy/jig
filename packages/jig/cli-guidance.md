@@ -336,6 +336,15 @@ assigns reserved recorded roles only at the host adapter. Publisher/call
 correspondence, opaque display identities, transcript receipt accounting and
 immutable captured evidence access stay private to Jig.
 
+`src/cli-composition.ts` projects complete selected-root routes from the Run-pinned reacquired candidate.
+Shared display limits produce explicit unavailability instead of partial routes.
+Flow labels use bounded final path segments. Binding labels retain authored names.
+Labels never join observations. Private target and slot identities become command-local HMAC display IDs.
+
+Export no settings, policies, private paths or artifact references.
+Recorded packets cannot acquire admitted composition from their claims.
+The optional observation callback cannot change admission, execution, recovery or settlement.
+
 Selected input captures retain identities and provenance separate from delivered outputs.
 Full-byte suppliers require the exact capture generation and declared retained availability.
 Unavailable previews do not imply missing retained download bytes.
