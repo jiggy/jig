@@ -159,6 +159,11 @@ All selected domain requirements still apply.
   capability. Its private handoff reports only its viewer URL and confirmed
   settlement. Never parse human stderr to establish either fact.
 
+  The child starts in a separate process group and session, with inherited
+  terminal output and a referenced process handle. The explorer receives
+  terminal signals and interrupts the exact owned active command. It joins
+  the child before exiting. Detachment does not authorize background work.
+
 - Keep one child command at a time. A later explicit Run first closes and
   joins the previous settled inspector. Request identities remain bound to
   their exact canonical bytes for the session. Repeated submissions cannot

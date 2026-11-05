@@ -159,6 +159,10 @@ export function privateInstalledExploreLaunch(
         env: environment,
         // Input was captured above; the explorer and its child never contend for stdin.
         stdio: ['ignore', 'inherit', 'inherit'],
+        // Terminal signals belong to the explorer. Keep this child referenced
+        // and joined, but outside the terminal's foreground process group so
+        // Ctrl-C cannot race ordinary interruption against a settled viewer close.
+        detached: true,
         windowsHide: true,
       })
       const command = child

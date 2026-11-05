@@ -7,6 +7,7 @@ Python is test tooling only; no product source, private API or browser is loaded
 
 import base64
 import errno
+import fcntl
 import hashlib
 from html.parser import HTMLParser
 import http.client
@@ -19,6 +20,7 @@ import selectors
 import signal
 import subprocess
 import sys
+import termios
 import time
 
 
@@ -57,10 +59,11 @@ class Assets(HTMLParser):
 
 
 class TerminalOwner:
-    def __init__(self, command):
+    def __init__(self, command, controlling_terminal=False):
         self.selector = selectors.DefaultSelector()
         self.output = {"stdout": bytearray(), "stderr": bytearray()}
         self.process = None
+        self.input_fd = None
         slaves = []
         try:
             for name in self.output:
@@ -68,20 +71,34 @@ class TerminalOwner:
                 slaves.append(slave)
                 os.set_blocking(master, False)
                 self.selector.register(master, selectors.EVENT_READ, name)
+                if controlling_terminal and name == "stderr":
+                    self.input_fd = master
+            def claim_terminal():
+                fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+                require(os.tcgetpgrp(0) == os.getpgrp())
             self.process = subprocess.Popen(
-                command, stdin=subprocess.PIPE, stdout=slaves[0], stderr=slaves[1],
+                command, stdin=slaves[1] if controlling_terminal else subprocess.PIPE,
+                stdout=slaves[0], stderr=slaves[1],
                 start_new_session=True,
+                preexec_fn=claim_terminal if controlling_terminal else None,
                 env=dict(os.environ, NO_COLOR="1", TERM="dumb"),
             )
             # EOF and arbitrary pipe bytes must not act as inspector controls.
-            self.process.stdin.write(b"piped input is not an inspector command\n")
-            self.process.stdin.close()
+            if not controlling_terminal:
+                self.process.stdin.write(b"piped input is not an inspector command\n")
+                self.process.stdin.close()
         except BaseException:
             self.close()
             raise
         finally:
             for slave in slaves:
                 os.close(slave)
+
+    def ctrl_c(self):
+        require(self.input_fd is not None and self.process.poll() is None)
+        attributes = termios.tcgetattr(self.input_fd)
+        require(attributes[3] & termios.ISIG and attributes[6][termios.VINTR] == b"\x03")
+        require(os.write(self.input_fd, b"\x03") == 1)
 
     def pump(self, seconds=0.05):
         for key, _ in self.selector.select(seconds):
@@ -125,6 +142,7 @@ class TerminalOwner:
             self.selector.unregister(key.fd)
             os.close(key.fd)
         self.selector.close()
+        self.input_fd = None
 
 
 def sanitize(data, capability):
