@@ -631,13 +631,14 @@
   stroke-width: 2.5;
   stroke-opacity: 1;
 }
-.composition-run .composition-connection.outside-request-focus .composition-route {
-  stroke-opacity: 0.25;
-}
 .composition-run .composition-connection.related .composition-route {
   stroke: var(--accent);
   stroke-width: 2.5;
   stroke-opacity: 1;
+}
+.composition-run .composition-connection.outside-request-focus .composition-route {
+  stroke-width: 1.5;
+  stroke-opacity: 0.25;
 }
 .composition-port {
   fill: var(--pane);

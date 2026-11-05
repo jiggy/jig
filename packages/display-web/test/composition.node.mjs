@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   privateCompositionLayout,
+  privateCompositionFocusedRequests,
+  privateCompositionRequestRows,
+  privateCompositionRequestStateLabel,
+  privateCompositionRequestSummary,
   privateCompositionSelection,
   privateCompositionTextLines,
 } from '../dist/composition.js'
@@ -74,13 +78,13 @@ function pathsCross(first, second) {
   return false
 }
 
-function assertGeometry(layout) {
+function assertGeometry(layout, cardWidth = 224) {
   const intersects = (a, b) => a.x < b.x + b.width && b.x < a.x + a.width &&
     a.y < b.y + b.height && b.y < a.y + a.height
   const rectangles = [...layout.nodes]
   for (const box of layout.nodes) {
     assert.ok(box.height >= box.labelLines.length * 20 + 88)
-    assert.equal(box.width, 224)
+    assert.equal(box.width, cardWidth)
   }
   for (const route of layout.routes) {
     const source = layout.nodes.find((node) => node.id === route.source)
@@ -117,6 +121,67 @@ function assertGeometry(layout) {
       assert.ok(!intersects(rectangle, other), 'cards and connection labels must not overlap')
   }
 }
+
+test('retained request summaries preserve mixed states and count repeated requests separately', () => {
+  const summary = privateCompositionRequestSummary([
+    { state: 'returned' }, { state: 'active' }, { state: 'failed' },
+    { state: 'returned' }, { state: 'requested' }, { state: 'cancel-requested' },
+    { state: 'uncertain' },
+  ])
+  assert.deepEqual(summary, {
+    requested: 1, active: 1, 'cancel-requested': 1, returned: 2, failed: 1, uncertain: 1,
+  })
+  assert.equal(privateCompositionFocusedRequests(summary, 'all'), 7)
+  assert.equal(privateCompositionFocusedRequests(summary, 'active'), 1)
+  assert.equal(privateCompositionFocusedRequests(summary, 'attention'), 2)
+  const rows = privateCompositionRequestRows(summary)
+  assert(rows.length <= 3 && rows.every((row) => row.length <= 2))
+  assert.deepEqual(Object.fromEntries(rows.flat().map(({ state, count }) => [state, count])), summary)
+  assert.equal(rows.flat().length, 6, 'every supplied state remains visible exactly once')
+  assert.equal(privateCompositionRequestStateLabel('cancel-requested'), 'cancel requested')
+  assert.equal(privateCompositionRequestStateLabel('returned'), 'returned')
+})
+
+test('pending and cancellation-requested observations do not become active or attention failures', () => {
+  const pending = privateCompositionRequestSummary([
+    { state: 'requested' }, { state: 'cancel-requested' }, { state: 'returned' },
+  ])
+  assert.equal(privateCompositionFocusedRequests(pending, 'all'), 3)
+  assert.equal(privateCompositionFocusedRequests(pending, 'active'), 0)
+  assert.equal(privateCompositionFocusedRequests(pending, 'attention'), 0)
+  const empty = privateCompositionRequestSummary([])
+  assert.deepEqual(empty, {
+    requested: 0, active: 0, 'cancel-requested': 0, returned: 0, failed: 0, uncertain: 0,
+  })
+  assert.deepEqual(privateCompositionRequestRows(empty), [])
+  for (const focus of ['all', 'active', 'attention'])
+    assert.equal(privateCompositionFocusedRequests(empty, focus), 0)
+})
+
+test('Run maps reserve readable mixed-state rows for every shared configured slot', () => {
+  const graph = composition()
+  graph.edges.push({ id: 'parallel', source: 'root', target: 'first', slot: 'another-long-slot-name' })
+  const layout = privateCompositionLayout(graph, true)
+  assertGeometry(layout, 240)
+  assert.deepEqual(
+    layout.routes.flatMap((route) => route.requestRows.map((row) => row.edgeId)).sort(),
+    graph.edges.map((edge) => edge.id).sort(),
+  )
+  for (const node of layout.nodes)
+    if (node.id !== graph.rootId)
+      assert(node.height >= node.labelLines.length * 20 + 148)
+  for (const route of layout.routes)
+    for (const row of route.requestRows) {
+      assert(row.line > route.lineEdgeIds.indexOf(row.edgeId))
+      assert(route.labelY + row.line * 15 >= route.labelTop)
+      assert(route.labelY + (row.line + 2) * 15 <= route.labelTop + route.labelHeight)
+      for (const next of route.requestRows)
+        if (next.line > row.line) assert(next.line > row.line + 2)
+    }
+  const shared = layout.routes.find((route) => route.source === 'root' && route.target === 'first')
+  assert.deepEqual(shared.requestRows.map((row) => row.edgeId), ['a', 'parallel'])
+  assert(privateCompositionLayout(graph).nodes.every((node) => node.width === 224), 'configuration maps retain their compact profile')
+})
 
 test('map selection follows exact run, root and component identities across refresh', () => {
   const graph = composition()

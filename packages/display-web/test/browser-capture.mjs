@@ -6,6 +6,7 @@ import { resolve } from 'node:path'
 import { chromium } from 'playwright'
 import {
   childFixture,
+  compositionFixture,
   contactFixture,
   documentFixture,
   factoryFixture,
@@ -41,7 +42,9 @@ const browser = await chromium.launch({
     : {}),
 })
 try {
-  for (const [name, make, tab] of [
+  for (const [name, make, tab, focus] of [
+    ['map', compositionFixture, 'Application map'],
+    ['map-attention', compositionFixture, 'Application map', 'attention'],
     ['execution', hostFixture, 'Execution'],
     ['files', hostFixture, 'Delivered files'],
     ['activity', hostFixture, 'Activity'],
@@ -68,6 +71,7 @@ try {
         if (tab === 'Diagnostics')
           await page.getByRole('button', { name: 'Diagnostics', exact: true }).click()
         else if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}(?:\\s|$)`) }).click()
+        if (focus) await page.locator(`[data-request-focus="${focus}"]`).click()
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
           await page.getByRole('button', { name: `${theme} appearance`, exact: true }).click()
           await page.evaluate(() => document.fonts.ready)
