@@ -134,7 +134,7 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Fixture rendering does not qualify a host transport or newcomer usability.
 
 The visual review matrix serves identical observations to current and pre-97 production assets.
-Its HTML pairs and manifests identify both revisions; they do not replace an original approved mockup.
+Its HTML pairs and manifests identify both revisions. They do not replace an original approved mockup.
 
 ## Verification
 

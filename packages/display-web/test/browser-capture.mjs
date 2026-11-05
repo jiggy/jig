@@ -87,7 +87,10 @@ try {
         else if (tab) await page.getByRole('tab', { name: new RegExp(`^${tab}(?:\\s|$)`) }).click()
         if (focus) await page.locator(`[data-request-focus="${focus}"]`).click()
         for (const theme of ['Light', 'Dark', 'Monochrome']) {
-          await page.getByRole('button', { name: `${theme} appearance`, exact: true }).click()
+          const appearance = page.getByRole('button', { name: `${theme} appearance`, exact: true })
+          if (assetCheckout && !(await appearance.isVisible()))
+            await page.evaluate((value) => { document.documentElement.dataset.theme = value }, theme === 'Monochrome' ? 'color-free' : theme.toLowerCase())
+          else await appearance.click()
           await page.evaluate(() => document.fonts.ready)
           // Only visible material belongs to this viewport. Below-fold previews remain lazy.
           await page.waitForFunction(() =>
