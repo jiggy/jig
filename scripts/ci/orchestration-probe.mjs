@@ -37,13 +37,13 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
   const deadline = Date.now() + 180_000
   const prefix = `${origin.origin}/repos/${env.GITHUB_REPOSITORY}/actions/`
   const workflow = 'ci-orchestration-probe-worker.yml'
-  const request = async (path, body) => {
-    assert.ok(Date.now() < deadline, 'Probe observation deadline expired')
+  const request = async (path, body, requestDeadline = deadline) => {
+    assert.ok(Date.now() < requestDeadline, 'Probe observation deadline expired')
     const response = await fetch(prefix + path, {
       method: body === undefined ? 'GET' : 'POST', redirect: 'error',
       headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: 'application/vnd.github+json',
         'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28' },
-      signal: AbortSignal.timeout(Math.min(10_000, deadline - Date.now())),
+      signal: AbortSignal.timeout(Math.min(10_000, requestDeadline - Date.now())),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     assert.ok(response.ok, `Probe API request failed: HTTP ${response.status}`)
@@ -57,38 +57,83 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
     }
     return JSON.parse(Buffer.concat(chunks).toString('utf8'))
   }
-  if (env.PROBE_CANCEL_ONLY === '1') {
+  const report = async summary => {
+    console.log(summary)
+    if (env.GITHUB_STEP_SUMMARY) {
+      await appendFile(env.GITHUB_STEP_SUMMARY, summary)
+        .catch(() => console.error('Could not retain the diagnostic summary. The probe verdict is unchanged.'))
+    }
+  }
+  const ownedChild = run => {
+    assert.ok(Number.isSafeInteger(run.id) && run.id > 0, 'Invalid diagnostic run ID')
+    assert.equal(run.display_title, `CI probe child ${marker}`)
+    assert.equal(run.path, `.github/workflows/${workflow}`)
+    assert.equal(run.repository.full_name, env.GITHUB_REPOSITORY)
+    assert.equal(run.head_branch, 'main')
+    assert.equal(run.event, 'workflow_dispatch')
+    return run
+  }
+  const discover = async () => {
     const runs = await request(`workflows/${workflow}/runs?event=workflow_dispatch&per_page=100`)
     const matches = runs.workflow_runs.filter(run => run.display_title === `CI probe child ${marker}`)
     assert.ok(matches.length <= 1, 'Ambiguous diagnostic child')
-    for (const run of matches) {
-      assert.ok(Number.isSafeInteger(run.id) && run.id > 0, 'Invalid diagnostic run ID')
-      assert.equal(run.path, `.github/workflows/${workflow}`)
-      assert.equal(run.repository.full_name, env.GITHUB_REPOSITORY)
-      if (run.status !== 'completed') await request(`runs/${Number(run.id)}/cancel`, {})
-    }
-    return
+    return matches.length ? ownedChild(matches[0]) : undefined
   }
+  const cancel = async child => {
+    // An acknowledged request does not prove cancellation settlement.
+    const cleanupDeadline = Date.now() + 10_000
+    const response = await fetch(prefix + `runs/${Number(child.id)}/cancel`, {
+      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
+      headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
+    }).catch(() => undefined)
+    if (response?.status === 409) {
+      try {
+        const current = ownedChild(await request(`runs/${Number(child.id)}`, undefined, cleanupDeadline))
+        assert.equal(current.id, child.id)
+        assert.equal(current.head_sha, child.head_sha)
+        assert.equal(current.run_attempt, 1)
+        if (current.status === 'completed') return { settled: true,
+          summary: 'The child completed before cancellation was acknowledged.' }
+      } catch {
+        // A conflict or failed read alone cannot establish completed cleanup.
+      }
+    }
+    return { acknowledged: Boolean(response?.ok), summary: response?.ok
+      ? 'Cancellation requested. Settlement remains unverified.'
+      : `Cancellation was not acknowledged${response ? ` (HTTP ${Number(response.status)})` : ''}. Settlement remains unverified.` }
+  }
+  const childLink = child => child
+    ? `Child: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${Number(child.id)}\n\n`
+    : 'No verified child link is available. Inspect this attempt\'s child workflow before rerunning.\n\n'
+  const cancelOnly = env.PROBE_CANCEL_ONLY === '1'
+  let phase = cancelOnly ? 'cleanup discovery' : 'child dispatch'
   let child
   let settled = false
+  let observedQueued = false
   try {
+    if (cancelOnly) {
+      child = await discover()
+      settled = child?.status === 'completed'
+      phase = 'child cleanup'
+      const cancellation = child && !settled ? await cancel(child) : undefined
+      const cleanup = cancellation?.summary ?? (child
+        ? 'The child completed. Cleanup was not required.' : 'No matching diagnostic child was found.')
+      await report(`## Diagnostic child cleanup\n\n${childLink(child)}${cleanup}\n\n`)
+      assert.ok(!cancellation || cancellation.acknowledged || cancellation.settled, 'Diagnostic child cancellation was not acknowledged')
+      return
+    }
     await request(`workflows/${workflow}/dispatches`, { ref: 'main', inputs: { parent: marker, source: env.GITHUB_SHA } })
-    let observedQueued = false
     for (;;) {
       if (!child) {
-        const runs = await request(`workflows/${workflow}/runs?event=workflow_dispatch&per_page=100`)
-        const matches = runs.workflow_runs.filter(run => run.display_title === `CI probe child ${marker}`)
-        assert.ok(matches.length <= 1, 'Ambiguous diagnostic child')
-        child = matches[0]
+        phase = 'child discovery'
+        child = await discover()
         if (child) {
-          assert.ok(Number.isSafeInteger(child.id) && child.id > 0, 'Invalid diagnostic run ID')
+          phase = 'source validation'
           assert.equal(child.head_sha, env.GITHUB_SHA, 'Main changed before dispatch; rerun the probe')
-          assert.equal(child.head_branch, 'main')
-          assert.equal(child.path, `.github/workflows/${workflow}`)
-          assert.equal(child.repository.full_name, env.GITHUB_REPOSITORY)
         }
       }
       if (child) {
+        phase = 'child observation'
         const run = await request(`runs/${Number(child.id)}`)
         const snapshot = await request(`runs/${Number(child.id)}/attempts/1/jobs?per_page=100`)
         assert.equal(run.run_attempt, 1)
@@ -97,28 +142,27 @@ export async function runProbe(env, { apiOrigin = 'https://api.github.com', poll
           job.status === 'queued' && !job.runner_id && !job.steps.some(step => step.started_at))
         if (run.status === 'completed') {
           settled = true
+          phase = 'result validation'
           assert.equal(run.conclusion, 'failure', 'Diagnostic child must fail deliberately')
           const result = verifyProbeJobs(snapshot.jobs, observedQueued)
           const summary = `## Orchestration probe passed\n\n` +
-            `Child: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${Number(child.id)}\n\n` +
+            childLink(child) +
             `Queued cancellation settled in ${Number(result.cancellationMs)} ms relative to monitor failure.\n\n` +
             'The child failure is intentional. No native tests ran and no qualification evidence was created.\n'
-          if (env.GITHUB_STEP_SUMMARY) await appendFile(env.GITHUB_STEP_SUMMARY, summary)
-          console.log(summary)
+          await report(summary)
           return
         }
       }
       assert.ok(Date.now() + pollIntervalMs < deadline, 'Probe did not settle within three minutes')
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs))
     }
-  } finally {
-    if (child && !settled) {
-      // Cancellation is a bounded cleanup request, not a claim that GitHub has settled it.
-      await fetch(prefix + `runs/${Number(child.id)}/cancel`, {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000),
-        headers: { Authorization: `Bearer ${env.GH_TOKEN}`, Accept: 'application/vnd.github+json' },
-      }).catch(() => undefined)
-    }
+  } catch (error) {
+    const cleanup = child && settled ? 'The child completed. Cleanup was not required.'
+      : child && !cancelOnly ? (await cancel(child)).summary : 'Child cleanup remains unverified.'
+    await report(`## Orchestration probe failed\n\nPhase: ${phase}.\n\n${childLink(child)}` +
+      `Queued sibling observed: ${observedQueued ? 'yes' : 'no'}.\n\n${cleanup}\n\n` +
+      'Inspect the failed step for the original error. No qualification evidence was created.\n\n')
+    throw error
   }
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href)
