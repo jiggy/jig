@@ -49,10 +49,25 @@ Each available slot has its own retained request count, even when slots share on
 The Run root shows workspace facts without inventing a child request.
 Native resource kinds have human names, and checkpoints stay reachable with quieter styling.
 
+Observed connections have distinct emphasis, with literal request states beside each component and slot.
+Repeated invocations retain mixed summaries, such as “2 returned · 1 failed”.
+One slot's observations never describe every slot sharing its target.
+Returned requests do not establish application success.
+
+All requests, Active and Needs attention change emphasis without hiding the configured map.
+Active follows active requests. Needs attention follows failed or uncertain requests.
+Requested cancellation retains its own wording without becoming an inferred failure.
+Summary space stays stable as observations change, preserving route geometry and the viewer's position.
+
 Preserve selection, zoom and canvas position across refresh and inspection return by exact Run and component identities.
 Opening a particular invocation reveals its ancestry without an unrelated filter hiding it.
 Unavailable composition, omitted observations and unplaced requests remain explicit.
 Absence of a retained request does not establish a skipped call.
+
+An invocation can open views published by its exact accepted child source.
+Show the complete authored material and retain a return to the invocation and its selected component.
+Missing or ambiguous child identity has an explicit unavailable state.
+Stale observations disable navigation without hiding the retained material.
 
 ## Project exploration
 
@@ -104,6 +119,9 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
   Zoom preserves a shared coordinate space and keeps the selected component reachable.
   Duplicate labels stay distinct, repeated requests stay separate, and stale invocation links remain disabled.
   Keyboard selection, narrow-layout Back and return from invocation details preserve orientation.
+- Mixed request states remain readable on components and individual slots, including in monochrome.
+  Focus changes preserve geometry and keyboard reachability. Observed updates never move components or connections.
+  Exact child-view navigation preserves the invocation context, including when view names or subjects match other publishers.
 - Project exploration starts without execution and preserves exact workflow identity through selection and refresh.
   Invalid input, missing prerequisites, stale configuration and unconfirmed submissions cannot silently launch another Run.
   Configuration-only maps show no invented observations. Run handoff preserves the explorer's draft and context.

@@ -520,6 +520,54 @@
 .composition-controls > button {
   font-size: 12px;
 }
+.composition-observation-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0 0 12px;
+}
+.composition-request-focus {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--pane);
+}
+.composition-request-focus button {
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 11px;
+  background: transparent;
+}
+.composition-request-focus button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.composition-request-focus [aria-pressed="true"] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--selected);
+}
+.composition-request-focus [data-request-focus="attention"][aria-pressed="true"] {
+  color: var(--warning);
+  border-color: var(--warning);
+  background: var(--warning-bg);
+}
+.composition-focus-count {
+  min-width: 3ch;
+  text-align: center;
+  font-weight: 650;
+}
+.composition-focus-note {
+  color: var(--secondary);
+  font-size: 11px;
+}
 .composition-map-shell {
   position: relative;
   display: flex;
@@ -578,6 +626,19 @@
   stroke-width: 2;
   stroke-opacity: 1;
 }
+.composition-run .composition-connection.request-focused .composition-route {
+  stroke: var(--text);
+  stroke-width: 2.5;
+  stroke-opacity: 1;
+}
+.composition-run .composition-connection.outside-request-focus .composition-route {
+  stroke-opacity: 0.25;
+}
+.composition-run .composition-connection.related .composition-route {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  stroke-opacity: 1;
+}
 .composition-port {
   fill: var(--pane);
   stroke: var(--secondary);
@@ -603,6 +664,13 @@
 .composition-slot-count {
   font-weight: 650;
   fill: var(--text);
+}
+.composition-slot-states .composition-state-row {
+  font-size: 11px;
+  fill: var(--secondary);
+}
+.composition-slot-states.request-focused .composition-state-row {
+  font-weight: 600;
 }
 .composition-card {
   position: absolute;
@@ -631,6 +699,15 @@
 }
 .composition-card.checkpoint:not(.selected) {
   box-shadow: none;
+}
+.composition-card.unobserved:not(.selected),
+.composition-card.outside-request-focus:not(.selected) {
+  background: var(--page);
+  box-shadow: none;
+}
+.composition-card.request-focused:not(.selected) {
+  border-color: var(--secondary);
+  box-shadow: inset 3px 0 var(--text), 0 2px 5px rgb(0 0 0 / 0.04);
 }
 .composition-card-content {
   display: flex;
@@ -694,6 +771,44 @@
   font-weight: 600;
   color: var(--text);
 }
+.composition-request-summary {
+  display: block;
+  color: var(--secondary);
+  font-size: 11px;
+  line-height: 18px;
+}
+.composition-request-summary:empty {
+  display: none;
+}
+.composition-request-summary > .composition-state-row {
+  display: block;
+  white-space: nowrap;
+}
+.composition-card [data-composition-node-states] {
+  display: block;
+  height: 54px;
+  flex-shrink: 0;
+}
+.composition-state {
+  color: var(--secondary);
+  fill: var(--secondary);
+}
+.composition-state-active {
+  color: var(--accent);
+  fill: var(--accent);
+}
+.composition-state-failed {
+  color: var(--failure);
+  fill: var(--failure);
+}
+.composition-state-uncertain {
+  color: var(--warning);
+  fill: var(--warning);
+}
+.composition-state-separator {
+  color: var(--secondary);
+  fill: var(--secondary);
+}
 .composition-zoom {
   align-self: flex-end;
   flex-shrink: 0;
@@ -752,6 +867,9 @@
 .composition-line-key {
   width: 18px;
   border-top: 1px solid var(--secondary);
+}
+.composition-line-key.observed {
+  border-top: 3px solid var(--text);
 }
 .composition-map-hint {
   margin-left: auto;
@@ -855,6 +973,9 @@
   margin: -3px 0 12px;
   font-size: 11px;
 }
+.composition-detail-section > .composition-request-summary {
+  margin-bottom: 12px;
+}
 .composition-route-list,
 .composition-requests {
   list-style: none;
@@ -897,6 +1018,9 @@
   flex-wrap: wrap;
   gap: 4px 10px;
 }
+.composition-connection-meta > .composition-request-summary {
+  flex-basis: 100%;
+}
 .composition-requests li + li {
   margin-top: 8px;
 }
@@ -930,6 +1054,45 @@
 }
 .composition-return {
   margin-left: auto;
+}
+.call-views {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.call-view-links {
+  display: grid;
+  gap: 8px;
+  list-style: none;
+  padding: 0;
+  margin: 10px 0 0;
+}
+.call-view-link {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.call-view-link small {
+  display: block;
+  margin-top: 4px;
+  color: var(--secondary);
+  font-size: 11px;
+}
+.invocation-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--pane);
+  font-size: 12px;
+}
+.invocation-context p {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 @media (max-width: 1120px) {
   .composition-page,
@@ -977,7 +1140,8 @@
 }
 @media (pointer: coarse) {
   .composition-zoom button,
-  .composition-detail-close {
+  .composition-detail-close,
+  .composition-request-focus button {
     min-width: 44px;
     min-height: 44px;
   }

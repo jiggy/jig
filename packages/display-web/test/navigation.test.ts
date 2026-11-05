@@ -3,8 +3,10 @@ import { type DisplaySnapshot, displayViewKey } from '@jigging/display-model'
 import type { Collection, Reference } from '@jigging/reporting'
 import {
   PrivateBrowserClock,
+  privateBrowserInvocationViews,
   privateBrowserLiteral,
   privateBrowserLocal,
+  privateBrowserNavigationDestination,
   privateBrowserPeek,
   privateBrowserRecords,
   privateBrowserReferences,
@@ -255,6 +257,97 @@ test('record and call references remain local to their accepted publisher', () =
   expect(
     privateBrowserResolve(body, 'child', { kind: 'call', operationId: 'operation' }).kind,
   ).toBe('unavailable')
+})
+
+test('invocation views use exact child ownership and retain raw view identities', () => {
+  const body = snapshot()
+  const selected = { ...body.calls[0]!, childSourceId: 'child-a', state: 'failed' as const }
+  body.calls = [
+    selected,
+    { ...selected, id: 'call-2', operationId: 'another', childSourceId: 'child-b' },
+    {
+      ...selected,
+      id: 'call-3',
+      sourceId: 'child-b',
+      childSourceId: 'grandchild',
+      parentId: 'call-2',
+    },
+  ]
+  const child = { ...view, id: 'overview', sourceId: 'child-a', sourceLabel: 'Same publisher label' }
+  const details = {
+    ...child,
+    id: displayViewKey('overview'),
+    ended: 'Publisher stopped',
+    value: { ...child.value, id: 'details' },
+  }
+  body.views = [
+    { ...view, value: { ...view.value, operationId: selected.operationId } },
+    child,
+    { ...child, id: 'other-call-view', sourceId: 'child-b' },
+    { ...child, id: 'nested-view', sourceId: 'grandchild' },
+    { ...child, id: 'unrelated-view', sourceId: 'unrelated' },
+    { ...child, id: 'host-adapter', hostRole: 'recorded-report', value: { ...view.value, id: 'adapter' } },
+    details,
+  ]
+  expect(privateBrowserInvocationViews(body, selected.id)).toEqual({
+    kind: 'available',
+    childSourceId: 'child-a',
+    views: [child, details],
+  })
+  expect(privateBrowserView(body, 'overview')).toBeUndefined()
+  expect(privateBrowserView(body, displayViewKey(child.id))).toBe(child)
+  expect(privateBrowserView(body, displayViewKey(details.id))).toBe(details)
+  body.views = []
+  expect(privateBrowserInvocationViews(body, selected.id)).toEqual({
+    kind: 'available',
+    childSourceId: 'child-a',
+    views: [],
+  })
+})
+
+test('invocation views refuse missing, conflicting and recorded child identities', () => {
+  const body = snapshot()
+  const selected = body.calls[0]!
+  expect(privateBrowserInvocationViews(body, 'missing').kind).toBe('unavailable')
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('unavailable')
+  selected.childSourceId = 'root'
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('unavailable')
+  selected.sourceId = 'caller'
+  selected.childSourceId = 'caller'
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('unavailable')
+  selected.childSourceId = 'child'
+  body.calls.push({ ...selected, id: 'duplicate-owner', operationId: 'another' })
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('unavailable')
+  body.calls.pop()
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('available')
+  body.mode = 'recorded-packet'
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('unavailable')
+  body.mode = 'retained-views'
+  expect(privateBrowserInvocationViews(body, selected.id).kind).toBe('unavailable')
+})
+
+test('exact child-view destinations bypass general subject navigation', () => {
+  const body = snapshot()
+  body.calls[0]!.childSourceId = 'child'
+  const before = {
+    ...view,
+    sourceId: 'child',
+    value: { ...view.value, target: { definitionId: 'summary', instanceKey: 'one', subjectKey: 'one' } },
+  }
+  const requested = {
+    ...before,
+    id: 'overview',
+    value: { ...view.value, id: 'requested', target: { definitionId: 'details', instanceKey: 'two', subjectKey: 'two' } },
+  }
+  const related = {
+    ...requested,
+    id: 'related',
+    value: { ...view.value, id: 'related', target: { definitionId: 'details', instanceKey: 'one', subjectKey: 'one' } },
+  }
+  body.views = [before, requested, related]
+  const destination = displayViewKey(requested.id)
+  expect(privateBrowserNavigationDestination(body, before, destination)).toBe(displayViewKey(related.id))
+  expect(privateBrowserNavigationDestination(body, before, destination, false)).toBe(destination)
 })
 
 test('local filtering and stable typed sorts leave authored data untouched', () => {

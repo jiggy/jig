@@ -78,8 +78,20 @@ Selecting a component shows incoming callers, configured child calls and its ret
 
 Per-component and per-slot counts describe exact retained invocation requests.
 Repeated requests remain separately inspectable through the existing observed-call view.
+Mixed summaries retain each observed state, such as “2 returned · 1 failed”.
+Connections with matched requests receive distinct emphasis.
 Unplaced requests, omitted observations and unavailable maps remain explicit.
 The Run root uses the supplied workspace facts rather than a synthetic request count.
+
+Active emphasizes active requests. Needs attention emphasizes failed or uncertain requests.
+These local choices preserve the complete map, selection and viewport.
+Summary space remains stable as observations change.
+Requested cancellation keeps its own state without becoming an inferred failure.
+
+Invocation details link to views published by that exact accepted child source.
+The complete authored view retains a return to its invocation and selected component.
+Missing or ambiguous child identity remains unavailable, and stale observations disable these links.
+Names, subjects and operation labels cannot establish this correspondence.
 
 Connections do not establish execution order, internal conditions or data transformations.
 A request keeps its observed state and does not itself prove its target started or completed.

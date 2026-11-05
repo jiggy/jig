@@ -1,6 +1,43 @@
-import type { DisplayComposition, DisplaySnapshot } from '@jigging/display-model'
+import type { DisplayCallState, DisplayComposition, DisplaySnapshot } from '@jigging/display-model'
 
 type AvailableComposition = Extract<DisplayComposition, { state: 'available' }>
+export type PrivateCompositionRequestFocus = 'all' | 'active' | 'attention'
+export type PrivateCompositionRequestSummary = Readonly<Record<DisplayCallState, number>>
+export type PrivateCompositionRequestCount = Readonly<{ state: DisplayCallState; count: number }>
+
+/** Summaries describe retained requests, never the component's outcome or root execution. */
+export function privateCompositionRequestSummary(
+  requests: readonly Pick<DisplaySnapshot['calls'][number], 'state'>[],
+): PrivateCompositionRequestSummary {
+  const summary: Record<DisplayCallState, number> = {
+    requested: 0, active: 0, 'cancel-requested': 0, returned: 0, failed: 0, uncertain: 0,
+  }
+  for (const request of requests) summary[request.state]++
+  return summary
+}
+
+export function privateCompositionFocusedRequests(
+  summary: PrivateCompositionRequestSummary,
+  focus: PrivateCompositionRequestFocus,
+): number {
+  if (focus === 'active') return summary.active
+  if (focus === 'attention') return summary.failed + summary.uncertain
+  return Object.values(summary).reduce((total, count) => total + count, 0)
+}
+
+export function privateCompositionRequestStateLabel(state: DisplayCallState): string {
+  return state === 'cancel-requested' ? 'cancel requested' : state
+}
+
+/** Three reserved rows fit all states without changing map geometry as observations arrive. */
+export function privateCompositionRequestRows(
+  summary: PrivateCompositionRequestSummary,
+): PrivateCompositionRequestCount[][] {
+  return ([['active', 'failed'], ['uncertain', 'requested'], ['cancel-requested', 'returned']] as const)
+    .map((states) => states.flatMap((state) => summary[state] ? [{ state, count: summary[state] }] : []))
+    .filter((row) => row.length)
+}
+
 export type PrivateCompositionSelection = {
   rootSourceId?: string | undefined
   rootId?: string | undefined
@@ -22,6 +59,8 @@ export type PrivateCompositionRoute = {
   lines: string[]
   /** The originating edge on each slot's first line; continuation lines contain ''. */
   lineEdgeIds: string[]
+  /** First of three reserved state rows for each configured slot in a Run map. */
+  requestRows: { edgeId: string; line: number }[]
   path: string
   sourceX: number
   sourceY: number
@@ -86,6 +125,7 @@ type Connection = {
   edgeIds: string[]
   lines: string[]
   lineEdgeIds: string[]
+  requestRows: { edgeId: string; line: number }[]
   labelWidth: number
   labelHeight: number
 }
@@ -201,7 +241,7 @@ function alignColumn(column: PrivateCompositionBox[], desired: number[], gap: nu
 }
 
 /** Columns describe configured dependencies, never invocation order or possible execution paths. */
-export function privateCompositionLayout(composition: AvailableComposition): {
+export function privateCompositionLayout(composition: AvailableComposition, run = false): {
   nodes: PrivateCompositionBox[]
   routes: PrivateCompositionRoute[]
   width: number
@@ -213,8 +253,12 @@ export function privateCompositionLayout(composition: AvailableComposition): {
     let connection = grouped.get(key)
     if (!connection) {
       connection = { id: edge.id, source: edge.source, target: edge.target,
-        edgeIds: [], lines: [], lineEdgeIds: [], labelWidth: 0, labelHeight: 0 }
+        edgeIds: [], lines: [], lineEdgeIds: [], requestRows: [], labelWidth: 0, labelHeight: 0 }
       grouped.set(key, connection)
+    }
+    if (run && connection.lines.length) {
+      connection.lines.push('')
+      connection.lineEdgeIds.push('')
     }
     const lines = privateCompositionTextLines(edge.slot, 16)
     connection.edgeIds.push(edge.id)
@@ -222,6 +266,12 @@ export function privateCompositionLayout(composition: AvailableComposition): {
     connection.lineEdgeIds.push(...lines.map((_, index) => index ? '' : edge.id))
     // Reserve 48px for the exact request count and its separation from the slot label.
     connection.labelWidth = Math.max(connection.labelWidth, ...lines.map((line) => Math.ceil(textWidth(line)) + 68))
+    if (run) {
+      connection.requestRows.push({ edgeId: edge.id, line: connection.lines.length })
+      connection.lines.push('', '', '')
+      connection.lineEdgeIds.push('', '', '')
+      connection.labelWidth = Math.max(connection.labelWidth, 228)
+    }
     connection.labelHeight = Math.max(28, connection.lines.length * 15 + 12)
   }
   const connections = [...grouped.values()]
@@ -232,14 +282,14 @@ export function privateCompositionLayout(composition: AvailableComposition): {
     incoming.get(connection.target)!.push(connection)
     outgoing.get(connection.source)!.push(connection)
   }
-  const cardWidth = 224, siblingGap = 24, padding = 32
+  const cardWidth = run ? 240 : 224, siblingGap = 24, padding = 32
   const nodes = composition.nodes.map((node) => {
     const labelLines = privateCompositionTextLines(node.label)
     const entries = incoming.get(node.id)!
     const labelsHeight = entries.reduce((height, entry) => height + entry.labelHeight, 0) +
       Math.max(0, entries.length - 1) * 8
     return { id: node.id, x: 0, y: 0, width: cardWidth,
-      height: Math.max(88 + labelLines.length * 20, labelsHeight + 32), labelLines }
+      height: Math.max(88 + labelLines.length * 20 + (run && node.id !== composition.rootId ? 60 : 0), labelsHeight + 32), labelLines }
   })
   const positions = new Map(nodes.map((node) => [node.id, node]))
   const levels: PrivateCompositionBox[][] = []

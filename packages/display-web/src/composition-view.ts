@@ -6,7 +6,15 @@ import type {
 } from '@jigging/display-model'
 import { compositionObservations } from '@jigging/display-model'
 import { type ComponentChildren, h } from 'preact'
-import { privateCompositionLayout } from './composition.js'
+import {
+  privateCompositionFocusedRequests,
+  privateCompositionLayout,
+  privateCompositionRequestRows,
+  privateCompositionRequestStateLabel,
+  privateCompositionRequestSummary,
+  type PrivateCompositionRequestFocus,
+  type PrivateCompositionRequestSummary,
+} from './composition.js'
 import { privateBrowserLiteral } from './navigation.js'
 
 type Props = ({ snapshot: DisplaySnapshot; composition?: never } | { snapshot?: never; composition: DisplayComposition }) & {
@@ -19,6 +27,8 @@ type Props = ({ snapshot: DisplaySnapshot; composition?: never } | { snapshot?: 
   onClose: () => void
   onCall?: (id: string) => void
   onObservedCalls?: () => void
+  requestFocus?: PrivateCompositionRequestFocus
+  onRequestFocus?: (focus: PrivateCompositionRequestFocus) => void
   onNodeKeyDown: (event: KeyboardEvent) => void
   onScroll: (left: number, top: number) => void
 }
@@ -62,6 +72,19 @@ const unmatchedReason = (reason: string): string =>
       : reason === 'identity-conflict'
         ? 'Conflicting invocation identities'
         : 'Composition unavailable'
+const requestSummaryText = (summary: PrivateCompositionRequestSummary): string =>
+  privateCompositionRequestRows(summary).flat()
+    .map(({ state, count }) => count + ' ' + privateCompositionRequestStateLabel(state)).join(', ')
+const requestSummary = (summary: PrivateCompositionRequestSummary, attributes: Record<string, unknown> = {}): ComponentChildren =>
+  h('span', { class: 'composition-request-summary', ...attributes },
+    privateCompositionRequestRows(summary).map((row, index) => h('span', { class: 'composition-state-row', key: index },
+      row.flatMap(({ state, count }, entry) => [
+        entry ? h('span', { class: 'composition-state-separator', key: state + '-separator' }, ' · ') : null,
+        h('span', { key: state, class: 'composition-state composition-state-' + state, 'data-request-state': state },
+          count + ' ' + privateCompositionRequestStateLabel(state)),
+      ]),
+    )),
+  )
 
 /** Configuration is readable before a Run. Supplied Run observations remain a separate layer. */
 export function CompositionPage(props: Props): ComponentChildren {
@@ -87,16 +110,21 @@ export function CompositionPage(props: Props): ComponentChildren {
   const attribution = snapshot ? compositionObservations(snapshot) : undefined
   const calls = new Map(snapshot?.calls.map((call) => [call.id, call]) ?? [])
   const requests = new Map<string, DisplaySnapshot['calls'][number][]>()
-  const edgeCounts = new Map<string, number>()
+  const edgeRequests = new Map<string, DisplaySnapshot['calls'][number][]>()
   for (const match of attribution?.matches ?? []) {
     const call = calls.get(match.callId)
     if (!call) continue
     if (!requests.has(match.targetNodeId)) requests.set(match.targetNodeId, [])
     requests.get(match.targetNodeId)!.push(call)
-    edgeCounts.set(match.edgeId, (edgeCounts.get(match.edgeId) ?? 0) + 1)
+    if (!edgeRequests.has(match.edgeId)) edgeRequests.set(match.edgeId, [])
+    edgeRequests.get(match.edgeId)!.push(call)
   }
+  const summaries = new Map(composition.nodes.map((node) => [node.id, privateCompositionRequestSummary(requests.get(node.id) ?? [])]))
+  const edgeSummaries = new Map(composition.edges.map((edge) => [edge.id, privateCompositionRequestSummary(edgeRequests.get(edge.id) ?? [])]))
+  const allRequests = privateCompositionRequestSummary([...requests.values()].flat())
+  const requestFocus = snapshot ? props.requestFocus ?? 'all' : 'all'
   const edgeCountLabel = (edgeId: string): string => {
-    const count = edgeCounts.get(edgeId) ?? 0
+    const count = edgeRequests.get(edgeId)?.length ?? 0
     return count ? count + (count === 1 ? ' retained request' : ' retained requests') : 'No matching retained requests'
   }
   const selected = nodes.get(props.selectedNodeId ?? '')
@@ -118,7 +146,7 @@ export function CompositionPage(props: Props): ComponentChildren {
     ...composition,
     nodes: composition.nodes.map((node) => ({ ...node, label: privateBrowserLiteral(node.label) })),
     edges: composition.edges.map((edge) => ({ ...edge, slot: privateBrowserLiteral(edge.slot) })),
-  })
+  }, snapshot !== undefined)
   const reasonCounts = new Map<string, number>()
   for (const item of attribution?.unmatched ?? [])
     reasonCounts.set(item.reason, (reasonCounts.get(item.reason) ?? 0) + 1)
@@ -137,26 +165,31 @@ export function CompositionPage(props: Props): ComponentChildren {
         'aria-hidden': true,
       },
       h('defs', {},
-        [false, true].map((related) => h('marker', {
-          key: String(related), id: related ? 'composition-arrow-selected' : 'composition-arrow',
+        ['configured', 'observed', 'selected'].map((kind) => h('marker', {
+          key: kind, id: 'composition-arrow-' + kind,
           markerWidth: 7, markerHeight: 7, refX: 9, refY: 3.5,
           orient: 'auto', markerUnits: 'userSpaceOnUse',
-        }, h('path', { d: 'M 0 0 L 7 3.5 L 0 7 Z', fill: related ? 'var(--accent)' : 'var(--secondary)' }))),
+        }, h('path', { d: 'M 0 0 L 7 3.5 L 0 7 Z', fill: kind === 'selected' ? 'var(--accent)' : kind === 'observed' ? 'var(--text)' : 'var(--secondary)' }))),
       ),
       layout.routes.map((route) => {
         const related = route.source === selected?.id || route.target === selected?.id
+        const observed = route.edgeIds.some((id) => (edgeRequests.get(id)?.length ?? 0) > 0)
+        const focused = snapshot && route.edgeIds.some((id) => privateCompositionFocusedRequests(edgeSummaries.get(id)!, requestFocus) > 0)
         const labelLeft = route.labelX - route.labelWidth / 2
         return h(
           'g',
-          { key: route.id, class: 'composition-connection' + (related ? ' related' : '') },
+          { key: route.id, class: 'composition-connection' + (related ? ' related' : '') +
+            (observed ? ' observed' : '') + (focused ? ' request-focused' : '') +
+            (snapshot && requestFocus !== 'all' && !focused ? ' outside-request-focus' : '') },
           h('title', {}, route.edgeIds.map((id) => {
             const edge = composition.edges.find((item) => item.id === id)!
-            return privateBrowserLiteral(edge.slot) + (snapshot ? ': ' + edgeCountLabel(id) : '')
+            return privateBrowserLiteral(edge.slot) + (snapshot ? ': ' + edgeCountLabel(id) +
+              (requestSummaryText(edgeSummaries.get(id)!) ? ' · ' + requestSummaryText(edgeSummaries.get(id)!) : '') : '')
           }).join('\n')),
           h('path', {
             d: route.path,
             class: 'composition-route',
-            'marker-end': related ? 'url(#composition-arrow-selected)' : 'url(#composition-arrow)',
+            'marker-end': 'url(#composition-arrow-' + (related ? 'selected' : focused ? 'observed' : 'configured') + ')',
           }),
           h('circle', { class: 'composition-port', cx: route.sourceX, cy: route.sourceY, r: 3 }),
           h('rect', { class: 'composition-slot-background', x: labelLeft, y: route.labelTop, width: route.labelWidth, height: route.labelHeight, rx: 6 }),
@@ -168,15 +201,28 @@ export function CompositionPage(props: Props): ComponentChildren {
               edgeId && snapshot ? h('text', {
                 x: labelLeft + route.labelWidth - 10, y, class: 'composition-slot-count',
                 'text-anchor': 'end', 'data-composition-edge': edgeId,
-              }, edgeCounts.get(edgeId) ?? 0) : null,
+              }, edgeRequests.get(edgeId)?.length ?? 0) : null,
             )
           }),
+          route.requestRows.map(({ edgeId, line }) => h('g', {
+            key: edgeId, 'data-composition-edge-states': edgeId,
+            class: 'composition-slot-states' + (privateCompositionFocusedRequests(edgeSummaries.get(edgeId)!, requestFocus) ? ' request-focused' : ''),
+          }, privateCompositionRequestRows(edgeSummaries.get(edgeId)!).map((row, index) => h('text', {
+            key: index, x: labelLeft + 10, y: route.labelY + (line + index) * 15,
+            class: 'composition-state-row',
+          }, row.flatMap(({ state, count }, entry) => [
+            entry ? h('tspan', { class: 'composition-state-separator', key: state + '-separator' }, ' · ') : null,
+            h('tspan', { key: state, class: 'composition-state composition-state-' + state, 'data-request-state': state },
+              count + ' ' + privateCompositionRequestStateLabel(state)),
+          ]))))),
         )
       }),
     ),
     layout.nodes.map((box) => {
       const node = nodes.get(box.id)!
       const count = requests.get(node.id)?.length ?? 0
+      const summary = summaries.get(node.id)!
+      const focused = snapshot && privateCompositionFocusedRequests(summary, requestFocus) > 0
       const childCount = composition.edges.filter((edge) => edge.source === node.id).length
       return button(
         h(
@@ -199,12 +245,16 @@ export function CompositionPage(props: Props): ComponentChildren {
               ? childCount + (childCount === 1 ? ' configured call' : ' configured calls')
               : h('span', {}, h('strong', {}, count), count === 1 ? ' request' : ' requests'),
           ),
+          snapshot && node.id !== composition.rootId
+            ? requestSummary(summary, { 'data-composition-node-states': node.id }) : null,
         ),
         () => props.onSelect(node.id),
         {
           key: node.id,
           class: 'composition-card' + (node.kind === 'resource' ? ' resource' : '') +
             (node.kind === 'resource' && (node.resourceKind === 'run-checkpoint' || node.resourceKind === 'child-checkpoint') ? ' checkpoint' : '') +
+            (snapshot && node.id !== composition.rootId ? (count ? ' observed' : ' unobserved') +
+              (focused ? ' request-focused' : '') + (requestFocus !== 'all' && !focused ? ' outside-request-focus' : '') : '') +
             (node.id === selected?.id ? ' selected' : ''),
           style: {
             left: box.x + 'px', top: box.y + 'px',
@@ -213,7 +263,8 @@ export function CompositionPage(props: Props): ComponentChildren {
           'data-component': node.id,
           'aria-pressed': node.id === selected?.id,
           'aria-label': privateBrowserLiteral(node.label) + ', ' + kindLabel(node) +
-            (node.id === composition.rootId ? (snapshot ? ', Run root' : ', Selected root') : snapshot ? ', ' + count + ' matching retained requests' : ''),
+            (node.id === composition.rootId ? (snapshot ? ', Run root' : ', Selected root') : snapshot ? ', ' + count + ' matching retained requests' +
+              (count ? ', ' + requestSummaryText(summary) : '') : ''),
           onKeyDown: props.onNodeKeyDown,
         },
       )
@@ -222,7 +273,7 @@ export function CompositionPage(props: Props): ComponentChildren {
 
   return h(
     'div',
-    { class: 'composition-page' + (selected && props.detailOpen ? ' inspecting' : '') },
+    { class: 'composition-page' + (selected && props.detailOpen ? ' inspecting' : '') + (snapshot ? ' composition-run request-focus-' + requestFocus : '') },
     h(
       'section',
       { class: 'composition-main' },
@@ -255,6 +306,20 @@ export function CompositionPage(props: Props): ComponentChildren {
         ),
         snapshot ? button('Observed calls', () => props.onObservedCalls?.()) : null,
       ),
+      snapshot ? h('div', { class: 'composition-observation-tools' },
+        h('div', { class: 'composition-request-focus', role: 'group', 'aria-label': 'Focus matching retained requests' },
+          ([['all', 'All requests'], ['active', 'Active'], ['attention', 'Needs attention']] as const).map(([focus, label]) =>
+            button(h('span', {}, label, ' ', h('span', { class: 'composition-focus-count' }, privateCompositionFocusedRequests(allRequests, focus))),
+              () => props.onRequestFocus?.(focus), {
+                key: focus, 'data-request-focus': focus, 'aria-pressed': requestFocus === focus,
+                'aria-label': label + ' ' + privateCompositionFocusedRequests(allRequests, focus),
+                title: focus === 'attention' ? 'Matching retained requests that are failed or uncertain'
+                  : focus === 'active' ? 'Matching retained requests observed as active' : 'All matching retained requests',
+              }),
+          ),
+        ),
+        h('span', { class: 'composition-focus-note' }, 'All configured connections stay visible.'),
+      ) : null,
       h(
         'div',
         { class: 'composition-map-shell', style: { '--composition-height': layout.height + 'px' } },
@@ -290,6 +355,7 @@ export function CompositionPage(props: Props): ComponentChildren {
         'div',
         { class: 'composition-map-note', id: 'composition-explanation' },
         h('span', {}, h('i', { class: 'composition-line-key', 'aria-hidden': true }), 'Configured calls'),
+        snapshot ? h('span', {}, h('i', { class: 'composition-line-key observed', 'aria-hidden': true }), 'Matching retained requests') : null,
         snapshot ? h('span', {}, 'Counts show retained requests') : h('span', {}, 'Approved configuration'),
         h('span', { class: 'composition-map-hint' }, 'Select a component to inspect'),
       ),
@@ -325,7 +391,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                     h('td', {}, button(literal(nodes.get(edge.source)!.label), () => props.onSelect(edge.source))),
                     h('td', {}, h('code', {}, literal(edge.slot))),
                     h('td', {}, button(literal(nodes.get(edge.target)!.label), () => props.onSelect(edge.target))),
-                    snapshot ? h('td', {}, edgeCountLabel(edge.id)) : null,
+                    snapshot ? h('td', {}, edgeCountLabel(edge.id), requestSummary(edgeSummaries.get(edge.id)!)) : null,
                   ),
                 ),
               ),
@@ -343,6 +409,7 @@ export function CompositionPage(props: Props): ComponentChildren {
         snapshot ? h('p', {}, 'A matched request retains its observed state. It does not by itself establish that the target started or completed.')
           : h('p', {}, 'Run validates the selected approval again before work begins. This map does not establish source freshness or launch readiness.'),
         snapshot ? h('p', {}, 'An absence of matching retained requests does not establish that a configured call was skipped.') : null,
+        snapshot ? h('p', {}, 'Active highlights requests observed as active. Needs attention highlights failed or uncertain requests. Cancel requested remains a separate observation. Returned does not establish application success.') : null,
         h('p', {}, 'Use arrow keys to move between components. Zoom or Fit changes only the view. Component positions are not editable.'),
       ),
     ),
@@ -382,6 +449,7 @@ export function CompositionPage(props: Props): ComponentChildren {
           snapshot && selected.id !== composition.rootId ? h('section', { class: 'composition-detail-section' },
             h('h3', {}, 'Requests in this run', h('span', { class: 'composition-section-count' }, selectedRequests.length)),
             h('p', { class: 'composition-retained-note secondary' }, 'Counts show retained requests.'),
+            requestSummary(summaries.get(selected.id)!),
             selectedRequests.length ? h(
                 'ol',
                 { class: 'composition-requests' },
@@ -420,6 +488,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                 h('div', { class: 'composition-connection-meta' },
                   h('code', {}, literal(edge.slot)),
                   snapshot ? h('small', { class: 'secondary' }, edgeCountLabel(edge.id)) : null,
+                  snapshot ? requestSummary(edgeSummaries.get(edge.id)!) : null,
                 ),
               )),
             ),
@@ -431,6 +500,7 @@ export function CompositionPage(props: Props): ComponentChildren {
                 h('code', {}, literal(edge.slot)),
                 button(h('span', {}, literal(nodes.get(edge.target)!.label), icon('arrow')), () => props.onSelect(edge.target)),
                 snapshot ? h('small', { class: 'secondary' }, edgeCountLabel(edge.id)) : null,
+                snapshot ? requestSummary(edgeSummaries.get(edge.id)!) : null,
               )),
             ) : h('p', { class: 'secondary' }, 'No configured child calls.'),
           ),
