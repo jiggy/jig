@@ -297,6 +297,21 @@ Absent observations do not prove a component was skipped or cannot execute.
 Observation loss and unmatched calls remain visible beside the map.
 Selection persists through snapshot replacement while its component identity remains available.
 
+Matched requests emphasize their configured connections.
+Components and individual slots retain mixed observed states instead of receiving one inferred aggregate outcome.
+
+Active emphasizes active requests. Needs attention emphasizes failed or uncertain requests.
+Requested cancellation remains distinct from failure.
+These viewer-local choices preserve all configured components, connections, selection and keyboard navigation.
+Changing observations cannot move map geometry or reset the viewport.
+
+An invocation can link to views published by its unambiguous accepted child source.
+Root views and host views cannot stand in for the child's reports.
+Names, subjects, operation labels and arrival order cannot supply missing correspondence.
+The link opens the exact view and preserves a return to the invocation and selected component.
+Missing child identity remains explicitly unavailable.
+Stale or incomplete observations disable these links.
+
 The Run map supplies no editing, test submission, replay, or execution controls.
 Project exploration places explicit input and launch controls beside its configuration-only map.
 Saved result packets and retained application views contain no admitted composition.

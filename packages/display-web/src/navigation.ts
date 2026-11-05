@@ -86,6 +86,32 @@ export function privateBrowserView(
   return snapshot?.views.find((view) => displayViewKey(view.id) === destinationKey)
 }
 
+/** A child publisher belongs to one observed invocation, independently of authored names. */
+export function privateBrowserInvocationViews(
+  snapshot: DisplaySnapshot,
+  callId: string,
+):
+  | { kind: 'available'; childSourceId: string; views: readonly DisplaySnapshot['views'][number][] }
+  | { kind: 'unavailable'; label: string } {
+  const call = snapshot.calls.find((item) => item.id === callId)
+  if (snapshot.mode !== 'live-run' || !call)
+    return { kind: 'unavailable', label: 'This invocation is unavailable in the current observation.' }
+  const childSourceId = call.childSourceId
+  if (childSourceId === undefined)
+    return { kind: 'unavailable', label: 'A child publisher is not identified in this observation.' }
+  if (
+    childSourceId === snapshot.rootSourceId ||
+    childSourceId === call.sourceId ||
+    snapshot.calls.some((item) => item.id !== call.id && item.childSourceId === childSourceId)
+  )
+    return { kind: 'unavailable', label: 'The child publisher cannot be linked to one invocation.' }
+  return {
+    kind: 'available',
+    childSourceId,
+    views: snapshot.views.filter((item) => item.sourceId === childSourceId && item.hostRole === undefined),
+  }
+}
+
 /** General tabs retain subject context; resolved references keep their exact destination. */
 export function privateBrowserNavigationDestination(
   snapshot: DisplaySnapshot | undefined,

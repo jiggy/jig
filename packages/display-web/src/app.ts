@@ -16,13 +16,18 @@ import { type ComponentChildren, h, render } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 import { ApplicationPage, CapturedContent, FormattedReport } from './application.js'
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
-import { type PrivateCompositionSelection, privateCompositionSelection } from './composition.js'
+import {
+  type PrivateCompositionRequestFocus,
+  type PrivateCompositionSelection,
+  privateCompositionSelection,
+} from './composition.js'
 import { CompositionPage } from './composition-view.js'
 import { startPrivateExplorer } from './explorer-app.js'
 import {
   PrivateBrowserClock,
   type PrivateBrowserLocal,
   type PrivateBrowserRecord,
+  privateBrowserInvocationViews,
   privateBrowserLiteral,
   privateBrowserLocal,
   privateBrowserNavigationDestination,
@@ -55,6 +60,7 @@ let destinationKey = 'activity'
 let humanNavigation = false
 let landed = false
 let lastBodyRevision = 0
+let lastRootSourceId: string | undefined
 let previousCallKeys: string[] = []
 const elapsedClock = new PrivateBrowserClock()
 let selectedCall: string | undefined
@@ -67,10 +73,18 @@ let compositionFocusScope: HTMLElement | undefined
 let compositionMapFocused = false
 let compositionScale = 1
 let compositionScaleMode: 'automatic' | 'fit' | 'manual' = 'automatic'
+let compositionRequestFocus: PrivateCompositionRequestFocus = 'all'
 let compositionResizeObserver: ResizeObserver | undefined
 let compositionResizeFrame: number | undefined
 type CompositionOrigin = { rootSourceId: string; rootId: string; nodeId: string }
 let compositionOrigin: CompositionOrigin | undefined
+type InvocationViewOrigin = {
+  rootSourceId: string
+  callId: string
+  childSourceId: string
+  composition?: CompositionOrigin
+}
+let invocationViewOrigin: InvocationViewOrigin | undefined
 let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
@@ -139,8 +153,15 @@ function redraw(): void {
   if (compositionViewportVisible && lastCompositionViewport?.isConnected &&
     lastCompositionViewport.clientWidth && lastCompositionViewport.clientHeight)
     rememberCompositionViewport(lastCompositionViewport)
-  if (client?.body && client.body.revision !== lastBodyRevision) {
+  if (client?.body && (
+    client.body.revision !== lastBodyRevision || client.body.rootSourceId !== lastRootSourceId
+  )) {
     const snapshot = client.body
+    if (snapshot.rootSourceId !== lastRootSourceId) {
+      compositionRequestFocus = 'all'
+      invocationViewOrigin = undefined
+      lastRootSourceId = snapshot.rootSourceId
+    }
     const nextCompositionSelection = privateCompositionSelection(snapshot, compositionSelection)
     if (
       nextCompositionSelection.rootSourceId !== compositionSelection.rootSourceId ||
@@ -309,6 +330,11 @@ function navigate(id: string, preserveSubject = true): void {
   if (body && !panel) scrollPositions.set(destinationKey, body.scrollTop)
   humanNavigation = true
   destinationKey = privateBrowserNavigationDestination(client?.body, view(), id, preserveSubject)
+  if (
+    invocationViewOrigin &&
+    privateBrowserView(client?.body, destinationKey)?.sourceId !== invocationViewOrigin.childSourceId
+  )
+    invocationViewOrigin = undefined
   panel = undefined
   client?.setPreview(undefined)
   feedback = ''
@@ -351,6 +377,7 @@ function select(key: string): void {
 function selectCall(id: string, origin?: CompositionOrigin): void {
   selectedCall = id
   compositionOrigin = origin
+  invocationViewOrigin = undefined
   currentLocal().detailOpen = true
   let call = client?.body?.calls.find((item) => item.id === id)
   for (let depth = 0; call?.parentId && depth < 32; depth++) {
@@ -364,6 +391,78 @@ function selectCall(id: string, origin?: CompositionOrigin): void {
     else document.getElementById('selected-call-heading')?.focus()
   }
   focusDetailReturn()
+}
+
+function openInvocationView(
+  rootSourceId: string,
+  callId: string,
+  childSourceId: string,
+  viewId: string,
+): void {
+  const snapshot = client?.body
+  const child = snapshot && privateBrowserInvocationViews(snapshot, callId)
+  if (
+    !client?.referencesEnabled ||
+    snapshot?.rootSourceId !== rootSourceId ||
+    destinationKey !== 'overview' ||
+    selectedCall !== callId ||
+    child?.kind !== 'available' ||
+    child.childSourceId !== childSourceId ||
+    !child.views.some((item) => item.id === viewId)
+  ) {
+    feedback = 'This reported view is unavailable for the selected invocation in the current observation.'
+    redraw()
+    return
+  }
+  invocationViewOrigin = {
+    rootSourceId,
+    callId,
+    childSourceId,
+    ...(compositionOrigin ? { composition: { ...compositionOrigin } } : {}),
+  }
+  navigate(displayViewKey(viewId), false)
+  document.getElementById('invocation-return')?.focus()
+}
+
+function InvocationReturn(): ComponentChildren {
+  const origin = invocationViewOrigin
+  const snapshot = client?.body
+  const selected = view()
+  if (
+    !origin || !snapshot || !selected ||
+    snapshot.rootSourceId !== origin.rootSourceId || selected.sourceId !== origin.childSourceId
+  ) return null
+  const child = privateBrowserInvocationViews(snapshot, origin.callId)
+  const available = child.kind === 'available' && child.childSourceId === origin.childSourceId &&
+    child.views.some((item) => item.id === selected.id)
+  return h(
+    'div',
+    { class: 'invocation-context', 'aria-label': 'Invocation navigation' },
+    button('← Back to invocation', () => {
+      const current = client?.body
+      const currentChild = current && privateBrowserInvocationViews(current, origin.callId)
+      if (
+        !client?.referencesEnabled || invocationViewOrigin !== origin ||
+        current?.rootSourceId !== origin.rootSourceId || view()?.id !== selected.id ||
+        currentChild?.kind !== 'available' || currentChild.childSourceId !== origin.childSourceId ||
+        !currentChild.views.some((item) => item.id === selected.id)
+      ) {
+        feedback = 'The originating invocation is unavailable in the current observation.'
+        redraw()
+        return
+      }
+      callFilter = ''
+      navigate('overview', false)
+      selectCall(origin.callId, origin.composition)
+      focusSelectedEntry()
+      focusDetailReturn()
+    }, { id: 'invocation-return', disabled: !available || !client?.referencesEnabled }),
+    !available
+      ? h('p', { class: 'secondary' }, 'The originating invocation is no longer available in this observation.')
+      : !client?.referencesEnabled
+        ? h('p', { class: 'secondary' }, 'Invocation links are unavailable while this observation is stale or incomplete.')
+        : null,
+  )
 }
 
 function compositionMatches(rootSourceId: string, rootId: string): boolean {
@@ -553,6 +652,13 @@ function Composition(): ComponentChildren {
     detailOpen: currentLocal().detailOpen,
     referencesEnabled: client?.referencesEnabled ?? false,
     scale: compositionScale,
+    requestFocus: compositionRequestFocus,
+    onRequestFocus: (focus: PrivateCompositionRequestFocus) => {
+      if (!rootId || !compositionMatches(sourceId, rootId)) return
+      humanNavigation = true
+      compositionRequestFocus = focus
+      redraw()
+    },
     onScale: (action: 'in' | 'out' | 'fit' | 'actual') => {
       if (rootId && compositionMatches(sourceId, rootId)) scaleComposition(action)
     },
@@ -1522,6 +1628,7 @@ function Overview(): ComponentChildren {
   const snapshot = client?.body
   if (!snapshot) return null
   const selected = snapshot.calls.find((call) => call.id === selectedCall)
+  const childViews = selected && privateBrowserInvocationViews(snapshot, selected.id)
   const returnToComposition = selected && compositionOrigin &&
     compositionMatches(compositionOrigin.rootSourceId, compositionOrigin.rootId) &&
     compositionObservations(snapshot).matches.some((match) =>
@@ -1810,6 +1917,35 @@ function Overview(): ComponentChildren {
                   'Returned describes execution observation, not application success.',
                 )
               : null,
+            h(
+              'section',
+              { class: 'call-views', 'aria-label': 'Reported views' },
+              h('h3', {}, 'Reported views'),
+              childViews?.kind === 'available'
+                ? childViews.views.length
+                  ? h('ul', { class: 'call-view-links' }, childViews.views.map((item) =>
+                      h('li', { key: item.id },
+                        button(
+                          h('span', {},
+                            h('strong', {}, literal(item.value.title)),
+                            h('small', { class: 'secondary' }, 'Reported by ', literal(item.sourceLabel)),
+                          ),
+                          () => openInvocationView(snapshot.rootSourceId, selected.id, childViews.childSourceId, item.id),
+                          {
+                            class: 'call-view-link',
+                            'data-call-view': item.id,
+                            disabled: !client?.referencesEnabled,
+                          },
+                        ),
+                        item.ended ? h('p', { class: 'secondary' }, literal(item.ended)) : null,
+                      ),
+                    ))
+                  : h('p', { class: 'secondary' }, 'No authored views are retained for this child.')
+                : h('p', { class: 'secondary' }, childViews?.label),
+              childViews?.kind === 'available' && childViews.views.length && !client?.referencesEnabled
+                ? h('p', { class: 'unavailable-note' }, 'View links are unavailable while this observation is stale or incomplete.')
+                : null,
+            ),
             h('h3', {}, 'Related reports'),
             snapshot.journal.some(
               (item) =>
@@ -2574,6 +2710,7 @@ function App(): ComponentChildren {
         'div',
         { class: 'run-content' },
         feedback ? h('p', { class: 'feedback', role: 'status' }, feedback) : null,
+        !panel ? h(InvocationReturn, {}) : null,
         h(
           'main',
           {
@@ -2731,8 +2868,11 @@ addEventListener(
     compositionCenterNodeId = undefined
     compositionScale = 1
     compositionScaleMode = 'automatic'
+    compositionRequestFocus = 'all'
+    lastRootSourceId = undefined
     releaseCompositionViewport()
     compositionOrigin = undefined
+    invocationViewOrigin = undefined
   },
   { once: true },
 )

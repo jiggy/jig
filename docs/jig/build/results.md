@@ -115,6 +115,15 @@ Open an observed invocation to read its existing call evidence.
 Repeated invocations remain separate, with their literal host states.
 A returned call does not establish an acceptable application result or a confirmed external consequence.
 
+Observed connections receive emphasis, and components and slots show mixed states such as **2 returned · 1 failed**.
+Select **Active** to locate active requests or **Needs attention** to locate failed or uncertain requests.
+The complete map stays visible and keeps its position as observations change.
+Requested cancellation retains its own state without becoming an inferred failure.
+
+An invocation's **Reported views** opens material published by that exact child, when its identity is available.
+Read the complete view, then return to the invocation and selected component.
+Unavailable identity and stale observations remain explicit rather than selecting a similarly named view.
+
 Counts cover retained observations only.
 A component without observed calls may still have executed when observations are incomplete.
 Missing ancestry and conflicting identities remain unmatched rather than being assigned by name.

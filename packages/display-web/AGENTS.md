@@ -63,6 +63,14 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
   Request counts describe retained matches, including separate repeated requests.
   Keep exact per-edge counts, unmatched observations and omissions visible.
   Root facts use the workspace observation without a synthetic child request.
+- Matched requests emphasize observed connections and retain mixed states on components and individual slots.
+  Active selects active requests. Needs attention selects failed or uncertain requests.
+  These viewer-local choices preserve every component, connection, selection and map position.
+  Reserve summary space independently of changing observations.
+- Invocation view links use the selected call's unambiguous accepted child source.
+  Exclude root and host views. Never infer correspondence from names, subjects or operation labels.
+  Open the exact tagged destination without subject redirection, and preserve the invocation's return context.
+  Missing identity remains unavailable. Stale or incomplete observations disable these links.
 - Empty retained snapshots show an explicit empty state without synthetic destinations.
   Diagnostics, Help and Close remain available. Only an existing selected tab labels a tabpanel.
 - Render author/file/diagnostic data as inert text. Only typed scoped references
