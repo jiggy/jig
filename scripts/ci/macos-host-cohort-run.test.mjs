@@ -847,9 +847,10 @@ test('artifact inventory reads bound actual response bytes and the caller deadli
 test('coordination deadlines and polling delays preserve absolute caps without a fake clock', () => {
   const now = 1_000_000
   assert.equal(macHostCohortCoordinationDeadline('start', now + 1_000_000, now), now + 60_000)
-  assert.equal(macHostCohortCoordinationDeadline('ready', now + 1_000_000, now), now + 180_000)
+  assert.equal(macHostCohortCoordinationDeadline('ready', now + 1_000_000, now), now + 1_000_000)
   assert.equal(macHostCohortCoordinationDeadline('claim', now + 1_000_000, now), now + 120_000)
-  for (const mode of ['start', 'ready', 'claim', 'allocate']) {
+  assert.equal(macHostCohortCoordinationDeadline('ready-active', now + 1_000_000, now), now + 180_000)
+  for (const mode of ['start', 'ready', 'ready-active', 'claim', 'allocate']) {
     assert.equal(macHostCohortCoordinationDeadline(mode, now + 35_000, now), now + 35_000)
     assert.throws(() => macHostCohortCoordinationDeadline(mode, now, now), /coordination deadline/)
   }
@@ -1216,4 +1217,44 @@ test('normalization refuses an existing destination and preserves its retained c
   await assert.rejects(f.reconcile(), { code: 'EEXIST' })
   assert.deepEqual(await readdir(f.normalizedDirectory), ['earlier-attempt.txt'])
   assert.equal(await readFile(canary, 'utf8'), 'retain existing evidence\n')
+})
+
+test('readiness waits for a queued allocator within preparation and observes its immutable ready record', async t => {
+  const f = await coordinationProtocol(t)
+  await f.setJob(allocatorJobId, { status: 'queued' })
+  const ready = await f.publish('ready', createMacHostCohortReady(f))
+  const deadlines = []
+  let recordReads = 0
+  const [actual] = await Promise.all([
+    waitForMacHostAllocator({ ...f, pollIntervalMs: 20, metadataRefreshMs: 20,
+      readJobs: deadline => { deadlines.push(deadline); return f.readJobs() },
+      readRecords: () => { recordReads++; return f.readRecords() },
+    }),
+    (async () => {
+      await f.waitForJobResponse(jobs => jobs[0]?.status === 'queued')
+      assert.equal(recordReads, 0, 'A queued allocator cannot grant readiness')
+      await f.setJob(allocatorJobId, { status: 'in_progress' })
+    })(),
+  ])
+  assert.equal(actual.artifact.id, ready.artifact.id)
+  assert.ok(deadlines.every(deadline => deadline === f.deadlineMs), 'Polling cannot extend preparation')
+})
+
+test('readiness refuses queued expiry, missing ready proof, and a replaced allocator without extending preparation', async t => {
+  for (const status of ['queued', 'in_progress']) {
+    const f = await coordinationProtocol(t)
+    await f.setJob(allocatorJobId, { status })
+    await assert.rejects(waitForMacHostAllocator({ ...f, deadlineMs: Date.now() + 150,
+      pollIntervalMs: 20, metadataRefreshMs: 20,
+    }), /coordination deadline/)
+  }
+  const f = await coordinationProtocol(t)
+  await f.setJob(allocatorJobId, { status: 'queued' })
+  await Promise.all([
+    assert.rejects(waitForMacHostAllocator({ ...f, pollIntervalMs: 20, metadataRefreshMs: 20 }), /changed during readiness/),
+    (async () => {
+      await f.waitForJobResponse(jobs => jobs[0]?.status === 'queued')
+      await f.setJob(allocatorJobId, { id: 9005, status: 'in_progress' })
+    })(),
+  ])
 })
