@@ -1,0 +1,411 @@
+{
+  "title": "Sley: inspectable runtime topology",
+  "layer": "runtime-topology",
+  "entry": "sley:element:1",
+  "nodes": [
+    {
+      "id": "sley:element:1",
+      "label": "Review pipeline",
+      "kind": "flow",
+      "scopeId": null,
+      "ownedScopeId": "sley:scope:1",
+      "declaredExits": [],
+      "concurrency": 1,
+      "maxActivations": 12
+    },
+    {
+      "id": "sley:element:2",
+      "label": "Choose route",
+      "kind": "node",
+      "scopeId": "sley:scope:1",
+      "maxAttempts": 1
+    },
+    {
+      "id": "sley:element:3",
+      "label": "Draft / check loop",
+      "kind": "flow",
+      "scopeId": "sley:scope:1",
+      "ownedScopeId": "sley:scope:2",
+      "declaredExits": [
+        "accepted",
+        "exhausted"
+      ],
+      "concurrency": 1,
+      "maxActivations": 8
+    },
+    {
+      "id": "sley:element:4",
+      "label": "Request review",
+      "kind": "node",
+      "scopeId": "sley:scope:1",
+      "maxAttempts": 1
+    },
+    {
+      "id": "sley:element:5",
+      "label": "Publish result",
+      "kind": "node",
+      "scopeId": "sley:scope:1",
+      "maxAttempts": 1
+    },
+    {
+      "id": "sley:element:6",
+      "label": "Draft",
+      "kind": "node",
+      "scopeId": "sley:scope:2",
+      "maxAttempts": 1
+    },
+    {
+      "id": "sley:element:7",
+      "label": "Check",
+      "kind": "node",
+      "scopeId": "sley:scope:2",
+      "maxAttempts": 1
+    }
+  ],
+  "edges": [
+    {
+      "id": "sley:entry:1",
+      "source": "sley:element:1",
+      "target": "sley:element:2",
+      "action": null,
+      "label": "entry",
+      "meaning": "scope-entry"
+    },
+    {
+      "id": "sley:entry:2",
+      "source": "sley:element:3",
+      "target": "sley:element:6",
+      "action": null,
+      "label": "entry",
+      "meaning": "scope-entry"
+    },
+    {
+      "id": "sley:link:2:0",
+      "source": "sley:element:2",
+      "target": "sley:element:3",
+      "action": "draft",
+      "label": "draft",
+      "meaning": "declared-link"
+    },
+    {
+      "id": "sley:link:2:1",
+      "source": "sley:element:2",
+      "target": "sley:element:4",
+      "action": "reject",
+      "label": "reject",
+      "meaning": "declared-link"
+    },
+    {
+      "id": "sley:link:3:0",
+      "source": "sley:element:3",
+      "target": "sley:element:5",
+      "action": "accepted",
+      "label": "accepted",
+      "meaning": "declared-link"
+    },
+    {
+      "id": "sley:link:3:1",
+      "source": "sley:element:3",
+      "target": "sley:element:4",
+      "action": "exhausted",
+      "label": "exhausted",
+      "meaning": "declared-link"
+    },
+    {
+      "id": "sley:link:6:0",
+      "source": "sley:element:6",
+      "target": "sley:element:7",
+      "action": "check",
+      "label": "check",
+      "meaning": "declared-link"
+    },
+    {
+      "id": "sley:link:7:0",
+      "source": "sley:element:7",
+      "target": "sley:element:6",
+      "action": "revise",
+      "label": "revise",
+      "meaning": "declared-link"
+    }
+  ],
+  "scopes": [
+    {
+      "id": "sley:scope:1",
+      "label": "Review pipeline",
+      "owner": "sley:element:1",
+      "parent": null,
+      "entry": "sley:element:2",
+      "declaredExits": [],
+      "concurrency": 1,
+      "maxActivations": 12
+    },
+    {
+      "id": "sley:scope:2",
+      "label": "Draft / check loop",
+      "owner": "sley:element:3",
+      "parent": "sley:scope:1",
+      "entry": "sley:element:6",
+      "declaredExits": [
+        "accepted",
+        "exhausted"
+      ],
+      "concurrency": 1,
+      "maxActivations": 8
+    }
+  ],
+  "runs": [
+    {
+      "id": "accepted-after-revision",
+      "label": "Accepted after revision",
+      "input": {
+        "reject": false,
+        "attempts": 0,
+        "acceptAfter": 2,
+        "limit": 3
+      },
+      "status": "completed",
+      "outcome": "done",
+      "nodeCounts": {
+        "sley:element:2": 1,
+        "sley:element:4": 0,
+        "sley:element:5": 1,
+        "sley:element:6": 2,
+        "sley:element:7": 2
+      },
+      "observations": [
+        {
+          "index": 1,
+          "nodeId": "sley:element:2",
+          "kind": "handler-enter",
+          "label": "Choose route"
+        },
+        {
+          "index": 2,
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft"
+        },
+        {
+          "index": 3,
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check"
+        },
+        {
+          "index": 4,
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft"
+        },
+        {
+          "index": 5,
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check"
+        },
+        {
+          "index": 6,
+          "nodeId": "sley:element:5",
+          "kind": "handler-enter",
+          "label": "Publish result"
+        }
+      ],
+      "transitionEvidence": "unavailable",
+      "result": {
+        "status": "completed",
+        "state": {
+          "reject": false,
+          "attempts": 2,
+          "acceptAfter": 2,
+          "limit": 3
+        },
+        "terminals": [
+          {
+            "type": "end",
+            "sequence": 2,
+            "sourceActivationId": 8,
+            "hasOutput": true,
+            "output": {
+              "outcome": "done",
+              "attempts": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "exhausted",
+      "label": "Attempts exhausted",
+      "input": {
+        "reject": false,
+        "attempts": 0,
+        "acceptAfter": 5,
+        "limit": 2
+      },
+      "status": "completed",
+      "outcome": "needs-review",
+      "nodeCounts": {
+        "sley:element:2": 1,
+        "sley:element:4": 1,
+        "sley:element:5": 0,
+        "sley:element:6": 2,
+        "sley:element:7": 2
+      },
+      "observations": [
+        {
+          "index": 1,
+          "nodeId": "sley:element:2",
+          "kind": "handler-enter",
+          "label": "Choose route"
+        },
+        {
+          "index": 2,
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft"
+        },
+        {
+          "index": 3,
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check"
+        },
+        {
+          "index": 4,
+          "nodeId": "sley:element:6",
+          "kind": "handler-enter",
+          "label": "Draft"
+        },
+        {
+          "index": 5,
+          "nodeId": "sley:element:7",
+          "kind": "handler-enter",
+          "label": "Check"
+        },
+        {
+          "index": 6,
+          "nodeId": "sley:element:4",
+          "kind": "handler-enter",
+          "label": "Request review"
+        }
+      ],
+      "transitionEvidence": "unavailable",
+      "result": {
+        "status": "completed",
+        "state": {
+          "reject": false,
+          "attempts": 2,
+          "acceptAfter": 5,
+          "limit": 2
+        },
+        "terminals": [
+          {
+            "type": "end",
+            "sequence": 2,
+            "sourceActivationId": 8,
+            "hasOutput": true,
+            "output": {
+              "outcome": "needs-review",
+              "attempts": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "rejected-before-drafting",
+      "label": "Rejected before drafting",
+      "input": {
+        "reject": true,
+        "attempts": 0,
+        "acceptAfter": 1,
+        "limit": 2
+      },
+      "status": "completed",
+      "outcome": "needs-review",
+      "nodeCounts": {
+        "sley:element:2": 1,
+        "sley:element:4": 1,
+        "sley:element:5": 0,
+        "sley:element:6": 0,
+        "sley:element:7": 0
+      },
+      "observations": [
+        {
+          "index": 1,
+          "nodeId": "sley:element:2",
+          "kind": "handler-enter",
+          "label": "Choose route"
+        },
+        {
+          "index": 2,
+          "nodeId": "sley:element:4",
+          "kind": "handler-enter",
+          "label": "Request review"
+        }
+      ],
+      "transitionEvidence": "unavailable",
+      "result": {
+        "status": "completed",
+        "state": {
+          "reject": true,
+          "attempts": 0,
+          "acceptAfter": 1,
+          "limit": 2
+        },
+        "terminals": [
+          {
+            "type": "end",
+            "sequence": 1,
+            "sourceActivationId": 3,
+            "hasOutput": true,
+            "output": {
+              "outcome": "needs-review",
+              "attempts": 0
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "warnings": [
+    {
+      "code": "DECLARED_TOPOLOGY_ONLY",
+      "message": "Declared links and scope exits do not prove which paths are feasible for a particular input."
+    },
+    {
+      "code": "CALLBACKS_OMITTED",
+      "message": "describe() omits callbacks, recovery policies, and per-node emitted actions. Accepted/exhausted remain scope exits; no emitter edge was inferred."
+    },
+    {
+      "code": "NO_TRANSITION_TRACE",
+      "message": "Sley has no public transition event API. Counts and ordered handler entries come from this probe. No edge traversal was inferred from adjacent observations."
+    },
+    {
+      "code": "NOT_FLOW_HOST_EVIDENCE",
+      "message": "These are local Sley executions. They do not demonstrate FLOW invocation, Jig host execution, or mapping between Sley actions and FLOW outcomes."
+    }
+  ],
+  "provenance": {
+    "producer": "sley-probe.mjs",
+    "api": "@jigging/sley: Flow.compile().describe(), CompiledFlow.start().result()",
+    "descriptionSchemaVersion": 1,
+    "observationMethod": "All five probe handlers record their own entry. Unique names map those handlers to one compiled snapshot. Observation indices are not runtime activation IDs.",
+    "originalVerification": {
+      "repository": "https://github.com/jiggy/sley",
+      "commit": "dc3600ae6c0c0bcab9ceb11b761026f8b1b28c4a",
+      "sourceVersion": "0.0.3",
+      "method": "Unchanged upstream source built with Node type stripping; source-qualified, not npm artifact qualification."
+    },
+    "currentExecution": {
+      "node": "v24.22.1",
+      "dependency": "Caller-supplied @jigging/sley. This script does not certify its installed version or artifact."
+    },
+    "checks": {
+      "handlersDuringInspection": 0,
+      "scenariosPassed": 3,
+      "descriptionDetached": true,
+      "descriptionStableAcrossRuns": true
+    }
+  }
+}

@@ -1,0 +1,61 @@
+import assert from 'node:assert/strict'
+import { execFileSync, spawnSync } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import test from 'node:test'
+
+const cli = fileURLToPath(new URL('./explore.mjs', import.meta.url))
+
+test('the lock command exports real JSON and HTML without including resource policy payloads', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'visual-flows-'))
+  try {
+    const input = join(directory, 'jig.lock')
+    const lock = {
+      packages: { 'flows/main': { digest: 'sha256:' + 'a'.repeat(64), directRun: false, uses: {} } },
+      bindings: { main: { packagePath: 'flows/main', settings: { private: 'SETTINGS_CANARY' }, slots: { remote: { kind: 'grant', policy: { kind: 'http', url: 'POLICY_CANARY' } } } } },
+    }
+    await writeFile(input, JSON.stringify(lock))
+    for (const format of ['json', 'html']) {
+      const output = join(directory, 'graph.' + format)
+      execFileSync(process.execPath, [cli, '--lock', input, '--root', 'binding:main', '--format', format, '--output', output])
+      const text = await readFile(output, 'utf8')
+      assert.ok(text.includes('binding:main'))
+      assert.ok(!text.includes('SETTINGS_CANARY'))
+      assert.ok(!text.includes('POLICY_CANARY'))
+      if (format === 'json') {
+        const graph = JSON.parse(text)[0].graph
+        assert.equal(graph.edges[0].meaning, 'may-invoke')
+        assert.equal(graph.provenance.approval, 'not-verified')
+      } else assert.ok(text.startsWith('<!doctype html>'))
+    }
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('the command refuses invalid JSON, missing inputs, and existing output without overwriting', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'visual-flows-'))
+  try {
+    const input = join(directory, 'jig.lock'), output = join(directory, 'out.json')
+    await writeFile(input, '{PRIVATE_INVALID_INPUT')
+    let result = spawnSync(process.execPath, [cli, '--lock', input, '--output', output], { encoding: 'utf8' })
+    assert.equal(result.status, 1)
+    assert.ok(!result.stderr.includes('PRIVATE_INVALID_INPUT'))
+    await writeFile(input, JSON.stringify({ packages: {}, bindings: {} }))
+    await writeFile(output, 'retained result')
+    result = spawnSync(process.execPath, [cli, '--lock', input, '--format', 'json', '--output', output], { encoding: 'utf8' })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /already exists/)
+    assert.equal(await readFile(output, 'utf8'), 'retained result')
+    result = spawnSync(process.execPath, [cli, '--lock', join(directory, 'absent'), '--output', output], { encoding: 'utf8' })
+    assert.equal(result.status, 1)
+    assert.match(result.stderr, /unavailable/)
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('the command rejects ambiguous modes and unusable flags', () => {
+  for (const argv of [[], ['--lock', 'a', '--project', 'b', '--output', 'c'], ['--examples', 'a', '--root', 'binding:x', '--output', 'c'], ['--lock', 'a', '--sley', 'b', '--output', 'c'], ['--lock', 'a', '--format', 'png', '--output', 'c']]) {
+    const result = spawnSync(process.execPath, [cli, ...argv], { encoding: 'utf8' })
+    assert.equal(result.status, 1)
+  }
+})

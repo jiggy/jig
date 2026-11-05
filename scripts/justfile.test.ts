@@ -166,6 +166,10 @@ test(
     for (const fail of ['', 'policy']) {
       await withFixture(async (directory, environment) => {
         const files = ['alpha.test.mjs', 'future.test.mjs', 'source-stages.test.mjs']
+        const experiments = ['projection.test.mjs', 'viewer.test.mjs']
+        await mkdir(join(directory, 'scripts/experiments/visual-flows'), { recursive: true })
+        for (const file of experiments)
+          await writeFile(join(directory, 'scripts/experiments/visual-flows', file), '')
         for (const file of files) await writeFile(join(directory, 'scripts/ci', file), '')
         await writeFile(
           join(directory, 'tools/node'),
@@ -193,7 +197,11 @@ process.exit(process.env.JUST_TEST_FAIL_PHASE === 'policy' ? 23 : 0);
           .map((line) => JSON.parse(line))
         expect(calls[0]).toEqual({
           cwd: directory,
-          args: ['--test', ...files.map((file) => `scripts/ci/${file}`)],
+          args: [
+            '--test',
+            ...files.map((file) => `scripts/ci/${file}`),
+            ...experiments.map((file) => `scripts/experiments/visual-flows/${file}`),
+          ],
         })
         if (fail === 'policy') expect(calls).toHaveLength(1)
         else {
