@@ -12,7 +12,7 @@ const example = graph => ({ title: 'Example', graph })
 const small = () => ({ nodes: [{ id: 'a', kind: 'node', label: 'A' }], edges: [], warnings: [] })
 
 function embeddedData(html) {
-  const match = html.match(/<script id="graph-data" type="application\/json">([\s\S]*?)<\/script>/iu)
+  const match = html.match(/<script id="graph-data" type="application\/json">([\s\S]*?)<\/script\s*>/iu)
   assert.ok(match, 'one inert graph-data block is present')
   return { encoded: match[1], decoded: JSON.parse(match[1]) }
 }
@@ -21,6 +21,7 @@ test('hostile labels and titles remain inert JSON and escaped title text', () =>
   const payloads = [
     '</script><script>globalThis.injection = true</script><img src=x onerror=alert(1)> & " \u2028 \u2029',
     '</ScRiPt><SCRIPT>globalThis.injection = true</SCRIPT><IMG src=x onerror=alert(1)> & " \u2028 \u2029',
+    '</script ><script>globalThis.injection = true</script ><img src=x onerror=alert(1)> & " \u2028 \u2029',
   ]
   for (const hostile of payloads) {
     const graph = small()
@@ -31,18 +32,21 @@ test('hostile labels and titles remain inert JSON and escaped title text', () =>
     assert.deepEqual(data.decoded, items)
     assert.equal(/[<>&\u2028\u2029]/u.test(data.encoded), false)
     assert.equal(html.toLowerCase().includes('<script>globalthis.injection'), false)
-    assert.ok(html.toLowerCase().includes('<title>&lt;/script&gt;&lt;script&gt;'))
+    assert.match(html, /<title>&lt;\/script\s*&gt;&lt;script&gt;/iu)
     assert.equal([...html.matchAll(/<script(?:\s[^>]*)?>/giu)].length, 2)
   }
 })
 
 test('generated executable script parses, including the exact shared helpers', () => {
   const html = renderExplorer({ graphs: [example(sley), example(small())] })
-  const scripts = [...html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/giu)]
-  const executable = scripts.filter(match => !match[1].includes('application/json'))
-  assert.equal(executable.length, 1)
-  assert.doesNotThrow(() => new Script(executable[0][2], { filename: 'generated-explorer.js' }))
-  assert.ok(executable[0][2].includes(layoutGraph.toString()))
+  for (const page of [html, html.replaceAll('</script>', '</ScRiPt \t>')]) {
+    assert.deepEqual(embeddedData(page).decoded, [example(sley), example(small())])
+    const scripts = [...page.matchAll(/<script([^>]*)>([\s\S]*?)<\/script\s*>/giu)]
+    const executable = scripts.filter(match => !match[1].includes('application/json'))
+    assert.equal(executable.length, 1)
+    assert.doesNotThrow(() => new Script(executable[0][2], { filename: 'generated-explorer.js' }))
+    assert.ok(executable[0][2].includes(layoutGraph.toString()))
+  }
   // Syntax and pure geometry checks are not browser execution or visual QA.
 })
 
