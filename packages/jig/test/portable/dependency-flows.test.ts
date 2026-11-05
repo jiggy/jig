@@ -38,7 +38,7 @@ async function fixture(rootApplication = false) {
   await put('packages/echo/package.json', {
     name: '@example/echo',
     version: '1.0.0',
-    files: ['FLOW.ts', 'FLOW.contract.json'],
+    files: ['FLOW.ts', 'FLOW.contract.json', 'FLOW.meta.json'],
   })
   await put('packages/echo/FLOW.ts', 'export {}' + '\n'.repeat(4096))
   await put('packages/echo/FLOW.contract.json', {
@@ -332,20 +332,35 @@ test('registry schema inspection reports the npm selector, never a prepared inst
 })
 
 test('ancestor workspace non-schema inspection failures keep their existing diagnostics', async () => {
-  for (const { path, value, code } of [
+  for (const { path, control, value, code } of [
     {
       path: 'FLOW.meta.json',
+      control: { license: 'MIT' },
       value: { license: { private: 'rejected metadata value' } },
       code: 'METADATA_FIELD',
     },
     {
       path: 'FLOW.ts',
+      control: '#!/usr/bin/env bun\nexport {}',
       value: '#!/bin/sh\nprivate rejected selector text',
       code: 'PACKAGE_SELECTOR',
     },
   ]) {
     const f = await fixture()
     try {
+      // Prove the mutated file is selected and inspected before testing refusal.
+      const controlBytes = typeof control === 'string' ? control : JSON.stringify(control)
+      await f.put(`packages/echo/${path}`, controlBytes)
+      const valid = await f.capture()
+      try {
+        expect(new TextDecoder().decode(await valid.members[0]!.captured.read(path))).toBe(
+          controlBytes,
+        )
+      } finally {
+        await valid.dispose()
+      }
+      expect(f.retained).toHaveLength(1)
+
       await f.put(`packages/echo/${path}`, value)
       const failure = await f.capture().then(
         async (source) => {
@@ -360,8 +375,8 @@ test('ancestor workspace non-schema inspection failures keep their existing diag
         diagnostic: { code, path },
       })
       expect(JSON.stringify(failure).includes('rejected')).toBeFalse()
-      expect(f.preparations()).toBe(1)
-      expect(f.retained).toHaveLength(0)
+      expect(f.preparations()).toBe(2)
+      expect(f.retained).toHaveLength(1)
     } finally {
       await f.dispose()
     }
