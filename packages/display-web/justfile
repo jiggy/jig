@@ -31,4 +31,4 @@ check: build test test-material
 
 # Exercise material boundaries through compiled public exports and real HTTP.
 @test-material:
-    node --test test/material.node.mjs
+    node --test test/composition.node.mjs test/material.node.mjs

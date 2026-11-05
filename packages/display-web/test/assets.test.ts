@@ -77,8 +77,10 @@ test('browser build emits only fixed self-contained assets and erases server typ
   expect(browser).toContain('/api/snapshot')
   expect(browser).toContain('/api/events')
   // Preact contains a generic raw-HTML branch; the host never supplies that prop.
-  const authored = await readFile(new URL('../src/app.ts', import.meta.url), 'utf8')
-  expect(authored).not.toMatch(/innerHTML|dangerouslySetInnerHTML/)
+  for (const source of ['app.ts', 'composition-view.ts']) {
+    const authored = await readFile(new URL('../src/' + source, import.meta.url), 'utf8')
+    expect(authored).not.toMatch(/innerHTML|dangerouslySetInnerHTML/)
+  }
   expect(browser).not.toContain('localStorage')
   expect(browser).not.toContain('sessionStorage')
   expect(browser).not.toContain('EventSource')

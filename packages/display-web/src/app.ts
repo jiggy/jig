@@ -5,6 +5,7 @@ import type {
 } from '@jigging/display-model'
 import {
   attentionImportance,
+  compositionObservations,
   detectDisplayTextFormat,
   displayDelimitedRows,
   displayTextTokens,
@@ -15,6 +16,8 @@ import { type ComponentChildren, h, render } from 'preact'
 import { useEffect, useRef } from 'preact/hooks'
 import { ApplicationPage, CapturedContent, FormattedReport } from './application.js'
 import { PrivateBrowserClient, privateBrowserCapability } from './client.js'
+import { type PrivateCompositionSelection, privateCompositionSelection } from './composition.js'
+import { CompositionPage } from './composition-view.js'
 import {
   PrivateBrowserClock,
   type PrivateBrowserLocal,
@@ -54,6 +57,11 @@ let lastBodyRevision = 0
 let previousCallKeys: string[] = []
 const elapsedClock = new PrivateBrowserClock()
 let selectedCall: string | undefined
+let compositionSelection: PrivateCompositionSelection = {}
+let compositionViewport: { left: number; top: number } | undefined
+let lastCompositionViewport: HTMLElement | undefined
+type CompositionOrigin = { rootSourceId: string; rootId: string; nodeId: string }
+let compositionOrigin: CompositionOrigin | undefined
 let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
@@ -120,6 +128,17 @@ function redraw(): void {
   const focused = document.activeElement instanceof HTMLElement ? document.activeElement : undefined
   if (client?.body && client.body.revision !== lastBodyRevision) {
     const snapshot = client.body
+    const nextCompositionSelection = privateCompositionSelection(snapshot, compositionSelection)
+    if (
+      nextCompositionSelection.rootSourceId !== compositionSelection.rootSourceId ||
+      nextCompositionSelection.rootId !== compositionSelection.rootId
+    ) {
+      compositionViewport = undefined
+      compositionOrigin = undefined
+    }
+    if (compositionSelection.nodeId && !nextCompositionSelection.nodeId)
+      feedback = 'The selected component is no longer available in this application map.'
+    compositionSelection = nextCompositionSelection
     const tabs = privateBrowserTabs(snapshot)
     const eligible = new Set(tabs.map((tab) => tab.id))
     for (const key of local.keys())
@@ -189,8 +208,10 @@ function redraw(): void {
       previousKeys.set(viewKey, keys)
     }
     const callKeys = snapshot.calls.map((call) => call.id)
+    const previousSelectedCall = selectedCall
     if (selectedCall)
       selectedCall = privateBrowserSurvivingSelection(previousCallKeys, selectedCall, callKeys)
+    if (selectedCall !== previousSelectedCall) compositionOrigin = undefined
     previousCallKeys = callKeys
     if (
       destinationKey === 'files' &&
@@ -254,11 +275,14 @@ function redraw(): void {
   // Setting intent may synchronously notify; an identical intent is an idempotent no-op.
   client?.setPreview(intent)
   render(h(App, {}), root)
+  restoreCompositionViewport()
   if (focused && !focused.isConnected) {
     if (focused.dataset.record !== undefined)
       document.querySelector<HTMLButtonElement>('[data-record][aria-pressed=true]')?.focus()
     else if (focused.dataset.call !== undefined)
       document.querySelector<HTMLButtonElement>('[data-call][aria-pressed=true]')?.focus()
+    else if (focused.dataset.component !== undefined)
+      document.querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')?.focus()
     else if (focused.getAttribute('role') === 'tab')
       document.querySelector<HTMLButtonElement>('[role=tab][tabindex="0"]')?.focus()
   }
@@ -279,14 +303,16 @@ function navigate(id: string, preserveSubject = true): void {
 function focusSelectedEntry(): void {
   document
     .querySelector<HTMLButtonElement>(
-      '[data-record][aria-pressed=true], [data-call][aria-pressed=true]',
+      '[data-record][aria-pressed=true], [data-call][aria-pressed=true], [data-component][aria-pressed=true]',
     )
     ?.focus()
-  if (!document.querySelector('[data-record][aria-pressed=true], [data-call][aria-pressed=true]'))
+  if (!document.querySelector('[data-record][aria-pressed=true], [data-call][aria-pressed=true], [data-component][aria-pressed=true]'))
     document.querySelector<HTMLButtonElement>('.selection-notice button')?.focus()
 }
 function focusDetailReturn(): void {
-  const breakpoint = isApplicationPage() ? '(max-width: 1000px)' : '(max-width: 599px)'
+  const breakpoint = destinationKey === 'composition'
+    ? '(max-width: 900px)'
+    : isApplicationPage() ? '(max-width: 1000px)' : '(max-width: 599px)'
   if (matchMedia(breakpoint).matches)
     document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
 }
@@ -300,8 +326,9 @@ function select(key: string): void {
   redraw()
   focusDetailReturn()
 }
-function selectCall(id: string): void {
+function selectCall(id: string, origin?: CompositionOrigin): void {
   selectedCall = id
+  compositionOrigin = origin
   currentLocal().detailOpen = true
   let call = client?.body?.calls.find((item) => item.id === id)
   for (let depth = 0; call?.parentId && depth < 32; depth++) {
@@ -310,6 +337,95 @@ function selectCall(id: string): void {
   }
   redraw()
   focusDetailReturn()
+}
+
+function compositionMatches(rootSourceId: string, rootId: string): boolean {
+  return client?.body?.rootSourceId === rootSourceId &&
+    client.body.composition?.state === 'available' &&
+    client.body.composition.rootId === rootId
+}
+
+function restoreCompositionViewport(): void {
+  if (destinationKey !== 'composition' || panel) return
+  const viewport = document.getElementById('composition-scroll')
+  if (!viewport || !viewport.clientWidth) return
+  if (viewport === lastCompositionViewport && compositionViewport) return
+  const composition = client?.body?.composition
+  if (composition?.state !== 'available') return
+  const entry = [...viewport.querySelectorAll<HTMLButtonElement>('[data-component]')]
+    .find((element) => element.dataset.component === composition.rootId)
+  viewport.scrollLeft = compositionViewport?.left ??
+    Math.max(0, (entry?.offsetLeft ?? 0) + (entry?.offsetWidth ?? 0) / 2 - viewport.clientWidth / 2)
+  viewport.scrollTop = compositionViewport?.top ?? 0
+  compositionViewport = { left: viewport.scrollLeft, top: viewport.scrollTop }
+  lastCompositionViewport = viewport
+}
+
+function Composition(): ComponentChildren {
+  const snapshot = client?.body
+  if (!snapshot) return null
+  const composition = snapshot.composition
+  const sourceId = snapshot.rootSourceId
+  const rootId = composition?.state === 'available' ? composition.rootId : undefined
+  return h(CompositionPage, {
+    snapshot,
+    selectedNodeId: compositionSelection.nodeId,
+    detailOpen: currentLocal().detailOpen,
+    referencesEnabled: client?.referencesEnabled ?? false,
+    onSelect: (id: string) => {
+      const current = client?.body?.composition
+      if (!rootId || !compositionMatches(sourceId, rootId) ||
+        current?.state !== 'available' || !current.nodes.some((node) => node.id === id)) return
+      humanNavigation = true
+      compositionSelection = { rootSourceId: sourceId, rootId, nodeId: id }
+      currentLocal().detailOpen = true
+      feedback = ''
+      redraw()
+      const viewport = document.getElementById('composition-scroll')
+      const selected = [...document.querySelectorAll<HTMLButtonElement>('[data-component]')]
+        .find((element) => element.dataset.component === id)
+      if (viewport?.clientWidth && selected) {
+        viewport.scrollLeft = Math.max(0, selected.offsetLeft + selected.offsetWidth / 2 - viewport.clientWidth / 2)
+        viewport.scrollTop = Math.max(0, selected.offsetTop + selected.offsetHeight / 2 - viewport.clientHeight / 2)
+        compositionViewport = { left: viewport.scrollLeft, top: viewport.scrollTop }
+      }
+      focusDetailReturn()
+    },
+    onClose: () => {
+      currentLocal().detailOpen = false
+      redraw()
+      focusSelectedEntry()
+    },
+    onCall: (id: string) => {
+      const body = client?.body, nodeId = compositionSelection.nodeId
+      if (!client?.referencesEnabled || !body || !nodeId || !rootId ||
+        !compositionMatches(sourceId, rootId) ||
+        !compositionObservations(body).matches.some((match) => match.callId === id && match.targetNodeId === nodeId)) {
+        feedback = 'The selected invocation is unavailable in the current observation.'
+        redraw()
+        return
+      }
+      callFilter = ''
+      navigate('overview')
+      selectCall(id, { rootSourceId: sourceId, rootId, nodeId })
+    },
+    onObservedCalls: () => {
+      compositionOrigin = undefined
+      navigate('overview')
+    },
+    onNodeKeyDown: (event: KeyboardEvent) => {
+      if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+      event.preventDefault()
+      const nodes = [...document.querySelectorAll<HTMLButtonElement>('[data-component]')]
+      const index = nodes.indexOf(event.currentTarget as HTMLButtonElement)
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? nodes.length - 1 :
+        Math.max(0, Math.min(nodes.length - 1, index + (['ArrowDown', 'ArrowRight'].includes(event.key) ? 1 : -1)))
+      nodes[next]?.focus()
+    },
+    onScroll: (left: number, top: number) => {
+      if (rootId && compositionMatches(sourceId, rootId)) compositionViewport = { left, top }
+    },
+  })
 }
 function openPanel(next: typeof panel): void {
   const body = document.getElementById('view-panel')
@@ -1372,6 +1488,10 @@ function Overview(): ComponentChildren {
   const snapshot = client?.body
   if (!snapshot) return null
   const selected = snapshot.calls.find((call) => call.id === selectedCall)
+  const returnToComposition = selected && compositionOrigin &&
+    compositionMatches(compositionOrigin.rootSourceId, compositionOrigin.rootId) &&
+    compositionObservations(snapshot).matches.some((match) =>
+      match.callId === selected.id && match.targetNodeId === compositionOrigin!.nodeId)
   const timeline = privateBrowserCallSpans(snapshot.calls)
   const matches = new Set(
     snapshot.calls
@@ -1536,6 +1656,14 @@ function Overview(): ComponentChildren {
         'div',
         { class: 'view-heading' },
         h('h2', {}, 'Execution'),
+        returnToComposition
+          ? button('← Application map', () => {
+              compositionSelection = { ...compositionOrigin! }
+              navigate('composition')
+              focusSelectedEntry()
+              focusDetailReturn()
+            }, { class: 'composition-return' })
+          : null,
         h('span', { class: 'secondary' }, `${snapshot.calls.length} observed calls`),
       ),
       h(
@@ -1805,6 +1933,7 @@ function Icon({
     | 'document'
     | 'table'
     | 'run'
+    | 'map'
     | 'activity'
     | 'files'
     | 'folder'
@@ -1816,6 +1945,7 @@ function Icon({
     document: 'M6 3h8l4 4v14H6z M14 3v5h5 M9 12h6 M9 16h6',
     table: 'M3 3h18v18H3z M3 9h18 M9 3v18',
     run: 'M2 12h4l3-8 5 16 3-8h5',
+    map: 'M9 3h6v5H9z M2 16h6v5H2z M16 16h6v5h-6z M12 8v4 M5 16v-4h14v4',
     activity: 'M4 6h16 M4 12h16 M4 18h16',
     files: 'M4 3h12v15H4z M8 18v3h12V7h-4',
     folder: 'M3 6h7l2 3h9v12H3z',
@@ -2015,7 +2145,9 @@ function Tabs(): ComponentChildren {
                               )
                             ? 'image'
                             : 'table'
-                        : tab.id === 'overview'
+                        : tab.id === 'composition'
+                          ? 'map'
+                          : tab.id === 'overview'
                           ? 'run'
                           : tab.id === 'activity'
                             ? 'activity'
@@ -2388,7 +2520,9 @@ function App(): ComponentChildren {
                   )
                 : destinationKey === 'activity'
                   ? h(Activity, {})
-                  : destinationKey === 'overview'
+                  : destinationKey === 'composition'
+                    ? h(Composition, {})
+                    : destinationKey === 'overview'
                     ? h(Overview, {})
                     : destinationKey === 'files'
                       ? h(Files, {})
@@ -2500,6 +2634,10 @@ addEventListener(
     previousCallKeys = []
     scrollPositions.clear()
     treeChoices.clear()
+    compositionSelection = {}
+    compositionViewport = undefined
+    lastCompositionViewport = undefined
+    compositionOrigin = undefined
   },
   { once: true },
 )
