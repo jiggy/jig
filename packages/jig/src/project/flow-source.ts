@@ -343,13 +343,15 @@ async function captureMember(
   }
 }
 
-function scopePackageDiagnostic(error: unknown, projectPath: string): unknown {
+/** Package-private projection from package-local inspection to its source location. */
+export function scopePackageDiagnostic(error: unknown, projectPath: string): unknown {
+  const atSource = (path: string) => (projectPath === '.' ? path : `${projectPath}/${path}`)
   if (error instanceof SchemaDiagnostic) {
     return new CheckError(
       'invalid',
       error.code,
       error.message,
-      `${projectPath}/${error.path}`,
+      atSource(error.path),
       error.schemaPointer,
     )
   }
@@ -360,7 +362,7 @@ function scopePackageDiagnostic(error: unknown, projectPath: string): unknown {
     error.kind,
     error.code,
     error.message,
-    error.path === undefined ? projectPath : `${projectPath}/${error.path}`,
+    error.path === undefined ? projectPath : atSource(error.path),
     error.pointer,
   )
 }

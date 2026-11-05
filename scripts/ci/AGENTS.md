@@ -62,6 +62,9 @@ preparation never becomes a consumer requirement.
   Concurrent updates and resets must remain untouched.
 - `skill-reference-run.mjs` selects a successful same-repository PR producer from current GitHub metadata.
   It verifies the workflow path, source, attempt, and one matching open PR into the default branch.
+  Missing PR associations and associations with newer heads omit writing and report that no changes were written.
+  Malformed producers and ambiguous associations still fail. Required Quick checks continue to enforce committed reference freshness.
+
   It reuses candidate-transfer helpers for exact artifact selection, digest verification, and safe inert extraction.
   Producer or PR changes during transfer prevent writing.
   Missing artifacts indicate no prepared changes and acquire no write authority.
@@ -539,6 +542,11 @@ They consume frozen package exports with tracked test helpers and installed
 - `orchestration-probe.mjs` dispatches one isolated main-only child and observes actual queued-sibling cancellation.
   It validates the child identity and requires an unallocated sibling with no executed steps.
   It reports cancellation settlement separately from execution and requests cleanup on failure.
+
+  Failure summaries retain the closed observation phase, verified child link, queue observation, and cleanup acknowledgement without response bodies or credentials.
+  Cleanup verifies the run ID, parent marker, repository, workflow, main branch, and dispatch event before requesting cancellation.
+  A cancellation acknowledgement does not establish settlement. Diagnostic retention cannot replace the original verdict.
+  HTTP 409 cleanup conflicts require a fresh completed observation of the same child ID, source, and attempt.
   The probe uses no Mac runners, product tests, publication inputs, or host qualification receipts.
 - Host scope summaries distinguish required execution, verified completion, and intentional omission.
   Omitted native work supplies no execution credit. Readiness summaries distinguish nonrelease sources from pending qualification.

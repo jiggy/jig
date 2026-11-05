@@ -242,6 +242,10 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   It verifies the producer's repository, workflow, event, PR, source, and attempt against current GitHub metadata.
   It downloads one immutable artifact and verifies its digest before validating the generated data.
   Closed, retargeted, stale, fork, and default-branch sources cannot receive writes.
+
+  Missing PR associations and newer associated heads omit obsolete writer events without obtaining write authority.
+  The writer reports that no changes were written. Required Quick checks still reject stale committed references.
+
   The writer never checks out PR code or installs dependencies.
   Its cancellation group includes the producer workflow and repository identities, so foreign producers cannot cancel eligible writes.
 
@@ -275,6 +279,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
   The controller requires observed queueing and cancellation within sixty seconds of monitor completion.
   The observation allowance is three minutes. Cleanup requests cancellation of unfinished children.
+  Failure summaries name the observation phase and link only verified diagnostic children.
+  Cleanup reports request acknowledgement separately from settlement and refuses unverified child identities.
+  A cleanup conflict succeeds only after a fresh observation confirms that the exact child completed.
 
   GitHub controls allocation and cancellation settlement. Probe results grant no host or release qualification.
   The child is expected to appear red. The controller owns the diagnostic verdict.

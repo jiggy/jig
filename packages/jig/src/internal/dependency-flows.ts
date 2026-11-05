@@ -1,5 +1,5 @@
 import { posix } from 'node:path'
-import { invalid } from '../diagnostics.js'
+import { CheckError, invalid } from '../diagnostics.js'
 import {
   type CapturedPackage,
   captureOpenedPackageDirectory,
@@ -7,9 +7,14 @@ import {
 } from '../package/capture.js'
 import { packageDigest } from '../package/digest.js'
 import { inspectCapturedPackage } from '../package/inspect.js'
-import type { CapturedFlowMember, CapturedFlowSource } from '../project/flow-source.js'
+import {
+  type CapturedFlowMember,
+  type CapturedFlowSource,
+  scopePackageDiagnostic,
+} from '../project/flow-source.js'
 import { npmPackageName } from '../project/package-selector.js'
 import type { PrivateProjectRoot } from '../project/root.js'
+import { SchemaDiagnostic } from '../schema/index.js'
 import { normalizePrivateBunExecutionLayout } from './bun-execution-layout.js'
 import type { PrivatePreparedBunPackage } from './bun-native-preparation.js'
 import { capturePrivateBunWorkspace, type PrivateBunWorkspace } from './bun-workspace-capture.js'
@@ -84,7 +89,18 @@ export async function captureDependencyFlows(input: {
             'resolved package name does not match the selected dependency',
             selector,
           )
-        const inspected = await inspectCapturedPackage(captured)
+        const sourcePath = workspace?.selected.includes(packageRoot)
+          ? posix.relative(workspace.target, packageRoot) || '.'
+          : selector
+        const inspected = await inspectCapturedPackage(captured).catch((error: unknown) => {
+          if (
+            error instanceof SchemaDiagnostic ||
+            (error instanceof CheckError && error.code === 'CONTRACT_FIELD')
+          )
+            throw scopePackageDiagnostic(error, sourcePath)
+          // Other inspection codes retain their existing package-local diagnostic paths.
+          throw error
+        })
         if (inspected.entrypoint?.suffix !== 'md')
           await input.retain(selector, captured, {
             captured: prepared.captured,

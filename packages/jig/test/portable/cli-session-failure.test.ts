@@ -12,6 +12,9 @@ import { privateCliHumanText } from '../../src/cli-presentation.js'
 import { CheckError } from '../../src/diagnostics.js'
 import { projectError } from '../../src/internal/project-session-controller.js'
 import type { PrivateAgentReadinessReport } from '../../src/internal/review-agent-setup.js'
+import { parseInvocationContract } from '../../src/invocation-contract.js'
+import { scopePackageDiagnostic } from '../../src/project/flow-source.js'
+import { SchemaDiagnostic } from '../../src/schema/index.js'
 
 const operationSecret =
   'SYNTHETIC_OPERATION_FAILURE /private/input Authorization=Bearer SYNTHETIC_TICKET'
@@ -154,6 +157,56 @@ for (const { code, pointer, guidance } of [
     expect(text).not.toContain('INTERNAL')
     expect(text).not.toContain('SYNTHETIC_')
     expect(text).not.toContain('/private/')
+  })
+}
+
+for (const { name, keyword, renderedKeyword, renderedPointer } of [
+  {
+    name: 'pattern',
+    keyword: 'pattern',
+    renderedKeyword: '"pattern"',
+    renderedPointer: '"/input/properties/id/pattern"',
+  },
+  {
+    name: 'an escaped keyword',
+    keyword: 'bad~1/keyword\u001b[31m\nnext',
+    renderedKeyword: '"bad~1/keyword\\u001b[31m\\u000anext"',
+    renderedPointer: '"/input/properties/id/bad~01~1keyword\\u001b[31m\\u000anext"',
+  },
+]) {
+  test(`schema review identifies ${name} without rendering rejected values or controls`, () => {
+    let unsupported: unknown
+    try {
+      parseInvocationContract(
+        Buffer.from(
+          JSON.stringify({
+            $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+            input: {
+              type: 'object',
+              properties: { id: { type: 'string', [keyword]: operationSecret } },
+            },
+          }),
+        ),
+      )
+    } catch (error) {
+      unsupported = error
+    }
+    expect(unsupported).toBeInstanceOf(SchemaDiagnostic)
+    const projected = projectError(scopePackageDiagnostic(unsupported, 'methods/probe'), 'plan')
+    const output: string[] = []
+    expect(renderFailure(projected, { writeError: (text) => output.push(text) })).toBe(1)
+    expect(output).toHaveLength(1)
+    const text = output[0]!
+    expect(text).toContain(
+      `The schema keyword ${renderedKeyword} is not supported by FLOW Schema/0.`,
+    )
+    expect(text).toContain('Location: "methods/probe/FLOW.contract.json"')
+    expect(text).toContain(`Value: ${renderedPointer}`)
+    expect(text).toContain('Diagnostic code: SCHEMA_KEYWORD_UNSUPPORTED')
+    expect(text).toContain('Category: INVALID_CANDIDATE')
+    expect(text).not.toContain(operationSecret)
+    expect(text).not.toContain('\u001b')
+    expect(text).not.toContain('\nnext')
   })
 }
 
