@@ -1,8 +1,11 @@
 import { createHmac, randomBytes } from 'node:crypto'
 import {
+  DISPLAY_COMPOSITION_BYTE_LIMIT,
   DISPLAY_INCOMPLETE_LIMIT,
   DISPLAY_SNAPSHOT_LIMIT,
   type DisplayAttribution,
+  type DisplayComposition,
+  type DisplayCompositionNode,
   type DisplayFact,
   type DisplayIncompleteSnapshot,
   type DisplayPreviewReply,
@@ -55,6 +58,36 @@ export class PrivateDisplayProjection {
   }
   #call(identity: string): string {
     return this.#id('call', identity)
+  }
+  #composition(): DisplayComposition {
+    const value = this.model.composition
+    if (value === undefined) return { state: 'unavailable', reason: 'unavailable' }
+    if (value.state === 'unavailable') return value
+    const node = (id: string) => this.#id('composition-node', id)
+    const composition: DisplayComposition = {
+      state: 'available',
+      provenance: 'admitted',
+      rootId: node(value.rootId),
+      nodes: value.nodes.map((entry): DisplayCompositionNode =>
+        entry.kind === 'resource'
+          ? {
+              id: node(entry.id),
+              kind: 'resource',
+              label: entry.label,
+              resourceKind: entry.resourceKind,
+            }
+          : { id: node(entry.id), kind: entry.kind, label: entry.label },
+      ),
+      edges: value.edges.map((edge) => ({
+        id: this.#id('composition-edge', edge.id),
+        source: node(edge.source),
+        target: node(edge.target),
+        slot: edge.slot,
+      })),
+    }
+    return encoded(composition) > DISPLAY_COMPOSITION_BYTE_LIMIT
+      ? { state: 'unavailable', reason: 'limit' }
+      : composition
   }
   #attribution(admission: PrivateAdmission, label: string): DisplayAttribution {
     const sourceLabel = bounded(label, 256).value
@@ -337,6 +370,7 @@ export class PrivateDisplayProjection {
       revision,
       rootSourceId: this.#source('root'),
       mode: model.workspace.recorded ? 'recorded-packet' : 'live-run',
+      ...(model.workspace.recorded ? {} : { composition: this.#composition() }),
       workspace: this.#workspace(),
       context: bounded(model.context, 2048).value,
       ...(model.incomplete === undefined

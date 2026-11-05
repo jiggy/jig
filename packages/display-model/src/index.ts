@@ -1,3 +1,9 @@
+export type {
+  DisplayCompositionMatch,
+  DisplayCompositionObservations,
+  DisplayCompositionUnmatched,
+} from './composition.js'
+export { compositionObservations } from './composition.js'
 export { DISPLAY_IMAGE_BYTES, validDisplayImage } from './image.js'
 export type { DisplayDestination } from './semantics.js'
 export {
@@ -14,6 +20,10 @@ export { detectDisplayTextFormat, displayDelimitedRows, displayTextTokens } from
 export type {
   DisplayAttribution,
   DisplayCallState,
+  DisplayComposition,
+  DisplayCompositionEdge,
+  DisplayCompositionNode,
+  DisplayCompositionResourceKind,
   DisplayFact,
   DisplayImagePreview,
   DisplayIncompleteSnapshot,
@@ -25,5 +35,11 @@ export type {
   RecordedViewRole,
   WebAssets,
 } from './types.js'
-export { DISPLAY_INCOMPLETE_LIMIT, DISPLAY_SNAPSHOT_LIMIT } from './types.js'
+export {
+  DISPLAY_COMPOSITION_BYTE_LIMIT,
+  DISPLAY_COMPOSITION_EDGE_LIMIT,
+  DISPLAY_COMPOSITION_NODE_LIMIT,
+  DISPLAY_INCOMPLETE_LIMIT,
+  DISPLAY_SNAPSHOT_LIMIT,
+} from './types.js'
 export { validateDisplaySnapshot } from './validate.js'

@@ -477,6 +477,13 @@ Close. Source-Linux refusal omissions earn no native proof.
 Live observations, delivery and interruption remain in
 `host/package-provider-observation.test.ts`.
 
+`portable/cli-composition.test.ts` checks inert route projection, separate Binding identities, bounded completeness and observer failure isolation.
+`portable/cli-display-observations.test.ts` checks opaque projection and exact call joins through public display-model exports.
+These pure fixtures establish no admission or execution authority.
+
+The existing five-level branch in `host/root-agent-composition.test.ts` observes its real admitted topology and actual calls.
+Its throwing presentation observer must preserve successful execution and every existing cleanup assertion.
+
 `host/installed-workspace-provider.test.ts` exercises stale-lock recovery through
 the public CLI in root, member and nested consumer projects. Execute the printed
 Bun command for real declaration mismatches. Root name/version edits must

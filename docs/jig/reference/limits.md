@@ -208,6 +208,18 @@ The fixed checkpoint profile bounds retained evidence during one root lifetime. 
 
 Policy owners: [`internal/private-run-checkpoint.ts`](https://github.com/jiggy/jig/blob/main/packages/jig/src/internal/private-run-checkpoint.ts).
 
+## Inspect application composition
+
+Each live snapshot carries one complete admitted composition or an explicit unavailable state. Fixed display bounds protect observation without changing execution authority.
+
+| Setting or bound | Value | Control |
+| --- | --- | --- |
+| Components per composition | 256 | Fixed |
+| Connections per composition | 1,024 | Fixed |
+| Encoded composition | 256 KiB (262,144 bytes) | Fixed |
+
+Policy owners: [`packages/display-model/src/types.ts`](https://github.com/jiggy/jig/blob/main/packages/display-model/src/types.ts).
+
 ## Represent JSON values
 
 JSON/0 is an interoperable value contract. Its representation bounds remain fixed, including when another configurable allowance is larger.

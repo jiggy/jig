@@ -177,6 +177,43 @@ A newer file intent must never receive older bytes beneath its title.
 Settled preview attempts remain settled while their exact intent stays visible, independently of cache eviction.
 Leaving and returning to a preview or replacing its capture can initiate a new attempt.
 
+## Application map
+
+A live Run may include its complete admitted composition as a separate Application map destination.
+Application pages remain primary, and Execution retains the actual invocation tree.
+The map shows the selected root, its configured components, and each caller's available child slots.
+Connections express available calls, never execution order, evaluated conditions, or confirmed external effects.
+
+Jig projects this composition from the exact admitted generation selected for the Run.
+Drawing the map never evaluates source or reads mutable project declarations.
+Each Binding retains its own identity, even when several Bindings select the same Flow.
+Resources retain distinct caller-slot identities, including implicit checkpoint resources.
+Labels describe components but never establish identity.
+
+The observation model accepts only opaque component identifiers, bounded labels, component kinds, resource kinds, and caller-slot connections.
+It carries no settings, grant policy, private paths, execution requests, or authority tickets.
+The fixed map allowance is 256 components, 1,024 connections, and 256 KiB of encoded composition per snapshot.
+Exceeding any allowance makes the complete map explicitly unavailable, without trimming connections or affecting execution.
+Missing admitted composition remains unavailable rather than being inferred from call history.
+
+A call matches through its accepted caller source and exact configured slot.
+Only an observed child source extends that correspondence to nested calls.
+Repeated invocations remain separate observations of the same configured component.
+Missing ancestry, unavailable slots, and conflicting identities remain unmatched.
+Names, operation labels, arrival order, and diagnostic paths cannot supply missing correspondence.
+An unmatched call remains reachable through Execution.
+
+Selecting a component reveals its configured connections and exactly matched retained calls.
+Each observed call can open the existing invocation inspector.
+Counts describe retained observations, not complete history or execution duration.
+Absent observations do not prove a component was skipped or cannot execute.
+Observation loss and unmatched calls remain visible beside the map.
+Selection persists through snapshot replacement while its component identity remains available.
+
+The map supplies no editing, test submission, replay, or execution controls.
+Saved result packets and retained application views contain no admitted composition.
+They never reconstruct a map from recorded prose or familiar field names.
+
 ## Evidence and presentation
 
 Artifact endpoints accept only an opaque retained capture identity. They never

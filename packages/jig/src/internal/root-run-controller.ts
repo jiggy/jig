@@ -1,6 +1,12 @@
 import { lstat, mkdir, realpath } from 'node:fs/promises'
 import { join } from 'node:path'
+import {
+  DISPLAY_COMPOSITION_BYTE_LIMIT,
+  DISPLAY_COMPOSITION_EDGE_LIMIT,
+  DISPLAY_COMPOSITION_NODE_LIMIT,
+} from '@jigging/display-model'
 import type { AttemptConstraints } from '../attempt-contract.js'
+import { observePrivateRunComposition } from '../cli-composition.js'
 import { CheckError } from '../diagnostics.js'
 import { canonicalJson, type JsonValue } from '../json.js'
 import { type InspectedPackage, inspectCapturedPackage } from '../package/inspect.js'
@@ -197,6 +203,17 @@ export async function executePrivateRootRunLaunch(input: {
 }): Promise<PrivateRootExecutionDisposition> {
   await input.coordinator.verify()
   const work = await reacquire(input)
+  if (input.channelOutput?.composition) {
+    observePrivateRunComposition(
+      { root: work.run.target, targets: work.candidate.candidate.targets },
+      {
+        nodes: DISPLAY_COMPOSITION_NODE_LIMIT,
+        edges: DISPLAY_COMPOSITION_EDGE_LIMIT,
+        bytes: DISPLAY_COMPOSITION_BYTE_LIMIT,
+      },
+      (composition) => input.channelOutput!.composition!(composition),
+    )
+  }
   try {
     await recoverPrivateRootOperationOwners(input, work)
   } catch (error) {
