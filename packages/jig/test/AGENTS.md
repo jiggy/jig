@@ -502,6 +502,8 @@ The deterministic factory peer reads the final JSON line after the complete mult
 
 Keep all three factory Runs and their existing limits, result, delivery,
 observation and cleanup assertions.
+The shared observation assertion checks each accepted Patches section's independent verdicts and exact captured patch reference before the final packet inventory.
+Installed packet assertions select the unique `patches` collection by ID through the same helper exercised by portable projection checks.
 
 `package-smoke.ts` consumes the canonical archives and shares registration-free
 display checks through `fixtures/installed-display.ts`. Real PTYs prove

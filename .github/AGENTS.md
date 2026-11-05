@@ -256,6 +256,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   Automatic writes begin after the trusted writer reaches the default branch.
 - Ordinary CI checks committed reference freshness through `just check-skills` in the required Quick job.
   This check never writes generated content.
+- `workflows/workbench-visual-review.yml` retains production browser PNGs, a source-bound manifest, and mounted acceptance/build/capture logs for web and application PR changes.
+  It uses read-only authority and authenticated inert observations across desktop/narrow layouts and three appearances.
+  Partial captures remain available after failure. These human review artifacts establish no native qualification or approved-design similarity.
 - The CI site job checks documentation metadata, local links, source anchors,
   changed technical paragraphs, and the rendered Jig site before recording success.
   PR style checks use the base SHA. Push checks use the previous SHA.
@@ -552,6 +555,9 @@ Owns CI, host-conformance, package publication, and public-site workflows.
 
 ## Verification
 
+- Quick development checks mount production web assets in Chromium against an authenticated inert producer.
+  They verify application material, host inspection, responsive navigation, focus and evidence delivery.
+  These checks establish browser behavior, not native execution or visual parity with an approved mockup.
 - After any automation change, validate the called script locally where
   possible. Inspect the complete workflow permission and artifact flow.
 - `just test-tooling` runs the host coverage checks to catch omitted host-only

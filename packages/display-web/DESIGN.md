@@ -20,6 +20,9 @@ Applications choose content and priorities. Jig owns layout, navigation and evid
 - Put search and sorting beside their collection. Counts describe retained records and disclose reported totals.
 - Gallery images and captions lead. Preserve every supplied column in a metadata disclosure.
 - Choose layouts from supplied block types and explicit presentation roles, independently of application names or example fields.
+- Keep material rendering consistent for root and attributed child publishers.
+- Disclose collection tools when they would dominate small datasets. Keep active filters discoverable.
+- Pair supplied comparison material with its validation context without application-specific field inference.
 - Preserve document images' proportions and full content, including charts and screenshots. Keep captured-source disclosures accessible for content and covers.
 - Use readable prose surfaces for correspondence. Preserve whitespace, code and literal diff formatting.
 - Render captured text and patches inline. Complete rectangular CSV excerpts can use a table with raw text available.
@@ -104,8 +107,17 @@ Check keyboard focus, coarse-pointer targets, text contrast and responsive detai
 - Project exploration starts without execution and preserves exact workflow identity through selection and refresh.
   Invalid input, missing prerequisites, stale configuration and unconfirmed submissions cannot silently launch another Run.
   Configuration-only maps show no invented observations. Run handoff preserves the explorer's draft and context.
+- Execution starts with readable call identities and observed states. Inspection opens only after selection.
+- Delivered files show their verified inventory without an empty compulsory detail pane.
+- Activity prioritizes retained report text while keeping severity, source and history discoverable.
+- Diagnostics preserve complete retained causes, attribution, clipping and operation paths.
+- Every host detail pane closes with Escape and preserves a visible return path at narrow widths.
+- Appearance remains reachable on narrow screens. Tab orientation matches its rendered layout.
 
 `test/material.node.mjs` checks semantic rendering, captured content, large galleries and actual HTTP behavior.
 `test/explorer.node.mjs` checks configuration-only rendering.
 `test/explorer-client.node.mjs` checks real HTTP submission reconciliation.
 Source checks do not establish rendered visual parity. Record browser comparison separately when preview infrastructure is available.
+`test/browser-acceptance.mjs` mounts production assets and actual example projections through authenticated fixture HTTP.
+Its functional matrix checks focus, responsive navigation, capture access and complete application material.
+Screenshot comparisons require an explicitly selected design reference and remain separate from semantic acceptance.

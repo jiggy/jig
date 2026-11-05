@@ -12,6 +12,8 @@ with focused, independently callable Flows and a visible CSV result.
   continuing. `view.ts` projects coordinator state into portable sections, one
   aligned timetable, volunteer workload and captured CSV content.
   Its target identifies the captured scenario, independently of Run identity.
+  Its readable scope names shifts and volunteers while the stable key remains separate.
+  Stopped views preserve confirmed completed stages and checked assignments without claiming CSV delivery.
 - `flows/read-roster` reads one bounded `scenario.json` from its read attachment,
   validates the scenario and reports any role with no eligible volunteer.
 - `flows/propose-roster` receives scenario data, calls one configured Agent and

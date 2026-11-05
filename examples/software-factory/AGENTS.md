@@ -30,6 +30,9 @@ stays with a person.
   accepted files in deliverables. Checks distinguish provisional reports from
   independent final verification, including settled jobs with no checked patch.
 
+  Patches presents each captured accepted patch beside its independent check facts.
+  Additional packet inventory follows the material review sections.
+
   No host-domain adapter, terminal callback, invented graph edge or execution
   control belongs here.
 - `flows/router/` owns the portable decision Flow, separately governed below.

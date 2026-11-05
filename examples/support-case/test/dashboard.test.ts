@@ -41,9 +41,9 @@ test('the application keeps the request, relevant charges, policy and reply toge
   expect(JSON.stringify(pending)).toContain('Pending account and policy checks')
 })
 
-test('maximum escaped requests and charges fit the complete page with disclosed excerpts', () => {
+test('the complete legal request leads even when escaped charge context needs a smaller whole-row preview', () => {
   const maximal = {
-    message: '\u0001'.repeat(8000),
+    message: '\u0001'.repeat(4000),
     account: {
       id: '\u0001'.repeat(80),
       charges: Array.from({ length: 32 }, (_, index) => ({
@@ -58,13 +58,16 @@ test('maximum escaped requests and charges fit the complete page with disclosed 
     supportCaseView({ input: maximal, phase: 'blocked', reason: '\u0001'.repeat(4096) }),
   )
   expect(JSON.stringify(item)).toContain('[Excerpt; complete value')
-  expect(
-    item.sections.find((section: any) => section.title === 'Supplied charges').blocks[0].rows,
-  ).toHaveLength(12)
+  expect(item.sections[0].blocks[0].text).toBe(maximal.message)
+  const retained = item.sections.find((section: any) => section.title === 'Supplied charges')
+    .blocks[0].rows
+  expect(retained.length).toBeLessThan(12)
+  expect(retained.length).toBeGreaterThanOrEqual(2)
   expect(
     item.sections.find((section: any) => section.title === 'Supplied charges').blocks[0].total,
   ).toBe(32)
   checked(proposal(maximal, true))
+  expect(checked(proposal(maximal, true)).sections[0].blocks[0].text).toBe(maximal.message)
   checked(proposalCharges(maximal))
 })
 
@@ -101,10 +104,27 @@ test('a case target follows the supplied account and request independently of ch
   expect(anotherRequest.target?.instanceKey).not.toBe(options.target?.instanceKey)
   expect(anotherRequest.target?.subjectKey).toBe(options.target?.subjectKey)
   expect(options.landing).toBe(true)
+  expect(options.target?.label).toBe(input.account.id)
+  expect(options.target?.scopeLabel).toBe('Account')
   validateReportingMessage({
     kind: 'view',
     id: 'case',
     ...options,
     ...supportCaseView({ input, phase: 'assessing' }),
   })
+})
+
+test('a stopped policy check preserves completed interpretation without claiming a decision', () => {
+  const item = checked(
+    supportCaseView({
+      input,
+      phase: 'failed',
+      proposal: { chargeId: 'ch-102', requestedCreditCents: 2400 },
+    }),
+  )
+  const progress = item.sections
+    .flatMap((section: any) => section.blocks)
+    .find((block: any) => block.kind === 'progress')
+  expect(progress.completed).toBe(1)
+  expect(JSON.stringify(item)).toContain('No credit decision has been made')
 })

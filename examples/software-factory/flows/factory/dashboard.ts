@@ -26,19 +26,41 @@ export function factoryViewOptions(
       ),
     )
     .digest('hex')
+  const label = `${prepared.length} repair ${prepared.length === 1 ? 'request' : 'requests'}`
   return {
     jobs: {
       title: 'Jobs',
+      application: 'Software factory',
       landing: true,
-      target: { definitionId: 'factory-jobs', instanceKey, subjectKey: instanceKey },
+      target: {
+        definitionId: 'factory-jobs',
+        instanceKey,
+        subjectKey: instanceKey,
+        label,
+        scopeLabel: 'Batch',
+      },
     },
     checks: {
       title: 'Checks',
-      target: { definitionId: 'factory-checks', instanceKey, subjectKey: instanceKey },
+      application: 'Software factory',
+      target: {
+        definitionId: 'factory-checks',
+        instanceKey,
+        subjectKey: instanceKey,
+        label,
+        scopeLabel: 'Batch',
+      },
     },
     patches: {
       title: 'Patches',
-      target: { definitionId: 'factory-patches', instanceKey, subjectKey: instanceKey },
+      application: 'Software factory',
+      target: {
+        definitionId: 'factory-patches',
+        instanceKey,
+        subjectKey: instanceKey,
+        label,
+        scopeLabel: 'Batch',
+      },
     },
   }
 }
@@ -318,38 +340,58 @@ export function patchesView(
   outcomes: Readonly<Record<string, JsonValue>>,
   conflicting = false,
 ): ViewSnapshot {
-  const rows = prepared
-    .filter(({ job }) => object(outcomes[job.id]).ready === true)
-    .map(({ job, input }) => {
-      const outcome = object(outcomes[job.id])
-      return {
-        id: job.id,
-        cells: {
-          job: jobLabel(job),
-          files: clip(outcome.verification.changedPaths.join(', ')),
-          patch: {
-            kind: 'artifact' as const,
-            attachment: 'deliverables',
-            path: `${job.id}/review.patch`,
-          },
+  const accepted = prepared.filter(({ job }) => object(outcomes[job.id]).ready === true)
+  const rows = accepted.map(({ job, input }) => {
+    const outcome = object(outcomes[job.id])
+    return {
+      id: job.id,
+      cells: {
+        job: jobLabel(job),
+        files: clip(outcome.verification.changedPaths.join(', ')),
+        patch: {
+          kind: 'artifact' as const,
+          attachment: 'deliverables',
+          path: `${job.id}/review.patch`,
         },
-        details: [
-          goalReport(job, input),
-          ...verificationDetails(outcome),
-          {
-            kind: 'report' as const,
-            text: conflicting
-              ? 'Patches overlap with conflicting replacements. Resolve the overlap before applying either patch.'
-              : 'Review this patch before applying it. Original sources are unchanged. Each patch was checked separately; combined changes need their own checks. Preview requires verified packet delivery.',
-          },
-        ],
-      }
-    })
+      },
+      details: [
+        goalReport(job, input),
+        ...verificationDetails(outcome),
+        {
+          kind: 'report' as const,
+          text: conflicting
+            ? 'Patches overlap with conflicting replacements. Resolve the overlap before applying either patch.'
+            : 'Review this patch before applying it. Original sources are unchanged. Each patch was checked separately; combined changes need their own checks. Preview requires verified packet delivery.',
+        },
+      ],
+    }
+  })
   return {
     summary: conflicting
       ? 'The proposed patches conflict. Resolve the overlap before applying either patch.'
       : `${rows.length} independently checked ${rows.length === 1 ? 'candidate' : 'candidates'} for human review. Changes have not been applied. Preview requires verified packet delivery.`,
     sections: [
+      ...accepted.map(({ job }) => ({
+        title: jobLabel(job),
+        blocks: [
+          ...verificationDetails(object(outcomes[job.id])),
+          {
+            kind: 'report' as const,
+            text: conflicting
+              ? 'Resolve the conflicting overlap before applying either patch. Checks apply to this patch separately.'
+              : 'Independently checked candidate. Review before applying. Combined patches need their own checks.',
+          },
+          {
+            kind: 'content' as const,
+            title: 'Review patch',
+            reference: {
+              kind: 'artifact' as const,
+              attachment: 'deliverables',
+              path: `${job.id}/review.patch`,
+            },
+          },
+        ],
+      })),
       {
         blocks: [
           {

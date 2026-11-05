@@ -2,7 +2,11 @@ import { expect } from 'bun:test'
 import { createHash } from 'node:crypto'
 import { readdir, readFile } from 'node:fs/promises'
 import { isAbsolute, join } from 'node:path'
-import { type ReportingMessage, validateReportingMessage } from '@jigging/reporting'
+import {
+  type Collection,
+  type ReportingMessage,
+  validateReportingMessage,
+} from '@jigging/reporting'
 import { asciiJsonString } from '../../src/cli-usage.js'
 
 export const lostObservation =
@@ -162,6 +166,17 @@ export function assertExplicitObservation(stdout: string): {
   }
 }
 
+/** Packet assertions follow semantic collection identity, independent of presentation sections. */
+export function factoryPatchReferences(update: ReportingMessage) {
+  if (update.kind !== 'view' || update.id !== 'patches')
+    throw new Error('Factory patch inventory requires its Patches view')
+  const inventories = update.sections
+    .flatMap((section) => section.blocks)
+    .filter((block): block is Collection => block.kind === 'collection' && block.id === 'patches')
+  expect(inventories).toHaveLength(1)
+  return inventories[0]!.rows.map((row) => row.cells.patch)
+}
+
 export function assertFactoryPrefix(
   updates: ReportingMessage[],
   phase: 'blocked' | 'checked',
@@ -239,10 +254,35 @@ export function assertFactoryPrefix(
       !summaries[title]!.includes(update.summary)
     )
       throw new Error('Factory observation contains an unknown view prefix')
-    expect(update.sections).toHaveLength(1)
-    const blocks = update.sections[0]!.blocks
-    expect(blocks).toHaveLength(update.id === 'checks' ? 1 : 2)
     const final = update.summary === summaries[title]![1]
+    const candidates =
+      update.id === 'patches' && phase === 'checked' && final ? ['logs', 'timesheet'] : []
+    expect(update.sections).toHaveLength(1 + candidates.length)
+    for (const [index, id] of candidates.entries()) {
+      const section = update.sections[index]!
+      expect(section.title).toBe(id === 'logs' ? 'HTTP log report' : 'Timesheet totals')
+      expect(section.blocks).toHaveLength(3)
+      expect(section.blocks[0]).toMatchObject({
+        kind: 'facts',
+        items: [
+          { label: 'Checked proposal', value: 1 },
+          { label: 'Repository tests', value: 'Passed; independently verified' },
+          { label: 'Acceptance cases', value: '4 passed; independently verified' },
+          { label: 'Changed files', value: jobs.find((job) => job.id === id).editPaths.join(', ') },
+        ],
+      })
+      expect(section.blocks[1]).toMatchObject({
+        kind: 'report',
+        text: 'Independently checked candidate. Review before applying. Combined patches need their own checks.',
+      })
+      expect(section.blocks[2]).toEqual({
+        kind: 'content',
+        title: 'Review patch',
+        reference: { kind: 'artifact', attachment: 'deliverables', path: `${id}/review.patch` },
+      })
+    }
+    const blocks = update.sections.at(-1)!.blocks
+    expect(blocks).toHaveLength(update.id === 'checks' ? 1 : 2)
     if (update.id === 'jobs')
       expect(blocks[0]).toMatchObject({
         kind: 'progress',

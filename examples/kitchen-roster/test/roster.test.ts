@@ -365,7 +365,12 @@ test('pure root projection preserves stages, acceptance and uncertain delivery',
   expect(blocked).not.toContain('Both roles checked')
   expect(blocked).not.toContain('"attachment":"schedule"')
   for (const phase of ['failed', 'cancelled'] as const) {
-    const uncertain = JSON.stringify(rosterView({ phase, scenario, assignments: rows }))
+    const view = rosterView({ phase, scenario, assignments: rows })
+    const uncertain = JSON.stringify(view)
+    const progress = view.sections
+      .flatMap((section) => section.blocks)
+      .find((block) => block.kind === 'progress')
+    expect(progress?.kind === 'progress' && progress.completed).toBe(3)
     expect(uncertain).toContain('8 of 8 roles checked')
     expect(uncertain).toContain('Unconfirmed; inspect the run result')
     expect(uncertain).not.toContain('"attachment":"schedule"')
@@ -392,6 +397,7 @@ test('the captured scenario identifies the roster and captured CSV remains expli
   const options = rosterViewOptions(scenario)
   expect(options.landing).toBe(true)
   expect(options.target?.definitionId).toBe('kitchen-roster')
+  expect(options.target?.label).toBe('4 shifts · 6 volunteers')
   expect(options).toEqual(rosterViewOptions(clone(scenario)))
   const changed = clone(scenario)
   changed.volunteers[0]!.preference = 'Prefer the later shift.'

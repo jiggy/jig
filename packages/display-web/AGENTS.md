@@ -92,6 +92,14 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 - Resolved record references keep exact view destinations. Only general tab navigation redirects within the current subject.
 - Presentation follows supplied block types and explicit roles, independently of application names.
   Document content preserves image proportions. Content and covers retain accessible captured-source disclosures.
+- All authored publishers share material rendering, including attributed child views.
+  Publisher placement never reduces reports or collections to inspection teasers.
+- Small collections disclose search and sorting. Active filters remain visible.
+  Complete counts stay compact. Retained and reported differences remain explicit.
+- Content and formatted reports share responsive comparison regions with their supplied context.
+- Host and authored details open on request and share narrow-screen return navigation.
+  Technical instance identities belong inside About this view.
+  Appearance remains available on narrow screens. Coarse-pointer targets retain their 44-pixel minimum.
 - Root application pages precede Inspector and child views by verified
   publisher identity. Compose authored sections in place. Details open on
   demand. Preserve full columns, literal data, stable local state and all
@@ -121,6 +129,8 @@ Producers own evidence and authority. Viewers own navigation and explicit explor
 
 - `just check` builds and runs client, explorer, navigation, observations, composition, fixed-assets
   and public semantic fixture tests.
+- `just test-browser` exercises mounted production assets through authenticated fixture HTTP.
+  It checks host views, actual application projections, responsive navigation, focus and evidence access.
 - `just test-package` uses exact model/web/reporting/FLOW archives in an
   external script-disabled consumer with no Jig or native dependency.
   The harness matches the installed version to this package's source manifest.

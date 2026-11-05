@@ -6,6 +6,7 @@ export type PrivateBrowserLocal = {
   selected?: string | undefined
   filters: Map<string, string>
   sorts: Map<string, { key: string; descending: boolean }>
+  collectionTools: Map<string, boolean>
   expanded: boolean
   detailOpen: boolean
   signature?: string | undefined
@@ -314,6 +315,7 @@ export function privateBrowserLocal(): PrivateBrowserLocal {
   return {
     filters: new Map(),
     sorts: new Map(),
+    collectionTools: new Map(),
     expanded: false,
     detailOpen: false,
     previewSearch: '',

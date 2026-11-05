@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { patchesView } from '../../../../examples/software-factory/flows/factory/dashboard.ts'
 import { PrivateCliProgress } from '../../src/cli-progress.js'
 import { PrivateCliReporting } from '../../src/cli-reporting.js'
 import { PrivateRunModel } from '../../src/cli-run-model.js'
@@ -8,8 +9,71 @@ import {
   assertFactoryPrefix,
   assertTypedObservation,
   factorySummaries,
+  factoryPatchReferences,
   lostObservation,
 } from '../fixtures/factory-observation.js'
+
+test('factory observation checks the complete ordinary Patches projection and rejects altered evidence', () => {
+  const jobs = ['logs', 'timesheet'].map((id) => ({
+    id,
+    label: id === 'logs' ? 'HTTP log report' : 'Timesheet totals',
+    directory: id,
+    issue: `Repair ${id}`,
+    editPaths: [`${id}.ts`],
+  }))
+  const prepared = jobs.map((job) => ({
+    job,
+    input: {
+      issue: job.issue,
+      editPaths: job.editPaths,
+      files: { [`${job.id}.ts`]: 'original' },
+      cases: [],
+    },
+  }))
+  const outcomes = Object.fromEntries(
+    jobs.map((job) => [
+      job.id,
+      {
+        ready: true,
+        verification: {
+          proposal: 1,
+          changedPaths: job.editPaths,
+          acceptanceCases: ['a', 'b', 'c', 'd'],
+        },
+      },
+    ]),
+  )
+  const message = {
+    kind: 'view' as const,
+    id: 'patches',
+    title: 'Patches',
+    ...patchesView(prepared, outcomes),
+  }
+  assertFactoryPrefix([message], 'checked', jobs)
+  expect(factoryPatchReferences(message)).toEqual([
+    { kind: 'artifact', attachment: 'deliverables', path: 'logs/review.patch' },
+    { kind: 'artifact', attachment: 'deliverables', path: 'timesheet/review.patch' },
+  ])
+  const missingInventory = JSON.parse(JSON.stringify(message))
+  missingInventory.sections.pop()
+  const duplicateInventory = JSON.parse(JSON.stringify(message))
+  duplicateInventory.sections.push(structuredClone(duplicateInventory.sections.at(-1)))
+  for (const altered of [missingInventory, duplicateInventory, { kind: 'notice', text: 'no view' }])
+    expect(() => factoryPatchReferences(altered)).toThrow()
+  assertFactoryPrefix([{ ...message, ...patchesView(prepared, {}) }], 'blocked', jobs)
+  const missing = JSON.parse(JSON.stringify(message))
+  missing.sections.shift()
+  const wrongReference = JSON.parse(JSON.stringify(message))
+  const content = wrongReference.sections[0]!.blocks[2]!
+  if (content.kind !== 'content') throw new Error('Missing captured patch')
+  content.reference.path = 'timesheet/review.patch'
+  const wrongVerdict = JSON.parse(JSON.stringify(message))
+  const facts = wrongVerdict.sections[0]!.blocks[0]!
+  if (facts.kind !== 'facts') throw new Error('Missing independent verdicts')
+  facts.items[1]!.value = 'Worker claims success'
+  for (const altered of [missing, wrongReference, wrongVerdict])
+    expect(() => assertFactoryPrefix([altered], 'checked', jobs)).toThrow()
+})
 
 test('factory automatic observation accepts complete views or exact truthful loss and rejects malformed evidence', () => {
   const render = (mode: 'clean' | 'lagged', unchanged = false, receive = true) => {

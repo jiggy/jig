@@ -791,7 +791,22 @@ test('artifact pagination permits its exact bound and refuses malformed, missing
   ]) {
     const f = await artifactInventoryService(t, state)
     await assert.rejects(f.list(), reason)
-    assert.ok(f.requests.length <= 2)
+    assert.ok(f.requests.length <= (reason.source === 'incomplete artifact' ? 6 : 2))
+  }
+})
+
+test('a temporarily incomplete artifact page restarts the complete bounded inventory', async (t) => {
+  const artifacts = retainedArtifactInventory(105)
+  for (const page of [1, 2]) {
+    const service = await artifactInventoryService(t, {
+      artifacts,
+      pages: { [page]: { total_count: 105, artifacts: artifacts.slice((page - 1) * 100, page * 100).slice(0, -1) } },
+    })
+    const pending = service.list()
+    await service.waitForPage(page)
+    await service.replace({ artifacts })
+    assert.deepEqual(await pending, artifacts)
+    assert.deepEqual(service.requests.map((request) => request.page), page === 1 ? [1, 1, 2] : [1, 2, 1, 2])
   }
 })
 

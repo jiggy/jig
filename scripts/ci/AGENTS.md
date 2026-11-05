@@ -384,8 +384,8 @@ They consume frozen package exports with tracked test helpers and installed
   Run artifact listings paginate retained earlier-attempt artifacts before selecting current-attempt records.
   Read at most ten 100-item pages within 30 seconds, clipped to the caller's phase deadline.
   All pages share a 4 MiB response-body allowance.
-  A changing total count may restart the read twice, for at most three passes with bounded pauses.
-  Never return a partial inventory. Malformed, incomplete and duplicate-ID pages fail.
+  A changing total count or incomplete page may restart the complete read twice, for at most three passes with bounded pauses.
+  Never return a partial inventory. Persistently incomplete, malformed and duplicate-ID pages fail.
 
   Current-attempt name, identity and digest validation remains mandatory.
   The current-attempt jobs inventory remains a strict single page.

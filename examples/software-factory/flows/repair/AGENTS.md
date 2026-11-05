@@ -46,6 +46,9 @@ operator's fixed commands and application-owned acceptance cases.
 
   Fixed request-derived targets relate Repair and Checks through one application subject.
   They do not supply host provenance or establish acceptance.
+  Repair shows bounded literal proposal diffs beside provisional worker checks.
+  Full original files and replacements remain in returned evidence.
+  It advertises no file artifact because this leaf creates no output attachment.
 
 ## Work Guidance
 

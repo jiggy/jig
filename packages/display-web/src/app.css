@@ -1278,11 +1278,14 @@ main {
 }
 .workspace {
   display: grid;
-  grid-template-columns: minmax(280px, 1.25fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
-.workspace.expanded {
+.workspace.show-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+}
+.workspace.show-detail.expanded {
   grid-template-columns: minmax(180px, 0.35fr) minmax(0, 1.8fr);
 }
 .records,
@@ -1477,7 +1480,7 @@ mark {
   outline: 1px solid var(--warning);
 }
 .back-to-records {
-  display: none;
+  display: block;
   margin-bottom: 14px;
 }
 details {
@@ -1498,8 +1501,8 @@ summary {
 .unavailable-note {
   color: var(--warning);
 }
-.execution-workspace {
-  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+.execution-workspace.show-detail {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 .view-heading {
   display: flex;
@@ -1522,7 +1525,7 @@ summary {
 }
 .timeline-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.38fr);
   gap: 10px;
   font-size: 12px;
   color: var(--secondary);
@@ -1546,7 +1549,7 @@ summary {
 }
 .call-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(90px, 0.65fr);
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 0.38fr);
   gap: 10px;
   align-items: center;
   border-bottom: 1px solid var(--line);
@@ -1572,9 +1575,9 @@ summary {
   display: block;
   color: var(--text);
   font-size: 12px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 19px;
 }
 .call-state {
   display: block;
@@ -1583,13 +1586,13 @@ summary {
 }
 .tree-toggle {
   padding: 3px;
-  width: 21px;
+  width: 28px;
   border: 0;
   background: transparent;
   flex-shrink: 0;
 }
 .tree-spacer {
-  width: 21px;
+  width: 28px;
   flex-shrink: 0;
 }
 .call-span {
@@ -1867,23 +1870,21 @@ footer {
   .run-layout {
     grid-template-columns: 175px minmax(0, 1fr);
   }
-  .workspace {
-    grid-template-columns: minmax(250px, 1fr) minmax(0, 1fr);
-  }
-  .execution-workspace {
-    grid-template-columns: minmax(0, 1.5fr) minmax(230px, 1fr);
+  .workspace.show-detail {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
   }
   .records,
   .detail {
     padding: 14px;
   }
 }
-@media (max-width: 959px) {
+@media (max-width: 1000px) {
   .run-layout {
     grid-template-columns: 150px minmax(0, 1fr);
   }
   .workspace,
-  .workspace.expanded {
+  .workspace.show-detail,
+  .workspace.show-detail.expanded {
     grid-template-columns: minmax(0, 1fr);
   }
   .detail {
@@ -1995,21 +1996,6 @@ footer {
   }
   main {
     padding: 12px;
-  }
-  .workspace {
-    display: block;
-  }
-  .workspace .detail {
-    display: none;
-  }
-  .workspace.show-detail .records {
-    display: none;
-  }
-  .workspace.show-detail .detail {
-    display: block;
-  }
-  .back-to-records {
-    display: block;
   }
   .detail-heading {
     flex-wrap: wrap;
@@ -2189,6 +2175,28 @@ footer {
   border-top: 1px solid var(--line);
   padding-top: 16px;
 }
+.application-section-comparison {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 20px 24px;
+}
+.application-section-comparison > h3 {
+  flex-basis: 100%;
+  margin-bottom: 0;
+}
+.comparison-context {
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.comparison-material {
+  flex: 2 1 440px;
+  min-width: 0;
+}
+.comparison-context > * + *,
+.comparison-material > * + * {
+  margin-top: 16px;
+}
 .application-block + .application-block {
   margin-top: 16px;
 }
@@ -2225,12 +2233,33 @@ footer {
   font-weight: 600;
   margin: 0;
 }
-.application-collection > .collection-controls {
+.collection-tools {
+  margin: 0 0 0 auto;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--secondary);
+}
+.collection-tools > summary {
+  cursor: pointer;
+  padding: 4px 0;
+  text-align: right;
+}
+.collection-tools[open] {
+  width: 100%;
+  margin: 0 0 8px;
+}
+.collection-tools .collection-controls label {
+  flex: 0 1 200px;
+}
+.collection-tools .collection-controls .collection-search {
+  flex: 1 1 240px;
+}
+.collection-tools .collection-controls {
   display: flex;
   flex-wrap: wrap;
   align-items: end;
   gap: 8px;
-  margin: 0 0 12px;
+  margin: 12px 0 0;
 }
 .application-collection .collection-search {
   flex: 1;
@@ -2416,12 +2445,18 @@ footer {
   white-space: nowrap;
 }
 @media (max-width: 1000px) {
+  .workspace.show-detail,
+  .workspace.show-detail.expanded,
   .application-workspace.show-detail,
   .application-workspace.show-detail.expanded {
     grid-template-columns: minmax(0, 1fr);
   }
+  .workspace.show-detail .records,
   .application-workspace.show-detail .application-page {
     display: none;
+  }
+  .workspace.show-detail .detail {
+    position: static;
   }
   .selection-notice-detail {
     display: flex;
@@ -2436,21 +2471,6 @@ footer {
   }
   .application-gallery {
     gap: 12px;
-  }
-}
-@media (pointer: coarse) {
-  button,
-  input,
-  select,
-  summary {
-    min-height: 44px;
-  }
-  .appearance-option {
-    min-width: 44px;
-    min-height: 44px;
-  }
-  .application-table .application-inspect {
-    min-height: 44px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -2722,8 +2742,10 @@ nav .nav-entry {
 .document-cover .captured-media img {
   display: block;
   width: 180px;
-  height: 135px;
-  object-fit: cover;
+  max-width: 100%;
+  height: auto;
+  max-height: none;
+  object-fit: contain;
   border-radius: 5px;
 }
 .document-cover figcaption {
@@ -2844,7 +2866,7 @@ nav .nav-entry {
   }
   .document-cover .captured-media img {
     width: 140px;
-    height: 105px;
+    height: auto;
   }
 }
 @media (max-width: 700px) {
@@ -2858,10 +2880,10 @@ nav .nav-entry {
     position: static;
     width: auto;
     padding: 5px 8px;
-    flex-direction: row;
+    flex-direction: column;
     flex-shrink: 0;
-    overflow-x: auto;
-    overflow-y: visible;
+    gap: 4px;
+    overflow: visible;
     border-bottom: 1px solid var(--line);
   }
   .workbench-brand,
@@ -2872,24 +2894,34 @@ nav .nav-entry {
   }
   .navigation nav {
     flex-direction: row;
+    flex-shrink: 0;
+    overflow-x: auto;
+  }
+  .navigation nav > div {
+    flex-shrink: 0;
   }
   .navigation nav button {
     white-space: nowrap;
   }
   .navigation .sidebar-tools {
-    margin: 0 0 0 8px;
+    margin: 0;
     padding: 0;
     flex-direction: row;
+    flex-wrap: wrap;
     align-items: center;
   }
   .navigation .sidebar-tools > button {
     white-space: nowrap;
   }
   .navigation .appearance {
-    display: none;
+    display: flex;
+    flex-shrink: 0;
+    padding: 0;
+    margin: 0 0 0 auto;
   }
   .shell {
     padding: 0 12px;
+    align-items: center;
   }
   .workspace-observation {
     display: none;
@@ -2900,9 +2932,7 @@ nav .nav-entry {
   .document-header-media {
     grid-template-columns: minmax(0, 1fr);
   }
-  .document-cover .captured-media img {
-    display: none;
-  }
+
   .document-title h2 {
     font-size: 22px;
     line-height: 30px;
@@ -2913,9 +2943,161 @@ nav .nav-entry {
   }
   .workbench-breadcrumb {
     gap: 8px;
+    flex: 1 1 0;
+  }
+  .workbench-breadcrumb > span:first-child {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .workbench-breadcrumb h1 {
+    min-width: 0;
+    max-width: 45vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
 .document-content {
   margin: 0;
+}
+
+/* Host evidence uses the same reading hierarchy and optional detail pane. */
+.host-page {
+  max-width: 1440px;
+  margin-inline: auto;
+}
+.host-page .records {
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.host-page-intro {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin-bottom: 16px;
+}
+.host-page-intro > p {
+  margin: 0;
+}
+.host-caption {
+  color: var(--secondary);
+  font-size: 12px;
+  line-height: 20px;
+  max-width: 82ch;
+}
+.host-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 0 0 16px;
+}
+.host-toolbar input {
+  flex: 1 1 220px;
+  max-width: 380px;
+}
+.host-toolbar > details {
+  color: var(--secondary);
+  font-size: 12px;
+}
+.host-toolbar summary {
+  cursor: pointer;
+}
+.call-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.host-page .call-row {
+  min-height: 56px;
+}
+.journal-list,
+.diagnostic-list {
+  display: grid;
+  gap: 12px;
+}
+.journal-entry,
+.diagnostic-list > details {
+  padding: 16px 18px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--pane);
+}
+.journal-entry > header,
+.diagnostic-summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--secondary);
+  font-size: 12px;
+}
+.journal-entry .report {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+.diagnostic-summary {
+  cursor: pointer;
+}
+.diagnostic-list .report {
+  margin-top: 12px;
+}
+.report-with-references {
+  padding: 14px 16px;
+  background: var(--pane);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.report-with-references > .report:first-child {
+  margin-top: 0;
+}
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.report-actions button {
+  margin: 0;
+  padding: 7px 10px;
+  color: var(--accent);
+  border-color: var(--line);
+  background: var(--page);
+}
+
+/* Keep these rules last so compact shared-frame styles cannot shrink targets. */
+@media (pointer: coarse) {
+  button,
+  input,
+  select,
+  summary,
+  .close-inspection,
+  .run-context-menu > summary,
+  .application-about > summary,
+  .collection-tools > summary,
+  .document-download-button,
+  .document-outline button,
+  .application-table .application-inspect {
+    min-height: 44px;
+  }
+  .tree-toggle,
+  .run-context-menu > summary,
+  .appearance-option {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  .tree-spacer {
+    width: 44px;
+  }
 }

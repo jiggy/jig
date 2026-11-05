@@ -32,3 +32,12 @@ check: build test test-material
 # Exercise material boundaries through compiled public exports and real HTTP.
 @test-material:
     node --test test/composition.node.mjs test/material.node.mjs test/explorer.node.mjs test/explorer-client.node.mjs
+
+# Mount the production assets with authenticated inert observations in Chromium.
+@test-browser:
+    node --test --test-timeout=120000 test/browser-acceptance.mjs
+
+# Capture the review matrix only after publishing the implementation PR.
+[positional-arguments]
+@review-browser pr out:
+    node test/browser-capture.mjs "$1" "$2"

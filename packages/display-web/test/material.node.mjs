@@ -811,6 +811,91 @@ test('reading, material and comparison sections retain their own presentation', 
   assert.equal(walk(sections[1]).filter((node) => node.type === 'h4').length, 1)
 })
 
+test('small collections retain search and sort behind a disclosure with compact truthful counts', () => {
+  const people = collection()
+  people.total = people.rows.length
+  const view = materialView([people])
+  const options = props(view)
+  const page = ApplicationPage(options)
+  const tools = walk(page).find((node) => node.props.class === 'collection-tools')
+  assert.equal(tools.props.open, false)
+  assert(text(page).includes('2 records'))
+  assert(!text(page).includes('2 reported'))
+  assert.equal(walk(tools).filter((node) => node.type === 'input').length, 1)
+  assert.equal(walk(tools).filter((node) => node.type === 'select').length, 1)
+  options.local.filters.set('people', 'Blair')
+  const filtered = ApplicationPage({
+    ...options,
+    records: browserRecords(view, options.local),
+  })
+  assert.equal(
+    walk(filtered).find((node) => node.props.class === 'collection-tools').props.open,
+    true,
+  )
+  assert(text(filtered).includes('1 of 2 records'))
+  people.total = 25
+  assert(text(ApplicationPage(options)).includes('1 of 2 retained · 25 reported'))
+})
+
+test('clearing a small collection query preserves the user-open controls', () => {
+  const view = materialView([collection()])
+  const options = props(view)
+  options.onFilter = (collection, value) => options.local.filters.set(collection, value)
+  const tools = () =>
+    walk(ApplicationPage(options)).find((node) => node.props.class === 'collection-tools')
+  tools().props.onToggle({ currentTarget: { open: true } })
+  const search = walk(tools()).find((node) => node.type === 'input')
+  search.props.onInput({ target: { value: 'Blair' } })
+  assert.equal(options.local.filters.get('people'), 'Blair')
+  assert.equal(tools().props.open, true)
+  search.props.onInput({ target: { value: '' } })
+  assert.equal(options.local.filters.get('people'), '')
+  assert.equal(tools().props.open, true)
+  tools().props.onToggle({ currentTarget: { open: false } })
+  assert.equal(tools().props.open, false)
+})
+
+test('material and independently supplied context compose together without application-specific names', () => {
+  const patch = {
+    kind: 'content',
+    title: 'Captured change',
+    reference: { kind: 'artifact', attachment: 'files', path: 'review.patch' },
+  }
+  const view = materialView([
+    collection(),
+    patch,
+    { kind: 'report', text: 'Checked independently' },
+  ])
+  const rendered = []
+  const options = {
+    ...props(view),
+    renderBlock(block, record) {
+      rendered.push({ block, record })
+      return block.kind === 'content' ? block.title : block.text
+    },
+  }
+  const page = ApplicationPage(options)
+  const section = walk(page).find((node) => node.type === 'section')
+  assert(section.props.class.includes('application-section-comparison'))
+  const context = walk(section).find((node) => node.props.class === 'comparison-context')
+  const material = walk(section).find((node) => node.props.class === 'comparison-material')
+  assert(text(context).includes('Checked independently'))
+  assert(text(context).includes('Alex'))
+  assert.equal(text(material), 'Captured change')
+  assert.equal(rendered.find((item) => item.block === patch).record.block, patch)
+  view.value.sections[0].blocks[1] = { kind: 'report', format: 'diff', text: '+literal patch' }
+  assert(text(ApplicationPage(options)).includes('+literal patch'))
+})
+
+test('technical identity remains readable inside About this view without becoming a page heading', () => {
+  const view = materialView([{ kind: 'report', text: 'Application result' }])
+  const identity = 'Exact instance: opaque-reviewed-source-identity'
+  const page = ApplicationPage({ ...props(view), identity })
+  const about = walk(page).find((node) => node.props.class === 'application-about')
+  assert(text(about).includes(identity))
+  assert.equal(walk(page).filter((node) => node.type === 'h2').length, 0)
+})
+
 test('a filtered-out selection keeps its own context and can clear filters without changing selection', () => {
   const view = materialView([collection()])
   const local = browserLocal()

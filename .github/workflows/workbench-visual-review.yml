@@ -1,0 +1,65 @@
+name: Workbench visual review
+on:
+  pull_request:
+    paths:
+      - packages/display-web/**
+      - packages/display-model/**
+      - packages/reporting/**
+      - examples/**
+      - package.json
+      - justfile
+      - .github/workflows/workbench-visual-review.yml
+permissions:
+  contents: read
+concurrency:
+  group: workbench-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  capture:
+    name: Capture workbench review states
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      REVIEW_PR_URL: ${{ github.event.pull_request.html_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: "24"
+      - uses: extractions/setup-just@f8a3cce218d9f83db3a2ecd90e41ac3de6cdfd9b
+        with:
+          just-version: 1.43.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.3
+      - name: Build production browser assets
+        id: build
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/workbench-review"
+          {
+            git rev-parse HEAD
+            git rev-parse 'HEAD^{tree}'
+            bun install --ignore-scripts
+            just display_web::build
+            node packages/display-web/node_modules/playwright/cli.js install --with-deps chromium
+          } 2>&1 | tee "$RUNNER_TEMP/workbench-review/build.txt"
+      - name: Verify mounted workbench behavior
+        run: |
+          set -euo pipefail
+          just display_web::test-browser 2>&1 | tee "$RUNNER_TEMP/workbench-review/browser.txt"
+      - name: Capture application, inspector, and child material
+        if: always() && !cancelled() && steps.build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          just display_web::review-browser "$REVIEW_PR_URL" "$RUNNER_TEMP/workbench-review" 2>&1 | tee "$RUNNER_TEMP/workbench-review/capture.txt"
+      - name: Retain complete or partial review captures
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: workbench-review-${{ github.sha }}-r${{ github.run_id }}-a${{ github.run_attempt }}
+          path: ${{ runner.temp }}/workbench-review
+          retention-days: 7
+          if-no-files-found: error
