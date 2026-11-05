@@ -261,6 +261,21 @@ Owns CI, host-conformance, package publication, and public-site workflows.
   PR style checks use the base SHA. Push checks use the previous SHA.
   Manual checks use the checked revision's parent. Missing baselines fail.
 
+## Orchestration diagnostics
+
+- Dispatch `ci-orchestration-probe.yml` on main to observe real queued-sibling cancellation.
+  Its controller has Actions write access only to dispatch and cancel its diagnostic child.
+
+  The child deliberately fails its Ubuntu monitor after thirty seconds.
+  Reserve the `jig-ci-probe-never-allocate` self-hosted label without assigning it to a runner.
+  Unexpected assignment fails the probe. The child runs no repository code and receives no credentials.
+
+  The controller requires observed queueing and cancellation within sixty seconds of monitor completion.
+  The observation allowance is three minutes. Cleanup requests cancellation of unfinished children.
+
+  GitHub controls allocation and cancellation settlement. Probe results grant no host or release qualification.
+  The child is expected to appear red. The controller owns the diagnostic verdict.
+
 ## Work Guidance
 
 - Put substantial shell or TypeScript logic in `scripts/` and call it here.

@@ -529,6 +529,15 @@ They consume frozen package exports with tracked test helpers and installed
 
   Retries never substitute a version, mirror or client.
 
+## Diagnostic observations
+
+- `orchestration-probe.mjs` dispatches one isolated main-only child and observes actual queued-sibling cancellation.
+  It validates the child identity and requires an unallocated sibling with no executed steps.
+  It reports cancellation settlement separately from execution and requests cleanup on failure.
+  The probe uses no Mac runners, product tests, publication inputs, or host qualification receipts.
+- Host scope summaries distinguish required execution, verified completion, and intentional omission.
+  Omitted native work supplies no execution credit. Readiness summaries distinguish nonrelease sources from pending qualification.
+
 ## Local Contracts
 
 - Every executing job runs its selected physical suites freshly. PR CI alone may

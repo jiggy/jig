@@ -104,6 +104,17 @@ export function checkHostJobs(scope, report, statuses) {
   return report
 }
 
+export function hostScopeSummary(scope, report, reconciled = false) {
+  const title = report.required
+    ? (reconciled ? 'Required host qualification passed' : 'Host qualification required')
+    : 'Native qualification omitted';
+  return `## ${scope}: ${title}\n\n` +
+    `Source: ${report.source}\n\nReason: ${report.reason}\n\n` +
+    (report.required
+      ? (reconciled ? 'All required host jobs passed.\n' : 'Selection alone supplies no execution evidence.\n')
+      : '**No native tests ran in this workflow. No host qualification receipt was created.**\n');
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
     const options = {}
@@ -128,6 +139,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       )
     if (options['--github-output'])
       appendFileSync(options['--github-output'], `required=${report.required}\n`)
+    if (process.env.GITHUB_STEP_SUMMARY)
+      appendFileSync(process.env.GITHUB_STEP_SUMMARY, hostScopeSummary(options['--scope'], report, Boolean(options['--results'])))
     console.log(JSON.stringify(report, null, 2))
   } catch (error) {
     console.error(error.message)

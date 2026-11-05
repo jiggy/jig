@@ -1,0 +1,37 @@
+name: CI probe child
+run-name: CI probe child ${{ inputs.parent }}
+on:
+  workflow_dispatch:
+    inputs:
+      parent:
+        required: true
+        type: string
+      source:
+        required: true
+        type: string
+permissions: {}
+jobs:
+  cancellation:
+    if: github.ref == 'refs/heads/main' && github.sha == inputs.source
+    name: Probe ${{ matrix.role }}
+    strategy:
+      fail-fast: true
+      max-parallel: 2
+      matrix:
+        include:
+          - role: guard
+            runner: ubuntu-24.04
+          - role: unallocated
+            runner: '["self-hosted", "jig-ci-probe-never-allocate"]'
+    runs-on: ${{ matrix.role == 'guard' && matrix.runner || fromJSON(matrix.runner) }}
+    timeout-minutes: 2
+    steps:
+      - name: Deliberately fail the monitor and cancel its queued sibling
+        if: matrix.role == 'guard'
+        run: |
+          echo 'This diagnostic child is expected to fail. The parent verifies cancellation.'
+          sleep 30
+          exit 1
+      - name: Refuse an unexpected runner assignment
+        if: matrix.role == 'unallocated'
+        run: exit 1
