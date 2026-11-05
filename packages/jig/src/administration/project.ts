@@ -269,6 +269,7 @@ function normalizeProjectAdministrationDiagnostic(
     'PACKAGE_BUN_WORKSPACE_CHANGED',
   ].includes(code)
   const schemaSourceLocation = [
+    'CONTRACT_FIELD',
     'SCHEMA_INVALID_JSON',
     'SCHEMA_INVALID',
     'SCHEMA_KEYWORD_UNSUPPORTED',

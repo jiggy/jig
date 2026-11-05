@@ -1,14 +1,21 @@
 import { expect, test } from 'bun:test'
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { CheckError } from '../../src/diagnostics.js'
 import { normalizePrivateBunExecutionLayout } from '../../src/internal/bun-execution-layout.js'
 import { captureDependencyFlows, resolvePackageRoot } from '../../src/internal/dependency-flows.js'
-import { type CapturedPackage, createCapturedPackage } from '../../src/package/capture.js'
+import { projectError } from '../../src/internal/project-session-controller.js'
+import {
+  type CapturedPackage,
+  capturePackageDirectory,
+  createCapturedPackage,
+} from '../../src/package/capture.js'
 import { defineBinding, defineJig, parseRunTargetSelector } from '../../src/project/author.js'
 import { openPrivateProjectRoot } from '../../src/project/root.js'
 
 const id = 'https://example.org/contracts/echo'
+/** Authored source and captured preparation topology; not installer or native host evidence. */
 async function fixture(rootApplication = false) {
   const directory = await mkdtemp(join(tmpdir(), 'jig-dependency-flows-'))
   const put = async (path: string, value: unknown) => {
@@ -199,4 +206,127 @@ test('package lookup respects consumer dependency scope and cannot select missin
   expect(resolvePackageRoot(prepared, 'apps/app', 'echo')).toBe('apps/app/node_modules/echo')
   expect(resolvePackageRoot(prepared, '', 'echo')).toBe('node_modules/echo')
   expect(() => resolvePackageRoot(prepared, '', 'missing')).toThrow()
+})
+
+test('ancestor workspace contract-field errors retain their authored location', async () => {
+  const f = await fixture()
+  try {
+    await f.put('packages/echo/FLOW.contract.json', {
+      $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+      unexpected: 'private rejected contract value',
+    })
+    const failure = await f.capture().then(
+      async (source) => {
+        await source.dispose()
+        return undefined
+      },
+      (error: unknown) => projectError(error, 'plan'),
+    )
+    expect(failure?.toJSON()).toEqual({
+      code: 'INVALID_CANDIDATE',
+      message: 'project candidate is invalid',
+      diagnostic: {
+        code: 'CONTRACT_FIELD',
+        path: '../../packages/echo/FLOW.contract.json',
+      },
+    })
+    expect(JSON.stringify(failure)).not.toContain('private rejected contract value')
+    expect(f.preparations()).toBe(1)
+    expect(f.retained).toHaveLength(0)
+  } finally {
+    await f.dispose()
+  }
+})
+
+test('contract-field diagnostic locations keep protected-path and ancestor bounds', () => {
+  for (const path of [
+    '/private/FLOW.contract.json',
+    '../.jig/FLOW.contract.json',
+    '../../packages/.jig/FLOW.contract.json',
+    '../'.repeat(33) + 'FLOW.contract.json',
+    '../packages/../../probe/FLOW.contract.json',
+    '../probe\n/FLOW.contract.json',
+    '.',
+    '..',
+  ]) {
+    const failure = projectError(new CheckError('invalid', 'CONTRACT_FIELD', 'private', path), 'plan')
+    expect(failure.toJSON()).toEqual({
+      code: 'INVALID_CANDIDATE',
+      message: 'project candidate is invalid',
+    })
+  }
+})
+
+test('registry schema inspection reports the npm selector, never a prepared installation path', async () => {
+  const directory = await realpath(await mkdtemp(join(tmpdir(), 'jig-registry-schema-')))
+  const project = join(directory, 'project')
+  const preparedDirectory = join(directory, 'prepared')
+  const packageRoot = 'node_modules/@example/registry'
+  try {
+    await mkdir(project)
+    await mkdir(join(preparedDirectory, packageRoot), { recursive: true })
+    const manifest = JSON.stringify({
+      name: 'registry-consumer',
+      private: true,
+      dependencies: { '@example/registry': '1.0.0' },
+    })
+    await writeFile(join(project, 'package.json'), manifest)
+    await writeFile(join(preparedDirectory, 'package.json'), manifest)
+    await writeFile(
+      join(preparedDirectory, packageRoot, 'package.json'),
+      JSON.stringify({ name: '@example/registry', version: '1.0.0' }),
+    )
+    await writeFile(join(preparedDirectory, packageRoot, 'FLOW.ts'), 'export {}')
+    await writeFile(
+      join(preparedDirectory, packageRoot, 'FLOW.contract.json'),
+      JSON.stringify({
+        $schema: 'https://flow.jig.md/schemas/invocation-contract-0.schema.json',
+        input: { type: 'string', pattern: 'private rejected pattern value' },
+      }),
+    )
+    const root = await openPrivateProjectRoot(project)
+    try {
+      let retained = false
+      const failure = await captureDependencyFlows({
+        root,
+        selectors: ['npm:@example/registry'],
+        signal: new AbortController().signal,
+        // Unit seam: real captured bytes and topology, without an installer or native Run.
+        prepare: async (_source, workspace) => {
+          expect(workspace?.selected ?? []).not.toContain(packageRoot)
+          return {
+            captured: await capturePackageDirectory(preparedDirectory),
+            layout: normalizePrivateBunExecutionLayout({ flowRoot: '', members: [], aliases: [] }),
+          }
+        },
+        retain: async () => {
+          retained = true
+        },
+      }).then(
+        async (source) => {
+          await source.dispose()
+          return undefined
+        },
+        (error: unknown) => projectError(error, 'plan'),
+      )
+      expect(failure?.toJSON()).toEqual({
+        code: 'INVALID_CANDIDATE',
+        message: 'project candidate is invalid',
+        diagnostic: {
+          code: 'SCHEMA_KEYWORD_UNSUPPORTED',
+          path: 'npm:@example/registry/FLOW.contract.json',
+          pointer: '/input/pattern',
+        },
+      })
+      const diagnostic = JSON.stringify(failure)
+      expect(diagnostic).not.toContain('node_modules')
+      expect(diagnostic).not.toContain(preparedDirectory)
+      expect(diagnostic).not.toContain('private rejected pattern value')
+      expect(retained).toBeFalse()
+    } finally {
+      await root.dispose()
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true })
+  }
 })
