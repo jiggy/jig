@@ -342,8 +342,8 @@ operational baselines, and public-site assembly.
   registry tests. The publisher uses Node hashing so these checks also run on
   Mac. The frozen application closure regression runs actual builds, archive
   installs and complete source-checked application tests with an isolated Bun cache.
-  Every discovered Node CI and visual-flow experiment test file runs once in the ordinary pool,
-  followed by the Bun tooling checks only after successful policy execution.
+  Every discovered Node CI and visual-flow experiment test file runs once in the ordinary pool.
+  Bun tooling checks follow only after successful policy execution.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
 - `bun test scripts/preflight.test.ts` checks exact host refusal, exhaustive
