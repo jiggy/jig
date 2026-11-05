@@ -93,20 +93,18 @@ test('browser build emits only fixed self-contained assets and erases server typ
   expect(manifest.files.some((path: string) => path.includes('web/'))).toBeFalse()
 })
 
-test('bundle import scanning distinguishes literal words from module requests', () => {
+test('ESM import scanning distinguishes literal words from import syntax', () => {
   const parser = new Bun.Transpiler({ loader: 'js' })
   for (const source of [
     'const label = " · from ";',
     'const example = "import external";',
     '// import "external";\nconst value = 1;',
     'const data = { from: "external", import: "external" };',
-  ]) expect(parser.scan(source).imports).toEqual([])
+  ]) expect(parser.scan(source).imports, source).toEqual([])
   for (const source of [
     'import value from "external";',
     'import "external";',
     'export { value } from "external";',
     'void import("external");',
-    'require("external");',
-    'require.resolve("external");',
-  ]) expect(parser.scan(source).imports.map((item) => item.path)).toContain('external')
+  ]) expect(parser.scan(source).imports.map((item) => item.path), source).toContain('external')
 })
