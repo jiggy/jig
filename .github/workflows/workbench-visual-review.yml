@@ -25,6 +25,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: "24"
@@ -54,7 +55,19 @@ jobs:
         if: always() && !cancelled() && steps.build.outcome == 'success'
         run: |
           set -euo pipefail
-          just display_web::review-browser "$REVIEW_PR_URL" "$RUNNER_TEMP/workbench-review" 2>&1 | tee "$RUNNER_TEMP/workbench-review/capture.txt"
+          just display_web::review-browser "$REVIEW_PR_URL" "$RUNNER_TEMP/workbench-review/current" 2>&1 | tee "$RUNNER_TEMP/workbench-review/capture.txt"
+      - name: Build and compare the pre-97 renderer
+        if: always() && !cancelled() && steps.build.outcome == 'success'
+        run: |
+          set -euo pipefail
+          git worktree add --detach "$RUNNER_TEMP/workbench-baseline" 7d1da7398a6e0f30e818e62a542a95a7c2d16f12
+          (
+            cd "$RUNNER_TEMP/workbench-baseline"
+            bun install --ignore-scripts
+            just display_web::build
+          ) 2>&1 | tee "$RUNNER_TEMP/workbench-review/baseline-build.txt"
+          node packages/display-web/test/browser-capture.mjs "$REVIEW_PR_URL" "$RUNNER_TEMP/workbench-review/baseline" "$RUNNER_TEMP/workbench-baseline" 2>&1 | tee "$RUNNER_TEMP/workbench-review/baseline-capture.txt"
+          node packages/display-web/test/browser-comparison.mjs "$RUNNER_TEMP/workbench-review"
       - name: Retain complete or partial review captures
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
