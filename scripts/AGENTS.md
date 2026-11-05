@@ -17,6 +17,8 @@ operational baselines, and public-site assembly.
   Packaged installations never select contributor recovery from their working directory.
 
 - Root scripts own unprivileged source, package, release, and site operations.
+- `experiments/visual-flows/` owns isolated read-only composition and runtime-topology experiments.
+  Its projections carry evidence limits and grant no execution authority.
 - `example-inventory.mjs` reconciles every example directory with application
   tests, installed-host suites and the mandatory Linux end-to-end suite.
   `check-example-project.ts` imports original project and Binding declarations
@@ -340,7 +342,7 @@ operational baselines, and public-site assembly.
   registry tests. The publisher uses Node hashing so these checks also run on
   Mac. The frozen application closure regression runs actual builds, archive
   installs and complete source-checked application tests with an isolated Bun cache.
-  Every discovered Node CI test file runs once in the ordinary pool,
+  Every discovered Node CI and visual-flow experiment test file runs once in the ordinary pool,
   followed by the Bun tooling checks only after successful policy execution.
 - `bun test scripts/operational-baseline-checks.test.ts` checks selector
   diagnostics and failure-preserving teardown without a containment host.
@@ -351,6 +353,8 @@ operational baselines, and public-site assembly.
   qualified native Mac after changing its runner.
 
 ## Child DOX Index
+
+- [experiments/visual-flows/AGENTS.md](experiments/visual-flows/AGENTS.md) — Read-only graph experiments and their evidence limits.
 
 - [release/AGENTS.md](release/AGENTS.md) — Changeset coverage, version generation,
   derived dependency pins, and release eligibility.
