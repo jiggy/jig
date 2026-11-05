@@ -77,13 +77,47 @@ test('refuses foreign producers, other workflow events, invalid heads, and ambig
     { head_sha: 'bad-revision' },
     { head_branch: 'main' },
     { head_branch: 'feature\nother=true' },
-    { pull_requests: [] },
     { pull_requests: [...run.pull_requests, ...run.pull_requests] },
     { pull_requests: [{ ...pull, base: { ...pull.base, ref: 'release' } }] },
-    { pull_requests: [{ ...pull, head: { ...pull.head, sha: 'd'.repeat(40) } }] },
+    { pull_requests: [{ ...pull, head: { ...pull.head, sha: 'invalid' } }] },
     { pull_requests: [{ ...pull, head: { ...pull.head, repo: { id: 43 } } }] },
   ])
     assert.throws(() => skillReferenceRun({ ...run, ...change }, options))
+})
+
+test('missing associations and advancing PR heads cannot select old source for writing', () => {
+  for (const pull_requests of [[], [{ ...pull, head: { ...pull.head, sha: 'd'.repeat(40) } }]]) {
+    const changed = { ...run, pull_requests }
+    assert.equal(skillReferenceRun(changed, options), undefined)
+    assert.equal(currentSkillReferenceSource(source, changed, pull, options), false)
+  }
+})
+
+test('the writer CLI omits obsolete events without API access, artifacts, or write outputs', async t => {
+  const { execFileSync } = await import('node:child_process')
+  const { mkdtemp, writeFile, readFile, rm, stat } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+  const node = execFileSync('/bin/sh', ['-c', 'command -v node'], { encoding: 'utf8' }).trim()
+  assert.ok(node.startsWith('/'), 'The CLI test requires an absolute Node executable')
+  const directory = await mkdtemp(join(tmpdir(), 'jig-obsolete-references-'))
+  t.after(() => rm(directory, { recursive: true, force: true }))
+  for (const [index, pull_requests] of [[], [{ ...pull, head: { ...pull.head, sha: 'd'.repeat(40) } }]].entries()) {
+    const event = join(directory, `event-${index}.json`)
+    const output = join(directory, `output-${index}`)
+    const summary = join(directory, `summary-${index}`)
+    const destination = join(directory, `artifacts-${index}`)
+    await writeFile(event, JSON.stringify({ action: 'completed', repository: { ...repository, default_branch: 'main' },
+      workflow_run: { ...run, pull_requests } }))
+    const transcript = execFileSync(node, ['scripts/ci/skill-reference-run.mjs', destination], {
+      encoding: 'utf8', env: { PATH: directory, GITHUB_EVENT_NAME: 'workflow_run', GITHUB_EVENT_PATH: event,
+        GITHUB_REPOSITORY: options.repository, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary },
+    })
+    assert.match(transcript, /No current pull request matches this producer/)
+    assert.equal(await readFile(output, 'utf8'), 'ready=false\n')
+    assert.match(await readFile(summary, 'utf8'), /No changes were written/)
+    await assert.rejects(stat(destination), { code: 'ENOENT' })
+  }
 })
 
 test('a later producer attempt, closed PR, retargeting, forks, and concurrent head changes refuse writing', () => {

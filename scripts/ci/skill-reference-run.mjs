@@ -34,17 +34,22 @@ export function skillReferenceRun(run, { repository, defaultBranch }) {
     !Array.isArray(run.pull_requests)
   )
     throw new Error('The producer must be a successful same-repository pull_request run')
+  // GitHub removes associations after merge and updates their heads after pushes.
+  // Neither observation grants permission to write the producer's old source.
+  if (!run.pull_requests.length) return undefined
   const pulls = run.pull_requests.filter(
     (pull) =>
       positive(pull.number) &&
-      pull.head?.sha === run.head_sha &&
-      pull.head.ref === run.head_branch &&
+      pull.head?.ref === run.head_branch &&
       pull.head.repo?.id === run.repository.id &&
       pull.base?.ref === defaultBranch &&
       pull.base.repo?.id === run.repository.id,
   )
   if (pulls.length !== 1)
     throw new Error('The producer must identify exactly one matching pull request')
+  if (!revision.test(pulls[0].head?.sha ?? ''))
+    throw new Error('The associated pull request must identify a valid head')
+  if (pulls[0].head.sha !== run.head_sha) return undefined
   return {
     runId: String(run.id),
     runAttempt: String(run.run_attempt),
@@ -74,7 +79,7 @@ export function currentSkillPull(pull, source, { repository, defaultBranch }) {
 export function currentSkillReferenceSource(source, run, pull, options) {
   const observed = skillReferenceRun(run, options)
   return (
-    JSON.stringify(observed) === JSON.stringify(source) && currentSkillPull(pull, source, options)
+    observed !== undefined && JSON.stringify(observed) === JSON.stringify(source) && currentSkillPull(pull, source, options)
   )
 }
 
@@ -111,44 +116,51 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     if (event.repository?.full_name !== repository || !options.defaultBranch)
       throw new Error('The workflow event belongs to a different repository')
     const expected = skillReferenceRun(event.workflow_run, options)
-    const runPath = `repos/${repository}/actions/runs/${expected.runId}`
-    const pullPath = `repos/${repository}/pulls/${expected.number}`
-    const current = async () =>
-      currentSkillReferenceSource(
-        expected,
-        await client.api(runPath),
-        await client.api(pullPath),
-        options,
-      )
-    if (!(await current())) {
-      console.log('A newer producer or changed pull request supersedes this synchronization.')
+    if (!expected) {
+      const summary = 'No current pull request matches this producer. No changes were written.\n'
+      console.log(summary)
       await appendFile(process.env.GITHUB_OUTPUT, 'ready=false\n')
+      if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, summary)
     } else {
-      const artifact = skillReferenceArtifact(
-        await paginated(client, `${runPath}/artifacts`, 'artifacts'),
-        expected,
-      )
-      if (!artifact) {
-        console.log('This producer retained no reference changes.')
+      const runPath = `repos/${repository}/actions/runs/${expected.runId}`
+      const pullPath = `repos/${repository}/pulls/${expected.number}`
+      const current = async () =>
+        currentSkillReferenceSource(
+          expected,
+          await client.api(runPath),
+          await client.api(pullPath),
+          options,
+        )
+      if (!(await current())) {
+        console.log('A newer producer or changed pull request supersedes this synchronization.')
         await appendFile(process.env.GITHUB_OUTPUT, 'ready=false\n')
       } else {
-        await downloadArtifactDirectory(client, artifact, destination)
-        if (!(await current())) {
-          console.log('A newer producer or changed pull request supersedes this synchronization.')
+        const artifact = skillReferenceArtifact(
+          await paginated(client, `${runPath}/artifacts`, 'artifacts'),
+          expected,
+        )
+        if (!artifact) {
+          console.log('This producer retained no reference changes.')
           await appendFile(process.env.GITHUB_OUTPUT, 'ready=false\n')
         } else {
-          await appendFile(
-            process.env.GITHUB_OUTPUT,
-            Object.entries({
-              ready: 'true',
-              'pr-head-sha': expected.sourceRevision,
-              'pr-branch': expected.branch,
-              'source-run-id': expected.runId,
-              'source-run-attempt': expected.runAttempt,
-            })
-              .map(([key, value]) => `${key}=${value}\n`)
-              .join(''),
-          )
+          await downloadArtifactDirectory(client, artifact, destination)
+          if (!(await current())) {
+            console.log('A newer producer or changed pull request supersedes this synchronization.')
+            await appendFile(process.env.GITHUB_OUTPUT, 'ready=false\n')
+          } else {
+            await appendFile(
+              process.env.GITHUB_OUTPUT,
+              Object.entries({
+                ready: 'true',
+                'pr-head-sha': expected.sourceRevision,
+                'pr-branch': expected.branch,
+                'source-run-id': expected.runId,
+                'source-run-attempt': expected.runAttempt,
+              })
+                .map(([key, value]) => `${key}=${value}\n`)
+                .join(''),
+            )
+          }
         }
       }
     }
