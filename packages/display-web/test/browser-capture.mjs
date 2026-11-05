@@ -80,11 +80,18 @@ try {
       const page = await context.newPage()
       page.setDefaultTimeout(10000)
       const waitForCapture = async (predicate) => {
-        if (!assetCheckout) return page.waitForFunction(predicate)
+        if (!assetCheckout) {
+          await page.waitForFunction(predicate)
+          return true
+        }
         // Keep historical loading defects visible without weakening current acceptance.
-        await page.waitForFunction(predicate, undefined, { timeout: 1500 }).catch((error) => {
-          if (error.name !== 'TimeoutError') throw error
-        })
+        return page
+          .waitForFunction(predicate, undefined, { timeout: 1500 })
+          .then(() => true)
+          .catch((error) => {
+            if (error.name !== 'TimeoutError') throw error
+            return false
+          })
       }
       try {
         await page.goto(host.url)
@@ -119,8 +126,10 @@ try {
                 !node.textContent.includes('not loaded')
               )
             })
-          await waitForCapture(visiblePreviewsLoaded)
-          await waitForCapture(() => [...document.images].every((image) => image.complete))
+          const previewsReady = await waitForCapture(visiblePreviewsLoaded)
+          const imagesReady = await waitForCapture(() =>
+            [...document.images].every((image) => image.complete),
+          )
           const unresolved = await page.locator('.media-placeholder').evaluateAll((nodes) =>
             nodes
               .filter((node) => {
@@ -165,6 +174,7 @@ try {
             file,
             unsupportedFocus: !focusSupported,
             unavailableMedia: unresolved,
+            loadingIncomplete: !previewsReady || !imagesReady,
           })
           await writeManifest()
         }
