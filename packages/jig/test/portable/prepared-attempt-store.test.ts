@@ -270,6 +270,13 @@ describe('protected prepared-attempt records', () => {
       expect(retained.files).toEqual([
         { path: 'artifacts/candidate/binary.bin', bytes, digest: sha256(bytes) },
       ])
+      expect(readPrivateAttemptCheckpoint(db, runId)?.associations).toEqual({
+        candidate: {
+          reference: 'held-reference',
+          directories: ['artifacts/candidate/empty'],
+          files: [{ path: 'artifacts/candidate/binary.bin', bytes: 3, digest: sha256(bytes) }],
+        },
+      })
       expect(retained.directories).toEqual([
         'artifacts',
         'artifacts/candidate',
