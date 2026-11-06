@@ -972,15 +972,15 @@ test('allocator selection rejects missing, duplicate, stale, inactive, or failed
 test('PRs select an Ubuntu deadline guard and five ARM workers; main retains one complete host', () => {
   assert.deepEqual(macHostWorkerMatrix('pull_request'), {
     include: [
-      { arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true },
+      { arch: 'guard', worker: 'guard', guard: true },
       ...Array.from({ length: 5 }, (_, worker) => ({
-        arch: 'arm64', worker, runner: 'macos-15', guard: false,
+        arch: 'arm64', worker, guard: false,
       })),
     ],
   })
   for (const event of ['push', 'workflow_dispatch'])
     assert.deepEqual(macHostWorkerMatrix(event), {
-      include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }],
+      include: [{ arch: 'arm64', worker: 0, guard: false }],
     })
   for (const event of [undefined, '', 'pull_request_target', 'workflow_run'])
     assert.throws(() => macHostWorkerMatrix(event), /Unknown hosted Mac workflow event/)

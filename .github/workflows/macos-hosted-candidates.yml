@@ -175,9 +175,14 @@ jobs:
           retention-days: 7
           if-no-files-found: "error"
       -
+        name: "Reserve time to wait for allocator readiness"
+        id: "ready-budget"
+        if: "github.event_name == 'pull_request'"
+        run: 'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"'
+      -
         name: "Verify the allocator is ready before requesting Mac runners"
         if: "github.event_name == 'pull_request'"
-        timeout-minutes: 4
+        timeout-minutes: "${{ fromJSON(steps.ready-budget.outputs.step_timeout_minutes) }}"
         env:
           GH_TOKEN: "${{ github.token }}"
         run: "node scripts/ci/pr-time-budget.mjs run -- node scripts/ci/macos-host-cohort-run.mjs ready"
@@ -187,7 +192,7 @@ jobs:
         run: "node scripts/ci/pr-time-budget.mjs check"
   prerequisites:
     name: "${{ matrix.guard && 'Enforce Mac PR deadline' || (github.event_name == 'pull_request' && format('Native host worker — {0} / {1}', matrix.arch, matrix.worker) || format('Native host shard — {0} / 0', matrix.arch)) }}"
-    runs-on: "${{ matrix.runner }}"
+    runs-on: "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}"
     concurrency:
       group: "macos-hosted-native-${{ github.ref == 'refs/heads/main' && format('main-{0}', needs.scope.outputs.native_lane) || format('{0}-{1}', github.run_id, matrix.worker) }}"
       queue: "max"
