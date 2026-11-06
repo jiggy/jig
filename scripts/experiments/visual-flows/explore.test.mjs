@@ -104,3 +104,28 @@ test('the command rejects a FIFO without waiting for a writer', {
     await assert.rejects(readFile(output), { code: 'ENOENT' })
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
+
+test('project source discovery refuses FIFO metadata without hanging', {
+  skip: process.platform === 'win32' ? 'Named FIFO fixtures require POSIX.' : false,
+}, async (context) => {
+  const directory = await mkdtemp(join(tmpdir(), 'visual-flows-source-fifo-'))
+  try {
+    const flow = join(directory, 'flows', 'worker')
+    await mkdir(flow, { recursive: true })
+    await writeFile(join(directory, 'jig.ts'),
+      "import { defineJig } from '@jigging/jig'\nexport default defineJig({ flows: ['flows/worker'] })\n")
+    const metadata = join(flow, 'FLOW.meta.json')
+    const created = spawnSync('mkfifo', [metadata], { encoding: 'utf8' })
+    if (created.error?.code === 'ENOENT') { context.skip('mkfifo is unavailable.'); return }
+    assert.equal(created.error, undefined)
+    assert.equal(created.status, 0, created.stderr)
+    const output = join(directory, 'out.json')
+    const run = spawnSync(process.execPath,
+      [cli, '--project', directory, '--format', 'json', '--output', output],
+      { encoding: 'utf8', timeout: 5_000 })
+    assert.equal(run.error, undefined, run.error?.message)
+    assert.equal(run.status, 0, run.stderr)
+    const result = JSON.parse(await readFile(output, 'utf8'))
+    assert(result[0].graph.warnings.some(warning => warning.code === 'OPAQUE_PACKAGE'))
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
