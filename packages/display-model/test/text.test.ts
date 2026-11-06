@@ -51,6 +51,13 @@ test('lexical highlighting preserves source and treats supplied markup as ordina
         .join(''),
     ).toBe(text)
   }
+  for (const quote of ['"', "'", '`']) {
+    const multiline = `${quote}first\nsecond${quote} const answer = true`
+    const pieces = displayTextTokens(multiline, 'typescript')
+    expect(pieces.map((t) => t.text).join('')).toBe(multiline)
+    expect(pieces.some((t) => t.role === 'string' && t.text.includes('\n'))).toBe(false)
+    expect(pieces.some((t) => t.role === 'literal' && t.text === 'const')).toBe(true)
+  }
   expect(displayTextTokens('{"count":12}', 'json').some((t) => t.role === 'key')).toBe(true)
   expect(displayTextTokens('x'.repeat(65537), 'json')).toEqual([
     { text: 'x'.repeat(65537), role: 'plain' },
