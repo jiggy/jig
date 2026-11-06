@@ -95,6 +95,17 @@ let clock: ReturnType<typeof setInterval> | undefined
 let client: PrivateBrowserClient | undefined
 const navigationMedia = matchMedia('(max-width: 700px)')
 navigationMedia.addEventListener('change', () => redraw())
+// A breakpoint can hide the control that currently owns keyboard focus.
+const detailMedia = matchMedia('(max-width: 1000px)')
+detailMedia.addEventListener('change', (event) => {
+  const active = document.activeElement
+  if (
+    event.matches &&
+    active instanceof Element &&
+    active.closest('.workspace.show-detail .records, .application-workspace.show-detail .application-page')
+  )
+    document.querySelector<HTMLButtonElement>('.back-to-records')?.focus({ preventScroll: true })
+})
 
 const literal = (text: string): ComponentChildren =>
   h('bdi', { class: 'literal' }, privateBrowserLiteral(text))

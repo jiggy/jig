@@ -97,7 +97,8 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
   const collection = (block: Collection) => {
     const rows = privateBrowserRows(block, local)
     const sort = local.sorts.get(block.id)
-    const filtered = Boolean(local.filters.get(block.id))
+    const activeQuery = local.filters.get(block.id) ?? ''
+    const filtered = Boolean(activeQuery)
     const gallery = block.presentation?.kind === 'gallery' ? block.presentation : undefined
     const count =
       block.total !== undefined && block.total !== block.rows.length
@@ -125,7 +126,15 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
                     (event.currentTarget as HTMLDetailsElement).open,
                   ),
               },
-              h('summary', {}, 'Search and sort'),
+              h(
+                'summary',
+                {},
+                'Search and sort',
+                filtered
+                  ? h('span', { class: 'secondary' },
+                      ` · “${text(activeQuery.slice(0, 80))}${activeQuery.length > 80 ? '…' : ''}”`)
+                  : null,
+              ),
               h(
                 'div',
                 { class: 'collection-controls' },
@@ -305,9 +314,11 @@ export function ApplicationPage(props: ApplicationPageProps): ComponentChildren 
         h('p', {}, text(view.value.summary)),
         h('small', { class: 'secondary' }, text(view.sourceLabel)),
         props.identity,
-        view.ended ? h('p', { class: 'secondary' }, text(view.ended)) : null,
       ),
     ),
+    view.ended
+      ? h('p', { class: 'unavailable-note application-ended', role: 'status' }, text(view.ended))
+      : null,
     !view.value.presentation && view.value.summary
       ? h('p', { class: 'application-summary' }, text(view.value.summary))
       : null,
