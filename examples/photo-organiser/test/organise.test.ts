@@ -152,6 +152,15 @@ test('refuses unsafe paths, duplicate source identities and invalid dates', () =
   }
 })
 
+test('organiser rejects malformed Unicode while preserving valid multi-byte captions', () => {
+  const withCaption = (caption: string) =>
+    catalogue.map((photo, index) => (index === 0 ? { ...photo, caption } : photo))
+  expect(readCatalogue(withCaption('Café 🎉'))[0]?.caption).toBe('Café 🎉')
+  for (const caption of ['unsafe\ud800caption', 'unsafe\udcffcaption']) {
+    expect(() => readCatalogue(withCaption(caption))).toThrow('valid Unicode')
+  }
+})
+
 test('source capture reads all real fixture bytes', async () => {
   const captured = await capturePhotos(fixtureFolder, new AbortController().signal)
   expect(captured.photos).toEqual(catalogue)
