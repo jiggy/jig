@@ -197,15 +197,15 @@ test('PRs retain complete ARM coverage with separate Intel compatibility and ind
   expect(macHostShardCount('x64')).toBe(4)
   expect(macHostWorkerMatrix('pull_request')).toEqual({
     include: [
-      { arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true },
+      { arch: 'guard', worker: 'guard', guard: true },
       ...Array.from({ length: 5 }, (_, worker) => ({
-        arch: 'arm64', worker, runner: 'macos-15', guard: false,
+        arch: 'arm64', worker, guard: false,
       })),
     ],
   })
   for (const event of ['push', 'workflow_dispatch'])
     expect(macHostWorkerMatrix(event)).toEqual({
-      include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }],
+      include: [{ arch: 'arm64', worker: 0, guard: false }],
     })
   // The Node coverage tests execute the scope planner and prove complete inventory,
   // role ownership, surplus refusal, and main/manual timeout semantics.
