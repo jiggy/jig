@@ -265,10 +265,15 @@ const canonical = record({
   ...common,
   files: array(record({ port: string, manifestDigest: digest, bytes: integer })),
 })
-const artifact = record(
-  { name: string, availability: choice(['pending', 'available', 'expired', 'unavailable']) },
-  { manifestDigest: digest },
-)
+const artifact: Check = (value) => {
+  record(
+    { name: string, availability: choice(['pending', 'available', 'expired', 'unavailable']) },
+    { manifestDigest: digest },
+  )(value)
+  const item = value as ArtifactAvailability
+  // Only retained, digest-verified bytes may be advertised as available.
+  if (item.availability === 'available' && item.manifestDigest === undefined) fail()
+}
 const checkpointScope: Check = (value) => {
   if (value !== 'root') {
     digest(value)
