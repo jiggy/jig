@@ -794,6 +794,10 @@ test('application identity stays in the shell while summaries and ended state re
   assert(text(about).includes('Original publisher'))
   assert(text(about).includes('Partial result'))
   assert(text(page).includes(view.ended))
+  assert(!text(about).includes(view.ended), 'stopped state must not be hidden in About')
+  const ended = walk(page).find((node) => node.props.class === 'unavailable-note application-ended')
+  assert.equal(ended.props.role, 'status')
+  assert.equal(text(ended), view.ended)
 })
 
 test('reading, material and comparison sections retain their own presentation', () => {
@@ -833,6 +837,11 @@ test('small collections retain search and sort behind a disclosure with compact 
     true,
   )
   assert(text(filtered).includes('1 of 2 records'))
+  options.local.collectionTools.set('people', false)
+  const collapsed = ApplicationPage({ ...options, records: browserRecords(view, options.local) })
+  const summary = walk(collapsed).find((node) =>
+    node.type === 'summary' && text(node).includes('Search and sort'))
+  assert(text(summary).includes('Blair'), 'active query must be visible when tools are closed')
   people.total = 25
   assert(text(ApplicationPage(options)).includes('1 of 2 retained · 25 reported'))
 })
