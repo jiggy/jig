@@ -555,7 +555,7 @@ test('every required and nightly hosted Mac shard checks its exact target before
       'utf8',
     ),
   )
-  assert.equal(workflow.jobs.prerequisites['runs-on'], '${{ matrix.runner }}')
+  assert.equal(workflow.jobs.prerequisites['runs-on'], "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}")
   const nightly = parse(await readFile(
     resolve(import.meta.dirname, '../../.github/workflows/macos-intel-nightly.yml'), 'utf8',
   ))
