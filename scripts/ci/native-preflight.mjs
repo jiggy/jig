@@ -4,6 +4,14 @@ import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { acquireCandidate, githubClient, validateWorkflowRun } from './candidate-transfer.mjs'
 
+/** Validate the dispatch PR identity before interpolating it into any API path. */
+export function preflightPullRequestNumber(raw) {
+  if (typeof raw !== 'string' || !/^[1-9][0-9]*$/.test(raw) ||
+    !Number.isSafeInteger(Number(raw)))
+    throw Error('Native preflight requires a positive decimal PR number')
+  return Number(raw)
+}
+
 export function approvedReviews(pr, reviews, permissions) {
   if (!pr.user?.login || !Array.isArray(reviews)) throw Error('Missing complete PR review evidence')
   const latest = new Map()
@@ -107,7 +115,7 @@ async function main() {
   )
     throw Error('Use native-preflight.mjs select, verify or acquire OUTPUT')
   const repository = process.env.GITHUB_REPOSITORY
-  const number = Number(process.env.PREFLIGHT_PULL_REQUEST)
+  const number = preflightPullRequestNumber(process.env.PREFLIGHT_PULL_REQUEST)
   const runId = Number(process.env.PREFLIGHT_PRODUCER_RUN)
   if (!Number.isSafeInteger(runId) || runId <= 0)
     throw Error('A canonical CI producer run ID is required')
