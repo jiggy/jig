@@ -532,6 +532,21 @@ test('Execution and delivered files reveal and dismiss details only on request',
   })
 })
 
+for (const width of [390, 1440]) {
+  test(`captured block evidence restores its originating button at ${width}px`, async () => {
+    await withPage(patchFixture(), { viewport: { width, height: 900 } }, async (page) => {
+      await page.locator('.captured-block .captured-media summary').first().click()
+      const source = page.locator('.captured-block button.reference').first()
+      await source.click()
+      await page.locator('.detail').waitFor()
+      await page.keyboard.press('Escape')
+      assert.equal(await page.locator('.detail').count(), 0)
+      assert(await source.isVisible())
+      assert(await source.evaluate((node) => node === document.activeElement))
+    })
+  })
+}
+
 test('child material stays complete and filtering preserves visible detail ownership and focus', async () => {
   await withPage(childFixture(), {}, async (page) => {
     await openTab(page, 'Specialist material')
