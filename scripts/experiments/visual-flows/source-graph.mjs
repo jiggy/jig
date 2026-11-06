@@ -204,7 +204,8 @@ async function sourceReader(directory) {
       if (cache.has(relative)) return cache.get(relative)
       if (++files > LIMITS.files) throw new Error('Source file limit exceeded')
       const absolute = await checked(relative)
-      const handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW)
+      // Refuse FIFOs and devices before attempting any blocking read.
+      const handle = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW | (constants.O_NONBLOCK ?? 0))
       try {
         if (!(await handle.stat()).isFile()) throw new Error('Source is not a regular file')
         const buffer = Buffer.alloc(LIMITS.bytes + 1)
