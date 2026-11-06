@@ -136,7 +136,7 @@ export function displayTextTokens(text: string, format: DisplayTextFormat): Disp
     return displayDelimitedTokens(text, format === 'tsv' ? '\t' : ',')
   const tokens: DisplayTextToken[] = []
   const pattern =
-    /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|\/\/[^\n]*|#[^\n]*|\b(?:true|false|null|None|True|False|const|let|var|function|return|if|else|for|while|import|from|export|class|def|async|await|interface|type)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g
+    /"(?:[^"\\\r\n]|\\.)*"|'(?:[^'\\\r\n]|\\.)*'|`(?:[^`\\\r\n]|\\.)*`|\/\/[^\n]*|#[^\n]*|\b(?:true|false|null|None|True|False|const|let|var|function|return|if|else|for|while|import|from|export|class|def|async|await|interface|type)\b|-?\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g
   let start = 0
   for (const match of text.matchAll(pattern)) {
     if (match.index > start) tokens.push({ text: text.slice(start, match.index), role: 'plain' })

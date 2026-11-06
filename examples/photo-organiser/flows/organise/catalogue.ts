@@ -50,6 +50,10 @@ function readPhoto(record: unknown): Photo {
   if (typeof caption !== 'string' || caption.length < 1 || caption.length > 240) {
     throw new TypeError('Photo captions must contain 1–240 characters.')
   }
+  // Reject lone UTF-16 surrogates before UTF-8 export can replace them.
+  if (Buffer.from(caption, 'utf8').toString('utf8') !== caption) {
+    throw new TypeError('Photo captions must contain valid Unicode characters.')
+  }
   const containsControlCharacters = [...caption].some((character) => {
     const code = character.charCodeAt(0)
     return code < 32 || code === 127
