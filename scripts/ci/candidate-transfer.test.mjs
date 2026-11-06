@@ -34,6 +34,30 @@ const buildProfile = {
   justVersion: 'just 1.43.1',
 }
 
+test('candidate acquisition refuses blank and malformed timeout arguments before contacting GitHub', async () => {
+  for (const [option, value] of [
+    ['producer-timeout-seconds', ''],
+    ['producer-timeout-seconds', '1e3'],
+    ['timeout-seconds', ''],
+    ['timeout-seconds', '-1'],
+    ['timeout-seconds', '9007199254740993'],
+  ]) {
+    const child = spawnSync(process.execPath, [
+      new URL('./candidate-transfer.mjs', import.meta.url).pathname,
+      'acquire', '/tmp/candidate-should-not-exist',
+      '--source', source, `--${option}`, value,
+    ], {
+      encoding: 'utf8', timeout: 10_000,
+      env: { PATH: process.env.PATH, GITHUB_REPOSITORY: repository, GITHUB_SHA: source,
+        GITHUB_REF: 'refs/heads/main', GITHUB_EVENT_NAME: 'push' },
+    })
+    assert.equal(child.error, undefined)
+    assert.equal(child.status, 1)
+    assert.match(child.stderr, /requires a nonempty integer/)
+    assert.doesNotMatch(child.stderr, /GitHub API|GH_TOKEN/)
+  }
+})
+
 test('native acquisition CLI loads readiness before making its GitHub request', async () => {
   const temporary = await mkdtemp(join(tmpdir(), 'jig-native-acquisition-cli-'))
   try {
