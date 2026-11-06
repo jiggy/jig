@@ -478,6 +478,13 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       throw new Error('--producer-timeout-seconds applies only to canonical candidate acquisition')
     if (positional[0] === 'acquire-linux' && afterQuick)
       throw new Error('--after-quick applies only to canonical candidate acquisition')
+    // Reject empty or malformed timeout operands before contacting GitHub.
+    for (const key of ['timeout-seconds', 'producer-timeout-seconds']) {
+      const value = options[key]
+      if (value !== undefined && (!/^(?:0|[1-9][0-9]*)$/.test(value) ||
+        !Number.isSafeInteger(Number(value))))
+        throw new Error(`--${key} requires a nonempty integer`)
+    }
     const expected = await acquisitionExpectation(options.source)
     const client = githubClient(expected.repository)
     let envelope
