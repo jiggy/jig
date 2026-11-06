@@ -142,7 +142,11 @@ export function retainPrivateAttemptCheckpoint(
     associations[name] = {
       reference: input.artifacts![name]!,
       directories: snapshot.directories.map((path) => privateFilePath(`artifacts/${name}/${path}`)),
-      files: members.map((file) => ({ path: file.path, bytes: file.bytes, digest: file.digest })),
+      files: members.map((file) => ({
+        path: privateFilePath(`artifacts/${name}/${file.path}`),
+        bytes: file.bytes,
+        digest: file.digest,
+      })),
     }
     for (const file of members)
       files.push({

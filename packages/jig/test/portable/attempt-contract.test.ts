@@ -160,6 +160,22 @@ describe('attempt machine contract consistency', () => {
     ).toThrow(AttemptContractError)
   })
 
+  test('available artifact identities always include their manifest digest', () => {
+    const available = { name: 'draft', availability: 'available' as const }
+    const verified = { ...available, manifestDigest: digest }
+    const valid = { ...success(null), receipt: { ...receipt, artifactResults: [verified] } }
+    expect(() => result(valid, { output: null, artifactResults: [verified] })).not.toThrow()
+    expect(() =>
+      result({ ...success(null), receipt: { ...receipt, artifactResults: [available] } }, {
+        output: null, artifactResults: [available],
+      }),
+    ).toThrow(AttemptContractError)
+    expect(() => result(success(null), {
+      output: null,
+      checkpoint: { ...noCheckpoint, artifactResults: [available] },
+    })).toThrow(AttemptContractError)
+  })
+
   test('result artifact availability agrees exactly with its receipt', () => {
     const first = { name: 'first', manifestDigest: digest, availability: 'available' as const }
     const second = { name: 'second', availability: 'unavailable' as const }
