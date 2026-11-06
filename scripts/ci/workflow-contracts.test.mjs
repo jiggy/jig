@@ -126,7 +126,15 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     step.run?.includes('scripts/ci/qualify-macos-host.sh --shard'),
   )
   assert.ok(qualifier)
-  assert.equal(native['runs-on'], '${{ matrix.runner }}')
+  assert.equal(native['runs-on'], "${{ matrix.guard && 'ubuntu-24.04' || 'macos-15' }}")
+  // PR-generated plan data must never choose a runner by supplying a label.
+  for (const guard of [true, false])
+    assert.equal(
+      expressionValue(native['runs-on'], {
+        matrix: { guard, runner: 'jig-macos-23E224' },
+      }),
+      guard ? 'ubuntu-24.04' : 'macos-15',
+    )
   assert.equal(native.strategy['max-parallel'], 6)
   assert.equal(native.strategy['fail-fast'], "${{ github.event_name == 'pull_request' }}")
   assert.equal(aggregate.strategy.matrix.include.length, 1)
@@ -139,10 +147,10 @@ test('required Mac checks select a PR ARM cohort or one complete host and retain
     assert.deepEqual(matrix, {
       include: [
         ...(pullRequest
-          ? [{ arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true }]
+          ? [{ arch: 'guard', worker: 'guard', guard: true }]
           : []),
         ...Array.from({ length: pullRequest ? 5 : 1 }, (_, worker) => ({
-          arch: 'arm64', worker, runner: 'macos-15', guard: false,
+          arch: 'arm64', worker, guard: false,
         })),
       ],
     })
@@ -294,9 +302,17 @@ test('Mac admission requires prepared canonical inputs and one live Ubuntu alloc
   const ready = readiness.steps.findIndex((step) =>
     step.run?.includes('macos-host-cohort-run.mjs ready'),
   )
-  assert.ok(acquire >= 0 && retain > acquire && ready > retain)
+  const readyBudget = readiness.steps.findIndex((step) => step.id === 'ready-budget')
+  assert.ok(acquire >= 0 && retain > acquire && readyBudget > retain && ready > readyBudget)
   assert.match(readiness.steps[acquire].run, /--after-quick true/)
+  assert.equal(readiness.steps[readyBudget].if, "github.event_name == 'pull_request'")
+  assert.equal(readiness.steps[readyBudget].run,
+    'node scripts/ci/pr-time-budget.mjs remaining --github-output "$GITHUB_OUTPUT"')
   assert.equal(readiness.steps[ready].if, "github.event_name == 'pull_request'")
+  assert.equal(readiness.steps[ready]['timeout-minutes'],
+    '${{ fromJSON(steps.ready-budget.outputs.step_timeout_minutes) }}')
+  assert.equal(expressionValue(readiness.steps[ready]['timeout-minutes'],
+    { steps: { 'ready-budget': { outputs: { step_timeout_minutes: '31' } } } }), 31)
   const download = mac.jobs.prerequisites.steps.find((step) =>
     step.uses?.startsWith('actions/download-artifact@'),
   )
@@ -597,7 +613,7 @@ test('main Mac qualification admits independent runs through two bounded native 
   const outputs = await macScopePlan(mac, 'push')
   assert.deepEqual(
     expressionValue(native.strategy.matrix, { needs: { scope: { outputs } } }),
-    { include: [{ arch: 'arm64', worker: 0, runner: 'macos-15', guard: false }] },
+    { include: [{ arch: 'arm64', worker: 0, guard: false }] },
   )
   assert.ok(native.needs.includes('scope'))
   assert.ok(native.needs.includes('host-artifacts'))

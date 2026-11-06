@@ -40,11 +40,11 @@ export function macHostWorkerMatrix(event) {
   return {
     include: [
       ...(event === 'pull_request'
-        ? [{ arch: 'guard', worker: 'guard', runner: 'ubuntu-24.04', guard: true }]
+        ? [{ arch: 'guard', worker: 'guard', guard: true }]
         : []),
       ...Array.from(
         { length: event === 'pull_request' ? MAC_PR_COHORT.workers : 1 },
-        (_, worker) => ({ arch: 'arm64', worker, runner: 'macos-15', guard: false }),
+        (_, worker) => ({ arch: 'arm64', worker, guard: false }),
       ),
     ],
   }
