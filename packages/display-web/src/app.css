@@ -3258,7 +3258,8 @@ nav .nav-entry {
   }
   .tree-toggle,
   .run-context-menu > summary,
-  .appearance-option {
+  .appearance-option,
+  .application-table .application-inspect {
     min-width: 44px;
     min-height: 44px;
   }

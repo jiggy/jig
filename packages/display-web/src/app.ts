@@ -88,6 +88,8 @@ let invocationViewOrigin: InvocationViewOrigin | undefined
 let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
+// A block reference is not a collection record; preserve its actual focus owner.
+let detailOrigin: { destination: string; key: string; element: HTMLElement } | undefined
 let announcement = ''
 let feedback = ''
 let closing = false
@@ -95,6 +97,17 @@ let clock: ReturnType<typeof setInterval> | undefined
 let client: PrivateBrowserClient | undefined
 const navigationMedia = matchMedia('(max-width: 700px)')
 navigationMedia.addEventListener('change', () => redraw())
+// A breakpoint can hide the control that currently owns keyboard focus.
+const detailMedia = matchMedia('(max-width: 1000px)')
+detailMedia.addEventListener('change', (event) => {
+  const active = document.activeElement
+  if (
+    event.matches &&
+    active instanceof Element &&
+    active.closest('.workspace.show-detail .records, .application-workspace.show-detail .application-page')
+  )
+    document.querySelector<HTMLButtonElement>('.back-to-records')?.focus({ preventScroll: true })
+})
 
 const literal = (text: string): ComponentChildren =>
   h('bdi', { class: 'literal' }, privateBrowserLiteral(text))
@@ -330,6 +343,7 @@ function navigate(id: string, preserveSubject = true): void {
   if (body && !panel) scrollPositions.set(destinationKey, body.scrollTop)
   humanNavigation = true
   destinationKey = privateBrowserNavigationDestination(client?.body, view(), id, preserveSubject)
+  detailOrigin = undefined
   if (
     invocationViewOrigin &&
     privateBrowserView(client?.body, destinationKey)?.sourceId !== invocationViewOrigin.childSourceId
@@ -347,6 +361,17 @@ function focusSelectedEntry(): void {
     document.querySelector<HTMLButtonElement>('[data-component][aria-pressed=true]')?.focus({ preventScroll: true })
     return
   }
+  if (
+    detailOrigin?.destination === destinationKey &&
+    detailOrigin.key === currentLocal().selected &&
+    detailOrigin.element.isConnected &&
+    detailOrigin.element.getClientRects().length > 0
+  ) {
+    detailOrigin.element.focus({ preventScroll: true })
+    detailOrigin = undefined
+    return
+  }
+  detailOrigin = undefined
   const selector = destinationKey === 'overview' ? '[data-call]' : '[data-record]'
   const selected = destinationKey === 'overview' ? selectedCall : currentLocal().selected
   const owner = [...document.querySelectorAll<HTMLButtonElement>(selector)].find(
@@ -365,6 +390,7 @@ function focusDetailReturn(): void {
     document.querySelector<HTMLButtonElement>('.back-to-records')?.focus()
 }
 function select(key: string): void {
+  detailOrigin = undefined
   humanNavigation = true
   currentLocal().selected = key
   currentLocal().detailOpen = true
@@ -745,6 +771,10 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
   }
   humanNavigation = true
   if (target.kind === 'artifact') {
+    const origin = document.activeElement
+    detailOrigin = origin instanceof HTMLElement
+      ? { destination: destinationKey, key: record.key, element: origin }
+      : undefined
     currentLocal().selected = record.key
     currentLocal().detailOpen = true
     currentLocal().reference = reference
