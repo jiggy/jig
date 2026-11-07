@@ -89,7 +89,7 @@ let callFilter = ''
 let panel: 'attention' | 'diagnostics' | 'help' | undefined
 let panelOrigin: HTMLElement | undefined
 // A block reference is not a collection record; preserve its actual focus owner.
-let detailOrigin: { destination: string; key: string; node: HTMLElement } | undefined
+let detailOrigin: { destination: string; key: string; element: HTMLElement } | undefined
 let announcement = ''
 let feedback = ''
 let closing = false
@@ -364,10 +364,10 @@ function focusSelectedEntry(): void {
   if (
     detailOrigin?.destination === destinationKey &&
     detailOrigin.key === currentLocal().selected &&
-    detailOrigin.node.isConnected &&
-    detailOrigin.node.getClientRects().length > 0
+    detailOrigin.element.isConnected &&
+    detailOrigin.element.getClientRects().length > 0
   ) {
-    detailOrigin.node.focus({ preventScroll: true })
+    detailOrigin.element.focus({ preventScroll: true })
     detailOrigin = undefined
     return
   }
@@ -773,7 +773,7 @@ function activate(reference: Reference, record: PrivateBrowserRecord): void {
   if (target.kind === 'artifact') {
     const origin = document.activeElement
     detailOrigin = origin instanceof HTMLElement
-      ? { destination: destinationKey, key: record.key, node: origin }
+      ? { destination: destinationKey, key: record.key, element: origin }
       : undefined
     currentLocal().selected = record.key
     currentLocal().detailOpen = true
