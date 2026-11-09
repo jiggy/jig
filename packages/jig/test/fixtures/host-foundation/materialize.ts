@@ -467,6 +467,7 @@ async function tree(directory: string, prefix = ''): Promise<Record<string, stri
   for (const entry of (await readdir(join(directory, prefix), { withFileTypes: true })).sort(
     (a, b) => a.name.localeCompare(b.name),
   )) {
+    if (entry.name === 'node_modules' || entry.name === '.bun-tag') continue
     const path = prefix ? `${prefix}/${entry.name}` : entry.name
     if (entry.isDirectory()) Object.assign(result, await tree(directory, path))
     else {
